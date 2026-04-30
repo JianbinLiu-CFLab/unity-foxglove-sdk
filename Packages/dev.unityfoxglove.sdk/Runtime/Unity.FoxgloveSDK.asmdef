@@ -1,0 +1,15 @@
+{
+  "name": "Unity.FoxgloveSDK",
+  "rootNamespace": "Unity.FoxgloveSDK",
+  "references": [
+    "Newtonsoft.Json"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [
+    "WebGL"
+  ],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": []
+}

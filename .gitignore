@@ -1,0 +1,28 @@
+# Local agent/tooling state
+.claude/
+
+# Local reference checkout, not part of this Unity package repo
+foxglove-sdk/
+
+# .NET build outputs
+bin/
+obj/
+**/bin/
+**/obj/
+
+# Unity generated folders
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+
+# IDE/user files
+.vs/
+.idea/
+*.user
+*.userprefs
+*.suo
+
