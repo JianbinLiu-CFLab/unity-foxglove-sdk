@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../Runtime/Core/*.cs" />
@@ -16,5 +17,6 @@
     <Compile Include="../../Runtime/Schemas/*.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SkeletonValidation.cs" />
+    <Compile Include="Phase1Validation.cs" />
   </ItemGroup>
 </Project>

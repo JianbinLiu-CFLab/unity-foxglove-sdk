@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
@@ -19,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
 
         public string Name { get; }
+        public string SessionId { get; }
         public bool IsRunning => _transport.IsRunning;
         public ISchemaRegistry Schemas => _schemaRegistry;
         public ChannelRegistry Channels => _channels;
@@ -32,6 +34,7 @@ namespace Unity.FoxgloveSDK.Core
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _clock = clock ?? new SystemClock();
             _schemaRegistry = schemaRegistry ?? new DefaultSchemaRegistry();
+            SessionId = Guid.NewGuid().ToString();
 
             _transport.OnClientConnected += OnClientConnected;
             _transport.OnClientDisconnected += OnClientDisconnected;
@@ -43,8 +46,6 @@ namespace Unity.FoxgloveSDK.Core
         public void Start(string host, int port)
         {
             _transport.Start(host, port);
-
-            // Phase 1: send serverInfo to newly connected clients in OnClientConnected
         }
 
         /// <summary>Stop the server.</summary>
@@ -53,7 +54,7 @@ namespace Unity.FoxgloveSDK.Core
             _transport.Stop();
         }
 
-        /// <summary>Clear all session state: channels, subscriptions, connected clients.</summary>
+        /// <summary>Clear all session state: channels, subscriptions.</summary>
         public void ClearSession()
         {
             _channels.Clear();
@@ -81,11 +82,25 @@ namespace Unity.FoxgloveSDK.Core
             (_transport as IDisposable)?.Dispose();
         }
 
-        // ── Transport event handlers (Phase 1+ will expand) ──
+        // ── Transport event handlers ──
 
         private void OnClientConnected(uint clientId)
         {
-            // Phase 1: send serverInfo
+            var info = new ServerInfo
+            {
+                Name = Name,
+                Capabilities = new List<Capability>(),       // Phase 1: empty, serialized as []
+                // SupportedEncodings left null — omitted from JSON
+                // Metadata left null — omitted from JSON
+                SessionId = SessionId
+            };
+
+            var json = JsonConvert.SerializeObject(info, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore
+            });
+
+            _transport.SendText(clientId, json);
         }
 
         private void OnClientDisconnected(uint clientId)

@@ -4,10 +4,17 @@ using Newtonsoft.Json.Converters;
 
 namespace Unity.FoxgloveSDK.Protocol
 {
-    /// <summary>Foxglove WebSocket subprotocol identifier.</summary>
+    /// <summary>Foxglove WebSocket subprotocol identifiers.</summary>
     public static class Subprotocol
     {
-        public const string Id = "foxglove.sdk.v1";
+        /// <summary>Used by foxglove-sdk (Rust, Python, C++).</summary>
+        public const string SdkV1 = "foxglove.sdk.v1";
+
+        /// <summary>Used by Foxglove Desktop and foxglove_bridge.</summary>
+        public const string WebSocketV1 = "foxglove.websocket.v1";
+
+        /// <summary>All accepted subprotocols for matching logic.</summary>
+        public static readonly string[] Accepted = { SdkV1, WebSocketV1 };
     }
 
     /// <summary>Capabilities advertised in serverInfo. Only declare what is actually supported.</summary>
@@ -52,17 +59,24 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("name")]
         public string Name { get; set; }
 
+        /// <summary>Always serialized, even when empty: "capabilities": [].</summary>
         [JsonProperty("capabilities")]
         public List<Capability> Capabilities { get; set; } = new List<Capability>();
 
-        [JsonProperty("supportedEncodings")]
-        public List<string> SupportedEncodings { get; set; } = new List<string>();
+        /// <summary>Omitted from JSON when null or empty.</summary>
+        [JsonProperty("supportedEncodings", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> SupportedEncodings { get; set; }
 
+        /// <summary>Omitted from JSON when null or empty.</summary>
         [JsonProperty("metadata", NullValueHandling = NullValueHandling.Ignore)]
-        public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
+        public Dictionary<string, string> Metadata { get; set; }
 
         [JsonProperty("sessionId", NullValueHandling = NullValueHandling.Ignore)]
         public string SessionId { get; set; }
+
+        public bool ShouldSerializeSupportedEncodings() => SupportedEncodings?.Count > 0;
+
+        public bool ShouldSerializeMetadata() => Metadata?.Count > 0;
     }
 
     /// <summary>Server → Client: notify client about available channels.</summary>
