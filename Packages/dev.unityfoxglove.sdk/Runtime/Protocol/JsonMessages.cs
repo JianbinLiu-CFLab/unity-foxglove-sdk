@@ -102,14 +102,27 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("encoding")]
         public string Encoding { get; set; }
 
+        private string _schemaName = "";
+        /// <summary>Always serialized as non-null; null setter is coerced to "".</summary>
         [JsonProperty("schemaName")]
-        public string SchemaName { get; set; }
+        public string SchemaName
+        {
+            get => _schemaName;
+            set => _schemaName = value ?? "";
+        }
 
+        /// <summary>Omitted when null or empty, per official v1 spec.</summary>
         [JsonProperty("schemaEncoding", NullValueHandling = NullValueHandling.Ignore)]
         public string SchemaEncoding { get; set; }
 
-        [JsonProperty("schema", NullValueHandling = NullValueHandling.Ignore)]
-        public string Schema { get; set; }
+        private string _schema = "";
+        /// <summary>Always serialized as non-null; null setter is coerced to "".</summary>
+        [JsonProperty("schema")]
+        public string Schema
+        {
+            get => _schema;
+            set => _schema = value ?? "";
+        }
     }
 
     /// <summary>Server → Client: remove previously advertised channels.</summary>
