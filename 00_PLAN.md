@@ -1,4 +1,4 @@
-﻿---
+---
 title: Foxglove Unity SDK 实施计划（修订版）
 aliases:
   - PLAN
@@ -192,6 +192,8 @@ updated: 2026-04-30
 工作项：
 - 做一次 IL2CPP 构建验证，确认序列化、反射和第三方库不会被裁剪坏。
 - 对 WebSocket 层进行异常路径测试：重连、断线、未订阅发送、非法 JSON、非法二进制消息。
+- 明确 `FoxgloveRuntime` 与 transport backend 的生命周期所有权：
+  `Stop()` 是否只停止 session 而不 dispose transport，或每次 `Start()` 是否创建新的 transport。
 - 如果纯 C# 方案在 IL2CPP 或稳定性上出现明显问题，启动 Native Backend 分支：
   基于 `foxglove-c.h` 做最小 P/Invoke 封装。
 - 只有当前 4 个阶段稳定后，再评估是否增加 MCAP 录制。

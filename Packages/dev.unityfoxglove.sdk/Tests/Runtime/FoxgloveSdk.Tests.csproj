@@ -19,5 +19,6 @@
     <Compile Include="SkeletonValidation.cs" />
     <Compile Include="Phase1Validation.cs" />
     <Compile Include="Phase2Validation.cs" />
+    <Compile Include="Phase3Validation.cs" />
   </ItemGroup>
 </Project>
