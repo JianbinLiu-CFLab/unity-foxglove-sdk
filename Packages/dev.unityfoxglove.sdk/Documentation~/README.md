@@ -4,7 +4,7 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 
 ## Status
 
-**Phase 3 complete.** Typed JSON schema channels, FrameTransform + SceneUpdate with cube primitive, Foxglove 3D panel shows green cube.
+**Phase 4 complete.** Unity components: FoxgloveManager, Transform/SceneCube/Camera publishers. No Python bridge required.
 
 ## Supported Unity Versions
 
@@ -19,8 +19,8 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 | 0 | Done | Package skeleton, abstraction layer |
 | 1 | Done | WebSocket handshake, subprotocol, serverInfo |
 | 2 | Done | Channel advertise, subscribe/unsubscribe, MessageData routing |
-| 3 | **Done** | Official schemas (FrameTransform, SceneUpdate), typed DTOs, 3D cube |
-| 4 | Planned | Unity MonoBehaviour integration, publishers |
+| 3 | Done | Official schemas (FrameTransform, SceneUpdate), typed DTOs, 3D cube |
+| 4 | **Done** | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
 
 ## Quick Start
 

@@ -5,6 +5,8 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <BaseOutputPath>$(MSBuildProjectDirectory)\..\..\..\..\build\Tests\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(BaseOutputPath)obj\</BaseIntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
@@ -20,5 +22,6 @@
     <Compile Include="Phase1Validation.cs" />
     <Compile Include="Phase2Validation.cs" />
     <Compile Include="Phase3Validation.cs" />
+    <Compile Include="Phase4Validation.cs" />
   </ItemGroup>
 </Project>
