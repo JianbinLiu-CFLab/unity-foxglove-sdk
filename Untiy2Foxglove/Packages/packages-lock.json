@@ -200,8 +200,8 @@
       },
       "url": "https://packages.unity.com"
     },
-    "dev.unityfoxglove.sdk": {
-      "version": "file:D:/BaiduSyncdisk/Obsidian Vault/Websocket/00 Inbox/Packages/dev.unityfoxglove.sdk",
+    "dev.unity2foxglove.sdk": {
+      "version": "file:D:/BaiduSyncdisk/Obsidian Vault/Websocket/00 Inbox/Packages/dev.unity2foxglove.sdk",
       "depth": 0,
       "source": "local",
       "dependencies": {

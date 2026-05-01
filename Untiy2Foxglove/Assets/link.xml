@@ -1,0 +1,6 @@
+<linker>
+  <!-- Preserve Newtonsoft.Json — heavy reflection usage -->
+  <assembly fullname="Newtonsoft.Json" preserve="all" />
+  <!-- Preserve Foxglove SDK runtime -->
+  <assembly fullname="Unity.FoxgloveSDK" preserve="all" />
+</linker>
