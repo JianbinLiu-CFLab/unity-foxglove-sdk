@@ -1,8 +1,9 @@
----
+﻿---
 title: Foxglove Unity SDK Phase 0 执行计划
 aliases:
   - Phase 0 Plan
   - FoxgloveSDK Phase 0
+  - PHASE0_PLAN
 tags:
   - plan
   - phase0
@@ -16,11 +17,11 @@ updated: 2026-04-30
 # Foxglove Unity SDK Phase 0 执行计划
 
 > [!summary]
-> 这份笔记是从 [[PLAN]] 里拆出来的 Phase 0 执行版，目标不是再讲方案，而是把当前阶段变成可以直接勾选推进的 Todo。
+> 这份笔记是从 [[00_PLAN]] 里拆出来的 Phase 0 执行版，目标不是再讲方案，而是把当前阶段变成可以直接勾选推进的 Todo。
 
 ## 对应关系
 
-- 上位计划：[[PLAN]]
+- 上位计划：[[00_PLAN]]
 - 对应阶段：`Phase 0 - 技术决策与 Unity 包落地`
 - 本阶段目标：
   把当前 `FoxgloveSDK` 从验证性质的 .NET 工程，推进到可进入 Unity 的 SDK 骨架，并产出首轮技术决策。
@@ -54,11 +55,11 @@ updated: 2026-04-30
 
 ## 交付物
 
-- [x] `PHASE0_PLAN.md` 自身持续更新
+- [x] `01_PHASE0_PLAN.md` 自身持续更新
 - [x] 一份 Unity Package 目录骨架草案
 - [x] 一份 backend 选择结论
 - [x] 一份最小验证说明
-- [x] 从 `PLAN.md` 到本笔记的链接
+- [x] 从 `00_PLAN.md` 到本笔记的链接
 
 ## Todo
 
@@ -163,4 +164,4 @@ updated: 2026-04-30
 ## 下一阶段入口
 
 > [!success]
-> 当本笔记里的“完成标准”全部勾完，就可以进入 [[PLAN]] 里的 Phase 1。
+> 当本笔记里的“完成标准”全部勾完，就可以进入 [[00_PLAN]] 里的 Phase 1。

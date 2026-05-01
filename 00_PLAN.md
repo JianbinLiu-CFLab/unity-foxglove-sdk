@@ -1,5 +1,8 @@
----
+﻿---
 title: Foxglove Unity SDK 实施计划（修订版）
+aliases:
+  - PLAN
+  - Foxglove Unity SDK Plan
 tags:
   - plan
   - unity
@@ -82,7 +85,7 @@ updated: 2026-04-30
 
 目标：把“验证工程”变成“可进 Unity 的 SDK 工程骨架”，并完成纯 C# / Native Plugin 的决策。
 
-- 拆分执行笔记：[[PHASE0_PLAN]]
+- 拆分执行笔记：[[01_PHASE0_PLAN]]
 - 当前命名约定：
   - package id：`dev.unityfoxglove.sdk`
   - 根命名空间：`Unity.FoxgloveSDK`
