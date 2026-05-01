@@ -24,7 +24,7 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 | 1 | Done | WebSocket handshake, subprotocol, serverInfo |
 | 2 | Done | Channel advertise, subscribe/unsubscribe, MessageData routing |
 | 3 | **Done** | Official schemas, FrameTransform, SceneUpdate (cube), 3D panel |
-| 4 | Planned | Unity MonoBehaviour integration, publishers |
+| 4 | **Done** | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
 | 5 | Planned | IL2CPP hardening, Native Backend evaluation |
 | 6 | Planned | Optional: MCAP, parameters, services |
 
@@ -104,3 +104,4 @@ PublishJson(channelId, message)
 - **Core schema registration:** Called once in `FoxgloveRuntime` three-parameter constructor. Idempotent (overwrites on duplicate name).
 - **DTO field naming:** All wire fields use `[JsonProperty("...")]` with official field names.
 - **Disconnect cleanup:** Unified `DisconnectClient(id, conn)` used by send failure, receive finally, and Stop.
+- **Unity thread boundary:** `Runtime/Unity/*.cs` components access `UnityEngine` API only within Unity lifecycle callbacks (Awake, OnEnable, Update, LateUpdate, OnDisable, OnDestroy). Transport callbacks (OnClientConnected, OnTextReceived, etc.) do not touch Unity objects. `Runtime/Schemas/*.cs`, `Runtime/Core/*.cs`, `Runtime/Transport/*.cs` remain UnityEngine-free and dotnet-testable.

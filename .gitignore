@@ -9,6 +9,7 @@ bin/
 obj/
 **/bin/
 **/obj/
+build/
 
 # Unity generated folders
 Library/

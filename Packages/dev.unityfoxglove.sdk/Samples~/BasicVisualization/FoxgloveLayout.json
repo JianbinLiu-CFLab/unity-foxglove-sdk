@@ -1,0 +1,43 @@
+{
+  "configById": {
+    "3D!3fmh6md": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 10,
+        "thetaOffset": 0.785,
+        "phi": 0.785,
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1]
+      },
+      "followMode": "follow-pose",
+      "followTf": "unity_world",
+      "sceneEntityByTopic": {
+        "enabledTopic": "/scene"
+      }
+    },
+    "Image!2r7v5kn": {
+      "topic": "/unity/camera",
+      "synchronize": false,
+      "zoomPercentage": 50
+    },
+    "RawMessages!460l915": {
+      "topicPath": "/tf"
+    }
+  },
+  "layout": {
+    "first": {
+      "first": "3D!3fmh6md",
+      "second": {
+        "first": {
+          "first": "Image!2r7v5kn",
+          "second": "RawMessages!460l915",
+          "direction": "row",
+          "splitPercentage": 50
+        },
+        "direction": "row"
+      },
+      "direction": "column",
+      "splitPercentage": 65
+    }
+  }
+}
