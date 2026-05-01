@@ -214,6 +214,14 @@ updated: 2026-04-30
 - Assets / fetchAsset
 - Playback control
 - 更完整的官方 schema 覆盖
+- 泛型发布器：
+  提供 `FoxglovePublisher<T>` / `FoxgloveTopic<T>` 之类的类型安全封装，把 channel 注册、schema 绑定、JSON 编码和 publish 调用收口到一个 API。
+- 泛型发布器只能缩小与 Rerun log API 的使用差距：
+  Foxglove 协议仍然要求 channel advertise、subscription 路由、schema 声明和 `subscriptionId` 二进制转发，SDK 需要隐藏这些细节，但不能假装协议不存在。
+- Rerun-like 开发体验糖层：
+  设计 `[FoxgloveLog]` attribute + 反射自动发布器，把普通 C# 字段/属性映射到 topic/schema，减少手写 publisher。
+- `[FoxgloveLog]` 方向需要单独处理 IL2CPP/AOT：
+  反射扫描结果要么生成 link.xml / preserve 规则，要么走 Editor-time source generation，避免 Player 下 metadata 被裁剪。
 
 ## 建议目录结构
 
@@ -287,6 +295,7 @@ Packages/
 - IL2CPP/AOT 风险：尽早做 build 验证，不要等 API 都铺开后再测。
 - 第三方 WebSocket 库风险：先隔离在 transport 层，避免把具体实现渗透到业务 API。
 - Native Plugin 复杂度风险：只在纯 C# 明显不稳时切换，不在 MVP 初期同时推进两条重实现路线。
+- Rerun-like API 预期风险：`FoxglovePublisher<T>` 和 `[FoxgloveLog]` 可以改善体验，但 Foxglove 的 channel/schema/subscription 模型比 Rerun 的 `log()` API 更显式，文档和 API 命名必须避免承诺“一行 log 就自动解决所有协议状态”。
 
 ## 结论
 
