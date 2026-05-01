@@ -53,9 +53,8 @@ namespace Unity.FoxgloveSDK.Transport
         public void Stop()
         {
             _cts?.Cancel();
-            foreach (var (_, conn) in _clients)
-                conn.Dispose();
-            _clients.Clear();
+            foreach (var (id, conn) in _clients.ToArray())
+                DisconnectClient(id, conn);
 
             try { _listener?.Stop(); } catch { }
             _listener = null;
@@ -65,6 +64,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (!_clients.TryGetValue(clientId, out var conn)) return;
             try { conn.SendText(json); }
+            catch (IOException) { DisconnectClient(clientId, conn); }
             catch (Exception ex) { Console.Error.WriteLine($"[Foxglove] SendText error: {ex.Message}"); }
         }
 
@@ -72,6 +72,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (!_clients.TryGetValue(clientId, out var conn)) return;
             try { conn.SendBinary(data); }
+            catch (IOException) { DisconnectClient(clientId, conn); }
             catch (Exception ex) { Console.Error.WriteLine($"[Foxglove] SendBinary error: {ex.Message}"); }
         }
 
@@ -288,10 +289,15 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
-                _clients.TryRemove(clientId, out _);
-                OnClientDisconnected?.Invoke(clientId);
-                conn.Dispose();
+                DisconnectClient(clientId, conn);
             }
+        }
+
+        private void DisconnectClient(uint clientId, WsConnection conn)
+        {
+            if (!_clients.TryRemove(clientId, out _)) return;
+            OnClientDisconnected?.Invoke(clientId);
+            try { conn.Dispose(); } catch { }
         }
 
         // ── WebSocket Connection ──

@@ -8,7 +8,6 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class SubscriptionRegistry
     {
-        /// <summary>Per-client: subscriptionId → channelId.</summary>
         private readonly Dictionary<uint, Dictionary<uint, uint>> _clients
             = new Dictionary<uint, Dictionary<uint, uint>>();
 
@@ -50,12 +49,32 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>
-        /// Get all (clientId, subscriptionId) pairs that are subscribed to a given channel.
-        /// Used when publishing to route MessageData frames.
-        /// </summary>
-        public IEnumerable<(uint clientId, uint subscriptionId)> GetSubscribersForChannel(uint channelId)
+        /// <summary>Remove all subscriptions targeting a channel (e.g. on unadvertise).</summary>
+        public void RemoveChannel(uint channelId)
         {
+            lock (_lock)
+            {
+                foreach (var subs in _clients.Values)
+                {
+                    var toRemove = new List<uint>();
+                    foreach (var (subId, chId) in subs)
+                    {
+                        if (chId == channelId)
+                            toRemove.Add(subId);
+                    }
+                    foreach (var sid in toRemove)
+                        subs.Remove(sid);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Snapshot of (clientId, subscriptionId) pairs subscribed to a given channel.
+        /// Returns a materialized list so callers don't hold the lock.
+        /// </summary>
+        public List<(uint clientId, uint subscriptionId)> GetSubscribersForChannel(uint channelId)
+        {
+            var result = new List<(uint, uint)>();
             lock (_lock)
             {
                 foreach (var (clientId, subs) in _clients)
@@ -63,10 +82,11 @@ namespace Unity.FoxgloveSDK.Core
                     foreach (var (subId, chId) in subs)
                     {
                         if (chId == channelId)
-                            yield return (clientId, subId);
+                            result.Add((clientId, subId));
                     }
                 }
             }
+            return result;
         }
 
         /// <summary>Remove all state.</summary>
@@ -78,7 +98,6 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Total number of clients with active subscriptions.</summary>
         public int ClientCount
         {
             get { lock (_lock) { return _clients.Count; } }

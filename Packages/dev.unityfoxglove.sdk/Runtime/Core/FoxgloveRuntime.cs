@@ -1,4 +1,5 @@
 using System;
+using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -25,16 +26,10 @@ namespace Unity.FoxgloveSDK.Core
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
         }
 
-        /// <summary>Current session. Created when Start is called.</summary>
         public FoxgloveSession Session => _session;
-
-        /// <summary>Whether the server is running.</summary>
         public bool IsRunning => _session?.IsRunning ?? false;
-
-        /// <summary>Schema registry for this runtime.</summary>
         public ISchemaRegistry Schemas => _schemaRegistry;
 
-        /// <summary>Start a new Foxglove server session.</summary>
         public void Start(string name, string host = "127.0.0.1", int port = 8765)
         {
             if (_session != null)
@@ -44,11 +39,40 @@ namespace Unity.FoxgloveSDK.Core
             _session.Start(host, port);
         }
 
-        /// <summary>Stop the current session.</summary>
         public void Stop()
         {
             _session?.Dispose();
             _session = null;
+        }
+
+        // ── Channel API proxies ──
+
+        public void RegisterChannel(AdvertiseChannel channel)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.RegisterChannel(channel);
+        }
+
+        public void UnregisterChannel(uint channelId)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.UnregisterChannel(channelId);
+        }
+
+        public void Publish(uint channelId, byte[] payload)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.Publish(channelId, payload);
+        }
+
+        public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.Publish(channelId, payload, logTimeNs);
         }
 
         public void Dispose()

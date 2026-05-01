@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
@@ -61,17 +62,62 @@ namespace Unity.FoxgloveSDK.Core
             _subscriptions.Clear();
         }
 
+        // ── Public channel API ──
+
         /// <summary>
-        /// Publish data to a channel. Sent to all clients that have an active
-        /// subscription for this channel. Phase 2 will implement full routing.
+        /// Register a channel and broadcast advertise to all connected clients.
+        /// Re-registering the same channelId overwrites the descriptor but preserves
+        /// existing subscriptions.
         /// </summary>
+        public void RegisterChannel(AdvertiseChannel channel)
+        {
+            _channels.Register(channel);
+
+            var adv = new Advertise
+            {
+                Channels = new List<AdvertiseChannel> { channel }
+            };
+            var json = JsonConvert.SerializeObject(adv);
+            _transport.BroadcastText(json);
+        }
+
+        /// <summary>
+        /// Unregister a channel, broadcast unadvertise, and clean subscriptions.
+        /// No-op if the channel is not registered.
+        /// </summary>
+        public void UnregisterChannel(uint channelId)
+        {
+            if (!_channels.Remove(channelId))
+                return;
+
+            _subscriptions.RemoveChannel(channelId);
+
+            var msg = new Unadvertise
+            {
+                ChannelIds = new List<uint> { channelId }
+            };
+            var json = JsonConvert.SerializeObject(msg);
+            _transport.BroadcastText(json);
+        }
+
+        // ── Publish ──
+
+        /// <summary>Publish payload to a channel. Routed to all subscribers.</summary>
         public void Publish(uint channelId, byte[] payload)
         {
-            var timestampNs = _clock.NowNs;
+            Publish(channelId, payload, _clock.NowNs);
+        }
 
-            foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
+        /// <summary>Publish payload with an explicit log timestamp (nanoseconds).</summary>
+        public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            if (_channels.Get(channelId) == null)
+                return;
+
+            var subscribers = _subscriptions.GetSubscribersForChannel(channelId);
+            foreach (var (clientId, subscriptionId) in subscribers)
             {
-                var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, timestampNs, payload);
+                var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
                 _transport.SendBinary(clientId, frame);
             }
         }
@@ -79,6 +125,12 @@ namespace Unity.FoxgloveSDK.Core
         public void Dispose()
         {
             Stop();
+
+            _transport.OnClientConnected -= OnClientConnected;
+            _transport.OnClientDisconnected -= OnClientDisconnected;
+            _transport.OnTextReceived -= OnClientText;
+            _transport.OnBinaryReceived -= OnClientBinary;
+
             (_transport as IDisposable)?.Dispose();
         }
 
@@ -89,9 +141,7 @@ namespace Unity.FoxgloveSDK.Core
             var info = new ServerInfo
             {
                 Name = Name,
-                Capabilities = new List<Capability>(),       // Phase 1: empty, serialized as []
-                // SupportedEncodings left null — omitted from JSON
-                // Metadata left null — omitted from JSON
+                Capabilities = new List<Capability>(),
                 SessionId = SessionId
             };
 
@@ -99,8 +149,16 @@ namespace Unity.FoxgloveSDK.Core
             {
                 NullValueHandling = NullValueHandling.Ignore
             });
-
             _transport.SendText(clientId, json);
+
+            // Send advertise snapshot for all current channels — per-client
+            var allChannels = _channels.GetAll();
+            if (allChannels.Count > 0)
+            {
+                var adv = new Advertise { Channels = allChannels };
+                var advJson = JsonConvert.SerializeObject(adv);
+                _transport.SendText(clientId, advJson);
+            }
         }
 
         private void OnClientDisconnected(uint clientId)
@@ -110,13 +168,74 @@ namespace Unity.FoxgloveSDK.Core
 
         private void OnClientText(uint clientId, string json)
         {
-            // Phase 2: parse subscribe/unsubscribe, dispatch to SubscriptionRegistry
+            string op;
+            try
+            {
+                var obj = JsonConvert.DeserializeObject<JsonOpOnly>(json);
+                op = obj?.Op;
+            }
+            catch
+            {
+                Console.Error.WriteLine($"[Foxglove] Malformed JSON from client {clientId}, ignored.");
+                return;
+            }
+
+            switch (op)
+            {
+                case "subscribe":
+                    HandleSubscribe(clientId, json);
+                    break;
+                case "unsubscribe":
+                    HandleUnsubscribe(clientId, json);
+                    break;
+                default:
+                    Console.Error.WriteLine($"[Foxglove] Unknown op '{op}' from client {clientId}, ignored.");
+                    break;
+            }
+        }
+
+        private void HandleSubscribe(uint clientId, string json)
+        {
+            try
+            {
+                var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
+                foreach (var sub in msg.Subscriptions)
+                {
+                    if (_channels.Get(sub.ChannelId) != null)
+                        _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Foxglove] subscribe parse error: {ex.Message}");
+            }
+        }
+
+        private void HandleUnsubscribe(uint clientId, string json)
+        {
+            try
+            {
+                var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
+                if (msg.SubscriptionIds != null)
+                    _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Foxglove] unsubscribe parse error: {ex.Message}");
+            }
         }
 
         private void OnClientBinary(uint clientId, byte[] data)
         {
-            // Client→server binary messages (MessageData, etc.)
-            // Not critical for MVP (Unity → Foxglove only).
+            // Client→server binary messages — not implemented in Phase 2
+        }
+
+        /// <summary>Minimal DTO used to peek the "op" field.</summary>
+        [JsonObject(MemberSerialization.OptIn)]
+        private class JsonOpOnly
+        {
+            [JsonProperty("op")]
+            public string Op { get; set; }
         }
     }
 }
