@@ -22,8 +22,8 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 |-------|--------|------|
 | 0 | Done | Package skeleton, abstraction layer, tech decision |
 | 1 | Done | WebSocket handshake, subprotocol, serverInfo |
-| 2 | **Done** | Channel advertise, subscribe/unsubscribe, MessageData routing |
-| 3 | Planned | Official schemas, FrameTransform, SceneUpdate |
+| 2 | Done | Channel advertise, subscribe/unsubscribe, MessageData routing |
+| 3 | **Done** | Official schemas, FrameTransform, SceneUpdate (cube), 3D panel |
 | 4 | Planned | Unity MonoBehaviour integration, publishers |
 | 5 | Planned | IL2CPP hardening, Native Backend evaluation |
 | 6 | Planned | Optional: MCAP, parameters, services |
@@ -35,96 +35,72 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 │   Unity Components (Phase 4)        │  FoxgloveManager, Publishers
 ├─────────────────────────────────────┤
 │   Core (FoxgloveSession)            │  Session lifecycle, channel API,
-│   FoxgloveRuntime                   │  publish routing, sub/unsub parsing
-├─────────────────────────────────────┤
-│   Protocol                          │  JSON messages (Advertise,
-│                                     │  Subscribe, Unsubscribe, ServerInfo),
-│                                     │  Binary frames (MessageData)
+│   FoxgloveRuntime                   │  publish routing, sub/unsub parsing,
+│                                     │  RegisterSchemaChannel, PublishJson
 ├──────────────┬──────────────────────┤
-│  Transport   │  Schemas             │  IFoxgloveTransport, ISchemaRegistry
-│  ManagedWs   │  IFoxgloveClock      │  ChannelRegistry, SubscriptionRegistry
-└──────────────┴──────────────────────┘
+│  Protocol    │  Schemas             │  JSON messages (Advertise, Subscribe,
+│              │                      │  ServerInfo), Binary frames
+│              │  FoxgloveSchemaDefs  │  FrameTransform, SceneUpdate DTOs
+│              │  FoxgloveVisualMsgs  │  FoxgloveTime, Vector3, Quaternion,
+│              │                      │  Pose, Color, CubePrimitive, etc.
+├──────────────┴──────────────────────┤
+│  Transport                           │  IFoxgloveTransport
+│  ManagedWsBackend                    │  TcpListener + RFC 6455
+└──────────────────────────────────────┘
+```
+
+### Schema Layer (Phase 3)
+
+- **Source:** `foxglove-sdk/schemas/jsonschema/`, commit `main@b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba`
+- **Storage:** Schema JSON files embedded as assembly resources, decoded at static init
+- **Schema hashes:** FrameTransform.json sha256=9986de138717bfaf, SceneUpdate.json sha256=7530dfd8585239e5
+- **Coordinate strategy:** Unity raw, root frame `unity_world`, no handedness/ENU/ROS conversion
+- **SceneUpdate scope:** Cube primitive only; other primitives (arrows, spheres, cylinders, lines, triangles, texts, models) are empty arrays
+
+### Phase 3 Data Flow
+
+```
+RegisterSchemaChannel(id, topic, schemaName)
+  → ISchemaRegistry.TryGetSchema(schemaName)
+  → Construct AdvertiseChannel(encoding="json", schemaEncoding="jsonschema", schema=content)
+  → RegisterChannel(channel) → BroadcastText(advertise)
+
+PublishJson(channelId, message)
+  → JsonConvert.SerializeObject(message)
+  → Encoding.UTF8.GetBytes(json)
+  → Publish(channelId, payload) → MessageData routing
 ```
 
 ### Transport Abstraction
 
 `IFoxgloveTransport` hides the WebSocket implementation.
 
-- **Current (Phase 1–2):** `ManagedWsBackend` — custom RFC 6455 implementation on `System.Net.Sockets.TcpListener`. Handles WebSocket handshake, subprotocol negotiation, frame encoding/decoding. No third-party WebSocket library dependency.
-- **Former (replaced):** websocket-sharp was dropped because it does not echo `Sec-WebSocket-Protocol` in the handshake response, causing Foxglove Desktop to reject connections.
+- **Current (Phase 1–3):** `ManagedWsBackend` — custom RFC 6455 implementation on `System.Net.Sockets.TcpListener`.
+- **Former (replaced):** websocket-sharp was dropped (does not echo `Sec-WebSocket-Protocol`).
 - **Future (Phase 5):** `NativeFoxgloveBackend` — P/Invoke to `foxglove-c.h`
-
-Key constraint: `SendText(clientId, json)` targets specific client, never broadcast. Broadcast is used for channel state changes (advertise/unadvertise).
-
-### Phase 2 Data Flow
-
-```
-RegisterChannel(channel)
-  → ChannelRegistry.Register(channel)
-  → BroadcastText(advertise)           // all connected clients
-
-New client connects
-  → OnClientConnected(clientId)
-  → SendText(clientId, serverInfo)     // per-client
-  → SendText(clientId, advertise)      // snapshot of all channels, per-client
-
-Client sends subscribe
-  → OnClientText(clientId, json)
-  → Deserialize SubscribeMessage
-  → SubscriptionRegistry.AddSubscription(clientId, subId, channelId)
-
-Publish(channelId, payload)
-  → ChannelRegistry.Get(channelId)     // verify channel exists
-  → SubscriptionRegistry.GetSubscribersForChannel(channelId)  // snapshot
-  → EncodeServerMessageData(subId, timestamp, payload)
-  → SendBinary(clientId, frame)        // per-subscriber
-
-Client disconnects
-  → OnClientDisconnected(clientId)
-  → SubscriptionRegistry.RemoveClient(clientId)
-```
-
-### Clock Abstraction
-
-`IFoxgloveClock` provides nanosecond timestamps for MessageData frames. Default: `SystemClock` (DateTime.UtcNow).
-
-### Schema Registry
-
-`ISchemaRegistry` stores and serves schema definitions. Schema source: `foxglove-sdk/schemas/jsonschema/` (local clone).
 
 ### Third-party dependencies
 
 - `Newtonsoft.Json` — via `com.unity.nuget.newtonsoft-json` (Unity) or NuGet (tests)
 - No other third-party runtime dependencies
 
-### Phase 2 Protocol Constraints
+### Protocol Constraints (cumulative)
 
 - `serverInfo.capabilities` = `[]` (no capabilities declared)
-- `serverInfo.supportedEncodings` — omitted
-- `serverInfo.metadata` — omitted
-- `schemaName` and `schema` always serialized (as `""` for schema-less JSON channels), per official v1 snapshot
-- `schemaEncoding` — omitted when null/empty
+- `schemaName` and `schema` always serialized (as `""` for schema-less channels)
+- `schemaEncoding` = `"jsonschema"` for typed channels, omitted otherwise
 - `subscribe` uses `subscriptions: [{ id, channelId }]`
 - `unsubscribe` uses `subscriptionIds: [...]`
-- `MessageData` binary format: opcode(1) + subscriptionId(u32 LE) + logTime(u64 LE) + payload
-- Unknown `op` or malformed JSON — logged and ignored, connection stays open
+- `MessageData` binary: opcode(1) + subscriptionId(u32 LE) + logTime(u64 LE) + payload
+- `SceneEntityDeletion.type` serialized as integer (0=MATCHING_ID, 1=ALL)
+- All `SceneEntity` primitive arrays always present (empty `[]` when not used)
+- Unknown `op` / malformed JSON → logged, connection stays open
 
-### Phase 1 Protocol Constraints
+### Implementation Notes
 
-- `serverInfo.capabilities` = `[]` (no capabilities declared)
-- `serverInfo.supportedEncodings` — omitted (null)
-- `serverInfo.metadata` — omitted (null)
-- `sessionId` — `Guid.NewGuid().ToString()`, stable per `FoxgloveSession` instance
-- Subprotocol: `foxglove.sdk.v1` or `foxglove.websocket.v1` required; wrong/missing subprotocol → HTTP 400 + connection closed
-
-### Phase 1–2 Implementation Notes
-
-- **WebSocket server:** `TcpListener` + manual RFC 6455 implementation. Accept loop on thread pool, per-client receive loop.
-- **Handshake:** Raw byte-by-byte HTTP header reading (`ReadLineRaw`) to avoid `StreamReader` buffering.
-- **Read timeout:** 5 seconds during handshake, `Timeout.Infinite` after handshake.
+- **WebSocket server:** `TcpListener` + manual RFC 6455. Read timeout 5s during handshake, infinite after.
 - **Subprotocol negotiation:** Exact token match against `["foxglove.sdk.v1", "foxglove.websocket.v1"]`.
-- **Frame support:** Text (0x1), Binary (0x2), Close (0x8), Ping→Pong (0x9/0xA), client mask decode.
-- **Client ID:** `Interlocked.Increment`-based, starting from 1, thread-safe via `ConcurrentDictionary`.
-- **Send synchronization:** `lock` per connection, since `NetworkStream.Write` is not thread-safe.
-- **Disconnect handling:** `IOException` on send → silently remove client from registry (connection already dead).
-- **Subscription snapshot:** `GetSubscribersForChannel` returns materialized list, no lock held during send.
+- **Schema embedding:** JSON content stored as base64-encoded C# `const` strings. Decoded at static init via `Convert.FromBase64String` + `Encoding.UTF8.GetString`. No runtime file I/O or resource streams.
+- **Core schema registration:** Called once in `FoxgloveRuntime` three-parameter constructor. Idempotent (overwrites on duplicate name).
+- **DTO field naming:** All wire fields use `[JsonProperty("...")]` with official field names.
+- **Disconnect cleanup:** Unified `DisconnectClient(id, conn)` used by send failure, receive finally, and Stop.

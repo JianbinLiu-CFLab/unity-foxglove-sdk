@@ -4,7 +4,7 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 
 ## Status
 
-**Phase 2 complete.** Channel advertise, subscribe/unsubscribe, and MessageData routing working. Foxglove Desktop can see topics and receive data.
+**Phase 3 complete.** Typed JSON schema channels, FrameTransform + SceneUpdate with cube primitive, Foxglove 3D panel shows green cube.
 
 ## Supported Unity Versions
 
@@ -18,8 +18,9 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 |-------|--------|-------------|
 | 0 | Done | Package skeleton, abstraction layer |
 | 1 | Done | WebSocket handshake, subprotocol, serverInfo |
-| 2 | **Done** | Channel advertise, subscribe/unsubscribe, MessageData routing |
-| 3 | Planned | Official schemas, FrameTransform, SceneUpdate |
+| 2 | Done | Channel advertise, subscribe/unsubscribe, MessageData routing |
+| 3 | **Done** | Official schemas (FrameTransform, SceneUpdate), typed DTOs, 3D cube |
+| 4 | Planned | Unity MonoBehaviour integration, publishers |
 
 ## Quick Start
 
@@ -27,57 +28,59 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 var runtime = new FoxgloveRuntime();
 runtime.Start("My Unity App", port: 8765);
 
-// Register a JSON channel
-var ch = new AdvertiseChannel
-{
-    Id = 1,
-    Topic = "/debug/heartbeat",
-    Encoding = "json",
-    SchemaName = "",
-    Schema = ""
-};
-runtime.RegisterChannel(ch);
+// Register a typed schema channel
+runtime.RegisterSchemaChannel(1, "/tf", "foxglove.FrameTransform");
 
-// Publish data
-var json = "{\"seq\":1,\"message\":\"hello\"}";
-runtime.Publish(1, Encoding.UTF8.GetBytes(json));
+// Publish a typed message
+var tf = new FrameTransformMessage
+{
+    Timestamp = new FoxgloveTime { Sec = 1 },
+    ParentFrameId = "unity_world",
+    ChildFrameId = "child",
+    Translation = new FoxgloveVector3 { X = 1, Y = 0, Z = 0 },
+    Rotation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
+};
+runtime.PublishJson(1, tf);
 ```
 
 ## Manual Verification
 
-### Empty server (Phase 1 behavior)
+### Empty server (Phase 1)
 
 ```powershell
 dotnet run --project Packages/dev.unityfoxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --serve --port 8765
 ```
 
-Expected: Foxglove connects, no topics listed.
-
-### Demo with heartbeat topic
+### Heartbeat demo (Phase 2)
 
 ```powershell
 dotnet run --project Packages/dev.unityfoxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --serve --port 8765 --demo
 ```
 
-Expected: Foxglove connects, `/debug/heartbeat` topic visible, JSON data streams on subscribe.
+### 3D cube demo (Phase 3)
+
+```powershell
+dotnet run --project Packages/dev.unityfoxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --serve --port 8765 --demo3d
+```
 
 ### Foxglove Desktop operation steps
 
 1. **Open connection**: "Open connection" → select **Foxglove WebSocket** → URL `ws://127.0.0.1:8765`
-2. **View topics**: left sidebar Topics panel shows `/debug/heartbeat`
-3. **Subscribe**: click `/debug/heartbeat`, switch panel to **Raw Messages**, select the topic from the top dropdown
-4. **Verify data**: JSON messages appear at 1 Hz: `{"seq":...,"unixTimeNs":...,"message":"hello foxglove"}`
-5. **Reconnect**: close Foxglove, reopen, repeat steps 1–4 — server survives and resumes
+2. **View topics**: left sidebar Topics panel shows `/tf` and `/scene`
+3. **View 3D**: switch to 3D panel, select `/scene` topic → green cube at origin
+4. **Raw view**: switch panel to Raw Messages, select `/scene` → see SceneUpdate JSON payload
+5. **Reconnect**: close Foxglove, reopen, repeat — server survives
 
-### Phase 2 manual acceptance
+### Phase 3 manual acceptance
 
 | # | Acceptance criterion | Result |
 |---|---------------------|--------|
 | 1 | Foxglove connects `ws://127.0.0.1:8765` | Pass |
-| 2 | Topics panel shows `/debug/heartbeat` | Pass |
-| 3 | Subscribe receives continuous heartbeat JSON | Pass |
-| 4 | Disconnect + reconnect still receives `serverInfo` + `advertise` | Pass |
-| 5 | Closing Foxglove does not crash the server | Pass |
+| 2 | Topics show `/tf` and `/scene` | Pass |
+| 3 | Raw Messages shows SceneUpdate JSON | Pass |
+| 4 | 3D panel shows green cube | Pass |
+| 5 | Disconnect + reconnect works | Pass |
+| 6 | Closing Foxglove does not crash server | Pass |
 
 ## Architecture
 

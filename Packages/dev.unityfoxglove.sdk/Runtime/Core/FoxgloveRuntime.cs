@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Core
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
+            FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
         }
 
         public FoxgloveSession Session => _session;
@@ -73,6 +74,27 @@ namespace Unity.FoxgloveSDK.Core
             if (_session == null)
                 throw new InvalidOperationException("Session not started. Call Start() first.");
             _session.Publish(channelId, payload, logTimeNs);
+        }
+
+        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.RegisterSchemaChannel(channelId, topic, schemaName);
+        }
+
+        public void PublishJson(uint channelId, object message)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.PublishJson(channelId, message);
+        }
+
+        public void PublishJson(uint channelId, object message, ulong logTimeNs)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.PublishJson(channelId, message, logTimeNs);
         }
 
         public void Dispose()

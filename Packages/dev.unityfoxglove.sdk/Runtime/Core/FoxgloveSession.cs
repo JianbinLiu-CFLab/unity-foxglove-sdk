@@ -100,6 +100,48 @@ namespace Unity.FoxgloveSDK.Core
             _transport.BroadcastText(json);
         }
 
+        // ── Schema-aware channel API ──
+
+        /// <summary>
+        /// Register a channel with a known schema from the registry.
+        /// Constructs the AdvertiseChannel with encoding="json", schemaEncoding="jsonschema",
+        /// and the schema content from the registry.
+        /// </summary>
+        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
+        {
+            if (!_schemaRegistry.TryGetSchema(schemaName, out var entry))
+                throw new InvalidOperationException($"Schema not found: '{schemaName}'. Ensure core schemas are registered.");
+
+            var ch = new AdvertiseChannel
+            {
+                Id = channelId,
+                Topic = topic,
+                Encoding = "json",
+                SchemaName = entry.Name,
+                SchemaEncoding = entry.Encoding,
+                Schema = entry.Content
+            };
+            RegisterChannel(ch);
+        }
+
+        // ── PublishJson ──
+
+        /// <summary>Serialize an object to JSON and publish to a channel.</summary>
+        public void PublishJson(uint channelId, object message)
+        {
+            PublishJson(channelId, message, _clock.NowNs);
+        }
+
+        /// <summary>Serialize an object to JSON and publish with an explicit timestamp.</summary>
+        public void PublishJson(uint channelId, object message, ulong logTimeNs)
+        {
+            if (message == null)
+                throw new ArgumentNullException(nameof(message));
+            var json = JsonConvert.SerializeObject(message);
+            var payload = System.Text.Encoding.UTF8.GetBytes(json);
+            Publish(channelId, payload, logTimeNs);
+        }
+
         // ── Publish ──
 
         /// <summary>Publish payload to a channel. Routed to all subscribers.</summary>
