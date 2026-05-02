@@ -6,34 +6,37 @@ using Unity.FoxgloveSDK.Schemas;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Generic publisher base class with automatic schema binding.
-    /// Subclasses create message objects; the base class handles JSON serialization
-    /// and FPS throttling via FoxglovePublisherBase.
+    /// Generic publisher base class with automatic schema binding and built-in Update loop.
+    /// Subclasses provide CreateMessage(); the base handles FPS throttling, serialization, and publish.
     /// </summary>
     public abstract class FoxglovePublisher<TMessage> : FoxglovePublisherBase where TMessage : class, new()
     {
+        private string _cachedSchemaName;
+
         protected override string SchemaName
         {
             get
             {
-                var attr = typeof(TMessage).GetCustomAttributes(typeof(FoxgloveSchemaAttribute), false);
-                return attr.Length > 0 ? ((FoxgloveSchemaAttribute)attr[0]).SchemaName : "";
+                if (_cachedSchemaName == null)
+                {
+                    var attr = typeof(TMessage).GetCustomAttributes(typeof(FoxgloveSchemaAttribute), false);
+                    _cachedSchemaName = attr.Length > 0 ? ((FoxgloveSchemaAttribute)attr[0]).SchemaName : "";
+                }
+                return _cachedSchemaName;
             }
-        }
-
-        protected override void OnEnable()
-        {
-            base.OnEnable();
         }
 
         /// <summary>Called at publish time. Subclass builds the message object.</summary>
         protected abstract TMessage CreateMessage();
 
-        /// <summary>Publish the message as JSON with the current timestamp.</summary>
-        protected void Publish(TMessage message)
+        protected virtual void Update()
         {
             if (_manager == null) return;
-            if (string.IsNullOrEmpty(_topic)) return;
+            if (!_publishOnEnable) return;
+            if (!ShouldPublishNow()) return;
+
+            var message = CreateMessage();
+            if (message == null) return;
 
             var unixNs = FoxgloveTimeUtil.NowUnixTimeNs();
             _manager.PublishJson(_topic, SchemaName, message, unixNs);

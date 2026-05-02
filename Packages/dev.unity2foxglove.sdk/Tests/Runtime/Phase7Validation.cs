@@ -82,12 +82,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestServiceCallCompleteFailEncapsulation()
         {
             var call = new FoxgloveServiceCall();
-            call.InterlockedComplete("json", new byte[] { 1, 2, 3 });
+            call.Complete("json", new byte[] { 1, 2, 3 });
             Assert(call.IsCompleted, "Complete → IsCompleted");
             Assert(call.ResponsePayload.Length == 3, "Complete → payload set");
 
             var call2 = new FoxgloveServiceCall();
-            call2.InterlockedFail("boom");
+            call2.Fail("boom");
             Assert(call2.IsCompleted, "Fail → IsCompleted");
             Assert(call2.FailureMessage == "boom", "Fail → message set");
         }

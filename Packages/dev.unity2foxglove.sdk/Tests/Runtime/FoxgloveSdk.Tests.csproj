@@ -26,5 +26,6 @@
     <Compile Include="Phase5Validation.cs" />
     <Compile Include="Phase6Validation.cs" />
     <Compile Include="Phase7Validation.cs" />
+    <Compile Include="Phase8Validation.cs" />
   </ItemGroup>
 </Project>
