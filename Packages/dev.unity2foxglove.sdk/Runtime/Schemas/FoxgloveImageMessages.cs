@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 namespace Unity.FoxgloveSDK.Schemas
 {
     /// <summary>foxglove.CompressedImage message.</summary>
+    [Unity.FoxgloveSDK.Protocol.FoxgloveSchema("foxglove.CompressedImage")]
     public class CompressedImageMessage
     {
         [JsonProperty("timestamp")] public FoxgloveTime Timestamp { get; set; }

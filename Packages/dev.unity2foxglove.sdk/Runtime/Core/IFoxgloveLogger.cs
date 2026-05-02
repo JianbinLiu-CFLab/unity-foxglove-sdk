@@ -4,8 +4,6 @@ namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Abstract logger bridge for protocol errors and warnings.
-    /// Core/Transport layers use this instead of Console.Error.WriteLine directly,
-    /// so Unity Player and dotnet tests can inject their own sinks.
     /// </summary>
     public interface IFoxgloveLogger
     {

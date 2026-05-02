@@ -87,7 +87,7 @@ updated: 2026-04-30
 
 - 拆分执行笔记：[[01_PHASE0_PLAN]]
 - 当前命名约定：
-  - package id：`dev.unityfoxglove.sdk`
+  - package id：`dev.unity2foxglove.sdk`
   - 根命名空间：`Unity.FoxgloveSDK`
 
 工作项：
@@ -207,7 +207,7 @@ updated: 2026-04-30
 
 ### Phase 6 - Parameters / Services
 
-**状态：Done。Parameters get/set/subscribe、JSON Services advertise/call/response/failure/timeout 全部实现，209/209 测试通过，IL2CPP Player 构建成功。**
+**状态：Done。Parameters get/set、JSON Services advertise/call/response/failure/timeout 已实现，210/210 测试通过，IL2CPP Player 构建成功。ParametersSubscribe capability 与参数变更 push 明确顺延到 Phase 7。**
 
 **已完成验收：**
 - [x] Editor Play Mode 连接 Foxglove
@@ -222,7 +222,7 @@ updated: 2026-04-30
 - [[07_PHASE6_PLAN]]
 
 范围：
-- Parameters / ParametersSubscribe
+- Parameters get/set（ParametersSubscribe capability 与参数变更 push 在 Phase 7 补齐）
 - Services（仅 JSON encoding）
 
 明确不做：
@@ -239,21 +239,59 @@ updated: 2026-04-30
 - `[FoxgloveLog]` 方向需要单独处理 IL2CPP/AOT：
   反射扫描结果要么生成 link.xml / preserve 规则，要么走 Editor-time source generation，避免 Player 下 metadata 被裁剪。
 
-### Phase 7 - MCAP 录制 / 双写
+### Phase 7 - Bug 修复 + DX 提升 + Time
 
-目标：单独评估并实现 MCAP 写入能力，不把文件格式、索引、summary、CRC 与 Phase 6 WebSocket 交互能力混在一起。
+目标：修复 Phase 6 遗留的 10 个 bug 和 plan 偏差，提升开发者体验，新增 Time capability。
+
+执行计划：
+- [[08_PHASE7_PLAN]]
+
+范围：
+- Phase 6 bug 修复（ParametersSubscribe 声明、参数变更广播、生命周期语义）
+- IFoxgloveLogger 全链路连通（替换 Console.Error.WriteLine）
+- 参数/service 定义从 Session 提升到 Runtime（Stop 后保留）
+- Service handler delegate 注册机制
+- 泛型 `FoxglovePublisher<TMessage>` 基类
+- Inspector 参数注册组件
+- FoxgloveManager 连接状态事件
+- Time frame 周期广播
+
+明确不做：
+- ConnectionGraph（Phase 8）
+- ClientPublish（Phase 8）
+- MCAP（Phase 9）
+- Assets / fetchAsset
+- PlaybackControl
+- `[FoxgloveLog]` attribute + source generation
+
+### Phase 8 - ConnectionGraph + ClientPublish
+
+目标：新增 ConnectionGraph 和 ClientPublish 两个协议能力，实现连接拓扑可视化和 Foxglove→Unity 双向通信。
+
+执行计划：
+- [[09_PHASE8_PLAN]]
+
+范围：
+- ConnectionGraph subscribe/unsubscribe/update
+- ClientPublish advertise/unadvertise/MessageData
+- Unity 主线程安全的 client message 回调
+- ConnectionGraph 与 ClientPublish 联动
+
+### Phase 9 - MCAP 录制 / 双写
+
+目标：单独评估并实现 MCAP 写入能力，不把文件格式、索引、summary、CRC 与 WebSocket 交互能力混在一起。
 
 候选项：
 - JSON / JSON Schema channel 写入 MCAP。
 - 与 live WebSocket publish 双写。
 - 可被 Foxglove 打开的最小 MCAP 文件。
-- 是否实现 indexed writer、summary offsets、chunking、compression 另行在 Phase 7 plan 中决策。
+- 是否实现 indexed writer、summary offsets、chunking、compression 另行在 Phase 9 plan 中决策。
 
 ## 建议目录结构
 
 ```text
 Packages/
-└── dev.unityfoxglove.sdk/
+└── dev.unity2foxglove.sdk/
     ├── package.json
     ├── Runtime/
     │   ├── Core/

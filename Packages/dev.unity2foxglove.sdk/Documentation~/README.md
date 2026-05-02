@@ -154,6 +154,7 @@ The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, *
 1. **Open connection**: "Open connection" → select **Foxglove WebSocket** → URL `ws://127.0.0.1:8765`
 2. **View topics**: left sidebar Topics panel shows `/tf` and `/scene`
 3. **View 3D**: switch to 3D panel, select `/scene` topic → green cube at origin
+   - Cube color uses Foxglove RGBA: `[r, g, b, a]` with values 0 to 1. The 4th value is alpha (0 = transparent, 1 = opaque).
 4. **Raw view**: switch panel to Raw Messages, select `/scene` → see SceneUpdate JSON payload
 5. **Reconnect**: close Foxglove, reopen, repeat — server survives
 
@@ -171,6 +172,28 @@ The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, *
 ## Architecture
 
 See [Architecture.md](Architecture.md) for the transport abstraction, protocol layer, and module breakdown.
+
+### Verify transport logging (Phase 7)
+
+To confirm `IFoxgloveLogger` is wired through to Unity Console:
+
+```powershell
+$ws = New-Object System.Net.WebSockets.ClientWebSocket
+$ws.ConnectAsync("ws://127.0.0.1:8765", [System.Threading.CancellationToken]::None).Wait(2000)
+```
+
+**Expected:** Unity Console shows:
+
+```
+[Foxglove] Client connected without accepted subprotocol, closing.
+UnityEngine.Debug:LogError(object)
+Unity.FoxgloveSDK.Components.UnityLogger:LogError(...)
+Unity.FoxgloveSDK.Transport.ManagedWsBackend:Handshake(...)
+```
+
+The stack trace confirms the log flows through `UnityLogger` → `ManagedWsBackend` → `Debug.LogError`, proving the Phase 7 logger bridge is fully connected.
+
+---
 
 ## Dependencies
 

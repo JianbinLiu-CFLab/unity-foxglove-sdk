@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Unity.FoxgloveSDK.Protocol;
 
 namespace Unity.FoxgloveSDK.Core
@@ -16,6 +15,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<(uint clientId, uint callId), FoxgloveServiceCall> _pending = new();
         private readonly object _lock = new();
         private uint _nextServiceId = 1;
+        private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
 
         /// <summary>Register a service. Returns the assigned service ID.</summary>
         public uint Register(ServiceDescriptor descriptor)
@@ -29,9 +29,27 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Register a service with a handler delegate.</summary>
+        public uint Register(ServiceDescriptor descriptor, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
+        {
+            var id = Register(descriptor);
+            lock (_lock) { _handlers[id] = handler; }
+            return id;
+        }
+
+        public Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> GetHandler(uint serviceId)
+        {
+            lock (_lock) { _handlers.TryGetValue(serviceId, out var h); return h; }
+        }
+
         public bool Unregister(uint serviceId)
         {
             lock (_lock) { return _services.Remove(serviceId); }
+        }
+
+        public ServiceDescriptor GetById(uint serviceId)
+        {
+            lock (_lock) { return _services.TryGetValue(serviceId, out var s) ? s : null; }
         }
 
         public bool TryGet(uint serviceId, out ServiceDescriptor descriptor)
@@ -75,11 +93,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (_pending.TryGetValue((clientId, callId), out var call))
-                {
-                    call.ResponseEncoding = encoding;
-                    call.ResponsePayload = payload;
-                    Interlocked.Exchange(ref call.Completed, 1);
-                }
+                    call.InterlockedComplete(encoding, payload);
             }
         }
 
@@ -89,10 +103,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (_pending.TryGetValue((clientId, callId), out var call))
-                {
-                    call.FailureMessage = message;
-                    Interlocked.Exchange(ref call.Completed, 1);
-                }
+                    call.InterlockedFail(message);
             }
         }
 
@@ -133,10 +144,7 @@ namespace Unity.FoxgloveSDK.Core
                 foreach (var (_, call) in _pending)
                 {
                     if (!call.IsCompleted && call.IsTimedOut(timeout))
-                    {
-                        call.FailureMessage = $"Service call timed out after {timeout.TotalSeconds:F0}s";
-                        Interlocked.Exchange(ref call.Completed, 1);
-                    }
+                        call.InterlockedFail($"Service call timed out after {timeout.TotalSeconds:F0}s");
                 }
             }
         }
@@ -146,14 +154,12 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
-                foreach (var (key, call) in _pending.ToList())
-                {
+                var toRemove = new List<(uint, uint)>();
+                foreach (var (key, call) in _pending)
                     if (call.ClientId == clientId)
-                    {
-                        call.FailureMessage = "Client disconnected";
-                        Interlocked.Exchange(ref call.Completed, 1);
-                    }
-                }
+                        toRemove.Add(key);
+                foreach (var key in toRemove)
+                    _pending.Remove(key);
             }
         }
 

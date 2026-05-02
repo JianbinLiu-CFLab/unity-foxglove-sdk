@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
 
 namespace Unity.FoxgloveSDK.Transport
@@ -22,7 +23,13 @@ namespace Unity.FoxgloveSDK.Transport
         private TcpListener _listener;
         private CancellationTokenSource _cts;
         private readonly ConcurrentDictionary<uint, WsConnection> _clients = new ConcurrentDictionary<uint, WsConnection>();
+        private readonly IFoxgloveLogger _logger;
         private int _nextClientId;
+
+        public ManagedWsBackend(IFoxgloveLogger logger = null)
+        {
+            _logger = logger ?? new ConsoleLogger();
+        }
 
         public bool IsRunning => _listener != null;
 
@@ -65,7 +72,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (!_clients.TryGetValue(clientId, out var conn)) return;
             try { conn.SendText(json); }
             catch (IOException) { DisconnectClient(clientId, conn); }
-            catch (Exception ex) { Console.Error.WriteLine($"[Foxglove] SendText error: {ex.Message}"); }
+            catch (Exception ex) { _logger.LogError($"SendText error: {ex.Message}"); }
         }
 
         public void SendBinary(uint clientId, byte[] data)
@@ -73,7 +80,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (!_clients.TryGetValue(clientId, out var conn)) return;
             try { conn.SendBinary(data); }
             catch (IOException) { DisconnectClient(clientId, conn); }
-            catch (Exception ex) { Console.Error.WriteLine($"[Foxglove] SendBinary error: {ex.Message}"); }
+            catch (Exception ex) { _logger.LogError($"SendBinary error: {ex.Message}"); }
         }
 
         public void BroadcastText(string json)
@@ -116,7 +123,7 @@ namespace Unity.FoxgloveSDK.Transport
                 catch (Exception) when (ct.IsCancellationRequested) { break; }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"[Foxglove] Accept error: {ex.Message}");
+                    _logger.LogError($"Accept error: {ex.Message}");
                 }
             }
         }
@@ -148,13 +155,13 @@ namespace Unity.FoxgloveSDK.Transport
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[Foxglove] Client handler error: {ex.Message}");
+                _logger.LogError($"Client handler error: {ex.Message}");
             }
         }
 
         // ── WebSocket Handshake (RFC 6455 §4) ──
 
-        private static (bool accepted, string subprotocol) Handshake(NetworkStream stream)
+        private (bool accepted, string subprotocol) Handshake(NetworkStream stream)
         {
             var requestLine = ReadLineRaw(stream);
             if (string.IsNullOrEmpty(requestLine))
@@ -204,7 +211,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (selected == null)
             {
-                Console.Error.WriteLine("[Foxglove] Client connected without accepted subprotocol, closing.");
+                _logger.LogError("Client connected without accepted subprotocol, closing.");
                 var reject = Encoding.ASCII.GetBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
                 stream.Write(reject, 0, reject.Length);
                 return (false, null);
@@ -291,7 +298,7 @@ namespace Unity.FoxgloveSDK.Transport
             catch (IOException) { }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[Foxglove] Receive error client {clientId}: {ex.Message}");
+                _logger.LogError($"Receive error client {clientId}: {ex.Message}");
             }
             finally
             {

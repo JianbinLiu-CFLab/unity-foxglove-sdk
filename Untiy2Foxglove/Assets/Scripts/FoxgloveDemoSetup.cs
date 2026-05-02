@@ -5,36 +5,26 @@ using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 
 /// <summary>
-/// Registers demo Parameters and Services for Phase 6 manual verification.
+/// Registers demo Parameters and Services for Phase 7 manual verification.
 /// Attach to the Foxglove GameObject (same one with FoxgloveManager).
 /// </summary>
 public class FoxgloveDemoSetup : MonoBehaviour
 {
     [SerializeField] private FoxgloveManager _manager;
-    [SerializeField] private MouseDragCube _cube;
-    [SerializeField] private FoxgloveSceneCubePublisher _scenePublisher;
 
     private uint _resetSvcId;
     private float _lastAppliedScale = -1f;
-
-    /// <summary>Called by MouseDragCube when scroll changes scale.</summary>
-    public void SyncScaleToParameter(float s)
-    {
-        _manager?.Runtime?.Parameters.TrySetFromClient("/cube/scale", s);
-        _lastAppliedScale = s;
-    }
+    private Color _lastAppliedColor = Color.clear;
 
     private void Start()
     {
         if (_manager == null) _manager = GetComponent<FoxgloveManager>();
-        if (_cube != null && _scenePublisher == null)
-            _scenePublisher = _cube.GetComponent<FoxgloveSceneCubePublisher>();
         if (_manager?.Runtime == null) return;
 
         var rt = _manager.Runtime;
 
-        rt.Parameters.Register("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
-        rt.Parameters.Register("/cube/scale", 1.0, "number", true);
+        rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
+        rt.RegisterParameter("/cube/scale", 1.0, "number", true);
 
         _resetSvcId = rt.RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor
         {
@@ -42,19 +32,32 @@ public class FoxgloveDemoSetup : MonoBehaviour
             Type = "/cube/reset_pose",
             Request = new Unity.FoxgloveSDK.Protocol.ServiceSchemaDescriptor { SchemaName = "/cube/ResetPoseRequest" },
             Response = new Unity.FoxgloveSDK.Protocol.ServiceSchemaDescriptor { SchemaName = "/cube/ResetPoseResponse" }
-        });
+        }, req =>
+        {
+            var cube = FindCube();
+            if (cube != null)
+            {
+                cube.transform.position = Vector3.zero;
+                cube.transform.rotation = Quaternion.identity;
+                cube.transform.localScale = Vector3.one;
+                _lastAppliedScale = 1f;
+                _lastAppliedColor = Color.green;
 
-        Debug.Log("[FoxgloveDemo] Registered /cube/color, /cube/scale params and /cube/reset_pose service");
+                _manager.Runtime?.Parameters.TrySetFromClient("/cube/color",
+                    new JArray(0.0, 1.0, 0.0, 1.0));
+                _manager.Runtime?.Parameters.TrySetFromClient("/cube/scale", 1.0);
+            }
+            return JToken.Parse("{\"status\":\"ok\"}");
+        });
     }
 
     private void Update()
     {
-        var session = _manager?.Runtime?.Session;
-        if (session == null) return;
+        if (_manager?.Runtime?.Session == null) return;
 
-        // ── Sync /cube/color → cube state ──
+        // Sync /cube/color from parameter → cube (only when changed externally)
         var colorParam = _manager.Runtime.Parameters.GetWireParameter("/cube/color");
-        if (colorParam?.Value is JArray arr && arr.Count >= 3 && _cube != null)
+        if (colorParam?.Value is JArray arr && arr.Count >= 3)
         {
             try
             {
@@ -64,50 +67,53 @@ public class FoxgloveDemoSetup : MonoBehaviour
                 var a = arr.Count >= 4 ? (float)arr[3].Value<double>() : 1f;
                 var c = new Color(r, g, b, a);
 
-                var renderer = _cube.GetComponent<Renderer>();
-                if (renderer != null) renderer.material.color = c;
-                if (_scenePublisher != null) _scenePublisher.SceneCubeColor = c;
+                if (c != _lastAppliedColor)
+                {
+                    _lastAppliedColor = c;
+                    var cube = FindCube();
+                    if (cube != null)
+                    {
+                        var renderer = cube.GetComponent<Renderer>();
+                        if (renderer != null) renderer.material.color = c;
+
+                        var scenePub = cube.GetComponent<FoxgloveSceneCubePublisher>();
+                        if (scenePub != null) scenePub.SceneCubeColor = c;
+                    }
+                }
             }
-            catch { /* malformed color — ignore */ }
+            catch { }
         }
 
-        // ── Sync /cube/scale → cube state (only when changed externally) ──
+        // Sync /cube/scale from parameter → cube (only when changed externally)
         var scaleParam = _manager.Runtime.Parameters.GetWireParameter("/cube/scale");
-        if (scaleParam?.Value != null && _cube != null)
+        if (scaleParam?.Value != null)
         {
             try
             {
                 float s = (float)scaleParam.Value.Value<double>();
                 if (Mathf.Abs(s - _lastAppliedScale) > 0.001f)
                 {
-                    _cube.transform.localScale = new Vector3(s, s, s);
                     _lastAppliedScale = s;
+                    var cube = FindCube();
+                    if (cube != null)
+                        cube.transform.localScale = new Vector3(s, s, s);
                 }
             }
-            catch { /* malformed value — ignore */ }
+            catch { }
         }
+    }
 
-        // ── Handle /cube/reset_pose service calls ──
-        var pending = session.Services.GetPendingCalls();
-        if (pending != null)
-        {
-            foreach (var call in pending.Where(c => c.ServiceId == _resetSvcId))
-            {
-                if (_cube != null)
-                {
-                    _cube.transform.position = Vector3.zero;
-                    _cube.transform.rotation = Quaternion.identity;
-                    _cube.transform.localScale = Vector3.one;
-                    _lastAppliedScale = 1f;
+    private GameObject FindCube()
+    {
+        var cube = GameObject.Find("Cube");
+        if (cube == null) cube = GameObject.FindGameObjectWithTag("Player");
+        return cube;
+    }
 
-                    _manager.Runtime.Parameters.TrySetFromClient("/cube/color",
-                        new JArray(0.0, 1.0, 0.0, 1.0));
-                    _manager.Runtime.Parameters.TrySetFromClient("/cube/scale", 1.0);
-                }
-                session.Services.CompleteResponse(call.ClientId, call.CallId, "json",
-                    Encoding.UTF8.GetBytes("{\"status\":\"ok\"}"));
-                Debug.Log($"[FoxgloveDemo] Reset pose: callId={call.CallId}");
-            }
-        }
+    // Called by MouseDragCube when scroll changes scale
+    public void SyncScaleToParameter(float s)
+    {
+        _manager?.Runtime?.Parameters.TrySetFromClient("/cube/scale", s);
+        _lastAppliedScale = s;
     }
 }
