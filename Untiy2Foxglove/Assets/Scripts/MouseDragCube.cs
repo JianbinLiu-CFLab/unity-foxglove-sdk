@@ -3,8 +3,8 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// Mouse-driven cube control for demo.
-/// Left-drag: rotate. Right-drag: pan (XY plane relative to camera).
-/// Scroll: scale.
+/// Left-drag: rotate. Right-drag: pan. Scroll: scale.
+/// If a FoxgloveDemoSetup is provided, syncs scale to Foxglove parameter.
 /// </summary>
 public class MouseDragCube : MonoBehaviour
 {
@@ -13,8 +13,15 @@ public class MouseDragCube : MonoBehaviour
     [SerializeField] private float _scaleSpeed = 0.5f;
     [SerializeField] private float _minScale = 0.2f;
     [SerializeField] private float _maxScale = 5f;
+    [SerializeField] private FoxgloveDemoSetup _demo;
 
     private Vector2 _lastMouse;
+
+    private void Awake()
+    {
+        if (_demo == null)
+            _demo = FindFirstObjectByType<FoxgloveDemoSetup>();
+    }
 
     private void Update()
     {
@@ -46,6 +53,10 @@ public class MouseDragCube : MonoBehaviour
         {
             var s = Mathf.Clamp(transform.localScale.x + scroll * _scaleSpeed, _minScale, _maxScale);
             transform.localScale = new Vector3(s, s, s);
+
+            // Sync to Foxglove parameter
+            if (_demo != null)
+                _demo.SyncScaleToParameter(s);
         }
     }
 }

@@ -196,21 +196,37 @@ updated: 2026-04-30
   `Stop()` 是否只停止 session 而不 dispose transport，或每次 `Start()` 是否创建新的 transport。
 - 如果纯 C# 方案在 IL2CPP 或稳定性上出现明显问题，启动 Native Backend 分支：
   基于 `foxglove-c.h` 做最小 P/Invoke 封装。
-- 只有当前 4 个阶段稳定后，再评估是否增加 MCAP 录制。
+- 只有当前 5 个阶段稳定后，再评估是否增加 MCAP 录制。
+
+**状态：Done。已通过 IL2CPP Windows Standalone 验证，link.xml 生效，serverInfo 序列化无裁剪。**
 
 验收：
 - Editor 与目标 Standalone Player 都能稳定工作。
 - 有一套最小回归测试，能覆盖握手、advertise、subscribe、publish、unsubscribe。
-- 对“继续纯 C#”还是“切到官方 C FFI”有明确结论。
+- 对”继续纯 C#”还是”切到官方 C FFI”有明确结论：继续纯 C#，Native Backend 仅作预留。
 
-### Phase 6 - 可选能力
+### Phase 6 - Parameters / Services
 
-目标：在 MVP 稳定后再扩展能力，而不是过早摊大。
+**状态：Done。Parameters get/set/subscribe、JSON Services advertise/call/response/failure/timeout 全部实现，209/209 测试通过，IL2CPP Player 构建成功。**
 
-候选项：
-- MCAP 双写
+**已完成验收：**
+- [x] Editor Play Mode 连接 Foxglove
+- [x] 3D / Camera / Plot / Parameters / Services 面板均可见
+- [x] `/cube/color` 和 `/cube/scale` 参数可修改，cube 可视化颜色/尺寸变化
+- [x] `/cube/reset_pose` service 调用后 cube pose 重置
+- [x] IL2CPP Player 中重复验收全部通过
+
+目标：在 MVP 与 IL2CPP 加固稳定后，扩展 Foxglove WebSocket 的交互能力，而不是过早摊大到独立文件格式生态。
+
+执行计划：
+- [[07_PHASE6_PLAN]]
+
+范围：
 - Parameters / ParametersSubscribe
-- Services
+- Services（仅 JSON encoding）
+
+明确不做：
+- MCAP 双写或录制
 - Assets / fetchAsset
 - Playback control
 - 更完整的官方 schema 覆盖
@@ -223,6 +239,16 @@ updated: 2026-04-30
 - `[FoxgloveLog]` 方向需要单独处理 IL2CPP/AOT：
   反射扫描结果要么生成 link.xml / preserve 规则，要么走 Editor-time source generation，避免 Player 下 metadata 被裁剪。
 
+### Phase 7 - MCAP 录制 / 双写
+
+目标：单独评估并实现 MCAP 写入能力，不把文件格式、索引、summary、CRC 与 Phase 6 WebSocket 交互能力混在一起。
+
+候选项：
+- JSON / JSON Schema channel 写入 MCAP。
+- 与 live WebSocket publish 双写。
+- 可被 Foxglove 打开的最小 MCAP 文件。
+- 是否实现 indexed writer、summary offsets、chunking、compression 另行在 Phase 7 plan 中决策。
+
 ## 建议目录结构
 
 ```text
@@ -234,7 +260,13 @@ Packages/
     │   │   ├── FoxgloveRuntime.cs
     │   │   ├── FoxgloveSession.cs
     │   │   ├── ChannelRegistry.cs
-    │   │   └── SubscriptionRegistry.cs
+    │   │   ├── SubscriptionRegistry.cs
+    │   │   ├── FoxgloveParameterStore.cs
+    │   │   ├── ParameterSubscriptionRegistry.cs
+    │   │   ├── FoxgloveServiceRegistry.cs
+    │   │   ├── FoxgloveServiceCall.cs
+    │   │   ├── IFoxgloveLogger.cs
+    │   │   └── FoxgloveLogger.cs
     │   ├── Protocol/
     │   │   ├── JsonMessages.cs
     │   │   ├── BinaryEncoding.cs
@@ -279,12 +311,23 @@ Packages/
   `MessageData` 编码与解析
 - 生命周期测试：
   connect / disconnect / reconnect
+- Parameters 测试：
+  `getParameters` / `setParameters` / subscribe / unsubscribe
+- Services 测试：
+  binary request/response codec, failure cases, timeout, payload boundary
+- `serverInfo.capabilities` 测试：
+  只包含真实支持的能力
+- Stop/Start lifecycle 测试：
+  subscriptions 和 pending calls 清理
 
 ### 手工验证
 
 - Foxglove 可连接本地 Unity 服务端。
 - topic 列表正确显示。
 - 3D 面板可显示 `FrameTransform` 或 `SceneUpdate`。
+- Plot panel 可见 `/tf.translation.*` 曲线。
+- Parameters panel 可读写 `/cube/color`、`/cube/scale`。
+- Service Call panel 可调用 `/cube/reset_pose`。
 - 停止发布、取消订阅、断开连接时行为符合预期。
 - Unity Editor 与 Standalone Player 表现一致。
 

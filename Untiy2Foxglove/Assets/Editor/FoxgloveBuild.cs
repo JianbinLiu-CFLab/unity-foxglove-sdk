@@ -3,9 +3,13 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-public static class FoxglovePhase5Build
+/// <summary>
+/// General-purpose IL2CPP build script for the Foxglove demo project.
+/// Usage: Unity -batchmode -quit -projectPath ... -executeMethod FoxgloveBuild.BuildWindowsIl2Cpp -logFile ...
+/// </summary>
+public static class FoxgloveBuild
 {
-    [MenuItem("Foxglove/Phase 5: Build Windows IL2CPP")]
+    [MenuItem("Foxglove/Build Windows IL2CPP")]
     public static void BuildWindowsIl2Cpp()
     {
         var scenes = new[]
@@ -13,7 +17,7 @@ public static class FoxglovePhase5Build
             "Assets/Scenes/SampleScene.unity"
         };
 
-        var outputPath = "build/Unity/Phase5WindowsIL2CPP/FoxgloveDemo.exe";
+        var outputPath = "build/Unity/WindowsIL2CPP/FoxgloveDemo.exe";
 
         var namedTarget = NamedBuildTarget.FromBuildTargetGroup(BuildTargetGroup.Standalone);
         PlayerSettings.SetScriptingBackend(namedTarget, ScriptingImplementation.IL2CPP);

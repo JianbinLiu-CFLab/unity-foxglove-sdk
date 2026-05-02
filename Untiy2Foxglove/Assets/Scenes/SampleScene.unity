@@ -289,6 +289,7 @@ GameObject:
   m_Component:
   - component: {fileID: 346350282}
   - component: {fileID: 346350281}
+  - component: {fileID: 346350283}
   m_Layer: 0
   m_Name: Foxglove
   m_TagString: Untagged
@@ -328,6 +329,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &346350283
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 346350280}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c65c7a2314563254aab3e6689c67c1b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup
+  _manager: {fileID: 0}
+  _cube: {fileID: 2004464838}
+  _scenePublisher: {fileID: 0}
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -566,6 +582,7 @@ MonoBehaviour:
   _warnIfManagerMissing: 1
   _parentFrameId: unity_world
   _childFrameId: 
+  _coordinateMode: 1
 --- !u!65 &2004464834
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -672,9 +689,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseDragCube
   _rotateSpeed: 3
+  _panSpeed: 0.01
   _scaleSpeed: 0.5
   _minScale: 0.2
   _maxScale: 5
+  _demo: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

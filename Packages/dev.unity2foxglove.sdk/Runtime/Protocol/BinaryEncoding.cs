@@ -66,6 +66,54 @@ namespace Unity.FoxgloveSDK.Protocol
             return true;
         }
 
+        /// <summary>
+        /// Decode a client→server ServiceCallRequest binary frame.
+        /// Wire format: opcode(1) + serviceId(u32 LE) + callId(u32 LE) + encodingLength(u32 LE) + encoding bytes + payload
+        /// </summary>
+        public static bool TryDecodeClientServiceCallRequest(
+            byte[] data, out uint serviceId, out uint callId, out string encoding, out byte[] payload)
+        {
+            serviceId = 0;
+            callId = 0;
+            encoding = null;
+            payload = null;
+
+            if (data == null || data.Length < 13 || data[0] != ClientOpcode.ServiceCallRequest)
+                return false;
+
+            serviceId = ReadU32LE(data, 1);
+            callId = ReadU32LE(data, 5);
+            var encodingLength = ReadU32LE(data, 9);
+
+            if (data.Length < 13 + encodingLength)
+                return false;
+
+            encoding = System.Text.Encoding.UTF8.GetString(data, 13, (int)encodingLength);
+            var payloadOffset = 13 + (int)encodingLength;
+            payload = new byte[data.Length - payloadOffset];
+            Buffer.BlockCopy(data, payloadOffset, payload, 0, payload.Length);
+            return true;
+        }
+
+        /// <summary>
+        /// Encode a server→client ServiceCallResponse binary frame.
+        /// Wire format: opcode(1) + serviceId(u32 LE) + callId(u32 LE) + encodingLength(u32 LE) + encoding bytes + payload
+        /// </summary>
+        public static byte[] EncodeServerServiceCallResponse(
+            uint serviceId, uint callId, string encoding, byte[] payload)
+        {
+            var encBytes = System.Text.Encoding.UTF8.GetBytes(encoding ?? "");
+            var frame = new byte[1 + 4 + 4 + 4 + encBytes.Length + (payload?.Length ?? 0)];
+            frame[0] = ServerOpcode.ServiceCallResponse;
+            WriteU32LE(frame, 1, serviceId);
+            WriteU32LE(frame, 5, callId);
+            WriteU32LE(frame, 9, (uint)encBytes.Length);
+            Buffer.BlockCopy(encBytes, 0, frame, 13, encBytes.Length);
+            if (payload != null && payload.Length > 0)
+                Buffer.BlockCopy(payload, 0, frame, 13 + encBytes.Length, payload.Length);
+            return frame;
+        }
+
         // ── Little-endian helpers ──
 
         public static void WriteU32LE(byte[] buf, int offset, uint value)

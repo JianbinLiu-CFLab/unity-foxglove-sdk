@@ -8,8 +8,17 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class FoxgloveTransformPublisher : FoxglovePublisherBase
     {
+        public enum CoordinateMode
+        {
+            /// <summary>Unity raw output: X right, Y up, Z forward (left-handed).</summary>
+            UnityRaw,
+            /// <summary>Foxglove/ROS convention: X forward, Y left, Z up (right-handed).</summary>
+            FoxgloveRos
+        }
+
         [SerializeField] private string _parentFrameId = "unity_world";
         [SerializeField] private string _childFrameId = "";
+        [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.UnityRaw;
 
         protected override string SchemaName => "foxglove.FrameTransform";
 
@@ -33,13 +42,28 @@ namespace Unity.FoxgloveSDK.Components
             var pos = transform.position;
             var rot = transform.rotation;
 
+            double tx, ty, tz;
+            double rx, ry, rz, rw;
+            switch (_coordinateMode)
+            {
+                case CoordinateMode.FoxgloveRos:
+                    // Unity (X right, Y up, Z fwd LH) → Foxglove/ROS (X fwd, Y left, Z up RH)
+                    tx = pos.z; ty = -pos.x; tz = pos.y;
+                    rx = -rot.z; ry = rot.x; rz = -rot.y; rw = rot.w;
+                    break;
+                default:
+                    tx = pos.x; ty = pos.y; tz = pos.z;
+                    rx = rot.x; ry = rot.y; rz = rot.z; rw = rot.w;
+                    break;
+            }
+
             var msg = new FrameTransformMessage
             {
                 Timestamp = time,
                 ParentFrameId = _parentFrameId,
                 ChildFrameId = ResolvedChildFrameId,
-                Translation = new FoxgloveVector3 { X = pos.x, Y = pos.y, Z = pos.z },
-                Rotation = new FoxgloveQuaternion { X = rot.x, Y = rot.y, Z = rot.z, W = rot.w }
+                Translation = new FoxgloveVector3 { X = tx, Y = ty, Z = tz },
+                Rotation = new FoxgloveQuaternion { X = rx, Y = ry, Z = rz, W = rw }
             };
 
             Publish(msg, unixNs);

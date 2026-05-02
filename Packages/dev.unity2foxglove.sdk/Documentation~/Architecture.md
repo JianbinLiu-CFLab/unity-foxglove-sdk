@@ -23,10 +23,11 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 | 0 | Done | Package skeleton, abstraction layer, tech decision |
 | 1 | Done | WebSocket handshake, subprotocol, serverInfo |
 | 2 | Done | Channel advertise, subscribe/unsubscribe, MessageData routing |
-| 3 | **Done** | Official schemas, FrameTransform, SceneUpdate (cube), 3D panel |
-| 4 | **Done** | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
-| 5 | **Done** | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml, package identity migration |
-| 6 | Planned | Optional: MCAP, parameters, services |
+| 3 | Done | Official schemas, FrameTransform, SceneUpdate (cube), 3D panel |
+| 4 | Done | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
+| 5 | Done | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml, package identity migration |
+| 6 | **Done** | Parameters (get/set/subscribe), JSON Services (advertise/call/response/failure/timeout) |
+| 7 | Planned | MCAP recording/dual-write |
 
 ## Layers
 
@@ -71,13 +72,75 @@ PublishJson(channelId, message)
   → Publish(channelId, payload) → MessageData routing
 ```
 
+### Phase 6: Parameters & Services Data Flow
+
+#### Parameters
+
+```
+Client → setParameters / getParameters (JSON)
+  → FoxgloveSession.OnClientText case "setParameters"/"getParameters"
+  → FoxgloveParameterStore (thread-safe, lock-protected Dictionary)
+  → parameterValues response (with optional id roundtrip)
+
+Client → subscribeParameterUpdates / unsubscribeParameterUpdates (JSON)
+  → FoxgloveSession.OnClientText case "subscribeParameterUpdates"/"unsubscribeParameterUpdates"
+  → ParameterSubscriptionRegistry (per-client subscription tracking)
+  → Push broadcast deferred to Phase 7; Parameters panel reads via polling (getParameters).
+```
+
+**Parameter store rules:**
+- Parameters must be explicitly registered before clients can read/write them
+- `setParameters` from client only modifies registered writable parameters
+- Unknown parameters, read-only parameters, type mismatches are silently ignored
+- `id` field in request → echoed in `parameterValues` response
+- Failed set → response returns current store value (not error), Foxglove UI rebounces
+
+#### Services
+
+```
+Client → Binary ServiceCallRequest (opcode=2 little-endian)
+  → BinaryEncoding.TryDecodeClientServiceCallRequest (serviceId, callId, encoding, payload)
+  → FoxgloveServiceRegistry validation chain:
+      1. Encoding must be "json" → else serviceCallFailure
+      2. Service must be registered → else serviceCallFailure
+      3. Payload ≤ 1 MiB → else serviceCallFailure
+      4. Payload must be valid UTF-8 JSON → else serviceCallFailure
+  → FoxgloveServiceRegistry.Enqueue (pending call, CreatedAt = UtcNow)
+
+Unity Main Thread (FoxgloveManager.Update):
+  → FoxgloveSession.DrainServiceCalls()
+    1. SweepTimeouts(10s) → auto-fail timed out calls
+    2. DrainCompleted() → send binary ServiceCallResponse or text serviceCallFailure
+
+User handler (e.g. FoxgloveDemoSetup.Update):
+  → session.Services.GetPendingCalls()
+  → Process call, call CompleteResponse / Fail
+  → Next frame's DrainServiceCalls sends result
+```
+
+**Service thread model:**
+- Transport callback thread: parse binary request → validate → enqueue (no Unity API access)
+- Unity main thread: `FoxgloveManager.Update()` → `DrainServiceCalls()` invokes handlers
+- Handlers execute on main thread, can safely access Unity API
+- Handlers call `CompleteResponse(encoding, payload)` or `Fail(message)` on the registry
+
+**Service failure guarantees:**
+- Every pending call eventually gets a response, failure, or timeout failure
+- Unknown service → immediate `serviceCallFailure`
+- Unsupported encoding → immediate `serviceCallFailure`
+- Malformed JSON → immediate `serviceCallFailure`
+- Payload >1 MiB → immediate `serviceCallFailure`
+- Handler exception → `serviceCallFailure` with error message
+- Handler never returns → 10s timeout → `serviceCallFailure`
+- Client disconnect → pending calls marked as failed, cleaned in drain
+
 ### Transport Abstraction
 
 `IFoxgloveTransport` hides the WebSocket implementation.
 
-- **Current (Phase 1–3):** `ManagedWsBackend` — custom RFC 6455 implementation on `System.Net.Sockets.TcpListener`.
+- **Current (Phase 1–6):** `ManagedWsBackend` — custom RFC 6455 implementation on `System.Net.Sockets.TcpListener`.
 - **Former (replaced):** websocket-sharp was dropped (does not echo `Sec-WebSocket-Protocol`).
-- **Future (Phase 5):** `NativeFoxgloveBackend` — P/Invoke to `foxglove-c.h`
+- **Future:** `NativeFoxgloveBackend` — P/Invoke to `foxglove-c.h` (not yet prioritized)
 
 ### Third-party dependencies
 
@@ -86,7 +149,11 @@ PublishJson(channelId, message)
 
 ### Protocol Constraints (cumulative)
 
-- `serverInfo.capabilities` = `[]` (no capabilities declared)
+- `serverInfo.capabilities` = `["parameters", "services"]` (parametersSubscribe push broadcast deferred to Phase 7; Parameters panel uses polling via getParameters)
+- `serverInfo.supportedEncodings` = `["json"]` (Phase 6 services only support JSON encoding)
+- `serviceCallRequest` binary: opcode(1=2) + serviceId(u32 LE) + callId(u32 LE) + encodingLength(u32 LE) + encoding bytes + payload
+- `serviceCallResponse` binary: opcode(1=3) + serviceId(u32 LE) + callId(u32 LE) + encodingLength(u32 LE) + encoding bytes + payload
+- Service request payload limit: 1 MiB; service call timeout: 10 seconds
 - `schemaName` and `schema` always serialized (as `""` for schema-less channels)
 - `schemaEncoding` = `"jsonschema"` for typed channels, omitted otherwise
 - `subscribe` uses `subscriptions: [{ id, channelId }]`
@@ -107,4 +174,7 @@ PublishJson(channelId, message)
 - **Unity thread boundary:** `Runtime/Unity/*.cs` components access `UnityEngine` API only within Unity lifecycle callbacks (Awake, OnEnable, Update, LateUpdate, OnDisable, OnDestroy). Transport callbacks (OnClientConnected, OnTextReceived, etc.) do not touch Unity objects. `Runtime/Schemas/*.cs`, `Runtime/Core/*.cs`, `Runtime/Transport/*.cs` remain UnityEngine-free and dotnet-testable.
 - **IL2CPP / link.xml:** `Runtime/link.xml` in the package is a **template** — Unity does not use it directly. The consuming project MUST copy it to `Assets/link.xml`. It preserves `Newtonsoft.Json` and `Unity.FoxgloveSDK` assemblies with `preserve="all"`. Managed stripping level: `Medium`. See `NativeBackendEvaluation.md` for native backend assessment.
 - **Timestamp strategy:** `FoxgloveTimeUtil.NowUnixTimeNs()` uses `Stopwatch.GetTimestamp()` with UTC epoch anchor for nanosecond precision. `SystemClock.NowNs` delegates to the same source. No `time` capability declared in `serverInfo`.
+- **Service handler thread boundary:** Transport callbacks only parse and enqueue service calls. Unity handlers execute in `FoxgloveManager.Update()` via `DrainServiceCalls()`. Handlers returning `JToken` complete via `CompleteResponse`; exceptions trigger `Fail()`. Handlers must not block for long periods (timeout is 10s).
+- **Logger bridge (Phase 6):** `IFoxgloveLogger` replaces raw `Console.Error.WriteLine` for protocol errors/warnings. `ConsoleLogger` (default, writes to stderr) is used in dotnet tests. In Unity Editor, protocol errors appear in the Console window via `Debug.LogWarning`/`Debug.LogError` bridge. In IL2CPP Player, errors route to Unity's native log which is visible in `Player.log`.
+- **Coordinate system:** `FoxgloveTransformPublisher` supports two modes via `CoordinateMode` enum. `UnityRaw` (default): X right, Y up, Z forward (left-handed). `FoxgloveRos`: X forward, Y left, Z up (right-handed), matching Foxglove/ROS TF conventions. Translation and rotation are both converted.
 - **Transport lifecycle:** `FoxgloveRuntime` owns transport and disposes it. `FoxgloveSession` borrows transport and only unbinds events on dispose. `IFoxgloveTransport : IDisposable`.

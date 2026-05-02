@@ -14,6 +14,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private Vector3 _size = Vector3.one;
         [SerializeField] private Color _color = Color.green;
 
+        /// <summary>Current cube color (can be changed at runtime by demo scripts).</summary>
+        public Color SceneCubeColor { get => _color; set => _color = value; }
+
         protected override string SchemaName => "foxglove.SceneUpdate";
 
         private FoxgloveTransformPublisher _transformPublisher;
