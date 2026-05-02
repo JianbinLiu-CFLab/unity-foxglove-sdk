@@ -88,7 +88,7 @@ updated: 2026-05-01
 - 新增：
   `Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase5Validation.cs`
 - 新增：
-  `Untiy2Foxglove/Assets/Editor/FoxglovePhase5Build.cs`
+  `Untiy2Foxglove/Assets/Editor/FoxgloveBuild.cs`
 - 新增：
   `Packages/dev.unity2foxglove.sdk/Documentation~/NativeBackendEvaluation.md`
 - 修改：
@@ -221,13 +221,13 @@ dotnet run --project "Packages\dev.unity2foxglove.sdk\Tests\Runtime\FoxgloveSdk.
 
 ## F. Unity IL2CPP 构建验证入口
 
-- [ ] 新增 `Untiy2Foxglove/Assets/Editor/FoxglovePhase5Build.cs`。
+- [ ] 新增 `Untiy2Foxglove/Assets/Editor/FoxgloveBuild.cs`。
 - [ ] 该 editor script 提供静态方法：
-  `FoxglovePhase5Build.BuildWindowsIl2Cpp()`。
+  `FoxgloveBuild.BuildWindowsIl2Cpp()`。
 - [ ] 构建目标固定：
   `BuildTarget.StandaloneWindows64`。
 - [ ] 构建输出目录固定：
-  `build/Unity/Phase5WindowsIL2CPP/`。
+  `build/Unity/WindowsIL2CPP/`。
 - [ ] 构建包含当前项目的 enabled scenes；若没有 enabled scene，则使用：
   `Assets/Scenes/SampleScene.unity`。
 - [ ] 构建前设置 scripting backend：
@@ -241,7 +241,7 @@ dotnet run --project "Packages\dev.unity2foxglove.sdk\Tests\Runtime\FoxgloveSdk.
 - [ ] 默认验证命令（IL2CPP 需 10-30 分钟，`-logFile -` 将日志实时输出到终端，`Tee-Object` 同时保存到文件）：
 
 ```powershell
-Remove-Item -Recurse -Force "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove\Library" -ErrorAction SilentlyContinue; & "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe" -batchmode -quit -projectPath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove" -executeMethod FoxglovePhase5Build.BuildWindowsIl2Cpp -logFile - 2>&1 | Tee-Object -FilePath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase5-il2cpp.log"
+Remove-Item -Recurse -Force "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove\Library" -ErrorAction SilentlyContinue; & "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe" -batchmode -quit -projectPath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove" -executeMethod FoxgloveBuild.BuildWindowsIl2Cpp -logFile - 2>&1 | Tee-Object -FilePath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase6-il2cpp.log"
 ```
 
 ## G. Native Backend 可行性评估
@@ -332,9 +332,9 @@ Remove-Item -Recurse -Force "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\
 ### Unity 构建验收
 
 - [ ] Unity batchmode 命令返回 0。
-- [ ] `build/Unity/phase5-il2cpp.log` 中无 C# 编译错误。
-- [ ] `build/Unity/phase5-il2cpp.log` 中无 IL2CPP conversion failure。
-- [ ] `build/Unity/phase5-il2cpp.log` 中无 Newtonsoft.Json 裁剪导致的运行时代码生成错误。
+- [ ] `build/Unity/phase6-il2cpp.log` 中无 C# 编译错误。
+- [ ] `build/Unity/phase6-il2cpp.log` 中无 IL2CPP conversion failure。
+- [ ] `build/Unity/phase6-il2cpp.log` 中无 Newtonsoft.Json 裁剪导致的运行时代码生成错误。
 - [ ] `build/Unity/Phase5WindowsIL2CPP/` 生成 Windows Player。
 
 ### 手动验收
@@ -381,15 +381,15 @@ Remove-Item -Recurse -Force "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\
 
 ## 后续阶段预留
 
-- [[00_PLAN]] Phase 6：MCAP 写入。
-- [[00_PLAN]] Phase 6：Parameters / ParametersSubscribe。
-- [[00_PLAN]] Phase 6：Services。
-- [[00_PLAN]] Phase 6：Assets / fetchAsset。
-- [[00_PLAN]] Phase 6：PlaybackControl。
+- [[07_PHASE6_PLAN]]：Parameters / ParametersSubscribe。
+- [[07_PHASE6_PLAN]]：Services。
+- [[00_PLAN]] Phase 7：MCAP 写入 / 双写。
+- [[00_PLAN]] 后续候选：Assets / fetchAsset。
+- [[00_PLAN]] 后续候选：PlaybackControl。
 - 高性能 camera 二进制路径。
 - 真正的 `NativeFoxgloveBackend` P/Invoke 实现与 Windows native plugin 分发。
 
 ## 下一阶段入口
 
 > [!success]
-> Phase 5 完成后，SDK 应具备 Windows Standalone IL2CPP 构建证据、异常路径回归测试、Newtonsoft 裁剪保护和 Native Backend 评估结论。之后再进入 [[00_PLAN]] 的 Phase 6，按实际需求选择 MCAP、Parameters、Services 等可选能力。
+> Phase 5 完成后，SDK 应具备 Windows Standalone IL2CPP 构建证据、异常路径回归测试、Newtonsoft 裁剪保护和 Native Backend 评估结论。之后进入 [[07_PHASE6_PLAN]]，只实现 Parameters / ParametersSubscribe 与 Services；MCAP 写入 / 双写单独进入 [[00_PLAN]] Phase 7。

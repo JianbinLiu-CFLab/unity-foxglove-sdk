@@ -87,12 +87,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(obj["name"]?.ToString() == "ContentTest", "name matches session name");
             Assert(obj["sessionId"]?.ToString()?.Length > 0, "sessionId is non-empty");
 
-            // Capabilities must be empty array
+            // Phase 6: capabilities include parameters, services (2 items)
             var caps = obj["capabilities"] as JArray;
-            Assert(caps != null && caps.Count == 0, "capabilities is empty array []");
+            Assert(caps != null && caps.Count >= 2, "capabilities is non-empty (Phase 6)");
 
-            // supportedEncodings must NOT be present (null, skipped)
-            Assert(obj["supportedEncodings"] == null, "supportedEncodings omitted when empty");
+            // Phase 6: supportedEncodings includes json
+            var encs = obj["supportedEncodings"] as JArray;
+            Assert(encs != null && encs.ToString().Contains("json"), "supportedEncodings includes json");
 
             // metadata must NOT be present
             Assert(obj["metadata"] == null, "metadata omitted when empty");
@@ -100,7 +101,6 @@ namespace Unity.FoxgloveSDK.Tests
             // Must NOT contain undeclared capabilities
             Assert(!json.Contains("\"clientPublish\""), "JSON does not contain clientPublish");
             Assert(!json.Contains("\"time\""), "JSON does not contain time");
-            Assert(!json.Contains("\"parameters\""), "JSON does not contain parameters");
         }
 
         // ── G.3 SessionId is stable across clients ──

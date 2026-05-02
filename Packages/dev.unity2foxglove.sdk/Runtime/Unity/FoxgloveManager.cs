@@ -37,6 +37,11 @@ namespace Unity.FoxgloveSDK.Components
                 StartServer();
         }
 
+        private void Update()
+        {
+            _runtime?.DrainServiceCalls();
+        }
+
         private void OnDisable()
         {
             StopServer();

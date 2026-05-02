@@ -4,7 +4,7 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 
 ## Status
 
-**Phase 5 complete.** IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml, Windows Standalone build verified. Package identity: `dev.unity2foxglove.sdk`.
+**Phase 6 in progress.** Parameters (get/set/subscribe), JSON Services with binary request/response codec, service handler main-thread model, logger bridge. Package identity: `dev.unity2foxglove.sdk`.
 
 ## Supported Unity Versions
 
@@ -20,7 +20,9 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 | 1 | Done | WebSocket handshake, subprotocol, serverInfo |
 | 2 | Done | Channel advertise, subscribe/unsubscribe, MessageData routing |
 | 3 | Done | Official schemas (FrameTransform, SceneUpdate), typed DTOs, 3D cube |
-| 4 | **Done** | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
+| 4 | Done | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
+| 5 | Done | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml |
+| 6 | **In Progress** | Parameters, ParametersSubscribe, JSON Services |
 
 ## Quick Start
 
@@ -43,6 +45,62 @@ var tf = new FrameTransformMessage
 runtime.PublishJson(1, tf);
 ```
 
+## Phase 6: Parameters & Services
+
+### Parameters
+
+```csharp
+// Register parameters after starting the runtime
+var rt = new FoxgloveRuntime();
+rt.Start("My App", port: 8765);
+
+rt.RegisterParameter("/my_param", 42, "number", writable: true);
+rt.RegisterParameter("/my_readonly", "hello", "string", writable: false);
+
+// Read parameter value
+var p = rt.Parameters.GetWireParameter("/my_param");
+Console.WriteLine($"Value: {p.Value}");
+
+// Client setParameters modifies writable params only — read-only and unknown params are ignored
+```
+
+In Foxglove Parameters panel, registered parameters appear automatically. Only `writable: true` params can be edited from the panel.
+
+### Services
+
+```csharp
+// Register a JSON service
+var svcId = rt.RegisterService(new ServiceDescriptor
+{
+    Name = "/my_service",
+    Type = "/my_service",
+    Request = new ServiceSchemaDescriptor { SchemaName = "/MyRequest" },
+    Response = new ServiceSchemaDescriptor { SchemaName = "/MyResponse" }
+});
+
+// In Unity (main thread), drain and handle pending calls:
+rt.DrainServiceCalls();
+
+var pending = rt.Session.Services.GetPendingCalls();
+foreach (var call in pending)
+{
+    // Process call on main thread
+    var response = Encoding.UTF8.GetBytes("{\"result\": \"ok\"}");
+    rt.Session.Services.CompleteResponse(call.CallId, "json", response);
+}
+```
+
+**Important:** Service handlers must execute on Unity's main thread. Transport callbacks only parse and enqueue — do not access Unity API from within handler delegates before drain. Use `FoxgloveManager.Update()` → `DrainServiceCalls()` to process on the main thread.
+
+### Logger Bridge (Phase 6)
+
+Protocol errors and warnings go through `IFoxgloveLogger` instead of `Console.Error.WriteLine`:
+- **dotnet tests:** `ConsoleLogger` writes to stderr
+- **Unity Editor:** visible in the Console window
+- **IL2CPP Player:** visible in `Player.log`
+
+This ensures service failures, malformed JSON, and unsupported encoding errors are always traceable.
+
 ## Manual Verification
 
 ### Empty server (Phase 1)
@@ -63,20 +121,28 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --serve --port 8765 --demo3d
 ```
 
-### Windows IL2CPP build (Phase 5)
+### Windows IL2CPP build (Phase 5+)
 
-Unity is a Windows GUI application — its stdout cannot be piped reliably in PowerShell. Use two terminals to get real-time feedback and reduce anxiety during the 10-30 minute build.
+Close the Untiy editor. IL2CPP build takes 10-30 minutes. **Option A** shows live output in one terminal but may behave inconsistently on some Windows systems. **Option B** is the most reliable: run build in one terminal, watch progress in another.
 
-**Terminal 1 — run build (blocks until done, return code 0 = success):**
+**Option A — single terminal with live output (may not pipe on all Windows):**
 
 ```powershell
-& "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe" -batchmode -quit -projectPath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove" -executeMethod FoxglovePhase5Build.BuildWindowsIl2Cpp -logFile "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase5-il2cpp.log"
+& "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe" -batchmode -quit -projectPath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove" -executeMethod FoxgloveBuild.BuildWindowsIl2Cpp -logFile - 2>&1 | Tee-Object -FilePath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase6-il2cpp.log"
 ```
 
-**Terminal 2 — watch progress (repeat anytime):**
+**Option B — two terminals, reliable fallback:**
+
+Terminal 1 (blocks until done, return code 0 = success):
 
 ```powershell
-Get-Content "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase5-il2cpp.log" -Tail 5
+& "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe" -batchmode -quit -projectPath "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove" -executeMethod FoxgloveBuild.BuildWindowsIl2Cpp -logFile "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase6-il2cpp.log"
+```
+
+Terminal 2 — watch progress (repeat anytime):
+
+```powershell
+Get-Content "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase6-il2cpp.log" -Tail 5
 ```
 
 Look for `Build succeeded:` at the end. `Exiting batchmode successfully with return code 0` means the build passed.

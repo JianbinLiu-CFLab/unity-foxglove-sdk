@@ -97,6 +97,33 @@ namespace Unity.FoxgloveSDK.Core
             _session.PublishJson(channelId, message, logTimeNs);
         }
 
+        // ── Phase 6: Parameters ──
+
+        public FoxgloveParameterStore Parameters => _session?.Parameters;
+
+        public void RegisterParameter(string name, Newtonsoft.Json.Linq.JToken value, string type, bool writable)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            _session.Parameters.Register(name, value, type, writable);
+        }
+
+        // ── Phase 6: Services ──
+
+        public FoxgloveServiceRegistry Services => _session?.Services;
+
+        public uint RegisterService(Protocol.ServiceDescriptor descriptor)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Session not started. Call Start() first.");
+            return _session.RegisterService(descriptor);
+        }
+
+        public void DrainServiceCalls()
+        {
+            if (_session != null) _session.DrainServiceCalls();
+        }
+
         public void Dispose()
         {
             Stop();

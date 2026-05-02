@@ -1,43 +1,188 @@
 {
   "configById": {
-    "3D!3fmh6md": {
+    "3D!28kt99f": {
       "cameraState": {
         "perspective": true,
-        "distance": 10,
-        "thetaOffset": 0.785,
-        "phi": 0.785,
-        "target": [0, 0, 0],
-        "targetOrientation": [0, 0, 0, 1]
+        "distance": 5.839780486775266,
+        "phi": 60.00000000000065,
+        "thetaOffset": 60.0000000000015,
+        "targetOffset": [
+          1.0298324726846553,
+          0.4408148279685887,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
       },
       "followMode": "follow-pose",
-      "followTf": "unity_world",
-      "sceneEntityByTopic": {
-        "enabledTopic": "/scene"
+      "fixedFrame": "unity_world",
+      "scene": {},
+      "transforms": {
+        "frame:unity_camera": {
+          "visible": false
+        }
+      },
+      "topics": {
+        "/unity/camera": {
+          "visible": false
+        },
+        "/scene": {
+          "visible": true
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "drawBehind": false,
+          "instanceId": "f64c4116-2b7f-4c61-9160-d19323245a4f",
+          "layerId": "foxglove.Grid",
+          "size": 10,
+          "divisions": 10,
+          "lineWidth": 1,
+          "color": "#248eff",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "synchronize": false,
+      "imageMode": {}
+    },
+    "RawMessages!1w68cpn": {
+      "defaultExpanded": false,
+      "topicPath": "/tf"
+    },
+    "Image!4gul8mu": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 60,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "synchronize": false,
+      "imageMode": {
+        "imageTopic": "/unity/camera"
       }
     },
-    "Image!2r7v5kn": {
-      "topic": "/unity/camera",
-      "synchronize": false,
-      "zoomPercentage": 50
+    "CallService!dh9tda": {
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "timeoutSeconds": 10,
+      "serviceName": "/cube/reset_pose"
     },
-    "RawMessages!460l915": {
-      "topicPath": "/tf"
-    }
+    "Plot!429zqe2": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/tf.translation.x",
+          "enabled": true,
+          "color": "#4e98e2",
+          "id": "f0a5707c-b38d-4eda-be2e-efc7264b0520"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/tf.translation.y",
+          "enabled": true,
+          "color": "#f5774d",
+          "id": "63fbb730-8d3a-43b0-8421-707b02b0778c"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/tf.translation.z",
+          "enabled": true,
+          "color": "#f7df71",
+          "id": "021d0e1c-b948-48c5-94f1-93e64ad80982"
+        }
+      ]
+    },
+    "Parameters!axm5vd": {}
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
   },
   "layout": {
     "first": {
-      "first": "3D!3fmh6md",
-      "second": {
-        "first": {
-          "first": "Image!2r7v5kn",
-          "second": "RawMessages!460l915",
-          "direction": "row",
-          "splitPercentage": 50
-        },
+      "first": "3D!28kt99f",
+      "second": "RawMessages!1w68cpn",
+      "direction": "column"
+    },
+    "second": {
+      "first": {
+        "first": "Image!4gul8mu",
+        "second": "CallService!dh9tda",
         "direction": "row"
       },
-      "direction": "column",
-      "splitPercentage": 65
-    }
+      "second": {
+        "first": "Plot!429zqe2",
+        "second": "Parameters!axm5vd",
+        "direction": "row"
+      },
+      "direction": "column"
+    },
+    "direction": "row",
+    "splitPercentage": 34.398110867991655
   }
 }

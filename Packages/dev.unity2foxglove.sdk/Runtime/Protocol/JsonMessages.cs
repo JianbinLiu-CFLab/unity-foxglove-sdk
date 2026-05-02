@@ -157,10 +157,110 @@ namespace Unity.FoxgloveSDK.Protocol
         public string Name { get; set; }
 
         [JsonProperty("value")]
-        public object Value { get; set; }
+        public Newtonsoft.Json.Linq.JToken Value { get; set; }
+
+        [JsonProperty("type", NullValueHandling = NullValueHandling.Ignore)]
+        public string Type { get; set; }
     }
 
     // ── Client → Server messages (parsed from incoming JSON) ──
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class SetParameters
+    {
+        [JsonProperty("op")]
+        public string Op => "setParameters";
+
+        [JsonProperty("parameters")]
+        public List<Parameter> Parameters { get; set; } = new List<Parameter>();
+
+        [JsonProperty("id", NullValueHandling = NullValueHandling.Ignore)]
+        public string Id { get; set; }
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class UnsubscribeParameterUpdates
+    {
+        [JsonProperty("op")]
+        public string Op => "unsubscribeParameterUpdates";
+
+        [JsonProperty("parameterNames")]
+        public List<string> ParameterNames { get; set; } = new List<string>();
+    }
+
+    // ── Service messages ──
+
+    /// <summary>Server → Client: advertise available services.</summary>
+    [JsonObject(MemberSerialization.OptIn)]
+    public class AdvertiseServices
+    {
+        [JsonProperty("op")]
+        public string Op => "advertiseServices";
+
+        [JsonProperty("services")]
+        public List<ServiceDescriptor> Services { get; set; } = new List<ServiceDescriptor>();
+    }
+
+    /// <summary>Server → Client: remove previously advertised services.</summary>
+    [JsonObject(MemberSerialization.OptIn)]
+    public class UnadvertiseServices
+    {
+        [JsonProperty("op")]
+        public string Op => "unadvertiseServices";
+
+        [JsonProperty("serviceIds")]
+        public List<uint> ServiceIds { get; set; } = new List<uint>();
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class ServiceDescriptor
+    {
+        [JsonProperty("id")]
+        public uint Id { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("type")]
+        public string Type { get; set; }
+
+        [JsonProperty("request")]
+        public ServiceSchemaDescriptor Request { get; set; }
+
+        [JsonProperty("response")]
+        public ServiceSchemaDescriptor Response { get; set; }
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class ServiceSchemaDescriptor
+    {
+        [JsonProperty("encoding", NullValueHandling = NullValueHandling.Ignore)]
+        public string Encoding { get; set; }
+
+        [JsonProperty("schemaName")]
+        public string SchemaName { get; set; }
+
+        /// <summary>Omitted from JSON when null or empty.</summary>
+        [JsonProperty("schema", NullValueHandling = NullValueHandling.Ignore)]
+        public string Schema { get; set; }
+    }
+
+    /// <summary>Server → Client: service call failed.</summary>
+    [JsonObject(MemberSerialization.OptIn)]
+    public class ServiceCallFailure
+    {
+        [JsonProperty("op")]
+        public string Op => "serviceCallFailure";
+
+        [JsonProperty("serviceId")]
+        public uint ServiceId { get; set; }
+
+        [JsonProperty("callId")]
+        public uint CallId { get; set; }
+
+        [JsonProperty("message")]
+        public string Message { get; set; }
+    }
 
     [JsonObject(MemberSerialization.OptIn)]
     public class SubscribeMessage

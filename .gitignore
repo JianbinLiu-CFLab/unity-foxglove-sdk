@@ -3,6 +3,7 @@
 
 # Local reference checkout, not part of this Unity package repo
 foxglove-sdk/
+third-party/
 
 # .NET build outputs
 bin/
