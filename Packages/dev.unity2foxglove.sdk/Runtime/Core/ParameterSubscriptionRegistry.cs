@@ -1,10 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Tracks per-client parameter subscriptions.
-    /// Empty parameterNames = subscribe to all.
+    /// Null means "all"; empty list also treated as "all".
     /// </summary>
     public class ParameterSubscriptionRegistry
     {
@@ -12,50 +13,52 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, HashSet<string>> _clients = new();
         private readonly object _lock = new();
 
-        /// <summary>Subscribe a client. null or empty parameterNames subscribes to all.</summary>
+        /// <summary>Subscribe. null or empty parameterNames subscribes to all.</summary>
         public void Subscribe(uint clientId, IEnumerable<string> parameterNames)
         {
             lock (_lock)
             {
-                if (!_clients.TryGetValue(clientId, out var subs))
+                var names = parameterNames?.ToList();
+                if (names == null || names.Count == 0)
                 {
-                    subs = new HashSet<string>();
-                    _clients[clientId] = subs;
+                    _clients[clientId] = null; // "all"
+                    return;
                 }
 
-                if (parameterNames == null)
-                {
-                    // Empty list = "all": stored as null
-                    _clients[clientId] = null;
-                }
-                else
-                {
-                    // If currently "all", switch to explicit set
-                    if (subs == null)
-                    {
-                        subs = new HashSet<string>();
-                        _clients[clientId] = subs;
-                    }
-                    foreach (var n in parameterNames)
-                        subs.Add(n);
-                }
+                if (!_clients.TryGetValue(clientId, out var subs) || subs == null)
+                    subs = new HashSet<string>();
+
+                foreach (var n in names)
+                    subs.Add(n);
+
+                _clients[clientId] = subs;
             }
         }
 
-        /// <summary>Unsubscribe. null or empty parameterNames clears all subscriptions.</summary>
+        /// <summary>Unsubscribe. null or empty parameterNames clears all.</summary>
         public void Unsubscribe(uint clientId, IEnumerable<string> parameterNames)
         {
             lock (_lock)
             {
-                if (parameterNames == null || !_clients.TryGetValue(clientId, out var subs))
+                var names = parameterNames?.ToList();
+                if (names == null || names.Count == 0)
                 {
                     _clients.Remove(clientId);
                     return;
                 }
 
-                foreach (var n in parameterNames)
-                    subs?.Remove(n);
+                if (_clients.TryGetValue(clientId, out var subs) && subs != null)
+                {
+                    foreach (var n in names)
+                        subs.Remove(n);
+                }
             }
+        }
+
+        /// <summary>Get all client IDs that have any active subscription.</summary>
+        public List<uint> GetSubscribedClientIds()
+        {
+            lock (_lock) { return _clients.Keys.ToList(); }
         }
 
         /// <summary>Check if a client is subscribed to a given parameter name.</summary>
@@ -64,8 +67,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (!_clients.TryGetValue(clientId, out var subs)) return false;
-                // null = subscribed to all
-                if (subs == null) return true;
+                if (subs == null) return true; // "all"
                 return subs.Contains(parameterName);
             }
         }

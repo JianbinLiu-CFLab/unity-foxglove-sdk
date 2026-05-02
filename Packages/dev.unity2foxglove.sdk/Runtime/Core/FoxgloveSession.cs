@@ -19,10 +19,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
 
-        // Phase 6
-        private readonly FoxgloveParameterStore _parameters = new();
+        // Phase 6-7: Runtime-owned definitions, Session holds references
+        private readonly FoxgloveParameterStore _parameters;
         private readonly ParameterSubscriptionRegistry _paramSubs = new();
-        private readonly FoxgloveServiceRegistry _services = new();
+        private readonly FoxgloveServiceRegistry _services;
 
         public string Name { get; }
         public string SessionId { get; }
@@ -30,19 +30,24 @@ namespace Unity.FoxgloveSDK.Core
         public ISchemaRegistry Schemas => _schemaRegistry;
         public ChannelRegistry Channels => _channels;
         public FoxgloveParameterStore Parameters => _parameters;
-        public FoxgloveServiceRegistry Services => _services;
+        /// <summary>Internal access to registry for advanced use (GetPendingCalls etc).</summary>
+        internal FoxgloveServiceRegistry Services => _services;
 
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
             IFoxgloveClock clock = null,
             ISchemaRegistry schemaRegistry = null,
-            IFoxgloveLogger logger = null)
+            IFoxgloveLogger logger = null,
+            FoxgloveParameterStore paramStore = null,
+            FoxgloveServiceRegistry serviceRegistry = null)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _clock = clock ?? new SystemClock();
             _schemaRegistry = schemaRegistry ?? new DefaultSchemaRegistry();
             _logger = logger ?? new ConsoleLogger();
+            _parameters = paramStore ?? new FoxgloveParameterStore();
+            _services = serviceRegistry ?? new FoxgloveServiceRegistry();
             SessionId = Guid.NewGuid().ToString();
 
             _transport.OnClientConnected += OnClientConnected;
@@ -59,7 +64,7 @@ namespace Unity.FoxgloveSDK.Core
             _channels.Clear();
             _subscriptions.Clear();
             _paramSubs.Clear();
-            _services.Clear();
+            // Do NOT clear _parameters or _services — they are Runtime-owned
         }
 
         // ── Channel API ──
@@ -113,14 +118,32 @@ namespace Unity.FoxgloveSDK.Core
             Publish(channelId, Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message)), logTimeNs);
         }
 
-        /// <summary>Register a service and broadcast advertiseServices to all connected clients.</summary>
+        /// <summary>Register a service and broadcast incremental advertiseServices.</summary>
         public uint RegisterService(Protocol.ServiceDescriptor descriptor)
         {
             var id = _services.Register(descriptor);
-            var adv = new Protocol.AdvertiseServices { Services = _services.GetAll() };
+            var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
             _transport.BroadcastText(JsonConvert.SerializeObject(adv));
             return id;
         }
+
+        /// <summary>Broadcast a Time frame (opcode=2) at controlled rate.</summary>
+        public void BroadcastTime(float rateHz = 10f)
+        {
+            var now = System.DateTime.UtcNow.Ticks;
+            var effectiveRate = rateHz > 0 ? rateHz : 10f;
+            // Avoid float precision loss: compute interval with long division
+            var interval = System.TimeSpan.TicksPerSecond / (long)effectiveRate;
+            if (effectiveRate > System.TimeSpan.TicksPerSecond)
+                interval = 1L; // sub-tick rate → every call
+            if (now - _lastTimeBroadcastTicks < interval)
+                return;
+            _lastTimeBroadcastTicks = now;
+
+            var frame = BinaryEncoding.EncodeTime(_clock.NowNs);
+            _transport.BroadcastBinary(frame);
+        }
+        private long _lastTimeBroadcastTicks;
 
         // ── Service call lifecycle (Phase 6) ──
 
@@ -128,6 +151,26 @@ namespace Unity.FoxgloveSDK.Core
         public void DrainServiceCalls()
         {
             _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
+
+            // Execute pending calls via registered handlers (Phase 7 delegate model)
+            foreach (var call in _services.GetPendingCalls())
+            {
+                var handler = _services.GetHandler(call.ServiceId);
+                if (handler == null) continue;
+                try
+                {
+                    var payloadStr = System.Text.Encoding.UTF8.GetString(call.Payload);
+                    var input = Newtonsoft.Json.Linq.JToken.Parse(payloadStr);
+                    var result = handler(input);
+                    var responseBytes = System.Text.Encoding.UTF8.GetBytes(result.ToString(Newtonsoft.Json.Formatting.None));
+                    _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
+                }
+                catch (Exception ex)
+                {
+                    _services.Fail(call.ClientId, call.CallId, $"Handler exception: {ex.Message}");
+                }
+            }
+
             foreach (var call in _services.DrainCompleted())
             {
                 if (call.FailureMessage != null)
@@ -144,6 +187,9 @@ namespace Unity.FoxgloveSDK.Core
                 }
             }
         }
+
+        /// <summary>Test-only: trigger a logger call to verify injection.</summary>
+        internal void ForceLoggerTest() => _logger.LogWarning("logger test");
 
         // ── Dispose ──
 
@@ -166,7 +212,9 @@ namespace Unity.FoxgloveSDK.Core
                 Capabilities = new List<Capability>
                 {
                     Capability.Parameters,
-                    Capability.Services
+                    Capability.ParametersSubscribe,
+                    Capability.Services,
+                    Capability.Time
                 },
                 SupportedEncodings = new List<string> { "json" },
                 SessionId = SessionId
@@ -268,17 +316,40 @@ namespace Unity.FoxgloveSDK.Core
             try { msg = JsonConvert.DeserializeObject<SetParameters>(json); }
             catch { _logger.LogWarning($"setParameters parse error from client {clientId}"); return; }
 
+            var changedNames = new List<string>();
             foreach (var p in msg.Parameters ?? new List<Parameter>())
             {
-                if (p != null && p.Name != null)
-                    _parameters.TrySetFromClient(p.Name, p.Value);
+                if (p != null && p.Name != null && _parameters.TrySetFromClient(p.Name, p.Value))
+                    changedNames.Add(p.Name);
             }
 
-            // Echo back current values
+            // Echo back current values to requestor
             var names = msg.Parameters?.Select(p => p?.Name).Where(n => n != null);
             var current = _parameters.GetWireParameters(names);
             var resp = new ParameterValues { Parameters = current, Id = msg.Id };
             _transport.SendText(clientId, JsonConvert.SerializeObject(resp));
+
+            // Broadcast to other subscribed clients (Phase 7 push)
+            if (changedNames.Count > 0)
+            {
+                var broadcast = new ParameterValues { Parameters = _parameters.GetWireParameters(changedNames) };
+                var broadcastJson = JsonConvert.SerializeObject(broadcast);
+                foreach (var cid in GetParamSubscribersForChanged(changedNames, clientId))
+                    _transport.SendText(cid, broadcastJson);
+            }
+        }
+
+        private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint excludeClient)
+        {
+            foreach (var cid in _paramSubs.GetSubscribedClientIds())
+            {
+                if (cid == excludeClient) continue;
+                foreach (var n in names)
+                {
+                    if (_paramSubs.IsSubscribed(cid, n))
+                    { yield return cid; break; }
+                }
+            }
         }
 
         private void HandleSubscribeParameterUpdates(uint clientId, string json)
@@ -287,8 +358,7 @@ namespace Unity.FoxgloveSDK.Core
             try { msg = JsonConvert.DeserializeObject<SubscribeParameterUpdates>(json); }
             catch { _logger.LogWarning($"subscribeParameterUpdates parse error from client {clientId}"); return; }
 
-            _paramSubs.Subscribe(clientId,
-                msg.ParameterNames?.Count > 0 ? msg.ParameterNames : null);
+            _paramSubs.Subscribe(clientId, msg.ParameterNames);
         }
 
         private void HandleUnsubscribeParameterUpdates(uint clientId, string json)
@@ -297,8 +367,7 @@ namespace Unity.FoxgloveSDK.Core
             try { msg = JsonConvert.DeserializeObject<UnsubscribeParameterUpdates>(json); }
             catch { _logger.LogWarning($"unsubscribeParameterUpdates parse error from client {clientId}"); return; }
 
-            _paramSubs.Unsubscribe(clientId,
-                msg.ParameterNames?.Count > 0 ? msg.ParameterNames : null);
+            _paramSubs.Unsubscribe(clientId, msg.ParameterNames);
         }
 
         // ── Subscribe/unsubscribe (Phase 2) ──

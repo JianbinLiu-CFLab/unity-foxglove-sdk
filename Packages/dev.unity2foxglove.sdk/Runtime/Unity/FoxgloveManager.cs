@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_runInBackground)
                 Application.runInBackground = true;
 
-            _runtime = new Core.FoxgloveRuntime();
+            _runtime = new Core.FoxgloveRuntime(new UnityLogger());
         }
 
         private void OnEnable()
@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Update()
         {
-            _runtime?.DrainServiceCalls();
+            _runtime?.Tick();
         }
 
         private void OnDisable()
@@ -93,6 +93,16 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Serialize a message to JSON and publish. Safe no-op if runtime is not started.
         /// </summary>
+        public void RegisterParameter(string name, Newtonsoft.Json.Linq.JToken value, string type, bool writable)
+        {
+            _runtime?.RegisterParameter(name, value, type, writable);
+        }
+
+        public uint RegisterService(Unity.FoxgloveSDK.Protocol.ServiceDescriptor descriptor)
+        {
+            return _runtime?.RegisterService(descriptor) ?? 0;
+        }
+
         public void PublishJson(string topic, string schemaName, object message, ulong logTimeNs)
         {
             if (!IsRunning)

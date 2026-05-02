@@ -61,6 +61,7 @@ namespace Unity.FoxgloveSDK.Schemas
     // ── FrameTransform ──
 
     /// <summary>foxglove.FrameTransform message.</summary>
+    [Unity.FoxgloveSDK.Protocol.FoxgloveSchema("foxglove.FrameTransform")]
     public class FrameTransformMessage
     {
         [JsonProperty("timestamp")] public FoxgloveTime Timestamp { get; set; }
@@ -73,6 +74,7 @@ namespace Unity.FoxgloveSDK.Schemas
     // ── SceneUpdate ──
 
     /// <summary>foxglove.SceneUpdate message.</summary>
+    [Unity.FoxgloveSDK.Protocol.FoxgloveSchema("foxglove.SceneUpdate")]
     public class SceneUpdateMessage
     {
         [JsonProperty("deletions")] public List<SceneEntityDeletion> Deletions { get; set; } = new List<SceneEntityDeletion>();

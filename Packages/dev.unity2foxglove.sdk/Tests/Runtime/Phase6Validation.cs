@@ -59,7 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(caps != null, "capabilities present");
             Assert(caps.ToString().Contains("parameters"), "capabilities includes parameters");
             Assert(caps.ToString().Contains("services"), "capabilities includes services");
-            Assert(!caps.ToString().Contains("parametersSubscribe"), "capabilities excludes parametersSubscribe (Phase 7)");
+            Assert(caps.ToString().Contains("parametersSubscribe"), "capabilities includes parametersSubscribe (Phase 7)");
             Assert(!caps.ToString().Contains("assets"), "capabilities excludes assets");
             Assert(!caps.ToString().Contains("playbackControl"), "capabilities excludes playbackControl");
             Assert(info["supportedEncodings"]?[0]?.ToString() == "json", "supportedEncodings includes json");
