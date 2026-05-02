@@ -98,8 +98,7 @@ namespace Unity.FoxgloveSDK.Tests
             // metadata must NOT be present
             Assert(obj["metadata"] == null, "metadata omitted when empty");
 
-            // Must NOT contain undeclared capabilities
-            Assert(!json.Contains("\"clientPublish\""), "JSON does not contain clientPublish");
+            // Phase 8: clientPublish is now declared
             // Phase 7: time capability is now declared
         }
 

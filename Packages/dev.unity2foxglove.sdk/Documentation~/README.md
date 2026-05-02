@@ -169,6 +169,20 @@ The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, *
 | 5 | Disconnect + reconnect works | Pass |
 | 6 | Closing Foxglove does not crash server | Pass |
 
+### Phase 8 manual verification
+
+**Connection Graph:**
+1. Play → Foxglove connect → select **Connection Graph** panel
+2. Expected: see publisher node (unity) with topics `/tf`, `/scene`, `/unity/camera`
+
+**ClientPublish:**
+1. Foxglove → **+** → **Publish** panel
+2. Topic field: `/test/client_publish`
+3. Message schema: select a known schema, e.g. `foxglove.CompressedImage`
+4. Foxglove auto-generates the JSON template for that schema. Edit the payload values if desired.
+5. Click **Publish**
+6. Expected: Unity Console shows `[ClientMsg] client=1 topic=/test/client_publish payload=...`
+
 ## Architecture
 
 See [Architecture.md](Architecture.md) for the transport abstraction, protocol layer, and module breakdown.

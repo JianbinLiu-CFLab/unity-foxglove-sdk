@@ -22,14 +22,14 @@ namespace Unity.FoxgloveSDK.Core
 
         public bool IsTimedOut(TimeSpan timeout) => DateTime.UtcNow - CreatedAt > timeout;
 
-        internal void InterlockedComplete(string encoding, byte[] payload)
+        internal void Complete(string encoding, byte[] payload)
         {
             ResponseEncoding = encoding;
             ResponsePayload = payload;
             IsCompleted = true;
         }
 
-        internal void InterlockedFail(string message)
+        internal void Fail(string message)
         {
             FailureMessage = message;
             IsCompleted = true;

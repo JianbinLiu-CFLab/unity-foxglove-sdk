@@ -23,6 +23,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly FoxgloveParameterStore _parameters;
         private readonly ParameterSubscriptionRegistry _paramSubs = new();
         private readonly FoxgloveServiceRegistry _services;
+        private readonly ConnectionGraphRegistry _graph = new();
+        // Phase 8: client publish support
+        private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
+        public event Action<uint, uint, string, byte[]> OnClientMessage;
 
         public string Name { get; }
         public string SessionId { get; }
@@ -32,6 +36,9 @@ namespace Unity.FoxgloveSDK.Core
         public FoxgloveParameterStore Parameters => _parameters;
         /// <summary>Internal access to registry for advanced use (GetPendingCalls etc).</summary>
         internal FoxgloveServiceRegistry Services => _services;
+
+        /// <summary>Transport for Manager-level event wiring (connection events).</summary>
+        internal IFoxgloveTransport Transport => _transport;
 
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
@@ -72,16 +79,21 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             _channels.Register(channel);
+            _graph.SetPublishedTopic(channel.Topic, "unity");
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
+            BroadcastGraphUpdate();
         }
 
         public void UnregisterChannel(uint channelId)
         {
+            var ch = _channels.Get(channelId);
+            if (ch != null) _graph.RemovePublishedTopic(ch.Topic, "unity");
             if (!_channels.Remove(channelId)) return;
             _subscriptions.RemoveChannel(channelId);
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Unadvertise { ChannelIds = new List<uint> { channelId } }));
+            BroadcastGraphUpdate();
         }
 
         public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
@@ -124,6 +136,8 @@ namespace Unity.FoxgloveSDK.Core
             var id = _services.Register(descriptor);
             var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
             _transport.BroadcastText(JsonConvert.SerializeObject(adv));
+            _graph.AddAdvertisedService(descriptor.Name, "unity");
+            BroadcastGraphUpdate();
             return id;
         }
 
@@ -188,6 +202,58 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        private void HandleSubscribeConnectionGraph(uint clientId)
+        {
+            _graph.Subscribe(clientId);
+            var snapshot = _graph.GetSnapshot();
+            _transport.SendText(clientId, JsonConvert.SerializeObject(snapshot));
+        }
+
+        private void HandleUnsubscribeConnectionGraph(uint clientId)
+        {
+            _graph.Unsubscribe(clientId);
+        }
+
+        private void HandleClientAdvertise(uint clientId, string json)
+        {
+            try
+            {
+                var msg = JsonConvert.DeserializeObject<Advertise>(json);
+                foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
+                {
+                    _clientChannels[(clientId, ch.Id)] = ch;
+                    _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}");
+                }
+                BroadcastGraphUpdate();
+            }
+            catch { _logger.LogWarning($"Client advertise parse error from client {clientId}"); }
+        }
+
+        private void HandleClientUnadvertise(uint clientId, string json)
+        {
+            try
+            {
+                var msg = JsonConvert.DeserializeObject<Unadvertise>(json);
+                foreach (var chId in msg.ChannelIds ?? new List<uint>())
+                {
+                    if (_clientChannels.TryGetValue((clientId, chId), out var ch))
+                    {
+                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}");
+                        _clientChannels.Remove((clientId, chId));
+                    }
+                }
+                BroadcastGraphUpdate();
+            }
+            catch { _logger.LogWarning($"Client unadvertise parse error from client {clientId}"); }
+        }
+
+        private void BroadcastGraphUpdate()
+        {
+            var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
+            foreach (var subId in _graph.GetSubscribers())
+                _transport.SendText(subId, json);
+        }
+
         /// <summary>Test-only: trigger a logger call to verify injection.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
 
@@ -214,7 +280,9 @@ namespace Unity.FoxgloveSDK.Core
                     Capability.Parameters,
                     Capability.ParametersSubscribe,
                     Capability.Services,
-                    Capability.Time
+                    Capability.Time,
+                    Capability.ConnectionGraph,
+                    Capability.ClientPublish
                 },
                 SupportedEncodings = new List<string> { "json" },
                 SessionId = SessionId
@@ -231,13 +299,23 @@ namespace Unity.FoxgloveSDK.Core
             var svcs = _services.GetAll();
             if (svcs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
+
+            // ConnectionGraph: register server as publisher for all advertised channels
+            foreach (var ch in chs)
+                _graph.SetPublishedTopic(ch.Topic, "unity");
+            foreach (var svc in svcs)
+                _graph.AddAdvertisedService(svc.Name, "unity");
         }
 
         private void OnClientDisconnected(uint clientId)
         {
             _subscriptions.RemoveClient(clientId);
             _paramSubs.RemoveClient(clientId);
+            _graph.RemoveClient(clientId);
             _services.RemoveClientCalls(clientId);
+            // Clean client-published channels
+            var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
+            foreach (var k in toRemove) _clientChannels.Remove(k);
         }
 
         private void OnClientText(uint clientId, string json)
@@ -254,47 +332,60 @@ namespace Unity.FoxgloveSDK.Core
                 case "setParameters": HandleSetParameters(clientId, json); break;
                 case "subscribeParameterUpdates": HandleSubscribeParameterUpdates(clientId, json); break;
                 case "unsubscribeParameterUpdates": HandleUnsubscribeParameterUpdates(clientId, json); break;
+                case "subscribeConnectionGraph": HandleSubscribeConnectionGraph(clientId); break;
+                case "unsubscribeConnectionGraph": HandleUnsubscribeConnectionGraph(clientId); break;
+                case "advertise": HandleClientAdvertise(clientId, json); break;
+                case "unadvertise": HandleClientUnadvertise(clientId, json); break;
                 default: _logger.LogWarning($"Unknown op '{op}' from client {clientId}"); break;
             }
         }
 
         private void OnClientBinary(uint clientId, byte[] data)
         {
+            // ClientPublish: MessageData from client
+            if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
+            {
+                if (_clientChannels.TryGetValue((clientId, chId), out var ch))
+                    OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
+                return;
+            }
+
+            // Service call request
             if (!BinaryEncoding.TryDecodeClientServiceCallRequest(data,
-                    out var serviceId, out var callId, out var encoding, out var payload))
+                    out var svcServiceId, out var svcCallId, out var svcEncoding, out var svcPayload))
                 return;
 
-            if (encoding != "json")
+            if (svcEncoding != "json")
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = serviceId, CallId = callId, Message = $"Unsupported encoding: {encoding}" }));
-                return;
-            }
-
-            if (!_services.TryGet(serviceId, out _))
-            {
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = serviceId, CallId = callId, Message = $"Unknown service: {serviceId}" }));
+                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Unsupported encoding: {svcEncoding}" }));
                 return;
             }
 
-            if (payload.Length > FoxgloveServiceRegistry.MaxPayloadBytes)
+            if (!_services.TryGet(svcServiceId, out _))
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = serviceId, CallId = callId, Message = $"Payload exceeds 1 MiB limit" }));
+                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Unknown service: {svcServiceId}" }));
+                return;
+            }
+
+            if (svcPayload.Length > FoxgloveServiceRegistry.MaxPayloadBytes)
+            {
+                _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
+                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Payload exceeds 1 MiB limit" }));
                 return;
             }
 
             // Validate payload is legal UTF-8 JSON
-            try { JToken.Parse(Encoding.UTF8.GetString(payload)); }
+            try { JToken.Parse(Encoding.UTF8.GetString(svcPayload)); }
             catch
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = serviceId, CallId = callId, Message = "Malformed JSON payload" }));
+                { ServiceId = svcServiceId, CallId = svcCallId, Message = "Malformed JSON payload" }));
                 return;
             }
 
-            _services.Enqueue(serviceId, callId, clientId, encoding, payload);
+            _services.Enqueue(svcServiceId, svcCallId, clientId, svcEncoding, svcPayload);
         }
 
         // ── Parameter handlers ──
@@ -378,10 +469,17 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
                 foreach (var sub in msg.Subscriptions)
-                    if (_channels.Get(sub.ChannelId) != null)
+                {
+                    var ch = _channels.Get(sub.ChannelId);
+                    if (ch != null)
+                    {
                         _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
+                        _graph.AddSubscribedTopic(ch.Topic, $"client:{clientId}:{sub.Id}");
+                    }
+                }
             }
             catch (Exception ex) { _logger.LogWarning($"subscribe parse error: {ex.Message}"); }
+            BroadcastGraphUpdate();
         }
 
         private void HandleUnsubscribe(uint clientId, string json)
@@ -390,9 +488,18 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
                 if (msg.SubscriptionIds != null)
-                    _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
+                {
+                    var removedChIds = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
+                    foreach (var chId in removedChIds)
+                    {
+                        var ch = _channels.Get(chId);
+                        if (ch != null)
+                            _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{chId}");
+                    }
+                }
             }
             catch (Exception ex) { _logger.LogWarning($"unsubscribe parse error: {ex.Message}"); }
+            BroadcastGraphUpdate();
         }
 
         /// <summary>Minimal DTO used to peek the "op" field. Used in Phase 2, kept for consistency.</summary>

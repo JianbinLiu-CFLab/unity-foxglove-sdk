@@ -49,6 +49,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
             }
             return JToken.Parse("{\"status\":\"ok\"}");
         });
+
+        // Phase 8: log client-published messages to Unity Console
+        rt.Session.OnClientMessage += (cid, chId, topic, payload) =>
+            Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={System.Text.Encoding.UTF8.GetString(payload)}");
     }
 
     private void Update()

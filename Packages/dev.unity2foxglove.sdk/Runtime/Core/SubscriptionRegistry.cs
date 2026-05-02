@@ -27,16 +27,24 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Remove subscriptions by their IDs.</summary>
-        public void RemoveSubscriptions(uint clientId, IEnumerable<uint> subscriptionIds)
+        /// <summary>Remove subscriptions by their IDs. Returns the channelIds that were removed.</summary>
+        public List<uint> RemoveSubscriptions(uint clientId, IEnumerable<uint> subscriptionIds)
         {
             lock (_lock)
             {
+                var removed = new List<uint>();
                 if (_clients.TryGetValue(clientId, out var subs))
                 {
                     foreach (var sid in subscriptionIds)
-                        subs.Remove(sid);
+                    {
+                        if (subs.TryGetValue(sid, out var chId))
+                        {
+                            removed.Add(chId);
+                            subs.Remove(sid);
+                        }
+                    }
                 }
+                return removed;
             }
         }
 

@@ -17,6 +17,10 @@ namespace Unity.FoxgloveSDK.Components
         private Core.FoxgloveRuntime _runtime;
         private int _nextChannelId = 1;
         private bool _warnedNotRunning;
+        private readonly System.Collections.Concurrent.ConcurrentQueue<ClientEvent> _clientEvents = new();
+        public event System.Action<uint> OnClientConnected;
+        public event System.Action<uint> OnClientDisconnected;
+        public event System.Action<uint, uint, string, byte[]> OnClientMessage;
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string), uint>();
 
@@ -31,6 +35,12 @@ namespace Unity.FoxgloveSDK.Components
             _runtime = new Core.FoxgloveRuntime(new UnityLogger());
         }
 
+        private void EnqueueConnect(uint id) =>
+            _clientEvents.Enqueue(new ClientEvent { ClientId = id, IsConnect = true });
+
+        private void EnqueueDisconnect(uint id) =>
+            _clientEvents.Enqueue(new ClientEvent { ClientId = id, IsConnect = false });
+
         private void OnEnable()
         {
             if (_startOnEnable)
@@ -40,6 +50,15 @@ namespace Unity.FoxgloveSDK.Components
         private void Update()
         {
             _runtime?.Tick();
+            while (_clientEvents.TryDequeue(out var evt))
+            {
+                if (evt.IsMessage)
+                    OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
+                else if (evt.IsConnect)
+                    OnClientConnected?.Invoke(evt.ClientId);
+                else
+                    OnClientDisconnected?.Invoke(evt.ClientId);
+            }
         }
 
         private void OnDisable()
@@ -64,6 +83,16 @@ namespace Unity.FoxgloveSDK.Components
 
             _runtime.Start(_serverName, _host, _port);
             _warnedNotRunning = false;
+
+            var transport = _runtime.Session?.Transport;
+            if (transport != null)
+            {
+                transport.OnClientConnected += EnqueueConnect;
+                transport.OnClientDisconnected += EnqueueDisconnect;
+                _runtime.Session.OnClientMessage += (cid, chId, topic, payload) =>
+                    _clientEvents.Enqueue(new ClientEvent { ClientId = cid, ChannelId = chId, Topic = topic, Payload = payload, IsConnect = false, IsMessage = true });
+            }
+
             Debug.Log($"[Foxglove] Server started on ws://{_host}:{_port}");
         }
 
@@ -118,5 +147,15 @@ namespace Unity.FoxgloveSDK.Components
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName);
             _runtime.PublishJson(channelId, message, logTimeNs);
         }
+    }
+
+    internal struct ClientEvent
+    {
+        public uint ClientId;
+        public uint ChannelId;
+        public string Topic;
+        public byte[] Payload;
+        public bool IsConnect;
+        public bool IsMessage;
     }
 }

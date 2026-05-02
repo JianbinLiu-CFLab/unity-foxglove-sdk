@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (_pending.TryGetValue((clientId, callId), out var call))
-                    call.InterlockedComplete(encoding, payload);
+                    call.Complete(encoding, payload);
             }
         }
 
@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (_pending.TryGetValue((clientId, callId), out var call))
-                    call.InterlockedFail(message);
+                    call.Fail(message);
             }
         }
 
@@ -144,7 +144,7 @@ namespace Unity.FoxgloveSDK.Core
                 foreach (var (_, call) in _pending)
                 {
                     if (!call.IsCompleted && call.IsTimedOut(timeout))
-                        call.InterlockedFail($"Service call timed out after {timeout.TotalSeconds:F0}s");
+                        call.Fail($"Service call timed out after {timeout.TotalSeconds:F0}s");
                 }
             }
         }
