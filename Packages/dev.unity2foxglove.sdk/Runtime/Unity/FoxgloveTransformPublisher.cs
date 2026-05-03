@@ -10,8 +10,10 @@ namespace Unity.FoxgloveSDK.Components
     {
         public enum CoordinateMode
         {
+            /// <summary>Unity left-handed: X right, Y up, Z forward.</summary>
             UnityRaw,
-            FoxgloveRos
+            /// <summary>Foxglove/right-handed: X forward, Y left, Z up.</summary>
+            FoxgloveStandard
         }
 
         [SerializeField] private string _parentFrameId = "unity_world";
@@ -28,7 +30,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override FrameTransformMessage CreateMessage()
         {
-            var unixNs = FoxgloveTimeUtil.NowUnixTimeNs();
+            var unixNs = CurrentLogTimeNs;
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
             var pos = transform.position;
             var rot = transform.rotation;
@@ -37,7 +39,7 @@ namespace Unity.FoxgloveSDK.Components
             double rx, ry, rz, rw;
             switch (_coordinateMode)
             {
-                case CoordinateMode.FoxgloveRos:
+                case CoordinateMode.FoxgloveStandard:
                     tx = pos.z; ty = -pos.x; tz = pos.y;
                     rx = -rot.z; ry = rot.x; rz = -rot.y; rw = rot.w;
                     break;

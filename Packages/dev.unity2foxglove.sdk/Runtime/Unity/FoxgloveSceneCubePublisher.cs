@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         Id = ResolvedEntityId,
                         FrameId = ResolvedFrameId,
-                        Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(FoxgloveTimeUtil.NowUnixTimeNs()),
+                        Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(CurrentLogTimeNs),
                         Lifetime = new FoxgloveDuration(),
                         Cubes = new List<CubePrimitive>
                         {

@@ -259,9 +259,9 @@ updated: 2026-04-30
 明确不做：
 - ConnectionGraph（Phase 8）
 - ClientPublish（Phase 8）
-- MCAP（Phase 9）
-- Assets / fetchAsset
-- PlaybackControl
+- Assets / fetchAsset（Phase 9）
+- PlaybackControl（Phase 9）
+- MCAP（Phase 10）
 - `[FoxgloveLog]` attribute + source generation
 
 ### Phase 8 - ConnectionGraph + ClientPublish
@@ -277,15 +277,34 @@ updated: 2026-04-30
 - Unity 主线程安全的 client message 回调
 - ConnectionGraph 与 ClientPublish 联动
 
-### Phase 9 - MCAP 录制 / 双写
+### Phase 9 - Assets + PlaybackControl
 
-目标：单独评估并实现 MCAP 写入能力，不把文件格式、索引、summary、CRC 与 WebSocket 交互能力混在一起。
+目标：补齐 `assets` 和 `playbackControl` 两个 WebSocket 协议能力。Assets 采用显式 root 映射，PlaybackControl 控制 SDK live clock，不实现历史消息重放。
+
+执行计划：
+- [[10_PHASE9_PLAN]]
+
+范围：
+- Assets / `fetchAsset` request + binary `fetchAssetResponse`
+- 显式 `uriPrefix → localRoot` asset root 注册
+- PlaybackControl binary request + `PlaybackState` response
+- Runtime / Manager / publishers 统一 clock，确保 seek 后 topic timestamp 跟随 playback clock
+
+明确不做：
+- MCAP 双写或录制
+- 任意 `file://` 本机路径读取
+- asset application-level chunk protocol
+- 历史消息重放
+
+### Phase 10 - MCAP 录制 / 双写
+
+目标：单独评估并实现 MCAP 写入能力，不把文件格式、索引、summary、CRC 与 live WebSocket 交互能力混在一起。
 
 候选项：
 - JSON / JSON Schema channel 写入 MCAP。
 - 与 live WebSocket publish 双写。
 - 可被 Foxglove 打开的最小 MCAP 文件。
-- 是否实现 indexed writer、summary offsets、chunking、compression 另行在 Phase 9 plan 中决策。
+- 是否实现 indexed writer、summary offsets、chunking、compression 另行在 Phase 10 plan 中决策。
 
 ## 建议目录结构
 

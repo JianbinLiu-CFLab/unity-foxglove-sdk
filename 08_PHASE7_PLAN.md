@@ -20,7 +20,7 @@ updated: 2026-05-02
 # Foxglove Unity SDK Phase 7 执行计划
 
 > [!summary]
-> 本文是从 [[00_PLAN]] 拆出的 Phase 7 执行版，承接 [[07_PHASE6_PLAN]] 已完成的 Parameters + Services。Phase 7 有三重目标：(1) 修复 Phase 6 遗留的 10 个 bug 和 plan 偏差；(2) 提升开发者体验（DX），降低接入门槛和样板代码；(3) 新增 Time capability。ConnectionGraph 和 ClientPublish 进入 [[09_PHASE8_PLAN]]，MCAP 顺延到 Phase 9。
+> 本文是从 [[00_PLAN]] 拆出的 Phase 7 执行版，承接 [[07_PHASE6_PLAN]] 已完成的 Parameters + Services。Phase 7 有三重目标：(1) 修复 Phase 6 遗留的 10 个 bug 和 plan 偏差；(2) 提升开发者体验（DX），降低接入门槛和样板代码；(3) 新增 Time capability。ConnectionGraph 和 ClientPublish 进入 [[09_PHASE8_PLAN]]，Assets + PlaybackControl 进入 [[10_PHASE9_PLAN]]，MCAP 顺延到 Phase 10。
 
 ## 对应关系
 
@@ -49,7 +49,7 @@ updated: 2026-05-02
 
 - 不实现 ConnectionGraph（进入 Phase 8）。
 - 不实现 ClientPublish（进入 Phase 8）。
-- 不实现 MCAP 写入、读取、双写（进入 Phase 9）。
+- 不实现 MCAP 写入、读取、双写（进入 Phase 10）。
 - 不实现 Assets / fetchAsset。
 - 不实现 PlaybackControl。
 - 不实现 `[FoxgloveLog]` attribute 或 Editor-time source generation。
@@ -368,7 +368,6 @@ updated: 2026-05-02
 ## 后续阶段预留
 
 - Phase 8：[[09_PHASE8_PLAN]] — ConnectionGraph + ClientPublish。
-- Phase 9：MCAP 录制 / 双写。
-- Phase 10 候选：Assets / fetchAsset。
-- Phase 10 候选：`[FoxgloveLog]` attribute + Editor-time source generation。
-- Phase 10 候选：PlaybackControl。
+- Phase 9：[[10_PHASE9_PLAN]] — Assets + PlaybackControl。
+- Phase 10：MCAP 录制 / 双写。
+- Phase 11 候选：`[FoxgloveLog]` attribute + Editor-time source generation。

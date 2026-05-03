@@ -14,10 +14,19 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
 
+        // Phase 9: Asset roots
+        [SerializeField] private AssetRootDefinition[] _assetRoots = { };
+
+        // Phase 9: Playback control
+        [SerializeField] private bool _enablePlaybackControl;
+        [SerializeField] private float _playbackStartOffsetSeconds = 0;
+        [SerializeField] private float _playbackDurationSeconds = 60;
+
         private Core.FoxgloveRuntime _runtime;
         private int _nextChannelId = 1;
         private bool _warnedNotRunning;
         private readonly System.Collections.Concurrent.ConcurrentQueue<ClientEvent> _clientEvents = new();
+        public ulong NowNs => _runtime?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
         public event System.Action<uint> OnClientConnected;
         public event System.Action<uint> OnClientDisconnected;
         public event System.Action<uint, uint, string, byte[]> OnClientMessage;
@@ -79,6 +88,28 @@ namespace Unity.FoxgloveSDK.Components
             {
                 Debug.LogWarning("[Foxglove] Server already running.");
                 return;
+            }
+
+            // Phase 9: Register asset roots
+            foreach (var ar in _assetRoots)
+            {
+                if (!string.IsNullOrEmpty(ar.uriPrefix) && !string.IsNullOrEmpty(ar.localRoot))
+                {
+                    var absRoot = System.IO.Path.IsPathRooted(ar.localRoot)
+                        ? ar.localRoot
+                        : System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", ar.localRoot));
+                    var maxBytes = (long)ar.MaxBytesOrDefault;
+                    _runtime.RegisterAssetRoot(ar.uriPrefix, absRoot, maxBytes);
+                }
+            }
+
+            // Phase 9: Enable playback control
+            if (_enablePlaybackControl)
+            {
+                var nowMs = (long)(System.DateTime.UtcNow - new System.DateTime(1970, 1, 1)).TotalMilliseconds;
+                var startNs = (ulong)((nowMs + (long)(_playbackStartOffsetSeconds * 1000)) * 1_000_000L);
+                var endNs = startNs + (ulong)(_playbackDurationSeconds * 1_000_000_000L);
+                _runtime.EnablePlaybackControl(startNs, endNs);
             }
 
             _runtime.Start(_serverName, _host, _port);
@@ -147,6 +178,18 @@ namespace Unity.FoxgloveSDK.Components
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName);
             _runtime.PublishJson(channelId, message, logTimeNs);
         }
+    }
+
+    [System.Serializable]
+    public struct AssetRootDefinition
+    {
+        [Tooltip("URI prefix, e.g. asset://demo/")]
+        public string uriPrefix;
+        [Tooltip("Local folder path (relative to project root or absolute)")]
+        public string localRoot;
+        [Tooltip("Maximum file size in MB (16 MB recommended)")]
+        public float maxMB;
+        public float MaxBytesOrDefault => (maxMB > 0 ? maxMB : 16) * 1024 * 1024;
     }
 
     internal struct ClientEvent

@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Components
             var message = CreateMessage();
             if (message == null) return;
 
-            var unixNs = FoxgloveTimeUtil.NowUnixTimeNs();
+            var unixNs = CurrentLogTimeNs;
             _manager.PublishJson(_topic, SchemaName, message, unixNs);
         }
     }

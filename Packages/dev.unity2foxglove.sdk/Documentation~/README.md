@@ -149,6 +149,8 @@ Look for `Build succeeded:` at the end. `Exiting batchmode successfully with ret
 
 The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, **right-drag** to pan, **scroll** to scale. Changes are visible in Foxglove 3D panel in real-time.
 
+**Editor vs Player timing:** In Editor Mode, connect Foxglove *after* pressing Play — if you connect before Play, the session hasn't started yet and ConnectionGraph / topic list may be incomplete. IL2CPP Player auto-starts the server on launch, so connecting immediately after startup always shows the full topology.
+
 ### Foxglove Desktop operation steps
 
 1. **Open connection**: "Open connection" → select **Foxglove WebSocket** → URL `ws://127.0.0.1:8765`
@@ -182,6 +184,51 @@ The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, *
 4. Foxglove auto-generates the JSON template for that schema. Edit the payload values if desired.
 5. Click **Publish**
 6. Expected: Unity Console shows `[ClientMsg] client=1 topic=/test/client_publish payload=...`
+
+### Phase 9: fetchAsset verification
+
+**Setup:**
+1. In Unity, select Foxglove GameObject → FoxgloveManager Inspector
+2. Under **Asset Roots**, add:
+   - `Uri Prefix`: `asset://demo/`
+   - `Local Root`: `Assets` (relative to project root)
+   - `Max Mb`: `16` (16 MB per file; leave default unless large assets needed)
+3. Play
+
+**Run the test script (separate PowerShell):**
+
+```powershell
+& "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove\Tests\test_fetch_asset.ps1"
+```
+
+The script connects with `foxglove.sdk.v1` subprotocol, drains initial messages, sends:
+
+```json
+{"op":"fetchAsset","requestId":42,"uri":"asset://demo/Scripts/FoxgloveDemoSetup.cs"}
+```
+
+then reads the binary `fetchAssetResponse` frame.
+
+**Verified output (2026-05-03):**
+
+```
+Binary: opcode=4 requestId=42 status=0 errorLen=0
+[PASS] fetchAsset SUCCESS — got 4685 bytes, content matches
+```
+
+- `opcode=4` — `ServerOpcode.FetchAssetResponse`
+- `requestId=42` — matches request
+- `status=0` — success
+- 4685 bytes returned, file content verified
+
+**Error cases (bad URI, no root):**
+
+```
+Binary: opcode=4 requestId=42 status=1 errorLen=23
+[FAIL] Server error: No asset roots registered
+```
+
+See `Untiy2Foxglove/Tests/test_fetch_asset.ps1` for the full script.
 
 ## Architecture
 

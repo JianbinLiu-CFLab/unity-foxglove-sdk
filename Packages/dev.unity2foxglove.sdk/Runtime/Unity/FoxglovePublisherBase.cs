@@ -19,6 +19,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
+        protected ulong CurrentLogTimeNs => _manager?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
 
         protected virtual void OnEnable()
         {
