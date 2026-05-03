@@ -2,7 +2,7 @@
 
 ## Decision: Pure C# MVP
 
-**Decision date:** 2026-04-30
+**Decision date:** 2026-04-30 (last updated 2026-05-03)
 
 We chose **pure C# WebSocket protocol implementation** over wrapping the official `foxglove-sdk` C FFI.
 
@@ -26,8 +26,13 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 | 3 | Done | Official schemas, FrameTransform, SceneUpdate (cube), 3D panel |
 | 4 | Done | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
 | 5 | Done | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml, package identity migration |
-| 6 | **Done** | Parameters (get/set/subscribe), JSON Services (advertise/call/response/failure/timeout) |
-| 7 | Planned | MCAP recording/dual-write |
+| 6 | Done | Parameters (get/set/subscribe), JSON Services (advertise/call/response/failure/timeout) |
+| 7 | Done | ParametersSubscribe push, time capability, logger bridge, ConnectionGraph |
+| 8 | Done | ClientPublish, ConnectionGraph refinement |
+| 9 | Done | Assets / fetchAsset, PlaybackControl, unified publisher clock |
+| 10 | Done | MCAP recording/dual-write (topic messages only) |
+| 11 | Planned | Attributes, source generation, Assets improvements (TBD) |
+| 12 | Planned | MCAP recording range expansion: Parameters, Services, ConnectionGraph, ClientPublish |
 
 ## Layers
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -19,6 +20,12 @@ namespace Unity.FoxgloveSDK.Core
         private readonly FoxgloveParameterStore _parameters = new();
         private readonly FoxgloveServiceRegistry _services = new();
         private readonly FoxgloveAssetRegistry _assets = new();
+
+        // Phase 10: MCAP recording
+        private McapRecorder _recorder;
+        private string _recordingPath;
+        private int _recordingChunkSize = McapRecorder.DefaultChunkSizeBytes;
+        private bool _recordingEnabled;
 
         public ulong NowNs => _playbackClock.NowNs;
 
@@ -68,11 +75,23 @@ namespace Unity.FoxgloveSDK.Core
 
             _session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
             _session.SetRuntime(this);
+            if (_recordingEnabled && _recordingPath != null)
+            {
+                try
+                {
+                    var fs = new System.IO.FileStream(_recordingPath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
+                    _recorder = new McapRecorder(fs, _logger, _recordingChunkSize);
+                    _session.SetRecorder(_recorder);
+                }
+                catch (System.Exception ex) { _logger.LogError($"Failed to start MCAP recording: {ex.Message}"); }
+            }
+
             _session.Start(host, port);
         }
 
         public void Stop()
         {
+            if (_recorder != null) { _recorder.Close(); _recorder.Dispose(); _recorder = null; }
             _session?.Dispose();
             _session = null;
         }
@@ -131,6 +150,14 @@ namespace Unity.FoxgloveSDK.Core
         internal FoxgloveAssetRegistry Assets => _assets;
 
         // ── Phase 9: Playback Control ──
+
+        public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes)
+        {
+            _recordingEnabled = true;
+            _recordingPath = filePath;
+            _recordingChunkSize = chunkSizeBytes > 0 ? chunkSizeBytes : McapRecorder.DefaultChunkSizeBytes;
+        }
+        public void DisableRecording() { _recordingEnabled = false; _recordingPath = null; }
 
         public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
         public bool PlaybackEnabled => _playbackClock.PlaybackEnabled;

@@ -306,6 +306,31 @@ updated: 2026-04-30
 - 可被 Foxglove 打开的最小 MCAP 文件。
 - 是否实现 indexed writer、summary offsets、chunking、compression 另行在 Phase 10 plan 中决策。
 
+**状态：Done。MCAP 双写实现，307 测试通过，Foxglove Studio 可正常打开录制的 .mcap 文件。**
+
+### Phase 11 - (预留) Attributes + Source Generation
+
+候选项：
+- `[FoxgloveLog]` attribute + Editor-time source generation
+- 更完整 Assets 缓存 / MIME / 大文件策略
+
+### Phase 12 - MCAP 录制范围扩展
+
+**状态：Planned**
+
+目标：将 Parameters、Services、ConnectionGraph、ClientPublish 等数据也纳入 MCAP 录制。
+
+当前 Phase 10 MCAP 仅在 `FoxgloveSession.Publish()` 路径做双写，录制范围仅限于 topic 消息数据（Message records）。以下 WebSocket 协议数据**不会被**录制到 .mcap：
+
+- **Parameters** — 参数值的设置/获取走 JSON text 协议，不经过 `Publish` 路径
+- **Services** — 服务调用和响应走 JSON text + binary response，不经过双写
+- **ConnectionGraph** — 发布者/订阅者拓扑信息仅在 WebSocket 连接期间动态维护
+- **ClientPublish** — 客户端发布的 binary 数据走 `OnClientBinary` 路径，不在当前双写范围内
+
+因此 Foxglove Studio 打开 .mcap 文件时，Parameters、Services、ConnectionGraph 面板不可用——这是预期行为，不是 bug。
+
+Phase 12 计划扩展录制钩子到以上路径，具体设计见后续 Phase 12 plan 文档。
+
 ## 建议目录结构
 
 ```text

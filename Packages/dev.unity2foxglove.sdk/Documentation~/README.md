@@ -4,7 +4,7 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 
 ## Status
 
-**Phase 6 in progress.** Parameters (get/set/subscribe), JSON Services with binary request/response codec, service handler main-thread model, logger bridge. Package identity: `dev.unity2foxglove.sdk`.
+**Phase 10 complete.** MCAP recording, live WebSocket protocol (Parameters, Services, ConnectionGraph, ClientPublish, Assets, PlaybackControl). 307 automated tests. Package identity: `dev.unity2foxglove.sdk`.
 
 ## Supported Unity Versions
 
@@ -22,7 +22,11 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 | 3 | Done | Official schemas (FrameTransform, SceneUpdate), typed DTOs, 3D cube |
 | 4 | Done | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
 | 5 | Done | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml |
-| 6 | **In Progress** | Parameters, ParametersSubscribe, JSON Services |
+| 6 | Done | Parameters, ParametersSubscribe, JSON Services |
+| 7 | Done | ParametersSubscribe push, time capability, logger bridge, ConnectionGraph |
+| 8 | Done | ClientPublish, ConnectionGraph refinement |
+| 9 | Done | Assets / fetchAsset, PlaybackControl, unified publisher clock |
+| 10 | Done | MCAP recording/dual-write (topic messages) |
 
 ## Quick Start
 
@@ -229,6 +233,47 @@ Binary: opcode=4 requestId=42 status=1 errorLen=23
 ```
 
 See `Untiy2Foxglove/Tests/test_fetch_asset.ps1` for the full script.
+
+## MCAP Recording (Phase 10)
+
+**Status:** Done. Records `/tf`, `/scene`, `/unity/camera` topic messages to .mcap files during live WebSocket sessions.
+
+### Quick Start
+
+Enable recording via `FoxgloveManager` Inspector:
+- Check **Enable Recording** under "MCAP Recording" header
+- Set output prefix and directory (defaults to `Application.persistentDataPath`)
+- .mcap files are timestamped: `foxglove_20260503_145719.mcap`
+
+Or via code:
+
+```csharp
+var runtime = new FoxgloveRuntime();
+runtime.EnableRecording("D:/recordings/my_session.mcap");
+runtime.Start("My App", port: 8765);
+// ... publish data ...
+runtime.Stop(); // gracefully closes the .mcap file
+```
+
+### Known Limitations
+
+MCAP recording only captures topic message data (Schema, Channel, Message records) via the `FoxgloveSession.Publish()` dual-write hook. The following live WebSocket protocol features are **not** recorded to .mcap and are unavailable when playing back the file in Foxglove Studio:
+
+- **Parameters** — parameter values travel over JSON text protocol, not the publish path
+- **Services** — service calls and responses use JSON text + binary response, not the publish path
+- **ConnectionGraph** — publisher/subscriber topology is dynamically maintained during the live session only
+- **ClientPublish** — client-published data arrives via `OnClientBinary`, outside the current dual-write scope
+
+This is expected behavior. Expanding MCAP recording to these data paths is planned for Phase 12.
+
+### Manual Verification
+
+1. In Unity, enable MCAP Recording on `FoxgloveManager` Inspector
+2. Play → Foxglove connect → run for a few seconds
+3. Stop Play → find the .mcap file in the recording directory
+4. Open Foxglove Studio → "Open local file" → select the .mcap file
+5. Verify: 3D panel shows scene, Plot panel shows time-series data, timeline scrubbing works
+6. Verify: Parameters / Services / ConnectionGraph panels are unavailable (expected — see limitations above)
 
 ## Architecture
 

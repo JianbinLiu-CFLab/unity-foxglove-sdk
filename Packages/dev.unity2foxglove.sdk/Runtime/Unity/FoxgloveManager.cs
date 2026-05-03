@@ -22,6 +22,14 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private float _playbackStartOffsetSeconds = 0;
         [SerializeField] private float _playbackDurationSeconds = 60;
 
+        // Phase 10: MCAP Recording
+        [Header("MCAP Recording")]
+        [SerializeField] private bool _enableRecording;
+        [SerializeField] private string _recordingPrefix = "foxglove";
+        [Tooltip("Leave empty to save in <project>/Recordings/ . Shown path is the resolved default at runtime.")]
+        [SerializeField] private string _recordingDirectory = "";
+        [SerializeField] private int _recordingChunkSizeKB = 1024;
+
         private Core.FoxgloveRuntime _runtime;
         private int _nextChannelId = 1;
         private bool _warnedNotRunning;
@@ -110,6 +118,15 @@ namespace Unity.FoxgloveSDK.Components
                 var startNs = (ulong)((nowMs + (long)(_playbackStartOffsetSeconds * 1000)) * 1_000_000L);
                 var endNs = startNs + (ulong)(_playbackDurationSeconds * 1_000_000_000L);
                 _runtime.EnablePlaybackControl(startNs, endNs);
+            }
+
+            // Phase 10: Enable recording
+            if (_enableRecording)
+            {
+                var dir = string.IsNullOrEmpty(_recordingDirectory) ? Application.dataPath + "/../Recordings" : _recordingDirectory;
+                System.IO.Directory.CreateDirectory(dir);
+                var path = System.IO.Path.Combine(dir, $"{_recordingPrefix}_{System.DateTime.Now:yyyyMMdd_HHmmss}.mcap");
+                _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024);
             }
 
             _runtime.Start(_serverName, _host, _port);

@@ -5,6 +5,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -42,6 +43,8 @@ namespace Unity.FoxgloveSDK.Core
         internal IFoxgloveTransport Transport => _transport;
 
         internal void SetRuntime(FoxgloveRuntime runtime) => _runtime = runtime;
+        private McapRecorder _recorder;
+        internal void SetRecorder(McapRecorder r) => _recorder = r;
 
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
@@ -83,6 +86,8 @@ namespace Unity.FoxgloveSDK.Core
         {
             _channels.Register(channel);
             _graph.SetPublishedTopic(channel.Topic, "unity");
+            _recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
+                channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
             BroadcastGraphUpdate();
@@ -117,6 +122,7 @@ namespace Unity.FoxgloveSDK.Core
 
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
+            _recorder?.WriteMessage(channelId, logTimeNs, payload);
             if (_channels.Get(channelId) == null) return;
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {
