@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Components
             var jpeg = _texture2D.EncodeToJPG(_jpegQuality);
             if (jpeg == null || jpeg.Length == 0) return;
 
-            var unixNs = FoxgloveTimeUtil.NowUnixTimeNs();
+            var unixNs = CurrentLogTimeNs;
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
 
             var msg = new CompressedImageMessage

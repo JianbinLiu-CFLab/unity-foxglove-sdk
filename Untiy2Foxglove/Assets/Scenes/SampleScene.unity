@@ -314,6 +314,13 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
+  _assetRoots:
+  - uriPrefix: asset://demo/
+    localRoot: Assets
+    maxMB: 16
+  _enablePlaybackControl: 0
+  _playbackStartOffsetSeconds: 0
+  _playbackDurationSeconds: 60
 --- !u!4 &346350282
 Transform:
   m_ObjectHideFlags: 0
@@ -342,8 +349,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup
   _manager: {fileID: 0}
-  _cube: {fileID: 2004464838}
-  _scenePublisher: {fileID: 0}
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -562,7 +567,7 @@ MonoBehaviour:
   _entityId: 
   _frameId: 
   _size: {x: 1, y: 1, z: 1}
-  _color: {r: 0, g: 1, b: 0, a: 1}
+  _color: {r: 0.21568628, g: 0.21568628, b: 0.21568628, a: 1}
 --- !u!114 &2004464833
 MonoBehaviour:
   m_ObjectHideFlags: 0

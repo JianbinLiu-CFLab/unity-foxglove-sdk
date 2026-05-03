@@ -98,9 +98,8 @@ namespace Unity.FoxgloveSDK.Tests
             // metadata must NOT be present
             Assert(obj["metadata"] == null, "metadata omitted when empty");
 
-            // Must NOT contain undeclared capabilities
-            Assert(!json.Contains("\"clientPublish\""), "JSON does not contain clientPublish");
-            Assert(!json.Contains("\"time\""), "JSON does not contain time");
+            // Phase 8: clientPublish is now declared
+            // Phase 7: time capability is now declared
         }
 
         // ── G.3 SessionId is stable across clients ──

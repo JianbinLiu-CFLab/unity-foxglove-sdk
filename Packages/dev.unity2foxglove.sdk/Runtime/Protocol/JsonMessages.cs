@@ -74,6 +74,12 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("sessionId", NullValueHandling = NullValueHandling.Ignore)]
         public string SessionId { get; set; }
 
+        [JsonProperty("dataStartTime", NullValueHandling = NullValueHandling.Ignore)]
+        public DataTimestamp DataStartTime { get; set; }
+
+        [JsonProperty("dataEndTime", NullValueHandling = NullValueHandling.Ignore)]
+        public DataTimestamp DataEndTime { get; set; }
+
         public bool ShouldSerializeSupportedEncodings() => SupportedEncodings?.Count > 0;
 
         public bool ShouldSerializeMetadata() => Metadata?.Count > 0;
@@ -318,5 +324,100 @@ namespace Unity.FoxgloveSDK.Protocol
 
         [JsonProperty("id", NullValueHandling = NullValueHandling.Ignore)]
         public string Id { get; set; }
+    }
+
+    // ── ConnectionGraph messages (Phase 8) ──
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class SubscribeConnectionGraph
+    {
+        [JsonProperty("op")]
+        public string Op => "subscribeConnectionGraph";
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class UnsubscribeConnectionGraph
+    {
+        [JsonProperty("op")]
+        public string Op => "unsubscribeConnectionGraph";
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class ConnectionGraphUpdate
+    {
+        [JsonProperty("op")]
+        public string Op => "connectionGraphUpdate";
+
+        [JsonProperty("publishedTopics")]
+        public List<PublishedTopic> PublishedTopics { get; set; } = new List<PublishedTopic>();
+
+        [JsonProperty("subscribedTopics")]
+        public List<SubscribedTopic> SubscribedTopics { get; set; } = new List<SubscribedTopic>();
+
+        [JsonProperty("advertisedServices")]
+        public List<AdvertisedService> AdvertisedServices { get; set; } = new List<AdvertisedService>();
+
+        [JsonProperty("removedTopics")]
+        public List<string> RemovedTopics { get; set; } = new List<string>();
+
+        [JsonProperty("removedServices")]
+        public List<string> RemovedServices { get; set; } = new List<string>();
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class PublishedTopic
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("publisherIds")]
+        public List<string> PublisherIds { get; set; } = new List<string>();
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class SubscribedTopic
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("subscriberIds")]
+        public List<string> SubscriberIds { get; set; } = new List<string>();
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class AdvertisedService
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("providerIds")]
+        public List<string> ProviderIds { get; set; } = new List<string>();
+    }
+
+    // ── Phase 9: Assets / fetchAsset ──
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class FetchAsset
+    {
+        [JsonProperty("op")]
+        public string Op => "fetchAsset";
+
+        [JsonProperty("requestId")]
+        public uint RequestId { get; set; }
+
+        [JsonProperty("uri")]
+        public string Uri { get; set; }
+    }
+
+    // ── Phase 9: DataTimestamp for playback control ──
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class DataTimestamp
+    {
+        [JsonProperty("sec")]
+        public ulong Sec { get; set; }
+
+        [JsonProperty("nsec")]
+        public uint Nsec { get; set; }
     }
 }

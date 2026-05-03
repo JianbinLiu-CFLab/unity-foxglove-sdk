@@ -7,17 +7,14 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>
     /// Publishes a SceneUpdate with a single cube entity representing this GameObject.
     /// </summary>
-    public class FoxgloveSceneCubePublisher : FoxglovePublisherBase
+    public class FoxgloveSceneCubePublisher : FoxglovePublisher<SceneUpdateMessage>
     {
         [SerializeField] private string _entityId = "";
         [SerializeField] private string _frameId = "";
         [SerializeField] private Vector3 _size = Vector3.one;
         [SerializeField] private Color _color = Color.green;
 
-        /// <summary>Current cube color (can be changed at runtime by demo scripts).</summary>
         public Color SceneCubeColor { get => _color; set => _color = value; }
-
-        protected override string SchemaName => "foxglove.SceneUpdate";
 
         private FoxgloveTransformPublisher _transformPublisher;
 
@@ -49,16 +46,9 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void Update()
+        protected override SceneUpdateMessage CreateMessage()
         {
-            if (_manager == null) return;
-            if (!_publishOnEnable) return;
-            if (!ShouldPublishNow()) return;
-
-            var unixNs = FoxgloveTimeUtil.NowUnixTimeNs();
-            var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
-
-            var msg = new SceneUpdateMessage
+            return new SceneUpdateMessage
             {
                 Entities = new List<SceneEntity>
                 {
@@ -66,7 +56,7 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         Id = ResolvedEntityId,
                         FrameId = ResolvedFrameId,
-                        Timestamp = time,
+                        Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(CurrentLogTimeNs),
                         Lifetime = new FoxgloveDuration(),
                         Cubes = new List<CubePrimitive>
                         {
@@ -84,8 +74,6 @@ namespace Unity.FoxgloveSDK.Components
                     }
                 }
             };
-
-            Publish(msg, unixNs);
         }
     }
 }

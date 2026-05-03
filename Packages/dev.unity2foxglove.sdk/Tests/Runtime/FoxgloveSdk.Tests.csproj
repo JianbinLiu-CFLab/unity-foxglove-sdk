@@ -16,6 +16,7 @@
     <Compile Include="../../Runtime/Core/*.cs" />
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/*.cs" />
+    <Compile Include="../../Runtime/IO/*.cs" />
     <Compile Include="../../Runtime/Schemas/*.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SkeletonValidation.cs" />
@@ -25,5 +26,10 @@
     <Compile Include="Phase4Validation.cs" />
     <Compile Include="Phase5Validation.cs" />
     <Compile Include="Phase6Validation.cs" />
+    <Compile Include="Phase7Validation.cs" />
+    <Compile Include="Phase8Validation.cs" />
+    <Compile Include="Phase9Validation.cs" />
+    <Compile Include="Phase10Validation.cs" />
+    <Compile Include="McapRecordReader.cs" />
   </ItemGroup>
 </Project>

@@ -2,7 +2,7 @@
 
 ## Decision: Pure C# MVP
 
-**Decision date:** 2026-04-30
+**Decision date:** 2026-04-30 (last updated 2026-05-03)
 
 We chose **pure C# WebSocket protocol implementation** over wrapping the official `foxglove-sdk` C FFI.
 
@@ -26,8 +26,13 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 | 3 | Done | Official schemas, FrameTransform, SceneUpdate (cube), 3D panel |
 | 4 | Done | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
 | 5 | Done | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml, package identity migration |
-| 6 | **Done** | Parameters (get/set/subscribe), JSON Services (advertise/call/response/failure/timeout) |
-| 7 | Planned | MCAP recording/dual-write |
+| 6 | Done | Parameters (get/set/subscribe), JSON Services (advertise/call/response/failure/timeout) |
+| 7 | Done | ParametersSubscribe push, time capability, logger bridge, ConnectionGraph |
+| 8 | Done | ClientPublish, ConnectionGraph refinement |
+| 9 | Done | Assets / fetchAsset, PlaybackControl, unified publisher clock |
+| 10 | Done | MCAP recording/dual-write (topic messages only) |
+| 11 | Planned | Attributes, source generation, Assets improvements (TBD) |
+| 12 | Planned | MCAP recording range expansion: Parameters, Services, ConnectionGraph, ClientPublish |
 
 ## Layers
 
@@ -176,5 +181,5 @@ User handler (e.g. FoxgloveDemoSetup.Update):
 - **Timestamp strategy:** `FoxgloveTimeUtil.NowUnixTimeNs()` uses `Stopwatch.GetTimestamp()` with UTC epoch anchor for nanosecond precision. `SystemClock.NowNs` delegates to the same source. No `time` capability declared in `serverInfo`.
 - **Service handler thread boundary:** Transport callbacks only parse and enqueue service calls. Unity handlers execute in `FoxgloveManager.Update()` via `DrainServiceCalls()`. Handlers returning `JToken` complete via `CompleteResponse`; exceptions trigger `Fail()`. Handlers must not block for long periods (timeout is 10s).
 - **Logger bridge (Phase 6):** `IFoxgloveLogger` replaces raw `Console.Error.WriteLine` for protocol errors/warnings. `ConsoleLogger` (default, writes to stderr) is used in dotnet tests. In Unity Editor, protocol errors appear in the Console window via `Debug.LogWarning`/`Debug.LogError` bridge. In IL2CPP Player, errors route to Unity's native log which is visible in `Player.log`.
-- **Coordinate system:** `FoxgloveTransformPublisher` supports two modes via `CoordinateMode` enum. `UnityRaw` (default): X right, Y up, Z forward (left-handed). `FoxgloveRos`: X forward, Y left, Z up (right-handed), matching Foxglove/ROS TF conventions. Translation and rotation are both converted.
+- **Coordinate system:** `FoxgloveTransformPublisher` supports two modes via `CoordinateMode` enum. `UnityRaw` (default): X right, Y up, Z forward (left-handed). `FoxgloveStandard`: X forward, Y left, Z up (right-handed), matching Foxglove 3D panel default coordinate system. Translation and rotation are both converted.
 - **Transport lifecycle:** `FoxgloveRuntime` owns transport and disposes it. `FoxgloveSession` borrows transport and only unbinds events on dispose. `IFoxgloveTransport : IDisposable`.

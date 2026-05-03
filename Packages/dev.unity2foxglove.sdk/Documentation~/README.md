@@ -4,7 +4,7 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 
 ## Status
 
-**Phase 6 in progress.** Parameters (get/set/subscribe), JSON Services with binary request/response codec, service handler main-thread model, logger bridge. Package identity: `dev.unity2foxglove.sdk`.
+**Phase 10 complete.** MCAP recording, live WebSocket protocol (Parameters, Services, ConnectionGraph, ClientPublish, Assets, PlaybackControl). 307 automated tests. Package identity: `dev.unity2foxglove.sdk`.
 
 ## Supported Unity Versions
 
@@ -22,7 +22,11 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 | 3 | Done | Official schemas (FrameTransform, SceneUpdate), typed DTOs, 3D cube |
 | 4 | Done | Unity MonoBehaviour integration, Transform/SceneCube/Camera publishers |
 | 5 | Done | IL2CPP hardening, nanosecond timestamps, transport lifecycle, link.xml |
-| 6 | **In Progress** | Parameters, ParametersSubscribe, JSON Services |
+| 6 | Done | Parameters, ParametersSubscribe, JSON Services |
+| 7 | Done | ParametersSubscribe push, time capability, logger bridge, ConnectionGraph |
+| 8 | Done | ClientPublish, ConnectionGraph refinement |
+| 9 | Done | Assets / fetchAsset, PlaybackControl, unified publisher clock |
+| 10 | Done | MCAP recording/dual-write (topic messages) |
 
 ## Quick Start
 
@@ -149,11 +153,14 @@ Look for `Build succeeded:` at the end. `Exiting batchmode successfully with ret
 
 The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, **right-drag** to pan, **scroll** to scale. Changes are visible in Foxglove 3D panel in real-time.
 
+**Editor vs Player timing:** In Editor Mode, connect Foxglove *after* pressing Play — if you connect before Play, the session hasn't started yet and ConnectionGraph / topic list may be incomplete. IL2CPP Player auto-starts the server on launch, so connecting immediately after startup always shows the full topology.
+
 ### Foxglove Desktop operation steps
 
 1. **Open connection**: "Open connection" → select **Foxglove WebSocket** → URL `ws://127.0.0.1:8765`
 2. **View topics**: left sidebar Topics panel shows `/tf` and `/scene`
 3. **View 3D**: switch to 3D panel, select `/scene` topic → green cube at origin
+   - Cube color uses Foxglove RGBA: `[r, g, b, a]` with values 0 to 1. The 4th value is alpha (0 = transparent, 1 = opaque).
 4. **Raw view**: switch panel to Raw Messages, select `/scene` → see SceneUpdate JSON payload
 5. **Reconnect**: close Foxglove, reopen, repeat — server survives
 
@@ -168,9 +175,131 @@ The Player includes `MouseDragCube` on the demo Cube: **left-drag** to rotate, *
 | 5 | Disconnect + reconnect works | Pass |
 | 6 | Closing Foxglove does not crash server | Pass |
 
+### Phase 8 manual verification
+
+**Connection Graph:**
+1. Play → Foxglove connect → select **Connection Graph** panel
+2. Expected: see publisher node (unity) with topics `/tf`, `/scene`, `/unity/camera`
+
+**ClientPublish:**
+1. Foxglove → **+** → **Publish** panel
+2. Topic field: `/test/client_publish`
+3. Message schema: select a known schema, e.g. `foxglove.CompressedImage`
+4. Foxglove auto-generates the JSON template for that schema. Edit the payload values if desired.
+5. Click **Publish**
+6. Expected: Unity Console shows `[ClientMsg] client=1 topic=/test/client_publish payload=...`
+
+### Phase 9: fetchAsset verification
+
+**Setup:**
+1. In Unity, select Foxglove GameObject → FoxgloveManager Inspector
+2. Under **Asset Roots**, add:
+   - `Uri Prefix`: `asset://demo/`
+   - `Local Root`: `Assets` (relative to project root)
+   - `Max Mb`: `16` (16 MB per file; leave default unless large assets needed)
+3. Play
+
+**Run the test script (separate PowerShell):**
+
+```powershell
+& "D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove\Tests\test_fetch_asset.ps1"
+```
+
+The script connects with `foxglove.sdk.v1` subprotocol, drains initial messages, sends:
+
+```json
+{"op":"fetchAsset","requestId":42,"uri":"asset://demo/Scripts/FoxgloveDemoSetup.cs"}
+```
+
+then reads the binary `fetchAssetResponse` frame.
+
+**Verified output (2026-05-03):**
+
+```
+Binary: opcode=4 requestId=42 status=0 errorLen=0
+[PASS] fetchAsset SUCCESS — got 4685 bytes, content matches
+```
+
+- `opcode=4` — `ServerOpcode.FetchAssetResponse`
+- `requestId=42` — matches request
+- `status=0` — success
+- 4685 bytes returned, file content verified
+
+**Error cases (bad URI, no root):**
+
+```
+Binary: opcode=4 requestId=42 status=1 errorLen=23
+[FAIL] Server error: No asset roots registered
+```
+
+See `Untiy2Foxglove/Tests/test_fetch_asset.ps1` for the full script.
+
+## MCAP Recording (Phase 10)
+
+**Status:** Done. Records `/tf`, `/scene`, `/unity/camera` topic messages to .mcap files during live WebSocket sessions.
+
+### Quick Start
+
+Enable recording via `FoxgloveManager` Inspector:
+- Check **Enable Recording** under "MCAP Recording" header
+- Set output prefix and directory (defaults to `Application.persistentDataPath`)
+- .mcap files are timestamped: `foxglove_20260503_145719.mcap`
+
+Or via code:
+
+```csharp
+var runtime = new FoxgloveRuntime();
+runtime.EnableRecording("D:/recordings/my_session.mcap");
+runtime.Start("My App", port: 8765);
+// ... publish data ...
+runtime.Stop(); // gracefully closes the .mcap file
+```
+
+### Known Limitations
+
+MCAP recording only captures topic message data (Schema, Channel, Message records) via the `FoxgloveSession.Publish()` dual-write hook. The following live WebSocket protocol features are **not** recorded to .mcap and are unavailable when playing back the file in Foxglove Studio:
+
+- **Parameters** — parameter values travel over JSON text protocol, not the publish path
+- **Services** — service calls and responses use JSON text + binary response, not the publish path
+- **ConnectionGraph** — publisher/subscriber topology is dynamically maintained during the live session only
+- **ClientPublish** — client-published data arrives via `OnClientBinary`, outside the current dual-write scope
+
+This is expected behavior. Expanding MCAP recording to these data paths is planned for Phase 12.
+
+### Manual Verification
+
+1. In Unity, enable MCAP Recording on `FoxgloveManager` Inspector
+2. Play → Foxglove connect → run for a few seconds
+3. Stop Play → find the .mcap file in the recording directory
+4. Open Foxglove Studio → "Open local file" → select the .mcap file
+5. Verify: 3D panel shows scene, Plot panel shows time-series data, timeline scrubbing works
+6. Verify: Parameters / Services / ConnectionGraph panels are unavailable (expected — see limitations above)
+
 ## Architecture
 
 See [Architecture.md](Architecture.md) for the transport abstraction, protocol layer, and module breakdown.
+
+### Verify transport logging (Phase 7)
+
+To confirm `IFoxgloveLogger` is wired through to Unity Console:
+
+```powershell
+$ws = New-Object System.Net.WebSockets.ClientWebSocket
+$ws.ConnectAsync("ws://127.0.0.1:8765", [System.Threading.CancellationToken]::None).Wait(2000)
+```
+
+**Expected:** Unity Console shows:
+
+```
+[Foxglove] Client connected without accepted subprotocol, closing.
+UnityEngine.Debug:LogError(object)
+Unity.FoxgloveSDK.Components.UnityLogger:LogError(...)
+Unity.FoxgloveSDK.Transport.ManagedWsBackend:Handshake(...)
+```
+
+The stack trace confirms the log flows through `UnityLogger` → `ManagedWsBackend` → `Debug.LogError`, proving the Phase 7 logger bridge is fully connected.
+
+---
 
 ## Dependencies
 

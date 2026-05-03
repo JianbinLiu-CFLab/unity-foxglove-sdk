@@ -1,5 +1,4 @@
 using System;
-using System.Threading;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -15,12 +14,25 @@ namespace Unity.FoxgloveSDK.Core
         public string Encoding { get; set; }
         public byte[] Payload { get; set; }
         public DateTime CreatedAt { get; set; }
-        public int Completed; // 0=pending, 1=completed
-        public byte[] ResponsePayload;
-        public string ResponseEncoding;
-        public string FailureMessage;
 
-        public bool IsCompleted => Completed != 0;
+        public bool IsCompleted { get; private set; }
+        public byte[] ResponsePayload { get; private set; }
+        public string ResponseEncoding { get; private set; }
+        public string FailureMessage { get; private set; }
+
         public bool IsTimedOut(TimeSpan timeout) => DateTime.UtcNow - CreatedAt > timeout;
+
+        internal void Complete(string encoding, byte[] payload)
+        {
+            ResponseEncoding = encoding;
+            ResponsePayload = payload;
+            IsCompleted = true;
+        }
+
+        internal void Fail(string message)
+        {
+            FailureMessage = message;
+            IsCompleted = true;
+        }
     }
 }
