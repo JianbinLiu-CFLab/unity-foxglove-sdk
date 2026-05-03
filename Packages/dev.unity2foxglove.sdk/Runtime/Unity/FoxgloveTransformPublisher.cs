@@ -8,17 +8,8 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class FoxgloveTransformPublisher : FoxglovePublisher<FrameTransformMessage>
     {
-        public enum CoordinateMode
-        {
-            /// <summary>Unity left-handed: X right, Y up, Z forward.</summary>
-            UnityRaw,
-            /// <summary>Foxglove/right-handed: X forward, Y left, Z up.</summary>
-            FoxgloveStandard
-        }
-
         [SerializeField] private string _parentFrameId = "unity_world";
         [SerializeField] private string _childFrameId = "";
-        [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.UnityRaw;
 
         private void Awake()
         {
@@ -32,30 +23,22 @@ namespace Unity.FoxgloveSDK.Components
         {
             var unixNs = CurrentLogTimeNs;
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
-            var pos = transform.position;
-            var rot = transform.rotation;
 
-            double tx, ty, tz;
-            double rx, ry, rz, rw;
-            switch (_coordinateMode)
-            {
-                case CoordinateMode.FoxgloveStandard:
-                    tx = pos.z; ty = -pos.x; tz = pos.y;
-                    rx = -rot.z; ry = rot.x; rz = -rot.y; rw = rot.w;
-                    break;
-                default:
-                    tx = pos.x; ty = pos.y; tz = pos.z;
-                    rx = rot.x; ry = rot.y; rz = rot.z; rw = rot.w;
-                    break;
-            }
+            var pos = Manager?.ActiveCoordinateMode == CoordinateMode.FoxgloveStandard
+                ? new Vector3(transform.position.z, -transform.position.x, transform.position.y)
+                : transform.position;
+
+            var rot = Manager?.ActiveCoordinateMode == CoordinateMode.FoxgloveStandard
+                ? new Quaternion(-transform.rotation.z, transform.rotation.x, -transform.rotation.y, transform.rotation.w)
+                : transform.rotation;
 
             return new FrameTransformMessage
             {
                 Timestamp = time,
                 ParentFrameId = _parentFrameId,
                 ChildFrameId = ResolvedChildFrameId,
-                Translation = new FoxgloveVector3 { X = tx, Y = ty, Z = tz },
-                Rotation = new FoxgloveQuaternion { X = rx, Y = ry, Z = rz, W = rw }
+                Translation = new FoxgloveVector3 { X = pos.x, Y = pos.y, Z = pos.z },
+                Rotation = new FoxgloveQuaternion { X = rot.x, Y = rot.y, Z = rot.z, W = rot.w }
             };
         }
     }

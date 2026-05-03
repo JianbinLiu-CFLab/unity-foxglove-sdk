@@ -1,0 +1,270 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace Unity.FoxgloveSDK.IO
+{
+    public class McapReader
+    {
+        private readonly Stream _stream;
+        private readonly byte[] _buf = new byte[8];
+        public const ulong DefaultRecordSizeLimit = 256UL * 1024 * 1024;
+
+        public McapReader(Stream stream)
+        {
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        }
+
+        public McapFileSummary ReadSummary(ulong recordSizeLimit = DefaultRecordSizeLimit)
+        {
+            // Verify leading magic
+            var magic = new byte[8];
+            ReadExact(magic, 0, 8);
+            for (var i = 0; i < McapWriter.Magic.Length; i++)
+                if (magic[i] != McapWriter.Magic[i])
+                    throw new InvalidDataException("MCAP leading magic mismatch");
+
+            // Read Footer: last 8 (trailing magic) + 9 + 20 bytes of footer record
+            _stream.Seek(-(8 + 9 + 20), SeekOrigin.End);
+            var (opcode, footerContent) = ReadOneRecord(recordSizeLimit);
+            if (opcode != 0x02)
+                throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
+
+            var footer = DecodeFooter(footerContent);
+
+            if (footer.SummaryStart == 0)
+                throw new InvalidDataException("No summary section in MCAP file");
+
+            // Read summary section
+            _stream.Seek((long)footer.SummaryStart, SeekOrigin.Begin);
+            var schemas = new List<McapSchema>();
+            var channels = new List<McapChannel>();
+            McapStatistics stats = null;
+            var chunkIndexes = new List<McapChunkIndex>();
+
+            var summaryEnd = (ulong)_stream.Length - 8UL; // end before trailing magic
+            while ((ulong)_stream.Position < summaryEnd)
+            {
+                var (op, content) = ReadOneRecord(recordSizeLimit);
+                switch (op)
+                {
+                    case 0x03:
+                        schemas.Add(DecodeSchema(content));
+                        break;
+                    case 0x04:
+                        channels.Add(DecodeChannel(content));
+                        break;
+                    case 0x08:
+                        chunkIndexes.Add(DecodeChunkIndex(content));
+                        break;
+                    case 0x0B:
+                        stats = DecodeStatistics(content);
+                        break;
+                    case 0x0E: // SummaryOffset — skip
+                        break;
+                    default:
+                        break; // unknown, skip
+                }
+            }
+
+            return new McapFileSummary
+            {
+                Schemas = schemas,
+                Channels = channels,
+                Statistics = stats,
+                ChunkIndexes = chunkIndexes
+            };
+        }
+
+        public (byte opcode, byte[] content) ReadOneRecord(ulong sizeLimit = DefaultRecordSizeLimit)
+        {
+            var opcode = (byte)_stream.ReadByte();
+            var contentLength = ReadU64();
+            if (contentLength > sizeLimit)
+                throw new InvalidDataException($"Record content length {contentLength} exceeds limit {sizeLimit}");
+            var content = new byte[contentLength];
+            ReadExact(content, 0, (int)contentLength);
+            return (opcode, content);
+        }
+
+        public byte[] ReadChunkRecords(ulong chunkStartOffset, ulong chunkLength)
+        {
+            _stream.Seek((long)chunkStartOffset, SeekOrigin.Begin);
+            var (opcode, content) = ReadOneRecord();
+            if (opcode != 0x06)
+                throw new InvalidDataException($"Expected Chunk (0x06) at offset {chunkStartOffset}, got 0x{opcode:X2}");
+
+            int off = 0;
+            var st = McapBinaryReader.ReadU64LE(content, ref off);
+            var et = McapBinaryReader.ReadU64LE(content, ref off);
+            var uncompSize = McapBinaryReader.ReadU64LE(content, ref off);
+            var crc = McapBinaryReader.ReadU32LE(content, ref off);
+            var compression = McapBinaryReader.ReadString(content, ref off);
+            var compSize = McapBinaryReader.ReadU64LE(content, ref off);
+
+            var compressed = new byte[compSize];
+            Buffer.BlockCopy(content, off, compressed, 0, (int)compSize);
+
+            return McapCompression.Decompress(compression, compressed, (int)uncompSize);
+        }
+
+        public List<McapMessage> ReadChunkMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
+        {
+            var messages = new List<McapMessage>();
+            var off = 0;
+            while (off + 9 <= uncompressedRecords.Length)
+            {
+                var opcode = uncompressedRecords[off++];
+                var len = McapBinaryReader.ReadU64LE(uncompressedRecords, ref off);
+                if (off + (int)len > uncompressedRecords.Length) break;
+
+                if (opcode == 0x05)
+                {
+                    var msg = DecodeMessage(uncompressedRecords, off, (int)len);
+                    if (!filterChannelId.HasValue || msg.ChannelId == filterChannelId.Value)
+                        messages.Add(msg);
+                }
+                off += (int)len;
+            }
+            return messages;
+        }
+
+        // ── Decode helpers ──
+
+        public static McapHeader DecodeHeader(byte[] content)
+        {
+            var off = 0;
+            return new McapHeader
+            {
+                Profile = McapBinaryReader.ReadString(content, ref off),
+                Library = McapBinaryReader.ReadString(content, ref off)
+            };
+        }
+
+        public static McapSchema DecodeSchema(byte[] content)
+        {
+            var off = 0;
+            return new McapSchema
+            {
+                Id = McapBinaryReader.ReadU16LE(content, ref off),
+                Name = McapBinaryReader.ReadString(content, ref off),
+                Encoding = McapBinaryReader.ReadString(content, ref off),
+                Data = McapBinaryReader.ReadPrefixed(content, ref off)
+            };
+        }
+
+        public static McapChannel DecodeChannel(byte[] content)
+        {
+            var off = 0;
+            return new McapChannel
+            {
+                Id = McapBinaryReader.ReadU16LE(content, ref off),
+                SchemaId = McapBinaryReader.ReadU16LE(content, ref off),
+                Topic = McapBinaryReader.ReadString(content, ref off),
+                MessageEncoding = McapBinaryReader.ReadString(content, ref off)
+            };
+        }
+
+        public static McapMessage DecodeMessage(byte[] buf, int off, int contentLen)
+        {
+            var start = off;
+            var channelId = McapBinaryReader.ReadU16LE(buf, ref off);
+            var sequence = McapBinaryReader.ReadU32LE(buf, ref off);
+            var logTime = McapBinaryReader.ReadU64LE(buf, ref off);
+            var publishTime = McapBinaryReader.ReadU64LE(buf, ref off);
+            var dataLen = contentLen - (off - start);
+            var data = new byte[dataLen];
+            if (dataLen > 0)
+                Buffer.BlockCopy(buf, off, data, 0, dataLen);
+            return new McapMessage
+            {
+                ChannelId = channelId,
+                Sequence = sequence,
+                LogTime = logTime,
+                PublishTime = publishTime,
+                Data = data
+            };
+        }
+
+        public static McapChunkIndex DecodeChunkIndex(byte[] content)
+        {
+            var off = 0;
+            var ci = new McapChunkIndex
+            {
+                MessageStartTime = McapBinaryReader.ReadU64LE(content, ref off),
+                MessageEndTime = McapBinaryReader.ReadU64LE(content, ref off),
+                ChunkStartOffset = McapBinaryReader.ReadU64LE(content, ref off),
+                ChunkLength = McapBinaryReader.ReadU64LE(content, ref off)
+            };
+            var mioSize = McapBinaryReader.ReadU32LE(content, ref off);
+            var mioCount = mioSize / 10;
+            for (var i = 0; i < mioCount; i++)
+            {
+                var cid = McapBinaryReader.ReadU16LE(content, ref off);
+                var offset = McapBinaryReader.ReadU64LE(content, ref off);
+                ci.MessageIndexOffsets[cid] = offset;
+            }
+            ci.MessageIndexLength = McapBinaryReader.ReadU64LE(content, ref off);
+            ci.Compression = McapBinaryReader.ReadString(content, ref off);
+            ci.CompressedSize = McapBinaryReader.ReadU64LE(content, ref off);
+            ci.UncompressedSize = McapBinaryReader.ReadU64LE(content, ref off);
+            return ci;
+        }
+
+        public static McapStatistics DecodeStatistics(byte[] content)
+        {
+            var off = 0;
+            var s = new McapStatistics
+            {
+                MessageCount = McapBinaryReader.ReadU64LE(content, ref off),
+                SchemaCount = McapBinaryReader.ReadU16LE(content, ref off),
+                ChannelCount = McapBinaryReader.ReadU32LE(content, ref off),
+                AttachmentCount = McapBinaryReader.ReadU32LE(content, ref off),
+                MetadataCount = McapBinaryReader.ReadU32LE(content, ref off),
+                ChunkCount = McapBinaryReader.ReadU32LE(content, ref off),
+                MessageStartTime = McapBinaryReader.ReadU64LE(content, ref off),
+                MessageEndTime = McapBinaryReader.ReadU64LE(content, ref off)
+            };
+            var cmsSize = McapBinaryReader.ReadU32LE(content, ref off);
+            var cmsCount = cmsSize / 10;
+            for (var i = 0; i < cmsCount; i++)
+            {
+                var cid = McapBinaryReader.ReadU16LE(content, ref off);
+                var count = McapBinaryReader.ReadU64LE(content, ref off);
+                s.ChannelMessageCounts[cid] = count;
+            }
+            return s;
+        }
+
+        public static McapFooter DecodeFooter(byte[] content)
+        {
+            var off = 0;
+            return new McapFooter
+            {
+                SummaryStart = McapBinaryReader.ReadU64LE(content, ref off),
+                SummaryOffsetStart = McapBinaryReader.ReadU64LE(content, ref off),
+                SummaryCrc = McapBinaryReader.ReadU32LE(content, ref off)
+            };
+        }
+
+        // ── Internal ──
+
+        private ulong ReadU64()
+        {
+            ReadExact(_buf, 0, 8);
+            return (ulong)_buf[0] | ((ulong)_buf[1] << 8) | ((ulong)_buf[2] << 16) | ((ulong)_buf[3] << 24)
+                 | ((ulong)_buf[4] << 32) | ((ulong)_buf[5] << 40) | ((ulong)_buf[6] << 48) | ((ulong)_buf[7] << 56);
+        }
+
+        private void ReadExact(byte[] buf, int offset, int count)
+        {
+            var read = 0;
+            while (read < count)
+            {
+                var n = _stream.Read(buf, offset + read, count - read);
+                if (n == 0) throw new EndOfStreamException();
+                read += n;
+            }
+        }
+    }
+}

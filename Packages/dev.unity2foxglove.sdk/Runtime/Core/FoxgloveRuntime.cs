@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
@@ -26,6 +27,15 @@ namespace Unity.FoxgloveSDK.Core
         private string _recordingPath;
         private int _recordingChunkSize = McapRecorder.DefaultChunkSizeBytes;
         private bool _recordingEnabled;
+
+        // Phase 11: MCAP replay
+        private McapReplayEngine _replayEngine;
+        private bool _replayEnabled;
+        private System.Collections.Generic.Dictionary<ushort, McapSchema> _summarySchemas;
+        private System.Collections.Generic.Dictionary<ushort, string> _channelTopicMap;
+
+        /// <summary>Fired on Unity main thread for each replayed message.</summary>
+        public event Action<string, byte[]> OnReplayMessage;
 
         public ulong NowNs => _playbackClock.NowNs;
 
@@ -87,6 +97,30 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _session.Start(host, port);
+
+            // Phase 11: register replay channels after session start
+            if (_replayEnabled && _replayEngine != null && _replayEngine.IsLoaded)
+            {
+                var channels = _replayEngine.Channels;
+                if (channels != null)
+                {
+                    foreach (var ch in channels)
+                    {
+                        var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | ch.Id);
+                        var schema = _summarySchemas != null && _summarySchemas.TryGetValue(ch.SchemaId, out var s)
+                            ? s : null;
+                        _session.RegisterChannel(new AdvertiseChannel
+                        {
+                            Id = replayId,
+                            Topic = ch.Topic,
+                            Encoding = ch.MessageEncoding,
+                            SchemaName = schema?.Name ?? "",
+                            SchemaEncoding = schema?.Encoding ?? "",
+                            Schema = schema?.Data != null ? System.Text.Encoding.UTF8.GetString(schema.Data) : ""
+                        });
+                    }
+                }
+            }
         }
 
         public void Stop()
@@ -94,6 +128,7 @@ namespace Unity.FoxgloveSDK.Core
             if (_recorder != null) { _recorder.Close(); _recorder.Dispose(); _recorder = null; }
             _session?.Dispose();
             _session = null;
+            // Phase 11: keep replay loaded across Stop/Start cycles
         }
 
         // ── Channel API ──
@@ -164,6 +199,68 @@ namespace Unity.FoxgloveSDK.Core
         internal ulong GetPlaybackStartNs() => _playbackClock.StartNs;
         internal ulong GetPlaybackEndNs() => _playbackClock.EndNs;
 
+        // ── Phase 11: MCAP Replay ──
+
+        public bool ReplayEnabled => _replayEnabled;
+
+        public void EnableReplay(string filePath)
+        {
+            if (_recordingEnabled)
+            {
+                _logger.LogWarning("Recording and Replay cannot both be enabled. Replay disabled.");
+                return;
+            }
+            try
+            {
+                _replayEngine = new McapReplayEngine();
+                _replayEngine.Load(filePath);
+
+                // Cache summary schemas for channel registration
+                using (var fs = System.IO.File.OpenRead(filePath))
+                {
+                    var reader = new McapReader(fs);
+                    var summary = reader.ReadSummary();
+                    if (summary?.Schemas != null)
+                    {
+                        _summarySchemas = new System.Collections.Generic.Dictionary<ushort, McapSchema>();
+                        foreach (var s in summary.Schemas)
+                            _summarySchemas[s.Id] = s;
+                    }
+                }
+
+                // Build channel → topic lookup for OnReplayMessage dispatch
+                _channelTopicMap = new System.Collections.Generic.Dictionary<ushort, string>();
+                var channels = _replayEngine.Channels;
+                if (channels != null)
+                    foreach (var c in channels)
+                        _channelTopicMap[c.Id] = c.Topic;
+
+                _playbackClock.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
+                _replayEngine.Play();
+                _replayEnabled = true;
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError($"Failed to load MCAP replay: {ex.Message}");
+                _replayEngine?.Dispose();
+                _replayEngine = null;
+                _replayEnabled = false;
+            }
+        }
+
+        public void DisableReplay()
+        {
+            _replayEngine?.Dispose();
+            _replayEngine = null;
+            _replayEnabled = false;
+        }
+
+        internal void ReplaySeek(ulong timeNs) => _replayEngine?.Seek(timeNs);
+        internal void ReplayPlay() => _replayEngine?.Play();
+        internal void ReplayPause() => _replayEngine?.Pause();
+
+        internal IReadOnlyList<McapChannel> GetReplayChannels() => _replayEngine?.Channels;
+
         internal void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
             => _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
 
@@ -171,14 +268,43 @@ namespace Unity.FoxgloveSDK.Core
             => _playbackClock.ToState(didSeek, requestId);
 
         /// <summary>
-        /// Per-frame tick: drain service calls and broadcast Time frame.
+        /// Per-frame tick: drain service calls → replay due messages → broadcast Time frame.
         /// Called from FoxgloveManager.Update() on the Unity main thread.
         /// </summary>
         public void Tick()
         {
             if (_session == null) return;
             _session.DrainServiceCalls();
-            _session.BroadcastTime();
+
+            // Phase 11: tick replay engine
+            if (_replayEnabled && _replayEngine != null)
+            {
+                var messages = _replayEngine.Tick();
+                ulong latestLogTime = 0;
+                if (messages != null)
+                {
+                    foreach (var msg in messages)
+                    {
+                        var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | msg.ChannelId);
+                        _session.Publish(replayId, msg.Data, msg.LogTime);
+                        if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
+
+                        // Notify adapter
+                        if (_channelTopicMap != null && _channelTopicMap.TryGetValue(msg.ChannelId, out var topic2))
+                            OnReplayMessage?.Invoke(topic2, msg.Data);
+                    }
+                }
+                // Broadcast Time frame at the latest replayed log_time (matching official pattern)
+                if (latestLogTime > 0)
+                {
+                    var frame = Protocol.BinaryEncoding.EncodeTime(latestLogTime);
+                    _session.Transport.BroadcastBinary(frame);
+                }
+            }
+            else
+            {
+                _session.BroadcastTime();
+            }
         }
 
         public void Dispose()

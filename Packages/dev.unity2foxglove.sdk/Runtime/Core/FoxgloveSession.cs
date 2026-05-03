@@ -397,6 +397,9 @@ namespace Unity.FoxgloveSDK.Core
                     out var pbHasSeek, out var pbSeekNs, out var pbReqId))
             {
                 _runtime.ApplyPlaybackCommand(pbCmd, pbSpeed, pbHasSeek, pbSeekNs);
+                if (pbHasSeek) _runtime.ReplaySeek(pbSeekNs);
+                if (pbCmd == 0) _runtime.ReplayPlay();
+                else if (pbCmd == 1) _runtime.ReplayPause();
                 var state = _runtime.GetPlaybackState(true, pbReqId);
                 var pbFrame = BinaryEncoding.EncodePlaybackState(
                     state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
