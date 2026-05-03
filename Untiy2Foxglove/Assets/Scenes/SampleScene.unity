@@ -323,14 +323,14 @@ MonoBehaviour:
   _enablePlaybackControl: 0
   _playbackStartOffsetSeconds: 0
   _playbackDurationSeconds: 60
-  _enableRecording: 0
+  _enableRecording: 1
   _recordingPrefix: foxglove
   _recordingDirectory: 
   _recordingChunkSizeKB: 1024
-  _enableReplay: 1
+  _enableReplay: 0
   _replayFilePath: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove\Recordings\foxglove_20260503_155536.mcap
-  _replayAutoPlay: 1
-  _disableLivePublishers: 1
+  _replayAutoPlay: 0
+  _disableLivePublishers: 0
 --- !u!4 &346350282
 Transform:
   m_ObjectHideFlags: 0

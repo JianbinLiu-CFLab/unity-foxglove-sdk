@@ -308,34 +308,28 @@ updated: 2026-04-30
 
 **状态：Done。MCAP 双写实现，307 测试通过，Foxglove Studio 可正常打开录制的 .mcap 文件。**
 
-### Phase 11 - MCAP Reader + Replay
-
-目标：实现 MCAP 文件读取、压缩解压（LZ4/Zstd）、ReplayEngine 时间轴回放、FoxgloveReplayObjectAdapter 驱动 Unity 场景。
-
-**状态：Done。MCAP 读取/解压/回放/adapter 驱动已实现。**
-
-执行计划：
-- [[12_PHASE11_PLAN]]
-
-范围：
-- `McapReader` + `McapBinaryReader` + `McapRecords` + `McapCompression`
-- `McapReplayEngine`（Load / Play / Pause / Seek / Tick）
-- `FoxgloveReplayObjectAdapter`（/tf + /scene → Unity GameObject 驱动）
-- `CoordinateMode` 全局坐标系转换（UnityRaw / FoxgloveStandard）
-- `FoxgloveManager` live/replay 互斥切换（`_disableLivePublishers`）
-
-Deferred：
-- Parameters / Services / ConnectionGraph / ClientPublish 文件化回放
-- CompressedImage 反向渲染到 Unity texture
-- MCAP writer compression 输出
-- 录制时写入 `coordinate_mode` 到 Channel metadata，回放自动识别坐标系
-
-### Phase 12 - (预留) Attributes + Source Generation + 录制范围扩展
+### Phase 11 - (预留) Attributes + Source Generation
 
 候选项：
 - `[FoxgloveLog]` attribute + Editor-time source generation
 - 更完整 Assets 缓存 / MIME / 大文件策略
-- Parameters / Services / ConnectionGraph / ClientPublish 纳入 MCAP 录制/回放
+
+### Phase 12 - MCAP 录制范围扩展
+
+**状态：Planned**
+
+目标：将 Parameters、Services、ConnectionGraph、ClientPublish 等数据也纳入 MCAP 录制。
+
+当前 Phase 10 MCAP 仅在 `FoxgloveSession.Publish()` 路径做双写，录制范围仅限于 topic 消息数据（Message records）。以下 WebSocket 协议数据**不会被**录制到 .mcap：
+
+- **Parameters** — 参数值的设置/获取走 JSON text 协议，不经过 `Publish` 路径
+- **Services** — 服务调用和响应走 JSON text + binary response，不经过双写
+- **ConnectionGraph** — 发布者/订阅者拓扑信息仅在 WebSocket 连接期间动态维护
+- **ClientPublish** — 客户端发布的 binary 数据走 `OnClientBinary` 路径，不在当前双写范围内
+
+因此 Foxglove Studio 打开 .mcap 文件时，Parameters、Services、ConnectionGraph 面板不可用——这是预期行为，不是 bug。
+
+Phase 12 计划扩展录制钩子到以上路径，具体设计见后续 Phase 12 plan 文档。
 
 ## 建议目录结构
 

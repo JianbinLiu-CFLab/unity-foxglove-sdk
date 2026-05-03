@@ -32,3 +32,4 @@ UserSettings/
 Untiy2Foxglove/Recordings/*
 !Untiy2Foxglove/Recordings/.gitkeep
 debug_mcap/
+.dotnet-home/
