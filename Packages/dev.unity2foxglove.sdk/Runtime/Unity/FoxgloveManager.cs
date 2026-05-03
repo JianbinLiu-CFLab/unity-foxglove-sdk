@@ -6,13 +6,25 @@ namespace Unity.FoxgloveSDK.Components
     /// MonoBehaviour entry point. Manages FoxgloveRuntime lifecycle
     /// within Unity's game loop.
     /// </summary>
+    public enum CoordinateMode
+    {
+        /// <summary>Unity left-handed: X right, Y up, Z forward. No conversion.</summary>
+        UnityRaw,
+        /// <summary>Foxglove right-handed: X forward, Y left, Z up.</summary>
+        FoxgloveStandard
+    }
+
     public class FoxgloveManager : MonoBehaviour
     {
+        [Header("General")]
         [SerializeField] private string _serverName = "Unity Foxglove SDK";
         [SerializeField] private string _host = "127.0.0.1";
         [SerializeField] private int _port = 8765;
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
+
+        [Header("Coordinate System")]
+        [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.UnityRaw;
 
         // Phase 9: Asset roots
         [SerializeField] private AssetRootDefinition[] _assetRoots = { };
@@ -30,16 +42,60 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _recordingDirectory = "";
         [SerializeField] private int _recordingChunkSizeKB = 1024;
 
+        // Phase 11: MCAP Replay
+        [Header("MCAP Replay")]
+        [SerializeField] private bool _enableReplay;
+        [SerializeField] private string _replayFilePath = "";
+        [SerializeField] private bool _replayAutoPlay;
+        [SerializeField] private bool _disableLivePublishers = true;
+        private bool _livePublishersDisabled;
+
         private Core.FoxgloveRuntime _runtime;
         private int _nextChannelId = 1;
         private bool _warnedNotRunning;
+        private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
         private readonly System.Collections.Concurrent.ConcurrentQueue<ClientEvent> _clientEvents = new();
         public ulong NowNs => _runtime?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
         public event System.Action<uint> OnClientConnected;
         public event System.Action<uint> OnClientDisconnected;
         public event System.Action<uint, uint, string, byte[]> OnClientMessage;
+        public event System.Action<string, byte[]> OnReplayMessage;
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string), uint>();
+
+        public CoordinateMode ActiveCoordinateMode => _coordinateMode;
+
+        /// <summary>Convert Unity position to Foxglove (for publishing).</summary>
+        public Vector3 UnityToFoxglovePosition(Vector3 p)
+        {
+            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
+                return new Vector3(p.y, p.z, p.x);
+            return p;
+        }
+
+        /// <summary>Convert Unity rotation to Foxglove (for publishing).</summary>
+        public Quaternion UnityToFoxgloveRotation(Quaternion q)
+        {
+            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
+                return new Quaternion(q.y, q.z, q.x, q.w);
+            return q;
+        }
+
+        /// <summary>Convert Foxglove position to Unity (for replay).</summary>
+        public Vector3 FoxgloveToUnityPosition(Vector3 p)
+        {
+            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
+                return new Vector3(-p.y, p.z, p.x);
+            return p;
+        }
+
+        /// <summary>Convert Foxglove rotation to Unity (for replay).</summary>
+        public Quaternion FoxgloveToUnityRotation(Quaternion q)
+        {
+            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
+                return new Quaternion(q.y, -q.z, -q.x, q.w);
+            return q;
+        }
 
         public Core.FoxgloveRuntime Runtime => _runtime;
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
@@ -50,6 +106,19 @@ namespace Unity.FoxgloveSDK.Components
                 Application.runInBackground = true;
 
             _runtime = new Core.FoxgloveRuntime(new UnityLogger());
+
+            // Phase 11: Recording / Replay mutual exclusion
+            if (_enableRecording && _enableReplay)
+            {
+                Debug.LogWarning("[Foxglove] Recording and Replay cannot both be enabled. Disabling Replay.");
+                _enableReplay = false;
+            }
+
+            // Phase 11: If replay enabled, disable live publishers
+            if (_enableReplay && _disableLivePublishers)
+            {
+                DisableLivePublishers();
+            }
         }
 
         private void EnqueueConnect(uint id) =>
@@ -99,9 +168,10 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             // Phase 9: Register asset roots
-            foreach (var ar in _assetRoots)
+            if (_assetRoots != null) foreach (var ar in _assetRoots)
             {
-                if (!string.IsNullOrEmpty(ar.uriPrefix) && !string.IsNullOrEmpty(ar.localRoot))
+                if (ar.uriPrefix != null && ar.localRoot != null
+                    && !string.IsNullOrEmpty(ar.uriPrefix) && !string.IsNullOrEmpty(ar.localRoot))
                 {
                     var absRoot = System.IO.Path.IsPathRooted(ar.localRoot)
                         ? ar.localRoot
@@ -129,7 +199,16 @@ namespace Unity.FoxgloveSDK.Components
                 _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024);
             }
 
+            // Phase 11: Enable replay
+            if (_enableReplay && !string.IsNullOrEmpty(_replayFilePath))
+            {
+                if (_disableLivePublishers && !_livePublishersDisabled)
+                    DisableLivePublishers();
+                _runtime.EnableReplay(_replayFilePath);
+            }
+
             _runtime.Start(_serverName, _host, _port);
+            _runtime.OnReplayMessage += (topic, data) => OnReplayMessage?.Invoke(topic, data);
             _warnedNotRunning = false;
 
             var transport = _runtime.Session?.Transport;
@@ -150,6 +229,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.Stop();
             _channelCache.Clear();
             _nextChannelId = 1;
+            RestoreLivePublishers();
         }
 
         /// <summary>
@@ -194,6 +274,35 @@ namespace Unity.FoxgloveSDK.Components
 
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName);
             _runtime.PublishJson(channelId, message, logTimeNs);
+        }
+        private void DisableLivePublishers()
+        {
+            if (_livePublishersDisabled) return;
+            var pubs = FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            _disabledPublishers.Clear();
+            foreach (var pub in pubs)
+            {
+                if (pub.enabled)
+                {
+                    pub.enabled = false;
+                    _disabledPublishers.Add(pub);
+                }
+            }
+            _livePublishersDisabled = true;
+            Debug.Log($"[Foxglove] Disabled {_disabledPublishers.Count} live publisher(s)");
+        }
+
+        private void RestoreLivePublishers()
+        {
+            if (!_livePublishersDisabled) return;
+            foreach (var pub in _disabledPublishers)
+            {
+                if (pub != null)
+                    pub.enabled = true;
+            }
+            _disabledPublishers.Clear();
+            _livePublishersDisabled = false;
+            Debug.Log("[Foxglove] Restored live publishers");
         }
     }
 
