@@ -74,6 +74,12 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("sessionId", NullValueHandling = NullValueHandling.Ignore)]
         public string SessionId { get; set; }
 
+        [JsonProperty("dataStartTime", NullValueHandling = NullValueHandling.Ignore)]
+        public DataTimestamp DataStartTime { get; set; }
+
+        [JsonProperty("dataEndTime", NullValueHandling = NullValueHandling.Ignore)]
+        public DataTimestamp DataEndTime { get; set; }
+
         public bool ShouldSerializeSupportedEncodings() => SupportedEncodings?.Count > 0;
 
         public bool ShouldSerializeMetadata() => Metadata?.Count > 0;
@@ -386,5 +392,32 @@ namespace Unity.FoxgloveSDK.Protocol
 
         [JsonProperty("providerIds")]
         public List<string> ProviderIds { get; set; } = new List<string>();
+    }
+
+    // ── Phase 9: Assets / fetchAsset ──
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class FetchAsset
+    {
+        [JsonProperty("op")]
+        public string Op => "fetchAsset";
+
+        [JsonProperty("requestId")]
+        public uint RequestId { get; set; }
+
+        [JsonProperty("uri")]
+        public string Uri { get; set; }
+    }
+
+    // ── Phase 9: DataTimestamp for playback control ──
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public class DataTimestamp
+    {
+        [JsonProperty("sec")]
+        public ulong Sec { get; set; }
+
+        [JsonProperty("nsec")]
+        public uint Nsec { get; set; }
     }
 }

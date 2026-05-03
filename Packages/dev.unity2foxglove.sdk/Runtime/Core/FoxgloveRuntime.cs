@@ -11,13 +11,16 @@ namespace Unity.FoxgloveSDK.Core
     {
         private FoxgloveSession _session;
         private readonly IFoxgloveTransport _transport;
-        private readonly IFoxgloveClock _clock;
+        private readonly PlaybackClock _playbackClock;
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
 
         // Phase 7: Runtime-owned definitions survive Stop/Start cycles
         private readonly FoxgloveParameterStore _parameters = new();
         private readonly FoxgloveServiceRegistry _services = new();
+        private readonly FoxgloveAssetRegistry _assets = new();
+
+        public ulong NowNs => _playbackClock.NowNs;
 
         public FoxgloveRuntime(IFoxgloveLogger logger = null)
             : this(new ManagedWsBackend(logger), new SystemClock(), new DefaultSchemaRegistry(), logger) { }
@@ -25,7 +28,7 @@ namespace Unity.FoxgloveSDK.Core
         public FoxgloveRuntime(IFoxgloveTransport transport, IFoxgloveClock clock, ISchemaRegistry schemaRegistry, IFoxgloveLogger logger = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+            _playbackClock = new PlaybackClock(clock ?? new SystemClock());
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
             _logger = logger ?? new ConsoleLogger();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
@@ -63,7 +66,8 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
-            _session = new FoxgloveSession(name, _transport, _clock, _schemaRegistry, _logger, _parameters, _services);
+            _session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
+            _session.SetRuntime(this);
             _session.Start(host, port);
         }
 
@@ -118,6 +122,26 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         public void DrainServiceCalls() => _session?.DrainServiceCalls();
+
+        // ── Phase 9: Assets ──
+
+        public void RegisterAssetRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
+            => _assets.RegisterRoot(uriPrefix, localRoot, maxBytes);
+
+        internal FoxgloveAssetRegistry Assets => _assets;
+
+        // ── Phase 9: Playback Control ──
+
+        public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
+        public bool PlaybackEnabled => _playbackClock.PlaybackEnabled;
+        internal ulong GetPlaybackStartNs() => _playbackClock.StartNs;
+        internal ulong GetPlaybackEndNs() => _playbackClock.EndNs;
+
+        internal void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
+            => _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
+
+        internal PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
+            => _playbackClock.ToState(didSeek, requestId);
 
         /// <summary>
         /// Per-frame tick: drain service calls and broadcast Time frame.

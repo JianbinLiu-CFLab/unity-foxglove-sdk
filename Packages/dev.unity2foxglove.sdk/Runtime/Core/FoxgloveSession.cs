@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
 
         // Phase 6-7: Runtime-owned definitions, Session holds references
+        private FoxgloveRuntime _runtime;
         private readonly FoxgloveParameterStore _parameters;
         private readonly ParameterSubscriptionRegistry _paramSubs = new();
         private readonly FoxgloveServiceRegistry _services;
@@ -39,6 +40,8 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Transport for Manager-level event wiring (connection events).</summary>
         internal IFoxgloveTransport Transport => _transport;
+
+        internal void SetRuntime(FoxgloveRuntime runtime) => _runtime = runtime;
 
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
@@ -247,6 +250,26 @@ namespace Unity.FoxgloveSDK.Core
             catch { _logger.LogWarning($"Client unadvertise parse error from client {clientId}"); }
         }
 
+        private void HandleFetchAsset(uint clientId, string json)
+        {
+            FetchAsset msg;
+            try { msg = JsonConvert.DeserializeObject<FetchAsset>(json); }
+            catch
+            {
+                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(0, "Malformed JSON"));
+                return;
+            }
+            if (_runtime?.Assets == null || !_runtime.Assets.HasRoots)
+            {
+                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, "No asset roots registered"));
+                return;
+            }
+            if (_runtime.Assets.TryRead(msg.Uri, out var data, out var error))
+                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseSuccess(msg.RequestId, data));
+            else
+                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, error));
+        }
+
         private void BroadcastGraphUpdate()
         {
             var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
@@ -287,6 +310,18 @@ namespace Unity.FoxgloveSDK.Core
                 SupportedEncodings = new List<string> { "json" },
                 SessionId = SessionId
             };
+
+            if (_runtime?.PlaybackEnabled == true)
+            {
+                info.Capabilities.Add(Capability.PlaybackControl);
+                var startNs = _runtime.GetPlaybackStartNs();
+                var endNs = _runtime.GetPlaybackEndNs();
+                info.DataStartTime = new DataTimestamp { Sec = startNs / 1_000_000_000, Nsec = (uint)(startNs % 1_000_000_000) };
+                info.DataEndTime = new DataTimestamp { Sec = endNs / 1_000_000_000, Nsec = (uint)(endNs % 1_000_000_000) };
+            }
+            if (_runtime?.Assets?.HasRoots == true)
+                info.Capabilities.Add(Capability.Assets);
+
             _transport.SendText(clientId, JsonConvert.SerializeObject(info,
                 new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }));
 
@@ -295,7 +330,6 @@ namespace Unity.FoxgloveSDK.Core
             if (chs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new Advertise { Channels = chs }));
 
-            // Service advertise snapshot
             var svcs = _services.GetAll();
             if (svcs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
@@ -336,6 +370,7 @@ namespace Unity.FoxgloveSDK.Core
                 case "unsubscribeConnectionGraph": HandleUnsubscribeConnectionGraph(clientId); break;
                 case "advertise": HandleClientAdvertise(clientId, json); break;
                 case "unadvertise": HandleClientUnadvertise(clientId, json); break;
+                case "fetchAsset": HandleFetchAsset(clientId, json); break;
                 default: _logger.LogWarning($"Unknown op '{op}' from client {clientId}"); break;
             }
         }
@@ -347,6 +382,19 @@ namespace Unity.FoxgloveSDK.Core
             {
                 if (_clientChannels.TryGetValue((clientId, chId), out var ch))
                     OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
+                return;
+            }
+
+            // Playback control request
+            if (_runtime?.PlaybackEnabled == true &&
+                BinaryEncoding.TryDecodePlaybackControlRequest(data, out var pbCmd, out var pbSpeed,
+                    out var pbHasSeek, out var pbSeekNs, out var pbReqId))
+            {
+                _runtime.ApplyPlaybackCommand(pbCmd, pbSpeed, pbHasSeek, pbSeekNs);
+                var state = _runtime.GetPlaybackState(true, pbReqId);
+                var pbFrame = BinaryEncoding.EncodePlaybackState(
+                    state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
+                _transport.SendBinary(clientId, pbFrame);
                 return;
             }
 

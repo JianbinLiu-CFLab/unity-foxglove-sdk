@@ -19,7 +19,7 @@ updated: 2026-05-02
 # Foxglove Unity SDK Phase 8 执行计划
 
 > [!summary]
-> 本文是从 [[00_PLAN]] 拆出的 Phase 8 执行版，承接 [[08_PHASE7_PLAN]] 已完成的 bug 修复、DX 提升和 Time capability。Phase 8 新增两个协议能力：ConnectionGraph（连接拓扑可视化）和 ClientPublish（Foxglove 向 Unity 双向通信）。MCAP 进入 Phase 9 单独计划。
+> 本文是从 [[00_PLAN]] 拆出的 Phase 8 执行版，承接 [[08_PHASE7_PLAN]] 已完成的 bug 修复、DX 提升和 Time capability。Phase 8 新增两个协议能力：ConnectionGraph（连接拓扑可视化）和 ClientPublish（Foxglove 向 Unity 双向通信）。Assets + PlaybackControl 进入 [[10_PHASE9_PLAN]]，MCAP 进入 Phase 10 单独计划。
 
 ## 对应关系
 
@@ -56,7 +56,7 @@ Phase 7 review 中发现 6 项可推迟，纳入 Phase 8 候选：
 
 ## 本阶段不做
 
-- 不实现 MCAP 写入、读取、双写（进入 Phase 9）。
+- 不实现 MCAP 写入、读取、双写（进入 Phase 10）。
 - 不实现 Assets / fetchAsset。
 - 不实现 PlaybackControl。
 - 不实现 `[FoxgloveLog]` attribute 或 source generation。
@@ -268,7 +268,6 @@ Phase 7 review 中发现 6 项可推迟，纳入 Phase 8 候选：
 
 ## 后续阶段预留
 
-- Phase 9：MCAP 录制 / 双写。
-- Phase 10 候选：Assets / fetchAsset。
-- Phase 10 候选：`[FoxgloveLog]` attribute + Editor-time source generation。
-- Phase 10 候选：PlaybackControl。
+- Phase 9：[[10_PHASE9_PLAN]] — Assets + PlaybackControl。
+- Phase 10：MCAP 录制 / 双写。
+- Phase 11 候选：`[FoxgloveLog]` attribute + Editor-time source generation。

@@ -314,6 +314,13 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
+  _assetRoots:
+  - uriPrefix: asset://demo/
+    localRoot: Assets
+    maxMB: 16
+  _enablePlaybackControl: 0
+  _playbackStartOffsetSeconds: 0
+  _playbackDurationSeconds: 60
 --- !u!4 &346350282
 Transform:
   m_ObjectHideFlags: 0
