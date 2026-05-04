@@ -15,6 +15,7 @@
 
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../../Runtime/Unity/Attributes/*.cs" />
     <Compile Include="../../Runtime/Core/*.cs" />
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/*.cs" />
@@ -35,6 +36,7 @@
     <Compile Include="Phase11Validation.cs" />
     <Compile Include="Phase12Validation.cs" />
     <Compile Include="Phase13Validation.cs" />
+    <Compile Include="Phase14Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
   </ItemGroup>
 </Project>

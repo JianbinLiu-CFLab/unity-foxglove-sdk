@@ -278,8 +278,29 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            var channelId = GetOrRegisterSchemaChannel(topic, schemaName);
+            var channelId = string.IsNullOrEmpty(schemaName)
+                ? GetOrRegisterChannel(topic, "json")
+                : GetOrRegisterSchemaChannel(topic, schemaName);
             _runtime.PublishJson(channelId, message, logTimeNs);
+        }
+
+        private uint GetOrRegisterChannel(string topic, string encoding)
+        {
+            var key = (topic, encoding);
+            if (_channelCache.TryGetValue(key, out var id))
+                return id;
+
+            id = (uint)_nextChannelId++;
+            _channelCache[key] = id;
+            _runtime.RegisterChannel(new Protocol.AdvertiseChannel
+            {
+                Id = id,
+                Topic = topic,
+                Encoding = encoding,
+                SchemaName = "",
+                Schema = ""
+            });
+            return id;
         }
         private void DisableLivePublishers()
         {
