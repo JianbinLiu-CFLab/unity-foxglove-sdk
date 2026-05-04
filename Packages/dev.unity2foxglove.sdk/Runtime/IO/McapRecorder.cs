@@ -14,6 +14,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly IFoxgloveLogger _log;
         private readonly string _compression;
         private readonly Dictionary<(string name, string enc, string hash), ushort> _sKey = new();
+        private readonly Dictionary<(uint clientId, uint chId), ChMap> _clientChMap = new();
         private readonly Dictionary<uint, ChMap> _chMap = new();
         private readonly List<SchemaRec> _schemas = new();
         private readonly List<ChannelRec> _channels = new();
@@ -68,16 +69,51 @@ namespace Unity.FoxgloveSDK.IO
             if (!string.IsNullOrEmpty(CoordinateMode))
                 meta["coordinate_mode"] = CoordinateMode;
             _w.WriteChannel(mCid, sid, topic, enc, meta);
-            _channels.Add(new ChannelRec { Id = mCid, Sid = sid, Topic = topic, Enc = enc, Meta = meta });
+            _channels.Add(new ChannelRec { Id = mCid, Sid = sid, Topic = topic, Enc = enc, Meta = new Dictionary<string, string>(meta) });
         }
 
-        public void WriteClientMessage(uint fId, ulong logNs, byte[] payload, string topic)
+        public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic)
         {
             if (_failed) return;
-            // Auto-register if first time seeing this client channel
-            if (!_chMap.ContainsKey(fId))
-                AddChannel(fId, topic, "json", "", "", "");
-            WriteMessage(fId, logNs, payload);
+            var key = (clientId, chId);
+            if (!_clientChMap.TryGetValue(key, out var map))
+            {
+                if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
+                var mcapId = _nextCid++;
+                map = new ChMap { McapId = mcapId, Topic = topic };
+                _clientChMap[key] = map;
+                var meta = string.IsNullOrEmpty(CoordinateMode)
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
+                _w.WriteChannel(mcapId, 0, topic, "json", meta);
+                _channels.Add(new ChannelRec { Id = mcapId, Sid = 0, Topic = topic, Enc = "json", Meta = meta });
+            }
+            WriteMessageToChMap(map, logNs, payload);
+        }
+
+        private void WriteMessageToChMap(ChMap map, ulong logNs, byte[] payload)
+        {
+            if (_failed) return;
+            var seq = map.Seq++;
+            var off = (ulong)_chunkBuf.Position;
+            var m = new MemoryStream();
+            McapWriter.WriteU16(m, map.McapId);
+            McapWriter.WriteU32(m, seq);
+            McapWriter.WriteU64(m, logNs);
+            McapWriter.WriteU64(m, logNs);
+            if (payload != null) m.Write(payload, 0, payload.Length);
+            var content = m.ToArray();
+            _chunkBuf.WriteByte(0x05);
+            McapWriter.WriteU64(_chunkBuf, (ulong)content.Length);
+            _chunkBuf.Write(content, 0, content.Length);
+            map.Pending.Add((logNs, off));
+            if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
+            if (logNs > _msgEt) _msgEt = logNs;
+            if (_chunkSt == 0 && _chunkEt == 0) { _chunkSt = logNs; _chunkEt = logNs; }
+            if (logNs < _chunkSt) _chunkSt = logNs;
+            if (logNs > _chunkEt) _chunkEt = logNs;
+            _msgCount++;
+            if (_chunkBuf.Length >= _chunkSz) FlushChunk();
         }
 
         public void WriteMetadata(string name, string jsonValue)
@@ -93,27 +129,7 @@ namespace Unity.FoxgloveSDK.IO
         public void WriteMessage(uint fId, ulong logNs, byte[] payload)
         {
             if (_failed || !_chMap.TryGetValue(fId, out var map)) return;
-            var seq = map.Seq++;
-            var off = (ulong)_chunkBuf.Position;
-            var m = new MemoryStream();
-            McapWriter.WriteU16(m, map.McapId);
-            McapWriter.WriteU32(m, seq);
-            McapWriter.WriteU64(m, logNs);
-            McapWriter.WriteU64(m, logNs);
-            if (payload != null) m.Write(payload, 0, payload.Length);
-            var content = m.ToArray();
-            // Write full MCAP record into chunk buffer: opcode + content_length + content
-            _chunkBuf.WriteByte(0x05);
-            McapWriter.WriteU64(_chunkBuf, (ulong)content.Length);
-            _chunkBuf.Write(content, 0, content.Length);
-            map.Pending.Add((logNs, off));
-            if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
-            if (logNs > _msgEt) _msgEt = logNs;
-            if (_chunkSt == 0 && _chunkEt == 0) { _chunkSt = logNs; _chunkEt = logNs; }
-            if (logNs < _chunkSt) _chunkSt = logNs;
-            if (logNs > _chunkEt) _chunkEt = logNs;
-            _msgCount++;
-            if (_chunkBuf.Length >= _chunkSz) FlushChunk();
+            WriteMessageToChMap(map, logNs, payload);
         }
 
         public void Close()
@@ -138,7 +154,7 @@ namespace Unity.FoxgloveSDK.IO
             // Statistics
             var statsGrpStart = (ulong)_w.Position;
             _w.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, 0, _metadataCount, (uint)_chunkCount, _msgSt, _msgEt,
-                _chMap.ToDictionary(kv => kv.Value.McapId, kv => (ulong)kv.Value.Seq));
+                AllChMaps().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
             var statsGrpLen = (ulong)_w.Position - statsGrpStart;
 
             // ChunkIndex group
@@ -168,6 +184,12 @@ namespace Unity.FoxgloveSDK.IO
 
         public void Dispose() { Close(); _w.Dispose(); _chunkBuf.Dispose(); }
 
+        IEnumerable<ChMap> AllChMaps()
+        {
+            foreach (var m in _chMap.Values) yield return m;
+            foreach (var m in _clientChMap.Values) yield return m;
+        }
+
         void FlushChunk()
         {
             if (_chunkBuf.Length == 0) return;
@@ -178,7 +200,7 @@ namespace Unity.FoxgloveSDK.IO
             var chunkLen = (ulong)_w.Position - off;
             var mio = new Dictionary<ushort, ulong>();
             ulong mioTLen = 0;
-            foreach (var map in _chMap.Values)
+            foreach (var map in AllChMaps())
             {
                 if (map.Pending.Count == 0) continue;
                 var start = (ulong)_w.Position;

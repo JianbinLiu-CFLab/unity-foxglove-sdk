@@ -24,12 +24,12 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = CurrentLogTimeNs;
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
 
-            var pos = Manager?.ActiveCoordinateMode == CoordinateMode.FoxgloveStandard
-                ? new Vector3(transform.position.z, -transform.position.x, transform.position.y)
+            var pos = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
+                ? CoordinateConverter.UnityToFoxglovePosition(transform.position)
                 : transform.position;
 
-            var rot = Manager?.ActiveCoordinateMode == CoordinateMode.FoxgloveStandard
-                ? new Quaternion(-transform.rotation.z, transform.rotation.x, -transform.rotation.y, transform.rotation.w)
+            var rot = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
+                ? CoordinateConverter.UnityToFoxgloveRotation(transform.rotation)
                 : transform.rotation;
 
             return new FrameTransformMessage

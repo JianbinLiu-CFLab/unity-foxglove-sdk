@@ -8,10 +8,10 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public enum CoordinateMode
     {
-        /// <summary>Unity left-handed: X right, Y up, Z forward. No conversion.</summary>
-        UnityRaw,
-        /// <summary>Foxglove right-handed: X forward, Y left, Z up.</summary>
-        FoxgloveStandard
+        /// <summary>Unity native left-handed (X right, Y up, Z forward). No conversion.</summary>
+        LeftHand,
+        /// <summary>ROS/Foxglove right-handed (X forward, Y left, Z up). Data is converted.</summary>
+        RightHand
     }
 
     public enum McapCompressionMode
@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _runInBackground = true;
 
         [Header("Coordinate System")]
-        [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.UnityRaw;
+        [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.LeftHand;
 
         // Phase 9: Asset roots
         [SerializeField] private AssetRootDefinition[] _assetRoots = { };
@@ -76,37 +76,17 @@ namespace Unity.FoxgloveSDK.Components
 
         public CoordinateMode ActiveCoordinateMode => _coordinateMode;
 
-        /// <summary>Convert Unity position to Foxglove (for publishing).</summary>
         public Vector3 UnityToFoxglovePosition(Vector3 p)
-        {
-            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
-                return new Vector3(p.y, p.z, p.x);
-            return p;
-        }
+            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxglovePosition(p) : p;
 
-        /// <summary>Convert Unity rotation to Foxglove (for publishing).</summary>
         public Quaternion UnityToFoxgloveRotation(Quaternion q)
-        {
-            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
-                return new Quaternion(q.y, q.z, q.x, q.w);
-            return q;
-        }
+            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxgloveRotation(q) : q;
 
-        /// <summary>Convert Foxglove position to Unity (for replay).</summary>
         public Vector3 FoxgloveToUnityPosition(Vector3 p)
-        {
-            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
-                return new Vector3(-p.y, p.z, p.x);
-            return p;
-        }
+            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityPosition(p) : p;
 
-        /// <summary>Convert Foxglove rotation to Unity (for replay).</summary>
         public Quaternion FoxgloveToUnityRotation(Quaternion q)
-        {
-            if (_coordinateMode == CoordinateMode.FoxgloveStandard)
-                return new Quaternion(q.y, -q.z, -q.x, q.w);
-            return q;
-        }
+            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityRotation(q) : q;
 
         public Core.FoxgloveRuntime Runtime => _runtime;
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
@@ -178,54 +158,10 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            // Phase 9: Register asset roots
-            if (_assetRoots != null) foreach (var ar in _assetRoots)
-            {
-                if (ar.uriPrefix != null && ar.localRoot != null
-                    && !string.IsNullOrEmpty(ar.uriPrefix) && !string.IsNullOrEmpty(ar.localRoot))
-                {
-                    var absRoot = System.IO.Path.IsPathRooted(ar.localRoot)
-                        ? ar.localRoot
-                        : System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", ar.localRoot));
-                    var maxBytes = (long)ar.MaxBytesOrDefault;
-                    _runtime.RegisterAssetRoot(ar.uriPrefix, absRoot, maxBytes);
-                }
-            }
-
-            // Phase 9: Enable playback control
-            if (_enablePlaybackControl)
-            {
-                var nowMs = (long)(System.DateTime.UtcNow - new System.DateTime(1970, 1, 1)).TotalMilliseconds;
-                var startNs = (ulong)((nowMs + (long)(_playbackStartOffsetSeconds * 1000)) * 1_000_000L);
-                var endNs = startNs + (ulong)(_playbackDurationSeconds * 1_000_000_000L);
-                _runtime.EnablePlaybackControl(startNs, endNs);
-            }
-
-            // Phase 10: Enable recording
-            if (_enableRecording)
-            {
-                var dir = string.IsNullOrEmpty(_recordingDirectory) ? Application.dataPath + "/../Recordings" : _recordingDirectory;
-                System.IO.Directory.CreateDirectory(dir);
-                var path = System.IO.Path.Combine(dir, $"{_recordingPrefix}_{System.DateTime.Now:yyyyMMdd_HHmmss}.mcap");
-                var comp = _recordingCompression switch
-                {
-                    McapCompressionMode.Lz4 => "lz4",
-                    McapCompressionMode.Zstd => "zstd",
-                    _ => ""
-                };
-                var coord = _coordinateMode == CoordinateMode.FoxgloveStandard ? "FoxgloveStandard" : "UnityRaw";
-                _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024, comp, coord);
-            }
-
-            // Phase 11: Enable replay
-            if (_enableReplay && !string.IsNullOrEmpty(_replayFilePath))
-            {
-                if (_disableLivePublishers && !_livePublishersDisabled)
-                    DisableLivePublishers();
-                var coord = _coordinateMode == CoordinateMode.FoxgloveStandard ? "FoxgloveStandard" : "UnityRaw";
-                _runtime.SetRecordingCoordinateMode(coord);
-                _runtime.EnableReplay(_replayFilePath);
-            }
+            RegisterAssetRoots();
+            SetupPlaybackControl();
+            SetupRecording();
+            SetupReplay();
 
             _runtime.Start(_serverName, _host, _port);
             _runtime.OnReplayMessage += (topic, data) => OnReplayMessage?.Invoke(topic, data);
@@ -241,6 +177,56 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             Debug.Log($"[Foxglove] Server started on ws://{_host}:{_port}");
+        }
+
+        private void RegisterAssetRoots()
+        {
+            if (_assetRoots == null) return;
+            foreach (var ar in _assetRoots)
+            {
+                if (ar.uriPrefix == null || ar.localRoot == null
+                    || string.IsNullOrEmpty(ar.uriPrefix) || string.IsNullOrEmpty(ar.localRoot))
+                    continue;
+                var absRoot = System.IO.Path.IsPathRooted(ar.localRoot)
+                    ? ar.localRoot
+                    : System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", ar.localRoot));
+                _runtime.RegisterAssetRoot(ar.uriPrefix, absRoot, (long)ar.MaxBytesOrDefault);
+            }
+        }
+
+        private void SetupPlaybackControl()
+        {
+            if (!_enablePlaybackControl) return;
+            var nowMs = (long)(System.DateTime.UtcNow - new System.DateTime(1970, 1, 1)).TotalMilliseconds;
+            var startNs = (ulong)((nowMs + (long)(_playbackStartOffsetSeconds * 1000)) * 1_000_000L);
+            var endNs = startNs + (ulong)(_playbackDurationSeconds * 1_000_000_000L);
+            _runtime.EnablePlaybackControl(startNs, endNs);
+        }
+
+        private void SetupRecording()
+        {
+            if (!_enableRecording) return;
+            var dir = string.IsNullOrEmpty(_recordingDirectory) ? Application.dataPath + "/../Recordings" : _recordingDirectory;
+            System.IO.Directory.CreateDirectory(dir);
+            var path = System.IO.Path.Combine(dir, $"{_recordingPrefix}_{System.DateTime.Now:yyyyMMdd_HHmmss}.mcap");
+            var comp = _recordingCompression switch
+            {
+                McapCompressionMode.Lz4 => "lz4",
+                McapCompressionMode.Zstd => "zstd",
+                _ => ""
+            };
+            var coord = _coordinateMode == CoordinateMode.RightHand ? "RightHand" : "LeftHand";
+            _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024, comp, coord);
+        }
+
+        private void SetupReplay()
+        {
+            if (!_enableReplay || string.IsNullOrEmpty(_replayFilePath)) return;
+            if (_disableLivePublishers && !_livePublishersDisabled)
+                DisableLivePublishers();
+            var coord = _coordinateMode == CoordinateMode.RightHand ? "RightHand" : "LeftHand";
+            _runtime.SetRecordingCoordinateMode(coord);
+            _runtime.EnableReplay(_replayFilePath);
         }
 
         public void StopServer()

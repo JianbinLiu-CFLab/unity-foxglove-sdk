@@ -429,7 +429,7 @@ namespace Unity.FoxgloveSDK.Tests
             ms.Write(McapWriter.Magic, 0, 8);
             BuildMinimalHeader(ms);
 
-            var meta = new Dictionary<string, string> { ["coordinate_mode"] = "FoxgloveStandard" };
+            var meta = new Dictionary<string, string> { ["coordinate_mode"] = "RightHand" };
             var (sch, ch) = BuildSchemaAndChannel(ms, 1, 1, "/tf", meta);
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
@@ -460,19 +460,19 @@ namespace Unity.FoxgloveSDK.Tests
 
             Assert(summary.Channels.Count == 1, "CoordMode: has 1 channel");
             Assert(summary.Channels[0].Metadata.ContainsKey("coordinate_mode"), "CoordMode: metadata has coordinate_mode");
-            Assert(summary.Channels[0].Metadata["coordinate_mode"] == "FoxgloveStandard", "CoordMode: value is FoxgloveStandard");
+            Assert(summary.Channels[0].Metadata["coordinate_mode"] == "RightHand", "CoordMode: value is RightHand");
         }
 
         // ── Test 7: coordinate_mode mismatch detection ──
 
         static void TestCoordinateModeMismatchDetection()
         {
-            // Build MCAP with FoxgloveStandard coordinate mode, then read with UnityRaw expectation
+            // Build MCAP with RightHand coordinate mode, then test mismatch against LeftHand
             var ms = new MemoryStream();
             ms.Write(McapWriter.Magic, 0, 8);
             BuildMinimalHeader(ms);
 
-            var meta = new Dictionary<string, string> { ["coordinate_mode"] = "FoxgloveStandard" };
+            var meta = new Dictionary<string, string> { ["coordinate_mode"] = "RightHand" };
             var (sch, ch) = BuildSchemaAndChannel(ms, 1, 1, "/tf", meta);
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
@@ -509,12 +509,12 @@ namespace Unity.FoxgloveSDK.Tests
 
                 // Verify we CAN read the metadata and it differs from default
                 var mcapMode = summary.Channels[0].Metadata["coordinate_mode"];
-                Assert(mcapMode == "FoxgloveStandard", "CoordMismatch: MCAP has FoxgloveStandard");
+                Assert(mcapMode == "RightHand", "CoordMismatch: MCAP has RightHand");
 
                 // The warning is logged at runtime via FoxgloveRuntime.EnableReplay.
-                // We verify the detection logic works: mcapMode != "UnityRaw"
-                bool mismatch = mcapMode != "UnityRaw";
-                Assert(mismatch, "CoordMismatch: FoxgloveStandard != UnityRaw detected");
+                // We verify the detection logic works: mcapMode != "LeftHand"
+                bool mismatch = mcapMode != "LeftHand";
+                Assert(mismatch, "CoordMismatch: RightHand != LeftHand detected");
             }
             finally { File.Delete(path); }
         }

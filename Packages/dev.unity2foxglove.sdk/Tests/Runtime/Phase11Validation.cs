@@ -211,10 +211,10 @@ namespace Unity.FoxgloveSDK.Tests
                 engine.Seek(0);
                 engine.Play();
 
-                // Tick uses wall clock — just verify engine loaded and can produce messages
-                var msgs = engine.Tick();
-                // At least some messages should come out eventually as wall clock advances
-                Assert(msgs != null, "Tick returns list (may be empty since wall clock barely advanced)");
+                // Tick with a time past the last message: all messages should emit
+                var msgs = engine.Tick(2000);
+                Assert(msgs != null, "Tick returns list");
+                Assert(msgs.Count > 0, "Tick emits messages when nowNs past messages");
                 Assert(engine.IsLoaded, "Engine still loaded after Tick");
 
                 engine.Dispose();

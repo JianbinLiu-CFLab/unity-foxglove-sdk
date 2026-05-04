@@ -99,6 +99,9 @@ namespace Unity.FoxgloveSDK.Components
 
         // ── /tf ──
 
+        private bool ShouldConvert =>
+            _manager != null && _manager.ActiveCoordinateMode == CoordinateMode.RightHand;
+
         private void HandleFrameTransform(JObject tf)
         {
             var childFrameId = (string)tf["child_frame_id"];
@@ -111,14 +114,14 @@ namespace Unity.FoxgloveSDK.Components
             if (translation != null)
             {
                 var fp = new Vector3((float)translation["x"], (float)translation["y"], (float)translation["z"]);
-                target.localPosition = _manager != null ? _manager.FoxgloveToUnityPosition(fp) : fp;
+                target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
             }
 
             var rotation = tf["rotation"];
             if (rotation != null)
             {
                 var fr = new Quaternion((float)rotation["x"], (float)rotation["y"], (float)rotation["z"], (float)rotation["w"]);
-                target.localRotation = _manager != null ? _manager.FoxgloveToUnityRotation(fr) : fr;
+                target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
             }
         }
 
@@ -206,43 +209,19 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ApplyCubePrimitive(JObject cube, Transform target)
         {
-            if (cube == null) return;
-
-            var pose = cube["pose"] as JObject;
-            if (pose != null)
-            {
-                var pos = pose["position"];
-                var orient = pose["orientation"];
-                if (pos != null)
-                {
-                    var fp = new Vector3((float)pos["x"], (float)pos["y"], (float)pos["z"]);
-                    target.localPosition = _manager != null ? _manager.FoxgloveToUnityPosition(fp) : fp;
-                }
-                if (orient != null)
-                {
-                    var fr = new Quaternion((float)orient["x"], (float)orient["y"], (float)orient["z"], (float)orient["w"]);
-                    target.localRotation = _manager != null ? _manager.FoxgloveToUnityRotation(fr) : fr;
-                }
-            }
-
-            var size = cube["size"] as JObject;
-            if (size != null)
-                target.localScale = new Vector3((float)size["x"], (float)size["y"], (float)size["z"]);
-
-            var color = cube["color"] as JObject;
-            if (color != null)
-            {
-                var renderer = target.GetComponent<Renderer>();
-                if (renderer != null)
-                    renderer.material.color = new Color((float)color["r"], (float)color["g"], (float)color["b"], (float)color["a"]);
-            }
+            ApplyPrimitive(cube, target, "size");
         }
 
         private void ApplyModelPrimitive(JObject model, Transform target)
         {
-            if (model == null) return;
+            ApplyPrimitive(model, target, "scale");
+        }
 
-            var pose = model["pose"] as JObject;
+        private void ApplyPrimitive(JObject primitive, Transform target, string sizeKey)
+        {
+            if (primitive == null) return;
+
+            var pose = primitive["pose"] as JObject;
             if (pose != null)
             {
                 var pos = pose["position"];
@@ -250,20 +229,20 @@ namespace Unity.FoxgloveSDK.Components
                 if (pos != null)
                 {
                     var fp = new Vector3((float)pos["x"], (float)pos["y"], (float)pos["z"]);
-                    target.localPosition = _manager != null ? _manager.FoxgloveToUnityPosition(fp) : fp;
+                    target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
                 }
                 if (orient != null)
                 {
                     var fr = new Quaternion((float)orient["x"], (float)orient["y"], (float)orient["z"], (float)orient["w"]);
-                    target.localRotation = _manager != null ? _manager.FoxgloveToUnityRotation(fr) : fr;
+                    target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
                 }
             }
 
-            var scale = model["scale"] as JObject;
-            if (scale != null)
-                target.localScale = new Vector3((float)scale["x"], (float)scale["y"], (float)scale["z"]);
+            var scaleObj = primitive[sizeKey] as JObject;
+            if (scaleObj != null)
+                target.localScale = new Vector3((float)scaleObj["x"], (float)scaleObj["y"], (float)scaleObj["z"]);
 
-            var color = model["color"] as JObject;
+            var color = primitive["color"] as JObject;
             if (color != null)
             {
                 var renderer = target.GetComponent<Renderer>();
