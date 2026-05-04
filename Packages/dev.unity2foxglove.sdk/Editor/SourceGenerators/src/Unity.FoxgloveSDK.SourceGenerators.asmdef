@@ -1,0 +1,15 @@
+{
+  "name": "Unity.FoxgloveSDK.SourceGenerators",
+  "rootNamespace": "",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_EXCLUDE_FROM_COMPILATION"
+  ],
+  "noEngineReferences": true
+}

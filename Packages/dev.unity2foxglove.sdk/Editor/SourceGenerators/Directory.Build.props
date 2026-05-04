@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <SgBuildRoot>$(MSBuildThisFileDirectory)..\..\..\..\build\SourceGenerators\</SgBuildRoot>
+    <BaseOutputPath>$(SgBuildRoot)</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(SgBuildRoot)obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(SgBuildRoot)obj\</MSBuildProjectExtensionsPath>
+    <RestoreOutputPath>$(SgBuildRoot)obj\</RestoreOutputPath>
+  </PropertyGroup>
+</Project>
