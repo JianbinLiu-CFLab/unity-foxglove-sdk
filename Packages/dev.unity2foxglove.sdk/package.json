@@ -2,7 +2,7 @@
   "name": "dev.unity2foxglove.sdk",
   "version": "0.1.0",
   "displayName": "Foxglove SDK",
-  "description": "Real-time data streaming from Unity to Foxglove for visualization.",
+  "description": "Real-time data streaming from Unity to Foxglove for visualization. MCAP compression requires K4os.Compression.LZ4.dll and ZstdSharp.dll placed in Assets/Plugins/.",
   "unity": "2022.3",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1"

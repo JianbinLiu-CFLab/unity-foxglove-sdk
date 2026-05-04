@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.IO
         public ushort SchemaId;
         public string Topic;
         public string MessageEncoding;
+        public Dictionary<string, string> Metadata = new();
     }
 
     public class McapMessage
@@ -76,6 +77,19 @@ namespace Unity.FoxgloveSDK.IO
         public Dictionary<ushort, ulong> ChannelMessageCounts = new();
     }
 
+    public class McapMetadata
+    {
+        public string Name;
+        public Dictionary<string, string> Metadata = new();
+    }
+
+    public class McapMetadataIndex
+    {
+        public ulong Offset;
+        public ulong Length;
+        public string Name;
+    }
+
     public class McapFooter
     {
         public ulong SummaryStart;
@@ -89,5 +103,6 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapChannel> Channels = new();
         public McapStatistics Statistics;
         public List<McapChunkIndex> ChunkIndexes = new();
+        public List<McapMetadataIndex> MetadataIndexes = new();
     }
 }

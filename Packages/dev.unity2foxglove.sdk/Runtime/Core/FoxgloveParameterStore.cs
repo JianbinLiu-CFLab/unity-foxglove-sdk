@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
@@ -13,13 +14,17 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<string, ParameterEntry> _params = new();
         private readonly object _lock = new();
 
-        /// <summary>Register a parameter. Overwrites if already exists.</summary>
+        /// <summary>Fired when a parameter value changes (name, new value, type).</summary>
+        public event Action<string, JToken, string> OnParameterChanged;
+
+        /// <summary>Register a parameter. Overwrites if already exists. Fires OnParameterChanged.</summary>
         public void Register(string name, JToken value, string type, bool writable)
         {
             lock (_lock)
             {
                 _params[name] = new ParameterEntry { Value = value, Type = type, Writable = writable };
             }
+            OnParameterChanged?.Invoke(name, value, type);
         }
 
         /// <summary>Unregister a parameter.</summary>
@@ -31,13 +36,16 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Set a parameter's value from a client request. Silently no-ops for unknown/read-only params.</summary>
         public bool TrySetFromClient(string name, JToken value)
         {
+            string type;
             lock (_lock)
             {
                 if (!_params.TryGetValue(name, out var entry) || !entry.Writable)
                     return false;
                 entry.Value = value;
-                return true;
+                type = entry.Type;
             }
+            OnParameterChanged?.Invoke(name, value, type);
+            return true;
         }
 
         /// <summary>Get a single parameter as a wire Parameter DTO, or null.</summary>

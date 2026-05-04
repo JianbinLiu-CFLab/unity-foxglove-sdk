@@ -4,7 +4,7 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 
 ## Status
 
-**Phase 10 complete.** MCAP recording, live WebSocket protocol (Parameters, Services, ConnectionGraph, ClientPublish, Assets, PlaybackControl). 307 automated tests. Package identity: `dev.unity2foxglove.sdk`.
+**Phase 12 complete.** Full MCAP recorder + reader + replay engine, compression (LZ4/Zstd), extended recording (Parameters, Services, ClientPublish, ConnectionGraph), coordinate mode. 350+ automated tests. Package identity: `dev.unity2foxglove.sdk`.
 
 ## Supported Unity Versions
 
@@ -27,6 +27,8 @@ Real-time data streaming from Unity to [Foxglove](https://foxglove.dev) for visu
 | 8 | Done | ClientPublish, ConnectionGraph refinement |
 | 9 | Done | Assets / fetchAsset, PlaybackControl, unified publisher clock |
 | 10 | Done | MCAP recording/dual-write (topic messages) |
+| 11 | Done | MCAP reader, ReplayEngine, object adapter, coordinate mode |
+| 12 | Done | MCAP compression (LZ4/Zstd), Parameters/Services/ClientPublish/ConnectionGraph recording |
 
 ## Quick Start
 

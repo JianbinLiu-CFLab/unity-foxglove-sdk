@@ -57,6 +57,8 @@ class Program
             Phase10Validation.Validate();
             Console.WriteLine();
             Phase11Validation.Validate();
+            Console.WriteLine();
+            Phase12Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

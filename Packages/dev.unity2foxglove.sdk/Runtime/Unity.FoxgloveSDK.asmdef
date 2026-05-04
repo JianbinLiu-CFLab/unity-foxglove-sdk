@@ -2,7 +2,9 @@
   "name": "Unity.FoxgloveSDK",
   "rootNamespace": "Unity.FoxgloveSDK",
   "references": [
-    "Newtonsoft.Json"
+    "Newtonsoft.Json",
+    "K4os.Compression.LZ4",
+    "ZstdSharp"
   ],
   "includePlatforms": [],
   "excludePlatforms": [
