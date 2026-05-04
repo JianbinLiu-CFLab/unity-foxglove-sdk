@@ -3,7 +3,7 @@
   "rootNamespace": "Unity.FoxgloveSDK",
   "references": [
     "Newtonsoft.Json",
-    "K4os.Compression.LZ4",
+    "IonKiwi.lz4",
     "ZstdSharp"
   ],
   "includePlatforms": [],

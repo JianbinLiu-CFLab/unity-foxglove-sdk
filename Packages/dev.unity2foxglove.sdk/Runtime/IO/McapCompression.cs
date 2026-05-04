@@ -1,5 +1,5 @@
 using System;
-using K4os.Compression.LZ4;
+using IonKiwi.lz4;
 using ZstdSharp;
 
 namespace Unity.FoxgloveSDK.IO
@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.IO
                 case "":
                     return data;
                 case "lz4":
-                    var lz4Out = LZ4Pickler.Unpickle(data);
+                    var lz4Out = LZ4Utility.Decompress(data);
                     if (lz4Out.Length != uncompressedSize)
                         throw new InvalidOperationException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {lz4Out.Length}");
                     return lz4Out;
@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.IO
                 case "":
                     return data;
                 case "lz4":
-                    return LZ4Pickler.Pickle(data, LZ4Level.L00_FAST);
+                    return LZ4Utility.Compress(data, LZ4FrameBlockMode.Linked, LZ4FrameBlockSize.Max64KB, LZ4FrameChecksumMode.None, null, false);
                 case "zstd":
                     using (var compressor = new Compressor())
                         return compressor.Wrap(data).ToArray();

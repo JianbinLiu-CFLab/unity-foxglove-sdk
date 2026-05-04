@@ -345,11 +345,12 @@ Deferred：
 - Channel metadata 写入 `coordinate_mode`，回放时不一致 warning
 - 38 个 Phase 12 自动化测试，全链路回归通过
 
-### Phase 13 - (预留) Attributes + Source Generation
+### Phase 13 - Inspector UX + Attributes + Source Generation
 
 **状态：Planned**
 
 候选项：
+- `FoxgloveManagerEditor.cs` — 路径字段 Browse 按钮（`_replayFilePath`、`_recordingDirectory`、`_assetRoots.localRoot`）
 - `[FoxgloveLog]` attribute + Editor-time source generation
 - 更完整 Assets 缓存 / MIME / 大文件策略
 

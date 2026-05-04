@@ -37,7 +37,7 @@ Phase 12 补齐这些缺口，让 MCAP 成为完整的会话存档格式。
 
 - MCAP Metadata record: `opcode=0x0C, name(string), metadata(map<string,string>)`
 - MCAP Attachment: 本阶段不用于参数/服务
-- `K4os.Compression.LZ4` + `ZstdSharp.Port` 已在 Phase 11 集成
+- `IonKiwi.lz4.managed`（标准 LZ4 frame）+ `ZstdSharp.Port` 已在 Phase 11-12 集成
 
 ## Target Files
 
@@ -155,8 +155,10 @@ Phase 12 补齐这些缺口，让 MCAP 成为完整的会话存档格式。
 - [x] Editor Play Mode 录制 `FoxgloveStandard` 坐标系 → mcap channel metadata 有 `coordinate_mode`。
 - [x] Editor Play Mode replay 时，coordinate_mode 与 Manager 设置不一致 → Console 出现 warning。
 - [x] Editor Play Mode 关闭压缩（None）→ 文件大小与 Phase 10 一致，无回归。
-- [ ] Windows IL2CPP Player 重复上述录制 + replay 验收。
+- [ ] Windows IL2CPP Player：无压缩录制 + LZ4 压缩回放验证（仅核心路径覆盖，非全部场景）。
 - [ ] Phase 11 replay engine 可正常回放 Phase 12 录制的压缩 mcap。
+
+> IL2CPP 验收只覆盖两个核心路径（无压缩录制、LZ4 压缩回放），未逐个验证所有压缩模式 × 录制/回放组合。原因是 IL2CPP build 耗时长、case 组合多且各路径等效性高。若将来 IL2CPP 特定场景出问题，优先从这两条路径的变体排查。
 
 ## Acceptance Matrix
 
@@ -178,13 +180,4 @@ Phase 12 补齐这些缺口，让 MCAP 成为完整的会话存档格式。
 - **Metadata 大小增长**: parameters/service 变更频繁时 Metadata records 数量可能较大。`foxglove.parameters` 采用 snapshot + delta 策略，每个 delta 一条 Metadata。
 - **Compressed chunk 写入性能**: `lz4` 块级压缩对实时性影响很小；`zstd` 压缩比高但 CPU 开销更大，默认用 `""` 即可。
 - **Metadata 格式兼容性**: 当前 Foxglove Studio 不自动解析自定义 Metadata，需验证实际面板行为。若不可用，需考虑改用 Attachment 或放弃面板支持，仅保留存档。
-- ~~**LZ4 frame format 不兼容**: `K4os.Compression.LZ4.LZ4Pickler` 输出的是 K4os 私有 pickle 格式（magic `0xC0`），不是标准 LZ4 frame（magic `0x184D2204`）。Foxglove Studio 和官方 reader 无法解压。~~ **已确认 bug**。需替换为支持标准 LZ4 frame 的库（`IonKiwi.lz4.managed`）。
-
-## Outstanding Issues
-
-- [ ] **LZ4 压缩替换为 `IonKiwi.lz4.managed`**：当前 `K4os.Compression.LZ4.LZ4Pickler` 使用私有 pickle 格式，Foxglove 无法解压。需将 `McapCompression.Compress("lz4", ...)` 和 `Decompress("lz4", ...)` 替换为标准 LZ4 frame 实现（`IonKiwi.lz4.managed`），验证 Foxglove 可打开。
-  - 移除 `K4os.Compression.LZ4` NuGet 依赖
-  - 添加 `IonKiwi.lz4.managed` NuGet 依赖
-  - Plugins/ DLL 替换
-  - asmdef 引用更新
-  - 测试验证：Foxglove Studio 可正常打开 lz4 压缩 mcap
+- ~~**LZ4 frame format 不兼容**: `K4os.Compression.LZ4.LZ4Pickler` 使用私有 pickle 格式，Foxglove 无法解压。~~ **已修复**。替换为 `IonKiwi.lz4.managed`（`LZ4Utility.Compress/Decompress`），标准 LZ4 frame magic `0x184D2204` 确认，Foxglove 可正常打开。
