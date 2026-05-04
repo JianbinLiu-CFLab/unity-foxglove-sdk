@@ -30,9 +30,10 @@ We chose **pure C# WebSocket protocol implementation** over wrapping the officia
 | 7 | Done | ParametersSubscribe push, time capability, logger bridge, ConnectionGraph |
 | 8 | Done | ClientPublish, ConnectionGraph refinement |
 | 9 | Done | Assets / fetchAsset, PlaybackControl, unified publisher clock |
-| 10 | Done | MCAP recording/dual-write (topic messages only) |
-| 11 | Planned | Attributes, source generation, Assets improvements (TBD) |
-| 12 | Planned | MCAP recording range expansion: Parameters, Services, ConnectionGraph, ClientPublish |
+| 10 | Done | MCAP recording/dual-write (topic messages) |
+| 11 | Done | MCAP reader, ReplayEngine, object adapter, coordinate mode |
+| 12 | Done | MCAP compression (LZ4/Zstd), Parameters/Services/ClientPublish/ConnectionGraph recording |
+| 13 | Planned | OPC UA integration, attributes, source generation, Assets improvements (TBD) |
 
 ## Layers
 

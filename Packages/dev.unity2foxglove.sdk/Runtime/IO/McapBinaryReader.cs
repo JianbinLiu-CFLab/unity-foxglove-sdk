@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.IO
@@ -32,6 +33,20 @@ namespace Unity.FoxgloveSDK.IO
             System.Buffer.BlockCopy(buf, off, data, 0, (int)len);
             off += (int)len;
             return data;
+        }
+
+        public static Dictionary<string, string> ReadMap(byte[] buf, ref int off)
+        {
+            var map = new Dictionary<string, string>();
+            var totalBytes = ReadU32LE(buf, ref off);
+            var end = off + (int)totalBytes;
+            while (off < end)
+            {
+                var k = ReadString(buf, ref off);
+                var v = ReadString(buf, ref off);
+                map[k] = v;
+            }
+            return map;
         }
 
         public static bool MatchesMagic(byte[] buf, int off)

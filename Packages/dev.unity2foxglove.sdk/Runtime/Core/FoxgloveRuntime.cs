@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
@@ -25,6 +26,8 @@ namespace Unity.FoxgloveSDK.Core
         // Phase 10: MCAP recording
         private McapRecorder _recorder;
         private string _recordingPath;
+        private string _recordingCompression = "";
+        private string _coordinateMode = "";
         private int _recordingChunkSize = McapRecorder.DefaultChunkSizeBytes;
         private bool _recordingEnabled;
 
@@ -90,8 +93,21 @@ namespace Unity.FoxgloveSDK.Core
                 try
                 {
                     var fs = new System.IO.FileStream(_recordingPath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
-                    _recorder = new McapRecorder(fs, _logger, _recordingChunkSize);
+                    _recorder = new McapRecorder(fs, _logger, _recordingChunkSize, _recordingCompression);
+                    _recorder.CoordinateMode = _coordinateMode;
                     _session.SetRecorder(_recorder);
+
+                    // Write parameter snapshot
+                    var allParams = _parameters.GetAllWireParameters();
+                    var snapshotTime = _playbackClock.NowNs;
+                    var snapshot = new System.Collections.Generic.List<object>();
+                    foreach (var p in allParams)
+                        snapshot.Add(new { name = p.Name, type = p.Type, value = p.Value, timestamp = snapshotTime });
+                    _recorder.WriteMetadata("foxglove.parameters.snapshot",
+                        Newtonsoft.Json.JsonConvert.SerializeObject(snapshot));
+
+                    // Hook parameter changes
+                    _parameters.OnParameterChanged += OnParameterChangedForRecording;
                 }
                 catch (System.Exception ex) { _logger.LogError($"Failed to start MCAP recording: {ex.Message}"); }
             }
@@ -123,9 +139,23 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        private void OnParameterChangedForRecording(string name, Newtonsoft.Json.Linq.JToken value, string type)
+        {
+            if (_recorder != null)
+            {
+                var timestamp = _playbackClock.NowNs;
+                var entry = Newtonsoft.Json.JsonConvert.SerializeObject(new { name, type, value, timestamp });
+                _recorder.WriteMetadata("foxglove.parameters", entry);
+            }
+        }
+
         public void Stop()
         {
-            if (_recorder != null) { _recorder.Close(); _recorder.Dispose(); _recorder = null; }
+            if (_recorder != null)
+            {
+                _parameters.OnParameterChanged -= OnParameterChangedForRecording;
+                _recorder.Close(); _recorder.Dispose(); _recorder = null;
+            }
             _session?.Dispose();
             _session = null;
             // Phase 11: keep replay loaded across Stop/Start cycles
@@ -186,12 +216,17 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Phase 9: Playback Control ──
 
-        public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes)
+        public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
         {
             _recordingEnabled = true;
             _recordingPath = filePath;
+            _recordingCompression = compression ?? "";
+            _coordinateMode = coordinateMode ?? "";
             _recordingChunkSize = chunkSizeBytes > 0 ? chunkSizeBytes : McapRecorder.DefaultChunkSizeBytes;
         }
+
+        /// <summary>Set coordinate mode for MCAP recording (must be called before Start).</summary>
+        public void SetRecordingCoordinateMode(string mode) { _coordinateMode = mode ?? ""; }
         public void DisableRecording() { _recordingEnabled = false; _recordingPath = null; }
 
         public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
@@ -225,6 +260,23 @@ namespace Unity.FoxgloveSDK.Core
                         _summarySchemas = new System.Collections.Generic.Dictionary<ushort, McapSchema>();
                         foreach (var s in summary.Schemas)
                             _summarySchemas[s.Id] = s;
+                    }
+
+                    // Check coordinate_mode mismatch
+                    if (summary?.Channels != null)
+                    {
+                        foreach (var ch in summary.Channels)
+                        {
+                            if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
+                                && !string.IsNullOrEmpty(mcapMode))
+                            {
+                                var currentMode = string.IsNullOrEmpty(_coordinateMode) ? "UnityRaw" : _coordinateMode;
+                                if (mcapMode != currentMode)
+                                    _logger.LogWarning($"MCAP '{System.IO.Path.GetFileName(filePath)}' was recorded with coordinate_mode '{mcapMode}', " +
+                                        $"but current setting is '{currentMode}'. Mismatch may cause incorrect object transforms.");
+                                break; // warn once
+                            }
+                        }
                     }
                 }
 

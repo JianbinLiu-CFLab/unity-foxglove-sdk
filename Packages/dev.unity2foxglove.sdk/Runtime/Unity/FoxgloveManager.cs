@@ -14,6 +14,16 @@ namespace Unity.FoxgloveSDK.Components
         FoxgloveStandard
     }
 
+    public enum McapCompressionMode
+    {
+        /// <summary>No compression.</summary>
+        None,
+        /// <summary>LZ4 block compression.</summary>
+        Lz4,
+        /// <summary>Zstandard compression.</summary>
+        Zstd
+    }
+
     public class FoxgloveManager : MonoBehaviour
     {
         [Header("General")]
@@ -41,6 +51,7 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Leave empty to save in <project>/Recordings/ . Shown path is the resolved default at runtime.")]
         [SerializeField] private string _recordingDirectory = "";
         [SerializeField] private int _recordingChunkSizeKB = 1024;
+        [SerializeField] private McapCompressionMode _recordingCompression = McapCompressionMode.None;
 
         // Phase 11: MCAP Replay
         [Header("MCAP Replay")]
@@ -196,7 +207,14 @@ namespace Unity.FoxgloveSDK.Components
                 var dir = string.IsNullOrEmpty(_recordingDirectory) ? Application.dataPath + "/../Recordings" : _recordingDirectory;
                 System.IO.Directory.CreateDirectory(dir);
                 var path = System.IO.Path.Combine(dir, $"{_recordingPrefix}_{System.DateTime.Now:yyyyMMdd_HHmmss}.mcap");
-                _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024);
+                var comp = _recordingCompression switch
+                {
+                    McapCompressionMode.Lz4 => "lz4",
+                    McapCompressionMode.Zstd => "zstd",
+                    _ => ""
+                };
+                var coord = _coordinateMode == CoordinateMode.FoxgloveStandard ? "FoxgloveStandard" : "UnityRaw";
+                _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024, comp, coord);
             }
 
             // Phase 11: Enable replay
@@ -204,6 +222,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (_disableLivePublishers && !_livePublishersDisabled)
                     DisableLivePublishers();
+                var coord = _coordinateMode == CoordinateMode.FoxgloveStandard ? "FoxgloveStandard" : "UnityRaw";
+                _runtime.SetRecordingCoordinateMode(coord);
                 _runtime.EnableReplay(_replayFilePath);
             }
 

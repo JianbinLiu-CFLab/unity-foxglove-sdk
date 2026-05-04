@@ -1,5 +1,5 @@
 using System;
-using K4os.Compression.LZ4;
+using IonKiwi.lz4;
 using ZstdSharp;
 
 namespace Unity.FoxgloveSDK.IO
@@ -13,10 +13,9 @@ namespace Unity.FoxgloveSDK.IO
                 case "":
                     return data;
                 case "lz4":
-                    var lz4Out = new byte[uncompressedSize];
-                    var decoded = LZ4Codec.Decode(data, 0, data.Length, lz4Out, 0, lz4Out.Length);
-                    if (decoded != uncompressedSize)
-                        throw new InvalidOperationException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {decoded}");
+                    var lz4Out = LZ4Utility.Decompress(data);
+                    if (lz4Out.Length != uncompressedSize)
+                        throw new InvalidOperationException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {lz4Out.Length}");
                     return lz4Out;
                 case "zstd":
                     using (var decompressor = new Decompressor())
@@ -26,6 +25,22 @@ namespace Unity.FoxgloveSDK.IO
                             throw new InvalidOperationException($"Zstd decompressed size mismatch: expected {uncompressedSize}, got {span.Length}");
                         return span.ToArray();
                     }
+                default:
+                    throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");
+            }
+        }
+
+        public static byte[] Compress(string compression, byte[] data)
+        {
+            switch (compression)
+            {
+                case "":
+                    return data;
+                case "lz4":
+                    return LZ4Utility.Compress(data, LZ4FrameBlockMode.Linked, LZ4FrameBlockSize.Max64KB, LZ4FrameChecksumMode.None, null, false);
+                case "zstd":
+                    using (var compressor = new Compressor())
+                        return compressor.Wrap(data).ToArray();
                 default:
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");
             }

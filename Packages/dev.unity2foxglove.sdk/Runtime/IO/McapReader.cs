@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.IO
             var channels = new List<McapChannel>();
             McapStatistics stats = null;
             var chunkIndexes = new List<McapChunkIndex>();
+            var metadataIndexes = new List<McapMetadataIndex>();
 
             var summaryEnd = (ulong)_stream.Length - 8UL; // end before trailing magic
             while ((ulong)_stream.Position < summaryEnd)
@@ -60,6 +61,9 @@ namespace Unity.FoxgloveSDK.IO
                     case 0x0B:
                         stats = DecodeStatistics(content);
                         break;
+                    case 0x0D:
+                        metadataIndexes.Add(DecodeMetadataIndex(content));
+                        break;
                     case 0x0E: // SummaryOffset — skip
                         break;
                     default:
@@ -72,7 +76,8 @@ namespace Unity.FoxgloveSDK.IO
                 Schemas = schemas,
                 Channels = channels,
                 Statistics = stats,
-                ChunkIndexes = chunkIndexes
+                ChunkIndexes = chunkIndexes,
+                MetadataIndexes = metadataIndexes
             };
         }
 
@@ -161,7 +166,8 @@ namespace Unity.FoxgloveSDK.IO
                 Id = McapBinaryReader.ReadU16LE(content, ref off),
                 SchemaId = McapBinaryReader.ReadU16LE(content, ref off),
                 Topic = McapBinaryReader.ReadString(content, ref off),
-                MessageEncoding = McapBinaryReader.ReadString(content, ref off)
+                MessageEncoding = McapBinaryReader.ReadString(content, ref off),
+                Metadata = McapBinaryReader.ReadMap(content, ref off)
             };
         }
 
@@ -234,6 +240,42 @@ namespace Unity.FoxgloveSDK.IO
                 s.ChannelMessageCounts[cid] = count;
             }
             return s;
+        }
+
+        public static McapMetadataIndex DecodeMetadataIndex(byte[] content)
+        {
+            var off = 0;
+            return new McapMetadataIndex
+            {
+                Offset = McapBinaryReader.ReadU64LE(content, ref off),
+                Length = McapBinaryReader.ReadU64LE(content, ref off),
+                Name = McapBinaryReader.ReadString(content, ref off)
+            };
+        }
+
+        public static McapMetadata DecodeMetadata(byte[] content)
+        {
+            var off = 0;
+            var name = McapBinaryReader.ReadString(content, ref off);
+            var mapSize = McapBinaryReader.ReadU32LE(content, ref off);
+            var mapEnd = off + (int)mapSize;
+            var meta = new Dictionary<string, string>();
+            while (off < mapEnd)
+            {
+                var k = McapBinaryReader.ReadString(content, ref off);
+                var v = McapBinaryReader.ReadString(content, ref off);
+                meta[k] = v;
+            }
+            return new McapMetadata { Name = name, Metadata = meta };
+        }
+
+        public McapMetadata ReadMetadataAt(ulong offset)
+        {
+            _stream.Seek((long)offset, SeekOrigin.Begin);
+            var (opcode, content) = ReadOneRecord();
+            if (opcode != 0x0C)
+                throw new InvalidDataException($"Expected Metadata (0x0C) at offset {offset}, got 0x{opcode:X2}");
+            return DecodeMetadata(content);
         }
 
         public static McapFooter DecodeFooter(byte[] content)

@@ -122,8 +122,8 @@ namespace Unity.FoxgloveSDK.Core
 
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
-            _recorder?.WriteMessage(channelId, logTimeNs, payload);
             if (_channels.Get(channelId) == null) return;
+            _recorder?.WriteMessage(channelId, logTimeNs, payload);
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {
                 _transport.SendBinary(clientId,
@@ -201,12 +201,20 @@ namespace Unity.FoxgloveSDK.Core
                     var fail = new ServiceCallFailure
                     { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
                     _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
+                    _recorder?.WriteMetadata("foxglove.services",
+                        JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
+                            status = "failure", message = call.FailureMessage,
+                            timestamp = _clock.NowNs }));
                 }
                 else
                 {
                     var frame = BinaryEncoding.EncodeServerServiceCallResponse(
                         call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
                     _transport.SendBinary(call.ClientId, frame);
+                    _recorder?.WriteMetadata("foxglove.services",
+                        JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
+                            status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
+                            timestamp = _clock.NowNs }));
                 }
             }
         }
@@ -281,6 +289,7 @@ namespace Unity.FoxgloveSDK.Core
             var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
             foreach (var subId in _graph.GetSubscribers())
                 _transport.SendText(subId, json);
+            _recorder?.WriteMetadata("foxglove.connection_graph", json);
         }
 
         /// <summary>Test-only: trigger a logger call to verify injection.</summary>
@@ -387,7 +396,10 @@ namespace Unity.FoxgloveSDK.Core
             if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
             {
                 if (_clientChannels.TryGetValue((clientId, chId), out var ch))
+                {
                     OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
+                    _recorder?.WriteClientMessage((uint)(0xA0000000 | (clientId << 8) | chId), _clock.NowNs, payload, ch.Topic);
+                }
                 return;
             }
 
