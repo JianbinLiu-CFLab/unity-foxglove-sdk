@@ -11,7 +11,7 @@ using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Core
 {
-    public class FoxgloveSession : IDisposable
+    public partial class FoxgloveSession : IDisposable
     {
         private readonly IFoxgloveTransport _transport;
         private readonly IFoxgloveClock _clock;
@@ -20,15 +20,17 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
 
-        // Phase 6-7: Runtime-owned definitions, Session holds references
-        private FoxgloveRuntime _runtime;
+        // Session holds references via interface
+        private IRuntimeContext _runtime;
         private readonly FoxgloveParameterStore _parameters;
         private readonly ParameterSubscriptionRegistry _paramSubs = new();
         private readonly FoxgloveServiceRegistry _services;
         private readonly ConnectionGraphRegistry _graph = new();
-        // Phase 8: client publish support
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
         public event Action<uint, uint, string, byte[]> OnClientMessage;
+
+        private McapRecorder _recorder;
+        private long _lastTimeBroadcastTicks;
 
         public string Name { get; }
         public string SessionId { get; }
@@ -36,14 +38,10 @@ namespace Unity.FoxgloveSDK.Core
         public ISchemaRegistry Schemas => _schemaRegistry;
         public ChannelRegistry Channels => _channels;
         public FoxgloveParameterStore Parameters => _parameters;
-        /// <summary>Internal access to registry for advanced use (GetPendingCalls etc).</summary>
         internal FoxgloveServiceRegistry Services => _services;
-
-        /// <summary>Transport for Manager-level event wiring (connection events).</summary>
         internal IFoxgloveTransport Transport => _transport;
 
-        internal void SetRuntime(FoxgloveRuntime runtime) => _runtime = runtime;
-        private McapRecorder _recorder;
+        internal void SetRuntimeContext(IRuntimeContext ctx) => _runtime = ctx;
         internal void SetRecorder(McapRecorder r) => _recorder = r;
 
         public FoxgloveSession(string name,
@@ -69,6 +67,8 @@ namespace Unity.FoxgloveSDK.Core
             _transport.OnBinaryReceived += OnClientBinary;
         }
 
+        // ── Lifecycle ──
+
         public void Start(string host, int port) => _transport.Start(host, port);
         public void Stop() => _transport.Stop();
 
@@ -77,7 +77,15 @@ namespace Unity.FoxgloveSDK.Core
             _channels.Clear();
             _subscriptions.Clear();
             _paramSubs.Clear();
-            // Do NOT clear _parameters or _services — they are Runtime-owned
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            _transport.OnClientConnected -= OnClientConnected;
+            _transport.OnClientDisconnected -= OnClientDisconnected;
+            _transport.OnTextReceived -= OnClientText;
+            _transport.OnBinaryReceived -= OnClientBinary;
         }
 
         // ── Channel API ──
@@ -85,7 +93,7 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             _channels.Register(channel);
-            _graph.SetPublishedTopic(channel.Topic, "unity");
+            _graph.SetPublishedTopic(channel.Topic, "unity"); _graphDirty = true;
             _recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
                 channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             _transport.BroadcastText(JsonConvert.SerializeObject(
@@ -96,7 +104,7 @@ namespace Unity.FoxgloveSDK.Core
         public void UnregisterChannel(uint channelId)
         {
             var ch = _channels.Get(channelId);
-            if (ch != null) _graph.RemovePublishedTopic(ch.Topic, "unity");
+            if (ch != null) { _graph.RemovePublishedTopic(ch.Topic, "unity"); _graphDirty = true; }
             if (!_channels.Remove(channelId)) return;
             _subscriptions.RemoveChannel(channelId);
             _transport.BroadcastText(JsonConvert.SerializeObject(
@@ -139,26 +147,25 @@ namespace Unity.FoxgloveSDK.Core
             Publish(channelId, Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message)), logTimeNs);
         }
 
-        /// <summary>Register a service and broadcast incremental advertiseServices.</summary>
         public uint RegisterService(Protocol.ServiceDescriptor descriptor)
         {
             var id = _services.Register(descriptor);
             var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
             _transport.BroadcastText(JsonConvert.SerializeObject(adv));
-            _graph.AddAdvertisedService(descriptor.Name, "unity");
+            _graph.AddAdvertisedService(descriptor.Name, "unity"); _graphDirty = true;
             BroadcastGraphUpdate();
             return id;
         }
 
-        /// <summary>Broadcast a Time frame (opcode=2) at controlled rate.</summary>
+        // ── Time ──
+
         public void BroadcastTime(float rateHz = 10f)
         {
-            var now = System.DateTime.UtcNow.Ticks;
+            var now = DateTime.UtcNow.Ticks;
             var effectiveRate = rateHz > 0 ? rateHz : 10f;
-            // Avoid float precision loss: compute interval with long division
-            var interval = System.TimeSpan.TicksPerSecond / (long)effectiveRate;
-            if (effectiveRate > System.TimeSpan.TicksPerSecond)
-                interval = 1L; // sub-tick rate → every call
+            var interval = TimeSpan.TicksPerSecond / (long)effectiveRate;
+            if (effectiveRate > TimeSpan.TicksPerSecond)
+                interval = 1L;
             if (now - _lastTimeBroadcastTicks < interval)
                 return;
             _lastTimeBroadcastTicks = now;
@@ -166,145 +173,8 @@ namespace Unity.FoxgloveSDK.Core
             var frame = BinaryEncoding.EncodeTime(_clock.NowNs);
             _transport.BroadcastBinary(frame);
         }
-        private long _lastTimeBroadcastTicks;
 
-        // ── Service call lifecycle (Phase 6) ──
-
-        /// <summary>Drain completed service calls and send responses/failures.</summary>
-        public void DrainServiceCalls()
-        {
-            _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
-
-            // Execute pending calls via registered handlers (Phase 7 delegate model)
-            foreach (var call in _services.GetPendingCalls())
-            {
-                var handler = _services.GetHandler(call.ServiceId);
-                if (handler == null) continue;
-                try
-                {
-                    var payloadStr = System.Text.Encoding.UTF8.GetString(call.Payload);
-                    var input = Newtonsoft.Json.Linq.JToken.Parse(payloadStr);
-                    var result = handler(input);
-                    var responseBytes = System.Text.Encoding.UTF8.GetBytes(result.ToString(Newtonsoft.Json.Formatting.None));
-                    _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
-                }
-                catch (Exception ex)
-                {
-                    _services.Fail(call.ClientId, call.CallId, $"Handler exception: {ex.Message}");
-                }
-            }
-
-            foreach (var call in _services.DrainCompleted())
-            {
-                if (call.FailureMessage != null)
-                {
-                    var fail = new ServiceCallFailure
-                    { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
-                    _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
-                    _recorder?.WriteMetadata("foxglove.services",
-                        JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
-                            status = "failure", message = call.FailureMessage,
-                            timestamp = _clock.NowNs }));
-                }
-                else
-                {
-                    var frame = BinaryEncoding.EncodeServerServiceCallResponse(
-                        call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
-                    _transport.SendBinary(call.ClientId, frame);
-                    _recorder?.WriteMetadata("foxglove.services",
-                        JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
-                            status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
-                            timestamp = _clock.NowNs }));
-                }
-            }
-        }
-
-        private void HandleSubscribeConnectionGraph(uint clientId)
-        {
-            _graph.Subscribe(clientId);
-            var snapshot = _graph.GetSnapshot();
-            _transport.SendText(clientId, JsonConvert.SerializeObject(snapshot));
-        }
-
-        private void HandleUnsubscribeConnectionGraph(uint clientId)
-        {
-            _graph.Unsubscribe(clientId);
-        }
-
-        private void HandleClientAdvertise(uint clientId, string json)
-        {
-            try
-            {
-                var msg = JsonConvert.DeserializeObject<Advertise>(json);
-                foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
-                {
-                    _clientChannels[(clientId, ch.Id)] = ch;
-                    _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}");
-                }
-                BroadcastGraphUpdate();
-            }
-            catch { _logger.LogWarning($"Client advertise parse error from client {clientId}"); }
-        }
-
-        private void HandleClientUnadvertise(uint clientId, string json)
-        {
-            try
-            {
-                var msg = JsonConvert.DeserializeObject<Unadvertise>(json);
-                foreach (var chId in msg.ChannelIds ?? new List<uint>())
-                {
-                    if (_clientChannels.TryGetValue((clientId, chId), out var ch))
-                    {
-                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}");
-                        _clientChannels.Remove((clientId, chId));
-                    }
-                }
-                BroadcastGraphUpdate();
-            }
-            catch { _logger.LogWarning($"Client unadvertise parse error from client {clientId}"); }
-        }
-
-        private void HandleFetchAsset(uint clientId, string json)
-        {
-            FetchAsset msg;
-            try { msg = JsonConvert.DeserializeObject<FetchAsset>(json); }
-            catch
-            {
-                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(0, "Malformed JSON"));
-                return;
-            }
-            if (_runtime?.Assets == null || !_runtime.Assets.HasRoots)
-            {
-                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, "No asset roots registered"));
-                return;
-            }
-            if (_runtime.Assets.TryRead(msg.Uri, out var data, out var error))
-                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseSuccess(msg.RequestId, data));
-            else
-                _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, error));
-        }
-
-        private void BroadcastGraphUpdate()
-        {
-            var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
-            foreach (var subId in _graph.GetSubscribers())
-                _transport.SendText(subId, json);
-            _recorder?.WriteMetadata("foxglove.connection_graph", json);
-        }
-
-        /// <summary>Test-only: trigger a logger call to verify injection.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
-
-        // ── Dispose ──
-
-        public void Dispose()
-        {
-            Stop();
-            _transport.OnClientConnected -= OnClientConnected;
-            _transport.OnClientDisconnected -= OnClientDisconnected;
-            _transport.OnTextReceived -= OnClientText;
-            _transport.OnBinaryReceived -= OnClientBinary;
-        }
 
         // ── Transport event handlers ──
 
@@ -340,7 +210,6 @@ namespace Unity.FoxgloveSDK.Core
             _transport.SendText(clientId, JsonConvert.SerializeObject(info,
                 new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }));
 
-            // Channel advertise snapshot
             var chs = _channels.GetAll();
             if (chs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new Advertise { Channels = chs }));
@@ -349,20 +218,19 @@ namespace Unity.FoxgloveSDK.Core
             if (svcs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
 
-            // ConnectionGraph: register server as publisher for all advertised channels
             foreach (var ch in chs)
                 _graph.SetPublishedTopic(ch.Topic, "unity");
             foreach (var svc in svcs)
                 _graph.AddAdvertisedService(svc.Name, "unity");
+            _graphDirty = true;
         }
 
         private void OnClientDisconnected(uint clientId)
         {
             _subscriptions.RemoveClient(clientId);
             _paramSubs.RemoveClient(clientId);
-            _graph.RemoveClient(clientId);
+            _graph.RemoveClient(clientId); _graphDirty = true;
             _services.RemoveClientCalls(clientId);
-            // Clean client-published channels
             var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
             foreach (var k in toRemove) _clientChannels.Remove(k);
         }
@@ -392,190 +260,13 @@ namespace Unity.FoxgloveSDK.Core
 
         private void OnClientBinary(uint clientId, byte[] data)
         {
-            // ClientPublish: MessageData from client
-            if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
+            if (HandlePlaybackControlRequest(clientId, data)) return;
+            if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out _))
             {
-                if (_clientChannels.TryGetValue((clientId, chId), out var ch))
-                {
-                    OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
-                    _recorder?.WriteClientMessage((uint)(0xA0000000 | (clientId << 8) | chId), _clock.NowNs, payload, ch.Topic);
-                }
+                HandleClientBinaryPublish(clientId, data);
                 return;
             }
-
-            // Playback control request
-            if (_runtime?.PlaybackEnabled == true &&
-                BinaryEncoding.TryDecodePlaybackControlRequest(data, out var pbCmd, out var pbSpeed,
-                    out var pbHasSeek, out var pbSeekNs, out var pbReqId))
-            {
-                _runtime.ApplyPlaybackCommand(pbCmd, pbSpeed, pbHasSeek, pbSeekNs);
-                if (pbHasSeek) _runtime.ReplaySeek(pbSeekNs);
-                if (pbCmd == 0) _runtime.ReplayPlay();
-                else if (pbCmd == 1) _runtime.ReplayPause();
-                var state = _runtime.GetPlaybackState(true, pbReqId);
-                var pbFrame = BinaryEncoding.EncodePlaybackState(
-                    state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
-                _transport.SendBinary(clientId, pbFrame);
-                return;
-            }
-
-            // Service call request
-            if (!BinaryEncoding.TryDecodeClientServiceCallRequest(data,
-                    out var svcServiceId, out var svcCallId, out var svcEncoding, out var svcPayload))
-                return;
-
-            if (svcEncoding != "json")
-            {
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Unsupported encoding: {svcEncoding}" }));
-                return;
-            }
-
-            if (!_services.TryGet(svcServiceId, out _))
-            {
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Unknown service: {svcServiceId}" }));
-                return;
-            }
-
-            if (svcPayload.Length > FoxgloveServiceRegistry.MaxPayloadBytes)
-            {
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Payload exceeds 1 MiB limit" }));
-                return;
-            }
-
-            // Validate payload is legal UTF-8 JSON
-            try { JToken.Parse(Encoding.UTF8.GetString(svcPayload)); }
-            catch
-            {
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = "Malformed JSON payload" }));
-                return;
-            }
-
-            _services.Enqueue(svcServiceId, svcCallId, clientId, svcEncoding, svcPayload);
-        }
-
-        // ── Parameter handlers ──
-
-        private void HandleGetParameters(uint clientId, string json)
-        {
-            GetParameters msg;
-            try { msg = JsonConvert.DeserializeObject<GetParameters>(json); }
-            catch { _logger.LogWarning($"getParameters parse error from client {clientId}"); return; }
-
-            var list = _parameters.GetWireParameters(msg.ParameterNames?.Count > 0 ? msg.ParameterNames : null);
-            var resp = new ParameterValues { Parameters = list, Id = msg.Id };
-            _transport.SendText(clientId, JsonConvert.SerializeObject(resp));
-        }
-
-        private void HandleSetParameters(uint clientId, string json)
-        {
-            SetParameters msg;
-            try { msg = JsonConvert.DeserializeObject<SetParameters>(json); }
-            catch { _logger.LogWarning($"setParameters parse error from client {clientId}"); return; }
-
-            var changedNames = new List<string>();
-            foreach (var p in msg.Parameters ?? new List<Parameter>())
-            {
-                if (p != null && p.Name != null && _parameters.TrySetFromClient(p.Name, p.Value))
-                    changedNames.Add(p.Name);
-            }
-
-            // Echo back current values to requestor
-            var names = msg.Parameters?.Select(p => p?.Name).Where(n => n != null);
-            var current = _parameters.GetWireParameters(names);
-            var resp = new ParameterValues { Parameters = current, Id = msg.Id };
-            _transport.SendText(clientId, JsonConvert.SerializeObject(resp));
-
-            // Broadcast to other subscribed clients (Phase 7 push)
-            if (changedNames.Count > 0)
-            {
-                var broadcast = new ParameterValues { Parameters = _parameters.GetWireParameters(changedNames) };
-                var broadcastJson = JsonConvert.SerializeObject(broadcast);
-                foreach (var cid in GetParamSubscribersForChanged(changedNames, clientId))
-                    _transport.SendText(cid, broadcastJson);
-            }
-        }
-
-        private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint excludeClient)
-        {
-            foreach (var cid in _paramSubs.GetSubscribedClientIds())
-            {
-                if (cid == excludeClient) continue;
-                foreach (var n in names)
-                {
-                    if (_paramSubs.IsSubscribed(cid, n))
-                    { yield return cid; break; }
-                }
-            }
-        }
-
-        private void HandleSubscribeParameterUpdates(uint clientId, string json)
-        {
-            SubscribeParameterUpdates msg;
-            try { msg = JsonConvert.DeserializeObject<SubscribeParameterUpdates>(json); }
-            catch { _logger.LogWarning($"subscribeParameterUpdates parse error from client {clientId}"); return; }
-
-            _paramSubs.Subscribe(clientId, msg.ParameterNames);
-        }
-
-        private void HandleUnsubscribeParameterUpdates(uint clientId, string json)
-        {
-            UnsubscribeParameterUpdates msg;
-            try { msg = JsonConvert.DeserializeObject<UnsubscribeParameterUpdates>(json); }
-            catch { _logger.LogWarning($"unsubscribeParameterUpdates parse error from client {clientId}"); return; }
-
-            _paramSubs.Unsubscribe(clientId, msg.ParameterNames);
-        }
-
-        // ── Subscribe/unsubscribe (Phase 2) ──
-
-        private void HandleSubscribe(uint clientId, string json)
-        {
-            try
-            {
-                var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
-                foreach (var sub in msg.Subscriptions)
-                {
-                    var ch = _channels.Get(sub.ChannelId);
-                    if (ch != null)
-                    {
-                        _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
-                        _graph.AddSubscribedTopic(ch.Topic, $"client:{clientId}:{sub.Id}");
-                    }
-                }
-            }
-            catch (Exception ex) { _logger.LogWarning($"subscribe parse error: {ex.Message}"); }
-            BroadcastGraphUpdate();
-        }
-
-        private void HandleUnsubscribe(uint clientId, string json)
-        {
-            try
-            {
-                var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
-                if (msg.SubscriptionIds != null)
-                {
-                    var removedChIds = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
-                    foreach (var chId in removedChIds)
-                    {
-                        var ch = _channels.Get(chId);
-                        if (ch != null)
-                            _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{chId}");
-                    }
-                }
-            }
-            catch (Exception ex) { _logger.LogWarning($"unsubscribe parse error: {ex.Message}"); }
-            BroadcastGraphUpdate();
-        }
-
-        /// <summary>Minimal DTO used to peek the "op" field. Used in Phase 2, kept for consistency.</summary>
-        [JsonObject(MemberSerialization.OptIn)]
-        private class JsonOpOnly
-        {
-            [JsonProperty("op")] public string Op { get; set; }
+            HandleServiceCallRequest(clientId, data);
         }
     }
 }

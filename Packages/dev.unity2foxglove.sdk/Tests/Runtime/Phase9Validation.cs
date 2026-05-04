@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
             rt.RegisterAssetRoot("asset://test/", Path.GetTempPath());
             var fake = new Phase9FakeTransport();
             var s = new FoxgloveSession("Test", fake);
-            s.SetRuntime(rt);
+            s.SetRuntimeContext(rt);
             fake.SimulateConnect(1);
             var json = fake.SentTexts[1][0];
             Assert(json.Contains("\"assets\""), "Assets capability when roots registered");
@@ -214,7 +214,7 @@ namespace Unity.FoxgloveSDK.Tests
             rt.EnablePlaybackControl(0, 60_000_000_000);
             var fake = new Phase9FakeTransport();
             var s = new FoxgloveSession("Test", fake);
-            s.SetRuntime(rt);
+            s.SetRuntimeContext(rt);
             fake.SimulateConnect(1);
             var json = fake.SentTexts[1][0];
             Assert(json.Contains("playbackControl"), "playbackControl capability when enabled");
@@ -234,7 +234,7 @@ namespace Unity.FoxgloveSDK.Tests
             rt.RegisterAssetRoot("asset://test/", Path.GetTempPath());
             var fake = new Phase9FakeTransport();
             var s = new FoxgloveSession("Test", fake);
-            s.SetRuntime(rt);
+            s.SetRuntimeContext(rt);
             fake.SimulateConnect(1);
 
             // fetchAsset sends error response via binary (no text broadcast)

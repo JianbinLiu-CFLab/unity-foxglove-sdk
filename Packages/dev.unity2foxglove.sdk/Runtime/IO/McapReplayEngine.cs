@@ -10,14 +10,14 @@ namespace Unity.FoxgloveSDK.IO
         private McapReader _reader;
         private Stream _stream;
         private McapFileSummary _summary;
-        private readonly List<McapMessage> _pending = new();
+        private readonly Queue<McapMessage> _pending = new();
 
         // Per-chunk state
         private int _currentChunkIdx = -1;
         private byte[] _currentUncompressed;
         private int _readOffset;
         private ulong _lastEmitTime;
-        private ulong _elapsedNs;
+        private ulong _currentTimeNs;
 
         public const ulong ReplayChannelIdBase = 0x80000000UL;
         public int MaxMessagesPerTick = 1000;
@@ -26,8 +26,9 @@ namespace Unity.FoxgloveSDK.IO
         public ulong StartTimeNs { get; private set; }
         public ulong EndTimeNs { get; private set; }
         public bool CanSeek { get; private set; }
-        public ulong ElapsedNs => _elapsedNs;
+        public ulong CurrentTimeNs => _currentTimeNs;
         public IReadOnlyList<McapChannel> Channels => _summary?.Channels;
+        public McapFileSummary Summary => _summary;
 
         public enum Status { Playing, Paused, Buffering, Ended }
         public Status CurrentStatus { get; private set; } = Status.Paused;
@@ -40,32 +41,29 @@ namespace Unity.FoxgloveSDK.IO
             CanSeek = _summary.Statistics != null && _summary.ChunkIndexes.Count > 0;
             StartTimeNs = _summary.Statistics?.MessageStartTime ?? 0;
             EndTimeNs = _summary.Statistics?.MessageEndTime ?? 0;
+            _currentTimeNs = StartTimeNs;
             IsLoaded = true;
             CurrentStatus = Status.Paused;
         }
 
         /// <summary>
-        /// Emit messages due since last tick. Returns up to MaxMessagesPerTick.
-        /// Advances internal time by a fixed step per tick (default ~16ms for ~60fps).
+        /// Emit messages due between last tick time and nowNs.
+        /// Returns up to MaxMessagesPerTick. Time is driven externally by PlaybackClock.
         /// </summary>
-        public List<McapMessage> Tick()
+        public List<McapMessage> Tick(ulong nowNs)
         {
             var result = new List<McapMessage>();
 
             if (!IsLoaded || CurrentStatus == Status.Paused || CurrentStatus == Status.Ended)
                 return result;
 
-            // Advance by a fixed time step (~16.6ms at 60fps)
-            const ulong tickStepNs = 16_666_667;
-            _elapsedNs += tickStepNs;
-
-            var nowNs = StartTimeNs + _elapsedNs;
-            if (nowNs > EndTimeNs) nowNs = EndTimeNs;
+            var clampedNow = nowNs > EndTimeNs ? EndTimeNs : nowNs;
+            _currentTimeNs = clampedNow;
 
             // Flush previously buffered messages that are now due
             while (_pending.Count > 0 && result.Count < MaxMessagesPerTick)
             {
-                if (_pending[0].LogTime > nowNs) break;
+                if (_pending.Peek().LogTime > clampedNow) break;
                 result.Add(PopPending());
             }
 
@@ -106,11 +104,10 @@ namespace Unity.FoxgloveSDK.IO
                         Buffer.BlockCopy(_currentUncompressed, _readOffset, data, 0, dataLen);
                         _readOffset += dataLen;
 
-                        if (logNs < _lastEmitTime) continue; // already emitted or before range
-                        if (logNs > nowNs)
+                        if (logNs < _lastEmitTime) continue;
+                        if (logNs > clampedNow)
                         {
-                            // Future message — buffer but keep reading chunk for earlier messages
-                            _pending.Add(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
+                            _pending.Enqueue(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
                             continue;
                         }
 
@@ -122,15 +119,14 @@ namespace Unity.FoxgloveSDK.IO
                         }
                         else
                         {
-                            _pending.Add(msg);
+                            _pending.Enqueue(msg);
                         }
                     }
                     else
                     {
-                        _readOffset += (int)len; // skip non-message records
+                        _readOffset += (int)len;
                     }
                 }
-                // Move to next chunk if current exhausted
             }
 
             if (result.Count == 0 && _pending.Count == 0 && _currentChunkIdx >= _summary.ChunkIndexes.Count - 1
@@ -168,7 +164,7 @@ namespace Unity.FoxgloveSDK.IO
 
             _pending.Clear();
             _lastEmitTime = timeNs;
-            _elapsedNs = timeNs - StartTimeNs;
+            _currentTimeNs = timeNs;
 
             // Find first chunk that contains or is after timeNs
             _currentChunkIdx = -1;
@@ -213,8 +209,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private McapMessage PopPending()
         {
-            var m = _pending[0];
-            _pending.RemoveAt(0);
+            var m = _pending.Dequeue();
             _lastEmitTime = m.LogTime;
             return m;
         }

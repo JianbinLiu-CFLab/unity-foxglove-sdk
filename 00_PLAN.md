@@ -345,16 +345,46 @@ Deferred：
 - Channel metadata 写入 `coordinate_mode`，回放时不一致 warning
 - 38 个 Phase 12 自动化测试，全链路回归通过
 
-### Phase 13 - Inspector UX + Attributes + Source Generation
+### Phase 13 - Bug 修复 + 重构（Code Review 驱动）
+
+**状态：Planned。执行计划已撰写。**
+
+基于 2026-05-04 Phase 10-12 Code Review 报告，17 个 issue（7 个 bug + 6 个设计问题 + 4 个测试缺口）。
+
+执行计划：
+- [[14_PHASE13_PLAN]]
+
+范围：
+- 7 bug 修复（P1: ReplayEngine 与 PlaybackClock 脱节、_pending O(n)；P2: 双重文件读取、channel ID 碰撞、Graph Metadata 膨胀、Meta 引用共享；P3: 无边界检查）
+- 消除 Runtime ↔ Session 双向依赖（引入 IRuntimeContext 接口）
+- FoxgloveRuntime 提取 RecordingController + ReplayController
+- FoxgloveSession 拆分为 4 个 partial class
+- 代码重复消除（Adapter primitive 合并、坐标转换工具类）
+- 补齐 7 个测试缺口
+
+### Phase 14 - Inspector UX + Attributes + Source Generation
 
 **状态：Planned**
 
-候选项：
+范围：
 - `FoxgloveManagerEditor.cs` — 路径字段 Browse 按钮（`_replayFilePath`、`_recordingDirectory`、`_assetRoots.localRoot`）
-- `[FoxgloveLog]` attribute + Editor-time source generation
+- `[FoxgloveLog]` attribute + Editor-time source generation（对标 Rerun `log()` API，降低接入门槛）
+- IL2CPP link.xml 自动生成（source generator 子功能）
+### Phase 15 - MCAP 补齐官方能力差距
+
+**状态：Planned**
+
+范围：
+- MCAP attachment 读写（嵌入/提取任意文件）
+- MCAP reader LogTimeOrder 排序读取
+- Protobuf schema 支持
+- Streaming/async MCAP writer
 - 更完整 Assets 缓存 / MIME / 大文件策略
 
-### Phase 14 - 开源发布准备
+明确不做：
+- ROS2 支持
+
+### Phase 16 - 开源发布准备
 
 **状态：Planned**
 

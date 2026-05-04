@@ -10,7 +10,7 @@ using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Core
 {
-    public class FoxgloveRuntime : IDisposable
+    public class FoxgloveRuntime : IDisposable, IRuntimeContext
     {
         private FoxgloveSession _session;
         private readonly IFoxgloveTransport _transport;
@@ -23,22 +23,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly FoxgloveServiceRegistry _services = new();
         private readonly FoxgloveAssetRegistry _assets = new();
 
-        // Phase 10: MCAP recording
-        private McapRecorder _recorder;
-        private string _recordingPath;
-        private string _recordingCompression = "";
-        private string _coordinateMode = "";
-        private int _recordingChunkSize = McapRecorder.DefaultChunkSizeBytes;
-        private bool _recordingEnabled;
-
-        // Phase 11: MCAP replay
-        private McapReplayEngine _replayEngine;
-        private bool _replayEnabled;
-        private System.Collections.Generic.Dictionary<ushort, McapSchema> _summarySchemas;
-        private System.Collections.Generic.Dictionary<ushort, string> _channelTopicMap;
-
-        /// <summary>Fired on Unity main thread for each replayed message.</summary>
-        public event Action<string, byte[]> OnReplayMessage;
+        // Phase 13: decomposed controllers
+        private readonly RecordingController _recording;
+        private readonly ReplayController _replay;
+        private Action<string, byte[]> _replayForwarder;
 
         public ulong NowNs => _playbackClock.NowNs;
 
@@ -52,23 +40,21 @@ namespace Unity.FoxgloveSDK.Core
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
             _logger = logger ?? new ConsoleLogger();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
+            _recording = new RecordingController(_logger);
+            _replay = new ReplayController(_logger);
         }
 
         public FoxgloveSession Session => _session;
         public bool IsRunning => _session?.IsRunning ?? false;
         public ISchemaRegistry Schemas => _schemaRegistry;
-
-        // Parameters: Runtime-owned, can be registered before Start
         public FoxgloveParameterStore Parameters => _parameters;
 
         public void RegisterParameter(string name, JToken value, string type, bool writable)
             => _parameters.Register(name, value, type, writable);
 
-        // Services: Runtime-owned, can be registered before Start
-        // Public read-only view — mutation must go through RegisterService/UnregisterService
         public IReadOnlyCollection<ServiceDescriptor> GetServicesSnapshot() => _services.GetAll();
 
-        public uint RegisterService(ServiceDescriptor descriptor, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler = null)
+        public uint RegisterService(ServiceDescriptor descriptor, Func<JToken, JToken> handler = null)
         {
             var id = handler != null
                 ? _services.Register(descriptor, handler)
@@ -76,7 +62,7 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
             {
                 var adv = new AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
-                _transport.BroadcastText(Newtonsoft.Json.JsonConvert.SerializeObject(adv));
+                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
             }
             return id;
         }
@@ -87,78 +73,32 @@ namespace Unity.FoxgloveSDK.Core
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
             _session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
-            _session.SetRuntime(this);
-            if (_recordingEnabled && _recordingPath != null)
-            {
-                try
-                {
-                    var fs = new System.IO.FileStream(_recordingPath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
-                    _recorder = new McapRecorder(fs, _logger, _recordingChunkSize, _recordingCompression);
-                    _recorder.CoordinateMode = _coordinateMode;
-                    _session.SetRecorder(_recorder);
-
-                    // Write parameter snapshot
-                    var allParams = _parameters.GetAllWireParameters();
-                    var snapshotTime = _playbackClock.NowNs;
-                    var snapshot = new System.Collections.Generic.List<object>();
-                    foreach (var p in allParams)
-                        snapshot.Add(new { name = p.Name, type = p.Type, value = p.Value, timestamp = snapshotTime });
-                    _recorder.WriteMetadata("foxglove.parameters.snapshot",
-                        Newtonsoft.Json.JsonConvert.SerializeObject(snapshot));
-
-                    // Hook parameter changes
-                    _parameters.OnParameterChanged += OnParameterChangedForRecording;
-                }
-                catch (System.Exception ex) { _logger.LogError($"Failed to start MCAP recording: {ex.Message}"); }
-            }
-
+            _session.SetRuntimeContext(this);
+            _recording.AttachToSession(_playbackClock, _parameters, _session);
             _session.Start(host, port);
+            _replay.RegisterChannels(_session);
 
-            // Phase 11: register replay channels after session start
-            if (_replayEnabled && _replayEngine != null && _replayEngine.IsLoaded)
-            {
-                var channels = _replayEngine.Channels;
-                if (channels != null)
-                {
-                    foreach (var ch in channels)
-                    {
-                        var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | ch.Id);
-                        var schema = _summarySchemas != null && _summarySchemas.TryGetValue(ch.SchemaId, out var s)
-                            ? s : null;
-                        _session.RegisterChannel(new AdvertiseChannel
-                        {
-                            Id = replayId,
-                            Topic = ch.Topic,
-                            Encoding = ch.MessageEncoding,
-                            SchemaName = schema?.Name ?? "",
-                            SchemaEncoding = schema?.Encoding ?? "",
-                            Schema = schema?.Data != null ? System.Text.Encoding.UTF8.GetString(schema.Data) : ""
-                        });
-                    }
-                }
-            }
+            // Wire replay message forwarding (stored to avoid handler accumulation)
+            _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
+            _replay.OnReplayMessage += _replayForwarder;
         }
 
-        private void OnParameterChangedForRecording(string name, Newtonsoft.Json.Linq.JToken value, string type)
-        {
-            if (_recorder != null)
-            {
-                var timestamp = _playbackClock.NowNs;
-                var entry = Newtonsoft.Json.JsonConvert.SerializeObject(new { name, type, value, timestamp });
-                _recorder.WriteMetadata("foxglove.parameters", entry);
-            }
-        }
+        public event Action<string, byte[]> OnReplayMessage;
+
+        /// <summary>Test-only hook to fire replay without loading an MCAP file.</summary>
+        internal void _TestFireReplay(string topic, byte[] data)
+            => _replay._TestFire(topic, data);
 
         public void Stop()
         {
-            if (_recorder != null)
+            if (_replayForwarder != null)
             {
-                _parameters.OnParameterChanged -= OnParameterChangedForRecording;
-                _recorder.Close(); _recorder.Dispose(); _recorder = null;
+                _replay.OnReplayMessage -= _replayForwarder;
+                _replayForwarder = null;
             }
+            _recording.DetachFromSession();
             _session?.Dispose();
             _session = null;
-            // Phase 11: keep replay loaded across Stop/Start cycles
         }
 
         // ── Channel API ──
@@ -207,156 +147,60 @@ namespace Unity.FoxgloveSDK.Core
 
         public void DrainServiceCalls() => _session?.DrainServiceCalls();
 
-        // ── Phase 9: Assets ──
+        // ── Assets ──
 
         public void RegisterAssetRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
             => _assets.RegisterRoot(uriPrefix, localRoot, maxBytes);
 
-        internal FoxgloveAssetRegistry Assets => _assets;
+        public FoxgloveAssetRegistry Assets => _assets;
 
-        // ── Phase 9: Playback Control ──
+        // ── Recording (delegated) ──
+
+        public bool RecordingEnabled => _recording.IsEnabled;
 
         public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
-        {
-            _recordingEnabled = true;
-            _recordingPath = filePath;
-            _recordingCompression = compression ?? "";
-            _coordinateMode = coordinateMode ?? "";
-            _recordingChunkSize = chunkSizeBytes > 0 ? chunkSizeBytes : McapRecorder.DefaultChunkSizeBytes;
-        }
+            => _recording.Enable(filePath, chunkSizeBytes, compression, coordinateMode);
 
-        /// <summary>Set coordinate mode for MCAP recording (must be called before Start).</summary>
-        public void SetRecordingCoordinateMode(string mode) { _coordinateMode = mode ?? ""; }
-        public void DisableRecording() { _recordingEnabled = false; _recordingPath = null; }
+        public void SetRecordingCoordinateMode(string mode) => _recording.SetCoordinateMode(mode);
+        public void DisableRecording() => _recording.Disable();
+
+        // ── Playback Control ──
 
         public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
         public bool PlaybackEnabled => _playbackClock.PlaybackEnabled;
-        internal ulong GetPlaybackStartNs() => _playbackClock.StartNs;
-        internal ulong GetPlaybackEndNs() => _playbackClock.EndNs;
+        public ulong GetPlaybackStartNs() => _playbackClock.StartNs;
+        public ulong GetPlaybackEndNs() => _playbackClock.EndNs;
 
-        // ── Phase 11: MCAP Replay ──
-
-        public bool ReplayEnabled => _replayEnabled;
-
-        public void EnableReplay(string filePath)
-        {
-            if (_recordingEnabled)
-            {
-                _logger.LogWarning("Recording and Replay cannot both be enabled. Replay disabled.");
-                return;
-            }
-            try
-            {
-                _replayEngine = new McapReplayEngine();
-                _replayEngine.Load(filePath);
-
-                // Cache summary schemas for channel registration
-                using (var fs = System.IO.File.OpenRead(filePath))
-                {
-                    var reader = new McapReader(fs);
-                    var summary = reader.ReadSummary();
-                    if (summary?.Schemas != null)
-                    {
-                        _summarySchemas = new System.Collections.Generic.Dictionary<ushort, McapSchema>();
-                        foreach (var s in summary.Schemas)
-                            _summarySchemas[s.Id] = s;
-                    }
-
-                    // Check coordinate_mode mismatch
-                    if (summary?.Channels != null)
-                    {
-                        foreach (var ch in summary.Channels)
-                        {
-                            if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
-                                && !string.IsNullOrEmpty(mcapMode))
-                            {
-                                var currentMode = string.IsNullOrEmpty(_coordinateMode) ? "UnityRaw" : _coordinateMode;
-                                if (mcapMode != currentMode)
-                                    _logger.LogWarning($"MCAP '{System.IO.Path.GetFileName(filePath)}' was recorded with coordinate_mode '{mcapMode}', " +
-                                        $"but current setting is '{currentMode}'. Mismatch may cause incorrect object transforms.");
-                                break; // warn once
-                            }
-                        }
-                    }
-                }
-
-                // Build channel → topic lookup for OnReplayMessage dispatch
-                _channelTopicMap = new System.Collections.Generic.Dictionary<ushort, string>();
-                var channels = _replayEngine.Channels;
-                if (channels != null)
-                    foreach (var c in channels)
-                        _channelTopicMap[c.Id] = c.Topic;
-
-                _playbackClock.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
-                _replayEngine.Play();
-                _replayEnabled = true;
-            }
-            catch (System.Exception ex)
-            {
-                _logger.LogError($"Failed to load MCAP replay: {ex.Message}");
-                _replayEngine?.Dispose();
-                _replayEngine = null;
-                _replayEnabled = false;
-            }
-        }
-
-        public void DisableReplay()
-        {
-            _replayEngine?.Dispose();
-            _replayEngine = null;
-            _replayEnabled = false;
-        }
-
-        internal void ReplaySeek(ulong timeNs) => _replayEngine?.Seek(timeNs);
-        internal void ReplayPlay() => _replayEngine?.Play();
-        internal void ReplayPause() => _replayEngine?.Pause();
-
-        internal IReadOnlyList<McapChannel> GetReplayChannels() => _replayEngine?.Channels;
-
-        internal void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
+        public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
             => _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
 
-        internal PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
+        public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
             => _playbackClock.ToState(didSeek, requestId);
 
-        /// <summary>
-        /// Per-frame tick: drain service calls → replay due messages → broadcast Time frame.
-        /// Called from FoxgloveManager.Update() on the Unity main thread.
-        /// </summary>
+        // ── Replay (delegated) ──
+
+        public bool ReplayEnabled => _replay.IsEnabled;
+
+        public void EnableReplay(string filePath)
+            => _replay.Enable(filePath, _playbackClock, _recording.IsEnabled, _recording.CoordinateMode);
+        public void DisableReplay() => _replay.Disable();
+        public void ReplaySeek(ulong timeNs) => _replay.Seek(timeNs);
+        public void ReplayPlay() => _replay.Play();
+        public void ReplayPause() => _replay.Pause();
+
+        internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
+
+        // ── Tick ──
+
         public void Tick()
         {
             if (_session == null) return;
             _session.DrainServiceCalls();
 
-            // Phase 11: tick replay engine
-            if (_replayEnabled && _replayEngine != null)
-            {
-                var messages = _replayEngine.Tick();
-                ulong latestLogTime = 0;
-                if (messages != null)
-                {
-                    foreach (var msg in messages)
-                    {
-                        var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | msg.ChannelId);
-                        _session.Publish(replayId, msg.Data, msg.LogTime);
-                        if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
-
-                        // Notify adapter
-                        if (_channelTopicMap != null && _channelTopicMap.TryGetValue(msg.ChannelId, out var topic2))
-                            OnReplayMessage?.Invoke(topic2, msg.Data);
-                    }
-                }
-                // Broadcast Time frame at the latest replayed log_time (matching official pattern)
-                if (latestLogTime > 0)
-                {
-                    var frame = Protocol.BinaryEncoding.EncodeTime(latestLogTime);
-                    _session.Transport.BroadcastBinary(frame);
-                }
-            }
+            if (_replay.IsEnabled)
+                _replay.Tick(_session, _playbackClock.NowNs);
             else
-            {
                 _session.BroadcastTime();
-            }
         }
 
         public void Dispose()
@@ -364,6 +208,8 @@ namespace Unity.FoxgloveSDK.Core
             Stop();
             _parameters.Clear();
             _services.Clear();
+            _recording.Dispose();
+            _replay.Dispose();
             _transport.Dispose();
         }
     }
