@@ -11,5 +11,17 @@
   "keywords": ["foxglove", "visualization", "websocket", "robotics"],
   "author": {
     "name": "UnityFoxglove"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Basic Visualization",
+      "description": "Minimal Unity scene for verifying Transform, SceneUpdate, Camera, and Foxglove layout.",
+      "path": "Samples~/BasicVisualization"
+    },
+    {
+      "displayName": "Full Demo Visualization",
+      "description": "Full demo scene mirroring the repository demo project, including Parameters, Services, FoxRun, MCAP, and playback workflows.",
+      "path": "Samples~/FullDemoVisualization"
+    }
+  ]
 }
