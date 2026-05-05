@@ -1,6 +1,10 @@
-# Basic Visualization Sample
+# BasicVisualization Sample
 
-Minimal low-dependency sample for verifying core publish chain: Transform, SceneUpdate, and Camera from Unity to Foxglove.
+The minimal low-dependency sample for quickly verifying core SDK publish chain: Transform, SceneUpdate, and Camera from Unity to Foxglove.
+
+## Purpose
+
+Use this sample to verify the SDK inside an arbitrary Unity project after importing it through Package Manager.
 
 ## What this sample includes
 
@@ -14,14 +18,20 @@ Minimal low-dependency sample for verifying core publish chain: Transform, Scene
 - MCAP recording/replay
 - Input System or URP dependencies
 
-For the full demo experience (Parameters, Services, FoxRun, MCAP, playback), import `Full Demo Visualization` instead.
+For the full demo experience, import `Full Demo Visualization` instead.
+
+## Importing this sample into your project
+
+1. After installing the `dev.unity2foxglove.sdk` package via Unity Package Manager, open **Window > Package Manager**
+2. Find **Unity2Foxglove SDK** in the package list
+3. Expand the **Samples** dropdown
+4. Click **Import** next to **Basic Visualization**
+5. After import, the sample files appear under `Assets/Samples/Unity2Foxglove SDK/<version>/Basic Visualization/Scenes/BasicVisualization.unity`
 
 ## Setup
 
-1. Install this package into a Unity project
-2. Import `Basic Visualization` from Package Manager
-3. Open `Assets/Samples/Unity2Foxglove SDK/<version>/Basic Visualization/Scenes/BasicVisualization.unity`
-4. Press Play
+1. Open `Assets/Samples/Unity2Foxglove SDK/<version>/Basic Visualization/Scenes/BasicVisualization.unity`
+2. Press Play
 
 ## Foxglove Connection
 

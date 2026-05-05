@@ -1,37 +1,37 @@
 # Scripts
 
-这个目录放项目级辅助脚本。脚本应尽量使用相对路径，以 `Scripts/` 所在位置推导 workspace root，避免写死本机绝对路径。
+Project-level helper scripts. All scripts use relative paths derived from their own location to resolve the workspace root — no hardcoded absolute paths.
 
-## Unity IL2CPP 构建
+## Unity IL2CPP Build
 
-入口脚本：
+Entry script:
 
 ```text
 Scripts/build_unity_il2cpp.py
 ```
 
-用途：
+Purpose:
 
-- 一条命令启动 Unity batchmode IL2CPP 构建。
-- 支持 Windows、Linux、macOS 三个 standalone target。
-- 自动创建一次构建一个目录，把 log 和 Player 产物放在一起。
-- 调用 Unity 侧 `FoxgloveBuild.BuildIl2CppFromCommandLine`。
+- One command to start a Unity batchmode IL2CPP build.
+- Supports Windows, Linux, and macOS standalone targets.
+- Creates a timestamped directory per build, keeping the log and Player output together.
+- Invokes Unity-side `FoxgloveBuild.BuildIl2CppFromCommandLine`.
 
-### 基本用法
+### Basic Usage
 
-在 workspace root 运行：
+Run from the workspace root:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py
 ```
 
-默认 target 会按当前系统选择：
+The default target is selected based on the current system:
 
 - Windows -> `win64`
 - Linux -> `linux64`
 - macOS -> `macos`
 
-### 指定 target
+### Specifying Target
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64
@@ -39,15 +39,15 @@ python Scripts\build_unity_il2cpp.py --target linux64
 python Scripts\build_unity_il2cpp.py --target macos
 ```
 
-### Dry run
+### Dry Run
 
-只检查路径和参数，不启动 Unity：
+Validate paths and parameters without launching Unity:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64 --dry-run
 ```
 
-输出示例：
+Sample output:
 
 ```text
 [build_unity_il2cpp] Project:   Untiy2Foxglove
@@ -57,9 +57,9 @@ python Scripts\build_unity_il2cpp.py --target win64 --dry-run
 [build_unity_il2cpp] Dry run only; Unity was not started.
 ```
 
-### 构建进度输出
+### Build Progress Output
 
-正式构建时，脚本会定期打印心跳和 Unity log 中的关键行：
+During a real build, the script prints a heartbeat periodically and captures key lines from the Unity log:
 
 ```text
 [build_unity_il2cpp] Elapsed 00:45; still building. Log: build\Unity\win64-il2cpp-...
@@ -68,51 +68,51 @@ python Scripts\build_unity_il2cpp.py --target win64 --dry-run
 [unity-log] Build succeeded: build/Unity/WindowsIL2CPP/FoxgloveDemo.exe
 ```
 
-默认每 15 秒打印一次心跳。可以调整：
+Default heartbeat interval is 15 seconds. To adjust:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64 --progress-interval 30
 ```
 
-### 指定 Unity 路径
+### Specifying Unity Path
 
-如果脚本没有自动找到 Unity，可以手动传入：
+If the script cannot auto-detect Unity, pass the path manually:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64 --unity "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe"
 ```
 
-也可以设置环境变量：
+Or set an environment variable:
 
 ```powershell
 $env:UNITY_EXE="C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe"
 python Scripts\build_unity_il2cpp.py --target win64
 ```
 
-脚本查找 Unity 的顺序：
+Script search order:
 
 1. `--unity`
 2. `UNITY_EXE`
 3. `UNITY_PATH`
-4. Unity Hub 常见安装目录
+4. Common Unity Hub installation directories
 
-### 指定 log 路径
+### Specifying Log Path
 
-`--log` 使用相对 workspace root 的路径：
+`--log` uses a path relative to the workspace root:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64 --log build\Unity\manual-win64-il2cpp.log
 ```
 
-默认 log 格式：
+Default log format:
 
 ```text
 build/Unity/<target>-il2cpp-<timestamp>/build.log
 ```
 
-### 输出路径
+### Output Path
 
-默认每次构建创建一个独立目录：
+Each build creates an isolated timestamped directory by default:
 
 ```text
 build/Unity/<target>-il2cpp-<timestamp>/
@@ -121,7 +121,7 @@ build/Unity/<target>-il2cpp-<timestamp>/
     └── FoxgloveDemo...
 ```
 
-默认 Player 输出：
+Default Player output:
 
 ```text
 build/Unity/<run>/WindowsIL2CPP/FoxgloveDemo.exe
@@ -129,31 +129,31 @@ build/Unity/<run>/LinuxIL2CPP/FoxgloveDemo.x86_64
 build/Unity/<run>/MacOSIL2CPP/FoxgloveDemo.app
 ```
 
-可以指定整个构建目录：
+You can specify the entire build directory:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64 --build-dir build\Unity\manual-win64
 ```
 
-也可以指定 Player 输出路径：
+Or specify the Player output path:
 
 ```powershell
 python Scripts\build_unity_il2cpp.py --target win64 --output build\Unity\manual-win64\WindowsIL2CPP\FoxgloveDemo.exe
 ```
 
-### 跨平台注意事项
+### Cross-Platform Notes
 
-- 构建 Linux/macOS 需要安装对应的 Unity Build Support 模块。
-- Windows 主机不一定能完整产出可签名/可发布的 macOS Player；macOS Player 最好在 macOS 主机上构建。
-- IL2CPP 构建耗时较长，建议先用 `--dry-run` 确认参数。
-- 构建前最好关闭 Unity Editor，避免 Library/脚本编译状态互相影响。
+- Building for Linux/macOS requires the corresponding Unity Build Support modules.
+- A Windows host may not produce fully signed/releasable macOS Players; build macOS on macOS when possible.
+- IL2CPP builds are time-consuming — use `--dry-run` first to validate parameters.
+- Close the Unity Editor before building to avoid Library/script compilation state conflicts.
 
-### 与 FoxRun ISG 的关系
+### Relationship with FoxRun ISG
 
-IL2CPP 构建会触发 `FoxrunBuildPreprocess`：
+IL2CPP builds trigger `FoxrunBuildPreprocess`:
 
 ```text
 [FoxrunBuildPreprocess] Generating FoxRun source files...
 ```
 
-如果 Player 里看不到 `/debug/*` topic，先检查 build log 中是否出现这条日志，以及 `Untiy2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs` 是否生成。
+If `/debug/*` topics are not visible in the Player, first check the build log for this message, and verify that `Untiy2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs` files were generated.
