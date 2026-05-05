@@ -107,6 +107,9 @@ namespace Unity.FoxgloveSDK.IO
             var compression = McapBinaryReader.ReadString(content, ref off);
             var compSize = McapBinaryReader.ReadU64LE(content, ref off);
 
+            if (compSize > int.MaxValue || uncompSize > int.MaxValue)
+                throw new InvalidDataException($"Chunk compressed/uncompressed size exceeds int.MaxValue");
+
             var compressed = new byte[compSize];
             Buffer.BlockCopy(content, off, compressed, 0, (int)compSize);
 

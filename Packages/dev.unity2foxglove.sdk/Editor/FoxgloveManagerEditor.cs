@@ -39,6 +39,9 @@ namespace Unity.FoxgloveSDK.Editor
                 var d = defaultDir;
                 EditorApplication.delayCall += () =>
                 {
+                    if (capturedProp.serializedObject == null || capturedProp.serializedObject.targetObject == null)
+                        return;
+
                     string selected;
                     if (isFile)
                         selected = EditorUtility.OpenFilePanel(title, d, extension);

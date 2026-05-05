@@ -37,6 +37,7 @@
     <Compile Include="Phase12Validation.cs" />
     <Compile Include="Phase13Validation.cs" />
     <Compile Include="Phase14Validation.cs" />
+    <Compile Include="Phase16Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
   </ItemGroup>
 </Project>

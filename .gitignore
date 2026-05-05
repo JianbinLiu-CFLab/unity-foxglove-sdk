@@ -37,3 +37,6 @@ debug_mcap/
 # ISG generated source files are rebuilt before IL2CPP/CI builds
 Untiy2Foxglove/Assets/Scripts/Generated/
 Untiy2Foxglove/Assets/Scripts/Generated.meta
+
+# developer plans
+Plan/

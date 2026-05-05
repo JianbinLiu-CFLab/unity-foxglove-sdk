@@ -24,7 +24,8 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _params[name] = new ParameterEntry { Value = value, Type = type, Writable = writable };
             }
-            OnParameterChanged?.Invoke(name, value, type);
+            var handler = OnParameterChanged;
+            handler?.Invoke(name, value, type);
         }
 
         /// <summary>Unregister a parameter.</summary>
@@ -44,7 +45,8 @@ namespace Unity.FoxgloveSDK.Core
                 entry.Value = value;
                 type = entry.Type;
             }
-            OnParameterChanged?.Invoke(name, value, type);
+            var handler = OnParameterChanged;
+            handler?.Invoke(name, value, type);
             return true;
         }
 
