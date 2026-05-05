@@ -1,4 +1,4 @@
-# [FoxgloveLog] — 对标 Rerun `rr.log()` 的零代码自动发布
+# [FoxRun] — 对标 Rerun `rr.log()` 的零代码自动发布
 
 用 Attribute 标注字段即可自动发布到 Foxglove，**无需理解 channel、schema、subscription 等协议概念**。
 
@@ -6,7 +6,7 @@
 
 ## 用户使用步骤
 
-### 1. 写脚本，标 `[FoxgloveLog]`
+### 1. 写脚本，标 `[FoxRun]`
 
 ```csharp
 // Assets/Scripts/TestLog.cs
@@ -15,10 +15,10 @@ using Unity.FoxgloveSDK.Components;
 
 public partial class TestLog : MonoBehaviour          // ← 必须 partial
 {
-    [FoxgloveLog("/debug/position")]                   // 默认 10Hz
+    [FoxRun("/debug/position")]                   // 默认 10Hz
     private Vector3 _pos;
 
-    [FoxgloveLog("/debug/health", RateHz = 5)]         // 自定义频率
+    [FoxRun("/debug/health", RateHz = 5)]         // 自定义频率
     private float _health = 100f;
 
     void Update() { _pos = transform.position; }
@@ -101,13 +101,13 @@ cp src/bin/Release/netstandard2.0/FoxgloveLogSourceGenerator.dll analyzers/dotne
 ## 架构
 
 ```
-用户脚本 (partial class + [FoxgloveLog])
+用户脚本 (partial class + [FoxRun])
         │
         ▼ 编译时
 FoxgloveLogSourceGenerator (ISG)
         │
         ▼ 生成
-TestLog_FoxgloveLog.g.cs (impl IFoxgloveLogSource)
+TestLog_FoxRun.g.cs (impl IFoxgloveLogSource)
         │
         ▼ 运行时
 FoxgloveLogHub (singleton, 2s 扫描)

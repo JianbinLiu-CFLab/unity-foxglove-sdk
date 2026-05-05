@@ -347,7 +347,7 @@ Deferred：
 
 ### Phase 13 - Bug 修复 + 重构（Code Review 驱动）
 
-**状态：Planned。执行计划已撰写。**
+**状态：Done。**
 
 基于 2026-05-04 Phase 10-12 Code Review 报告，17 个 issue（7 个 bug + 6 个设计问题 + 4 个测试缺口）。
 
@@ -364,36 +364,63 @@ Deferred：
 
 ### Phase 14 - Inspector UX + Attributes + Source Generation
 
-**状态：Planned**
+**状态：Done。**
 
 范围：
 - `FoxgloveManagerEditor.cs` — 路径字段 Browse 按钮（`_replayFilePath`、`_recordingDirectory`、`_assetRoots.localRoot`）
 - `[FoxgloveLog]` attribute + Editor-time source generation（对标 Rerun `log()` API，降低接入门槛）
 - IL2CPP link.xml 自动生成（source generator 子功能）
-### Phase 15 - MCAP 补齐官方能力差距
 
-**状态：Planned**
+### Phase 15 - DX 增强 + MCAP 补齐
+
+**状态：Done（Batch 15A `[FoxRun]` 重命名已完成）**
 
 范围：
+- `[FoxgloveLog]` → `[FoxRun]` 重命名（对标 Rerun 品牌对仗，`Fox` + `Run` = 数据跑向 Foxglove）
+- IL2CPP Player 构建修复 — ISG 生成真实 `.g.cs` 文件落地，解决 Player 编译不加载 analyzer 的问题
 - MCAP attachment 读写（嵌入/提取任意文件）
 - MCAP reader LogTimeOrder 排序读取
-- Protobuf schema 支持
 - Streaming/async MCAP writer
 - 更完整 Assets 缓存 / MIME / 大文件策略
 
 明确不做：
 - ROS2 支持
+- Protobuf（移至 Phase 17 独立实现）
 
 ### Phase 16 - 开源发布准备
 
 **状态：Planned**
 
+执行计划：[[17_PHASE16_PLAN]]
+
 范围：
 - README / 使用文档
+- 添加版本控制
 - Samples~ demo 场景
 - LICENSE
 - GitHub Actions CI（dotnet test）
 - 清理仓库垃圾
+
+### Phase 17 - Protobuf 编码支持
+
+**状态：Planned**
+
+执行计划：[[18_PHASE17_PLAN]]
+
+范围：
+- Google.Protobuf 库引入 + IL2CPP `link.xml`
+- 官方 46 个 foxglove `.proto` 预编译为 C# 类（`protoc` codegen）
+- `FileDescriptorSet` 构建 + `ProtobufSchemaRegistry`
+- `ServerInfo.supportedEncodings` 扩展为 `["json", "protobuf"]`
+- Channel advertise 支持 `encoding: "protobuf"` + `schemaEncoding: "protobuf"`
+- `PublishProto<T>` 便捷 API
+- MCAP 录制支持 protobuf channel（schema data = `FileDescriptorSet` bytes）
+- `ProtobufPublisher<T>` 组件 + `TransformPublisher` protobuf 模式
+
+明确不做：
+- Service layer protobuf encoding
+- gRPC
+- FlatBuffers / ROS message encoding
 
 ## 建议目录结构
 
