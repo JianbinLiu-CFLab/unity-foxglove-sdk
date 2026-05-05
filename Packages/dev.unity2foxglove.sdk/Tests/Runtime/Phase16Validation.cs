@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("Phase 16: All checks passed.");
         }
 
-        static string FindRepoRoot()
+        internal static string FindRepoRoot()
         {
             var dir = AppDomain.CurrentDomain.BaseDirectory;
             while (dir != null)
