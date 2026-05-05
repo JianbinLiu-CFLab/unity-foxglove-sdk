@@ -18,29 +18,29 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Console.WriteLine("\n--- Phase 14 Tests ---");
             _passCount = 0;
-            TestFoxgloveLogAttribute();
-            TestFoxgloveLogAttributeTopic();
-            TestFoxgloveLogAttributeRateHz();
-            TestFoxgloveLogAttributeSchemaName();
-            TestFoxgloveLogAllowMultiple();
+            TestFoxRunAttribute();
+            TestFoxRunAttributeTopic();
+            TestFoxRunAttributeRateHz();
+            TestFoxRunAttributeSchemaName();
+            TestFoxRunAllowMultiple();
             Console.WriteLine($"Phase 14: {_passCount} checks passed.");
         }
 
-        // ── [FoxgloveLog] Attribute ──
+        // ── [FoxRun] Attribute ──
 
-        static void TestFoxgloveLogAttribute()
+        static void TestFoxRunAttribute()
         {
-            var attr = new Components.FoxgloveLogAttribute("/test/topic");
+            var attr = new Components.FoxRunAttribute("/test/topic");
             Assert(attr.Topic == "/test/topic", "Attribute Topic stored correctly");
             Assert(attr.RateHz == 10f, "Default RateHz is 10");
             Assert(attr.SchemaName == null, "Default SchemaName is null");
         }
 
-        static void TestFoxgloveLogAttributeTopic()
+        static void TestFoxRunAttributeTopic()
         {
             try
             {
-                new Components.FoxgloveLogAttribute(null);
+                new Components.FoxRunAttribute(null);
                 throw new Exception("Expected ArgumentNullException");
             }
             catch (ArgumentNullException)
@@ -49,23 +49,23 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        static void TestFoxgloveLogAttributeRateHz()
+        static void TestFoxRunAttributeRateHz()
         {
-            var attr = new Components.FoxgloveLogAttribute("/t") { RateHz = 30f };
+            var attr = new Components.FoxRunAttribute("/t") { RateHz = 30f };
             Assert(attr.RateHz == 30f, "Custom RateHz stored");
         }
 
-        static void TestFoxgloveLogAttributeSchemaName()
+        static void TestFoxRunAttributeSchemaName()
         {
-            var attr = new Components.FoxgloveLogAttribute("/t") { SchemaName = "foxglove.Point3" };
+            var attr = new Components.FoxRunAttribute("/t") { SchemaName = "foxglove.Point3" };
             Assert(attr.SchemaName == "foxglove.Point3", "Custom SchemaName stored");
         }
 
-        static void TestFoxgloveLogAllowMultiple()
+        static void TestFoxRunAllowMultiple()
         {
-            var attrs = typeof(Components.FoxgloveLogAttribute).GetCustomAttributes(
+            var attrs = typeof(Components.FoxRunAttribute).GetCustomAttributes(
                 typeof(AttributeUsageAttribute), false);
-            Assert(attrs.Length > 0, "AttributeUsage defined on FoxgloveLogAttribute");
+            Assert(attrs.Length > 0, "AttributeUsage defined on FoxRunAttribute");
             var usage = (AttributeUsageAttribute)attrs[0];
             Assert(usage.AllowMultiple, "AllowMultiple is true");
             Assert((usage.ValidOn & (AttributeTargets.Field | AttributeTargets.Property)) != 0,

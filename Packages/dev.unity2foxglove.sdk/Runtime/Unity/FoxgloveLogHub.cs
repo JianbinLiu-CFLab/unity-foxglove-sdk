@@ -25,12 +25,13 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<IFoxgloveLogSource, float[]> _timers = new();
         private readonly List<IFoxgloveLogSource> _stale = new();
         private float _scanTimer;
+        private float _mgrSearchCooldown;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
             if (_instance != null) return;
-            var go = new GameObject("[FoxgloveLogHub]");
+            var go = new GameObject("[FoxRunHub]");
             DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
             _instance = go.AddComponent<FoxgloveLogHub>();
@@ -39,8 +40,16 @@ namespace Unity.FoxgloveSDK.Components
         private void Update()
         {
             if (_mgr == null)
-                _mgr = FindFirstObjectByType<FoxgloveManager>();
-            if (_mgr == null || !_mgr.IsRunning) return;
+            {
+                _mgrSearchCooldown -= Time.deltaTime;
+                if (_mgrSearchCooldown <= 0f)
+                {
+                    _mgrSearchCooldown = 3f;
+                    _mgr = FindFirstObjectByType<FoxgloveManager>();
+                }
+                if (_mgr == null) return;
+            }
+            if (!_mgr.IsRunning) return;
 
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f)

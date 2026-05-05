@@ -33,3 +33,7 @@ Untiy2Foxglove/Recordings/*
 !Untiy2Foxglove/Recordings/.gitkeep
 debug_mcap/
 .dotnet-home/
+
+# ISG generated source files are rebuilt before IL2CPP/CI builds
+Untiy2Foxglove/Assets/Scripts/Generated/
+Untiy2Foxglove/Assets/Scripts/Generated.meta

@@ -1,4 +1,4 @@
-# Phase 14：Inspector UX + [FoxgloveLog] Attribute + Source Generator
+# Phase 14：Inspector UX + [FoxLog] Attribute + Source Generator
 
 ## Context
 

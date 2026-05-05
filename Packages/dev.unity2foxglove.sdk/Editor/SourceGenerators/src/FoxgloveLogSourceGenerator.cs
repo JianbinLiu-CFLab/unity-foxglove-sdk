@@ -12,8 +12,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     [Generator]
     public class FoxgloveLogSourceGenerator : IIncrementalGenerator
     {
-        private const string AttrShortName = "FoxgloveLog";
-        private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxgloveLogAttribute";
+        private const string AttrShortName = "FoxRun";
+        private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxRunAttribute";
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
@@ -31,13 +31,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static bool IsCandidate(SyntaxNode node)
         {
             if (node is FieldDeclarationSyntax f && f.AttributeLists.Count > 0)
-                return HasFoxgloveLogAttr(f.AttributeLists);
+                return HasFoxRunAttr(f.AttributeLists);
             if (node is PropertyDeclarationSyntax p && p.AttributeLists.Count > 0)
-                return HasFoxgloveLogAttr(p.AttributeLists);
+                return HasFoxRunAttr(p.AttributeLists);
             return false;
         }
 
-        private static bool HasFoxgloveLogAttr(SyntaxList<AttributeListSyntax> lists)
+        private static bool HasFoxRunAttr(SyntaxList<AttributeListSyntax> lists)
         {
             foreach (var al in lists)
                 foreach (var a in al.Attributes)
@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
             if (symbol == null) return null;
 
-            // Verify attribute is actually FoxgloveLogAttribute
+            // Verify attribute is actually FoxRunAttribute
             var attrs = symbol.GetAttributes()
                 .Where(a => a.AttributeClass?.ToDisplayString() == AttrFullName)
                 .ToList();
@@ -148,6 +148,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.TopicConflict, Location.None, kv.Key));
             }
 
+            // Detect underscore-truncation name collisions
+            foreach (var kv in topicMap)
+            {
+                var cleanNames = kv.Value.Select(f => f.name.TrimStart('_')).ToList();
+                if (cleanNames.Distinct().Count() < cleanNames.Count)
+                    spc.ReportDiagnostic(Diagnostic.Create(Diags.NameConflict, Location.None, className, kv.Key));
+            }
+
             var topics = topicMap.Keys.ToList();
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
@@ -206,7 +214,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             sb.AppendLine($"{pad}}}");
             if (!string.IsNullOrEmpty(ns)) sb.AppendLine("}");
 
-            spc.AddSource($"{className}_FoxgloveLog.g.cs", sb.ToString());
+            spc.AddSource($"{className}_FoxRun.g.cs", sb.ToString());
         }
 
         private static string ValueExpr(string name, string type)
@@ -243,13 +251,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static class Diags
         {
             public static readonly DiagnosticDescriptor NotPartial = new DiagnosticDescriptor(
-                "FXLOG001", "Class not partial",
-                "Class '{0}' must be declared partial to use [FoxgloveLog]",
-                "FoxgloveLog", DiagnosticSeverity.Error, true);
+                "FOXRUN001", "Class not partial",
+                "Class '{0}' must be declared partial to use [FoxRun]",
+                "FoxRun", DiagnosticSeverity.Error, true);
             public static readonly DiagnosticDescriptor TopicConflict = new DiagnosticDescriptor(
-                "FXLOG002", "Topic schema conflict",
+                "FOXRUN002", "Topic schema conflict",
                 "Topic '{0}' has conflicting SchemaName values across fields",
-                "FoxgloveLog", DiagnosticSeverity.Warning, true);
+                "FoxRun", DiagnosticSeverity.Warning, true);
+            public static readonly DiagnosticDescriptor NameConflict = new DiagnosticDescriptor(
+                "FOXRUN003", "Field name collision",
+                "Class '{0}' topic '{1}' has field names that collide after stripping underscores",
+                "FoxRun", DiagnosticSeverity.Warning, true);
         }
     }
 }
