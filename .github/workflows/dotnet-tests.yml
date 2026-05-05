@@ -1,0 +1,26 @@
+name: dotnet tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "Plan/**"
+      - "**.md"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "Plan/**"
+      - "**.md"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0"
+
+      - name: Run validation suite
+        run: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj

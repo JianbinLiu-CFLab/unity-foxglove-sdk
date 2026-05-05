@@ -400,8 +400,11 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     var ext = new byte[8];
                     if (!ReadExact(ext, 0, 8)) return null;
-                    // Only support up to int.MaxValue for simplicity
-                    payloadLen = (int)(((long)ext[4] << 24) | ((long)ext[5] << 16) | ((long)ext[6] << 8) | ext[7]);
+                    var len64 = (long)(((long)ext[0] << 56) | ((long)ext[1] << 48) | ((long)ext[2] << 40)
+                                     | ((long)ext[3] << 32) | ((long)ext[4] << 24) | ((long)ext[5] << 16)
+                                     | ((long)ext[6] << 8)  | (long)ext[7]);
+                    if (len64 < 0 || len64 > int.MaxValue) return null;
+                    payloadLen = (int)len64;
                 }
 
                 byte[] mask = null;

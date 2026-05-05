@@ -73,6 +73,8 @@ namespace Unity.FoxgloveSDK.Components
         public event System.Action<string, byte[]> OnReplayMessage;
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string), uint>();
+        private System.Action<string, byte[]> _replayForwarder;
+        private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;
 
         public CoordinateMode ActiveCoordinateMode => _coordinateMode;
 
@@ -164,7 +166,8 @@ namespace Unity.FoxgloveSDK.Components
             SetupReplay();
 
             _runtime.Start(_serverName, _host, _port);
-            _runtime.OnReplayMessage += (topic, data) => OnReplayMessage?.Invoke(topic, data);
+            _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
+            _runtime.OnReplayMessage += _replayForwarder;
             _warnedNotRunning = false;
 
             var transport = _runtime.Session?.Transport;
@@ -172,8 +175,9 @@ namespace Unity.FoxgloveSDK.Components
             {
                 transport.OnClientConnected += EnqueueConnect;
                 transport.OnClientDisconnected += EnqueueDisconnect;
-                _runtime.Session.OnClientMessage += (cid, chId, topic, payload) =>
+                _clientMessageForwarder = (cid, chId, topic, payload) =>
                     _clientEvents.Enqueue(new ClientEvent { ClientId = cid, ChannelId = chId, Topic = topic, Payload = payload, IsConnect = false, IsMessage = true });
+                _runtime.Session.OnClientMessage += _clientMessageForwarder;
             }
 
             Debug.Log($"[Foxglove] Server started on ws://{_host}:{_port}");
@@ -232,7 +236,24 @@ namespace Unity.FoxgloveSDK.Components
         public void StopServer()
         {
             if (!IsRunning) return;
+
+            var transport = _runtime.Session?.Transport;
+            if (transport != null)
+            {
+                transport.OnClientConnected -= EnqueueConnect;
+                transport.OnClientDisconnected -= EnqueueDisconnect;
+            }
+            if (_runtime.Session != null && _clientMessageForwarder != null)
+            {
+                _runtime.Session.OnClientMessage -= _clientMessageForwarder;
+                _clientMessageForwarder = null;
+            }
             _runtime.Stop();
+            if (_replayForwarder != null)
+            {
+                _runtime.OnReplayMessage -= _replayForwarder;
+                _replayForwarder = null;
+            }
             _channelCache.Clear();
             _nextChannelId = 1;
             RestoreLivePublishers();

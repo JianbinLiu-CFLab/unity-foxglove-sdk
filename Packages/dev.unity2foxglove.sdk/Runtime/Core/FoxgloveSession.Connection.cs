@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 BroadcastGraphUpdate();
             }
-            catch { _logger.LogWarning($"Client advertise parse error from client {clientId}"); }
+            catch (Exception ex) { _logger.LogWarning($"Client advertise parse error from client {clientId}: {ex.Message}"); }
         }
 
         private void HandleClientUnadvertise(uint clientId, string json)
@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 BroadcastGraphUpdate();
             }
-            catch { _logger.LogWarning($"Client unadvertise parse error from client {clientId}"); }
+            catch (Exception ex) { _logger.LogWarning($"Client unadvertise parse error from client {clientId}: {ex.Message}"); }
         }
 
         private void HandleClientBinaryPublish(uint clientId, byte[] data)

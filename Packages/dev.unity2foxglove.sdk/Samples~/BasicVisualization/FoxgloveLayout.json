@@ -3,13 +3,13 @@
     "3D!28kt99f": {
       "cameraState": {
         "perspective": true,
-        "distance": 5.839780486775266,
-        "phi": 60.00000000000065,
-        "thetaOffset": 60.0000000000015,
+        "distance": 18.049999999991908,
+        "phi": 74.38201355591765,
+        "thetaOffset": 100.21002534377617,
         "targetOffset": [
-          1.0298324726846553,
-          0.4408148279685887,
-          0
+          3.4246747816894962,
+          -2.124836284051167,
+          -3.983366034240373e-16
         ],
         "target": [
           0,
@@ -125,12 +125,13 @@
         "imageTopic": "/unity/camera"
       }
     },
-    "CallService!dh9tda": {
+    "CallService!3ok3dl4": {
       "requestPayload": "{}",
       "layout": "vertical",
-      "timeoutSeconds": 10,
+      "timeoutSeconds": 62.8989,
       "serviceName": "/cube/reset_pose"
     },
+    "TopicGraph!3v7spal": {},
     "Plot!429zqe2": {
       "paths": [
         {
@@ -156,7 +157,16 @@
         }
       ]
     },
-    "Parameters!axm5vd": {}
+    "Parameters!axm5vd": {},
+    "Publish!4e42o2l": {
+      "datatype": "foxglove.CompressedImage",
+      "value": "{\n  \"timestamp\": {\n    \"sec\": 0,\n    \"nsec\": 0\n  },\n  \"frame_id\": \"\",\n  \"data\": [\n    0\n  ],\n  \"format\": \"\"\n}",
+      "topicName": "/unity/camera"
+    },
+    "RawMessages!mvalvc": {
+      "defaultExpanded": false,
+      "topicPath": "/debug/position"
+    }
   },
   "globalVariables": {},
   "userNodes": {},
@@ -172,17 +182,33 @@
     "second": {
       "first": {
         "first": "Image!4gul8mu",
-        "second": "CallService!dh9tda",
-        "direction": "row"
+        "second": {
+          "first": "CallService!3ok3dl4",
+          "second": "TopicGraph!3v7spal",
+          "direction": "row",
+          "splitPercentage": 29.593810444874276
+        },
+        "direction": "row",
+        "splitPercentage": 31.884057971014496
       },
       "second": {
         "first": "Plot!429zqe2",
-        "second": "Parameters!axm5vd",
-        "direction": "row"
+        "second": {
+          "first": "Parameters!axm5vd",
+          "second": {
+            "first": "Publish!4e42o2l",
+            "second": "RawMessages!mvalvc",
+            "direction": "row"
+          },
+          "direction": "row",
+          "splitPercentage": 35.87174348697396
+        },
+        "direction": "row",
+        "splitPercentage": 34.25559947299078
       },
       "direction": "column"
     },
     "direction": "row",
-    "splitPercentage": 34.398110867991655
+    "splitPercentage": 20.952106076297518
   }
 }
