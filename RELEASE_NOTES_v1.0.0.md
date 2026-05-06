@@ -12,14 +12,14 @@ Unity2Foxglove v1.0.0 is the first public release. It is a Unity SDK that stream
 
 ### Local package path
 
-1. Clone the repository: `git clone https://github.com/JianbinLiu-CFLab/Unity2Foxglove.git`
+1. Clone the repository: `git clone https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk.git`
 2. Unity menu: `Window > Package Manager > + > Add package from disk...`
 3. Select `Packages/dev.unity2foxglove.sdk/package.json`
 
 ### Git URL (Unity Package Manager)
 
 ```
-https://github.com/JianbinLiu-CFLab/Unity2Foxglove.git?path=Packages/dev.unity2foxglove.sdk
+https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk.git?path=/Packages/dev.unity2foxglove.sdk
 ```
 
 ---
