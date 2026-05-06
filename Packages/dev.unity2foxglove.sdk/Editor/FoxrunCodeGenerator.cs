@@ -26,11 +26,6 @@ namespace Unity.FoxgloveSDK.Editor
         const string OutputDir = "Assets/Scripts/Generated/";
 
         /// <summary>
-        /// Scan all loaded assemblies for [FoxRun] fields/properties on partial classes,
-        /// and generate _FoxRun.g.cs files under Assets/Scripts/Generated/.
-        /// Returns the list of generated file paths.
-        /// Files are only written if content differs from existing file (prevents recompile loop).
-        /// <summary>
         /// Collect the types that GenerateSourceFiles would process, without writing files.
         /// Returns a list of (assemblyName, namespace, className) tuples for IL2CPP preservation.
         /// </summary>
@@ -79,6 +74,12 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Scan all loaded assemblies for [FoxRun] fields/properties on partial classes,
+        /// and generate _FoxRun.g.cs files under Assets/Scripts/Generated/.
+        /// Returns the list of generated file paths.
+        /// Files are only written if content differs from existing file (prevents recompile loop).
+        /// </summary>
         public static List<string> GenerateSourceFiles()
         {
             var result = new List<string>();
