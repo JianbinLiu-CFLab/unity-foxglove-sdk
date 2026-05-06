@@ -111,8 +111,8 @@ namespace Unity.FoxgloveSDK.Tests
             // .unity, .asset, and .inputactions are text YAML/JSON — these are
             // exactly where serialized local paths appear, so they MUST be scanned.
             var sampleDirs = new[] { basicDir, fullDir };
-            var windowsAbsPath = repoRoot.Replace('/', '\\'); // D:\BaiduSyncdisk\...
-            var unixAbsPath = repoRoot.Replace('\\', '/');   // D:/BaiduSyncdisk/...
+            var windowsAbsPath = repoRoot.Replace('/', '\\');
+            var unixAbsPath = repoRoot.Replace('\\', '/');
             foreach (var dir in sampleDirs)
             {
                 var allFiles = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
@@ -132,6 +132,17 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
+            // ── Demo project path hygiene ──
+            // The demo project is part of the repository experience, so it also
+            // must not serialize one developer's local clone path.
+            var demoDir = Path.Combine(repoRoot, "Untiy2Foxglove");
+            Assert(File.Exists(Path.Combine(demoDir, "README.md")), "Untiy2Foxglove README exists");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), repoRoot, "Untiy2Foxglove/README.md");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), repoRoot, "Untiy2Foxglove/Assets");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), repoRoot, "Untiy2Foxglove/Packages");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), repoRoot, "Untiy2Foxglove/Configs");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), repoRoot, "Untiy2Foxglove/Docs");
+
             // ── 17D: Layout consistency ──
             Assert(Directory.Exists(configsDir), "Untiy2Foxglove/Configs/ exists");
             var configFullLayout = Path.Combine(configsDir, "FoxgloveFullLayout.json");
@@ -150,6 +161,37 @@ namespace Unity.FoxgloveSDK.Tests
                 Console.WriteLine($"[PASS] {description}");
             else
                 throw new Exception($"[FAIL] {description}");
+        }
+
+        static void ScanNoAbsolutePaths(string path, string repoRoot, string label)
+        {
+            if (!File.Exists(path) && !Directory.Exists(path))
+                return;
+
+            var windowsAbsPath = repoRoot.Replace('/', '\\');
+            var unixAbsPath = repoRoot.Replace('\\', '/');
+            var files = File.Exists(path)
+                ? new[] { path }
+                : Directory.GetFiles(path, "*", SearchOption.AllDirectories);
+
+            foreach (var file in files)
+            {
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (ext == ".dll" || ext == ".exe" || ext == ".so" || ext == ".dylib")
+                    continue;
+
+                try
+                {
+                    var content = File.ReadAllText(file);
+                    var rel = File.Exists(path) ? Path.GetFileName(file) : Path.GetRelativePath(path, file);
+                    Assert(!content.Contains(windowsAbsPath) && !content.Contains(unixAbsPath),
+                        $"{label}/{rel}: no absolute path");
+                }
+                catch
+                {
+                    // Skip files that are not valid text in the current runtime.
+                }
+            }
         }
     }
 }

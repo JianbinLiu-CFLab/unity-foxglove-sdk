@@ -329,7 +329,7 @@ MonoBehaviour:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove\Recordings\02_foxglove_20260504_112432_lz4.mcap
+  _replayFilePath: 
   _replayAutoPlay: 0
   _disableLivePublishers: 0
 --- !u!4 &346350282
