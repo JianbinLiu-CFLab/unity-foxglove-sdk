@@ -174,7 +174,7 @@ If `[FoxrunBuildPreprocess]` is missing, FoxRun log topics may not be generated 
 
 ## 8. IL2CPP Player verification checklist
 
-Verify each item according to **[02_FoxgloveManualAcceptance.md](02_FoxgloveManualAcceptance.md)**, with special attention to:
+Verify each item according to **[02 Manual Acceptance Checklist](02%20Manual%20Acceptance%20Checklist.md)**, with special attention to:
 
 - [ ] WebSocket connection successful; all topics visible
 - [ ] `/tf` topic: coordinate frame works correctly
@@ -229,4 +229,4 @@ Unity executable was not found. Pass --unity or set UNITY_EXE/UNITY_PATH.
 
 - Confirm port 8765 is not occupied (`netstat -ano | findstr 8765`)
 - Confirm the firewall does not block the Player's network connection
-- See **[04_DemoTroubleshooting.md](04_DemoTroubleshooting.md)** for more troubleshooting
+- See **[04 Troubleshooting](04%20Troubleshooting.md)** for more troubleshooting

@@ -236,7 +236,7 @@ Start here when Unity cannot open the demo, Foxglove cannot connect, `/debug/*` 
 
 ## 11. IL2CPP build issues
 
-For IL2CPP build-specific issues, refer to the troubleshooting section in **[03_BuildIL2CPP.md](03_BuildIL2CPP.md)**.
+For IL2CPP build-specific issues, refer to the troubleshooting section in **[03 Building IL2CPP Standalone](03%20Building%20IL2CPP%20Standalone.md)**.
 
 ## 12. Still unresolved
 

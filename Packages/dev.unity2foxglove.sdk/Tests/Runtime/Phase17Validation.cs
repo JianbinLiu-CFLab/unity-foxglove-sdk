@@ -111,8 +111,8 @@ namespace Unity.FoxgloveSDK.Tests
             // .unity, .asset, and .inputactions are text YAML/JSON — these are
             // exactly where serialized local paths appear, so they MUST be scanned.
             var sampleDirs = new[] { basicDir, fullDir };
-            var windowsAbsPath = repoRoot.Replace('/', '\\'); // D:\BaiduSyncdisk\...
-            var unixAbsPath = repoRoot.Replace('\\', '/');   // D:/BaiduSyncdisk/...
+            var windowsAbsPath = repoRoot.Replace('/', '\\');
+            var unixAbsPath = repoRoot.Replace('\\', '/');
             foreach (var dir in sampleDirs)
             {
                 var allFiles = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);

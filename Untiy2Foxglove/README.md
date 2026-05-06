@@ -108,7 +108,7 @@ After importing the layout, the Foxglove interface should display the following 
 3. **Call service**: In the Service Call panel, click **Call service**. The cube returns to origin and plot curves return to zero.
 4. **Check FoxRun**: Confirm the Raw Messages panel shows `/debug/position` and `/debug/health` topic data.
 
-For detailed step-by-step instructions, see **[Docs/01_RunDemo.md](Docs/01_RunDemo.md)**. For the manual acceptance checklist, see **[Docs/02_FoxgloveManualAcceptance.md](Docs/02_FoxgloveManualAcceptance.md)**.
+For detailed step-by-step instructions, see **[Docs/01 Running the Demo](Docs/01%20Running%20the%20Demo.md)**. For the manual acceptance checklist, see **[Docs/02 Manual Acceptance Checklist](Docs/02%20Manual%20Acceptance%20Checklist.md)**.
 
 ## IL2CPP build
 
@@ -124,11 +124,11 @@ python Scripts/build_unity_il2cpp.py --target win64
 
 After building, run the generated Player and connect Foxglove to `ws://127.0.0.1:8765` to verify all features.
 
-For detailed build instructions, see **[Docs/03_BuildIL2CPP.md](Docs/03_BuildIL2CPP.md)**.
+For detailed build instructions, see **[Docs/03 Building IL2CPP Standalone](Docs/03%20Building%20IL2CPP%20Standalone.md)**.
 
 ## Troubleshooting
 
-See **[Docs/04_DemoTroubleshooting.md](Docs/04_DemoTroubleshooting.md)** for common issues and solutions.
+See **[Docs/04 Troubleshooting](Docs/04%20Troubleshooting.md)** for common issues and solutions.
 
 ## Notes
 

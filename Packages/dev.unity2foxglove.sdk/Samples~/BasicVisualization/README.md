@@ -100,7 +100,7 @@ No longer needed:
 For more details, see the SDK documentation:
 
 - SDK API docs: `Packages/dev.unity2foxglove.sdk/Documentation~/`
-- Demo project run guide: `Untiy2Foxglove/Docs/01_RunDemo.md`
-- Manual acceptance checklist: `Untiy2Foxglove/Docs/02_FoxgloveManualAcceptance.md`
-- IL2CPP build guide: `Untiy2Foxglove/Docs/03_BuildIL2CPP.md`
-- Troubleshooting: `Untiy2Foxglove/Docs/04_DemoTroubleshooting.md`
+- Demo project guide: `Untiy2Foxglove/Docs/01 Running the Demo.md`
+- Manual acceptance checklist: `Untiy2Foxglove/Docs/02 Manual Acceptance Checklist.md`
+- IL2CPP build guide: `Untiy2Foxglove/Docs/03 Building IL2CPP Standalone.md`
+- Troubleshooting: `Untiy2Foxglove/Docs/04 Troubleshooting.md`

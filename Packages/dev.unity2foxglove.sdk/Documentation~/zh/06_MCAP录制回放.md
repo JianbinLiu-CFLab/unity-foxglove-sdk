@@ -40,7 +40,7 @@ var manager = FindFirstObjectByType<FoxgloveManager>();
 
 // 或通过 FoxgloveRuntime 直接控制：
 manager.Runtime.EnableRecording(
-    filePath: "D:/recordings/my_session.mcap",
+    filePath: "recordings/my_session.mcap",
     chunkSizeBytes: 1024 * 1024,    // 1MB
     compression: "lz4",
     coordinateMode: "LeftHand"

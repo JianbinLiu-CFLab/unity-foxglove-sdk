@@ -434,9 +434,9 @@ IL2CPP 构建命令：
 & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' `
   -batchmode `
   -quit `
-  -projectPath 'D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Untiy2Foxglove' `
+  -projectPath '<repo-root>/Untiy2Foxglove' `
   -executeMethod FoxgloveBuild.BuildWindowsIl2Cpp `
-  -logFile 'D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\Unity\phase15b-fix-il2cpp.log'
+  -logFile '<repo-root>/build/Unity/il2cpp.log'
 ```
 
 关键日志：

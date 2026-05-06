@@ -134,4 +134,4 @@ After a successful import, the Foxglove interface automatically arranges into th
 
 If all panels and interactions above work correctly, the demo feature verification has passed.
 
-> For IL2CPP Player verification, continue to **[03_BuildIL2CPP.md](03_BuildIL2CPP.md)**.
+> For IL2CPP Player verification, continue to **[03 Building IL2CPP Standalone](03%20Building%20IL2CPP%20Standalone.md)**.

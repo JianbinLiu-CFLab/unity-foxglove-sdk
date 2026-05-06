@@ -1,0 +1,123 @@
+name: docs check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "ROADMAP.md"
+      - "CHANGELOG.md"
+      - "RELEASE_NOTES_v1.0.0.md"
+      - "THIRD_PARTY_NOTICES.md"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
+      - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
+      - "Untiy2Foxglove/README.md"
+      - "Untiy2Foxglove/Docs/**"
+      - "Scripts/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "ROADMAP.md"
+      - "CHANGELOG.md"
+      - "RELEASE_NOTES_v1.0.0.md"
+      - "THIRD_PARTY_NOTICES.md"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
+      - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
+      - "Untiy2Foxglove/README.md"
+      - "Untiy2Foxglove/Docs/**"
+      - "Scripts/**"
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check public docs for local paths and placeholders
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            README.md
+            ROADMAP.md
+            CHANGELOG.md
+            RELEASE_NOTES_v1.0.0.md
+            THIRD_PARTY_NOTICES.md
+            "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
+            "Packages/dev.unity2foxglove.sdk/Documentation~/en"
+            "Packages/dev.unity2foxglove.sdk/Samples~"
+            "Untiy2Foxglove/README.md"
+            "Untiy2Foxglove/Docs"
+            "Scripts"
+          )
+          if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME" "${files[@]}" \
+            -g "*.md" -g "*.json" -g "*.py" -g "*.ps1"; then
+            echo "Forbidden local path, placeholder, or Obsidian-only embed found in public docs."
+            exit 1
+          fi
+
+      - name: Check markdown links, local images, and mojibake
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+          from urllib.parse import unquote
+
+          roots = [
+              Path("README.md"),
+              Path("ROADMAP.md"),
+              Path("CHANGELOG.md"),
+              Path("RELEASE_NOTES_v1.0.0.md"),
+              Path("THIRD_PARTY_NOTICES.md"),
+              Path("Packages/dev.unity2foxglove.sdk/Documentation~/README.md"),
+              Path("Packages/dev.unity2foxglove.sdk/Documentation~/en"),
+              Path("Packages/dev.unity2foxglove.sdk/Samples~"),
+              Path("Untiy2Foxglove/README.md"),
+              Path("Untiy2Foxglove/Docs"),
+              Path("Scripts"),
+          ]
+
+          files = []
+          for root in roots:
+              if root.is_file() and root.suffix.lower() == ".md":
+                  files.append(root)
+              elif root.is_dir():
+                  files.extend(root.rglob("*.md"))
+
+          link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+          missing = []
+          mojibake = []
+          for file in files:
+              text = file.read_text(encoding="utf-8", errors="replace")
+              if "\ufffd" in text or "\u9201" in text:
+                  mojibake.append(str(file))
+              for match in link_pattern.finditer(text):
+                  raw = match.group(1).strip()
+                  if not raw or raw.startswith("#"):
+                      continue
+                  if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw):
+                      continue
+                  target = raw.split("#", 1)[0]
+                  if not target:
+                      continue
+                  path = (file.parent / unquote(target)).resolve()
+                  if not path.exists():
+                      missing.append(f"{file}:{match.start(1)} -> {raw}")
+
+          if missing:
+              print("Missing local markdown links or images:")
+              for item in missing:
+                  print(item)
+              sys.exit(1)
+          if mojibake:
+              print("Possible mojibake found:")
+              for item in mojibake:
+                  print(item)
+              sys.exit(1)
+          print(f"Checked {len(files)} markdown files.")
+          PY
