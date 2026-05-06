@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Thread-safe registry mapping URI prefixes to local file system
+// roots for the Foxglove fetchAsset capability. No UnityEngine dependency.
+
 using System;
 using System.Collections.Generic;
 using System.IO;

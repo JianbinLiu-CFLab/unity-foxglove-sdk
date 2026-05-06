@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Thread-safe channel ID to descriptor mapping. Channels are
+// advertised to Foxglove so clients can discover available topics.
+
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Protocol;
 

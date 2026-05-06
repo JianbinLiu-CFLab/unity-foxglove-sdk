@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Thread-safe parameter store. Parameters must be explicitly
+// registered before they can be read or written by Foxglove clients.
+
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;

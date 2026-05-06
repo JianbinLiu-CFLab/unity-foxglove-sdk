@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Manages MCAP replay lifecycle — loads an .mcap file, registers
+// replay channels on the session, and ticks the replay engine each frame
+// to emit messages in log-time order. Forwards replay data to listeners.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,6 +16,12 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Manages the MCAP replay lifecycle. Loads an .mcap file, registers
+    /// channels on the session (with replay ID prefix), and ticks the
+    /// replay engine each frame. Tracks schema/channel topic maps for
+    /// metadata forwarding and coordinate-mode warn-on-mismatch.
+    /// </summary>
     public class ReplayController : IDisposable
     {
         private McapReplayEngine _replayEngine;

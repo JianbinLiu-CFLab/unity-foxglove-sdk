@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Manages MCAP recording lifecycle — creates the McapRecorder,
+// attaches it to a session via dual-write hooks, captures parameter
+// snapshots, and tracks parameter changes for metadata.
+
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -8,6 +16,11 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Manages the MCAP recording lifecycle. Created by FoxgloveRuntime
+    /// and attached to a FoxgloveSession on Start. Captures parameter
+    /// snapshots and change events as MCAP metadata.
+    /// </summary>
     public class RecordingController : IDisposable
     {
         private McapRecorder _recorder;
