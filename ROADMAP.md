@@ -1,0 +1,82 @@
+
+This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go next. It is intentionally higher level than the private phase plans: the goal is to give users and contributors useful context without exposing day-to-day development notes.
+
+## 1. Completed in v1.0.0
+
+### 1.1 Protocol Foundation
+
+- Implemented the Foxglove WebSocket server path directly inside Unity.
+- Added schema advertisement, channel registration, subscriptions, and typed message publishing.
+- Built the managed WebSocket backend used by both Editor and standalone Player builds.
+
+### 1.2 Unity Visualization
+
+- Added Unity publishers for transforms, scene primitives, camera images, and debug data.
+- Added coordinate conversion options for Unity/Foxglove axis conventions.
+- Added UPM samples for both minimal visualization and the full demo workflow.
+
+### 1.3 Runtime Interaction
+
+- Added Foxglove Parameters and Services support for live control from Foxglove.
+- Added demo controls for cube color, scale, pose reset, and runtime state inspection.
+- Added connection graph and client-publish support for richer Foxglove protocol coverage.
+
+### 1.4 FoxRun Debug Publishing
+
+- Added `[FoxRun]` attribute-based debug publishing for lightweight runtime telemetry.
+- Added source generation for Editor workflows.
+- Added generated-source fallback for IL2CPP Player builds.
+
+### 1.5 MCAP Recording and Replay
+
+- Added MCAP writer support with schemas, channels, chunks, indexes, summaries, and compression.
+- Added MCAP reader and replay engine for loading, seeking, playing, pausing, and replaying recorded sessions.
+- Added recording coverage for Unity-published data, parameters, services, client-published data, and coordinate metadata.
+
+### 1.6 Packaging, CI, and Release Hardening
+
+- Migrated the package to `dev.unity2foxglove.sdk`.
+- Added package metadata, samples, license files, release notes, third-party notices, and CI checks.
+- Hardened IL2CPP behavior, package paths, WebSocket parsing, MCAP bounds checks, and sample import workflows.
+
+## 2. Candidate Future Work
+
+### 2.1 Documentation and Onboarding
+
+- Keep improving package docs, demo docs, and sample docs from the user's point of view.
+- Add more screenshots, short walkthroughs, and troubleshooting notes based on real user feedback.
+- Keep private development plans separate from public documentation.
+
+### 2.2 Platform Validation
+
+- Validate more Unity versions beyond the current Unity 2022.3+ package target and Unity 6 demo validation.
+- Expand IL2CPP checks across Windows, Linux, and macOS.
+- Add clearer guidance for package installation in fresh Unity projects.
+
+### 2.3 Protocol Coverage
+
+- Add Protobuf schema support if there is enough demand.
+- Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
+- Continue aligning wire behavior with Foxglove protocol expectations.
+
+### 2.4 MCAP and Replay
+
+- Add more replay adapters for Unity scene objects and custom user data.
+- Improve replay UX around file selection, timeline control, and coordinate-mode mismatch warnings.
+- Consider extracting reusable C# MCAP pieces if they become useful outside Unity.
+
+### 2.5 Developer Experience
+
+- Improve `[FoxRun]` diagnostics and generated-source visibility.
+- Add more sample scripts that show recommended patterns rather than only protocol primitives.
+- Keep reducing setup friction for users who only want "press Play and connect Foxglove."
+
+## 3. Long-Term Ideas
+
+- Evaluate whether parts of the project should become standalone C# Foxglove protocol or MCAP libraries.
+- Keep the managed C# backend as the default path, with native backend exploration only if performance or platform needs justify it.
+- Explore higher-level logging APIs that feel closer to modern visual-debugging workflows while still using Foxglove and MCAP standards underneath.
+
+## 4. Development Notes
+
+Detailed phase plans are kept as private development notes. If you need implementation history, design context, or phase-by-phase details, please contact the author.
