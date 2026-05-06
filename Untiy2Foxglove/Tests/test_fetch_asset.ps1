@@ -1,5 +1,12 @@
-# Phase 9 fetchAsset manual verification script
-# Run while Unity is in Play Mode with asset root registered in FoxgloveManager.
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Manual fetchAsset smoke test — connects to the running Unity
+# WebSocket server and requests a file by URI.
+# Usage: pwsh -File Untiy2Foxglove/Tests/test_fetch_asset.ps1
+# Prerequisites: Unity is in Play Mode with FoxgloveManager and asset roots configured.
+# Requires PowerShell 7+ for ClientWebSocket support.
+
 param($Port = 8765)
 
 try {
