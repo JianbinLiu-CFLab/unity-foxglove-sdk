@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: FoxgloveSession partial — Service call dispatch, handler execution,
+// response encoding, and timeout sweep. Service handlers run on the calling
+// thread, so DrainServiceCalls must occur on the Unity main thread.
+
 using System;
 using System.Text;
 using Newtonsoft.Json;
@@ -8,7 +16,11 @@ namespace Unity.FoxgloveSDK.Core
 {
     public partial class FoxgloveSession
     {
-        /// <summary>Drain completed service calls and send responses/failures.</summary>
+        /// <summary>
+        /// Sweep timed-out calls, execute pending handler invocations, and
+        /// send completed responses/failures. Must run on the Unity main
+        /// thread if handlers touch Unity objects.
+        /// </summary>
         public void DrainServiceCalls()
         {
             _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
@@ -56,6 +68,11 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Decode and validate a binary service call request — checks encoding,
+        /// service existence, and payload size &lt;= 1 MiB. Enqueues valid requests
+        /// for processing in <see cref="DrainServiceCalls"/>.
+        /// </summary>
         private void HandleServiceCallRequest(uint clientId, byte[] data)
         {
             if (!BinaryEncoding.TryDecodeClientServiceCallRequest(data,

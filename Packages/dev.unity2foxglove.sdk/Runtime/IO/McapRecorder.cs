@@ -1,3 +1,12 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/IO
+// Purpose: High-level MCAP recorder that wraps McapWriter. Handles chunk
+// management, schema/channel deduplication, metadata indexes, compression,
+// and final summary/statistics output on close. Attaches to FoxgloveSession
+// via dual-write hooks so live publish data is simultaneously recorded.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,6 +17,11 @@ using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.IO
 {
+    /// <summary>
+    /// MCAP recorder that attaches to a FoxgloveSession via dual-write hooks.
+    /// Manages chunk lifecycle, schema/channel deduplication, metadata
+    /// indexes, and final summary/statistics output on close.
+    /// </summary>
     public class McapRecorder : IDisposable
     {
         private readonly McapWriter _w;

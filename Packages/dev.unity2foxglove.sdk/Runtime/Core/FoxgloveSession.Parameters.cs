@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: FoxgloveSession partial — Parameters get/set/subscribe handlers.
+// Client-initiated parameter changes are broadcast to other subscribed
+// clients so all Foxglove instances see the updated values.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,6 +16,10 @@ namespace Unity.FoxgloveSDK.Core
 {
     public partial class FoxgloveSession
     {
+        /// <summary>
+        /// Respond with current parameter values. If parameterNames is empty,
+        /// return all registered parameters.
+        /// </summary>
         private void HandleGetParameters(uint clientId, string json)
         {
             GetParameters msg;
@@ -19,6 +31,12 @@ namespace Unity.FoxgloveSDK.Core
             _transport.SendText(clientId, JsonConvert.SerializeObject(resp));
         }
 
+        /// <summary>
+        /// Apply client parameter changes. Only writable parameters are
+        /// modified. Returns the current state of all requested parameters
+        /// back to the caller. Changed values are broadcast to other
+        /// subscribed clients so they see the update in real time.
+        /// </summary>
         private void HandleSetParameters(uint clientId, string json)
         {
             SetParameters msg;

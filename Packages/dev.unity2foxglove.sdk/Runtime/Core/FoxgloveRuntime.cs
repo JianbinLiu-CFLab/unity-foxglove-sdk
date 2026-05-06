@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Top-level SDK entry point that owns transport, session, clock,
+// parameter store, service registry, asset registry, recording controller,
+// and replay controller. Delegates public API to these managed components.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +18,21 @@ using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Top-level SDK runtime. Owns the WebSocket transport, session,
+    /// playback clock, schema registry, parameter store, service
+    /// registry, asset registry, recording controller, and replay
+    /// controller. All public SDK workflows (start/stop, channel
+    /// registration, publish, recording, replay, service drain) flow
+    /// through this class.
+    ///
+    /// <para>Default constructor wires a ManagedWsBackend, SystemClock,
+    /// DefaultSchemaRegistry, and ConsoleLogger. Use the parameterized
+    /// constructor to inject custom backends for testing.</para>
+    ///
+    /// <para>Call <c>Tick</c> periodically (every frame from Unity) to
+    /// drain service calls, tick replay, and broadcast time.</para>
+    /// </summary>
     public class FoxgloveRuntime : IDisposable, IRuntimeContext
     {
         private FoxgloveSession _session;
@@ -18,16 +41,17 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
 
-        // Phase 7: Runtime-owned definitions survive Stop/Start cycles
+        // Runtime-owned definitions survive Stop/Start cycles so
+        // parameters and services are re-advertised on restart.
         private readonly FoxgloveParameterStore _parameters = new();
         private readonly FoxgloveServiceRegistry _services = new();
         private readonly FoxgloveAssetRegistry _assets = new();
 
-        // Phase 13: decomposed controllers
         private readonly RecordingController _recording;
         private readonly ReplayController _replay;
         private Action<string, byte[]> _replayForwarder;
 
+        /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
 
         public FoxgloveRuntime(IFoxgloveLogger logger = null)
@@ -49,9 +73,11 @@ namespace Unity.FoxgloveSDK.Core
         public ISchemaRegistry Schemas => _schemaRegistry;
         public FoxgloveParameterStore Parameters => _parameters;
 
+        /// <summary>Register a named parameter. Can be called before Start; stored for later advertisement.</summary>
         public void RegisterParameter(string name, JToken value, string type, bool writable)
             => _parameters.Register(name, value, type, writable);
 
+        /// <summary>Snapshot of currently advertised services.</summary>
         public IReadOnlyCollection<ServiceDescriptor> GetServicesSnapshot() => _services.GetAll();
 
         public uint RegisterService(ServiceDescriptor descriptor, Func<JToken, JToken> handler = null)
@@ -59,6 +85,7 @@ namespace Unity.FoxgloveSDK.Core
             var id = handler != null
                 ? _services.Register(descriptor, handler)
                 : _services.Register(descriptor);
+            // Re-advertise immediately so connected clients pick up the new service
             if (_session != null)
             {
                 var adv = new AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
@@ -67,6 +94,11 @@ namespace Unity.FoxgloveSDK.Core
             return id;
         }
 
+        /// <summary>
+        /// Start the WebSocket server. Creates a new FoxgloveSession,
+        /// attaches recording/replay controllers, and wires replay
+        /// message forwarding.
+        /// </summary>
         public void Start(string name, string host = "127.0.0.1", int port = 8765)
         {
             if (_session != null)
@@ -78,17 +110,20 @@ namespace Unity.FoxgloveSDK.Core
             _session.Start(host, port);
             _replay.RegisterChannels(_session);
 
-            // Wire replay message forwarding (stored to avoid handler accumulation)
             _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
             _replay.OnReplayMessage += _replayForwarder;
         }
 
+        /// <summary>Fires when the replay engine forwards a message (e.g. for UI update).</summary>
         public event Action<string, byte[]> OnReplayMessage;
 
         /// <summary>Test-only hook to fire replay without loading an MCAP file.</summary>
         internal void _TestFireReplay(string topic, byte[] data)
             => _replay._TestFire(topic, data);
 
+        /// <summary>
+        /// Stop the server, detach recording/replay, and dispose the session.
+        /// </summary>
         public void Stop()
         {
             if (_replayForwarder != null)
@@ -115,12 +150,14 @@ namespace Unity.FoxgloveSDK.Core
             _session.UnregisterChannel(channelId);
         }
 
+        /// <summary>Publish raw bytes to a channel. Timestamp is taken from the clock.</summary>
         public void Publish(uint channelId, byte[] payload)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
             _session.Publish(channelId, payload);
         }
 
+        /// <summary>Publish raw bytes with an explicit nanosecond timestamp.</summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
@@ -133,18 +170,24 @@ namespace Unity.FoxgloveSDK.Core
             _session.RegisterSchemaChannel(channelId, topic, schemaName);
         }
 
+        /// <summary>Serialize and publish a JSON message. Timestamp is taken from the clock.</summary>
         public void PublishJson(uint channelId, object message)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
             _session.PublishJson(channelId, message);
         }
 
+        /// <summary>Serialize and publish a JSON message with an explicit nanosecond timestamp.</summary>
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
             _session.PublishJson(channelId, message, logTimeNs);
         }
 
+        /// <summary>
+        /// Drain pending service calls on the calling thread.
+        /// Must be called on the Unity main thread if handlers touch Unity objects.
+        /// </summary>
         public void DrainServiceCalls() => _session?.DrainServiceCalls();
 
         // ── Assets ──
@@ -192,6 +235,10 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Tick ──
 
+        /// <summary>
+        /// Called every frame from Unity. Drains service calls, ticks the
+        /// replay engine when active, or broadcasts wall-clock time.
+        /// </summary>
         public void Tick()
         {
             if (_session == null) return;
@@ -203,6 +250,10 @@ namespace Unity.FoxgloveSDK.Core
                 _session.BroadcastTime();
         }
 
+        /// <summary>
+        /// Stops the server, clears parameters and services, disposes
+        /// recording, replay, and transport.
+        /// </summary>
         public void Dispose()
         {
             Stop();

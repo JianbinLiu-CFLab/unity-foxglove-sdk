@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Abstract base for all publisher MonoBehaviour components.
+// Provides FoxgloveManager auto-resolution, publish-rate throttling,
+// frame ID sanitization, and a publish helper.
+
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components

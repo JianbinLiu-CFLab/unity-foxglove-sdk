@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Declares Foxglove parameters from the Unity Inspector.
+// Automatically registers with FoxgloveManager on enable.
+
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;

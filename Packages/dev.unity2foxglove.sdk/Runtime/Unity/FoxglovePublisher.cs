@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Typed publisher base class. Subclasses implement CreateMessage()
+// and the base handles rate throttling, schema resolution via
+// [FoxgloveSchema] attribute, and JSON publish through FoxgloveManager.
+
 using System;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;

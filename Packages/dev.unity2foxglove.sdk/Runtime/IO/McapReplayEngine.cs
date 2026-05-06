@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/IO
+// Purpose: MCAP replay engine — loads an .mcap file, seeks by timestamp,
+// plays/pauses, and emits messages to FoxgloveSession in log-time order.
+// Supports LZ4/Zstd compressed chunks via McapReader.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -5,6 +13,11 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.IO
 {
+    /// <summary>
+    /// MCAP replay engine. Loads an .mcap file via McapReader, extracts
+    /// channels and messages, and replays them in log-time order into
+    /// a live FoxgloveSession. Supports play, pause, and seek.
+    /// </summary>
     public class McapReplayEngine : IDisposable
     {
         private McapReader _reader;
