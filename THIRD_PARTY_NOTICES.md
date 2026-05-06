@@ -42,6 +42,14 @@ SOFTWARE.
 - **License**: MIT
 - **Usage**: Foxglove WebSocket protocol specification, opcode constants, and capability definitions are referenced from the official spec and implementation. JsonSchema definitions come from the official schema repository. This project is an independent C# implementation and does not directly translate the official code.
 
+**Schema assets** — the following files are Foxglove schema definitions imported from the official source (each contains the upstream `$comment` field):
+
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/CompressedImage.json`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/FrameTransform.json`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/SceneUpdate.json`
+
+`Packages/dev.unity2foxglove.sdk/Runtime/Schemas/FoxgloveSchemaDefinitions.cs` embeds these schemas as base64-encoded string constants for runtime registration. Unity2Foxglove does not claim authorship of the schema definitions.
+
 ```
 MIT License
 
