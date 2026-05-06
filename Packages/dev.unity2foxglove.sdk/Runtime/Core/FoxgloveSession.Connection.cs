@@ -32,7 +32,8 @@ namespace Unity.FoxgloveSDK.Core
                     if (ch != null)
                     {
                         _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
-                        _graph.AddSubscribedTopic(ch.Topic, $"client:{clientId}:{sub.Id}"); _graphDirty = true;
+                        _graph.AddSubscribedTopic(ch.Topic, $"client:{clientId}:{sub.Id}");
+                        _graphDirty = true;
                     }
                 }
             }
@@ -51,12 +52,15 @@ namespace Unity.FoxgloveSDK.Core
                 var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
                 if (msg.SubscriptionIds != null)
                 {
-                    var removedChIds = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
-                    foreach (var chId in removedChIds)
+                    var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
+                    foreach (var (subId, chId) in removed)
                     {
                         var ch = _channels.Get(chId);
                         if (ch != null)
-                            _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{chId}"); _graphDirty = true;
+                        {
+                            _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{subId}");
+                            _graphDirty = true;
+                        }
                     }
                 }
             }
@@ -111,7 +115,8 @@ namespace Unity.FoxgloveSDK.Core
                 foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
                 {
                     _clientChannels[(clientId, ch.Id)] = ch;
-                    _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}"); _graphDirty = true;
+                    _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}");
+                    _graphDirty = true;
                 }
                 BroadcastGraphUpdate();
             }
@@ -127,7 +132,8 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     if (_clientChannels.TryGetValue((clientId, chId), out var ch))
                     {
-                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}"); _graphDirty = true;
+                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}");
+                        _graphDirty = true;
                         _clientChannels.Remove((clientId, chId));
                     }
                 }

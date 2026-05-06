@@ -22,6 +22,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
     private uint _resetSvcId;
     private float _lastAppliedScale = -1f;
     private Color _lastAppliedColor = Color.clear;
+    private MaterialPropertyBlock _propBlock;
 
     private void Start()
     {
@@ -85,7 +86,13 @@ public class FoxgloveDemoSetup : MonoBehaviour
                     if (cube != null)
                     {
                         var renderer = cube.GetComponent<Renderer>();
-                        if (renderer != null) renderer.material.color = c;
+                        if (renderer != null)
+                        {
+                            if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
+                            renderer.GetPropertyBlock(_propBlock);
+                            _propBlock.SetColor("_Color", c);
+                            renderer.SetPropertyBlock(_propBlock);
+                        }
 
                         var scenePub = cube.GetComponent<FoxgloveSceneCubePublisher>();
                         if (scenePub != null) scenePub.SceneCubeColor = c;

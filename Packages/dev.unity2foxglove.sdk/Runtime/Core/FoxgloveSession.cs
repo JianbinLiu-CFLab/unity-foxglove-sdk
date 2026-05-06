@@ -117,7 +117,8 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             _channels.Register(channel);
-            _graph.SetPublishedTopic(channel.Topic, "unity"); _graphDirty = true;
+            _graph.SetPublishedTopic(channel.Topic, "unity");
+            _graphDirty = true;
             _recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
                 channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             _transport.BroadcastText(JsonConvert.SerializeObject(
@@ -128,7 +129,11 @@ namespace Unity.FoxgloveSDK.Core
         public void UnregisterChannel(uint channelId)
         {
             var ch = _channels.Get(channelId);
-            if (ch != null) { _graph.RemovePublishedTopic(ch.Topic, "unity"); _graphDirty = true; }
+            if (ch != null)
+            {
+                _graph.RemovePublishedTopic(ch.Topic, "unity");
+                _graphDirty = true;
+            }
             if (!_channels.Remove(channelId)) return;
             _subscriptions.RemoveChannel(channelId);
             _transport.BroadcastText(JsonConvert.SerializeObject(
@@ -181,7 +186,8 @@ namespace Unity.FoxgloveSDK.Core
             var id = _services.Register(descriptor);
             var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
             _transport.BroadcastText(JsonConvert.SerializeObject(adv));
-            _graph.AddAdvertisedService(descriptor.Name, "unity"); _graphDirty = true;
+            _graph.AddAdvertisedService(descriptor.Name, "unity");
+            _graphDirty = true;
             BroadcastGraphUpdate();
             return id;
         }
@@ -274,7 +280,8 @@ namespace Unity.FoxgloveSDK.Core
         {
             _subscriptions.RemoveClient(clientId);
             _paramSubs.RemoveClient(clientId);
-            _graph.RemoveClient(clientId); _graphDirty = true;
+            _graph.RemoveClient(clientId);
+            _graphDirty = true;
             _services.RemoveClientCalls(clientId);
             var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
             foreach (var k in toRemove) _clientChannels.Remove(k);
