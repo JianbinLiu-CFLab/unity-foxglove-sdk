@@ -1,3 +1,11 @@
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Manual Foxglove WebSocket smoke test — subscribe to /tf and
+# inspect binary MessageData frames from a running Unity session.
+# Usage: pip install websockets && python Untiy2Foxglove/Tests/test_ws.py
+# Prerequisites: Unity is in Play Mode with a FoxgloveManager running.
+
 import asyncio, struct, json, websockets
 
 async def main():

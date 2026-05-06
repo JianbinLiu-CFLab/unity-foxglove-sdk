@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Editor/SourceGenerators
+// Purpose: Roslyn Incremental Source Generator that scans for [FoxRun]
+// attributed fields and emits IFoxgloveLogSource implementations.
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;

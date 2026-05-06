@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Demo
+// Purpose: Registers demo Parameters and Services, syncs parameter changes
+// to the cube in the Unity scene via Update polling.
+
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json.Linq;

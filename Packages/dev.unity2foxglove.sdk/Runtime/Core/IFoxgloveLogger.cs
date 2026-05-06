@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Abstract logger bridge for protocol errors and warnings.
+// ConsoleLogger writes to Console.Error; UnityLogger redirects to Debug.Log.
+
 using System;
 
 namespace Unity.FoxgloveSDK.Core

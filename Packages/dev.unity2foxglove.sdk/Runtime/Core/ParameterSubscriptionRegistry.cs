@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Tracks per-client parameter subscriptions. Null means "all";
+// empty list is also treated as "all". Used for ParametersSubscribe push.
+
 using System.Collections.Generic;
 using System.Linq;
 

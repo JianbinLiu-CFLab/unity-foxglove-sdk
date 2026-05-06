@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Maintains a publish/subscribe topology snapshot and per-client
+// graph subscription state for the Foxglove ConnectionGraph capability.
+
 using System.Collections.Generic;
 using System.Linq;
 using Unity.FoxgloveSDK.Protocol;

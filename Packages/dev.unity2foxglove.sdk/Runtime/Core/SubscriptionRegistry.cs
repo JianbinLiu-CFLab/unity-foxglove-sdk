@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Tracks per-client subscription state. Maps clientId to
+// (subscriptionId to channelId) for MessageData routing.
+
 using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Core

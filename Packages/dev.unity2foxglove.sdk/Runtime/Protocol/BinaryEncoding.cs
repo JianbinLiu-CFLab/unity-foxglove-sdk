@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Protocol
+// Purpose: Encodes/decodes binary WebSocket frames for the Foxglove protocol v1.
+
 using System;
 
 namespace Unity.FoxgloveSDK.Protocol

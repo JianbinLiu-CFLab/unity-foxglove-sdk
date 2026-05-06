@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/IO
+// Purpose: Low-level little-endian binary read helpers for MCAP record parsing.
+
 using System.Collections.Generic;
 using System.IO;
 using System.Text;

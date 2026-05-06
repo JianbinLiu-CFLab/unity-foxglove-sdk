@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas
+// Purpose: Foxglove visual schema DTOs — FrameTransform, SceneUpdate,
+// and related geometry types for 3D visualization.
+
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;

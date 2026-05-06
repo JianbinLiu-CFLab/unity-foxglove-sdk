@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas
+// Purpose: Unix epoch nanosecond timestamp utilities for foxglove protocol.
+
 using System;
 using System.Diagnostics;
 

@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Demo/Editor
+// Purpose: Unity menu item and batchmode entry point for IL2CPP builds
+// of the demo project. Invoked by Scripts/build_unity_il2cpp.py.
+
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build;

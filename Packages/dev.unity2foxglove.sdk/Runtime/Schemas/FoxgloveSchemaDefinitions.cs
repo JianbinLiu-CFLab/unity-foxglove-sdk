@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas
+// Purpose: Official foxglove JSON Schema constants and registration.
+// Schema content stored as base64-encoded strings — no runtime file I/O.
+
 using System;
 using System.Text;
 

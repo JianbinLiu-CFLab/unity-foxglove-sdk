@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Protocol
+// Purpose: Foxglove WebSocket JSON message DTOs — serverInfo, advertise,
+// subscribe, parameters, services, connection graph, and protocol constants.
+
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;

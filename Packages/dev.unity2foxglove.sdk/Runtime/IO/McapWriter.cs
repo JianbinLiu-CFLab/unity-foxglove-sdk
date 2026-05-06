@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/IO
+// Purpose: Low-level MCAP binary writer — writes MCAP opcodes, records,
+// and static LE helpers for fields used by McapRecorder.
+
 using System;
 using System.Collections.Generic;
 using System.IO;

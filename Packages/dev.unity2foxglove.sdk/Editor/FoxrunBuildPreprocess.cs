@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Editor
+// Purpose: IPreprocessBuildWithReport hook — generates physical .g.cs
+// fallback files for [FoxRun] annotated classes before IL2CPP Player build.
+
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;

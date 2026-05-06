@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""Build the Unity Foxglove demo with IL2CPP.
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Cross-platform IL2CPP standalone Player build script.
+# Usage: python Scripts/build_unity_il2cpp.py --target win64
+# Inputs: --target (win64|linux64|macos), --unity (path, optional)
+# Outputs: Defaults to build/Unity/<target>-il2cpp-<timestamp>/; overridable via --build-dir and --output.
 
-The script is intentionally anchored to its own location so it can be moved
-with the workspace without hard-coded absolute paths.
+"""Build the Unity Foxglove demo project for IL2CPP standalone.
+
+The script resolves project and output paths relative to its own location.
+No hard-coded absolute paths — safe to use across clones.
 
 Examples:
   python Scripts/build_unity_il2cpp.py
@@ -43,10 +51,12 @@ IMPORTANT_LOG_MARKERS = (
 
 
 def repo_root() -> Path:
+    """Repository root — two levels up from this script's location."""
     return Path(__file__).resolve().parent.parent
 
 
 def default_target() -> str:
+    """Detect the current host platform as the default build target."""
     system = platform.system().lower()
     if system == "windows":
         return "win64"
@@ -58,6 +68,7 @@ def default_target() -> str:
 
 
 def newest_existing(paths: List[Path]) -> Optional[Path]:
+    """Return the most recently modified path among those that exist."""
     existing = [p for p in paths if p.exists()]
     if not existing:
         return None
@@ -65,6 +76,7 @@ def newest_existing(paths: List[Path]) -> Optional[Path]:
 
 
 def find_unity_explicit(path: Optional[str]) -> Optional[Path]:
+    """Resolve the Unity executable from an explicit --unity argument."""
     if not path:
         return None
     unity = Path(path).expanduser()
@@ -74,6 +86,7 @@ def find_unity_explicit(path: Optional[str]) -> Optional[Path]:
 
 
 def find_unity_from_env() -> Optional[Path]:
+    """Try UNITY_EXE or UNITY_PATH environment variables."""
     for name in ("UNITY_EXE", "UNITY_PATH"):
         value = os.environ.get(name)
         if value:
@@ -85,6 +98,7 @@ def find_unity_from_env() -> Optional[Path]:
 
 
 def find_unity_from_hub() -> Optional[Path]:
+    """Search Unity Hub installations on the current platform."""
     system = platform.system().lower()
     candidates: List[Path] = []
 
@@ -110,6 +124,7 @@ def find_unity_from_hub() -> Optional[Path]:
 
 
 def find_unity(path: Optional[str]) -> Path:
+    """Resolve Unity executable, checking --unity, env var, then Hub discovery."""
     unity = find_unity_explicit(path) or find_unity_from_env() or find_unity_from_hub()
     if unity:
         return unity
@@ -120,6 +135,7 @@ def find_unity(path: Optional[str]) -> Path:
 
 
 def relative_to_root(path: Path, root: Path) -> str:
+    """Format a path relative to repo root for readable log output."""
     try:
         return str(path.resolve().relative_to(root.resolve()))
     except ValueError:
@@ -127,6 +143,7 @@ def relative_to_root(path: Path, root: Path) -> str:
 
 
 def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path]:
+    """Build the full Unity batchmode command line from parsed arguments."""
     root = repo_root()
     project_path = (root / args.project).resolve()
     build_dir = (root / args.build_dir).resolve() if args.build_dir else default_build_dir(root, args.target)
@@ -157,11 +174,13 @@ def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path
 
 
 def default_build_dir(root: Path, target: str) -> Path:
+    """Default build output directory with platform and timestamp."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return root / "build" / "Unity" / f"{target}-il2cpp-{stamp}"
 
 
 def default_output_path(build_dir: Path, target: str) -> Path:
+    """Default Player executable path for the given target."""
     if target == "win64":
         return build_dir / "WindowsIL2CPP" / "FoxgloveDemo.exe"
     if target == "linux64":
@@ -172,6 +191,7 @@ def default_output_path(build_dir: Path, target: str) -> Path:
 
 
 def format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as mm:ss or hh:mm:ss."""
     total = int(seconds)
     hours, remainder = divmod(total, 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -181,6 +201,7 @@ def format_elapsed(seconds: float) -> str:
 
 
 def is_important_log_line(line: str) -> bool:
+    """Check if a log line matches a known important marker."""
     stripped = line.strip()
     if not stripped:
         return False
@@ -188,6 +209,7 @@ def is_important_log_line(line: str) -> bool:
 
 
 def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str]]:
+    """Read new important log lines since the given byte offset."""
     if not log_path.exists():
         return offset, []
 
@@ -204,6 +226,7 @@ def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str
 
 
 def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int) -> int:
+    """Run the Unity process, tailing important log lines at the given interval."""
     started = time.monotonic()
     next_heartbeat = started + interval
     offset = 0
@@ -240,6 +263,7 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int)
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the build script."""
     parser = argparse.ArgumentParser(
         description="Run Unity batchmode IL2CPP build for the Foxglove demo project."
     )
@@ -285,6 +309,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Main entry: parse args, build command, run Unity, report result."""
     args = parse_args()
     root = repo_root()
 

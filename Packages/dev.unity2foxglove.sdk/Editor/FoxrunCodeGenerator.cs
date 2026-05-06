@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Editor
+// Purpose: Scans assemblies for [FoxRun] attributed fields and generates
+// IFoxgloveLogSource implementation .cs files for FoxgloveLogHub.
+
 using System;
 using System.Collections.Generic;
 using System.IO;

@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Pending service call model. Holds request metadata and provides
+// Complete/Fail methods used by the service drain pipeline.
+
 using System;
 
 namespace Unity.FoxgloveSDK.Core
