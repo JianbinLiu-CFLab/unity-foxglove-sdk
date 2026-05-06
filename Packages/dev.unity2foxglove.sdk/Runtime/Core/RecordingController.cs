@@ -59,24 +59,39 @@ namespace Unity.FoxgloveSDK.Core
             _parameters = parameters;
             if (!_recordingEnabled || _recordingPath == null) return;
 
+            FileStream fileStream = null;
+            McapRecorder recorder = null;
             try
             {
-                var fs = new FileStream(_recordingPath, FileMode.Create, FileAccess.Write);
-                _recorder = new McapRecorder(fs, _logger, _recordingChunkSize, _recordingCompression);
-                _recorder.CoordinateMode = _coordinateMode;
-                session.SetRecorder(_recorder);
+                fileStream = new FileStream(_recordingPath, FileMode.Create, FileAccess.Write);
+                recorder = new McapRecorder(fileStream, _logger, _recordingChunkSize, _recordingCompression);
+                recorder.CoordinateMode = _coordinateMode;
 
+                // Defer session attachment until snapshot and event wiring succeed.
+                // If the snapshot or event subscription throws, the recorder and
+                // stream remain owned locally and are cleaned up in catch.
                 var allParams = parameters.GetAllWireParameters();
                 var snapshotTime = clock.NowNs;
                 var snapshot = new List<object>();
                 foreach (var p in allParams)
                     snapshot.Add(new { name = p.Name, type = p.Type, value = p.Value, timestamp = snapshotTime });
-                _recorder.WriteMetadata("foxglove.parameters.snapshot",
+                recorder.WriteMetadata("foxglove.parameters.snapshot",
                     JsonConvert.SerializeObject(snapshot));
-
                 parameters.OnParameterChanged += OnParameterChanged;
+
+                // All setup succeeded — transfer ownership to session
+                session.SetRecorder(recorder);
+                fileStream = null;
+                _recorder = recorder;
+                recorder = null;
             }
-            catch (Exception ex) { _logger.LogError($"Failed to start MCAP recording: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                recorder?.Dispose();
+                fileStream?.Dispose();
+                _recorder = null;
+                _logger.LogError($"Failed to start MCAP recording: {ex.Message}");
+            }
         }
 
         public void DetachFromSession()

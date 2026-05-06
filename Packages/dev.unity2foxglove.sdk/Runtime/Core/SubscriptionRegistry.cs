@@ -34,19 +34,23 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Remove subscriptions by their IDs. Returns the channelIds that were removed.</summary>
-        public List<uint> RemoveSubscriptions(uint clientId, IEnumerable<uint> subscriptionIds)
+        /// <summary>
+        /// Remove subscriptions by their IDs. Returns the (subscriptionId, channelId)
+        /// pairs that were removed, so callers can clean up graph entries using the
+        /// same subscriptionId that HandleSubscribe added.
+        /// </summary>
+        public List<(uint subscriptionId, uint channelId)> RemoveSubscriptions(uint clientId, IEnumerable<uint> subscriptionIds)
         {
             lock (_lock)
             {
-                var removed = new List<uint>();
+                var removed = new List<(uint, uint)>();
                 if (_clients.TryGetValue(clientId, out var subs))
                 {
                     foreach (var sid in subscriptionIds)
                     {
                         if (subs.TryGetValue(sid, out var chId))
                         {
-                            removed.Add(chId);
+                            removed.Add((sid, chId));
                             subs.Remove(sid);
                         }
                     }
