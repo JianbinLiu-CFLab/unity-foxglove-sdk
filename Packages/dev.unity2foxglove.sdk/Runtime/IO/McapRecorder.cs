@@ -29,7 +29,9 @@ namespace Unity.FoxgloveSDK.IO
         private readonly string _compression;
         private readonly Dictionary<(string name, string enc, string hash), ushort> _sKey = new();
         private readonly Dictionary<(uint clientId, uint chId), ChMap> _clientChMap = new();
+        private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
         private readonly Dictionary<uint, ChMap> _chMap = new();
+        private readonly Dictionary<string, string> _topicSchemaNames = new();
         private readonly List<SchemaRec> _schemas = new();
         private readonly List<ChannelRec> _channels = new();
         private readonly List<ChunkIdx> _chunkIdx = new();
@@ -60,21 +62,8 @@ namespace Unity.FoxgloveSDK.IO
         public void AddChannel(uint fId, string topic, string enc, string sName, string sEnc, string sContent)
         {
             if (_failed) return;
-            ushort sid = 0;
-            if (!string.IsNullOrEmpty(sName) || !string.IsNullOrEmpty(sEnc) || !string.IsNullOrEmpty(sContent))
-            {
-                var hash = Sha256(sContent ?? "");
-                var k = (sName ?? "", sEnc ?? "", hash);
-                if (!_sKey.TryGetValue(k, out sid))
-                {
-                    if (_nextSid == 0) { Fail("Schema ID overflow"); return; }
-                    sid = _nextSid++;
-                    _sKey[k] = sid;
-                    var schemaData = Encoding.UTF8.GetBytes(sContent ?? "");
-                    _w.WriteSchema(sid, k.Item1, k.Item2, schemaData);
-                    _schemas.Add(new SchemaRec { Id = sid, Name = k.Item1, Enc = k.Item2, Data = schemaData });
-                }
-            }
+            var sid = GetOrCreateSchema(sName, sEnc, sContent);
+            if (_failed) return;
             if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
             var mCid = _nextCid++;
             _chMap[fId] = new ChMap { McapId = mCid, Topic = topic };
@@ -84,14 +73,27 @@ namespace Unity.FoxgloveSDK.IO
                 meta["coordinate_mode"] = CoordinateMode;
             _w.WriteChannel(mCid, sid, topic, enc, meta);
             _channels.Add(new ChannelRec { Id = mCid, Sid = sid, Topic = topic, Enc = enc, Meta = new Dictionary<string, string>(meta) });
+            RememberTopicSchema(topic, sName);
         }
 
-        public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic)
+        public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic,
+            string enc = "json", string sName = "", string sEnc = "", string sContent = "")
         {
             if (_failed) return;
             var key = (clientId, chId);
+            if (_skippedClientChannels.Contains(key)) return;
             if (!_clientChMap.TryGetValue(key, out var map))
             {
+                if (WouldMixTopicSchema(topic, sName))
+                {
+                    _skippedClientChannels.Add(key);
+                    _log.LogWarning(
+                        $"MCAP: skipping client-published topic '{topic}' without a compatible schema because the recording already has schema '{_topicSchemaNames[topic]}' for that topic.");
+                    return;
+                }
+
+                var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                if (_failed) return;
                 if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
                 var mcapId = _nextCid++;
                 map = new ChMap { McapId = mcapId, Topic = topic };
@@ -99,8 +101,10 @@ namespace Unity.FoxgloveSDK.IO
                 var meta = string.IsNullOrEmpty(CoordinateMode)
                     ? new Dictionary<string, string>()
                     : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
-                _w.WriteChannel(mcapId, 0, topic, "json", meta);
-                _channels.Add(new ChannelRec { Id = mcapId, Sid = 0, Topic = topic, Enc = "json", Meta = meta });
+                var messageEncoding = string.IsNullOrEmpty(enc) ? "json" : enc;
+                _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
+                _channels.Add(new ChannelRec { Id = mcapId, Sid = sid, Topic = topic, Enc = messageEncoding, Meta = meta });
+                RememberTopicSchema(topic, sName);
             }
             WriteMessageToChMap(map, logNs, payload);
         }
@@ -230,6 +234,42 @@ namespace Unity.FoxgloveSDK.IO
 
         void Fail(string msg) { _failed = true; _log.LogError($"MCAP: {msg}"); }
         static string Sha256(string c) { using var h = SHA256.Create(); return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c))); }
+
+        ushort GetOrCreateSchema(string sName, string sEnc, string sContent)
+        {
+            if (string.IsNullOrEmpty(sName) && string.IsNullOrEmpty(sEnc) && string.IsNullOrEmpty(sContent))
+                return 0;
+
+            var hash = Sha256(sContent ?? "");
+            var key = (sName ?? "", sEnc ?? "", hash);
+            if (_sKey.TryGetValue(key, out var sid))
+                return sid;
+
+            if (_nextSid == 0) { Fail("Schema ID overflow"); return 0; }
+            sid = _nextSid++;
+            _sKey[key] = sid;
+            var schemaData = Encoding.UTF8.GetBytes(sContent ?? "");
+            _w.WriteSchema(sid, key.Item1, key.Item2, schemaData);
+            _schemas.Add(new SchemaRec { Id = sid, Name = key.Item1, Enc = key.Item2, Data = schemaData });
+            return sid;
+        }
+
+        bool WouldMixTopicSchema(string topic, string sName)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return false;
+            var schemaName = sName ?? "";
+            return _topicSchemaNames.TryGetValue(topic, out var existing) && existing != schemaName;
+        }
+
+        void RememberTopicSchema(string topic, string sName)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            var schemaName = sName ?? "";
+            if (!_topicSchemaNames.ContainsKey(topic))
+                _topicSchemaNames[topic] = schemaName;
+        }
 
         class ChMap { public ushort McapId; public string Topic; public uint Seq; public List<(ulong, ulong)> Pending = new(); }
         struct SchemaRec { public ushort Id; public string Name, Enc; public byte[] Data; }
