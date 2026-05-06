@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas
+// Purpose: foxglove.CompressedImage DTO for camera frame publishing.
+
 using Newtonsoft.Json;
 
 namespace Unity.FoxgloveSDK.Schemas

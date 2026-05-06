@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/IO
+// Purpose: Plain data models for MCAP records — Header, Schema, Channel,
+// Message, Chunk, Index, Statistics, Metadata, Footer, and Summary.
+
 using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.IO

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Protocol
+// Purpose: Foxglove WebSocket protocol v1 binary opcode constants.
+
 namespace Unity.FoxgloveSDK.Protocol
 {
     /// <summary>Foxglove WebSocket protocol v1 binary opcodes (server → client).</summary>

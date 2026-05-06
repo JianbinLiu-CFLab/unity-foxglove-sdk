@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Editor
+// Purpose: Custom Inspector for FoxgloveManager — adds Browse buttons
+// for file/folder path fields.
+
 using System.IO;
 using UnityEngine;
 using UnityEditor;
