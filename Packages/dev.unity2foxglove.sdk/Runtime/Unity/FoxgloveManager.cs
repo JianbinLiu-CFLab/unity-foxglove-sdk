@@ -1,3 +1,12 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: MonoBehaviour entry point that manages FoxgloveRuntime lifecycle
+// within Unity's game loop. Exposes Inspector-configurable settings for
+// WebSocket server, coordinate mode, asset roots, playback control, MCAP
+// recording, and MCAP replay.
+
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -5,6 +14,14 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>
     /// MonoBehaviour entry point. Manages FoxgloveRuntime lifecycle
     /// within Unity's game loop.
+    ///
+    /// Attach this component to a GameObject in your scene. It auto-starts
+    /// the WebSocket server on <c>OnEnable</c> (unless <c>_startOnEnable</c>
+    /// is disabled) and auto-stops on <c>OnDisable</c> / <c>OnDestroy</c>.
+    ///
+    /// During <c>Update</c>, it ticks the runtime and drains client connect /
+    /// disconnect / message events onto the main thread so Unity API calls
+    /// are safe.
     /// </summary>
     public enum CoordinateMode
     {
@@ -14,6 +31,9 @@ namespace Unity.FoxgloveSDK.Components
         RightHand
     }
 
+    /// <summary>
+    /// Compression algorithm for MCAP recording output.
+    /// </summary>
     public enum McapCompressionMode
     {
         /// <summary>No compression.</summary>
@@ -24,6 +44,24 @@ namespace Unity.FoxgloveSDK.Components
         Zstd
     }
 
+    /// <summary>
+    /// Central Unity MonoBehaviour that owns the FoxgloveRuntime and
+    /// bridges transport-layer events into the Unity main thread.
+    ///
+    /// <para>Lifecycle:</para>
+    /// <list type="bullet">
+    /// <item><c>Awake</c> — creates the runtime, disables conflicting features.</item>
+    /// <item><c>OnEnable</c> — starts the WebSocket server.</item>
+    /// <item><c>Update</c> — ticks the runtime, drains client events.</item>
+    /// <item><c>OnDisable / OnDestroy</c> — stops server, disposes runtime.</item>
+    /// </list>
+    ///
+    /// <para>Thread boundary:</para>
+    /// Client connect, disconnect, and message handlers run on transport
+    /// threads. They enqueue events via <c>ConcurrentQueue</c>, and the main
+    /// thread dequeues them in <c>Update</c>. All Unity API access stays on
+    /// the main thread.
+    /// </summary>
     public class FoxgloveManager : MonoBehaviour
     {
         [Header("General")]
@@ -36,15 +74,12 @@ namespace Unity.FoxgloveSDK.Components
         [Header("Coordinate System")]
         [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.LeftHand;
 
-        // Phase 9: Asset roots
         [SerializeField] private AssetRootDefinition[] _assetRoots = { };
 
-        // Phase 9: Playback control
         [SerializeField] private bool _enablePlaybackControl;
         [SerializeField] private float _playbackStartOffsetSeconds = 0;
         [SerializeField] private float _playbackDurationSeconds = 60;
 
-        // Phase 10: MCAP Recording
         [Header("MCAP Recording")]
         [SerializeField] private bool _enableRecording;
         [SerializeField] private string _recordingPrefix = "foxglove";
@@ -53,7 +88,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private int _recordingChunkSizeKB = 1024;
         [SerializeField] private McapCompressionMode _recordingCompression = McapCompressionMode.None;
 
-        // Phase 11: MCAP Replay
         [Header("MCAP Replay")]
         [SerializeField] private bool _enableReplay;
         [SerializeField] private string _replayFilePath = "";
@@ -66,31 +100,62 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedNotRunning;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
         private readonly System.Collections.Concurrent.ConcurrentQueue<ClientEvent> _clientEvents = new();
+
+        /// <summary>Current nanosecond timestamp for publish calls.</summary>
         public ulong NowNs => _runtime?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
+
+        /// <summary>Fires when a Foxglove client connects (on main thread).</summary>
         public event System.Action<uint> OnClientConnected;
+
+        /// <summary>Fires when a Foxglove client disconnects (on main thread).</summary>
         public event System.Action<uint> OnClientDisconnected;
+
+        /// <summary>
+        /// Fires when a client-published message arrives (on main thread).
+        /// Parameters: clientId, channelId, topic, payload bytes.
+        /// </summary>
         public event System.Action<uint, uint, string, byte[]> OnClientMessage;
+
+        /// <summary>Fires when a replay message is forwarded (on main thread).</summary>
         public event System.Action<string, byte[]> OnReplayMessage;
+
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string), uint>();
+
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;
 
+        /// <summary>Current coordinate mode, read from Inspector or code.</summary>
         public CoordinateMode ActiveCoordinateMode => _coordinateMode;
 
+        /// <summary>
+        /// Convert a Unity position to Foxglove convention. No-op in LeftHand mode.
+        /// </summary>
         public Vector3 UnityToFoxglovePosition(Vector3 p)
             => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxglovePosition(p) : p;
 
+        /// <summary>
+        /// Convert a Unity rotation to Foxglove convention. No-op in LeftHand mode.
+        /// </summary>
         public Quaternion UnityToFoxgloveRotation(Quaternion q)
             => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxgloveRotation(q) : q;
 
+        /// <summary>
+        /// Convert a Foxglove position to Unity convention. No-op in LeftHand mode.
+        /// </summary>
         public Vector3 FoxgloveToUnityPosition(Vector3 p)
             => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityPosition(p) : p;
 
+        /// <summary>
+        /// Convert a Foxglove rotation to Unity convention. No-op in LeftHand mode.
+        /// </summary>
         public Quaternion FoxgloveToUnityRotation(Quaternion q)
             => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityRotation(q) : q;
 
+        /// <summary>The backing FoxgloveRuntime. Null after Dispose.</summary>
         public Core.FoxgloveRuntime Runtime => _runtime;
+
+        /// <summary>True if the WebSocket server is currently running.</summary>
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
 
         private void Awake()
@@ -100,14 +165,15 @@ namespace Unity.FoxgloveSDK.Components
 
             _runtime = new Core.FoxgloveRuntime(new UnityLogger());
 
-            // Phase 11: Recording / Replay mutual exclusion
+            // Recording and replay cannot both be active. When both are enabled,
+            // replay is disabled and recording is kept — replay relies on file data
+            // already on disk, so live recording is the stricter constraint.
             if (_enableRecording && _enableReplay)
             {
                 Debug.LogWarning("[Foxglove] Recording and Replay cannot both be enabled. Disabling Replay.");
                 _enableReplay = false;
             }
 
-            // Phase 11: If replay enabled, disable live publishers
             if (_enableReplay && _disableLivePublishers)
             {
                 DisableLivePublishers();
@@ -126,6 +192,8 @@ namespace Unity.FoxgloveSDK.Components
                 StartServer();
         }
 
+        // Drains transport-thread events onto the main thread so Unity API
+        // usage in event handlers is safe (enabled only during Active state).
         private void Update()
         {
             _runtime?.Tick();
@@ -152,6 +220,11 @@ namespace Unity.FoxgloveSDK.Components
             _runtime = null;
         }
 
+        /// <summary>
+        /// Start the WebSocket server. Idempotent — warns if already running.
+        /// Registers asset roots, playback control, recording, and replay setup
+        /// before starting the runtime.
+        /// </summary>
         public void StartServer()
         {
             if (IsRunning)
@@ -183,6 +256,10 @@ namespace Unity.FoxgloveSDK.Components
             Debug.Log($"[Foxglove] Server started on ws://{_host}:{_port}");
         }
 
+        /// <summary>
+        /// Register asset roots from the Inspector list. Resolves relative
+        /// <c>localRoot</c> paths against the Unity project root.
+        /// </summary>
         private void RegisterAssetRoots()
         {
             if (_assetRoots == null) return;
@@ -198,6 +275,11 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Configure PlaybackControl on the runtime if <c>_enablePlaybackControl</c>
+        /// is set. Defines a time window in <c>logTimeNs</c> based on current UTC
+        /// time plus offset and duration.
+        /// </summary>
         private void SetupPlaybackControl()
         {
             if (!_enablePlaybackControl) return;
@@ -207,6 +289,11 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.EnablePlaybackControl(startNs, endNs);
         }
 
+        /// <summary>
+        /// Configure MCAP recording on the runtime if <c>_enableRecording</c>
+        /// is set. Creates the output directory and generates a timestamped
+        /// filename. Compression and coordinate mode are forwarded from Inspector.
+        /// </summary>
         private void SetupRecording()
         {
             if (!_enableRecording) return;
@@ -223,6 +310,11 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.EnableRecording(path, _recordingChunkSizeKB * 1024, comp, coord);
         }
 
+        /// <summary>
+        /// Configure MCAP replay on the runtime if <c>_enableReplay</c> is set
+        /// and a valid file path is provided. Disables live publishers if
+        /// <c>_disableLivePublishers</c> is enabled.
+        /// </summary>
         private void SetupReplay()
         {
             if (!_enableReplay || string.IsNullOrEmpty(_replayFilePath)) return;
@@ -233,6 +325,10 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.EnableReplay(_replayFilePath);
         }
 
+        /// <summary>
+        /// Stop the WebSocket server and clean up transport subscriptions.
+        /// Channel cache is cleared and live publishers are restored.
+        /// </summary>
         public void StopServer()
         {
             if (!IsRunning) return;
@@ -260,8 +356,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Get or register a schema channel. Idempotent: same (topic, schemaName) returns same id.
+        /// Get or register a schema-bound channel. Idempotent: same
+        /// (topic, schemaName) pair always returns the same channel id.
         /// </summary>
+        /// <param name="topic">Topic name (e.g. "/tf").</param>
+        /// <param name="schemaName">Schema name (e.g. "foxglove.FrameTransform").</param>
         public uint GetOrRegisterSchemaChannel(string topic, string schemaName)
         {
             var key = (topic, schemaName);
@@ -275,18 +374,34 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Serialize a message to JSON and publish. Safe no-op if runtime is not started.
+        /// Register a runtime parameter. Safe no-op when the runtime is null.
         /// </summary>
+        /// <param name="name">Parameter path (e.g. "/cube/color").</param>
+        /// <param name="value">Initial value as a JToken.</param>
+        /// <param name="type">Foxglove type string (e.g. "number[]").</param>
+        /// <param name="writable">Whether Foxglove clients can modify this parameter.</param>
         public void RegisterParameter(string name, Newtonsoft.Json.Linq.JToken value, string type, bool writable)
         {
             _runtime?.RegisterParameter(name, value, type, writable);
         }
 
+        /// <summary>
+        /// Register a service. Returns 0 if the runtime is null.
+        /// </summary>
+        /// <param name="descriptor">Service descriptor with name, type, request/response schemas.</param>
         public uint RegisterService(Unity.FoxgloveSDK.Protocol.ServiceDescriptor descriptor)
         {
             return _runtime?.RegisterService(descriptor) ?? 0;
         }
 
+        /// <summary>
+        /// Serialize a message to JSON and publish. Safe no-op if the server
+        /// is not running — the first such call per session emits a warning.
+        /// </summary>
+        /// <param name="topic">Topic to publish to.</param>
+        /// <param name="schemaName">Schema name, or null/empty for schemaless JSON.</param>
+        /// <param name="message">Object to serialize via Newtonsoft.Json.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishJson(string topic, string schemaName, object message, ulong logTimeNs)
         {
             if (!IsRunning)
@@ -323,6 +438,9 @@ namespace Unity.FoxgloveSDK.Components
             });
             return id;
         }
+
+        // Disables all FoxglovePublisherBase components in the scene so that
+        // replay-driven data and live publisher data don't collide.
         private void DisableLivePublishers()
         {
             if (_livePublishersDisabled) return;
@@ -354,6 +472,10 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 
+    /// <summary>
+    /// Defines an asset root mapping: associates a URI prefix with a local
+    /// folder for <c>fetchAsset</c> requests.
+    /// </summary>
     [System.Serializable]
     public struct AssetRootDefinition
     {
@@ -363,9 +485,13 @@ namespace Unity.FoxgloveSDK.Components
         public string localRoot;
         [Tooltip("Maximum file size in MB (16 MB recommended)")]
         public float maxMB;
+        /// <summary>Maximum file size in bytes. Defaults to 16 MB.</summary>
         public float MaxBytesOrDefault => (maxMB > 0 ? maxMB : 16) * 1024 * 1024;
     }
 
+    /// <summary>
+    /// Internal struct for enqueuing transport events on the main thread.
+    /// </summary>
     internal struct ClientEvent
     {
         public uint ClientId;

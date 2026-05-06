@@ -1,9 +1,22 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/IO
+// Purpose: Low-level MCAP reader that parses the MCAP binary format —
+// magic verification, footer/summary extraction, record iteration,
+// and chunk decompression (LZ4/Zstd).
+
 using System;
 using System.Collections.Generic;
 using System.IO;
 
 namespace Unity.FoxgloveSDK.IO
 {
+    /// <summary>
+    /// Low-level MCAP binary reader. Verifies magic bytes, locates the
+    /// footer and summary sections, iterates records within chunks, and
+    /// delegates chunk decompression to <see cref="McapCompression"/>.
+    /// </summary>
     public class McapReader
     {
         private readonly Stream _stream;

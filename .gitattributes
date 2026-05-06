@@ -1,0 +1,36 @@
+# Normalize text files to LF for cross-platform Unity/package development.
+* text=auto eol=lf
+
+# Source and configuration files.
+*.cs text eol=lf
+*.py text eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.asmdef text eol=lf
+*.asmref text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+
+# Unity text assets.
+*.meta text eol=lf
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.inputactions text eol=lf
+*.wlt text eol=lf
+
+# Binary assets and bundled dependencies.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.mcap binary
+*.zip binary

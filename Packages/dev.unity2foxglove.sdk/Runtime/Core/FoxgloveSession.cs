@@ -1,3 +1,12 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: Foxglove WebSocket session — owns channel/advertise/subscribe
+// lifecycle, client messaging dispatch, connection graph, and MCAP recording
+// integration. Split into partial classes for readability (Connection,
+// Parameters, Services).
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +20,18 @@ using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Core session that handles Foxglove WebSocket protocol logic:
+    /// channel lifecycle, subscription routing, binary message encoding,
+    /// client text/binary dispatch, time broadcast, connection graph,
+    /// and serverInfo on connect.
+    ///
+    /// Split across source files for readability:
+    /// FoxgloveSession.Connection.cs (subscribe/unsubscribe,
+    /// ConnectionGraph, ClientPublish, PlaybackControl, Assets),
+    /// FoxgloveSession.Parameters.cs, and
+    /// FoxgloveSession.Services.cs.
+    /// </summary>
     public partial class FoxgloveSession : IDisposable
     {
         private readonly IFoxgloveTransport _transport;
@@ -32,8 +53,11 @@ namespace Unity.FoxgloveSDK.Core
         private McapRecorder _recorder;
         private long _lastTimeBroadcastTicks;
 
+        /// <summary>Server name sent in serverInfo.</summary>
         public string Name { get; }
+        /// <summary>Unique session id per start. Sent in serverInfo.</summary>
         public string SessionId { get; }
+        /// <summary>Whether the transport is currently listening.</summary>
         public bool IsRunning => _transport.IsRunning;
         public ISchemaRegistry Schemas => _schemaRegistry;
         public ChannelRegistry Channels => _channels;
@@ -126,6 +150,11 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Publish ──
 
+        /// <summary>
+        /// Publish raw bytes to a channel. Encodes the binary MessageData frame
+        /// per-client with the correct subscriptionId and logTime. Also writes
+        /// to the MCAP recorder if attached.
+        /// </summary>
         public void Publish(uint channelId, byte[] payload) => Publish(channelId, payload, _clock.NowNs);
 
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
@@ -159,6 +188,11 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Time ──
 
+        /// <summary>
+        /// Broadcast the current time to all clients at up to the given rate.
+        /// Throttled so it doesn't fire on every call — only sends when the
+        /// wall-clock interval has elapsed.
+        /// </summary>
         public void BroadcastTime(float rateHz = 10f)
         {
             var now = DateTime.UtcNow.Ticks;
@@ -178,6 +212,12 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Transport event handlers ──
 
+        /// <summary>
+        /// On client connect: send serverInfo (with current capabilities),
+        /// advertise all registered channels/services, and seed the connection
+        /// graph. Capabilities like PlaybackControl and Assets are conditionally
+        /// included based on runtime state.
+        /// </summary>
         private void OnClientConnected(uint clientId)
         {
             var info = new ServerInfo
@@ -225,6 +265,11 @@ namespace Unity.FoxgloveSDK.Core
             _graphDirty = true;
         }
 
+        /// <summary>
+        /// On client disconnect: clean up subscriptions, parameter subs,
+        /// connection graph, pending service calls, and client-published
+        /// channels associated with this client.
+        /// </summary>
         private void OnClientDisconnected(uint clientId)
         {
             _subscriptions.RemoveClient(clientId);
@@ -235,6 +280,10 @@ namespace Unity.FoxgloveSDK.Core
             foreach (var k in toRemove) _clientChannels.Remove(k);
         }
 
+        /// <summary>
+        /// Dispatch client JSON messages by opcode. Malformed JSON is logged
+        /// as a warning; unknown ops are logged but not fatal.
+        /// </summary>
         private void OnClientText(uint clientId, string json)
         {
             string op;
@@ -258,6 +307,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Dispatch client binary frames: try PlaybackControl first,
+        /// then ClientPublish, then ServiceCallRequest.
+        /// </summary>
         private void OnClientBinary(uint clientId, byte[] data)
         {
             if (HandlePlaybackControlRequest(clientId, data)) return;

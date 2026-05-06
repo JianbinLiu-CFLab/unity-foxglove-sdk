@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Publishes this GameObject's transform as foxglove.FrameTransform
+// messages at a configurable rate.
+
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 

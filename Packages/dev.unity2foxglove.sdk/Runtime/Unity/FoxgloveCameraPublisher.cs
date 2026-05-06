@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Captures camera frames via AsyncGPUReadback and publishes them
+// as foxglove.CompressedImage JPEG frames.
+
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;

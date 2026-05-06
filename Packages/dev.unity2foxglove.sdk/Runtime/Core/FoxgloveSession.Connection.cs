@@ -1,3 +1,10 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Core
+// Purpose: FoxgloveSession partial — subscribe/unsubscribe dispatch,
+// ConnectionGraph, ClientPublish, PlaybackControl, and Assets/fetchAsset.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +17,10 @@ namespace Unity.FoxgloveSDK.Core
     {
         // ── Subscribe/unsubscribe ──
 
+        /// <summary>
+        /// Parse a subscribe message and add per-client subscription entries.
+        /// Each subscription maps a client-supplied subscriptionId to a channelId.
+        /// </summary>
         private void HandleSubscribe(uint clientId, string json)
         {
             try
@@ -29,6 +40,10 @@ namespace Unity.FoxgloveSDK.Core
             BroadcastGraphUpdate();
         }
 
+        /// <summary>
+        /// Parse an unsubscribe message and remove per-client subscriptions
+        /// by subscriptionId, cleaning up the connection graph.
+        /// </summary>
         private void HandleUnsubscribe(uint clientId, string json)
         {
             try
@@ -51,6 +66,10 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── ConnectionGraph ──
 
+        /// <summary>
+        /// Subscribe a client to connection graph updates and send the current
+        /// snapshot immediately so the client's topology view is seeded.
+        /// </summary>
         private void HandleSubscribeConnectionGraph(uint clientId)
         {
             _graph.Subscribe(clientId);
@@ -65,6 +84,11 @@ namespace Unity.FoxgloveSDK.Core
 
         private bool _graphDirty;
 
+        /// <summary>
+        /// Broadcast the current connection graph snapshot to all subscribed
+        /// clients. When dirty, also writes the snapshot as MCAP metadata so
+        /// the graph state is preserved in recordings.
+        /// </summary>
         private void BroadcastGraphUpdate()
         {
             var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
@@ -112,6 +136,11 @@ namespace Unity.FoxgloveSDK.Core
             catch (Exception ex) { _logger.LogWarning($"Client unadvertise parse error from client {clientId}: {ex.Message}"); }
         }
 
+        /// <summary>
+        /// Decode a ClientPublish binary frame and dispatch to
+        /// <see cref="FoxgloveSession.OnClientMessage"/> if the client has
+        /// advertised the matching channel.
+        /// </summary>
         private void HandleClientBinaryPublish(uint clientId, byte[] data)
         {
             if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
@@ -126,6 +155,11 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── PlaybackControl ──
 
+        /// <summary>
+        /// Decode and apply a playback control command (play, pause, seek).
+        /// Responds with a PlaybackState binary frame. Returns true if the
+        /// frame was recognized as a playback control request.
+        /// </summary>
         private bool HandlePlaybackControlRequest(uint clientId, byte[] data)
         {
             if (_runtime?.PlaybackEnabled != true) return false;
@@ -146,6 +180,11 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Assets ──
 
+        /// <summary>
+        /// Handle a fetchAsset request: parse the URI, look up the asset root,
+        /// read the file, and respond with a binary fetchAssetResponse frame
+        /// (success or error).
+        /// </summary>
         private void HandleFetchAsset(uint clientId, string json)
         {
             FetchAsset msg;

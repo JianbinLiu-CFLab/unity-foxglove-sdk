@@ -1,3 +1,11 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Transport
+// Purpose: Pure C# WebSocket server backend using TcpListener and manual
+// RFC 6455 framing. No http.sys dependency — works on all platforms
+// without admin rights.
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;

@@ -1,8 +1,18 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Runtime hub for [FoxRun] attribute-based auto-publishing.
+// FoxRunCodeGenerator produces the IFoxgloveLogSource implementations;
+// this hub acts as their registry, relaying value updates to Foxglove
+// topics through FoxgloveManager.
+
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
 {
+    /// <summary>Metadata for a FoxRun-published topic.</summary>
     public readonly struct FoxgloveLogTopicInfo
     {
         public readonly string Topic;
