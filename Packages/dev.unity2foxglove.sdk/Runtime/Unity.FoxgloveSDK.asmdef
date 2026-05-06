@@ -2,8 +2,11 @@
   "name": "Unity.FoxgloveSDK",
   "rootNamespace": "Unity.FoxgloveSDK",
   "references": [
+    "K4os.Compression.LZ4",
+    "K4os.Compression.LZ4.Streams",
+    "K4os.Hash.xxHash",
     "Newtonsoft.Json",
-    "IonKiwi.lz4",
+    "System.IO.Pipelines",
     "ZstdSharp"
   ],
   "includePlatforms": [],

@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/IO
-// Purpose: MCAP chunk compression and decompression — delegates to IonKiwi.lz4 and ZstdSharp.
+// Purpose: MCAP chunk compression and decompression — delegates to K4os.Compression.LZ4 and ZstdSharp.
 
 using System;
-using IonKiwi.lz4;
+using System.IO;
+using K4os.Compression.LZ4.Streams;
 using ZstdSharp;
 
 namespace Unity.FoxgloveSDK.IO
@@ -19,10 +20,21 @@ namespace Unity.FoxgloveSDK.IO
                 case "":
                     return data;
                 case "lz4":
-                    var lz4Out = LZ4Utility.Decompress(data);
-                    if (lz4Out.Length != uncompressedSize)
-                        throw new InvalidOperationException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {lz4Out.Length}");
-                    return lz4Out;
+                    using (var ms = new MemoryStream(data))
+                    using (var lz4 = LZ4Stream.Decode(ms, leaveOpen: false))
+                    {
+                        var buf = new byte[uncompressedSize];
+                        var total = 0;
+                        while (total < uncompressedSize)
+                        {
+                            var read = lz4.Read(buf, total, uncompressedSize - total);
+                            if (read == 0) break;
+                            total += read;
+                        }
+                        if (total != uncompressedSize)
+                            throw new InvalidOperationException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {total}");
+                        return buf;
+                    }
                 case "zstd":
                     using (var decompressor = new Decompressor())
                     {
@@ -43,7 +55,12 @@ namespace Unity.FoxgloveSDK.IO
                 case "":
                     return data;
                 case "lz4":
-                    return LZ4Utility.Compress(data, LZ4FrameBlockMode.Linked, LZ4FrameBlockSize.Max64KB, LZ4FrameChecksumMode.None, null, false);
+                    using (var ms = new MemoryStream())
+                    {
+                        using (var lz4 = LZ4Stream.Encode(ms, K4os.Compression.LZ4.LZ4Level.L12_MAX, leaveOpen: true))
+                            lz4.Write(data, 0, data.Length);
+                        return ms.ToArray();
+                    }
                 case "zstd":
                     using (var compressor = new Compressor())
                         return compressor.Wrap(data).ToArray();

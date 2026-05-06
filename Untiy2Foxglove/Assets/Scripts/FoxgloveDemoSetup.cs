@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Demo
-// Purpose: Registers demo Parameters and Services, syncs parameter changes
-// to the cube in the Unity scene via Update polling.
+// Purpose: Registers demo Parameters and Services, mirrors Foxglove parameter
+// changes to the Unity cube, and mirrors Inspector color changes back to
+// Foxglove parameter subscribers.
 
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
@@ -22,10 +24,13 @@ public class FoxgloveDemoSetup : MonoBehaviour
     private uint _resetSvcId;
     private float _lastAppliedScale = -1f;
     private Color _lastAppliedColor = Color.clear;
-    private MaterialPropertyBlock _propBlock;
+    private bool _syncingColor;
+    private SynchronizationContext _unityContext;
+    private FoxgloveSceneCubePublisher _scenePublisher;
 
     private void Start()
     {
+        _unityContext = SynchronizationContext.Current;
         if (_manager == null) _manager = GetComponent<FoxgloveManager>();
         if (_manager?.Runtime == null) return;
 
@@ -49,60 +54,45 @@ public class FoxgloveDemoSetup : MonoBehaviour
                 cube.transform.rotation = Quaternion.identity;
                 cube.transform.localScale = Vector3.one;
                 _lastAppliedScale = 1f;
-                _lastAppliedColor = Color.green;
 
-                _manager.Runtime?.Parameters.TrySetFromClient("/cube/color",
-                    new JArray(0.0, 1.0, 0.0, 1.0));
-                _manager.Runtime?.Parameters.TrySetFromClient("/cube/scale", 1.0);
+                _manager.Runtime?.TrySetParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0));
+                _manager.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(1.0));
             }
             return JToken.Parse("{\"status\":\"ok\"}");
         });
 
-        // Phase 8: log client-published messages to Unity Console
+        // Phase 8: log client-published messages to Unity Console.
         rt.Session.OnClientMessage += (cid, chId, topic, payload) =>
-            Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={System.Text.Encoding.UTF8.GetString(payload)}");
+            Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={Encoding.UTF8.GetString(payload)}");
+
+        rt.Parameters.OnParameterChanged += OnParameterChanged;
+
+        var cubeObject = FindCube();
+        if (cubeObject != null)
+        {
+            _scenePublisher = cubeObject.GetComponent<FoxgloveSceneCubePublisher>();
+            if (_scenePublisher != null)
+                _scenePublisher.OnSceneCubeColorChanged += OnSceneCubeColorChanged;
+        }
+
+        var initialColor = rt.Parameters.GetWireParameter("/cube/color")?.Value;
+        if (TryReadColor(initialColor, out var color))
+            ApplySceneColorFromParameter(color);
+    }
+
+    private void OnDestroy()
+    {
+        if (_manager?.Runtime != null)
+            _manager.Runtime.Parameters.OnParameterChanged -= OnParameterChanged;
+        if (_scenePublisher != null)
+            _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
     }
 
     private void Update()
     {
         if (_manager?.Runtime?.Session == null) return;
 
-        // Sync /cube/color from parameter → cube (only when changed externally)
-        var colorParam = _manager.Runtime.Parameters.GetWireParameter("/cube/color");
-        if (colorParam?.Value is JArray arr && arr.Count >= 3)
-        {
-            try
-            {
-                var r = (float)arr[0].Value<double>();
-                var g = (float)arr[1].Value<double>();
-                var b = (float)arr[2].Value<double>();
-                var a = arr.Count >= 4 ? (float)arr[3].Value<double>() : 1f;
-                var c = new Color(r, g, b, a);
-
-                if (c != _lastAppliedColor)
-                {
-                    _lastAppliedColor = c;
-                    var cube = FindCube();
-                    if (cube != null)
-                    {
-                        var renderer = cube.GetComponent<Renderer>();
-                        if (renderer != null)
-                        {
-                            if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
-                            renderer.GetPropertyBlock(_propBlock);
-                            _propBlock.SetColor("_Color", c);
-                            renderer.SetPropertyBlock(_propBlock);
-                        }
-
-                        var scenePub = cube.GetComponent<FoxgloveSceneCubePublisher>();
-                        if (scenePub != null) scenePub.SceneCubeColor = c;
-                    }
-                }
-            }
-            catch { }
-        }
-
-        // Sync /cube/scale from parameter → cube (only when changed externally)
+        // Scale still mirrors the existing manual demo behavior.
         var scaleParam = _manager.Runtime.Parameters.GetWireParameter("/cube/scale");
         if (scaleParam?.Value != null)
         {
@@ -128,10 +118,70 @@ public class FoxgloveDemoSetup : MonoBehaviour
         return cube;
     }
 
-    // Called by MouseDragCube when scroll changes scale
+    // Called by MouseDragCube when scroll changes scale.
     public void SyncScaleToParameter(float s)
     {
-        _manager?.Runtime?.Parameters.TrySetFromClient("/cube/scale", s);
+        _manager?.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(s));
         _lastAppliedScale = s;
+    }
+
+    private void OnParameterChanged(string name, JToken value, string type)
+    {
+        if (name != "/cube/color" || !TryReadColor(value, out var color))
+            return;
+
+        if (_unityContext != null && SynchronizationContext.Current != _unityContext)
+            _unityContext.Post(_ => ApplySceneColorFromParameter(color), null);
+        else
+            ApplySceneColorFromParameter(color);
+    }
+
+    private void OnSceneCubeColorChanged(Color color)
+    {
+        if (_syncingColor)
+            return;
+
+        _lastAppliedColor = color;
+        _manager?.Runtime?.TrySetParameter("/cube/color", new JArray(color.r, color.g, color.b, color.a));
+    }
+
+    private void ApplySceneColorFromParameter(Color color)
+    {
+        if (color == _lastAppliedColor)
+            return;
+
+        _lastAppliedColor = color;
+        if (_scenePublisher == null)
+        {
+            var cube = FindCube();
+            if (cube != null)
+                _scenePublisher = cube.GetComponent<FoxgloveSceneCubePublisher>();
+        }
+        if (_scenePublisher == null)
+            return;
+
+        _syncingColor = true;
+        try { _scenePublisher.SceneCubeColor = color; }
+        finally { _syncingColor = false; }
+    }
+
+    private static bool TryReadColor(JToken value, out Color color)
+    {
+        color = Color.clear;
+        if (value is not JArray arr || arr.Count < 3)
+            return false;
+        try
+        {
+            color = new Color(
+                (float)arr[0].Value<double>(),
+                (float)arr[1].Value<double>(),
+                (float)arr[2].Value<double>(),
+                arr.Count >= 4 ? (float)arr[3].Value<double>() : 1f);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

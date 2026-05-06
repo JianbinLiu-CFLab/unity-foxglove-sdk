@@ -77,6 +77,29 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Broadcast current parameter values to clients subscribed via
+        /// subscribeParameterUpdates. Intended for runtime-owned parameter
+        /// changes that do not originate from a Foxglove setParameters request.
+        /// </summary>
+        public void BroadcastParameterValues(IEnumerable<string> parameterNames)
+        {
+            var names = parameterNames?
+                .Where(n => !string.IsNullOrEmpty(n))
+                .Distinct()
+                .ToList();
+            if (names == null || names.Count == 0)
+                return;
+
+            var parameters = _parameters.GetWireParameters(names);
+            if (parameters.Count == 0)
+                return;
+
+            var broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
+            foreach (var cid in GetParamSubscribersForChanged(names, 0))
+                _transport.SendText(cid, broadcastJson);
+        }
+
         private void HandleSubscribeParameterUpdates(uint clientId, string json)
         {
             SubscribeParameterUpdates msg;
