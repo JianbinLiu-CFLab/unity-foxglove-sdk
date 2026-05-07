@@ -286,6 +286,13 @@ namespace Unity.FoxgloveSDK.Transport
                     var frame = conn.ReadFrame();
                     if (frame == null) break;
 
+                    // Reject fragmented text/binary frames (continuation not supported)
+                    if (!frame.Fin && (frame.Opcode == WsOpcode.Text || frame.Opcode == WsOpcode.Binary))
+                    {
+                        conn.SendClose();
+                        return;
+                    }
+
                     switch (frame.Opcode)
                     {
                         case WsOpcode.Text:
