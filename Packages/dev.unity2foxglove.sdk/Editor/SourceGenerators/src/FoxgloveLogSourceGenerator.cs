@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -190,7 +191,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             for (int i = 0; i < topics.Count; i++)
             {
                 var rate = topicMap[topics[i]].Max(f => f.rate);
-                sb.AppendLine($"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);");
+                sb.AppendLine(CultureInfo.InvariantCulture,
+                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);");
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");

@@ -336,6 +336,8 @@ namespace Unity.FoxgloveSDK.Transport
             private const byte OpPong = 0xA;
             private const byte FinBit = 0x80;
 
+            internal const int MaxPayloadBytes = 64 * 1024 * 1024;
+
             public WsConnection(NetworkStream stream) => _stream = stream;
 
             public void SendText(string json)
@@ -421,6 +423,9 @@ namespace Unity.FoxgloveSDK.Transport
                     mask = new byte[4];
                     if (!ReadExact(mask, 0, 4)) return null;
                 }
+
+                if (payloadLen > MaxPayloadBytes)
+                    return null;
 
                 var payload = new byte[payloadLen];
                 if (payloadLen > 0 && !ReadExact(payload, 0, payloadLen)) return null;
