@@ -57,6 +57,7 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 - Add Protobuf schema support if there is enough demand.
 - Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
+- Evaluate optional `wss://` support for remote or production deployments; local demos will continue to default to `ws://127.0.0.1`.
 - Continue aligning wire behavior with Foxglove protocol expectations.
 
 ### 2.4 MCAP and Replay

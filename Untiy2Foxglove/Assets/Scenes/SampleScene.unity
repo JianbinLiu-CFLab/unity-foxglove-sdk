@@ -323,11 +323,11 @@ MonoBehaviour:
   _enablePlaybackControl: 0
   _playbackStartOffsetSeconds: 0
   _playbackDurationSeconds: 60
-  _enableRecording: 0
+  _enableRecording: 1
   _recordingPrefix: foxglove
   _recordingDirectory: 
   _recordingChunkSizeKB: 1024
-  _recordingCompression: 0
+  _recordingCompression: 1
   _enableReplay: 0
   _replayFilePath: 
   _replayAutoPlay: 0
