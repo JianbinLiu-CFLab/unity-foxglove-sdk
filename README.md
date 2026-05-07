@@ -7,7 +7,7 @@
 
 A cross-platform Unity SDK for real-time runtime data streaming, MCAP recording and replay, and in-editor debugging. It runs inside Unity, speaks the Foxglove WebSocket protocol directly, and can work with [Foxglove](https://foxglove.dev), MCAP files, or custom clients.
 
-![Unity live streaming to Foxglove](Pictures/Foxglove_Real_Streaming.png)
+![Unity live streaming to Foxglove](Pictures/Foxglove_Real_Streaming.gif)
 
 ## 1.1 Purpose
 
