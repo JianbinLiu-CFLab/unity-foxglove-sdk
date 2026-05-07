@@ -16,6 +16,12 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 12 tests covering LZ4/Zstd
+        /// compression roundtrips, parameters/services metadata,
+        /// client publish message, coordinate mode in channel metadata,
+        /// and MetadataIndex read/parse roundtrip.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 12 Tests ---");
@@ -70,6 +76,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 1: Compressed chunk roundtrip ──
 
+        /// <summary>
+        /// Tests LZ4, Zstd, and no-op compression roundtrips: compress
+        /// then decompress must return original data.
+        /// </summary>
         static void TestCompressedChunkRoundtrip()
         {
             var raw = Encoding.UTF8.GetBytes("Hello MCAP compression test!");
@@ -89,6 +99,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 2: Compressed MCAP readable by Reader ──
 
+        /// <summary>
+        /// Produces an LZ4-compressed MCAP file, reads it back, and
+        /// verifies the chunk index reports the correct compression and
+        /// the decompressed chunk matches original size.
+        /// </summary>
         static void TestCompressedMcapReadable()
         {
             var ms = new MemoryStream();
@@ -190,6 +205,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 3: Parameters Metadata ──
 
+        /// <summary>
+        /// Writes a foxglove.parameters metadata record, reads it back,
+        /// and verifies the metadata index and decoded value contain the
+        /// correct parameter name and type.
+        /// </summary>
         static void TestParametersMetadata()
         {
             var ms = new MemoryStream();
@@ -258,6 +278,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 4: Services Metadata ──
 
+        /// <summary>
+        /// Writes a foxglove.services metadata record, reads it back,
+        /// and verifies serviceId, callId, and status fields.
+        /// </summary>
         static void TestServicesMetadata()
         {
             var ms = new MemoryStream();
@@ -320,6 +344,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 5: ClientPublish Message ──
 
+        /// <summary>
+        /// Produces an MCAP with a client-published channel (high-bit
+        /// channel id, no schema) and verifies the channel record,
+        /// message, and payload survive the roundtrip.
+        /// </summary>
         static void TestClientPublishMessage()
         {
             var ms = new MemoryStream();
@@ -423,6 +452,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 6: coordinate_mode in Channel metadata ──
 
+        /// <summary>
+        /// Registers a channel with <c>coordinate_mode</c> metadata set
+        /// to <c>RightHand</c> in the MCAP, reads back the summary, and
+        /// confirms the metadata roundtrips.
+        /// </summary>
         static void TestCoordinateModeInChannel()
         {
             var ms = new MemoryStream();
@@ -465,6 +499,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 7: coordinate_mode mismatch detection ──
 
+        /// <summary>
+        /// Creates an MCAP with <c>RightHand</c> coordinate mode and
+        /// verifies the mismatch detection correctly identifies
+        /// divergence from the default <c>LeftHand</c>.
+        /// </summary>
         static void TestCoordinateModeMismatchDetection()
         {
             // Build MCAP with RightHand coordinate mode, then test mismatch against LeftHand
@@ -521,6 +560,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Test 8: MetadataIndex read/parse roundtrip ──
 
+        /// <summary>
+        /// Writes a MetadataIndex record, reads the summary, and
+        /// verifies the offset, length, name, and decoded metadata
+        /// content survive the roundtrip.
+        /// </summary>
         static void TestMetadataIndexRoundtrip()
         {
             var ms = new MemoryStream();

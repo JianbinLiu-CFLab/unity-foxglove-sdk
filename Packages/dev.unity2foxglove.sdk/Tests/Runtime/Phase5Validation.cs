@@ -21,6 +21,11 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 5 tests covering timestamp
+        /// utilities, runtime lifecycle (stop/start/dispose), and
+        /// link.xml code-stripping guard verification.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 5 Tests ---");
@@ -39,6 +44,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── A: Timestamp ──
 
+        /// <summary>
+        /// Two consecutive calls to <c>NowUnixTimeNs</c> must return
+        /// monotonically non-decreasing values.
+        /// </summary>
         private static void TestNowUnixTimeNsMonotonic()
         {
             var t1 = FoxgloveTimeUtil.NowUnixTimeNs();
@@ -46,6 +55,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(t2 >= t1, "NowUnixTimeNs is monotonic (non-decreasing)");
         }
 
+        /// <summary>
+        /// <c>NowUnixTimeNs</c> must be within 1 second of the system
+        /// UTC time converted to nanoseconds.
+        /// </summary>
         private static void TestNowUnixTimeNsInWindow()
         {
             var ns = FoxgloveTimeUtil.NowUnixTimeNs();
@@ -55,6 +68,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(diff < 1_000_000_000UL, $"NowUnixTimeNs within 1s of system time (diff={diff}ns)");
         }
 
+        /// <summary>
+        /// <c>SystemClock.NowNs</c> must agree with
+        /// <c>FoxgloveTimeUtil.NowUnixTimeNs</c> within 1 second.
+        /// </summary>
         private static void TestSystemClockMatchesFoxgloveTimeUtil()
         {
             var clock = new SystemClock();
@@ -66,6 +83,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── B: Lifecycle ──
 
+        /// <summary>
+        /// A Stop followed by Start with the same transport must not throw
+        /// and must produce a valid session.
+        /// </summary>
         private static void TestRuntimeStopStartReusesTransport()
         {
             var transport = new LifecycleFakeTransport();
@@ -78,6 +99,10 @@ namespace Unity.FoxgloveSDK.Tests
             runtime.Dispose();
         }
 
+        /// <summary>
+        /// <c>Runtime.Dispose</c> must call <c>transport.Dispose</c>
+        /// exactly once.
+        /// </summary>
         private static void TestRuntimeDisposeDisposesTransport()
         {
             var transport = new LifecycleFakeTransport();
@@ -87,6 +112,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(transport.DisposeCalled == 1, "Runtime.Dispose calls transport.Dispose exactly once");
         }
 
+        /// <summary>
+        /// After session dispose, triggering transport events (connect,
+        /// text, disconnect) must not invoke disposed session handlers.
+        /// </summary>
         private static void TestSessionDisposeUnbindsEvents()
         {
             var transport = new LifecycleFakeTransport();
@@ -101,6 +130,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(true, "Session dispose does not leak event handlers");
         }
 
+        /// <summary>
+        /// Fake transport for lifecycle tests; records dispose count
+        /// and exposes event simulators for connect/disconnect/text.
+        /// </summary>
         private sealed class LifecycleFakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -147,6 +180,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(content.Contains("Unity.FoxgloveSDK"), $"{label}: preserves Unity.FoxgloveSDK");
         }
 
+        /// <summary>
+        /// Verifies the package-level link.xml template exists and
+        /// contains preserve rules for Newtonsoft.Json and
+        /// Unity.FoxgloveSDK.
+        /// </summary>
         private static void TestPackageLinkXmlTemplateExists()
         {
             var root = FindRepoRoot();
@@ -156,6 +194,10 @@ namespace Unity.FoxgloveSDK.Tests
             AssertLinkXml(path, "Package link.xml template");
         }
 
+        /// <summary>
+        /// Scans the Assets directory for at least one link.xml containing
+        /// valid preserve rules (Unity requires link.xml under Assets).
+        /// </summary>
         private static void TestAssetsLinkXmlActiveExists()
         {
             var root = FindRepoRoot();

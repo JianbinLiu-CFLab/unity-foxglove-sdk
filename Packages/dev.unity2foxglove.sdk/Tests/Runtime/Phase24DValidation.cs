@@ -17,6 +17,12 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 24D tests covering MCAP
+        /// mixed-schema guards, client publish schema dedup,
+        /// encoding normalization (empty == json), and duplicate
+        /// topic rejection.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 24D Tests ---");

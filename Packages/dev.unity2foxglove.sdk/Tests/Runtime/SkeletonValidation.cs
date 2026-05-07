@@ -33,6 +33,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
         }
 
+        /// <summary>
+        /// Entry point: runs all skeleton tests covering runtime
+        /// creation, schema registry, channel registry, subscription
+        /// registry, binary codec roundtrips, and ServerInfo wire format.
+        /// </summary>
         public static void Validate()
         {
             // 1. Can create a runtime with defaults

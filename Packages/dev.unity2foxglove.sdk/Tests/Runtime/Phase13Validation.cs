@@ -18,6 +18,12 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 13 tests covering IRuntimeContext
+        /// indirection, recording/replay controllers, McapBinaryReader
+        /// bounds checks, client publish auto-increment, seek boundary
+        /// behavior, coordinate roundtrip, and handler non-accumulation.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 13 Tests ---");
@@ -38,6 +44,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── IRuntimeContext indirection ──
 
+        /// <summary>
+        /// Verifies FoxgloveRuntime implements IRuntimeContext and a
+        /// session can be started after receiving the context via
+        /// <c>SetRuntimeContext</c>.
+        /// </summary>
         static void TestIruntimeContextIndirection()
         {
             var rt = new FoxgloveRuntime();
@@ -55,6 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Controllers ──
 
+        /// <summary>
+        /// Enables recording, verifies the flag, then disables and
+        /// verifies it returns to false.
+        /// </summary>
         static void TestRecordingController()
         {
             var rt = new FoxgloveRuntime();
@@ -81,6 +96,10 @@ namespace Unity.FoxgloveSDK.Tests
             return tmp;
         }
 
+        /// <summary>
+        /// Creates a temp MCAP, loads it into the replay engine, plays,
+        /// ticks, and verifies messages are emitted at correct log times.
+        /// </summary>
         static void TestReplayController()
         {
             var rt = new FoxgloveRuntime();
@@ -112,6 +131,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── McapBinaryReader bounds checks ──
 
+        /// <summary>
+        /// Verifies that truncated or out-of-bounds reads throw
+        /// <c>InvalidDataException</c> for U16, string, prefixed data,
+        /// and map operations.
+        /// </summary>
         static void TestMcapBinaryReaderBounds()
         {
             try
@@ -163,6 +187,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── ClientPublish auto-increment channel ID ──
 
+        /// <summary>
+        /// Writes multiple client-published messages through the
+        /// recorder and verifies each distinct topic gets its own
+        /// channel without collisions.
+        /// </summary>
         static void TestClientPublishAutoIncrementCid()
         {
             var ms = new MemoryStream();
@@ -189,6 +218,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Seek boundary tests ──
 
+        /// <summary>
+        /// Seeks to a time before the first message, then ticks past it;
+        /// verifies no messages are emitted before the first message
+        /// timestamp.
+        /// </summary>
         static void TestSeekBeforeStartTime()
         {
             var tmp = CreateTempMcap(2, 5000UL * 1000 * 1000);
@@ -206,6 +240,11 @@ namespace Unity.FoxgloveSDK.Tests
             finally { File.Delete(tmp); }
         }
 
+        /// <summary>
+        /// Seeks exactly to the first message boundary, ticks, and
+        /// verifies at least one message is emitted at or after the seek
+        /// time.
+        /// </summary>
         static void TestSeekAtFirstChunkBoundary()
         {
             var tmp = CreateTempMcap(2, 1000UL * 1000 * 1000);
@@ -224,6 +263,11 @@ namespace Unity.FoxgloveSDK.Tests
             finally { File.Delete(tmp); }
         }
 
+        /// <summary>
+        /// Mixes server and client channels in one MCAP and verifies the
+        /// statistics channel count includes both and the chunk records
+        /// are readable.
+        /// </summary>
         static void TestClientPublishMessageIndex()
         {
             var ms = new MemoryStream();
@@ -252,6 +296,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(chunk != null && chunk.Length > 0, "ClientPubIndex: chunk records readable");
         }
 
+        /// <summary>
+        /// When a schemaless client publish targets the same topic as a
+        /// typed server channel, it must be skipped rather than creating
+        /// a conflicting duplicate channel.
+        /// </summary>
         static void TestClientPublishDoesNotCreateMixedTopicSchemas()
         {
             var ms = new MemoryStream();
@@ -314,6 +363,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(f_uz[0]==fz_exp[0] && f_uz[1]==fz_exp[1] && f_uz[2]==fz_exp[2], "CoordRnd: UZ→F basis correct");
         }
 
+        /// <summary>
+        /// After three Stop/Start cycles, firing a replay message must
+        /// invoke the handler exactly once (no duplicate subscriptions).
+        /// </summary>
         static void TestReplayHandlerNoAccumulate()
         {
             int count = 0;
@@ -333,6 +386,9 @@ namespace Unity.FoxgloveSDK.Tests
         }
     }
 
+    /// <summary>
+    /// Fake transport for Phase 13 that tracks <c>IsRunning</c> state.
+    /// </summary>
     class Phase13FakeTransport : IFoxgloveTransport
     {
         public bool IsRunning { get; private set; }

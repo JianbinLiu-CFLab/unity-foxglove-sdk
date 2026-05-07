@@ -7,6 +7,10 @@ using Unity.FoxgloveSDK.IO;
 
 class McapInspector
 {
+    /// <summary>
+    /// Reads an MCAP file and prints channel metadata, statistics, and
+    /// the first few /tf and /scene messages to the console.
+    /// </summary>
     static void Main(string[] args)
     {
         if (args.Length == 0)

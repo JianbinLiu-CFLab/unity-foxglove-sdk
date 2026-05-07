@@ -5,10 +5,6 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase16Validation
     {
-        /// <summary>
-        /// Phase 16 — code review &amp; release hardening:
-        /// package metadata, LICENSE, CI workflows, .gitignore coverage.
-        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 16 Tests ---");

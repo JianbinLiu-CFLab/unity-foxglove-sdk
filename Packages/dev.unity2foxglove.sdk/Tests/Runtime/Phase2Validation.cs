@@ -31,6 +31,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 2 tests covering protocol DTO
+        /// serialization, channel registration/unregistration, advertise
+        /// snapshots, subscribe/unsubscribe parsing, and publish routing.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 2 Tests ---");
@@ -75,6 +80,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── A: Protocol DTO snapshots ──
 
+        /// <summary>
+        /// Ensures that <c>SchemaName</c> and <c>Schema</c> on
+        /// <c>AdvertiseChannel</c> default to empty string, and that
+        /// assigning null is coerced to empty string.
+        /// </summary>
         private static void TestAdvertiseSchemaNullNormalized()
         {
             var ch = new AdvertiseChannel { Id = 1, Topic = "/t", Encoding = "json" };
@@ -89,6 +99,12 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(ch.Schema == "", "Schema null coerced to ''");
         }
 
+        /// <summary>
+        /// Confirms the Advertise JSON serialization output: op is
+        /// <c>advertise</c>, schema fields default to empty strings,
+        /// <c>schemaEncoding</c> is omitted when not set, and no null
+        /// literals appear in the JSON.
+        /// </summary>
         private static void TestAdvertiseSnapshotNoSchema()
         {
             var ch = new AdvertiseChannel { Id = 1, Topic = "/t", Encoding = "json" };
@@ -107,6 +123,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!json.Contains(": null"), "Advertise JSON contains no null literal");
         }
 
+        /// <summary>
+        /// Validates the Unadvertise wire format: <c>op</c> is
+        /// <c>unadvertise</c> and <c>channelIds</c> contains the
+        /// expected entries.
+        /// </summary>
         private static void TestUnadvertiseJsonFormat()
         {
             var msg = new Unadvertise { ChannelIds = new List<uint> { 1, 2, 3 } };
@@ -117,6 +138,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(ids != null && ids.Count == 3, "Unadvertise channelIds has 3 entries");
         }
 
+        /// <summary>
+        /// Validates the Subscribe message wire format with multiple
+        /// subscriptions, each carrying an <c>id</c> and <c>channelId</c>.
+        /// </summary>
         private static void TestSubscribeMessageJsonFormat()
         {
             var msg = new SubscribeMessage
@@ -136,6 +161,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "Subscription has id=100, channelId=1");
         }
 
+        /// <summary>
+        /// Validates the Unsubscribe message wire format: <c>op</c> is
+        /// <c>unsubscribe</c> and <c>subscriptionIds</c> contains the
+        /// expected values.
+        /// </summary>
         private static void TestUnsubscribeMessageJsonFormat()
         {
             var msg = new UnsubscribeMessage { SubscriptionIds = new List<uint> { 100, 200 } };
@@ -148,6 +178,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── B: Public API ──
 
+        /// <summary>
+        /// Fake transport used by Phase 2 tests to record BroadcastText,
+        /// per-client SendText and SendBinary calls.
+        /// </summary>
         private sealed class Phase2FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -192,6 +226,10 @@ namespace Unity.FoxgloveSDK.Tests
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         }
 
+        /// <summary>
+        /// Verifies that <c>RegisterChannel</c> broadcasts an advertise
+        /// message with the correct channel id to all connected clients.
+        /// </summary>
         private static void TestRegisterChannelBroadcastsAdvertise()
         {
             var fake = new Phase2FakeTransport();
@@ -207,6 +245,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(adv["channels"]?[0]?["id"]?.Value<int>() == 1, "Advertise has channel id=1");
         }
 
+        /// <summary>
+        /// Verifies that <c>UnregisterChannel</c> broadcasts an unadvertise
+        /// message with the correct channel id.
+        /// </summary>
         private static void TestUnregisterChannelBroadcastsUnadvertise()
         {
             var fake = new Phase2FakeTransport();
@@ -222,6 +264,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(unadv["channelIds"]?[0]?.Value<int>() == 1, "unadvertise has channelId=1");
         }
 
+        /// <summary>
+        /// Re-registering the same channel id with updated metadata should
+        /// not break existing subscriptions; publish must still deliver to
+        /// the original subscription id.
+        /// </summary>
         private static void TestReregisterChannelKeepsSubscriptions()
         {
             var fake = new Phase2FakeTransport();
@@ -241,6 +288,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(binaries.Count == 1, "Publish after re-register still sends to existing subscription");
         }
 
+        /// <summary>
+        /// Tests that <c>FoxgloveRuntime.RegisterChannel</c> and
+        /// <c>UnregisterChannel</c> correctly proxy to the internal session.
+        /// </summary>
         private static void TestRuntimeProxyMethods()
         {
             var runtime = new FoxgloveRuntime();
@@ -257,6 +308,10 @@ namespace Unity.FoxgloveSDK.Tests
             finally { runtime.Dispose(); }
         }
 
+        /// <summary>
+        /// Calling <c>RegisterChannel</c> or <c>Publish</c> on a runtime
+        /// before <c>Start</c> must throw <c>InvalidOperationException</c>.
+        /// </summary>
         private static void TestRuntimeProxyThrowsBeforeStart()
         {
             var runtime = new FoxgloveRuntime();
@@ -283,6 +338,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── C: Advertise snapshot on connect ──
 
+        /// <summary>
+        /// When a client connects after channels have been registered, it
+        /// must receive serverInfo followed by an advertise snapshot
+        /// containing all currently registered channels.
+        /// </summary>
         private static void TestNewClientReceivesAdvertiseSnapshot()
         {
             var fake = new Phase2FakeTransport();
@@ -303,6 +363,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "Advertise snapshot includes both channels");
         }
 
+        /// <summary>
+        /// Each newly-connected client receives its own advertise snapshot
+        /// via <c>SendText</c>, not a shared broadcast.
+        /// </summary>
         private static void TestAdvertiseSnapshotIsPerClient()
         {
             var fake = new Phase2FakeTransport();
@@ -317,6 +381,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentTexts(2).Count >= 2, "Client 2 got snapshot");
         }
 
+        /// <summary>
+        /// When no channels are registered, connecting clients receive only
+        /// serverInfo, with no advertise snapshot.
+        /// </summary>
         private static void TestNoAdvertiseSnapshotWhenEmpty()
         {
             var fake = new Phase2FakeTransport();
@@ -330,6 +398,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── D: Subscribe / unsubscribe parsing ──
 
+        /// <summary>
+        /// A client subscribe message must create a subscription entry so
+        /// that subsequent <c>Publish</c> calls deliver binary frames.
+        /// </summary>
         private static void TestSubscribeAddsSubscription()
         {
             var fake = new Phase2FakeTransport();
@@ -344,6 +416,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentBinaries(1).Count == 1, "Subscribe enables Publish delivery");
         }
 
+        /// <summary>
+        /// A subscribe to a non-existent channel id must be silently
+        /// ignored and must not cause phantom message deliveries.
+        /// </summary>
         private static void TestSubscribeUnknownChannelIgnored()
         {
             var fake = new Phase2FakeTransport();
@@ -359,6 +435,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentBinaries(1).Count == 0, "Unknown channel subscription produces no messages");
         }
 
+        /// <summary>
+        /// An unsubscribe message must remove the subscription entry,
+        /// stopping further message delivery for that subscription id.
+        /// </summary>
         private static void TestUnsubscribeRemovesSubscription()
         {
             var fake = new Phase2FakeTransport();
@@ -373,6 +453,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentBinaries(1).Count == 0, "Unsubscribe stops delivery");
         }
 
+        /// <summary>
+        /// Receiving a JSON message with an unknown <c>op</c> value must
+        /// not disconnect or throw, preserving client connection stability.
+        /// </summary>
         private static void TestUnknownOpDoesNotDisconnect()
         {
             var fake = new Phase2FakeTransport();
@@ -384,6 +468,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(true, "Unknown op does not disconnect client");
         }
 
+        /// <summary>
+        /// Receiving malformed JSON must not disconnect the client;
+        /// the server must handle parse errors gracefully.
+        /// </summary>
         private static void TestMalformedJsonDoesNotDisconnect()
         {
             var fake = new Phase2FakeTransport();
@@ -396,6 +484,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── E: Publish routing ──
 
+        /// <summary>
+        /// A <c>Publish</c> on a registered channel must send exactly one
+        /// binary frame to the subscribed client.
+        /// </summary>
         private static void TestPublishRoutesToSubscriber()
         {
             var fake = new Phase2FakeTransport();
@@ -409,6 +501,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentBinaries(1).Count == 1, "Publish sends one binary frame");
         }
 
+        /// <summary>
+        /// Publish must deliver to the subscribed client only; an
+        /// unsubscribed client on the same channel must receive nothing.
+        /// </summary>
         private static void TestPublishSkipsUnsubscribedClient()
         {
             var fake = new Phase2FakeTransport();
@@ -424,6 +520,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentBinaries(2).Count == 0, "Unsubscribed client 2 gets nothing");
         }
 
+        /// <summary>
+        /// The binary MessageData frame must use the client's
+        /// <c>subscriptionId</c> rather than the server-side
+        /// <c>channelId</c>.
+        /// </summary>
         private static void TestPublishUsesSubscriptionIdNotChannelId()
         {
             var fake = new Phase2FakeTransport();
@@ -440,6 +541,10 @@ namespace Unity.FoxgloveSDK.Tests
             AssertEqual(100u, subId, "Binary frame uses subscriptionId (100), not channelId (1)");
         }
 
+        /// <summary>
+        /// Publishing on an unregistered channel must be a no-op (no
+        /// throw, no messages sent).
+        /// </summary>
         private static void TestPublishNoopOnUnknownChannel()
         {
             var fake = new Phase2FakeTransport();
@@ -451,6 +556,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(fake.SentBinaries(1).Count == 0, "Publish on unknown channel is no-op");
         }
 
+        /// <summary>
+        /// With two clients subscribing with different subscription ids
+        /// on the same channel, each published frame must carry the
+        /// correct per-client subscription id.
+        /// </summary>
         private static void TestMultiClientMultiSubscription()
         {
             var fake = new Phase2FakeTransport();
@@ -474,6 +584,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── P1: Stop/Start restart with same transport ──
 
+        /// <summary>
+        /// Stop/Start cycle must reuse the same transport instance without
+        /// leaking old session event handlers, produce a fresh SessionId,
+        /// and serve only the newly registered channels.
+        /// </summary>
         private static void TestStopStartReusesTransport()
         {
             var transport = new ManagedWsBackend();
@@ -518,6 +633,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── P2: Real ClientWebSocket integration: subscribe → Publish → binary MessageData ──
 
+        /// <summary>
+        /// Full integration test over a real WebSocket: subscribe, publish,
+        /// receive binary MessageData with correct subscription id and
+        /// payload, then unsubscribe and verify no further messages arrive.
+        /// </summary>
         private static void TestRealWebSocketPublishSubscribe()
         {
             using var runtime = new FoxgloveRuntime();

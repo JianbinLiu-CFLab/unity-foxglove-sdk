@@ -16,6 +16,11 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 11 tests covering MCAP
+        /// compression, binary reader helpers, McapReader summary,
+        /// replay engine load/tick, and replay channel ID mapping.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 11 Tests ---");
@@ -146,6 +151,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Tests ──
 
+        /// <summary>
+        /// No-op decompress (empty compression) must return original
+        /// data unchanged.
+        /// </summary>
         static void TestCompressionRoundtrip()
         {
             var original = Encoding.UTF8.GetBytes("Hello MCAP compression test!");
@@ -155,6 +164,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(Encoding.UTF8.GetString(result) == "Hello MCAP compression test!", "No-op decompress returns original");
         }
 
+        /// <summary>
+        /// Verifies <c>ReadU16LE</c> and <c>ReadU32LE</c> correctly
+        /// parse little-endian values from a byte buffer.
+        /// </summary>
         static void TestBinaryReaderHelpers()
         {
             var buf = new byte[] { 0x01, 0x00, 0x02, 0x00, 0x00, 0x00 };
@@ -165,6 +178,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(v32 == 2, "ReadU32LE ok");
         }
 
+        /// <summary>
+        /// Generates a minimal MCAP file, reads the summary, and
+        /// verifies schema, channel, chunk index, and statistics counts.
+        /// </summary>
         static void TestMcapReaderSummary()
         {
             var data = GenerateMinimalMcap();
@@ -179,6 +196,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(summary.Statistics.ChunkCount == 1, "Statistics chunkCount=1");
         }
 
+        /// <summary>
+        /// Loads a minimal MCAP file into the replay engine and verifies
+        /// load state, seek capability, time range, and channel count.
+        /// </summary>
         static void TestReplayEngineLoad()
         {
             var data = GenerateMinimalMcap();
@@ -198,6 +219,10 @@ namespace Unity.FoxgloveSDK.Tests
             finally { File.Delete(path); }
         }
 
+        /// <summary>
+        /// Loads a file, seeks to start, plays, then ticks past the last
+        /// message time and verifies messages are emitted.
+        /// </summary>
         static void TestReplayEngineTick()
         {
             var data = GenerateMinimalMcap();
@@ -222,6 +247,10 @@ namespace Unity.FoxgloveSDK.Tests
             finally { File.Delete(path); }
         }
 
+        /// <summary>
+        /// Verifies the replay channel ID constant has the high bit set
+        /// (<c>0x80000001</c>) to distinguish replay channels from live.
+        /// </summary>
         static void TestChannelIdMapping()
         {
             var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);

@@ -9,6 +9,11 @@ using Unity.FoxgloveSDK.Tests;
 
 class Program
 {
+    /// <summary>
+    /// Dispatches to test runner or interactive server mode based on
+    /// command-line arguments. <c>--serve</c> starts a manual test
+    /// server; default runs all validation phases.
+    /// </summary>
     static int Main(string[] args)
     {
         var argList = args.ToList();
@@ -28,6 +33,10 @@ class Program
         return RunTests();
     }
 
+    /// <summary>
+    /// Runs all Phase validation classes sequentially and returns 0 on
+    /// success or 1 on the first failure.
+    /// </summary>
     static int RunTests()
     {
         Console.WriteLine("=== FoxgloveSDK Phase 0 + Phase 1 Validation ===\n");
@@ -80,6 +89,11 @@ class Program
         }
     }
 
+    /// <summary>
+    /// Starts a long-running Foxglove WebSocket server for manual
+    /// testing. <c>demo</c> publishes a heartbeat; <c>demo3d</c>
+    /// publishes FrameTransform and SceneUpdate.
+    /// </summary>
     static int RunServer(int port, bool demo, bool demo3d)
     {
         Console.WriteLine($"=== FoxgloveSDK Manual Server Mode ===");

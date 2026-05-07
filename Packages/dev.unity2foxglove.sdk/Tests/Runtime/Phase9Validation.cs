@@ -18,6 +18,11 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 9 tests covering asset registry,
+        /// fetch asset protocol, playback capability, playback control
+        /// binary codec, and playback clock state machine.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 9 Tests ---");
@@ -42,6 +47,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Assets ──
 
+        /// <summary>
+        /// Without any registered asset roots, serverInfo must NOT
+        /// include the assets capability.
+        /// </summary>
         private static void TestAssetsCapabilityOffByDefault()
         {
             var fake = new Phase9FakeTransport();
@@ -51,6 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!json.Contains("\"assets\""), "No assets capability by default");
         }
 
+        /// <summary>
+        /// With a registered asset root, serverInfo must include the
+        /// assets capability.
+        /// </summary>
         private static void TestAssetsCapabilityOn()
         {
             var rt = new FoxgloveRuntime();
@@ -63,6 +76,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("\"assets\""), "Assets capability when roots registered");
         }
 
+        /// <summary>
+        /// Serializes a <c>FetchAsset</c> message and verifies
+        /// <c>requestId</c> and <c>uri</c> fields in the JSON output.
+        /// </summary>
         private static void TestFetchAssetDto()
         {
             var msg = new FetchAsset { RequestId = 42, Uri = "asset://test/file.txt" };
@@ -72,6 +89,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(obj["uri"]?.ToString() == "asset://test/file.txt", "fetchAsset uri");
         }
 
+        /// <summary>
+        /// Verifies the <c>FetchAssetResponse</c> binary encoding for
+        /// both success (status=0) and error (status=1) cases, including
+        /// offset correctness.
+        /// </summary>
         private static void TestFetchAssetResponseCodec()
         {
             var succ = BinaryEncoding.EncodeFetchAssetResponseSuccess(42, new byte[] { 1, 2, 3 });
@@ -87,6 +109,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(err[5] == 1, "error status=1");
         }
 
+        /// <summary>
+        /// Asset URIs containing <c>..</c> for directory traversal must
+        /// be rejected by the asset registry.
+        /// </summary>
         private static void TestAssetRootRejectsTraversal()
         {
             var reg = new FoxgloveAssetRegistry();
@@ -100,6 +126,10 @@ namespace Unity.FoxgloveSDK.Tests
             finally { Directory.Delete(root); }
         }
 
+        /// <summary>
+        /// Fetching a non-existent file must be rejected by the asset
+        /// registry.
+        /// </summary>
         private static void TestAssetRootRejectsMissing()
         {
             var reg = new FoxgloveAssetRegistry();
@@ -109,6 +139,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Playback ──
 
+        /// <summary>
+        /// Without enabling playback control, serverInfo must NOT
+        /// include the playbackControl capability.
+        /// </summary>
         private static void TestPlaybackCapabilityOffByDefault()
         {
             var fake = new Phase9FakeTransport();
@@ -118,6 +152,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!json.Contains("playbackControl"), "No playbackControl by default");
         }
 
+        /// <summary>
+        /// Builds a PlaybackControlRequest binary frame manually and
+        /// verifies all fields decode correctly (command, speed, seek,
+        /// seekTime, requestId).
+        /// </summary>
         private static void TestPlaybackControlRequestDecode()
         {
             // Manually build a valid PlaybackControlRequest frame
@@ -141,6 +180,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(reqId == "req1", $"requestId roundtrip (got {reqId})");
         }
 
+        /// <summary>
+        /// Verifies <c>EncodePlaybackState</c> produces correct opcode,
+        /// status, and currentTime fields.
+        /// </summary>
         private static void TestPlaybackStateEncode()
         {
             var frame = BinaryEncoding.EncodePlaybackState(0, 1234567890, 1.5f, true, "abc");
@@ -149,6 +192,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(BitConverter.ToUInt64(frame, 2) == 1234567890, "currentTime roundtrip");
         }
 
+        /// <summary>
+        /// Exercises the PlaybackClock state machine: starts paused,
+        /// play advances time, pause freezes time, seek jumps to the
+        /// target position.
+        /// </summary>
         private static void TestPlaybackClockPausePlaySeek()
         {
             var clock = new PlaybackClock();
@@ -164,6 +212,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(t3 >= 5_000_000_000, "Seek to 5s");
         }
 
+        /// <summary>
+        /// Fake transport for Phase 9 recording per-client SendText
+        /// and providing connect/text simulators.
+        /// </summary>
         private sealed class Phase9FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -189,6 +241,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Additional test methods ──
 
+        /// <summary>
+        /// Asset URIs pointing to directories or files exceeding the max
+        /// size limit must be rejected.
+        /// </summary>
         private static void TestAssetRejectsDirectoryAndOversize()
         {
             var reg = new FoxgloveAssetRegistry();
@@ -208,6 +264,10 @@ namespace Unity.FoxgloveSDK.Tests
             finally { Directory.Delete(root, true); }
         }
 
+        /// <summary>
+        /// When playback control is enabled, serverInfo must include
+        /// playbackControl, dataStartTime, and dataEndTime.
+        /// </summary>
         private static void TestPlaybackCapabilityOn()
         {
             var rt = new FoxgloveRuntime();
@@ -222,12 +282,20 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("dataEndTime"), "dataEndTime when playback enabled");
         }
 
+        /// <summary>
+        /// Null or too-short payloads sent to the playback control
+        /// decoder must return false without throwing.
+        /// </summary>
         private static void TestPlaybackMalformedRequest()
         {
             Assert(!BinaryEncoding.TryDecodePlaybackControlRequest(null, out _, out _, out _, out _, out _), "null → false");
             Assert(!BinaryEncoding.TryDecodePlaybackControlRequest(new byte[] { 3, 0 }, out _, out _, out _, out _, out _), "too short → false");
         }
 
+        /// <summary>
+        /// A <c>fetchAsset</c> text message must be routed through binary
+        /// response path and produce an error for an HTTP URI.
+        /// </summary>
         private static void TestFetchAssetRoutingResponse()
         {
             var rt = new FoxgloveRuntime();
