@@ -36,19 +36,19 @@ namespace Unity.FoxgloveSDK.Tests
             ms.Write(McapWriter.Magic, 0, 8);
             // Header
             var hdr = new MemoryStream();
-            McapWriter.WrStr(hdr, ""); McapWriter.WrStr(hdr, "test");
+            McapWriter.WriteString(hdr, ""); McapWriter.WriteString(hdr, "test");
             WriteRecord(ms, 0x01, hdr);
             // Schema id=1
             var sch = new MemoryStream();
             McapWriter.WriteU16(sch, 1);
-            McapWriter.WrStr(sch, "TestSchema"); McapWriter.WrStr(sch, "jsonschema");
-            McapWriter.WrPrefixed(sch, Encoding.UTF8.GetBytes("{}"));
+            McapWriter.WriteString(sch, "TestSchema"); McapWriter.WriteString(sch, "jsonschema");
+            McapWriter.WriteLengthPrefixedBytes(sch, Encoding.UTF8.GetBytes("{}"));
             WriteRecord(ms, 0x03, sch);
             // Channel id=1, sid=1
             var ch = new MemoryStream();
             McapWriter.WriteU16(ch, 1); McapWriter.WriteU16(ch, 1);
-            McapWriter.WrStr(ch, "/test"); McapWriter.WrStr(ch, "json");
-            McapWriter.WrMap(ch, new Dictionary<string, string>());
+            McapWriter.WriteString(ch, "/test"); McapWriter.WriteString(ch, "json");
+            McapWriter.WriteStringMap(ch, new Dictionary<string, string>());
             WriteRecord(ms, 0x04, ch);
             // Chunk with 2 messages
             var chunkMs = new MemoryStream();
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(chunkData, 1000); McapWriter.WriteU64(chunkData, 2000); // st/et
             McapWriter.WriteU64(chunkData, (ulong)chunkMs.Length); // uncompSize
             McapWriter.WriteU32(chunkData, 0); // crc
-            McapWriter.WrStr(chunkData, ""); // compression
+            McapWriter.WriteString(chunkData, ""); // compression
             McapWriter.WriteU64(chunkData, (ulong)chunkMs.Length); // compSize
             chunkMs.Position = 0; chunkMs.CopyTo(chunkData);
             WriteRecord(ms, 0x06, chunkData);
@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU32(cix, 10); // 1 * 10
             McapWriter.WriteU16(cix, 1); McapWriter.WriteU64(cix, miStart);
             McapWriter.WriteU64(cix, (ulong)miMs.Length);
-            McapWriter.WrStr(cix, "");
+            McapWriter.WriteString(cix, "");
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             WriteRecord(ms, 0x08, cix);

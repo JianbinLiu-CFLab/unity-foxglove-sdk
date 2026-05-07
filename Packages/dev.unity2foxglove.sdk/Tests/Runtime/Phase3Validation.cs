@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("--- Phase 3 Tests ---");
 
             TestCoreSchemasRegistered();
+            TestLogSchemaRegistered();
             TestRegisterSchemaChannelAdvertise();
             TestRegisterSchemaChannelUnknownThrows();
             TestFrameTransformFieldNames();
@@ -68,6 +69,19 @@ namespace Unity.FoxgloveSDK.Tests
 
             Assert(ft.Content.Contains("foxglove.FrameTransform"), "FrameTransform schema has correct title");
             Assert(su.Content.Contains("foxglove.SceneUpdate"), "SceneUpdate schema has correct title");
+        }
+
+        private static void TestLogSchemaRegistered()
+        {
+            var registry = new DefaultSchemaRegistry();
+            FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
+
+            Assert(registry.TryGetSchema(FoxgloveSchemaDefinitions.LogSchemaName, out var log), "Registry has foxglove.Log");
+            Assert(log.Encoding == "jsonschema", "Log encoding is jsonschema");
+
+            JObject.Parse(log.Content);
+            Assert(true, "Log schema is valid JSON");
+            Assert(log.Content.Contains("foxglove.Log"), "Log schema has correct title");
         }
 
         // ── RegisterSchemaChannel ──

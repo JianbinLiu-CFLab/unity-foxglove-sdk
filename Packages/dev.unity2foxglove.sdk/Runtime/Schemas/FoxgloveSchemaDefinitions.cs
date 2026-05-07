@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Schemas
         public const string FrameTransformSchemaName = "foxglove.FrameTransform";
         public const string SceneUpdateSchemaName = "foxglove.SceneUpdate";
         public const string CompressedImageSchemaName = "foxglove.CompressedImage";
+        public const string LogSchemaName = "foxglove.Log";
         public const string JsonSchemaEncoding = "jsonschema";
 
         /// <summary>FrameTransform.json sha256=9986de138717bfaf</summary>
@@ -42,6 +43,13 @@ namespace Unity.FoxgloveSDK.Schemas
 
         public static readonly string CompressedImageSchema =
             Encoding.UTF8.GetString(Convert.FromBase64String(CompressedImageSchemaB64));
+
+        /// <summary>Log.json sha256=291a4d507377c811</summary>
+        private const string LogSchemaB64 =
+            "ew0KICAidGl0bGUiOiAiZm94Z2xvdmUuTG9nIiwNCiAgImRlc2NyaXB0aW9uIjogIkEgbG9nIG1lc3NhZ2UiLA0KICAiJGNvbW1lbnQiOiAiR2VuZXJhdGVkIGJ5IGh0dHBzOi8vZ2l0aHViLmNvbS9mb3hnbG92ZS9mb3hnbG92ZS1zZGsiLA0KICAidHlwZSI6ICJvYmplY3QiLA0KICAicHJvcGVydGllcyI6IHsNCiAgICAidGltZXN0YW1wIjogew0KICAgICAgInR5cGUiOiAib2JqZWN0IiwNCiAgICAgICJ0aXRsZSI6ICJ0aW1lIiwNCiAgICAgICJwcm9wZXJ0aWVzIjogew0KICAgICAgICAic2VjIjogew0KICAgICAgICAgICJ0eXBlIjogImludGVnZXIiLA0KICAgICAgICAgICJtaW5pbXVtIjogMA0KICAgICAgICB9LA0KICAgICAgICAibnNlYyI6IHsNCiAgICAgICAgICAidHlwZSI6ICJpbnRlZ2VyIiwNCiAgICAgICAgICAibWluaW11bSI6IDAsDQogICAgICAgICAgIm1heGltdW0iOiA5OTk5OTk5OTkNCiAgICAgICAgfQ0KICAgICAgfSwNCiAgICAgICJkZXNjcmlwdGlvbiI6ICJUaW1lc3RhbXAgb2YgbG9nIG1lc3NhZ2UiDQogICAgfSwNCiAgICAibGV2ZWwiOiB7DQogICAgICAidGl0bGUiOiAiZm94Z2xvdmUuTG9nTGV2ZWwiLA0KICAgICAgImRlc2NyaXB0aW9uIjogIkxvZyBsZXZlbCIsDQogICAgICAib25lT2YiOiBbDQogICAgICAgIHsNCiAgICAgICAgICAidGl0bGUiOiAiVU5LTk9XTiIsDQogICAgICAgICAgImNvbnN0IjogMCwNCiAgICAgICAgICAiZGVzY3JpcHRpb24iOiAiVW5rbm93biBsb2cgbGV2ZWwiDQogICAgICAgIH0sDQogICAgICAgIHsNCiAgICAgICAgICAidGl0bGUiOiAiREVCVUciLA0KICAgICAgICAgICJjb25zdCI6IDEsDQogICAgICAgICAgImRlc2NyaXB0aW9uIjogIkRlYnVnIGxvZyBsZXZlbCINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJ0aXRsZSI6ICJJTkZPIiwNCiAgICAgICAgICAiY29uc3QiOiAyLA0KICAgICAgICAgICJkZXNjcmlwdGlvbiI6ICJJbmZvIGxvZyBsZXZlbCINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJ0aXRsZSI6ICJXQVJOSU5HIiwNCiAgICAgICAgICAiY29uc3QiOiAzLA0KICAgICAgICAgICJkZXNjcmlwdGlvbiI6ICJXYXJuaW5nIGxvZyBsZXZlbCINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJ0aXRsZSI6ICJFUlJPUiIsDQogICAgICAgICAgImNvbnN0IjogNCwNCiAgICAgICAgICAiZGVzY3JpcHRpb24iOiAiRXJyb3IgbG9nIGxldmVsIg0KICAgICAgICB9LA0KICAgICAgICB7DQogICAgICAgICAgInRpdGxlIjogIkZBVEFMIiwNCiAgICAgICAgICAiY29uc3QiOiA1LA0KICAgICAgICAgICJkZXNjcmlwdGlvbiI6ICJGYXRhbCBsb2cgbGV2ZWwiDQogICAgICAgIH0NCiAgICAgIF0NCiAgICB9LA0KICAgICJtZXNzYWdlIjogew0KICAgICAgInR5cGUiOiAic3RyaW5nIiwNCiAgICAgICJkZXNjcmlwdGlvbiI6ICJMb2cgbWVzc2FnZSINCiAgICB9LA0KICAgICJuYW1lIjogew0KICAgICAgInR5cGUiOiAic3RyaW5nIiwNCiAgICAgICJkZXNjcmlwdGlvbiI6ICJQcm9jZXNzIG9yIG5vZGUgbmFtZSINCiAgICB9LA0KICAgICJmaWxlIjogew0KICAgICAgInR5cGUiOiAic3RyaW5nIiwNCiAgICAgICJkZXNjcmlwdGlvbiI6ICJGaWxlbmFtZSINCiAgICB9LA0KICAgICJsaW5lIjogew0KICAgICAgInR5cGUiOiAiaW50ZWdlciIsDQogICAgICAibWluaW11bSI6IDAsDQogICAgICAiZGVzY3JpcHRpb24iOiAiTGluZSBudW1iZXIgaW4gdGhlIGZpbGUiDQogICAgfQ0KICB9LA0KICAicmVxdWlyZWQiOiBbDQogICAgInRpbWVzdGFtcCIsDQogICAgImxldmVsIiwNCiAgICAibWVzc2FnZSIsDQogICAgIm5hbWUiLA0KICAgICJmaWxlIiwNCiAgICAibGluZSINCiAgXQ0KfQ0K";
+
+        public static readonly string LogSchema =
+            Encoding.UTF8.GetString(Convert.FromBase64String(LogSchemaB64));
 
         /// <summary>
         /// Register core foxglove schemas into a registry. Idempotent (overwrites on duplicate name).
@@ -70,6 +78,13 @@ namespace Unity.FoxgloveSDK.Schemas
                 Name = CompressedImageSchemaName,
                 Encoding = JsonSchemaEncoding,
                 Content = CompressedImageSchema
+            });
+
+            registry.Register(new SchemaEntry
+            {
+                Name = LogSchemaName,
+                Encoding = JsonSchemaEncoding,
+                Content = LogSchema
             });
         }
     }

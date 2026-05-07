@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Core
 
         public event Action<string, byte[]> OnReplayMessage;
 
-        internal void _TestFire(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
+        internal void FireForTests(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
 
         public ReplayController(IFoxgloveLogger logger)
         {

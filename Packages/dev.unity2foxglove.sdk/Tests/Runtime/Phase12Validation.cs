@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
         static MemoryStream BuildMinimalHeader(Stream ms)
         {
             var hdr = new MemoryStream();
-            McapWriter.WrStr(hdr, ""); McapWriter.WrStr(hdr, "test");
+            McapWriter.WriteString(hdr, ""); McapWriter.WriteString(hdr, "test");
             WriteRecord(ms, 0x01, hdr);
             return hdr;
         }
@@ -55,14 +55,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var sch = new MemoryStream();
             McapWriter.WriteU16(sch, sid);
-            McapWriter.WrStr(sch, "TestSchema"); McapWriter.WrStr(sch, "jsonschema");
-            McapWriter.WrPrefixed(sch, Encoding.UTF8.GetBytes("{}"));
+            McapWriter.WriteString(sch, "TestSchema"); McapWriter.WriteString(sch, "jsonschema");
+            McapWriter.WriteLengthPrefixedBytes(sch, Encoding.UTF8.GetBytes("{}"));
             WriteRecord(ms, 0x03, sch);
 
             var ch = new MemoryStream();
             McapWriter.WriteU16(ch, cid); McapWriter.WriteU16(ch, sid);
-            McapWriter.WrStr(ch, topic); McapWriter.WrStr(ch, "json");
-            McapWriter.WrMap(ch, channelMeta ?? new Dictionary<string, string>());
+            McapWriter.WriteString(ch, topic); McapWriter.WriteString(ch, "json");
+            McapWriter.WriteStringMap(ch, channelMeta ?? new Dictionary<string, string>());
             WriteRecord(ms, 0x04, ch);
 
             return (sch, ch);
@@ -97,13 +97,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var sch = new MemoryStream();
             McapWriter.WriteU16(sch, 1);
-            McapWriter.WrStr(sch, "TestSchema"); McapWriter.WrStr(sch, "jsonschema");
-            McapWriter.WrPrefixed(sch, Encoding.UTF8.GetBytes("{}"));
+            McapWriter.WriteString(sch, "TestSchema"); McapWriter.WriteString(sch, "jsonschema");
+            McapWriter.WriteLengthPrefixedBytes(sch, Encoding.UTF8.GetBytes("{}"));
 
             var ch = new MemoryStream();
             McapWriter.WriteU16(ch, 1); McapWriter.WriteU16(ch, 1);
-            McapWriter.WrStr(ch, "/test"); McapWriter.WrStr(ch, "json");
-            McapWriter.WrMap(ch, new Dictionary<string, string>());
+            McapWriter.WriteString(ch, "/test"); McapWriter.WriteString(ch, "json");
+            McapWriter.WriteStringMap(ch, new Dictionary<string, string>());
 
             // Build chunk with one message, compress with LZ4
             var chunkMs = new MemoryStream();
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(chunkData, 1000); McapWriter.WriteU64(chunkData, 2000);
             McapWriter.WriteU64(chunkData, (ulong)raw.Length);
             McapWriter.WriteU32(chunkData, 0);
-            McapWriter.WrStr(chunkData, "lz4");
+            McapWriter.WriteString(chunkData, "lz4");
             McapWriter.WriteU64(chunkData, (ulong)compressed.Length);
             chunkData.Write(compressed, 0, compressed.Length);
             WriteRecord(ms, 0x06, chunkData);
@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(cix, chunkOff); McapWriter.WriteU64(cix, (ulong)chunkData.Length);
             McapWriter.WriteU32(cix, 10); McapWriter.WriteU16(cix, 1); McapWriter.WriteU64(cix, miStart);
             McapWriter.WriteU64(cix, (ulong)mi.Length);
-            McapWriter.WrStr(cix, "lz4");
+            McapWriter.WriteString(cix, "lz4");
             McapWriter.WriteU64(cix, (ulong)compressed.Length);
             McapWriter.WriteU64(cix, (ulong)raw.Length);
             WriteRecord(ms, 0x08, cix);
@@ -199,10 +199,10 @@ namespace Unity.FoxgloveSDK.Tests
             // Write a metadata record for parameters
             var metaOff = (ulong)ms.Position;
             var metaContent = new MemoryStream();
-            McapWriter.WrStr(metaContent, "foxglove.parameters");
+            McapWriter.WriteString(metaContent, "foxglove.parameters");
             var mapStream = new MemoryStream();
-            McapWriter.WrStr(mapStream, "value");
-            McapWriter.WrStr(mapStream, "{\"name\":\"test_param\",\"type\":\"float64\",\"value\":1.5,\"timestamp\":2000}");
+            McapWriter.WriteString(mapStream, "value");
+            McapWriter.WriteString(mapStream, "{\"name\":\"test_param\",\"type\":\"float64\",\"value\":1.5,\"timestamp\":2000}");
             var mapBytes = mapStream.ToArray();
             McapWriter.WriteU32(metaContent, (uint)mapBytes.Length);
             metaContent.Write(mapBytes, 0, mapBytes.Length);
@@ -214,7 +214,7 @@ namespace Unity.FoxgloveSDK.Tests
             var metaIdxContent = new MemoryStream();
             McapWriter.WriteU64(metaIdxContent, metaOff);
             McapWriter.WriteU64(metaIdxContent, metaLen);
-            McapWriter.WrStr(metaIdxContent, "foxglove.parameters");
+            McapWriter.WriteString(metaIdxContent, "foxglove.parameters");
             WriteRecord(ms, 0x0D, metaIdxContent);
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
@@ -267,10 +267,10 @@ namespace Unity.FoxgloveSDK.Tests
             var metaOff = (ulong)ms.Position;
             var val = "{\"serviceId\":5,\"callId\":10,\"status\":\"completed\",\"payloadSize\":42,\"timestamp\":3000}";
             var metaContent = new MemoryStream();
-            McapWriter.WrStr(metaContent, "foxglove.services");
+            McapWriter.WriteString(metaContent, "foxglove.services");
             var mapStream = new MemoryStream();
-            McapWriter.WrStr(mapStream, "value");
-            McapWriter.WrStr(mapStream, val);
+            McapWriter.WriteString(mapStream, "value");
+            McapWriter.WriteString(mapStream, val);
             var mapBytes = mapStream.ToArray();
             McapWriter.WriteU32(metaContent, (uint)mapBytes.Length);
             metaContent.Write(mapBytes, 0, mapBytes.Length);
@@ -281,7 +281,7 @@ namespace Unity.FoxgloveSDK.Tests
             var metaIdxContent = new MemoryStream();
             McapWriter.WriteU64(metaIdxContent, metaOff);
             McapWriter.WriteU64(metaIdxContent, metaLen);
-            McapWriter.WrStr(metaIdxContent, "foxglove.services");
+            McapWriter.WriteString(metaIdxContent, "foxglove.services");
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
             WriteRecord(ms, 0x0F, de);
@@ -328,16 +328,16 @@ namespace Unity.FoxgloveSDK.Tests
 
             var sch = new MemoryStream();
             McapWriter.WriteU16(sch, 1);
-            McapWriter.WrStr(sch, "TestSchema"); McapWriter.WrStr(sch, "jsonschema");
-            McapWriter.WrPrefixed(sch, Encoding.UTF8.GetBytes("{}"));
+            McapWriter.WriteString(sch, "TestSchema"); McapWriter.WriteString(sch, "jsonschema");
+            McapWriter.WriteLengthPrefixedBytes(sch, Encoding.UTF8.GetBytes("{}"));
             WriteRecord(ms, 0x03, sch);
 
             // Client channel with high-bit ID
             var cid = (ushort)(0xA0000001 & 0xFFFF);
             var ch = new MemoryStream();
             McapWriter.WriteU16(ch, cid); McapWriter.WriteU16(ch, 0); // sid=0 (schemaless)
-            McapWriter.WrStr(ch, "/client/topic"); McapWriter.WrStr(ch, "json");
-            McapWriter.WrMap(ch, new Dictionary<string, string>());
+            McapWriter.WriteString(ch, "/client/topic"); McapWriter.WriteString(ch, "json");
+            McapWriter.WriteStringMap(ch, new Dictionary<string, string>());
             WriteRecord(ms, 0x04, ch);
 
             // Client message in chunk
@@ -357,7 +357,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(chunkData, 5000); McapWriter.WriteU64(chunkData, 5000);
             McapWriter.WriteU64(chunkData, (ulong)chunkMs.Length);
             McapWriter.WriteU32(chunkData, 0);
-            McapWriter.WrStr(chunkData, "");
+            McapWriter.WriteString(chunkData, "");
             McapWriter.WriteU64(chunkData, (ulong)chunkMs.Length);
             chunkMs.Position = 0; chunkMs.CopyTo(chunkData);
             WriteRecord(ms, 0x06, chunkData);
@@ -389,7 +389,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(cix, chunkOff); McapWriter.WriteU64(cix, (ulong)chunkData.Length);
             McapWriter.WriteU32(cix, 10); McapWriter.WriteU16(cix, cid); McapWriter.WriteU64(cix, miStart);
             McapWriter.WriteU64(cix, (ulong)mi.Length);
-            McapWriter.WrStr(cix, "");
+            McapWriter.WriteString(cix, "");
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             WriteRecord(ms, 0x08, cix);
@@ -535,9 +535,9 @@ namespace Unity.FoxgloveSDK.Tests
             // Metadata record
             var metaOff = (ulong)ms.Position;
             var metaContent = new MemoryStream();
-            McapWriter.WrStr(metaContent, name);
+            McapWriter.WriteString(metaContent, name);
             var mapS = new MemoryStream();
-            McapWriter.WrStr(mapS, "k"); McapWriter.WrStr(mapS, "v");
+            McapWriter.WriteString(mapS, "k"); McapWriter.WriteString(mapS, "v");
             var mapB = mapS.ToArray();
             McapWriter.WriteU32(metaContent, (uint)mapB.Length);
             metaContent.Write(mapB, 0, mapB.Length);
@@ -553,7 +553,7 @@ namespace Unity.FoxgloveSDK.Tests
             var miContent = new MemoryStream();
             McapWriter.WriteU64(miContent, metaOff);
             McapWriter.WriteU64(miContent, metaLen);
-            McapWriter.WrStr(miContent, name);
+            McapWriter.WriteString(miContent, name);
             WriteRecord(ms, 0x0D, miContent);
 
             var stats = new MemoryStream();
