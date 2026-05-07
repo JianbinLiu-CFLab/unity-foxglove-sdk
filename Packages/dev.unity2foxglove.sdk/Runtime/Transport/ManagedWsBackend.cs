@@ -253,7 +253,7 @@ namespace Unity.FoxgloveSDK.Transport
                 if (!allowed)
                 {
                     _logger.LogWarning(
-                        $"[Foxglove] Rejected WebSocket Origin '{origin}'. Add it to allowed origins to permit browser clients.");
+                        $"Rejected WebSocket Origin '{origin}'. Add it to allowed origins to permit browser clients.");
                     var forbid = Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\n\r\n");
                     stream.Write(forbid, 0, forbid.Length);
                     return (false, null);
