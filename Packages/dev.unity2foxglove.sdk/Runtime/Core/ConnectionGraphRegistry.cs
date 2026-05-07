@@ -17,34 +17,39 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class ConnectionGraphRegistry
     {
-        // Per-client graph subscription state
+        /// <summary>Set of client IDs that are subscribed to graph updates.</summary>
         private readonly HashSet<uint> _graphSubscribers = new();
+        /// <summary>Lock guarding all mutable state.</summary>
         private readonly object _lock = new();
 
-        // Topic → publisher IDs (string)
+        /// <summary>Map from topic name to set of publisher IDs.</summary>
         private readonly Dictionary<string, HashSet<string>> _publishedTopics = new();
-        // Topic → subscriber IDs
+        /// <summary>Map from topic name to set of subscriber IDs.</summary>
         private readonly Dictionary<string, HashSet<string>> _subscribedTopics = new();
-        // Service name → provider IDs
+        /// <summary>Map from service name to set of provider IDs.</summary>
         private readonly Dictionary<string, HashSet<string>> _advertisedServices = new();
 
         // ── Graph subscriber management ──
 
+        /// <summary>Register a client for graph subscription updates.</summary>
         public void Subscribe(uint clientId)
         {
             lock (_lock) { _graphSubscribers.Add(clientId); }
         }
 
+        /// <summary>Remove a client from graph subscription updates.</summary>
         public void Unsubscribe(uint clientId)
         {
             lock (_lock) { _graphSubscribers.Remove(clientId); }
         }
 
+        /// <summary>Remove a client from graph subscription state (alias for Unsubscribe).</summary>
         public void RemoveClient(uint clientId)
         {
             lock (_lock) { _graphSubscribers.Remove(clientId); }
         }
 
+        /// <summary>Get a snapshot of all graph subscriber client IDs.</summary>
         public IReadOnlyCollection<uint> GetSubscribers()
         {
             lock (_lock) { return _graphSubscribers.ToList(); }
@@ -52,6 +57,7 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Topology updates ──
 
+        /// <summary>Add a publisher to the given topic.</summary>
         public void AddPublishedTopic(string topic, string publisherId)
         {
             lock (_lock)
@@ -61,6 +67,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Remove a publisher from the given topic. Removes the topic entry if empty.</summary>
         public void RemovePublishedTopic(string topic, string publisherId)
         {
             lock (_lock)
@@ -73,6 +80,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Replace all publishers for the given topic with a single publisher.</summary>
         public void SetPublishedTopic(string topic, string publisherId)
         {
             lock (_lock)
@@ -81,6 +89,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Add a subscriber to the given topic.</summary>
         public void AddSubscribedTopic(string topic, string subscriberId)
         {
             lock (_lock)
@@ -90,6 +99,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Remove a subscriber from the given topic. Removes the topic entry if empty.</summary>
         public void RemoveSubscribedTopic(string topic, string subscriberId)
         {
             lock (_lock)
@@ -102,6 +112,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Add a service provider for the given service name.</summary>
         public void AddAdvertisedService(string name, string providerId)
         {
             lock (_lock)
@@ -111,6 +122,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Remove a service provider for the given service name. Removes the entry if empty.</summary>
         public void RemoveAdvertisedService(string name, string providerId)
         {
             lock (_lock)
@@ -123,6 +135,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Build a ConnectionGraphUpdate snapshot of the full topology.</summary>
         public ConnectionGraphUpdate GetSnapshot()
         {
             lock (_lock)

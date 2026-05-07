@@ -23,17 +23,25 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class RecordingController : IDisposable
     {
+        /// <summary>Active MCAP recorder, or null when not recording.</summary>
         private McapRecorder _recorder;
+        /// <summary>Target file path for the recording.</summary>
         private string _recordingPath;
+        /// <summary>Compression scheme for the MCAP file (e.g. "zstd").</summary>
         private string _recordingCompression = "";
+        /// <summary>Coordinate mode for spatial transforms (e.g. "ros" or "unity").</summary>
         private string _coordinateMode = "";
+        /// <summary>Chunk size in bytes for MCAP chunk boundaries.</summary>
         private int _recordingChunkSize = McapRecorder.DefaultChunkSizeBytes;
+        /// <summary>Whether recording has been enabled (attached on next session start).</summary>
         private bool _recordingEnabled;
         private readonly IFoxgloveLogger _logger;
         private PlaybackClock _playbackClock;
         private FoxgloveParameterStore _parameters;
 
+        /// <summary>Whether recording is enabled via <c>Enable()</c>.</summary>
         public bool IsEnabled => _recordingEnabled;
+        /// <summary>Coordinate mode set for this recording.</summary>
         public string CoordinateMode => _coordinateMode;
 
         public RecordingController(IFoxgloveLogger logger)
@@ -41,6 +49,11 @@ namespace Unity.FoxgloveSDK.Core
             _logger = logger;
         }
 
+        /// <summary>
+        /// Enable recording for the next session start.
+        /// <para>Pass <c>chunkSizeBytes</c>, <c>compression</c> (e.g. "zstd"), and
+        /// <c>coordinateMode</c> to configure the MCAP file.</para>
+        /// </summary>
         public void Enable(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
         {
             _recordingEnabled = true;
@@ -50,9 +63,16 @@ namespace Unity.FoxgloveSDK.Core
             _recordingChunkSize = chunkSizeBytes > 0 ? chunkSizeBytes : McapRecorder.DefaultChunkSizeBytes;
         }
 
+        /// <summary>Set the coordinate mode after recording was enabled.</summary>
         public void SetCoordinateMode(string mode) { _coordinateMode = mode ?? ""; }
+        /// <summary>Disable recording without destroying any in-flight state.</summary>
         public void Disable() { _recordingEnabled = false; _recordingPath = null; }
 
+        /// <summary>
+        /// Attach the recorder to a session on start.
+        /// <para>Creates an MCAP file, writes a parameter snapshot as metadata,
+        /// subscribes to parameter change events, then hands the recorder to the session.</para>
+        /// </summary>
         public void AttachToSession(PlaybackClock clock, FoxgloveParameterStore parameters, FoxgloveSession session)
         {
             _playbackClock = clock;
@@ -94,6 +114,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Detach the recorder from the session.
+        /// <para>Unsubscribes parameter change events, closes and disposes the recorder.</para>
+        /// </summary>
         public void DetachFromSession()
         {
             if (_recorder != null)
@@ -103,6 +127,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Callback invoked when a registered parameter changes; writes a metadata entry.</summary>
         private void OnParameterChanged(string name, JToken value, string type)
         {
             if (_recorder != null)
@@ -113,6 +138,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Detach and dispose all resources.</summary>
         public void Dispose() => DetachFromSession();
     }
 }

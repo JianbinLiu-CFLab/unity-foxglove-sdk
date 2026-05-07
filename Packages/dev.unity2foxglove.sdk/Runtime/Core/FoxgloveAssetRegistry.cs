@@ -18,11 +18,18 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class FoxgloveAssetRegistry
     {
+        /// <summary>Map from URI prefix to asset root descriptor.</summary>
         private readonly Dictionary<string, AssetRoot> _roots = new();
+        /// <summary>Lock guarding root map modifications and queries.</summary>
         private readonly object _lock = new();
 
+        /// <summary>True if at least one asset root is registered.</summary>
         public bool HasRoots { get { lock (_lock) return _roots.Count > 0; } }
 
+        /// <summary>
+        /// Register a local file system root for a URI prefix.
+        /// <para><c>maxBytes</c> caps the allowed file size for assets under this root.</para>
+        /// </summary>
         public void RegisterRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
         {
             if (string.IsNullOrEmpty(uriPrefix)) throw new ArgumentException("uriPrefix is required", nameof(uriPrefix));
@@ -30,6 +37,11 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock) { _roots[uriPrefix] = new AssetRoot { LocalRoot = fullRoot, MaxBytes = maxBytes }; }
         }
 
+        /// <summary>
+        /// Resolve a URI to a local file path.
+        /// <para>Returns <c>true</c> if resolution succeeds; sets <c>path</c> and clears <c>error</c>.
+        /// Returns <c>false</c> and sets <c>error</c> on path traversal, missing file, or size limit violations.</para>
+        /// </summary>
         public bool TryResolve(string uri, out string path, out string error)
         {
             path = null; error = null;
@@ -60,21 +72,32 @@ namespace Unity.FoxgloveSDK.Core
             return false;
         }
 
+        /// <summary>
+        /// Read the full content of an asset identified by URI.
+        /// <para>Returns <c>null</c> and sets <c>error</c> on any resolution failure.</para>
+        /// </summary>
         public byte[] ReadAsset(string uri, out string error)
         {
             if (!TryResolve(uri, out var path, out error)) return null;
             return File.ReadAllBytes(path);
         }
 
+        /// <summary>
+        /// Try to read an asset into a byte array without throwing.
+        /// <para>Returns <c>false</c> and sets <c>error</c> on failure.</para>
+        /// </summary>
         public bool TryRead(string uri, out byte[] bytes, out string error)
         {
             bytes = ReadAsset(uri, out error);
             return bytes != null;
         }
 
+        /// <summary>Descriptor for a registered asset root path and its size cap.</summary>
         private struct AssetRoot
         {
+            /// <summary>Local file system path for this root.</summary>
             public string LocalRoot;
+            /// <summary>Maximum allowed file size in bytes for assets under this root.</summary>
             public long MaxBytes;
         }
     }
