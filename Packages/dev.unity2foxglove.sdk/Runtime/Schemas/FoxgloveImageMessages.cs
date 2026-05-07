@@ -12,7 +12,9 @@ namespace Unity.FoxgloveSDK.Schemas
     [Unity.FoxgloveSDK.Protocol.FoxgloveSchema("foxglove.CompressedImage")]
     public class CompressedImageMessage
     {
+        /// <summary>Timestamp of the image.</summary>
         [JsonProperty("timestamp")] public FoxgloveTime Timestamp { get; set; }
+        /// <summary>Frame of reference for the image.</summary>
         [JsonProperty("frame_id")] public string FrameId { get; set; }
         /// <summary>Base64-encoded compressed image data.</summary>
         [JsonProperty("data")] public string Data { get; set; }

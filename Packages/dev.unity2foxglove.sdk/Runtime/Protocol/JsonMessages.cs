@@ -50,6 +50,7 @@ namespace Unity.FoxgloveSDK.Protocol
         /// </summary>
         public static readonly FoxgloveEnumConverter Instance = new FoxgloveEnumConverter();
 
+        /// <summary>Create a converter that serializes enum values as camelCase strings.</summary>
         public FoxgloveEnumConverter()
             : base(new Newtonsoft.Json.Serialization.CamelCaseNamingStrategy()) { }
     }
@@ -63,6 +64,7 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("op")]
         public string Op => "serverInfo";
 
+        /// <summary>Display name for the server.</summary>
         [JsonProperty("name")]
         public string Name { get; set; }
 
@@ -78,12 +80,15 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("metadata", NullValueHandling = NullValueHandling.Ignore)]
         public Dictionary<string, string> Metadata { get; set; }
 
+        /// <summary>Session identifier for resuming connections, omitted when null.</summary>
         [JsonProperty("sessionId", NullValueHandling = NullValueHandling.Ignore)]
         public string SessionId { get; set; }
 
+        /// <summary>Earliest data timestamp available, omitted when null.</summary>
         [JsonProperty("dataStartTime", NullValueHandling = NullValueHandling.Ignore)]
         public DataTimestamp DataStartTime { get; set; }
 
+        /// <summary>Latest data timestamp available, omitted when null.</summary>
         [JsonProperty("dataEndTime", NullValueHandling = NullValueHandling.Ignore)]
         public DataTimestamp DataEndTime { get; set; }
 
@@ -99,19 +104,24 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("op")]
         public string Op => "advertise";
 
+        /// <summary>List of available channels.</summary>
         [JsonProperty("channels")]
         public List<AdvertiseChannel> Channels { get; set; } = new List<AdvertiseChannel>();
     }
 
+    /// <summary>Channel descriptor sent in advertise messages.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class AdvertiseChannel
     {
+        /// <summary>Numeric channel identifier.</summary>
         [JsonProperty("id")]
         public uint Id { get; set; }
 
+        /// <summary>Topic name (e.g. "/imu/data").</summary>
         [JsonProperty("topic")]
         public string Topic { get; set; }
 
+        /// <summary>Message encoding (e.g. "protobuf", "json").</summary>
         [JsonProperty("encoding")]
         public string Encoding { get; set; }
 
@@ -145,6 +155,7 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("op")]
         public string Op => "unadvertise";
 
+        /// <summary>IDs of channels to remove.</summary>
         [JsonProperty("channelIds")]
         public List<uint> ChannelIds { get; set; } = new List<uint>();
     }
@@ -156,28 +167,35 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("op")]
         public string Op => "parameterValues";
 
+        /// <summary>List of parameter name-value pairs.</summary>
         [JsonProperty("parameters")]
         public List<Parameter> Parameters { get; set; } = new List<Parameter>();
 
+        /// <summary>Request correlation ID, omitted when null.</summary>
         [JsonProperty("id", NullValueHandling = NullValueHandling.Ignore)]
         public string Id { get; set; }
     }
 
+    /// <summary>Key-value parameter with optional type hint.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class Parameter
     {
+        /// <summary>Parameter name.</summary>
         [JsonProperty("name")]
         public string Name { get; set; }
 
+        /// <summary>Parameter value as a JSON token.</summary>
         [JsonProperty("value")]
         public Newtonsoft.Json.Linq.JToken Value { get; set; }
 
+        /// <summary>Type hint (e.g. "float64", "string"), omit if unknown.</summary>
         [JsonProperty("type", NullValueHandling = NullValueHandling.Ignore)]
         public string Type { get; set; }
     }
 
     // ── Client → Server messages (parsed from incoming JSON) ──
 
+    /// <summary>Client -> Server: set parameter values.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class SetParameters
     {
@@ -191,6 +209,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public string Id { get; set; }
     }
 
+    /// <summary>Client -> Server: stop receiving parameter updates.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class UnsubscribeParameterUpdates
     {
@@ -225,31 +244,40 @@ namespace Unity.FoxgloveSDK.Protocol
         public List<uint> ServiceIds { get; set; } = new List<uint>();
     }
 
+    /// <summary>Service descriptor sent in advertiseServices.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class ServiceDescriptor
     {
+        /// <summary>Numeric service identifier.</summary>
         [JsonProperty("id")]
         public uint Id { get; set; }
 
+        /// <summary>Service name (e.g. "/get_map").</summary>
         [JsonProperty("name")]
         public string Name { get; set; }
 
+        /// <summary>Service type (e.g. "GetMap").</summary>
         [JsonProperty("type")]
         public string Type { get; set; }
 
+        /// <summary>Request schema descriptor.</summary>
         [JsonProperty("request")]
         public ServiceSchemaDescriptor Request { get; set; }
 
+        /// <summary>Response schema descriptor.</summary>
         [JsonProperty("response")]
         public ServiceSchemaDescriptor Response { get; set; }
     }
 
+    /// <summary>Schema descriptor for a service request or response.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class ServiceSchemaDescriptor
     {
+        /// <summary>Encoding type (e.g. "jsonschema", "protobuf"), omit if unknown.</summary>
         [JsonProperty("encoding", NullValueHandling = NullValueHandling.Ignore)]
         public string Encoding { get; set; }
 
+        /// <summary>Schema name (e.g. "foxglove.GetMapRequest").</summary>
         [JsonProperty("schemaName")]
         public string SchemaName { get; set; }
 
@@ -265,16 +293,20 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("op")]
         public string Op => "serviceCallFailure";
 
+        /// <summary>Service that failed.</summary>
         [JsonProperty("serviceId")]
         public uint ServiceId { get; set; }
 
+        /// <summary>Client-assigned call ID that failed.</summary>
         [JsonProperty("callId")]
         public uint CallId { get; set; }
 
+        /// <summary>Human-readable failure reason.</summary>
         [JsonProperty("message")]
         public string Message { get; set; }
     }
 
+    /// <summary>Client -> Server: subscribe to channels.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class SubscribeMessage
     {
@@ -293,13 +325,16 @@ namespace Unity.FoxgloveSDK.Protocol
     [JsonObject(MemberSerialization.OptIn)]
     public class Subscription
     {
+        /// <summary>Client-assigned subscription ID.</summary>
         [JsonProperty("id")]
         public uint Id { get; set; }
 
+        /// <summary>Channel to subscribe to.</summary>
         [JsonProperty("channelId")]
         public uint ChannelId { get; set; }
     }
 
+    /// <summary>Client -> Server: unsubscribe from channels.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class UnsubscribeMessage
     {
@@ -310,6 +345,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public List<uint> SubscriptionIds { get; set; } = new List<uint>();
     }
 
+    /// <summary>Client -> Server: subscribe to parameter updates.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class SubscribeParameterUpdates
     {
@@ -320,6 +356,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public List<string> ParameterNames { get; set; } = new List<string>();
     }
 
+    /// <summary>Client -> Server: request current parameter values.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class GetParameters
     {
@@ -335,6 +372,7 @@ namespace Unity.FoxgloveSDK.Protocol
 
     // ── ConnectionGraph messages (Phase 8) ──
 
+    /// <summary>Client -> Server: subscribe to connection graph updates.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class SubscribeConnectionGraph
     {
@@ -342,6 +380,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public string Op => "subscribeConnectionGraph";
     }
 
+    /// <summary>Client -> Server: unsubscribe from connection graph updates.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class UnsubscribeConnectionGraph
     {
@@ -349,28 +388,35 @@ namespace Unity.FoxgloveSDK.Protocol
         public string Op => "unsubscribeConnectionGraph";
     }
 
+    /// <summary>Server → Client: full connection graph snapshot.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class ConnectionGraphUpdate
     {
         [JsonProperty("op")]
         public string Op => "connectionGraphUpdate";
 
+        /// <summary>Currently published topics.</summary>
         [JsonProperty("publishedTopics")]
         public List<PublishedTopic> PublishedTopics { get; set; } = new List<PublishedTopic>();
 
+        /// <summary>Currently subscribed topics.</summary>
         [JsonProperty("subscribedTopics")]
         public List<SubscribedTopic> SubscribedTopics { get; set; } = new List<SubscribedTopic>();
 
+        /// <summary>Currently advertised services.</summary>
         [JsonProperty("advertisedServices")]
         public List<AdvertisedService> AdvertisedServices { get; set; } = new List<AdvertisedService>();
 
+        /// <summary>Topics to remove from the graph.</summary>
         [JsonProperty("removedTopics")]
         public List<string> RemovedTopics { get; set; } = new List<string>();
 
+        /// <summary>Services to remove from the graph.</summary>
         [JsonProperty("removedServices")]
         public List<string> RemovedServices { get; set; } = new List<string>();
     }
 
+    /// <summary>A published topic with its publisher IDs.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class PublishedTopic
     {
@@ -381,6 +427,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public List<string> PublisherIds { get; set; } = new List<string>();
     }
 
+    /// <summary>A subscribed topic with its subscriber IDs.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class SubscribedTopic
     {
@@ -391,6 +438,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public List<string> SubscriberIds { get; set; } = new List<string>();
     }
 
+    /// <summary>An advertised service with its provider IDs.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class AdvertisedService
     {
@@ -403,6 +451,7 @@ namespace Unity.FoxgloveSDK.Protocol
 
     // ── Phase 9: Assets / fetchAsset ──
 
+    /// <summary>Client -> Server: fetch an asset by URI.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class FetchAsset
     {
@@ -418,12 +467,15 @@ namespace Unity.FoxgloveSDK.Protocol
 
     // ── Phase 9: DataTimestamp for playback control ──
 
+    /// <summary>Timestamp with seconds and nanoseconds components.</summary>
     [JsonObject(MemberSerialization.OptIn)]
     public class DataTimestamp
     {
+        /// <summary>Whole seconds since epoch.</summary>
         [JsonProperty("sec")]
         public ulong Sec { get; set; }
 
+        /// <summary>Sub-second nanoseconds component (0-999999999).</summary>
         [JsonProperty("nsec")]
         public uint Nsec { get; set; }
     }

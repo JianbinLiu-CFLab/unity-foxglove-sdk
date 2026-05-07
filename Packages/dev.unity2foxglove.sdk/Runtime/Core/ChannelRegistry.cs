@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Total number of registered channels.</summary>
         public int Count
         {
             get { lock (_lock) { return _channels.Count; } }

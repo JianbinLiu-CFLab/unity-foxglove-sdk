@@ -16,7 +16,10 @@ namespace Unity.FoxgloveSDK.Protocol
     [AttributeUsage(AttributeTargets.Class)]
     public class FoxgloveSchemaAttribute : Attribute
     {
+        /// <summary>The foxglove schema name (e.g. "foxglove.FrameTransform").</summary>
         public string SchemaName { get; }
+
+        /// <summary>Create the attribute with the given schema name.</summary>
         public FoxgloveSchemaAttribute(string schemaName) => SchemaName = schemaName;
     }
 }

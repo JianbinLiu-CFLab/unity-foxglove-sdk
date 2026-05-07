@@ -44,21 +44,25 @@ namespace Unity.FoxgloveSDK.Core
             return id;
         }
 
+        /// <summary>Get the handler delegate for a service.</summary>
         public Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> GetHandler(uint serviceId)
         {
             lock (_lock) { _handlers.TryGetValue(serviceId, out var h); return h; }
         }
 
+        /// <summary>Unregister a service by ID.</summary>
         public bool Unregister(uint serviceId)
         {
             lock (_lock) { return _services.Remove(serviceId); }
         }
 
+        /// <summary>Get a service descriptor by ID, or null.</summary>
         public ServiceDescriptor GetById(uint serviceId)
         {
             lock (_lock) { return _services.TryGetValue(serviceId, out var s) ? s : null; }
         }
 
+        /// <summary>Try to get a service descriptor by ID.</summary>
         public bool TryGet(uint serviceId, out ServiceDescriptor descriptor)
         {
             lock (_lock) { return _services.TryGetValue(serviceId, out descriptor); }
@@ -72,7 +76,9 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Pending calls ──
 
-        public const int MaxPayloadBytes = 1_048_576; // 1 MiB
+        /// <summary>Maximum service payload size in bytes (1 MiB).</summary>
+        public const int MaxPayloadBytes = 1_048_576;
+        /// <summary>Default service call timeout (10 seconds).</summary>
         public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
 
         /// <summary>Enqueue a new service call using the client-provided callId.</summary>
@@ -170,6 +176,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Remove all services and pending calls.</summary>
         public void Clear()
         {
             lock (_lock) { _services.Clear(); _pending.Clear(); }

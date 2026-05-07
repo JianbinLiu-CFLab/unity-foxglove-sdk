@@ -122,6 +122,7 @@ namespace Unity.FoxgloveSDK.Protocol
 
         // ── Little-endian helpers ──
 
+        /// <summary>Write a 32-bit unsigned integer in little-endian byte order.</summary>
         public static void WriteU32LE(byte[] buf, int offset, uint value)
         {
             buf[offset] = (byte)(value & 0xFF);
@@ -130,6 +131,7 @@ namespace Unity.FoxgloveSDK.Protocol
             buf[offset + 3] = (byte)((value >> 24) & 0xFF);
         }
 
+        /// <summary>Write a 64-bit unsigned integer in little-endian byte order.</summary>
         public static void WriteU64LE(byte[] buf, int offset, ulong value)
         {
             buf[offset] = (byte)(value & 0xFF);
@@ -142,11 +144,13 @@ namespace Unity.FoxgloveSDK.Protocol
             buf[offset + 7] = (byte)((value >> 56) & 0xFF);
         }
 
+        /// <summary>Read a 32-bit unsigned integer in little-endian byte order.</summary>
         public static uint ReadU32LE(byte[] buf, int offset)
         {
             return (uint)(buf[offset] | (buf[offset + 1] << 8) | (buf[offset + 2] << 16) | (buf[offset + 3] << 24));
         }
 
+        /// <summary>Read a 64-bit unsigned integer in little-endian byte order.</summary>
         public static ulong ReadU64LE(byte[] buf, int offset)
         {
             return (ulong)buf[offset]
@@ -189,6 +193,7 @@ namespace Unity.FoxgloveSDK.Protocol
 
         // ── Phase 9: PlaybackControl ──
 
+        /// <summary>Write a 32-bit float in little-endian byte order.</summary>
         public static void WriteF32LE(byte[] buf, int offset, float value)
         {
             var bytes = BitConverter.GetBytes(value);
@@ -196,6 +201,7 @@ namespace Unity.FoxgloveSDK.Protocol
             Buffer.BlockCopy(bytes, 0, buf, offset, 4);
         }
 
+        /// <summary>Read a 32-bit float in little-endian byte order.</summary>
         public static float ReadF32LE(byte[] buf, int offset)
         {
             var bytes = new byte[4];
