@@ -130,8 +130,8 @@ namespace Unity.FoxgloveSDK.Core
         public event Action<string, byte[]> OnReplayMessage;
 
         /// <summary>Test-only hook to fire replay without loading an MCAP file.</summary>
-        internal void _TestFireReplay(string topic, byte[] data)
-            => _replay._TestFire(topic, data);
+        internal void FireReplayForTests(string topic, byte[] data)
+            => _replay.FireForTests(topic, data);
 
         /// <summary>
         /// Stop the server, detach recording/replay, and dispose the session.

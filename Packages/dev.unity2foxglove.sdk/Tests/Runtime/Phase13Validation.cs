@@ -326,7 +326,7 @@ namespace Unity.FoxgloveSDK.Tests
             rt.Start("test", "127.0.0.1", 9877);
 
             // Fire replay via internal test hook
-            rt._TestFireReplay("/tf", new byte[] { });
+            rt.FireReplayForTests("/tf", new byte[] { });
 
             Assert(count == 1, "HandlerNoAccum: trigger fires once after 3 Stop/Start cycles (expected=1, actual=" + count + ")");
             rt.Dispose();
