@@ -63,11 +63,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             ISymbol symbol = null;
             if (ctx.Node is FieldDeclarationSyntax fieldDecl)
             {
-                foreach (var v in fieldDecl.Declaration.Variables)
+                if (fieldDecl.Declaration.Variables.Count > 1)
                 {
-                    symbol = ctx.SemanticModel.GetDeclaredSymbol(v, ct);
-                    if (symbol != null) break;
+                    // Multi-variable field declarations like `[FoxRun] float _a, _b;`
+                    // are ambiguous — report a diagnostic rather than silently skipping.
+                    var diag = Diagnostic.Create(Diags.MultiVariableDeclaration,
+                        fieldDecl.GetLocation());
+                    ctx.ReportDiagnostic(diag);
+                    return null;
                 }
+                symbol = ctx.SemanticModel.GetDeclaredSymbol(fieldDecl.Declaration.Variables[0], ct);
             }
             else if (ctx.Node is PropertyDeclarationSyntax propDecl)
             {
@@ -271,6 +276,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "FOXRUN003", "Field name collision",
                 "Class '{0}' topic '{1}' has field names that collide after stripping underscores",
                 "FoxRun", DiagnosticSeverity.Warning, true);
+            public static readonly DiagnosticDescriptor MultiVariableDeclaration = new DiagnosticDescriptor(
+                "FOXRUN004", "Multi-variable field declaration",
+                "[FoxRun] on a field declaration with multiple variables is not supported. Split into separate declarations.",
+                "FoxRun", DiagnosticSeverity.Error, true);
         }
     }
 }
