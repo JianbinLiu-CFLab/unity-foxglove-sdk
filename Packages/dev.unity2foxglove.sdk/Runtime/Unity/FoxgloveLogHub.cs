@@ -20,23 +20,47 @@ namespace Unity.FoxgloveSDK.Components
         public FoxgloveLogTopicInfo(string topic, float rateHz) { Topic = topic; RateHz = rateHz; }
     }
 
+    /// <summary>
+    /// Interface implemented by code-generated <c>[FoxRun]</c> log sources.
+    /// Provides topic metadata and per-topic publish dispatch.
+    /// </summary>
     public interface IFoxgloveLogSource
     {
+        /// <summary>Number of Foxglove topics published by this source.</summary>
         int FoxgloveLog_TopicCount { get; }
+        /// <summary>Retrieve topic metadata by index.</summary>
         FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index);
+        /// <summary>Publish the value for the given topic index through the manager.</summary>
         void FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs);
     }
 
+    /// <summary>
+    /// Singleton hub that discovers <see cref="IFoxgloveLogSource"/> implementations
+    /// at runtime, throttles them to their configured rates, and relays publishes
+    /// through <see cref="FoxgloveManager"/>.
+    /// </summary>
     [AddComponentMenu("")]
     public class FoxgloveLogHub : MonoBehaviour
     {
+        // ── Internal state ──
+        /// <summary>Singleton instance.</summary>
         private static FoxgloveLogHub _instance;
+        /// <summary>Cached reference to the FoxgloveManager.</summary>
         private FoxgloveManager _mgr;
+        /// <summary>Per-source countdown timers for rate throttling.</summary>
         private readonly Dictionary<IFoxgloveLogSource, float[]> _timers = new();
+        /// <summary>List of destroyed sources to clean up this frame.</summary>
         private readonly List<IFoxgloveLogSource> _stale = new();
+        /// <summary>Countdown until the next Scan for new sources.</summary>
         private float _scanTimer;
+        /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
         private float _mgrSearchCooldown;
 
+        /// <summary>
+        /// Ensures exactly one hub exists after scene load.
+        /// Reuses a user-placed scene hub if present, otherwise creates a hidden
+        /// <c>DontDestroyOnLoad</c> singleton.
+        /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
@@ -45,8 +69,6 @@ namespace Unity.FoxgloveSDK.Components
             var existing = FindFirstObjectByType<FoxgloveLogHub>();
             if (existing != null)
             {
-                // Reuse a user-placed scene hub; only clean up stale auto-created
-                // instances left from a previous Domain Reload.
                 var isStale = existing.name == "[FoxRunHub]"
                     && (existing.hideFlags & HideFlags.HideAndDontSave) != 0;
                 if (isStale)
@@ -64,6 +86,11 @@ namespace Unity.FoxgloveSDK.Components
             _instance = go.AddComponent<FoxgloveLogHub>();
         }
 
+        /// <summary>
+        /// Each frame: resolve the FoxgloveManager (with a 3-second retry cooldown),
+        /// periodically scan for new log sources, and fire publishes for every source
+        /// whose per-topic countdown timer has elapsed.
+        /// </summary>
         private void Update()
         {
             if (_mgr == null)
@@ -108,6 +135,11 @@ namespace Unity.FoxgloveSDK.Components
             foreach (var s in _stale) _timers.Remove(s);
         }
 
+        /// <summary>
+        /// Finds every active MonoBehaviour implementing <see cref="IFoxgloveLogSource"/>
+        /// and registers new sources in the timer dictionary.
+        /// Runs on a 2-second interval.
+        /// </summary>
         private void Scan()
         {
             var all = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -122,6 +154,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>Clears all timers and nulls the singleton reference.</summary>
         private void OnDestroy()
         {
             _timers.Clear();
