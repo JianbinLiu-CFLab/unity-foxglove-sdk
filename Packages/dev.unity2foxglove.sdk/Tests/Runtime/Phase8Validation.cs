@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates connection graph capabilities, graph subscribe/unsubscribe, client publish, per-client channel isolation, and disconnect cleanup.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

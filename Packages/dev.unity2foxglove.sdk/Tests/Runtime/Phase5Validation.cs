@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates timestamp utilities, runtime lifecycle (stop/start/dispose), and link.xml code-stripping guard verification.
+
 using System;
 using System.IO;
 using System.Linq;

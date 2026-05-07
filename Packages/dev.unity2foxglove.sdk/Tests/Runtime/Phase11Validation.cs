@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates MCAP compression, binary reader helpers, McapReader summary, replay engine load/tick, and replay channel ID mapping.
+
 using System;
 using System.Collections.Generic;
 using System.IO;

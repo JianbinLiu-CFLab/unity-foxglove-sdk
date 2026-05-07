@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates serverInfo delivery, session identity, real WebSocket connectivity, and subprotocol negotiation.
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;

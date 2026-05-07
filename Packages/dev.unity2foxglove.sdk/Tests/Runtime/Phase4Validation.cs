@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates CompressedImage schema registration, base64 roundtrip, FoxgloveTime utility, and typed channel advertising.
+
 using System;
 using System.Text;
 using Newtonsoft.Json;

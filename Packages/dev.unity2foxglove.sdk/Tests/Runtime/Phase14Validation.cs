@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates FoxRunAttribute construction, defaults, validation, and usage constraints.
+
 using System;
 using System.Text;
 using Unity.FoxgloveSDK.Components;

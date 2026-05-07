@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates capabilities, logger injection, service call encapsulation, lifecycle survival, handler delegates, and time frame binary encoding.
+
 using System;
 using System.Linq;
 using System.Text;

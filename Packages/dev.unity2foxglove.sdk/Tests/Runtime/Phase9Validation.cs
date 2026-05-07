@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates asset registry, fetch asset protocol, playback capability, playback control binary codec, and playback clock state machine.
+
 using System;
 using System.IO;
 using System.Linq;

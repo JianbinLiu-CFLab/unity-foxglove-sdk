@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates serverInfo capabilities, parameter store, parameter subscribe/unsubscribe, service advertise, service call binary codec, and service call timeout/sweep.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

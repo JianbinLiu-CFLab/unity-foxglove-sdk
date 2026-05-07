@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Test-only sequential MCAP record parser and decode helpers for verifying generated files.
+
 using System;
 using System.Collections.Generic;
 using System.Text;
