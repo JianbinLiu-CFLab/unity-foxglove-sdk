@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Samples/FullDemoVisualization
+// Purpose: Registers demo Parameters, Services, and wires Foxglove client message logging for manual verification.
+
 using System.Linq;
 using System.Text;
 using System.Threading;

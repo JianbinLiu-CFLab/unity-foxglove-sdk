@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Publishes a SceneUpdate with a single cube entity representing this GameObject to Foxglove /scene.
+
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;

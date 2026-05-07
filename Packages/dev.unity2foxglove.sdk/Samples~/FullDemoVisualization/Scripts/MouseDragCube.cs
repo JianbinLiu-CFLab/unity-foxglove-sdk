@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Samples/FullDemoVisualization
+// Purpose: Mouse-driven cube control demo — drag to rotate/pan, scroll to scale, synced to Foxglove parameters.
+
 using UnityEngine;
 using UnityEngine.InputSystem;
 

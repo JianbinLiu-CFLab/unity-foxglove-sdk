@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Samples/FullDemoVisualization
+// Purpose: Demo MonoBehaviour with [FoxRun] source-generated attributes for automatic position/health publishing.
+
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 
