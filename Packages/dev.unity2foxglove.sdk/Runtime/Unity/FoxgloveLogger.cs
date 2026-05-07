@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: IFoxgloveLogger implementation that routes to Unity Debug.LogWarning and Debug.LogError, prefixed with [Foxglove].
+
 using UnityEngine;
 using Unity.FoxgloveSDK.Core;
 

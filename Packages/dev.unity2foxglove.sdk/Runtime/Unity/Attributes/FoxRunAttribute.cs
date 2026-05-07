@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity/Attributes
+// Purpose: FoxRun custom attribute — marks fields and properties for auto-publishing to Foxglove topics via source generators.
+
 using System;
 
 namespace Unity.FoxgloveSDK.Components

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Transport
+// Purpose: Transport abstraction — connection lifecycle, text/binary send and receive, and client connect/disconnect events.
+
 using System;
 
 namespace Unity.FoxgloveSDK.Transport
