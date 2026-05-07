@@ -212,7 +212,7 @@ Start here when Unity cannot open the demo, Foxglove cannot connect, `/debug/*` 
 
 ## 10. Layout import fails
 
-**Symptom**: Foxglove cannot import the `FoxgloveLayout.json` file.
+**Symptom**: Foxglove cannot import the `FoxgloveSimpleLayout.json` file.
 
 **Troubleshooting steps**:
 
@@ -221,7 +221,7 @@ Start here when Unity cannot open the demo, Foxglove cannot connect, `/debug/*` 
    - Ensure you are using a newer version of Foxglove Desktop (2.0 or above)
 
 2. **Confirm correct file path**:
-   - The file is at `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/FoxgloveLayout.json`
+   - The file is at `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/FoxgloveSimpleLayout.json`
    - The path is relative to the repository root (not the `Untiy2Foxglove/` project directory)
 
 3. **Use paste import**:
