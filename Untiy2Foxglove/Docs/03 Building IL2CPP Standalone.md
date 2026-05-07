@@ -64,17 +64,24 @@ The build script automatically:
 
 ### 4.1 --unity: specify Unity path
 
-If the script does not auto-find Unity:
+If the script does not auto-find Unity, pass the path to your local Unity Editor executable.
+Replace `<path-to-your-Unity.exe>` with the Unity version installed on your machine.
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --unity "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe"
+python Scripts/build_unity_il2cpp.py --target win64 --unity "<path-to-your-Unity.exe>"
 ```
 
 Or set via environment variable:
 
 ```powershell
-$env:UNITY_EXE = "C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe"
+$env:UNITY_EXE = "<path-to-your-Unity.exe>"
 python Scripts/build_unity_il2cpp.py --target win64
+```
+
+For example, a typical Unity Hub installation on Windows may look like:
+
+```powershell
+$env:UNITY_EXE = "C:\Program Files\Unity\Hub\Editor\<unity-version>\Editor\Unity.exe"
 ```
 
 ### 4.2 --output-dir / --build-dir: specify output directory
