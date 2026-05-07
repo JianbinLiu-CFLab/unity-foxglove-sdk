@@ -40,6 +40,7 @@
     <Compile Include="Phase16Validation.cs" />
     <Compile Include="Phase17Validation.cs" />
     <Compile Include="Phase24DValidation.cs" />
+    <Compile Include="Phase28Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
   </ItemGroup>
 </Project>

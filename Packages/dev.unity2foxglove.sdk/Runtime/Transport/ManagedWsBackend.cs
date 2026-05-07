@@ -38,6 +38,8 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly IFoxgloveLogger _logger;
         /// <summary>Monotonically increasing counter for assigning client IDs.</summary>
         private int _nextClientId;
+        /// <summary>Allowed browser origins for Cross-Site WebSocket Hijacking protection. Empty collection rejects all browser-origin clients.</summary>
+        private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
 
         public ManagedWsBackend(IFoxgloveLogger logger = null)
         {
@@ -133,6 +135,27 @@ namespace Unity.FoxgloveSDK.Transport
             _cts = null;
         }
 
+        // ── Origin Guard ──
+
+        /// <summary>Snapshot of currently allowed browser origins. Empty means no browser clients are allowed.</summary>
+        public IReadOnlyCollection<string> AllowedOrigins
+        {
+            get { lock (_allowedOrigins) return _allowedOrigins.ToList(); }
+        }
+
+        /// <summary>Add an origin to the allowlist (case-insensitive). Example: <c>http://localhost:3000</c>.</summary>
+        public void AddAllowedOrigin(string origin)
+        {
+            if (string.IsNullOrEmpty(origin)) return;
+            lock (_allowedOrigins) _allowedOrigins.Add(origin);
+        }
+
+        /// <summary>Remove all origins from the allowlist, blocking all browser clients.</summary>
+        public void ClearAllowedOrigins()
+        {
+            lock (_allowedOrigins) _allowedOrigins.Clear();
+        }
+
         // ── Internal ──
 
         /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
@@ -218,6 +241,24 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (!headers.TryGetValue("Sec-WebSocket-Key", out var wsKey))
                 return (false, null);
+
+            // Origin guard: reject browser clients unless the origin is in the allowlist.
+            // file:// origins come from non-browser environments (Electron desktop apps,
+            // Foxglove Desktop) — they are not subject to CSWSH, so they are always allowed.
+            if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
+                && !origin.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                bool allowed;
+                lock (_allowedOrigins) allowed = _allowedOrigins.Contains(origin);
+                if (!allowed)
+                {
+                    _logger.LogWarning(
+                        $"[Foxglove] Rejected WebSocket Origin '{origin}'. Add it to allowed origins to permit browser clients.");
+                    var forbid = Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\n\r\n");
+                    stream.Write(forbid, 0, forbid.Length);
+                    return (false, null);
+                }
+            }
 
             // Subprotocol negotiation
             string selected = null;
