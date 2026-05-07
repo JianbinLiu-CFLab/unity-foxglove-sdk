@@ -159,9 +159,9 @@
     },
     "Parameters!axm5vd": {},
     "Publish!4e42o2l": {
-      "datatype": "foxglove.FrameTransform",
-      "value": "{\n  \"timestamp\": {\n    \"sec\": 0,\n    \"nsec\": 0\n  },\n  \"parent_frame_id\": \"unity_world\",\n  \"child_frame_id\": \"client_demo\",\n  \"translation\": {\n    \"x\": 0,\n    \"y\": 0,\n    \"z\": 0\n  },\n  \"rotation\": {\n    \"x\": 0,\n    \"y\": 0,\n    \"z\": 0,\n    \"w\": 1\n  }\n}",
-      "topicName": "/unity/client_publish_demo"
+      "datatype": "foxglove.Log",
+      "value": "{\n  \"timestamp\": {\n    \"sec\": 0,\n    \"nsec\": 0\n  },\n  \"level\": 2,\n  \"message\": \"hello from Foxglove\",\n  \"name\": \"Foxglove Publish panel\",\n  \"file\": \"FoxgloveFullLayout.json\",\n  \"line\": 0\n}",
+      "topicName": "/unity/client_log"
     },
     "RawMessages!mvalvc": {
       "defaultExpanded": false,

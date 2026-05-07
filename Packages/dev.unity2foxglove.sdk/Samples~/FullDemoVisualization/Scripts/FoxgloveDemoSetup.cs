@@ -4,6 +4,7 @@ using System.Threading;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Schemas;
 
 /// <summary>
 /// Registers demo Parameters and Services for Phase 7 manual verification.
@@ -56,6 +57,9 @@ public class FoxgloveDemoSetup : MonoBehaviour
         // Phase 8: log client-published messages to Unity Console.
         rt.Session.OnClientMessage += (cid, chId, topic, payload) =>
             Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={Encoding.UTF8.GetString(payload)}");
+
+        // Advertise /unity/client_log so Foxglove sees foxglove.Log in the schema picker.
+        _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
 
         rt.Parameters.OnParameterChanged += OnParameterChanged;
 

@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestSameSchemaNameDifferentContentIsSkipped();
             TestDifferentEncodingIsSkipped();
             TestServerDuplicateTopicWithIncompatibleSchemaIsSkipped();
+            TestClientCanReuseAdvertisedTopicSchemaWithoutContent();
             Console.WriteLine($"Phase 24D: {_passCount} checks passed.");
         }
 
@@ -201,6 +202,32 @@ namespace Unity.FoxgloveSDK.Tests
                 "Server duplicate: only 1 channel (second was skipped)");
             Assert(summary.Channels[0].Topic == "/server_data",
                 "Server duplicate: the first channel recorded is /server_data");
+        }
+
+        /// <summary>
+        /// Foxglove Publish can advertise a known schema name without sending
+        /// the full schema content back to the server. If Unity already
+        /// advertised the same topic/schema, the recorder should reuse that
+        /// channel instead of treating the missing client schema content as a
+        /// mixed-schema conflict.
+        /// </summary>
+        static void TestClientCanReuseAdvertisedTopicSchemaWithoutContent()
+        {
+            var ms = new MemoryStream();
+            var recorder = new McapRecorder(ms);
+
+            recorder.AddChannel(1, "/unity/client_log", "json", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
+
+            recorder.WriteClientMessage(2, 60, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
+                "/unity/client_log", enc: "json", sName: "foxglove.Log", sEnc: "", sContent: "");
+
+            recorder.Close();
+            ms.Position = 0;
+            var summary = new McapReader(ms).ReadSummary();
+            Assert(summary.Channels.Count == 1,
+                "Client schema name only: reused existing /unity/client_log channel");
+            Assert(summary.Statistics.MessageCount == 1,
+                "Client schema name only: client message recorded");
         }
     }
 }

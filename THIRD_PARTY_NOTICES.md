@@ -47,6 +47,7 @@ SOFTWARE.
 - `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/CompressedImage.json`
 - `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/FrameTransform.json`
 - `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/SceneUpdate.json`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Log.json`
 
 `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/FoxgloveSchemaDefinitions.cs` embeds these schemas as base64-encoded string constants for runtime registration. Unity2Foxglove does not claim authorship of the schema definitions.
 

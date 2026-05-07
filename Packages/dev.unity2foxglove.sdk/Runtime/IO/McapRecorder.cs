@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<(uint clientId, uint chId), ChannelWriteState> _clientChannelWriteState = new();
         private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
         private readonly Dictionary<uint, ChannelWriteState> _chMap = new();
+        private readonly Dictionary<string, ChannelWriteState> _topicChannelWriteState = new();
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
         private readonly List<SchemaRecordState> _schemas = new();
         private readonly List<ChannelRecordState> _channels = new();
@@ -72,7 +73,10 @@ namespace Unity.FoxgloveSDK.IO
             if (_recordingFailed) return;
             if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
             var mCid = _nextCid++;
-            _chMap[fId] = new ChannelWriteState { McapId = mCid, Topic = topic };
+            var state = new ChannelWriteState { McapId = mCid, Topic = topic };
+            _chMap[fId] = state;
+            if (!_topicChannelWriteState.ContainsKey(topic))
+                _topicChannelWriteState[topic] = state;
 
             var meta = new Dictionary<string, string>();
             if (!string.IsNullOrEmpty(CoordinateMode))
@@ -90,27 +94,34 @@ namespace Unity.FoxgloveSDK.IO
             if (_skippedClientChannels.Contains(key)) return;
             if (!_clientChannelWriteState.TryGetValue(key, out var map))
             {
-                if (WouldMixTopicSignature(topic, enc, sName, sEnc, sContent))
+                var messageEncoding = NormalizeMessageEncoding(enc);
+                if (TryReuseExistingTopicChannel(topic, messageEncoding, sName, sEnc, sContent, out map))
                 {
-                    _skippedClientChannels.Add(key);
-                    _log.LogWarning(
-                        $"MCAP: skipping client-published topic '{topic}' because its schema signature is incompatible with an existing recorded channel.");
-                    return;
+                    _clientChannelWriteState[key] = map;
                 }
+                else
+                {
+                    if (WouldMixTopicSignature(topic, messageEncoding, sName, sEnc, sContent))
+                    {
+                        _skippedClientChannels.Add(key);
+                        _log.LogWarning(
+                            $"MCAP: skipping client-published topic '{topic}' because its schema signature is incompatible with an existing recorded channel.");
+                        return;
+                    }
 
-                var sid = GetOrCreateSchema(sName, sEnc, sContent);
-                if (_recordingFailed) return;
-                if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
-                var mcapId = _nextCid++;
-                map = new ChannelWriteState { McapId = mcapId, Topic = topic };
-                _clientChannelWriteState[key] = map;
-                var meta = string.IsNullOrEmpty(CoordinateMode)
-                    ? new Dictionary<string, string>()
-                    : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
-                var messageEncoding = string.IsNullOrEmpty(enc) ? "json" : enc;
-                _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
-                _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
-                RecordTopicSignature(topic, enc, sName, sEnc, sContent);
+                    var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                    if (_recordingFailed) return;
+                    if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
+                    var mcapId = _nextCid++;
+                    map = new ChannelWriteState { McapId = mcapId, Topic = topic };
+                    _clientChannelWriteState[key] = map;
+                    var meta = string.IsNullOrEmpty(CoordinateMode)
+                        ? new Dictionary<string, string>()
+                        : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
+                    _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
+                    _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
+                    RecordTopicSignature(topic, messageEncoding, sName, sEnc, sContent);
+                }
             }
             WriteMessageToChannelWriteState(map, logNs, payload);
         }
@@ -210,8 +221,14 @@ namespace Unity.FoxgloveSDK.IO
 
         IEnumerable<ChannelWriteState> AllChannelWriteStates()
         {
+            var seen = new HashSet<ushort>();
             foreach (var m in _chMap.Values) yield return m;
-            foreach (var m in _clientChannelWriteState.Values) yield return m;
+            foreach (var m in _chMap.Values) seen.Add(m.McapId);
+            foreach (var m in _clientChannelWriteState.Values)
+            {
+                if (seen.Add(m.McapId))
+                    yield return m;
+            }
         }
 
         void FlushChunk()
@@ -289,6 +306,39 @@ namespace Unity.FoxgloveSDK.IO
             using var sha = SHA256.Create();
             var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(schemaName + "\0" + schemaEncoding + "\0" + content));
             return BitConverter.ToString(bytes).Replace("-", "");
+        }
+
+        static string NormalizeMessageEncoding(string enc) =>
+            string.IsNullOrEmpty(enc) ? "json" : enc;
+
+        bool TryReuseExistingTopicChannel(string topic, string enc, string sName, string sEnc,
+            string sContent, out ChannelWriteState state)
+        {
+            state = null;
+            if (string.IsNullOrEmpty(topic)) return false;
+            if (!_topicChannelWriteState.TryGetValue(topic, out var existingState)) return false;
+            if (!_topicSignatures.TryGetValue(topic, out var existing)) return false;
+
+            var incoming = new TopicSignature
+            {
+                Encoding = enc ?? "",
+                SchemaName = sName ?? "",
+                SchemaEncoding = sEnc ?? "",
+                Hash = ComputeSchemaHash(sContent, sName, sEnc)
+            };
+
+            if (!string.IsNullOrEmpty(sName) &&
+                string.IsNullOrEmpty(sContent) &&
+                existing.Encoding == (enc ?? "") &&
+                existing.SchemaName == (sName ?? "") &&
+                (string.IsNullOrEmpty(sEnc) || existing.SchemaEncoding == (sEnc ?? "")) &&
+                !string.IsNullOrEmpty(existing.Hash))
+            {
+                state = existingState;
+                return true;
+            }
+
+            return false;
         }
 
         bool WouldMixTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
