@@ -28,21 +28,21 @@ namespace Unity.FoxgloveSDK.IO
         private readonly IFoxgloveLogger _log;
         private readonly string _compression;
         private readonly Dictionary<(string name, string enc, string hash), ushort> _sKey = new();
-        private readonly Dictionary<(uint clientId, uint chId), ChMap> _clientChMap = new();
+        private readonly Dictionary<(uint clientId, uint chId), ChannelWriteState> _clientChannelWriteState = new();
         private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
-        private readonly Dictionary<uint, ChMap> _chMap = new();
+        private readonly Dictionary<uint, ChannelWriteState> _chMap = new();
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
-        private readonly List<SchemaRec> _schemas = new();
-        private readonly List<ChannelRec> _channels = new();
-        private readonly List<ChunkIdx> _chunkIdx = new();
-        private readonly List<MetaIdx> _metaIdx = new();
+        private readonly List<SchemaRecordState> _schemas = new();
+        private readonly List<ChannelRecordState> _channels = new();
+        private readonly List<ChunkIndexState> _chunkIdx = new();
+        private readonly List<MetadataIndexState> _metaIdx = new();
         private MemoryStream _chunkBuf = new();
         private ushort _nextSid = 1, _nextCid = 1;
         private ulong _chunkSt, _chunkEt;
         private ulong _msgSt = ulong.MaxValue, _msgEt;
         private ulong _msgCount, _chunkCount;
         private uint _metadataCount;
-        private bool _closed, _failed;
+        private bool _closed, _recordingFailed;
         private readonly int _chunkSz;
 
         public const int DefaultChunkSizeBytes = 1024 * 1024;
@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.IO
 
         public void AddChannel(uint fId, string topic, string enc, string sName, string sEnc, string sContent)
         {
-            if (_failed) return;
+            if (_recordingFailed) return;
             if (WouldMixTopicSignature(topic, enc, sName, sEnc, sContent))
             {
                 _log.LogWarning(
@@ -69,26 +69,26 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
             var sid = GetOrCreateSchema(sName, sEnc, sContent);
-            if (_failed) return;
+            if (_recordingFailed) return;
             if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
             var mCid = _nextCid++;
-            _chMap[fId] = new ChMap { McapId = mCid, Topic = topic };
+            _chMap[fId] = new ChannelWriteState { McapId = mCid, Topic = topic };
 
             var meta = new Dictionary<string, string>();
             if (!string.IsNullOrEmpty(CoordinateMode))
                 meta["coordinate_mode"] = CoordinateMode;
             _w.WriteChannel(mCid, sid, topic, enc, meta);
-            _channels.Add(new ChannelRec { Id = mCid, Sid = sid, Topic = topic, Enc = enc, Meta = new Dictionary<string, string>(meta) });
+            _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = enc, Metadata = new Dictionary<string, string>(meta) });
             RecordTopicSignature(topic, enc, sName, sEnc, sContent);
         }
 
         public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic,
             string enc = "json", string sName = "", string sEnc = "", string sContent = "")
         {
-            if (_failed) return;
+            if (_recordingFailed) return;
             var key = (clientId, chId);
             if (_skippedClientChannels.Contains(key)) return;
-            if (!_clientChMap.TryGetValue(key, out var map))
+            if (!_clientChannelWriteState.TryGetValue(key, out var map))
             {
                 if (WouldMixTopicSignature(topic, enc, sName, sEnc, sContent))
                 {
@@ -99,25 +99,25 @@ namespace Unity.FoxgloveSDK.IO
                 }
 
                 var sid = GetOrCreateSchema(sName, sEnc, sContent);
-                if (_failed) return;
+                if (_recordingFailed) return;
                 if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
                 var mcapId = _nextCid++;
-                map = new ChMap { McapId = mcapId, Topic = topic };
-                _clientChMap[key] = map;
+                map = new ChannelWriteState { McapId = mcapId, Topic = topic };
+                _clientChannelWriteState[key] = map;
                 var meta = string.IsNullOrEmpty(CoordinateMode)
                     ? new Dictionary<string, string>()
                     : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
                 var messageEncoding = string.IsNullOrEmpty(enc) ? "json" : enc;
                 _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
-                _channels.Add(new ChannelRec { Id = mcapId, Sid = sid, Topic = topic, Enc = messageEncoding, Meta = meta });
+                _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
                 RecordTopicSignature(topic, enc, sName, sEnc, sContent);
             }
-            WriteMessageToChMap(map, logNs, payload);
+            WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
-        private void WriteMessageToChMap(ChMap map, ulong logNs, byte[] payload)
+        private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
-            if (_failed) return;
+            if (_recordingFailed) return;
             var seq = map.Seq++;
             var off = (ulong)_chunkBuf.Position;
             var m = new MemoryStream();
@@ -142,23 +142,23 @@ namespace Unity.FoxgloveSDK.IO
 
         public void WriteMetadata(string name, string jsonValue)
         {
-            if (_failed) return;
+            if (_recordingFailed) return;
             var off = (ulong)_w.Position;
             _w.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
             var len = (ulong)_w.Position - off;
-            _metaIdx.Add(new MetaIdx { Off = off, Len = len, Name = name });
+            _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
             _metadataCount++;
         }
 
         public void WriteMessage(uint fId, ulong logNs, byte[] payload)
         {
-            if (_failed || !_chMap.TryGetValue(fId, out var map)) return;
-            WriteMessageToChMap(map, logNs, payload);
+            if (_recordingFailed || !_chMap.TryGetValue(fId, out var map)) return;
+            WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
         public void Close()
         {
-            if (_closed || _failed) return;
+            if (_closed || _recordingFailed) return;
             _closed = true;
             FlushChunk();
             _w.WriteDataEnd();
@@ -167,30 +167,30 @@ namespace Unity.FoxgloveSDK.IO
 
             // Schema group
             var schemaGrpStart = (ulong)_w.Position;
-            foreach (var s in _schemas) _w.WriteSchema(s.Id, s.Name, s.Enc, s.Data);
+            foreach (var s in _schemas) _w.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
             var schemaGrpLen = (ulong)_w.Position - schemaGrpStart;
 
             // Channel group
             var channelGrpStart = (ulong)_w.Position;
-            foreach (var c in _channels) _w.WriteChannel(c.Id, c.Sid, c.Topic, c.Enc, c.Meta ?? new Dictionary<string, string>());
+            foreach (var c in _channels) _w.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
             var channelGrpLen = (ulong)_w.Position - channelGrpStart;
 
             // Statistics
             var statsGrpStart = (ulong)_w.Position;
             _w.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, 0, _metadataCount, (uint)_chunkCount, _msgSt, _msgEt,
-                AllChMaps().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
+                AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
             var statsGrpLen = (ulong)_w.Position - statsGrpStart;
 
             // ChunkIndex group
             var chunkIdxGrpStart = (ulong)_w.Position;
             foreach (var ci in _chunkIdx)
-                _w.WriteChunkIndex(ci.St, ci.Et, ci.Off, ci.Len, ci.Mio, ci.MioLen, ci.Comp, ci.CompSz, ci.UncompSz);
+                _w.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
             var chunkIdxGrpLen = (ulong)_w.Position - chunkIdxGrpStart;
 
             // MetadataIndex group
             var metaIdxGrpStart = (ulong)_w.Position;
             foreach (var mi in _metaIdx)
-                _w.WriteMetadataIndex(mi.Off, mi.Len, mi.Name);
+                _w.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
             var metaIdxGrpLen = (ulong)_w.Position - metaIdxGrpStart;
 
             // SummaryOffset per group
@@ -208,10 +208,10 @@ namespace Unity.FoxgloveSDK.IO
 
         public void Dispose() { Close(); _w.Dispose(); _chunkBuf.Dispose(); }
 
-        IEnumerable<ChMap> AllChMaps()
+        IEnumerable<ChannelWriteState> AllChannelWriteStates()
         {
             foreach (var m in _chMap.Values) yield return m;
-            foreach (var m in _clientChMap.Values) yield return m;
+            foreach (var m in _clientChannelWriteState.Values) yield return m;
         }
 
         void FlushChunk()
@@ -224,7 +224,7 @@ namespace Unity.FoxgloveSDK.IO
             var chunkLen = (ulong)_w.Position - off;
             var mio = new Dictionary<ushort, ulong>();
             ulong mioTLen = 0;
-            foreach (var map in AllChMaps())
+            foreach (var map in AllChannelWriteStates())
             {
                 if (map.Pending.Count == 0) continue;
                 var start = (ulong)_w.Position;
@@ -234,11 +234,11 @@ namespace Unity.FoxgloveSDK.IO
                 mioTLen += len;
                 map.Pending.Clear();
             }
-            _chunkIdx.Add(new ChunkIdx { St = _chunkSt, Et = _chunkEt, Off = off, Len = chunkLen, Mio = mio, MioLen = mioTLen, Comp = _compression, CompSz = (ulong)compressed.Length, UncompSz = (ulong)raw.Length });
+            _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Length, UncompressedSize = (ulong)raw.Length });
             _chunkCount++; _chunkSt = _chunkEt = 0;
         }
 
-        void Fail(string msg) { _failed = true; _log.LogError($"MCAP: {msg}"); }
+        void Fail(string msg) { _recordingFailed = true; _log.LogError($"MCAP: {msg}"); }
         static string Sha256(string c) { using var h = SHA256.Create(); return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c))); }
 
         ushort GetOrCreateSchema(string sName, string sEnc, string sContent)
@@ -256,7 +256,7 @@ namespace Unity.FoxgloveSDK.IO
             _sKey[key] = sid;
             var schemaData = Encoding.UTF8.GetBytes(sContent ?? "");
             _w.WriteSchema(sid, key.Item1, key.Item2, schemaData);
-            _schemas.Add(new SchemaRec { Id = sid, Name = key.Item1, Enc = key.Item2, Data = schemaData });
+            _schemas.Add(new SchemaRecordState { Id = sid, Name = key.Item1, Encoding = key.Item2, Data = schemaData });
             return sid;
         }
 
@@ -317,10 +317,10 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
-        class ChMap { public ushort McapId; public string Topic; public uint Seq; public List<(ulong, ulong)> Pending = new(); }
-        struct SchemaRec { public ushort Id; public string Name, Enc; public byte[] Data; }
-        struct ChannelRec { public ushort Id, Sid; public string Topic, Enc; public Dictionary<string, string> Meta; }
-        struct ChunkIdx { public ulong St, Et, Off, Len, MioLen, CompSz, UncompSz; public string Comp; public Dictionary<ushort, ulong> Mio; }
-        struct MetaIdx { public ulong Off, Len; public string Name; }
+        class ChannelWriteState { public ushort McapId; public string Topic; public uint Seq; public List<(ulong LogTime, ulong Offset)> Pending = new(); }
+        struct SchemaRecordState { public ushort Id; public string Name, Encoding; public byte[] Data; }
+        struct ChannelRecordState { public ushort Id, SchemaId; public string Topic, Encoding; public Dictionary<string, string> Metadata; }
+        struct ChunkIndexState { public ulong StartTime, EndTime, Offset, Length, MessageIndexLength, CompressedSize, UncompressedSize; public string Compression; public Dictionary<ushort, ulong> MessageIndexOffsets; }
+        struct MetadataIndexState { public ulong Offset, Length; public string Name; }
     }
 }

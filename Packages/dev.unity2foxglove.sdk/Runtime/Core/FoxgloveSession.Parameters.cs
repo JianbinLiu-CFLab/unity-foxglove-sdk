@@ -59,20 +59,20 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var broadcast = new ParameterValues { Parameters = _parameters.GetWireParameters(changedNames) };
                 var broadcastJson = JsonConvert.SerializeObject(broadcast);
-                foreach (var cid in GetParamSubscribersForChanged(changedNames, clientId))
-                    _transport.SendText(cid, broadcastJson);
+                foreach (var subscribedClientId in GetParamSubscribersForChanged(changedNames, clientId))
+                    _transport.SendText(subscribedClientId, broadcastJson);
             }
         }
 
         private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint excludeClient)
         {
-            foreach (var cid in _paramSubs.GetSubscribedClientIds())
+            foreach (var subscribedClientId in _paramSubs.GetSubscribedClientIds())
             {
-                if (cid == excludeClient) continue;
-                foreach (var n in names)
+                if (subscribedClientId == excludeClient) continue;
+                foreach (var parameterName in names)
                 {
-                    if (_paramSubs.IsSubscribed(cid, n))
-                    { yield return cid; break; }
+                    if (_paramSubs.IsSubscribed(subscribedClientId, parameterName))
+                    { yield return subscribedClientId; break; }
                 }
             }
         }
