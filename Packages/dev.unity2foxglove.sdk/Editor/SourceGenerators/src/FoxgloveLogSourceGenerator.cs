@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -62,11 +63,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             ISymbol symbol = null;
             if (ctx.Node is FieldDeclarationSyntax fieldDecl)
             {
-                foreach (var v in fieldDecl.Declaration.Variables)
+                if (fieldDecl.Declaration.Variables.Count > 1)
                 {
-                    symbol = ctx.SemanticModel.GetDeclaredSymbol(v, ct);
-                    if (symbol != null) break;
+                    // Multi-variable field declarations like `[FoxRun] float _a, _b;`
+                    // are ambiguous — report a diagnostic rather than silently skipping.
+                    return MemberData.ForDiagnostic(fieldDecl.GetLocation());
                 }
+                symbol = ctx.SemanticModel.GetDeclaredSymbol(fieldDecl.Declaration.Variables[0], ct);
             }
             else if (ctx.Node is PropertyDeclarationSyntax propDecl)
             {
@@ -120,7 +123,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static void Generate(SourceProductionContext spc, ImmutableArray<MemberData> items)
         {
-            var valid = items.Where(m => m != null).ToList();
+            foreach (var item in items.Where(m => m?.DiagnosticLocation != null))
+                spc.ReportDiagnostic(Diagnostic.Create(Diags.MultiVariableDeclaration, item.DiagnosticLocation));
+
+            var valid = items.Where(m => m != null && m.DiagnosticLocation == null).ToList();
             if (valid.Count == 0) return;
 
             var byClass = valid.GroupBy(m => (m.Ns, m.ClassName));
@@ -190,7 +196,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             for (int i = 0; i < topics.Count; i++)
             {
                 var rate = topicMap[topics[i]].Max(f => f.rate);
-                sb.AppendLine($"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);");
+                sb.AppendLine(FormattableString.Invariant(
+                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);"));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -243,8 +250,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly string Ns, ClassName, MemberName, MemberType;
             public readonly bool IsPartial;
             public readonly TopicEntry[] Topics;
+            public readonly Location DiagnosticLocation;
+            public static MemberData ForDiagnostic(Location location) =>
+                new MemberData("", "", false, "", "", Array.Empty<TopicEntry>(), location);
             public MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t)
-            { Ns = ns; ClassName = cn; IsPartial = partial; MemberName = mn; MemberType = mt; Topics = t; }
+                : this(ns, cn, partial, mn, mt, t, null)
+            {
+            }
+            private MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t, Location diagnosticLocation)
+            { Ns = ns; ClassName = cn; IsPartial = partial; MemberName = mn; MemberType = mt; Topics = t; DiagnosticLocation = diagnosticLocation; }
         }
 
         private sealed class TopicEntry
@@ -269,6 +283,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "FOXRUN003", "Field name collision",
                 "Class '{0}' topic '{1}' has field names that collide after stripping underscores",
                 "FoxRun", DiagnosticSeverity.Warning, true);
+            public static readonly DiagnosticDescriptor MultiVariableDeclaration = new DiagnosticDescriptor(
+                "FOXRUN004", "Multi-variable field declaration",
+                "[FoxRun] on a field declaration with multiple variables is not supported. Split into separate declarations.",
+                "FoxRun", DiagnosticSeverity.Error, true);
         }
     }
 }

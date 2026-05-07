@@ -48,6 +48,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly FoxgloveServiceRegistry _services;
         private readonly ConnectionGraphRegistry _graph = new();
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
+        private readonly object _clientChannelsLock = new();
         public event Action<uint, uint, string, byte[]> OnClientMessage;
 
         private McapRecorder _recorder;
@@ -278,13 +279,31 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientDisconnected(uint clientId)
         {
-            _subscriptions.RemoveClient(clientId);
+            // Snapshot and remove subscriptions before cleaning graph, so we
+            // can remove the subscribed-topic entries using the correct subscriber id.
+            var removedSubs = _subscriptions.RemoveClientPreservingData(clientId);
+            foreach (var (subId, chId) in removedSubs)
+            {
+                var ch = _channels.Get(chId);
+                if (ch != null)
+                    _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{subId}");
+            }
+
             _paramSubs.RemoveClient(clientId);
+            _services.RemoveClientCalls(clientId);
+
+            lock (_clientChannelsLock)
+            {
+                var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
+                foreach (var k in toRemove)
+                {
+                    if (_clientChannels.Remove(k, out var ch))
+                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{k.chId}");
+                }
+            }
+
             _graph.RemoveClient(clientId);
             _graphDirty = true;
-            _services.RemoveClientCalls(clientId);
-            var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
-            foreach (var k in toRemove) _clientChannels.Remove(k);
         }
 
         /// <summary>

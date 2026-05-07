@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestDifferentEncodingIsSkipped();
             TestServerDuplicateTopicWithIncompatibleSchemaIsSkipped();
             TestClientCanReuseAdvertisedTopicSchemaWithoutContent();
+            TestEmptyEncodingEquivalentToJson();
             Console.WriteLine($"Phase 24D: {_passCount} checks passed.");
         }
 
@@ -228,6 +229,51 @@ namespace Unity.FoxgloveSDK.Tests
                 "Client schema name only: reused existing /unity/client_log channel");
             Assert(summary.Statistics.MessageCount == 1,
                 "Client schema name only: client message recorded");
+        }
+
+        /// <summary>
+        /// Empty encoding and explicit "json" encoding must be treated as
+        /// equivalent for topic signature purposes. A server channel registered
+        /// with "json" and a client publish with empty encoding (or vice versa)
+        /// should not be treated as incompatible.
+        /// </summary>
+        static void TestEmptyEncodingEquivalentToJson()
+        {
+            var ms = new MemoryStream();
+            var recorder = new McapRecorder(ms);
+
+            // Server registers with "json"
+            recorder.AddChannel(1, "/enc_test", "json", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
+            recorder.WriteMessage(1, 0, new byte[] { 1 });
+
+            // Client publishes with empty encoding — should reuse, not create conflict
+            recorder.WriteClientMessage(2, 70, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
+                "/enc_test", enc: "", sName: "foxglove.Log", sEnc: "", sContent: "");
+
+            recorder.Close();
+            ms.Position = 0;
+            var summary = new McapReader(ms).ReadSummary();
+            Assert(summary.Channels.Count == 1,
+                "Empty encoding: reused existing channel (empty == json)");
+            Assert(summary.Statistics.MessageCount == 2,
+                "Empty encoding: server and client messages both recorded");
+
+            // Reverse: server empty, client "json"
+            ms = new MemoryStream();
+            recorder = new McapRecorder(ms);
+
+            recorder.AddChannel(1, "/enc_test2", "", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
+
+            recorder.WriteClientMessage(2, 71, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
+                "/enc_test2", enc: "json", sName: "foxglove.Log", sEnc: "", sContent: "");
+
+            recorder.Close();
+            ms.Position = 0;
+            summary = new McapReader(ms).ReadSummary();
+            Assert(summary.Channels.Count == 1,
+                "Empty encoding reverse: reused existing channel (json == empty)");
+            Assert(summary.Channels[0].MessageEncoding == "json",
+                "Empty encoding reverse: stored encoding normalized to json");
         }
     }
 }

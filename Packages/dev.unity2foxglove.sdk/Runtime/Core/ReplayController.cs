@@ -44,6 +44,9 @@ namespace Unity.FoxgloveSDK.Core
 
         public void Enable(string filePath, PlaybackClock playbackClock, bool recordingEnabled, string currentCoordinateMode = "")
         {
+            // Clean any previous replay state to avoid leaking old engine/stream
+            Disable();
+
             if (recordingEnabled)
             {
                 _logger.LogWarning("Recording and Replay cannot both be enabled. Replay disabled.");

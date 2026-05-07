@@ -68,6 +68,25 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Snapshot all (subscriptionId, channelId) pairs for a client and remove them,
+        /// so callers can clean up graph entries before the data is gone.
+        /// </summary>
+        public List<(uint subscriptionId, uint channelId)> RemoveClientPreservingData(uint clientId)
+        {
+            lock (_lock)
+            {
+                var result = new List<(uint, uint)>();
+                if (_clients.TryGetValue(clientId, out var subs))
+                {
+                    foreach (var (subId, chId) in subs)
+                        result.Add((subId, chId));
+                    _clients.Remove(clientId);
+                }
+                return result;
+            }
+        }
+
         /// <summary>Remove all subscriptions targeting a channel (e.g. on unadvertise).</summary>
         public void RemoveChannel(uint channelId)
         {

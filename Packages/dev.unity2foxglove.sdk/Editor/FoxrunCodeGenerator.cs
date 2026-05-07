@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -155,7 +156,7 @@ namespace Unity.FoxgloveSDK.Editor
         static List<MemberData> ScanType(Type type)
         {
             var result = new List<MemberData>();
-            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly;
             var ns = type.Namespace ?? "";
             var cn = type.Name;
 
@@ -229,7 +230,8 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var rate = topicMap[topics[i]].Max(f => f.RateHz);
-                sb.AppendLine($"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);");
+                sb.AppendLine(FormattableString.Invariant(
+                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);"));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");

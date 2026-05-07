@@ -334,6 +334,8 @@ namespace Unity.FoxgloveSDK.Components
             if (!IsRunning) return;
 
             var transport = _runtime.Session?.Transport;
+            // Unsubscribe transport events and client message forwarder before
+            // stopping the runtime, so stop/cleanup callbacks don't fire handlers.
             if (transport != null)
             {
                 transport.OnClientConnected -= EnqueueConnect;
@@ -344,12 +346,15 @@ namespace Unity.FoxgloveSDK.Components
                 _runtime.Session.OnClientMessage -= _clientMessageForwarder;
                 _clientMessageForwarder = null;
             }
-            _runtime.Stop();
+            // Replay forwarder is also cleaned up inside _runtime.Stop(),
+            // but we remove it here first so no replay messages slip through
+            // during shutdown.
             if (_replayForwarder != null)
             {
                 _runtime.OnReplayMessage -= _replayForwarder;
                 _replayForwarder = null;
             }
+            _runtime.Stop();
             _channelCache.Clear();
             _nextChannelId = 1;
             RestoreLivePublishers();

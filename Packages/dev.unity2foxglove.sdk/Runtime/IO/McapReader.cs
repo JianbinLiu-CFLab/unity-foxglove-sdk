@@ -96,10 +96,14 @@ namespace Unity.FoxgloveSDK.IO
 
         public (byte opcode, byte[] content) ReadOneRecord(ulong sizeLimit = DefaultRecordSizeLimit)
         {
-            var opcode = (byte)_stream.ReadByte();
+            var opcodeRaw = _stream.ReadByte();
+            if (opcodeRaw < 0) throw new EndOfStreamException("MCAP stream ended before reading record opcode");
+            var opcode = (byte)opcodeRaw;
             var contentLength = ReadU64();
             if (contentLength > sizeLimit)
                 throw new InvalidDataException($"Record content length {contentLength} exceeds limit {sizeLimit}");
+            if (contentLength > int.MaxValue)
+                throw new InvalidDataException($"Record content length {contentLength} exceeds int.MaxValue");
             var content = new byte[contentLength];
             ReadExact(content, 0, (int)contentLength);
             return (opcode, content);
