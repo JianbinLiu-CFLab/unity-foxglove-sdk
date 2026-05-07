@@ -82,7 +82,7 @@ Click the **Play** button in the Unity Editor toolbar (or press `Ctrl+P`). The s
 Import the pre-configured layout file to restore all panels and views with one click.
 
 1. In Foxglove Desktop, click the top menu **Layout** > **Import from file...**
-2. Select: `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/FoxgloveLayout.json`
+2. Select: `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/FoxgloveSimpleLayout.json`
 3. (If that path is not visible, use the alternative: open the .json file in a text editor, copy its contents, then **Layout > Import > Paste layout JSON**)
 
 ## Expected panels
