@@ -46,8 +46,15 @@ namespace Unity.FoxgloveSDK.IO
         private bool _closed, _recordingFailed;
         private readonly int _chunkSz;
 
+        /// <summary>
+        /// Default chunk size in bytes (1 MiB).
+        /// </summary>
         public const int DefaultChunkSizeBytes = 1024 * 1024;
 
+        /// <summary>
+        /// Creates a new MCAP recorder writing to the given stream.
+        /// Optional compression controls per-chunk compression (e.g. "zstd").
+        /// </summary>
         public McapRecorder(Stream stream, IFoxgloveLogger logger = null, int chunkSizeBytes = DefaultChunkSizeBytes, string compression = "")
         {
             _w = new McapWriter(stream ?? throw new ArgumentNullException(nameof(stream)), leaveOpen: true);
@@ -58,8 +65,14 @@ namespace Unity.FoxgloveSDK.IO
             _w.WriteHeader("", "unity-foxglove-sdk");
         }
 
+        /// <summary>
+        /// Coordinate mode metadata value applied to new channels (e.g. "ros2", "fixed_frame").
+        /// </summary>
         public string CoordinateMode { get; set; }
 
+        /// <summary>
+        /// Register a server-side channel and write its MCAP channel record immediately.
+        /// </summary>
         public void AddChannel(uint fId, string topic, string enc, string sName, string sEnc, string sContent)
         {
             if (_recordingFailed) return;
@@ -87,6 +100,10 @@ namespace Unity.FoxgloveSDK.IO
             RecordTopicSignature(topic, normalizedEnc, sName, sEnc, sContent);
         }
 
+        /// <summary>
+        /// Write a client-published message to the current chunk, lazily creating
+        /// the channel record on first use.
+        /// </summary>
         public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic,
             string enc = "json", string sName = "", string sEnc = "", string sContent = "")
         {
@@ -127,6 +144,7 @@ namespace Unity.FoxgloveSDK.IO
             WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
+        // ── Message Writing ──
         private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
             if (_recordingFailed) return;
@@ -152,6 +170,9 @@ namespace Unity.FoxgloveSDK.IO
             if (_chunkBuf.Length >= _chunkSz) FlushChunk();
         }
 
+        /// <summary>
+        /// Write a standalone metadata record to the MCAP file.
+        /// </summary>
         public void WriteMetadata(string name, string jsonValue)
         {
             if (_recordingFailed) return;
@@ -162,12 +183,20 @@ namespace Unity.FoxgloveSDK.IO
             _metadataCount++;
         }
 
+        /// <summary>
+        /// Write a server-side message by Foxglove channel ID to the current chunk.
+        /// </summary>
         public void WriteMessage(uint fId, ulong logNs, byte[] payload)
         {
             if (_recordingFailed || !_chMap.TryGetValue(fId, out var map)) return;
             WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
+        // ── Lifecycle ──
+        /// <summary>
+        /// Finalize the MCAP file: flush the last chunk, write summary groups,
+        /// footer, and magic suffix.
+        /// </summary>
         public void Close()
         {
             if (_closed || _recordingFailed) return;
@@ -218,8 +247,12 @@ namespace Unity.FoxgloveSDK.IO
             _w.Flush();
         }
 
+        /// <summary>
+        /// Dispose the recorder and underlying writer and buffer streams.
+        /// </summary>
         public void Dispose() { Close(); _w.Dispose(); _chunkBuf.Dispose(); }
 
+        // ── Helpers ──
         IEnumerable<ChannelWriteState> AllChannelWriteStates()
         {
             var seen = new HashSet<ushort>();
@@ -232,6 +265,10 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        /// <summary>
+        /// Write the accumulated chunk buffer to the MCAP stream, then flush
+        /// per-channel message indexes following the chunk.
+        /// </summary>
         void FlushChunk()
         {
             if (_chunkBuf.Length == 0) return;
@@ -256,9 +293,17 @@ namespace Unity.FoxgloveSDK.IO
             _chunkCount++; _chunkSt = _chunkEt = 0;
         }
 
+        /// <summary>
+        /// Mark recording as permanently failed and log an error.
+        /// </summary>
         void Fail(string msg) { _recordingFailed = true; _log.LogError($"MCAP: {msg}"); }
+
+        /// <summary>
+        /// Compute the Base64 SHA-256 hash of a string.
+        /// </summary>
         static string Sha256(string c) { using var h = SHA256.Create(); return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c))); }
 
+        // ── Schema Management ──
         ushort GetOrCreateSchema(string sName, string sEnc, string sContent)
         {
             if (string.IsNullOrEmpty(sName) && string.IsNullOrEmpty(sEnc) && string.IsNullOrEmpty(sContent))
@@ -278,11 +323,19 @@ namespace Unity.FoxgloveSDK.IO
             return sid;
         }
 
+        /// <summary>
+        /// Immutable signature combining encoding, schema name, schema encoding,
+        /// and content hash. Used to detect incompatible topic schema conflicts.
+        /// </summary>
         struct TopicSignature : IEquatable<TopicSignature>
         {
+            /// <summary>Message encoding (e.g. "json", "protobuf").</summary>
             public string Encoding;
+            /// <summary>Schema name.</summary>
             public string SchemaName;
+            /// <summary>Schema encoding (e.g. "jsonschema").</summary>
             public string SchemaEncoding;
+            /// <summary>Hex-encoded SHA-256 hash of schema content.</summary>
             public string Hash;
 
             public bool Equals(TopicSignature other) =>
@@ -298,6 +351,10 @@ namespace Unity.FoxgloveSDK.IO
                 HashCode.Combine(Encoding, SchemaName, SchemaEncoding, Hash);
         }
 
+        /// <summary>
+        /// Compute a hex-encoded SHA-256 hash from schema name, encoding, and
+        /// content, separated by null characters.
+        /// </summary>
         static string ComputeSchemaHash(string schemaContent, string schemaName, string schemaEncoding)
         {
             // For schemaless channels, the signature components are all empty.
@@ -309,9 +366,13 @@ namespace Unity.FoxgloveSDK.IO
             return BitConverter.ToString(bytes).Replace("-", "");
         }
 
+        /// <summary>
+        /// Normalize an encoding string to a default of "json" when empty or null.
+        /// </summary>
         static string NormalizeMessageEncoding(string enc) =>
             string.IsNullOrEmpty(enc) ? "json" : enc;
 
+        // ── Channel Routing ──
         bool TryReuseExistingTopicChannel(string topic, string enc, string sName, string sEnc,
             string sContent, out ChannelWriteState state)
         {
@@ -343,6 +404,10 @@ namespace Unity.FoxgloveSDK.IO
             return false;
         }
 
+        /// <summary>
+        /// Check whether an incoming topic signature conflicts with a previously
+        /// recorded signature for the same topic.
+        /// </summary>
         bool WouldMixTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
         {
             if (string.IsNullOrEmpty(topic)) return false;
@@ -356,6 +421,10 @@ namespace Unity.FoxgloveSDK.IO
             return _topicSignatures.TryGetValue(topic, out var existing) && !existing.Equals(sig);
         }
 
+        /// <summary>
+        /// Persist the topic signature on first use so future channels for the
+        /// same topic can be validated for compatibility.
+        /// </summary>
         void RecordTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
         {
             if (string.IsNullOrEmpty(topic)) return;
@@ -369,10 +438,92 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
-        class ChannelWriteState { public ushort McapId; public string Topic; public uint Seq; public List<(ulong LogTime, ulong Offset)> Pending = new(); }
-        struct SchemaRecordState { public ushort Id; public string Name, Encoding; public byte[] Data; }
-        struct ChannelRecordState { public ushort Id, SchemaId; public string Topic, Encoding; public Dictionary<string, string> Metadata; }
-        struct ChunkIndexState { public ulong StartTime, EndTime, Offset, Length, MessageIndexLength, CompressedSize, UncompressedSize; public string Compression; public Dictionary<ushort, ulong> MessageIndexOffsets; }
-        struct MetadataIndexState { public ulong Offset, Length; public string Name; }
+        // ── Nested State Types ──
+
+        /// <summary>
+        /// Per-channel write accumulator tracking MCAP channel ID, sequence
+        /// number, and pending index entries for the current chunk.
+        /// </summary>
+        class ChannelWriteState
+        {
+            /// <summary>MCAP channel ID.</summary>
+            public ushort McapId;
+            /// <summary>Topic name.</summary>
+            public string Topic;
+            /// <summary>Per-channel message sequence number.</summary>
+            public uint Seq;
+            /// <summary>Pending (log-time, chunk-offset) entries for the chunk message index.</summary>
+            public List<(ulong LogTime, ulong Offset)> Pending = new();
+        }
+
+        /// <summary>
+        /// Schema record captured for the summary section.
+        /// </summary>
+        struct SchemaRecordState
+        {
+            /// <summary>Schema ID.</summary>
+            public ushort Id;
+            /// <summary>Schema name.</summary>
+            public string Name;
+            /// <summary>Schema encoding (e.g. "jsonschema", "protobuf").</summary>
+            public string Encoding;
+            /// <summary>Raw schema content bytes.</summary>
+            public byte[] Data;
+        }
+
+        /// <summary>
+        /// Channel record captured for the summary section.
+        /// </summary>
+        struct ChannelRecordState
+        {
+            /// <summary>Channel ID.</summary>
+            public ushort Id;
+            /// <summary>Referenced schema ID.</summary>
+            public ushort SchemaId;
+            /// <summary>Topic name.</summary>
+            public string Topic;
+            /// <summary>Message encoding string.</summary>
+            public string Encoding;
+            /// <summary>Optional metadata key-value pairs.</summary>
+            public Dictionary<string, string> Metadata;
+        }
+
+        /// <summary>
+        /// Chunk index entry backed up for the summary section.
+        /// </summary>
+        struct ChunkIndexState
+        {
+            /// <summary>Earliest log time in the chunk.</summary>
+            public ulong StartTime;
+            /// <summary>Latest log time in the chunk.</summary>
+            public ulong EndTime;
+            /// <summary>File offset of the chunk record.</summary>
+            public ulong Offset;
+            /// <summary>Chunk record length in bytes.</summary>
+            public ulong Length;
+            /// <summary>Total size of the message index records following the chunk.</summary>
+            public ulong MessageIndexLength;
+            /// <summary>Compressed chunk data size in bytes.</summary>
+            public ulong CompressedSize;
+            /// <summary>Uncompressed chunk data size in bytes.</summary>
+            public ulong UncompressedSize;
+            /// <summary>Compression algorithm name (empty for none).</summary>
+            public string Compression;
+            /// <summary>Per-channel offset map into the message index records.</summary>
+            public Dictionary<ushort, ulong> MessageIndexOffsets;
+        }
+
+        /// <summary>
+        /// Metadata index entry backed up for the summary section.
+        /// </summary>
+        struct MetadataIndexState
+        {
+            /// <summary>File offset of the metadata record.</summary>
+            public ulong Offset;
+            /// <summary>Metadata record byte length.</summary>
+            public ulong Length;
+            /// <summary>Metadata name.</summary>
+            public string Name;
+        }
     }
 }

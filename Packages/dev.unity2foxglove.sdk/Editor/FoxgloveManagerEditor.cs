@@ -11,9 +11,17 @@ using UnityEditor;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Custom Inspector for <c>FoxgloveManager</c> that renders Browse buttons
+    /// for file/folder path fields alongside the default property drawer.
+    /// </summary>
     [CustomEditor(typeof(Components.FoxgloveManager))]
     public class FoxgloveManagerEditor : UnityEditor.Editor
     {
+        /// <summary>
+        /// Draws the default Inspector with Browse buttons for
+        /// <c>_replayFilePath</c> and <c>_recordingDirectory</c> fields.
+        /// </summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -36,6 +44,11 @@ namespace Unity.FoxgloveSDK.Editor
             serializedObject.ApplyModifiedProperties();
         }
 
+        /// <summary>
+        /// Renders a property field with a "..." button that opens a file or folder picker.
+        /// <para>On selection, converts the absolute path to a project-relative path and
+        /// applies it to the serialized property.</para>
+        /// </summary>
         internal static void DrawPathBrowse(SerializedProperty prop, string title, string extension, bool isFile, string defaultDir)
         {
             EditorGUILayout.BeginHorizontal();
@@ -66,11 +79,26 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        /// <summary>
+        /// Returns the project root directory (one level above <c>Assets</c>).
+        /// </summary>
         internal static string GetDefaultDir()
         {
             return Path.GetDirectoryName(Application.dataPath) ?? Application.dataPath;
         }
 
+        /// <summary>
+        /// Resolves the best starting directory for the file/folder picker.
+        /// <list><item>
+        /// <description>If <c>currentValue</c> is non-empty and resolves to an existing directory,
+        /// that directory is used.</description>
+        /// </item><item>
+        /// <description>For folder pickers, falls back to a project-level
+        /// <c>Recordings/</c> directory if it exists.</description>
+        /// </item><item>
+        /// <description>Final fallback is the project root.</description>
+        /// </item></list>
+        /// </summary>
         internal static string GetSmartDefault(string currentValue, bool isFile)
         {
             if (!string.IsNullOrEmpty(currentValue))
@@ -94,6 +122,10 @@ namespace Unity.FoxgloveSDK.Editor
             return GetDefaultDir();
         }
 
+        /// <summary>
+        /// Converts an absolute path to a project-relative path if it resides
+        /// under the project root. Returns the absolute path unchanged otherwise.
+        /// </summary>
         internal static string MakeRelative(string absolute)
         {
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
@@ -106,9 +138,17 @@ namespace Unity.FoxgloveSDK.Editor
         }
     }
 
+    /// <summary>
+    /// Property drawer for <c>AssetRootDefinition</c> that renders a foldout with
+    /// URI prefix, local root (with Browse button), and max size fields.
+    /// </summary>
     [CustomPropertyDrawer(typeof(Components.AssetRootDefinition))]
     public class AssetRootDefinitionDrawer : PropertyDrawer
     {
+        /// <summary>
+        /// Draws a foldout containing <c>uriPrefix</c>, <c>localRoot</c> (with Browse),
+        /// and <c>maxMB</c> properties.
+        /// </summary>
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             EditorGUI.BeginProperty(position, label, property);
@@ -153,6 +193,10 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUI.EndProperty();
         }
 
+        /// <summary>
+        /// Returns the height of the property drawer: a single line when collapsed,
+        /// or the height of the expanded foldout with 3 child fields otherwise.
+        /// </summary>
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
             if (!property.isExpanded)

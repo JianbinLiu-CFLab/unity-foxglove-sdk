@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates MCAP mixed-schema guards, client publish schema dedup, encoding normalization (empty == json), and duplicate topic rejection.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,6 +23,12 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 24D tests covering MCAP
+        /// mixed-schema guards, client publish schema dedup,
+        /// encoding normalization (empty == json), and duplicate
+        /// topic rejection.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 24D Tests ---");

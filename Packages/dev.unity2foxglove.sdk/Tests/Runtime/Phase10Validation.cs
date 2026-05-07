@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates MCAP magic bytes, record roundtrips (header, schema, channel, message, chunk), full pipeline, recorder operations, dual-write to session, and close idempotency.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -19,6 +25,12 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 10 tests covering MCAP magic
+        /// bytes, record roundtrips (header, schema, channel, message,
+        /// chunk), full pipeline, recorder operations, dual-write to
+        /// session, and close idempotency.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 10 Tests ---");
@@ -41,6 +53,10 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 10: {_passCount} checks passed.\n");
         }
 
+        /// <summary>
+        /// Verifies the MCAP magic bytes are 8 bytes starting with
+        /// <c>0x89 'M'</c>.
+        /// </summary>
         private static void TestMagicBytes()
         {
             var ms = new MemoryStream();
@@ -51,6 +67,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(data[0] == 0x89 && data[1] == (byte)'M', "Magic prefix correct");
         }
 
+        /// <summary>
+        /// Produces a minimal valid MCAP file and verifies it has
+        /// leading/trailing magic, header, DataEnd, and footer records.
+        /// </summary>
         private static void TestMinimalValidFile()
         {
             var ms = new MemoryStream();
@@ -71,6 +91,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(ops.Contains(0x02), "Has Footer");
         }
 
+        /// <summary>
+        /// Writes a header record and verifies profile and library fields
+        /// survive roundtrip through parse and decode.
+        /// </summary>
         private static void TestHeaderRoundtrip()
         {
             var ms = new MemoryStream();
@@ -85,6 +109,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(lib == "test-lib", "library roundtrip");
         }
 
+        /// <summary>
+        /// Writes a schema record and verifies id, name, and encoding
+        /// survive roundtrip.
+        /// </summary>
         private static void TestSchemaRoundtrip()
         {
             var ms = new MemoryStream();
@@ -98,6 +126,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(enc == "jsonschema", "schema enc");
         }
 
+        /// <summary>
+        /// Writes a channel record and verifies id, schema_id, and topic
+        /// survive roundtrip.
+        /// </summary>
         private static void TestChannelRoundtrip()
         {
             var ms = new MemoryStream();
@@ -111,6 +143,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(topic == "/topic", "topic roundtrip");
         }
 
+        /// <summary>
+        /// Writes a message record with known payload and verifies
+        /// channel id, sequence, timestamps, and payload survive
+        /// roundtrip.
+        /// </summary>
         private static void TestMessageRoundtrip()
         {
             var ms = new MemoryStream();
@@ -124,6 +161,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(Encoding.UTF8.GetString(pl) == "hello", "payload");
         }
 
+        /// <summary>
+        /// Writes a chunk record containing a nested message and verifies
+        /// chunk start/end times and inner records are parsed correctly.
+        /// </summary>
         private static void TestChunkRoundtrip()
         {
             var innerMs = new MemoryStream();
@@ -142,6 +183,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(recs.Length > 0, "chunk has inner records");
         }
 
+        /// <summary>
+        /// Produces a complete MCAP file through the full pipeline and
+        /// verifies leading/trailing magic and at least 5 records.
+        /// </summary>
         private static void TestFullPipeline()
         {
             var ms = new MemoryStream();
@@ -160,6 +205,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(records.Count >= 5, $"Full pipeline has >=5 records (got {records.Count})");
         }
 
+        /// <summary>
+        /// A recorder opened and immediately closed must produce a
+        /// non-empty output stream with valid MCAP structure.
+        /// </summary>
         private static void TestRecorderMinimal()
         {
             var ms = new MemoryStream();
@@ -168,6 +217,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(ms.Length > 0, "Recorder produces output");
         }
 
+        /// <summary>
+        /// Adds a single channel via the recorder and verifies the
+        /// output contains a channel record.
+        /// </summary>
         private static void TestRecorderSingleChannel()
         {
             var ms = new MemoryStream();
@@ -179,6 +232,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(records.Any(x => x.Opcode == 0x04), "Has channel record");
         }
 
+        /// <summary>
+        /// Writes 5 messages through the recorder and verifies chunk
+        /// records are produced in the output.
+        /// </summary>
         private static void TestRecorderMultipleMessages()
         {
             var ms = new MemoryStream();
@@ -201,6 +258,10 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        /// <summary>
+        /// Two channels using the same schema must produce at most one
+        /// schema record in the data section (dedup test).
+        /// </summary>
         private static void TestRecorderSchemaDedup()
         {
             var ms = new MemoryStream();
@@ -217,6 +278,10 @@ namespace Unity.FoxgloveSDK.Tests
                 $"Schema dedup: 1 or 2 schemas (got {schemas.Count})");
         }
 
+        /// <summary>
+        /// Publish to a session with an attached recorder must produce
+        /// messages in the MCAP output (dual-write test).
+        /// </summary>
         private static void TestDualWrite()
         {
             var ms = new MemoryStream();
@@ -253,6 +318,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(found >= 1, $"Dual write: {found} messages in MCAP");
         }
 
+        /// <summary>
+        /// Calling Close multiple times must be a safe no-op on
+        /// subsequent calls.
+        /// </summary>
         private static void TestCloseIdempotent()
         {
             var ms = new MemoryStream();
@@ -262,6 +331,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(true, "Close is idempotent");
         }
 
+        /// <summary>
+        /// Minimal fake transport for Phase 10 dual-write test; no-op
+        /// implementation of all interface methods.
+        /// </summary>
         private sealed class Phase10FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;

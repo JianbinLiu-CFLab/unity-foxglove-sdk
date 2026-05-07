@@ -28,10 +28,15 @@ namespace Unity.FoxgloveSDK.Transport
     /// </summary>
     public class ManagedWsBackend : IFoxgloveTransport, IDisposable
     {
+        /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
+        /// <summary>Cancellation token source to stop accept/receive loops.</summary>
         private CancellationTokenSource _cts;
+        /// <summary>Active WebSocket connections keyed by client ID.</summary>
         private readonly ConcurrentDictionary<uint, WsConnection> _clients = new ConcurrentDictionary<uint, WsConnection>();
+        /// <summary>Logger instance for diagnostic output.</summary>
         private readonly IFoxgloveLogger _logger;
+        /// <summary>Monotonically increasing counter for assigning client IDs.</summary>
         private int _nextClientId;
 
         public ManagedWsBackend(IFoxgloveLogger logger = null)
@@ -39,13 +44,19 @@ namespace Unity.FoxgloveSDK.Transport
             _logger = logger ?? new ConsoleLogger();
         }
 
+        /// <summary>Whether the TCP listener is actively accepting connections.</summary>
         public bool IsRunning => _listener != null;
 
+        /// <summary>Fires when a new WebSocket client completes the handshake.</summary>
         public event Action<uint> OnClientConnected;
+        /// <summary>Fires when a client disconnects or is forcefully removed.</summary>
         public event Action<uint> OnClientDisconnected;
+        /// <summary>Fires when a UTF-8 text message is received from a client.</summary>
         public event Action<uint, string> OnTextReceived;
+        /// <summary>Fires when a binary message is received from a client.</summary>
         public event Action<uint, byte[]> OnBinaryReceived;
 
+        /// <summary>Bind the TCP listener to <c>host</c>:<c>port</c> and begin accepting connections.</summary>
         public void Start(string host, int port)
         {
             if (_listener != null)
@@ -65,6 +76,7 @@ namespace Unity.FoxgloveSDK.Transport
             _ = Task.Run(() => AcceptLoop(_cts.Token));
         }
 
+        /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
         public void Stop()
         {
             _cts?.Cancel();
@@ -75,6 +87,7 @@ namespace Unity.FoxgloveSDK.Transport
             _listener = null;
         }
 
+        /// <summary>Send a UTF-8 text frame to a specific client.</summary>
         public void SendText(uint clientId, string json)
         {
             if (!_clients.TryGetValue(clientId, out var conn)) return;
@@ -83,6 +96,7 @@ namespace Unity.FoxgloveSDK.Transport
             catch (Exception ex) { _logger.LogError($"SendText error: {ex.Message}"); }
         }
 
+        /// <summary>Send a binary frame to a specific client.</summary>
         public void SendBinary(uint clientId, byte[] data)
         {
             if (!_clients.TryGetValue(clientId, out var conn)) return;
@@ -91,6 +105,7 @@ namespace Unity.FoxgloveSDK.Transport
             catch (Exception ex) { _logger.LogError($"SendBinary error: {ex.Message}"); }
         }
 
+        /// <summary>Send a UTF-8 text frame to every connected client.</summary>
         public void BroadcastText(string json)
         {
             foreach (var (id, conn) in _clients.ToArray())
@@ -100,6 +115,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        /// <summary>Send a binary frame to every connected client.</summary>
         public void BroadcastBinary(byte[] data)
         {
             foreach (var (id, conn) in _clients.ToArray())
@@ -109,6 +125,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        /// <summary>Stop the server and release the cancellation token source.</summary>
         public void Dispose()
         {
             Stop();
@@ -118,6 +135,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         // ── Internal ──
 
+        /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
         private async Task AcceptLoop(CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
@@ -136,6 +154,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        /// <summary>Perform WebSocket handshake, register the connection, and enter the receive loop.</summary>
         private void HandleClient(TcpClient tcpClient, CancellationToken ct)
         {
             try
@@ -169,6 +188,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         // ── WebSocket Handshake (RFC 6455 §4) ──
 
+        /// <summary>Parse HTTP upgrade request and complete the WebSocket opening handshake per RFC 6455.</summary>
         private (bool accepted, string subprotocol) Handshake(NetworkStream stream)
         {
             var requestLine = ReadLineRaw(stream);
@@ -241,6 +261,7 @@ namespace Unity.FoxgloveSDK.Transport
             return (true, selected);
         }
 
+        /// <summary>Compute the Sec-WebSocket-Accept response value per RFC 6455 §4.2.2.</summary>
         private static string ComputeAcceptKey(string wsKey)
         {
             const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -249,7 +270,7 @@ namespace Unity.FoxgloveSDK.Transport
             return Convert.ToBase64String(hash);
         }
 
-        // Read one line from the stream byte-by-byte to avoid StreamReader buffering.
+        /// <summary>Read one line byte-by-byte, avoiding StreamReader buffering that could steal frame data.</summary>
         private static string ReadLineRaw(NetworkStream stream)
         {
             var sb = new StringBuilder();
@@ -277,6 +298,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         // ── Receive Loop ──
 
+        /// <summary>Continuously read frames, dispatch text/binary/close/ping, until the stream ends or is canceled.</summary>
         private void ReceiveLoop(uint clientId, WsConnection conn, CancellationToken ct)
         {
             try
@@ -321,6 +343,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        /// <summary>Remove the client from the dictionary, fire the disconnected event, and dispose the connection.</summary>
         private void DisconnectClient(uint clientId, WsConnection conn)
         {
             if (!_clients.TryRemove(clientId, out _)) return;
@@ -330,44 +353,62 @@ namespace Unity.FoxgloveSDK.Transport
 
         // ── WebSocket Connection ──
 
+        /// <summary>
+        /// Per-connection framing layer: send/receive WebSocket frames over a single TCP stream.
+        /// Thread-safe for concurrent sends via <c>_sendLock</c>.
+        /// </summary>
         private sealed class WsConnection : IDisposable
         {
+            /// <summary>Underlying TCP network stream.</summary>
             private readonly NetworkStream _stream;
+            /// <summary>Lock to serialize frame writes (RFC 6455 requires no interleaving).</summary>
             private readonly object _sendLock = new object();
 
-            // RFC 6455 opcodes
+            /// <summary>RFC 6455 opcode for text frames.</summary>
             private const byte OpText = 0x1;
+            /// <summary>RFC 6455 opcode for binary frames.</summary>
             private const byte OpBinary = 0x2;
+            /// <summary>RFC 6455 opcode for close frames.</summary>
             private const byte OpClose = 0x8;
+            /// <summary>RFC 6455 opcode for ping frames.</summary>
             private const byte OpPing = 0x9;
+            /// <summary>RFC 6455 opcode for pong frames.</summary>
             private const byte OpPong = 0xA;
+            /// <summary>FIN bit mask in the first byte of a frame header.</summary>
             private const byte FinBit = 0x80;
 
+            /// <summary>Maximum allowable payload size in bytes (64 MiB).</summary>
             internal const int MaxPayloadBytes = 64 * 1024 * 1024;
 
+            /// <summary>Create a connection on the given network stream.</summary>
             public WsConnection(NetworkStream stream) => _stream = stream;
 
+            /// <summary>Encode the string as UTF-8 and send it in a text frame.</summary>
             public void SendText(string json)
             {
                 var payload = Encoding.UTF8.GetBytes(json);
                 SendFrame(OpText, payload);
             }
 
+            /// <summary>Send raw bytes in a binary frame.</summary>
             public void SendBinary(byte[] data)
             {
                 SendFrame(OpBinary, data);
             }
 
+            /// <summary>Send a close frame with an empty payload to initiate graceful shutdown.</summary>
             public void SendClose()
             {
                 try { SendFrame(OpClose, Array.Empty<byte>()); } catch { }
             }
 
+            /// <summary>Echo back a pong frame with the given payload in response to a ping.</summary>
             public void SendPong(byte[] data)
             {
                 SendFrame(OpPong, data);
             }
 
+            /// <summary>Build and write a complete WebSocket frame (FIN + opcode + length-prefixed payload).</summary>
             private void SendFrame(byte opcode, byte[] payload)
             {
                 lock (_sendLock)
@@ -397,6 +438,10 @@ namespace Unity.FoxgloveSDK.Transport
                 }
             }
 
+            /// <summary>
+            /// Read and unmask a complete WebSocket frame from the stream.
+            /// Returns <c>null</c> on stream closure, oversized payload, or protocol error.
+            /// </summary>
             public WsFrame ReadFrame()
             {
                 var header = new byte[2];
@@ -451,6 +496,7 @@ namespace Unity.FoxgloveSDK.Transport
                 };
             }
 
+            /// <summary>Read exactly <c>count</c> bytes into the buffer, returning <c>false</c> if the stream ends early.</summary>
             private bool ReadExact(byte[] buffer, int offset, int count)
             {
                 while (count > 0)
@@ -463,6 +509,7 @@ namespace Unity.FoxgloveSDK.Transport
                 return true;
             }
 
+            /// <summary>Close and dispose the underlying network stream.</summary>
             public void Dispose()
             {
                 try { _stream.Close(); } catch { }
@@ -470,20 +517,30 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        /// <summary>Decoded WebSocket frame: FIN flag, opcode, and unmasked payload.</summary>
         internal sealed class WsFrame
         {
+            /// <summary>Whether this is the final fragment of a message.</summary>
             public bool Fin;
+            /// <summary>WebSocket opcode (text, binary, close, ping, pong).</summary>
             public byte Opcode;
+            /// <summary>Unmasked payload data.</summary>
             public byte[] Payload;
         }
     }
 
+    /// <summary>RFC 6455 WebSocket opcode constants.</summary>
     internal static class WsOpcode
     {
+        /// <summary>Text frame opcode (0x1).</summary>
         public const byte Text = 0x1;
+        /// <summary>Binary frame opcode (0x2).</summary>
         public const byte Binary = 0x2;
+        /// <summary>Close frame opcode (0x8).</summary>
         public const byte Close = 0x8;
+        /// <summary>Ping frame opcode (0x9).</summary>
         public const byte Ping = 0x9;
+        /// <summary>Pong frame opcode (0xA).</summary>
         public const byte Pong = 0xA;
     }
 }

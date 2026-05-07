@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Samples/FullDemoVisualization
+// Purpose: Registers demo Parameters, Services, and wires Foxglove client message logging for manual verification.
+
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -21,6 +27,11 @@ public class FoxgloveDemoSetup : MonoBehaviour
     private SynchronizationContext _unityContext;
     private FoxgloveSceneCubePublisher _scenePublisher;
 
+    /// <summary>
+    /// Initializes parameters <c>/cube/color</c> and <c>/cube/scale</c>,
+    /// registers the <c>/cube/reset_pose</c> service, hooks up
+    /// client-message logging, and wires parameter-change callbacks.
+    /// </summary>
     private void Start()
     {
         _unityContext = SynchronizationContext.Current;
@@ -76,6 +87,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
             ApplySceneColorFromParameter(color);
     }
 
+    /// <summary>
+    /// Unsubscribes parameter-change and color-change callbacks to
+    /// prevent leaks after destruction.
+    /// </summary>
     private void OnDestroy()
     {
         if (_manager?.Runtime != null)
@@ -84,6 +99,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
             _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
     }
 
+    /// <summary>
+    /// Each frame, reads <c>/cube/scale</c> from the parameter store and
+    /// applies it to the cube's local scale when changed.
+    /// </summary>
     private void Update()
     {
         if (_manager?.Runtime?.Session == null) return;
@@ -107,6 +126,9 @@ public class FoxgloveDemoSetup : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Locates the cube GameObject by name or Player tag.
+    /// </summary>
     private GameObject FindCube()
     {
         var cube = GameObject.Find("Cube");
@@ -115,12 +137,21 @@ public class FoxgloveDemoSetup : MonoBehaviour
     }
 
     // Called by MouseDragCube when scroll changes scale.
+    /// <summary>
+    /// Called by <c>MouseDragCube</c> when scroll changes scale; pushes
+    /// the new scale value to the Foxglove parameter store.
+    /// </summary>
     public void SyncScaleToParameter(float s)
     {
         _manager?.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(s));
         _lastAppliedScale = s;
     }
 
+    /// <summary>
+    /// Handles Foxglove parameter changes for <c>/cube/color</c> by
+    /// delegating to the main thread via <c>SynchronizationContext</c>
+    /// and applying the scene color.
+    /// </summary>
     private void OnParameterChanged(string name, JToken value, string type)
     {
         if (name != "/cube/color" || !TryReadColor(value, out var color))
@@ -132,6 +163,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
             ApplySceneColorFromParameter(color);
     }
 
+    /// <summary>
+    /// When the scene cube color changes locally, syncs it back to the
+    /// Foxglove <c>/cube/color</c> parameter (re-entrancy guarded).
+    /// </summary>
     private void OnSceneCubeColorChanged(Color color)
     {
         if (_syncingColor)
@@ -141,6 +176,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
         _manager?.Runtime?.TrySetParameter("/cube/color", new JArray(color.r, color.g, color.b, color.a));
     }
 
+    /// <summary>
+    /// Applies a color to the scene cube publisher, guarding against
+    /// duplicate application and re-entrancy.
+    /// </summary>
     private void ApplySceneColorFromParameter(Color color)
     {
         if (color == _lastAppliedColor)
@@ -161,6 +200,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
         finally { _syncingColor = false; }
     }
 
+    /// <summary>
+    /// Attempts to parse a Foxglove parameter value as a Unity Color
+    /// from a JArray with 3 or 4 components.
+    /// </summary>
     private static bool TryReadColor(JToken value, out Color color)
     {
         color = Color.clear;

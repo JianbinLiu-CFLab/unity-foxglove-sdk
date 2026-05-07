@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates package metadata (package.json, LICENSE), .gitignore build artifact coverage, CI workflows, and asmdef consistency.
+
 using System;
 using System.IO;
 
@@ -5,10 +11,6 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase16Validation
     {
-        /// <summary>
-        /// Phase 16 — code review &amp; release hardening:
-        /// package metadata, LICENSE, CI workflows, .gitignore coverage.
-        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 16 Tests ---");

@@ -85,6 +85,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock) { _clients.Remove(clientId); }
         }
 
+        /// <summary>Remove all client subscriptions.</summary>
         public void Clear()
         {
             lock (_lock) { _clients.Clear(); }

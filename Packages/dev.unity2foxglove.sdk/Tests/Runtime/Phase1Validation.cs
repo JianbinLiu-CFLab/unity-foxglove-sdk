@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates serverInfo delivery, session identity, real WebSocket connectivity, and subprotocol negotiation.
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -36,6 +42,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 1 tests covering serverInfo delivery,
+        /// session identity, real WebSocket connectivity, and subprotocol negotiation.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 1 Tests ---");
@@ -51,6 +61,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── G.1 Fake transport: serverInfo is per-client SendText ──
 
+        /// <summary>
+        /// Verifies that serverInfo is delivered via per-client SendText
+        /// (not BroadcastText), each client gets exactly one message, and
+        /// the JSON payload contains the correct session name.
+        /// </summary>
         private static void TestFakeTransportServerInfo()
         {
             var fake = new FakeTransport();
@@ -74,6 +89,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── G.2 serverInfo JSON content assertions ──
 
+        /// <summary>
+        /// Validates the serverInfo JSON structure: <c>op</c> field,
+        /// <c>name</c> matching session, non-empty <c>sessionId</c>,
+        /// capabilities array, supported encodings, and absence of
+        /// metadata when empty.
+        /// </summary>
         private static void TestServerInfoJsonContent()
         {
             var fake = new FakeTransport();
@@ -104,6 +125,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── G.3 SessionId is stable across clients ──
 
+        /// <summary>
+        /// Ensures that all clients within a single session receive the
+        /// same sessionId, and that a new FoxgloveSession generates a
+        /// different sessionId.
+        /// </summary>
         private static void TestSessionIdStable()
         {
             var fake = new FakeTransport();
@@ -125,6 +151,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── G.4 Real ClientWebSocket integration test ──
 
+        /// <summary>
+        /// End-to-end integration test: starts a real FoxgloveRuntime
+        /// server, connects via ClientWebSocket, verifies the subprotocol
+        /// is echoed, and the first message received is serverInfo.
+        /// </summary>
         private static void TestRealWebSocketConnect()
         {
             using var runtime = new FoxgloveRuntime();
@@ -164,6 +195,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── G.5 Negative: wrong subprotocol rejected ─
 
+        /// <summary>
+        /// Negative test: a WebSocket connecting with the wrong subprotocol
+        /// must be rejected by the server, either at connect or receive time.
+        /// </summary>
         private static void TestBadSubprotocolRejected()
         {
             using var runtime = new FoxgloveRuntime();
@@ -208,6 +243,10 @@ namespace Unity.FoxgloveSDK.Tests
 
     // ── G.1 helper: FakeTransport tracks SendText vs BroadcastText ──
 
+    /// <summary>
+    /// Fake transport that records per-client SendText calls and
+    /// exposes <c>BroadcastTextCallCount</c> for verification.
+    /// </summary>
     internal class FakeTransport : IFoxgloveTransport
     {
         private readonly ConcurrentDictionary<uint, List<string>> _sentTexts

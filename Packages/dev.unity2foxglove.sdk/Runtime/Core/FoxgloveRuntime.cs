@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class FoxgloveRuntime : IDisposable, IRuntimeContext
     {
+        /// <summary>Active session; null before Start or after Stop.</summary>
         private FoxgloveSession _session;
         private readonly IFoxgloveTransport _transport;
         private readonly PlaybackClock _playbackClock;
@@ -43,20 +44,31 @@ namespace Unity.FoxgloveSDK.Core
 
         // Runtime-owned definitions survive Stop/Start cycles so
         // parameters and services are re-advertised on restart.
+        /// <summary>Runtime-owned parameter store; survives Stop/Start cycles.</summary>
         private readonly FoxgloveParameterStore _parameters = new();
+        /// <summary>Runtime-owned service registry; survives Stop/Start cycles.</summary>
         private readonly FoxgloveServiceRegistry _services = new();
+        /// <summary>Runtime-owned asset registry for fetchAsset capability.</summary>
         private readonly FoxgloveAssetRegistry _assets = new();
 
+        /// <summary>Recording lifecycle controller.</summary>
         private readonly RecordingController _recording;
+        /// <summary>Replay lifecycle controller.</summary>
         private readonly ReplayController _replay;
+        /// <summary>Delegate bridging replay OnReplayMessage to the runtime's own event.</summary>
         private Action<string, byte[]> _replayForwarder;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
 
+        /// <summary>
+        /// Default constructor. Wires <c>ManagedWsBackend</c>, <c>SystemClock</c>,
+        /// <c>DefaultSchemaRegistry</c>, and optional logger.
+        /// </summary>
         public FoxgloveRuntime(IFoxgloveLogger logger = null)
             : this(new ManagedWsBackend(logger), new SystemClock(), new DefaultSchemaRegistry(), logger) { }
 
+        /// <summary>Full-injection constructor for custom transport, clock, schema registry, and logger.</summary>
         public FoxgloveRuntime(IFoxgloveTransport transport, IFoxgloveClock clock, ISchemaRegistry schemaRegistry, IFoxgloveLogger logger = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -68,9 +80,13 @@ namespace Unity.FoxgloveSDK.Core
             _replay = new ReplayController(_logger);
         }
 
+        /// <summary>Active session; null before Start or after Stop.</summary>
         public FoxgloveSession Session => _session;
+        /// <summary>Whether the session is currently running.</summary>
         public bool IsRunning => _session?.IsRunning ?? false;
+        /// <summary>Schema registry used by this runtime.</summary>
         public ISchemaRegistry Schemas => _schemaRegistry;
+        /// <summary>Runtime-owned parameter store.</summary>
         public FoxgloveParameterStore Parameters => _parameters;
 
         /// <summary>Register a named parameter. Can be called before Start; stored for later advertisement.</summary>
@@ -92,6 +108,10 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Snapshot of currently advertised services.</summary>
         public IReadOnlyCollection<ServiceDescriptor> GetServicesSnapshot() => _services.GetAll();
 
+        /// <summary>
+        /// Register a service and re-advertise to connected clients.
+        /// <para>If a <c>handler</c> is provided, calls are dispatched to it during drain.</para>
+        /// </summary>
         public uint RegisterService(ServiceDescriptor descriptor, Func<JToken, JToken> handler = null)
         {
             var id = handler != null
@@ -150,12 +170,14 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Channel API ──
 
+        /// <summary>Register an advertise channel on the session.</summary>
         public void RegisterChannel(AdvertiseChannel channel)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
             _session.RegisterChannel(channel);
         }
 
+        /// <summary>Unregister a channel by its numeric ID.</summary>
         public void UnregisterChannel(uint channelId)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
@@ -176,6 +198,7 @@ namespace Unity.FoxgloveSDK.Core
             _session.Publish(channelId, payload, logTimeNs);
         }
 
+        /// <summary>Register a schema channel on the session.</summary>
         public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
@@ -204,45 +227,64 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Assets ──
 
+        /// <summary>Register a local file system root for fetchAsset under the given URI prefix.</summary>
         public void RegisterAssetRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
             => _assets.RegisterRoot(uriPrefix, localRoot, maxBytes);
 
+        /// <summary>Asset registry for fetchAsset capability.</summary>
         public FoxgloveAssetRegistry Assets => _assets;
 
         // ── Recording (delegated) ──
 
+        /// <summary>Whether recording is enabled.</summary>
         public bool RecordingEnabled => _recording.IsEnabled;
 
+        /// <summary>Enable MCAP recording for the next session start.</summary>
         public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
             => _recording.Enable(filePath, chunkSizeBytes, compression, coordinateMode);
 
+        /// <summary>Set the coordinate mode on the recording controller.</summary>
         public void SetRecordingCoordinateMode(string mode) => _recording.SetCoordinateMode(mode);
+        /// <summary>Disable recording.</summary>
         public void DisableRecording() => _recording.Disable();
 
         // ── Playback Control ──
 
+        /// <summary>Enable the playback clock range from start to end nanoseconds.</summary>
         public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
+        /// <summary>Whether playback control is enabled.</summary>
         public bool PlaybackEnabled => _playbackClock.PlaybackEnabled;
+        /// <summary>Get the playback start time in nanoseconds.</summary>
         public ulong GetPlaybackStartNs() => _playbackClock.StartNs;
+        /// <summary>Get the playback end time in nanoseconds.</summary>
         public ulong GetPlaybackEndNs() => _playbackClock.EndNs;
 
+        /// <summary>Apply a playback command to the clock.</summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
             => _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
 
+        /// <summary>Get a snapshot of the playback clock state for a response.</summary>
         public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
             => _playbackClock.ToState(didSeek, requestId);
 
         // ── Replay (delegated) ──
 
+        /// <summary>Whether replay is enabled.</summary>
         public bool ReplayEnabled => _replay.IsEnabled;
 
+        /// <summary>Enable MCAP replay; fails if recording is active.</summary>
         public void EnableReplay(string filePath)
             => _replay.Enable(filePath, _playbackClock, _recording.IsEnabled, _recording.CoordinateMode);
+        /// <summary>Disable replay and dispose the engine.</summary>
         public void DisableReplay() => _replay.Disable();
+        /// <summary>Seek replay to the given nanosecond timestamp.</summary>
         public void ReplaySeek(ulong timeNs) => _replay.Seek(timeNs);
+        /// <summary>Start or resume replay playback.</summary>
         public void ReplayPlay() => _replay.Play();
+        /// <summary>Pause replay playback.</summary>
         public void ReplayPause() => _replay.Pause();
 
+        /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
 
         // ── Tick ──

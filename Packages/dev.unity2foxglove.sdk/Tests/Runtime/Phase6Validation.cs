@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates serverInfo capabilities, parameter store, parameter subscribe/unsubscribe, service advertise, service call binary codec, and service call timeout/sweep.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,6 +32,12 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 6 tests covering serverInfo
+        /// capabilities, parameter store, parameter
+        /// subscribe/unsubscribe, service advertise, service call
+        /// binary codec, and service call timeout/sweep.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 6 Tests ---");
@@ -48,6 +60,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Capabilities ──
 
+        /// <summary>
+        /// Verifies the serverInfo capabilities array includes parameters,
+        /// services, and parametersSubscribe, excludes assets and
+        /// playbackControl, and supportedEncodings contains json.
+        /// </summary>
         private static void TestServerInfoCapabilities()
         {
             var fake = new Phase6FakeTransport();
@@ -67,6 +84,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── DTO ──
 
+        /// <summary>
+        /// Validates wire-format serialization of SetParameters,
+        /// UnsubscribeParameterUpdates, AdvertiseServices, and
+        /// ServiceCallFailure DTOs.
+        /// </summary>
         private static void TestDtoFieldNames()
         {
             var setParams = new SetParameters
@@ -109,6 +131,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Binary codec ──
 
+        /// <summary>
+        /// Roundtrip test: encodes a service call response, then decodes a
+        /// service call request frame and verifies all fields survive.
+        /// </summary>
         private static void TestBinaryServiceCodec()
         {
             // Roundtrip: encode server response, then verify a client request with same structure
@@ -137,6 +163,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Parameters ──
 
+        /// <summary>
+        /// Registers a parameter, retrieves it by name, and confirms
+        /// <c>GetAllWireParameters</c> returns the correct count.
+        /// </summary>
         private static void TestParameterStoreRegisterGet()
         {
             var store = new FoxgloveParameterStore();
@@ -149,6 +179,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(all.Count == 1, "GetAll returns one param");
         }
 
+        /// <summary>
+        /// Verifies writable parameters can be changed via client set,
+        /// while read-only and unknown parameters are rejected.
+        /// </summary>
         private static void TestParameterSetFromClient()
         {
             var store = new FoxgloveParameterStore();
@@ -165,6 +199,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Parameter subscriptions ──
 
+        /// <summary>
+        /// Full fake transport for Phase 6: records per-client
+        /// SendText, SendBinary, BroadcastText, plus simulators for
+        /// connect, text, and binary events.
+        /// </summary>
         private sealed class Phase6FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -198,6 +237,11 @@ namespace Unity.FoxgloveSDK.Tests
             public void SimulateBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
         }
 
+        /// <summary>
+        /// Subscribes to all parameters, changes a value, verifies
+        /// <c>getParameters</c> returns the updated value, then
+        /// unsubscribes and confirms no exceptions.
+        /// </summary>
         private static void TestParameterSubscribeUnsubscribe()
         {
             var fake = new Phase6FakeTransport();
@@ -223,6 +267,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Services ──
 
+        /// <summary>
+        /// A service registered before any client connects must be
+        /// delivered as an advertise snapshot to late-connecting clients.
+        /// </summary>
         private static void TestServiceAdvertiseBeforeConnect()
         {
             var fake = new Phase6FakeTransport();
@@ -242,6 +290,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(hasAdv, "New client receives service advertise snapshot");
         }
 
+        /// <summary>
+        /// A service registered after a client is already connected must
+        /// broadcast an advertiseServices message to that client.
+        /// </summary>
         private static void TestServiceAdvertiseAfterConnect()
         {
             var fake = new Phase6FakeTransport();
@@ -265,6 +317,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(hasAdv, "RegisterService broadcasts advertiseServices to already-connected client");
         }
 
+        /// <summary>
+        /// A service call targeting an unknown service id must produce a
+        /// <c>serviceCallFailure</c> response.
+        /// </summary>
         private static void TestServiceCallFailureUnknown()
         {
             var fake = new Phase6FakeTransport();
@@ -281,6 +337,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(failure["op"]?.ToString() == "serviceCallFailure", "Unknown service → failure");
         }
 
+        /// <summary>
+        /// A service call with an unsupported encoding (e.g. protobuf)
+        /// must produce a <c>serviceCallFailure</c> referencing
+        /// the encoding error.
+        /// </summary>
         private static void TestServiceCallFailureEncoding()
         {
             var fake = new Phase6FakeTransport();
@@ -305,6 +366,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(sent.Last().Contains("Unsupported encoding"), "Wrong encoding → failure");
         }
 
+        /// <summary>
+        /// Enqueues a service call, completes the response, and drains;
+        /// verifies the binary response is sent to the client.
+        /// </summary>
         private static void TestServiceCallEnqueueComplete()
         {
             var fake = new Phase6FakeTransport();
@@ -331,6 +396,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(binaries.Count > 0, "Service response sent as binary after drain");
         }
 
+        /// <summary>
+        /// Sweeping pending calls with zero timeout must produce
+        /// <c>serviceCallFailure</c> for each timed-out call.
+        /// </summary>
         private static void TestServiceCallTimeout()
         {
             var fake = new Phase6FakeTransport();

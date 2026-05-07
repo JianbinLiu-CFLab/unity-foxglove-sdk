@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Test-only sequential MCAP record parser and decode helpers for verifying generated files.
+
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -17,6 +23,10 @@ namespace Unity.FoxgloveSDK.Tests
             public byte[] Content;
         }
 
+        /// <summary>
+        /// Parses a raw MCAP byte array into leading magic flag, a
+        /// list of records, and trailing magic flag.
+        /// </summary>
         public static (bool hasLeadingMagic, List<McapRecord> records, bool hasTrailingMagic) Parse(byte[] data)
         {
             var records = new List<McapRecord>();
@@ -51,12 +61,18 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Decode helpers ──
 
+        /// <summary>
+        /// Decodes a Header record into profile and library strings.
+        /// </summary>
         public static (string profile, string library) DecodeHeader(byte[] content)
         {
             var off = 0;
             return (McapBinaryReader.ReadString(content, ref off), McapBinaryReader.ReadString(content, ref off));
         }
 
+        /// <summary>
+        /// Decodes a Schema record into id, name, encoding, and data.
+        /// </summary>
         public static (ushort id, string name, string encoding, byte[] data) DecodeSchema(byte[] content)
         {
             var off = 0;
@@ -67,6 +83,9 @@ namespace Unity.FoxgloveSDK.Tests
             return (id, name, encoding, data);
         }
 
+        /// <summary>
+        /// Decodes a Channel record into id, schemaId, topic, and encoding.
+        /// </summary>
         public static (ushort id, ushort schemaId, string topic, string encoding) DecodeChannel(byte[] content)
         {
             var off = 0;
@@ -77,6 +96,10 @@ namespace Unity.FoxgloveSDK.Tests
             return (id, schemaId, topic, encoding);
         }
 
+        /// <summary>
+        /// Decodes a Message record into channelId, sequence, logTime,
+        /// publishTime, and data.
+        /// </summary>
         public static (ushort channelId, uint sequence, ulong logTime, ulong publishTime, byte[] data) DecodeMessage(byte[] content)
         {
             var off = 0;
@@ -89,6 +112,11 @@ namespace Unity.FoxgloveSDK.Tests
             return (chId, seq, logTime, pubTime, data);
         }
 
+        /// <summary>
+        /// Decodes a Chunk record into startTime, endTime,
+        /// uncompressedSize, crc, compression, compressedSize, and
+        /// inner records.
+        /// </summary>
         public static (ulong startTime, ulong endTime, ulong uncompressedSize, uint crc, string compression, ulong compressedSize, byte[] records) DecodeChunk(byte[] content)
         {
             var off = 0;
@@ -103,6 +131,10 @@ namespace Unity.FoxgloveSDK.Tests
             return (st, et, size, crc, comp, compSize, recs);
         }
 
+        /// <summary>
+        /// Decodes a MessageIndex record into channelId and a list of
+        /// (timestamp, offset) entries.
+        /// </summary>
         public static (ushort channelId, List<(ulong, ulong)> entries) DecodeMessageIndex(byte[] content)
         {
             var off = 0;
@@ -119,6 +151,10 @@ namespace Unity.FoxgloveSDK.Tests
             return (chId, entries);
         }
 
+        /// <summary>
+        /// Decodes a Footer record into summary start offset, summary
+        /// offset start, and summary CRC.
+        /// </summary>
         public static (ulong summaryStart, ulong summaryOffsetStart, uint summaryCrc) DecodeFooter(byte[] content)
         {
             var off = 0;

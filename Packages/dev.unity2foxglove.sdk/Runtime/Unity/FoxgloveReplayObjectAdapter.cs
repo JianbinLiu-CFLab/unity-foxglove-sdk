@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Unity
+// Purpose: Drives Unity GameObjects from MCAP replay /tf and /scene topic messages via FoxgloveManager.
+
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -14,41 +20,65 @@ namespace Unity.FoxgloveSDK.Components
     public class FoxgloveReplayObjectAdapter : MonoBehaviour
     {
         [Header("Manager")]
+        /// <summary>Reference to the scene's FoxgloveManager. Auto-resolved if null.</summary>
         [SerializeField] private FoxgloveManager _manager;
 
         [Header("Auto-Lookup (by name)")]
+        /// <summary>When true, resolve frame/entity IDs by <c>GameObject.Find</c>.</summary>
         [SerializeField] private bool _autoLookup = true;
 
         [Header("Manual Overrides")]
+        /// <summary>Explicit frame_id to Transform mappings.</summary>
         [SerializeField] private FrameMapping[] _frameOverrides;
+        /// <summary>Explicit entity_id to Transform mappings.</summary>
         [SerializeField] private EntityMapping[] _entityOverrides;
 
         [Header("Topics")]
+        /// <summary>Process <c>/tf</c> topic messages.</summary>
         [SerializeField] private bool _driveTf = true;
+        /// <summary>Process <c>/scene</c> topic messages.</summary>
         [SerializeField] private bool _driveScene = true;
 
+        /// <summary>Maps a frame_id string to a Unity Transform.</summary>
         [System.Serializable]
         public struct FrameMapping
         {
+            /// <summary>Foxglove frame_id (child frame).</summary>
             public string ChildFrameId;
+            /// <summary>Target Transform in the scene.</summary>
             public Transform Target;
         }
 
+        /// <summary>Maps an entity_id string to a Unity Transform.</summary>
         [System.Serializable]
         public struct EntityMapping
         {
+            /// <summary>Foxglove entity ID.</summary>
             public string EntityId;
+            /// <summary>Target Transform in the scene.</summary>
             public Transform Target;
         }
 
+        // ── Internal state ──
+        /// <summary>Lookup cache for frame_id to Transform.</summary>
         private readonly Dictionary<string, Transform> _frameCache = new();
+        /// <summary>Lookup cache for entity_id to Transform.</summary>
         private readonly Dictionary<string, Transform> _entityCache = new();
+        /// <summary>Suppresses duplicate warnings for missing frames.</summary>
         private readonly HashSet<string> _warnedFrames = new();
+        /// <summary>Suppresses duplicate warnings for missing entities.</summary>
         private readonly HashSet<string> _warnedEntities = new();
+        /// <summary>Suppresses duplicate warnings for unparseable topics.</summary>
         private readonly HashSet<string> _warnedTopics = new();
+        /// <summary>Reserved for future auto-lookup warnings.</summary>
         private readonly HashSet<string> _warnedAuto = new();
+        /// <summary>Reusable MaterialPropertyBlock for colour application.</summary>
         private MaterialPropertyBlock _propBlock;
 
+        /// <summary>
+        /// Resolves the FoxgloveManager and subscribes to replay messages.
+        /// Loads manual FrameMapping and EntityMapping overrides into the lookup cache.
+        /// </summary>
         private void Start()
         {
             if (_manager == null)
@@ -56,7 +86,6 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager != null)
                 _manager.OnReplayMessage += OnReplayMessage;
 
-            // Load manual overrides
             foreach (var fm in _frameOverrides)
                 if (!string.IsNullOrEmpty(fm.ChildFrameId) && fm.Target != null)
                     _frameCache[fm.ChildFrameId] = fm.Target;
@@ -66,12 +95,17 @@ namespace Unity.FoxgloveSDK.Components
                     _entityCache[em.EntityId] = em.Target;
         }
 
+        /// <summary>Unsubscribes from replay messages.</summary>
         private void OnDestroy()
         {
             if (_manager != null)
                 _manager.OnReplayMessage -= OnReplayMessage;
         }
 
+        /// <summary>
+        /// Receives raw JSON replay messages from FoxgloveManager.
+        /// Routes <c>/tf</c> and <c>/scene</c> topics to their handlers.
+        /// </summary>
         private void OnReplayMessage(string topic, byte[] payload)
         {
             try
@@ -100,9 +134,14 @@ namespace Unity.FoxgloveSDK.Components
 
         // ── /tf ──
 
+        /// <summary>True when coordinate conversion is needed (RightHand mode).</summary>
         private bool ShouldConvert =>
             _manager != null && _manager.ActiveCoordinateMode == CoordinateMode.RightHand;
 
+        /// <summary>
+        /// Parses a <c>/tf</c> JSON object and applies position and rotation
+        /// to the resolved child frame Transform.
+        /// </summary>
         private void HandleFrameTransform(JObject tf)
         {
             var childFrameId = (string)tf["child_frame_id"];
@@ -126,6 +165,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Looks up a frame by ID. Checks the cache first, then auto-lookup
+        /// via <c>GameObject.Find</c>. Logs a warning on first miss.
+        /// </summary>
         private Transform ResolveFrame(string childFrameId)
         {
             if (_frameCache.TryGetValue(childFrameId, out var target))
@@ -150,13 +193,16 @@ namespace Unity.FoxgloveSDK.Components
 
         // ── /scene ──
 
+        /// <summary>
+        /// Parses a <c>/scene</c> JSON object and applies cube/model primitives
+        /// to the resolved entity Transforms. Deletions are ignored.
+        /// </summary>
         private void HandleSceneUpdate(JObject scene)
         {
             var entities = scene["entities"] as JArray;
             if (entities == null) return;
 
             var deletions = scene["deletions"] as JArray;
-            // deletions: ignore for now; user manages scene lifecycle
 
             foreach (var ent in entities)
             {
@@ -172,18 +218,20 @@ namespace Unity.FoxgloveSDK.Components
                 var timestamp = entity["timestamp"];
                 var frameId = (string)entity["frame_id"];
 
-                // Cubes
                 var cubes = entity["cubes"] as JArray;
                 if (cubes != null && cubes.Count > 0)
                     ApplyCubePrimitive(cubes[0] as JObject, target);
 
-                // Models
                 var models = entity["models"] as JArray;
                 if (models != null && models.Count > 0)
                     ApplyModelPrimitive(models[0] as JObject, target);
             }
         }
 
+        /// <summary>
+        /// Looks up an entity by ID. Checks the cache first, then auto-lookup
+        /// via <c>GameObject.Find</c>. Logs a warning on first miss.
+        /// </summary>
         private Transform ResolveEntity(string entityId)
         {
             if (_entityCache.TryGetValue(entityId, out var target))
@@ -208,16 +256,22 @@ namespace Unity.FoxgloveSDK.Components
 
         // ── Primitive helpers ──
 
+        /// <summary>Applies size, pose, and color from a cube primitive JSON object.</summary>
         private void ApplyCubePrimitive(JObject cube, Transform target)
         {
             ApplyPrimitive(cube, target, "size");
         }
 
+        /// <summary>Applies scale, pose, and color from a model primitive JSON object.</summary>
         private void ApplyModelPrimitive(JObject model, Transform target)
         {
             ApplyPrimitive(model, target, "scale");
         }
 
+        /// <summary>
+        /// Parses pose, size/scale, and color from a primitive JSON object and
+        /// applies them to the target Transform and its Renderer.
+        /// </summary>
         private void ApplyPrimitive(JObject primitive, Transform target, string sizeKey)
         {
             if (primitive == null) return;

@@ -24,17 +24,28 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class ReplayController : IDisposable
     {
+        /// <summary>Active replay engine, or null when not replaying.</summary>
         private McapReplayEngine _replayEngine;
+        /// <summary>Whether replay has been enabled and successfully loaded.</summary>
         private bool _replayEnabled;
+        /// <summary>Schema lookup by ID, built from the MCAP summary.</summary>
         private Dictionary<ushort, McapSchema> _summarySchemas;
+        /// <summary>Channel topic lookup by channel ID for forwarding messages.</summary>
         private Dictionary<ushort, string> _channelTopicMap;
         private readonly IFoxgloveLogger _logger;
 
+        /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => _replayEnabled;
+        /// <summary>Active replay engine instance; null when not replaying.</summary>
         public McapReplayEngine Engine => _replayEngine;
 
+        /// <summary>
+        /// Fires when the replay engine outputs a message.
+        /// <para>First argument is the topic, second is the raw message data.</para>
+        /// </summary>
         public event Action<string, byte[]> OnReplayMessage;
 
+        /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
         internal void FireForTests(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
 
         public ReplayController(IFoxgloveLogger logger)
@@ -42,6 +53,11 @@ namespace Unity.FoxgloveSDK.Core
             _logger = logger;
         }
 
+        /// <summary>
+        /// Load an MCAP file for replay.
+        /// <para>Disables any previous replay state first. If recording is active,
+        /// replay is declined with a warning. Sets the playback clock range, then starts playback.</para>
+        /// </summary>
         public void Enable(string filePath, PlaybackClock playbackClock, bool recordingEnabled, string currentCoordinateMode = "")
         {
             // Clean any previous replay state to avoid leaking old engine/stream
@@ -99,6 +115,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Dispose the replay engine and disable replay.</summary>
         public void Disable()
         {
             _replayEngine?.Dispose();
@@ -106,6 +123,7 @@ namespace Unity.FoxgloveSDK.Core
             _replayEnabled = false;
         }
 
+        /// <summary>Register replay channels on the session with replay ID prefix.</summary>
         public void RegisterChannels(FoxgloveSession session)
         {
             if (!_replayEnabled || _replayEngine == null || !_replayEngine.IsLoaded) return;
@@ -127,6 +145,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Tick the replay engine, publishing messages whose log time is on or before <c>nowNs</c>.
+        /// <para>Broadcasts the latest log time as a binary time frame and fires <c>OnReplayMessage</c> for each message.</para>
+        /// </summary>
         public void Tick(FoxgloveSession session, ulong nowNs)
         {
             if (!_replayEnabled || _replayEngine == null) return;
@@ -151,11 +173,16 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Seek the replay engine to the given nanosecond timestamp.</summary>
         public void Seek(ulong timeNs) => _replayEngine?.Seek(timeNs);
+        /// <summary>Start or resume playback of the replay.</summary>
         public void Play() => _replayEngine?.Play();
+        /// <summary>Pause replay playback without disposing.</summary>
         public void Pause() => _replayEngine?.Pause();
+        /// <summary>Get the list of channels from the loaded MCAP file.</summary>
         public IReadOnlyList<McapChannel> GetChannels() => _replayEngine?.Channels;
 
+        /// <summary>Dispose the replay engine and all associated resources.</summary>
         public void Dispose() => Disable();
     }
 }

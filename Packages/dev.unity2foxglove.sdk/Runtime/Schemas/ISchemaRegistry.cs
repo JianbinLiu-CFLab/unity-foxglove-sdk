@@ -40,11 +40,13 @@ namespace Unity.FoxgloveSDK.Schemas
         private readonly System.Collections.Generic.Dictionary<string, SchemaEntry> _schemas
             = new System.Collections.Generic.Dictionary<string, SchemaEntry>();
 
+        /// <summary>Try to get a schema by name.</summary>
         public bool TryGetSchema(string name, out SchemaEntry entry)
         {
             return _schemas.TryGetValue(name, out entry);
         }
 
+        /// <summary>Register a schema, overwriting on duplicate name.</summary>
         public void Register(SchemaEntry entry)
         {
             if (string.IsNullOrEmpty(entry.Name))

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates core schema registration, typed channel advertising, SceneUpdate DTO serialization, and real WebSocket integration with schemas.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,6 +35,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 3 tests covering core schema
+        /// registration, typed channel advertising, SceneUpdate DTO
+        /// serialization, and real WebSocket integration with schemas.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 3 Tests ---");
@@ -50,6 +61,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Core schema registration ──
 
+        /// <summary>
+        /// Verifies FrameTransform and SceneUpdate schemas are registered
+        /// with correct encoding and valid JSON content after core schema
+        /// initialization.
+        /// </summary>
         private static void TestCoreSchemasRegistered()
         {
             var registry = new DefaultSchemaRegistry();
@@ -71,6 +87,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(su.Content.Contains("foxglove.SceneUpdate"), "SceneUpdate schema has correct title");
         }
 
+        /// <summary>
+        /// Confirms the foxglove.Log schema is registered by default with
+        /// correct encoding and valid JSON schema content.
+        /// </summary>
         private static void TestLogSchemaRegistered()
         {
             var registry = new DefaultSchemaRegistry();
@@ -86,6 +106,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── RegisterSchemaChannel ──
 
+        /// <summary>
+        /// Fake transport recording BroadcastTexts and per-client
+        /// SendText/SendBinary for Phase 3 tests.
+        /// </summary>
         private sealed class Phase3FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -110,6 +134,11 @@ namespace Unity.FoxgloveSDK.Tests
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         }
 
+        /// <summary>
+        /// <c>RegisterSchemaChannel</c> must produce a correct advertise
+        /// message with populated <c>schemaName</c>, <c>schemaEncoding</c>,
+        /// and inline schema content.
+        /// </summary>
         private static void TestRegisterSchemaChannelAdvertise()
         {
             var registry = new DefaultSchemaRegistry();
@@ -133,6 +162,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(ch["schema"]?.ToString().Contains("foxglove.FrameTransform") == true, "schema contains title");
         }
 
+        /// <summary>
+        /// Registering a channel with an unknown schema name must throw
+        /// <c>InvalidOperationException</c> with a message containing
+        /// the schema name.
+        /// </summary>
         private static void TestRegisterSchemaChannelUnknownThrows()
         {
             var registry = new DefaultSchemaRegistry();
@@ -152,6 +186,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── DTO field names ──
 
+        /// <summary>
+        /// Serializes a <c>FrameTransformMessage</c> and confirms the JSON
+        /// output uses snake_case field names matching the Foxglove schema
+        /// (e.g. <c>parent_frame_id</c>, <c>translation.x</c>,
+        /// <c>rotation.w</c>).
+        /// </summary>
         private static void TestFrameTransformFieldNames()
         {
             var msg = new FrameTransformMessage
@@ -170,6 +210,12 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(obj["rotation"]?["w"]?.Value<double>() == 1, "rotation.w present");
         }
 
+        /// <summary>
+        /// Ensures that serializing a <c>SceneUpdateMessage</c> with cube
+        /// primitives includes all required arrays (<c>arrows</c>,
+        /// <c>cubes</c>, <c>spheres</c>, etc.) and places
+        /// <c>deletions</c> at the top level, not inside entities.
+        /// </summary>
         private static void TestSceneUpdateRequiredArrays()
         {
             var msg = new SceneUpdateMessage
@@ -214,6 +260,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(entity["metadata"] is JArray, "metadata present as array");
         }
 
+        /// <summary>
+        /// Serializes a <c>SceneEntity</c> with a single cube and verifies
+        /// the entity id, frame_id, and cube size fields roundtrip correctly.
+        /// </summary>
         private static void TestCubeEntitySerialization()
         {
             var entity = new SceneEntity
@@ -243,6 +293,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert((double)obj["cubes"][0]["size"]["x"] == 1.0, "cube size.x == 1");
         }
 
+        /// <summary>
+        /// Confirms <c>SceneEntityDeletionType.All</c> serializes as the
+        /// integer value 1, matching the Foxglove wire format.
+        /// </summary>
         private static void TestSceneEntityDeletionTypeIsInteger()
         {
             var deletion = new SceneEntityDeletion
@@ -258,6 +312,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── PublishJson ──
 
+        /// <summary>
+        /// <c>PublishJson</c> must serialize a CubePrimitive to JSON and
+        /// deliver it as a binary MessageData frame with the payload
+        /// roundtripping correctly.
+        /// </summary>
         private static void TestPublishJsonBinaryFrame()
         {
             var registry = new DefaultSchemaRegistry();
@@ -289,6 +348,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Real WebSocket integration ──
 
+        /// <summary>
+        /// Integration test: starts a server, registers a typed
+        /// FrameTransform channel, connects a client, and verifies the
+        /// advertise message carries <c>schemaName</c>,
+        /// <c>schemaEncoding</c>, and inline schema content.
+        /// </summary>
         private static void TestRealWebSocketTypedAdvertise()
         {
             using var runtime = new FoxgloveRuntime();
@@ -325,6 +390,12 @@ namespace Unity.FoxgloveSDK.Tests
             finally { runtime.Dispose(); }
         }
 
+        /// <summary>
+        /// Integration test: registers a SceneUpdate channel, subscribes
+        /// a client, publishes a scene entity with a cube via
+        /// <c>PublishJson</c>, and verifies the binary frame contains
+        /// the correct entity id and cube dimensions.
+        /// </summary>
         private static void TestRealWebSocketPublishJsonSceneUpdate()
         {
             using var runtime = new FoxgloveRuntime();

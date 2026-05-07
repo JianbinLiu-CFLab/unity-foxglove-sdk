@@ -16,18 +16,21 @@ namespace Unity.FoxgloveSDK.IO
     /// </summary>
     public static class McapBinaryReader
     {
+        /// <summary>Read a 16-bit unsigned integer in little-endian byte order, advancing <c>off</c> by 2.</summary>
         public static ushort ReadU16LE(byte[] buf, ref int off)
         {
             if (off + 2 > buf.Length) throw new InvalidDataException($"Truncated U16 at offset {off}");
             var v = (ushort)(buf[off] | (buf[off + 1] << 8)); off += 2; return v;
         }
 
+        /// <summary>Read a 32-bit unsigned integer in little-endian byte order, advancing <c>off</c> by 4.</summary>
         public static uint ReadU32LE(byte[] buf, ref int off)
         {
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated U32 at offset {off}");
             var v = (uint)(buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16) | (buf[off + 3] << 24)); off += 4; return v;
         }
 
+        /// <summary>Read a 64-bit unsigned integer in little-endian byte order, advancing <c>off</c> by 8.</summary>
         public static ulong ReadU64LE(byte[] buf, ref int off)
         {
             if (off + 8 > buf.Length) throw new InvalidDataException($"Truncated U64 at offset {off}");
@@ -36,6 +39,7 @@ namespace Unity.FoxgloveSDK.IO
             off += 8; return v;
         }
 
+        /// <summary>Read a UTF-8 string prefixed by a 4-byte LE length, advancing <c>off</c> accordingly.</summary>
         public static string ReadString(byte[] buf, ref int off)
         {
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated string length at offset {off}");
@@ -46,6 +50,7 @@ namespace Unity.FoxgloveSDK.IO
             return s;
         }
 
+        /// <summary>Read raw bytes prefixed by a 4-byte LE length, advancing <c>off</c> accordingly.</summary>
         public static byte[] ReadPrefixed(byte[] buf, ref int off)
         {
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated prefixed length at offset {off}");
@@ -57,6 +62,7 @@ namespace Unity.FoxgloveSDK.IO
             return data;
         }
 
+        /// <summary>Read a string-to-string map: 4-byte LE total-length prefix followed by alternating key/value pairs.</summary>
         public static Dictionary<string, string> ReadMap(byte[] buf, ref int off)
         {
             var map = new Dictionary<string, string>();
@@ -73,6 +79,7 @@ namespace Unity.FoxgloveSDK.IO
             return map;
         }
 
+        /// <summary>Check whether the bytes at <c>off</c> match the MCAP magic bytes.</summary>
         public static bool MatchesMagic(byte[] buf, int off)
         {
             var magic = McapWriter.Magic;

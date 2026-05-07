@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates CompressedImage schema registration, base64 roundtrip, FoxgloveTime utility, and typed channel advertising.
+
 using System;
 using System.Text;
 using Newtonsoft.Json;
@@ -19,6 +25,11 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 4 tests covering CompressedImage
+        /// schema registration, base64 roundtrip, FoxgloveTime utility,
+        /// and typed channel advertising.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 4 Tests ---");
@@ -32,6 +43,10 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 4: {_passCount} checks passed.\n");
         }
 
+        /// <summary>
+        /// Confirms <c>foxglove.CompressedImage</c> is registered with
+        /// correct encoding and title after core schema initialization.
+        /// </summary>
         private static void TestCompressedImageSchemaRegistered()
         {
             var registry = new DefaultSchemaRegistry();
@@ -46,6 +61,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "CompressedImage schema title matches");
         }
 
+        /// <summary>
+        /// Serializes a <c>CompressedImageMessage</c> and verifies all
+        /// fields -- timestamp, frame_id, data, and format -- appear
+        /// correctly in the JSON output.
+        /// </summary>
         private static void TestCompressedImageMessageFields()
         {
             var msg = new CompressedImageMessage
@@ -63,6 +83,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(obj["format"]?.ToString() == "jpeg", "format is jpeg");
         }
 
+        /// <summary>
+        /// Encodes binary data as base64, serializes through
+        /// <c>CompressedImageMessage</c>, then decodes and verifies the
+        /// data roundtrips correctly.
+        /// </summary>
         private static void TestCompressedImageBase64Roundtrip()
         {
             var original = new byte[] { 0x01, 0x02, 0x03, 0xFF };
@@ -75,6 +100,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "base64 data roundtrips");
         }
 
+        /// <summary>
+        /// Tests <c>FoxgloveTimeUtil.ToFoxgloveTime</c> with a known
+        /// Unix-nanosecond value and verifies the sec/nsec split.
+        /// </summary>
         private static void TestFoxgloveTimeUtil()
         {
             var unixNs = 1777645831933000000UL;
@@ -83,6 +112,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(time.Nsec == 933000000, $"nsec={time.Nsec} (expected 933000000)");
         }
 
+        /// <summary>
+        /// Registers a camera channel with the CompressedImage schema and
+        /// verifies the broadcasted advertise carries correct schema
+        /// metadata.
+        /// </summary>
         private static void TestRegisterSchemaChannelCamera()
         {
             var registry = new DefaultSchemaRegistry();
@@ -102,6 +136,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "advertise schema contains title");
         }
 
+        /// <summary>
+        /// Minimal fake transport for Phase 4; only records
+        /// BroadcastText calls.
+        /// </summary>
         private sealed class Phase4FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;

@@ -15,17 +15,26 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class FoxgloveTransformPublisher : FoxglovePublisher<FrameTransformMessage>
     {
+        // ── Serialized fields ──
+        /// <summary>Parent frame ID, typically <c>"unity_world"</c>.</summary>
         [SerializeField] private string _parentFrameId = "unity_world";
+        /// <summary>Child frame ID. Falls back to GameObject name if empty.</summary>
         [SerializeField] private string _childFrameId = "";
 
+        /// <summary>Defaults the topic to <c>/tf</c> if not set.</summary>
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/tf";
         }
 
+        /// <summary>Resolved child frame ID, using GameObject name as fallback.</summary>
         public string ResolvedChildFrameId =>
             SanitizeFrameId(_childFrameId, gameObject.name);
 
+        /// <summary>
+        /// Builds a <c>FrameTransformMessage</c> from the current transform,
+        /// applying Foxglove coordinate conversion if in RightHand mode.
+        /// </summary>
         protected override FrameTransformMessage CreateMessage()
         {
             var unixNs = CurrentLogTimeNs;

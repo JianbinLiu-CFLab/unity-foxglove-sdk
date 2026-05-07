@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates connection graph capabilities, graph subscribe/unsubscribe, client publish, per-client channel isolation, and disconnect cleanup.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +27,11 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 8 tests covering connection graph
+        /// capabilities, graph subscribe/unsubscribe, client publish,
+        /// per-client channel isolation, and disconnect cleanup.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 8 Tests ---");
@@ -38,6 +49,10 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 8: {_passCount} checks passed.\n");
         }
 
+        /// <summary>
+        /// ServerInfo capabilities must include connectionGraph and
+        /// clientPublish.
+        /// </summary>
         private static void TestServerInfoIncludesConnectionGraph()
         {
             var fake = new Phase8FakeTransport();
@@ -48,6 +63,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("clientPublish"), "capabilities includes clientPublish");
         }
 
+        /// <summary>
+        /// Subscribing to the connection graph triggers graph updates on
+        /// channel registration; unsubscribing must not throw.
+        /// </summary>
         private static void TestConnectionGraphSubscribeUnsubscribe()
         {
             var fake = new Phase8FakeTransport();
@@ -68,6 +87,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(true, "UnsubscribeConnectionGraph does not throw");
         }
 
+        /// <summary>
+        /// Validates the connectionGraphUpdate JSON structure: op field,
+        /// <c>publishedTopics</c> array with correct topic name and
+        /// publisherIds.
+        /// </summary>
         private static void TestConnectionGraphUpdateFormat()
         {
             var fake = new Phase8FakeTransport();
@@ -87,6 +111,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(pt["publisherIds"] is JArray, "publisherIds is array");
         }
 
+        /// <summary>
+        /// A client advertise message must register a client channel and
+        /// subsequent client MessageData binary frames must dispatch
+        /// through <c>OnClientMessage</c> with the correct topic.
+        /// </summary>
         private static void TestClientAdvertiseRegistersChannel()
         {
             var fake = new Phase8FakeTransport();
@@ -118,6 +147,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(received, "Client MessageData received via OnClientMessage");
         }
 
+        /// <summary>
+        /// A client binary MessageData frame must be decoded and
+        /// dispatched with the correct channel id, topic, and payload.
+        /// </summary>
         private static void TestClientMessageData()
         {
             var fake = new Phase8FakeTransport();
@@ -140,6 +173,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gotMessage, "Client binary MessageData dispatched");
         }
 
+        /// <summary>
+        /// Two clients advertising the same channel id but different
+        /// topics must each route correctly to their own topic without
+        /// cross-contamination.
+        /// </summary>
         private static void TestTwoClientsDifferentChannelIds()
         {
             var fake = new Phase8FakeTransport();
@@ -165,6 +203,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(received.Contains("2:/c/t2"), "Client 2 channel 1 routes to /c/t2");
         }
 
+        /// <summary>
+        /// When a client disconnects, its advertised client channels must
+        /// be cleaned up so that subsequent binary frames no longer
+        /// dispatch.
+        /// </summary>
         private static void TestClientDisconnectCleansUp()
         {
             var fake = new Phase8FakeTransport();
@@ -182,6 +225,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!gotMsg, "Client disconnect cleans channel registry");
         }
 
+        /// <summary>
+        /// When a client advertises a topic, graph subscribers on other
+        /// clients must receive a connectionGraphUpdate.
+        /// </summary>
         private static void TestConnectionGraphLinkedToClientPublish()
         {
             var fake = new Phase8FakeTransport();
@@ -258,6 +305,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!hasClientPub, "Graph disconnect: no published topics from disconnected client");
         }
 
+        /// <summary>
+        /// Fake transport for Phase 8 recording per-client SendText,
+        /// SendBinary, BroadcastText, plus simulators for connect,
+        /// disconnect, text, and binary events.
+        /// </summary>
         private sealed class Phase8FakeTransport : IFoxgloveTransport
         {
             public bool IsRunning => true;

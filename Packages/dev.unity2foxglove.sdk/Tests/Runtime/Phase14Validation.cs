@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates FoxRunAttribute construction, defaults, validation, and usage constraints.
+
 using System;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
@@ -14,6 +20,10 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 14 tests covering FoxRunAttribute
+        /// construction, defaults, validation, and usage constraints.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 14 Tests ---");
@@ -28,6 +38,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── [FoxRun] Attribute ──
 
+        /// <summary>
+        /// Verifies FoxRunAttribute stores the topic, defaults
+        /// <c>RateHz</c> to 10, and <c>SchemaName</c> to null.
+        /// </summary>
         static void TestFoxRunAttribute()
         {
             var attr = new Components.FoxRunAttribute("/test/topic");
@@ -36,6 +50,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(attr.SchemaName == null, "Default SchemaName is null");
         }
 
+        /// <summary>
+        /// Null topic in constructor must throw
+        /// <c>ArgumentNullException</c>.
+        /// </summary>
         static void TestFoxRunAttributeTopic()
         {
             try
@@ -49,18 +67,28 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        /// <summary>
+        /// Custom <c>RateHz</c> value must be stored as set.
+        /// </summary>
         static void TestFoxRunAttributeRateHz()
         {
             var attr = new Components.FoxRunAttribute("/t") { RateHz = 30f };
             Assert(attr.RateHz == 30f, "Custom RateHz stored");
         }
 
+        /// <summary>
+        /// Custom <c>SchemaName</c> value must be stored as set.
+        /// </summary>
         static void TestFoxRunAttributeSchemaName()
         {
             var attr = new Components.FoxRunAttribute("/t") { SchemaName = "foxglove.Point3" };
             Assert(attr.SchemaName == "foxglove.Point3", "Custom SchemaName stored");
         }
 
+        /// <summary>
+        /// Verifies <c>FoxRunAttribute</c> has <c>AllowMultiple=true</c>
+        /// and is valid on fields and properties.
+        /// </summary>
         static void TestFoxRunAllowMultiple()
         {
             var attrs = typeof(Components.FoxRunAttribute).GetCustomAttributes(

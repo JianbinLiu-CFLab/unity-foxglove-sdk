@@ -11,8 +11,13 @@ using ZstdSharp;
 
 namespace Unity.FoxgloveSDK.IO
 {
+    /// <summary>
+    /// MCAP chunk compression and decompression helpers.
+    /// Supports <c>""</c> (no-op), <c>"lz4"</c> (via K4os.Compression.LZ4), and <c>"zstd"</c> (via ZstdSharp).
+    /// </summary>
     public static class McapCompression
     {
+        /// <summary>Decompress MCAP chunk data using the specified compression algorithm.</summary>
         public static byte[] Decompress(string compression, byte[] data, int uncompressedSize)
         {
             switch (compression)
@@ -48,6 +53,7 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        /// <summary>Compress raw bytes using the specified compression algorithm.</summary>
         public static byte[] Compress(string compression, byte[] data)
         {
             switch (compression)

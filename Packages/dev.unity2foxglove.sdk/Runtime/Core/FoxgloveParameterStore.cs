@@ -102,6 +102,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Remove all parameters.</summary>
         public void Clear()
         {
             lock (_lock) { _params.Clear(); }

@@ -1,7 +1,8 @@
-// Phase 0 skeleton validation.
-// Run with: dotnet run --project Tests/Runtime/FoxgloveSdk.Tests.csproj
-// Verifies: architecture compiles, namespaces are consistent,
-// message serialization matches Foxglove wire format.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates architecture compiles, namespaces are consistent, message serialization matches Foxglove wire format.
 
 using System;
 using Unity.FoxgloveSDK.Core;
@@ -33,6 +34,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
         }
 
+        /// <summary>
+        /// Entry point: runs all skeleton tests covering runtime
+        /// creation, schema registry, channel registry, subscription
+        /// registry, binary codec roundtrips, and ServerInfo wire format.
+        /// </summary>
         public static void Validate()
         {
             // 1. Can create a runtime with defaults

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Transport
+// Purpose: IFoxgloveClock interface and SystemClock implementation providing nanosecond timestamps for Foxglove message framing.
+
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Transport

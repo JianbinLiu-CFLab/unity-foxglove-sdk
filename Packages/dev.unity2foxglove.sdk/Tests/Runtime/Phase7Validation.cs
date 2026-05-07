@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates capabilities, logger injection, service call encapsulation, lifecycle survival, handler delegates, and time frame binary encoding.
+
 using System;
 using System.Linq;
 using System.Text;
@@ -18,6 +24,11 @@ namespace Unity.FoxgloveSDK.Tests
             else throw new Exception($"[FAIL] {label}");
         }
 
+        /// <summary>
+        /// Entry point: runs all Phase 7 tests covering capabilities,
+        /// logger injection, service call encapsulation, lifecycle
+        /// survival, handler delegates, and time frame binary encoding.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("--- Phase 7 Tests ---");
@@ -34,6 +45,10 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 7: {_passCount} checks passed.\n");
         }
 
+        /// <summary>
+        /// Verifies serverInfo capabilities include parametersSubscribe
+        /// and time.
+        /// </summary>
         private static void TestServerInfoIncludesParametersSubscribe()
         {
             var fake = new Phase7FakeTransport();
@@ -44,6 +59,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("time"), "capabilities includes time");
         }
 
+        /// <summary>
+        /// A custom logger injected into FoxgloveSession must receive
+        /// warning messages when the session is exercised.
+        /// </summary>
         private static void TestLoggerInjectedIntoSession()
         {
             var testLogger = new TestLogger();
@@ -53,6 +72,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(testLogger.WarningCount > 0, "Injected logger received warning messages");
         }
 
+        /// <summary>
+        /// <c>RemoveClientCalls</c> must remove only the specified
+        /// client's pending calls while leaving other clients' calls
+        /// intact.
+        /// </summary>
         private static void TestRemoveClientCallsDirect()
         {
             var reg = new FoxgloveServiceRegistry();
@@ -70,6 +94,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(pending.Any(c => c.ClientId == 2), "Client 2 calls still pending");
         }
 
+        /// <summary>
+        /// Subscribing with an empty parameterNames array must match any
+        /// parameter; unsubscribing with empty array must clear all.
+        /// </summary>
         private static void TestEmptyParamNamesMeansAll()
         {
             var reg = new ParameterSubscriptionRegistry();
@@ -79,6 +107,11 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!reg.IsSubscribed(1, "any"), "Empty unsubscribe → cleared all");
         }
 
+        /// <summary>
+        /// <c>Complete</c> on a <c>FoxgloveServiceCall</c> sets
+        /// <c>IsCompleted</c> and payload; <c>Fail</c> sets
+        /// <c>IsCompleted</c> and failure message.
+        /// </summary>
         private static void TestServiceCallCompleteFailEncapsulation()
         {
             var call = new FoxgloveServiceCall();
@@ -94,6 +127,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Batch 2 lifecycle survival ──
 
+        /// <summary>
+        /// Parameters and services registered before <c>Start</c> must
+        /// survive a Stop/Start cycle with their values intact.
+        /// </summary>
         private static void TestStopStartPreservesParameters()
         {
             var rt = new FoxgloveRuntime();
@@ -116,6 +153,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Batch 3 handler delegate ──
 
+        /// <summary>
+        /// Service handler delegates: a successful handler must return a
+        /// JSON response, while a failing handler (throwing exception)
+        /// must not crash and must remove the pending call.
+        /// </summary>
         private static void TestHandlerDelegateSuccessAndFailure()
         {
             var rt = new FoxgloveRuntime();
@@ -152,6 +194,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Batch 4 Time frame ──
 
+        /// <summary>
+        /// <c>EncodeTime</c> produces a 9-byte frame with opcode 2 and
+        /// the timestamp roundtrips through <c>BitConverter</c>.
+        /// </summary>
         private static void TestTimeFrameFormat()
         {
             var frame = BinaryEncoding.EncodeTime(12345678901234567890UL);
@@ -161,6 +207,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(decoded == 12345678901234567890UL, "Time frame timestamp roundtrips");
         }
 
+        /// <summary>
+        /// Fake transport for Phase 7 recording per-client SendText
+        /// and providing a connect simulator.
+        /// </summary>
         private sealed class Phase7FakeTransport : Transport.IFoxgloveTransport
         {
             public bool IsRunning => true;
@@ -183,6 +233,10 @@ namespace Unity.FoxgloveSDK.Tests
             public void SimulateConnect(uint id) => OnClientConnected?.Invoke(id);
         }
 
+        /// <summary>
+        /// Simple logger that counts warning calls to verify logger
+        /// injection into FoxgloveSession.
+        /// </summary>
         private class TestLogger : IFoxgloveLogger
         {
             public int WarningCount;

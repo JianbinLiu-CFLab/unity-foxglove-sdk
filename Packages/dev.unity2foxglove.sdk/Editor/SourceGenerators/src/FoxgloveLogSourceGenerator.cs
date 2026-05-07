@@ -17,12 +17,21 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.SourceGenerators
 {
+    /// <summary>
+    /// Roslyn incremental source generator that scans user assemblies for
+    /// <c>[FoxRun]</c> attributed fields/properties on partial classes and emits
+    /// <c>IFoxgloveLogSource</c> implementation source at Editor compile time.
+    /// </summary>
     [Generator]
     public class FoxgloveLogSourceGenerator : IIncrementalGenerator
     {
         private const string AttrShortName = "FoxRun";
         private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxRunAttribute";
 
+        /// <summary>
+        /// Registers a syntax-based pipeline that filters candidate members,
+        /// extracts metadata, and emits generated source files.
+        /// </summary>
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             // Roslyn 4.2: use CreateSyntaxProvider (ForAttributeWithMetadataName requires 4.3+)
@@ -36,6 +45,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 static (spc, items) => Generate(spc, items));
         }
 
+        /// <summary>
+        /// Quick syntax filter: returns <c>true</c> if the node is a field or property
+        /// declaration that has any attribute lists — cheap enough to run on every node.
+        /// </summary>
         private static bool IsCandidate(SyntaxNode node)
         {
             if (node is FieldDeclarationSyntax f && f.AttributeLists.Count > 0)
@@ -45,6 +58,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return false;
         }
 
+        /// <summary>
+        /// Checks whether any attribute in the given lists matches <c>FoxRun</c> by
+        /// short or fully-qualified name.
+        /// </summary>
         private static bool HasFoxRunAttr(SyntaxList<AttributeListSyntax> lists)
         {
             foreach (var al in lists)
@@ -58,6 +75,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return false;
         }
 
+        /// <summary>
+        /// Resolves semantic symbols from a candidate syntax node and builds a
+        /// <c>MemberData</c> record with namespace, class name, the
+        /// <c>[FoxRun]</c> topic entries, and partial-type check.
+        /// </summary>
         private static MemberData ExtractMember(GeneratorSyntaxContext ctx, System.Threading.CancellationToken ct)
         {
             ISymbol symbol = null;
@@ -121,6 +143,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return new MemberData(ns, containingType.Name, isPartial, memberName, memberType, topics.ToArray());
         }
 
+        /// <summary>
+        /// Entry point for source output: reports diagnostics, groups members by
+        /// enclosing class, and emits one generated partial class per valid group.
+        /// </summary>
         private static void Generate(SourceProductionContext spc, ImmutableArray<MemberData> items)
         {
             foreach (var item in items.Where(m => m?.DiagnosticLocation != null))
@@ -142,6 +168,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
         }
 
+        /// <summary>
+        /// Emits the generated partial class implementing <c>IFoxgloveLogSource</c>
+        /// for one class name/namespace pair. Handles topic-to-member grouping,
+        /// schema conflict warnings, name collision detection, and code formatting.
+        /// </summary>
         private static void EmitClass(SourceProductionContext spc, string ns, string className, MemberData[] members)
         {
             var topicMap = new Dictionary<string, List<(string name, string type, float rate, string schema)>>();
@@ -231,6 +262,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             spc.AddSource($"{className}_FoxRun.g.cs", sb.ToString());
         }
 
+        /// <summary>
+        /// Returns a C# anonymous-object expression string for a Unity type
+        /// (<c>Vector3</c>, <c>Vector2</c>, <c>Quaternion</c>, <c>Color</c>), or the
+        /// raw member name for all other types.
+        /// </summary>
         private static string ValueExpr(string name, string type)
         {
             var t = type;
@@ -245,44 +281,94 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
         }
 
+        /// <summary>
+        /// Internal record produced by <c>ExtractMember</c>. Carries namespace, class
+        /// name, member identity, topic entries, partial status, and optional
+        /// diagnostic location for error reporting.
+        /// </summary>
         private sealed class MemberData
         {
-            public readonly string Ns, ClassName, MemberName, MemberType;
+            /// <summary>Containing namespace (empty for global).</summary>
+            public readonly string Ns;
+            /// <summary>Containing class name.</summary>
+            public readonly string ClassName;
+            /// <summary>Field or property name.</summary>
+            public readonly string MemberName;
+            /// <summary>Field or property type as fully-qualified string.</summary>
+            public readonly string MemberType;
+            /// <summary>Whether the containing class is declared <c>partial</c>.</summary>
             public readonly bool IsPartial;
+            /// <summary>Extracted topic entries from <c>[FoxRun]</c> attributes.</summary>
             public readonly TopicEntry[] Topics;
+            /// <summary>Non-null when this represents a diagnostic-only placeholder.</summary>
             public readonly Location DiagnosticLocation;
+
+            /// <summary>
+            /// Factory for diagnostic-only instances (e.g. multi-variable declaration error).
+            /// </summary>
             public static MemberData ForDiagnostic(Location location) =>
                 new MemberData("", "", false, "", "", Array.Empty<TopicEntry>(), location);
+
+            /// <summary>
+            /// Creates a valid member-data record with no diagnostic.
+            /// </summary>
             public MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t)
                 : this(ns, cn, partial, mn, mt, t, null)
             {
             }
+
+            /// <summary>
+            /// Core constructor used by both the public constructor and
+            /// <c>ForDiagnostic</c>.
+            /// </summary>
             private MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t, Location diagnosticLocation)
             { Ns = ns; ClassName = cn; IsPartial = partial; MemberName = mn; MemberType = mt; Topics = t; DiagnosticLocation = diagnosticLocation; }
         }
 
+        /// <summary>
+        /// Immutable tuple representing one <c>[FoxRun]</c> attribute's topic, rate,
+        /// and optional schema name.
+        /// </summary>
         private sealed class TopicEntry
         {
-            public readonly string Topic, SchemaName;
+            /// <summary>Topic string from the attribute's constructor argument.</summary>
+            public readonly string Topic;
+            /// <summary>Optional schema name from the attribute's named argument.</summary>
+            public readonly string SchemaName;
+            /// <summary>Publishing rate in Hz (default 10).</summary>
             public readonly float RateHz;
+
+            /// <summary>
+            /// Creates a topic entry with the given topic, rate, and schema.
+            /// </summary>
             public TopicEntry(string topic, float rate, string schema)
             { Topic = topic; RateHz = rate; SchemaName = schema; }
         }
 
+        /// <summary>
+        /// Container for all FoxRun-specific Roslyn diagnostic descriptors.
+        /// </summary>
         private static class Diags
         {
+            /// <summary>FOXRUN001: class must be <c>partial</c> to host <c>[FoxRun]</c> members.</summary>
             public static readonly DiagnosticDescriptor NotPartial = new DiagnosticDescriptor(
                 "FOXRUN001", "Class not partial",
                 "Class '{0}' must be declared partial to use [FoxRun]",
                 "FoxRun", DiagnosticSeverity.Error, true);
+
+            /// <summary>FOXRUN002: same topic has conflicting <c>SchemaName</c> across different fields.</summary>
             public static readonly DiagnosticDescriptor TopicConflict = new DiagnosticDescriptor(
                 "FOXRUN002", "Topic schema conflict",
                 "Topic '{0}' has conflicting SchemaName values across fields",
                 "FoxRun", DiagnosticSeverity.Warning, true);
+
+            /// <summary>FOXRUN003: field names collide after stripping leading underscores.</summary>
             public static readonly DiagnosticDescriptor NameConflict = new DiagnosticDescriptor(
                 "FOXRUN003", "Field name collision",
                 "Class '{0}' topic '{1}' has field names that collide after stripping underscores",
                 "FoxRun", DiagnosticSeverity.Warning, true);
+
+            /// <summary>FOXRUN004: multi-variable field declaration with <c>[FoxRun]</c> is unsupported.</summary>
             public static readonly DiagnosticDescriptor MultiVariableDeclaration = new DiagnosticDescriptor(
                 "FOXRUN004", "Multi-variable field declaration",
                 "[FoxRun] on a field declaration with multiple variables is not supported. Split into separate declarations.",

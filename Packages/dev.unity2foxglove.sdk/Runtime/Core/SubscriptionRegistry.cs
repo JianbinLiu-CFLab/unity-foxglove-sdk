@@ -136,6 +136,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Total number of clients with active subscriptions.</summary>
         public int ClientCount
         {
             get { lock (_lock) { return _clients.Count; } }
