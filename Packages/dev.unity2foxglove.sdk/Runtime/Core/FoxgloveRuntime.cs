@@ -77,6 +77,18 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterParameter(string name, JToken value, string type, bool writable)
             => _parameters.Register(name, value, type, writable);
 
+        /// <summary>
+        /// Update a writable runtime-owned parameter and notify Foxglove clients
+        /// subscribed to parameter updates.
+        /// </summary>
+        public bool TrySetParameter(string name, JToken value)
+        {
+            if (!_parameters.TrySetFromClient(name, value))
+                return false;
+            _session?.BroadcastParameterValues(new[] { name });
+            return true;
+        }
+
         /// <summary>Snapshot of currently advertised services.</summary>
         public IReadOnlyCollection<ServiceDescriptor> GetServicesSnapshot() => _services.GetAll();
 

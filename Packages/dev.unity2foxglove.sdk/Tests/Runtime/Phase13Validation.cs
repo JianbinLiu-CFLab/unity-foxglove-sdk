@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestSeekBeforeStartTime();
             TestSeekAtFirstChunkBoundary();
             TestClientPublishMessageIndex();
+            TestClientPublishDoesNotCreateMixedTopicSchemas();
             TestCoordinateRoundtrip();
             TestReplayHandlerNoAccumulate();
             Console.WriteLine($"Phase 13: {_passCount} checks passed.");
@@ -249,6 +250,27 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(chunkIdx != null && chunkIdx.Count > 0, "ClientPubIndex: chunk indexes exist");
             var chunk = reader.ReadChunkRecords(chunkIdx[0].ChunkStartOffset, chunkIdx[0].ChunkLength);
             Assert(chunk != null && chunk.Length > 0, "ClientPubIndex: chunk records readable");
+        }
+
+        static void TestClientPublishDoesNotCreateMixedTopicSchemas()
+        {
+            var ms = new MemoryStream();
+            var rec = new McapRecorder(ms);
+            rec.AddChannel(10, "/unity/camera", "json", "foxglove.CompressedImage", "jsonschema", "{}");
+            rec.WriteMessage(10, 1000UL, new byte[] { 1 });
+            rec.WriteClientMessage(1, 5, 2000UL, new byte[] { 2 }, "/unity/camera");
+            rec.Close();
+
+            ms.Position = 0;
+            var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
+            var cameraChannels = summary.Channels.FindAll(ch => ch.Topic == "/unity/camera");
+            Assert(cameraChannels.Count == 1,
+                "ClientPubMixedSchema: schemaless client publish does not add second /unity/camera channel");
+            Assert(cameraChannels[0].SchemaId != 0,
+                "ClientPubMixedSchema: /unity/camera keeps CompressedImage schema");
+            Assert(summary.Statistics.ChannelMessageCounts[cameraChannels[0].Id] == 1,
+                "ClientPubMixedSchema: skipped client publish is not recorded");
         }
 
         /// <summary>Roundtrip: Unity→Foxglove→Unity position must return to original.</summary>

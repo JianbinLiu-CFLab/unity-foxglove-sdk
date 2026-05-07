@@ -154,7 +154,8 @@ namespace Unity.FoxgloveSDK.Core
                 if (_clientChannels.TryGetValue((clientId, chId), out var ch))
                 {
                     OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
-                    _recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload, ch.Topic);
+                    _recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
+                        ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
                 }
             }
         }

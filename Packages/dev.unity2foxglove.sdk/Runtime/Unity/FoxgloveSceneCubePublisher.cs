@@ -14,7 +14,51 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private Vector3 _size = Vector3.one;
         [SerializeField] private Color _color = Color.green;
 
-        public Color SceneCubeColor { get => _color; set => _color = value; }
+        public Color SceneCubeColor
+        {
+            get => _color;
+            set
+            {
+                if (_color == value)
+                {
+                    ApplyColorToRenderer(value);
+                    return;
+                }
+                _color = value;
+                ApplyColorToRenderer(value);
+                OnSceneCubeColorChanged?.Invoke(value);
+            }
+        }
+
+        /// <summary>Fired when SceneCubeColor changes (Inspector or Foxglove side). Subscribe to sync parameters.</summary>
+        public event System.Action<Color> OnSceneCubeColorChanged;
+
+        private void ApplyColorToRenderer(Color c)
+        {
+            var renderer = GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var block = new MaterialPropertyBlock();
+                renderer.GetPropertyBlock(block);
+                block.SetColor("_BaseColor", c);
+                renderer.SetPropertyBlock(block);
+            }
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            UnityEditor.EditorApplication.delayCall += () =>
+            {
+                if (this != null)
+                {
+                    // Fire the event so FoxgloveDemoSetup knows the color changed externally
+                    OnSceneCubeColorChanged?.Invoke(_color);
+                    ApplyColorToRenderer(_color);
+                }
+            };
+        }
+#endif
 
         private FoxgloveTransformPublisher _transformPublisher;
 

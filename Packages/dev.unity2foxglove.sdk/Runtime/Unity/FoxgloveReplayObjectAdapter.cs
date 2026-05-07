@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly HashSet<string> _warnedEntities = new();
         private readonly HashSet<string> _warnedTopics = new();
         private readonly HashSet<string> _warnedAuto = new();
-        private readonly MaterialPropertyBlock _propBlock = new();
+        private MaterialPropertyBlock _propBlock;
 
         private void Start()
         {
@@ -249,8 +249,9 @@ namespace Unity.FoxgloveSDK.Components
                 var renderer = target.GetComponent<Renderer>();
                 if (renderer != null)
                 {
+                    if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
                     renderer.GetPropertyBlock(_propBlock);
-                    _propBlock.SetColor("_Color", new Color((float)color["r"], (float)color["g"], (float)color["b"], (float)color["a"]));
+                    _propBlock.SetColor("_BaseColor", new Color((float)color["r"], (float)color["g"], (float)color["b"], (float)color["a"]));
                     renderer.SetPropertyBlock(_propBlock);
                 }
             }
