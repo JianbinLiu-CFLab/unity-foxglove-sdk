@@ -81,11 +81,13 @@ namespace Unity.FoxgloveSDK.Core
             _transport.SendText(clientId, JsonConvert.SerializeObject(snapshot));
         }
 
+        /// <summary>Unsubscribe a client from connection graph updates.</summary>
         private void HandleUnsubscribeConnectionGraph(uint clientId)
         {
             _graph.Unsubscribe(clientId);
         }
 
+        /// <summary>Whether the connection graph has pending changes to broadcast.</summary>
         private bool _graphDirty;
 
         /// <summary>

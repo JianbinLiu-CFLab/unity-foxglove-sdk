@@ -39,16 +39,22 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ChannelRegistry _channels = new();
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly ISchemaRegistry _schemaRegistry;
+        /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
 
         // Session holds references via interface
+        /// <summary>Runtime context for playback, assets, and lifecycle control.</summary>
         private IRuntimeContext _runtime;
         private readonly FoxgloveParameterStore _parameters;
+        /// <summary>Per-client parameter update subscriptions.</summary>
         private readonly ParameterSubscriptionRegistry _paramSubs = new();
+        /// <summary>Registered service descriptors and pending call queue.</summary>
         private readonly FoxgloveServiceRegistry _services;
         private readonly ConnectionGraphRegistry _graph = new();
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
+        /// <summary>Lock protecting <c>_clientChannels</c> concurrent access.</summary>
         private readonly object _clientChannelsLock = new();
+        /// <summary>Raised when a client-published binary message is received.</summary>
         public event Action<uint, uint, string, byte[]> OnClientMessage;
 
         private McapRecorder _recorder;
@@ -60,13 +66,20 @@ namespace Unity.FoxgloveSDK.Core
         public string SessionId { get; }
         /// <summary>Whether the transport is currently listening.</summary>
         public bool IsRunning => _transport.IsRunning;
+        /// <summary>Schema registry attached to this session.</summary>
         public ISchemaRegistry Schemas => _schemaRegistry;
+        /// <summary>Channel registry managing all advertised channels.</summary>
         public ChannelRegistry Channels => _channels;
+        /// <summary>Parameter store shared across clients.</summary>
         public FoxgloveParameterStore Parameters => _parameters;
+        /// <summary>Service registry for this session.</summary>
         internal FoxgloveServiceRegistry Services => _services;
+        /// <summary>Underlying WebSocket transport.</summary>
         internal IFoxgloveTransport Transport => _transport;
 
+        /// <summary>Inject the runtime context for playback and asset access.</summary>
         internal void SetRuntimeContext(IRuntimeContext ctx) => _runtime = ctx;
+        /// <summary>Attach an MCAP recorder for session recording.</summary>
         internal void SetRecorder(McapRecorder r) => _recorder = r;
 
         public FoxgloveSession(string name,
@@ -94,9 +107,12 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Lifecycle ──
 
+        /// <summary>Start the WebSocket transport on the given host and port.</summary>
         public void Start(string host, int port) => _transport.Start(host, port);
+        /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
 
+        /// <summary>Clear all channels, subscriptions, and parameter subscriptions.</summary>
         public void ClearSession()
         {
             _channels.Clear();
@@ -104,6 +120,7 @@ namespace Unity.FoxgloveSDK.Core
             _paramSubs.Clear();
         }
 
+        /// <summary>Stop the transport and detach all event handlers.</summary>
         public void Dispose()
         {
             Stop();
@@ -115,6 +132,10 @@ namespace Unity.FoxgloveSDK.Core
 
         // ── Channel API ──
 
+        /// <summary>
+        /// Register a channel for advertisement, update the connection graph,
+        /// record to MCAP if attached, and broadcast the advertise message.
+        /// </summary>
         public void RegisterChannel(AdvertiseChannel channel)
         {
             _channels.Register(channel);
@@ -127,6 +148,10 @@ namespace Unity.FoxgloveSDK.Core
             BroadcastGraphUpdate();
         }
 
+        /// <summary>
+        /// Remove a channel from advertisement, clean up connections and
+        /// subscriptions, and broadcast the unadvertise message.
+        /// </summary>
         public void UnregisterChannel(uint channelId)
         {
             var ch = _channels.Get(channelId);
@@ -142,6 +167,10 @@ namespace Unity.FoxgloveSDK.Core
             BroadcastGraphUpdate();
         }
 
+        /// <summary>
+        /// Look up a schema by name and register it as a JSON-encoded channel.
+        /// Throws if the schema is not found in the registry.
+        /// </summary>
         public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
         {
             if (!_schemaRegistry.TryGetSchema(schemaName, out var entry))
@@ -157,12 +186,15 @@ namespace Unity.FoxgloveSDK.Core
         // ── Publish ──
 
         /// <summary>
-        /// Publish raw bytes to a channel. Encodes the binary MessageData frame
-        /// per-client with the correct subscriptionId and logTime. Also writes
-        /// to the MCAP recorder if attached.
+        /// Publish raw bytes to a channel using the current clock time.
+        /// Encodes and sends binary MessageData frames per-subscriber.
         /// </summary>
         public void Publish(uint channelId, byte[] payload) => Publish(channelId, payload, _clock.NowNs);
 
+        /// <summary>
+        /// Publish raw bytes to a channel with an explicit log timestamp.
+        /// Writes to MCAP recorder and sends to all subscribers.
+        /// </summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_channels.Get(channelId) == null) return;
@@ -174,14 +206,20 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Serialize an object to JSON and publish to the channel at the current clock time.</summary>
         public void PublishJson(uint channelId, object message) => PublishJson(channelId, message, _clock.NowNs);
 
+        /// <summary>Serialize an object to JSON and publish to the channel with an explicit log timestamp.</summary>
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
             Publish(channelId, Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message)), logTimeNs);
         }
 
+        /// <summary>
+        /// Register a service endpoint, advertise it to all clients, and
+        /// update the connection graph. Returns the assigned service ID.
+        /// </summary>
         public uint RegisterService(Protocol.ServiceDescriptor descriptor)
         {
             var id = _services.Register(descriptor);
@@ -215,6 +253,7 @@ namespace Unity.FoxgloveSDK.Core
             _transport.BroadcastBinary(frame);
         }
 
+        /// <summary>Force a test log message for diagnostic verification.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
 
         // ── Transport event handlers ──

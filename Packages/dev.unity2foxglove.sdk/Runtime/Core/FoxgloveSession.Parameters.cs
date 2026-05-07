@@ -64,6 +64,11 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Yield all subscribed client IDs that match any of the changed
+        /// parameter names, excluding the originating client so it does not
+        /// receive its own change echo.
+        /// </summary>
         private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint excludeClient)
         {
             foreach (var subscribedClientId in _paramSubs.GetSubscribedClientIds())
@@ -100,6 +105,10 @@ namespace Unity.FoxgloveSDK.Core
                 _transport.SendText(cid, broadcastJson);
         }
 
+        /// <summary>
+        /// Parse a subscribeParameterUpdates message and register the client
+        /// for live updates on the given parameter names.
+        /// </summary>
         private void HandleSubscribeParameterUpdates(uint clientId, string json)
         {
             SubscribeParameterUpdates msg;
@@ -109,6 +118,10 @@ namespace Unity.FoxgloveSDK.Core
             _paramSubs.Subscribe(clientId, msg.ParameterNames);
         }
 
+        /// <summary>
+        /// Parse an unsubscribeParameterUpdates message and remove the client's
+        /// subscription for the given parameter names.
+        /// </summary>
         private void HandleUnsubscribeParameterUpdates(uint clientId, string json)
         {
             UnsubscribeParameterUpdates msg;
