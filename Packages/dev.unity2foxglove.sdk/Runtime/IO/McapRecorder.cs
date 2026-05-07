@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<(uint clientId, uint chId), ChMap> _clientChMap = new();
         private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
         private readonly Dictionary<uint, ChMap> _chMap = new();
-        private readonly Dictionary<string, string> _topicSchemaNames = new();
+        private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
         private readonly List<SchemaRec> _schemas = new();
         private readonly List<ChannelRec> _channels = new();
         private readonly List<ChunkIdx> _chunkIdx = new();
@@ -62,6 +62,12 @@ namespace Unity.FoxgloveSDK.IO
         public void AddChannel(uint fId, string topic, string enc, string sName, string sEnc, string sContent)
         {
             if (_failed) return;
+            if (WouldMixTopicSignature(topic, enc, sName, sEnc, sContent))
+            {
+                _log.LogWarning(
+                    $"MCAP: skipping server channel for topic '{topic}' because its signature is incompatible with an existing recorded channel.");
+                return;
+            }
             var sid = GetOrCreateSchema(sName, sEnc, sContent);
             if (_failed) return;
             if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
@@ -73,7 +79,7 @@ namespace Unity.FoxgloveSDK.IO
                 meta["coordinate_mode"] = CoordinateMode;
             _w.WriteChannel(mCid, sid, topic, enc, meta);
             _channels.Add(new ChannelRec { Id = mCid, Sid = sid, Topic = topic, Enc = enc, Meta = new Dictionary<string, string>(meta) });
-            RememberTopicSchema(topic, sName);
+            RecordTopicSignature(topic, enc, sName, sEnc, sContent);
         }
 
         public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic,
@@ -84,11 +90,11 @@ namespace Unity.FoxgloveSDK.IO
             if (_skippedClientChannels.Contains(key)) return;
             if (!_clientChMap.TryGetValue(key, out var map))
             {
-                if (WouldMixTopicSchema(topic, sName))
+                if (WouldMixTopicSignature(topic, enc, sName, sEnc, sContent))
                 {
                     _skippedClientChannels.Add(key);
                     _log.LogWarning(
-                        $"MCAP: skipping client-published topic '{topic}' without a compatible schema because the recording already has schema '{_topicSchemaNames[topic]}' for that topic.");
+                        $"MCAP: skipping client-published topic '{topic}' because its schema signature is incompatible with an existing recorded channel.");
                     return;
                 }
 
@@ -104,7 +110,7 @@ namespace Unity.FoxgloveSDK.IO
                 var messageEncoding = string.IsNullOrEmpty(enc) ? "json" : enc;
                 _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                 _channels.Add(new ChannelRec { Id = mcapId, Sid = sid, Topic = topic, Enc = messageEncoding, Meta = meta });
-                RememberTopicSchema(topic, sName);
+                RecordTopicSignature(topic, enc, sName, sEnc, sContent);
             }
             WriteMessageToChMap(map, logNs, payload);
         }
@@ -254,21 +260,61 @@ namespace Unity.FoxgloveSDK.IO
             return sid;
         }
 
-        bool WouldMixTopicSchema(string topic, string sName)
+        struct TopicSignature : IEquatable<TopicSignature>
         {
-            if (string.IsNullOrEmpty(topic))
-                return false;
-            var schemaName = sName ?? "";
-            return _topicSchemaNames.TryGetValue(topic, out var existing) && existing != schemaName;
+            public string Encoding;
+            public string SchemaName;
+            public string SchemaEncoding;
+            public string Hash;
+
+            public bool Equals(TopicSignature other) =>
+                Encoding == other.Encoding &&
+                SchemaName == other.SchemaName &&
+                SchemaEncoding == other.SchemaEncoding &&
+                Hash == other.Hash;
+
+            public override bool Equals(object obj) =>
+                obj is TopicSignature other && Equals(other);
+
+            public override int GetHashCode() =>
+                HashCode.Combine(Encoding, SchemaName, SchemaEncoding, Hash);
         }
 
-        void RememberTopicSchema(string topic, string sName)
+        static string ComputeSchemaHash(string schemaContent, string schemaName, string schemaEncoding)
         {
-            if (string.IsNullOrEmpty(topic))
-                return;
-            var schemaName = sName ?? "";
-            if (!_topicSchemaNames.ContainsKey(topic))
-                _topicSchemaNames[topic] = schemaName;
+            // For schemaless channels, the signature components are all empty.
+            // We treat empty schemaContent as an empty hash.
+            var content = schemaContent ?? "";
+            if (content.Length == 0) return "";
+            using var sha = SHA256.Create();
+            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(schemaName + "\0" + schemaEncoding + "\0" + content));
+            return BitConverter.ToString(bytes).Replace("-", "");
+        }
+
+        bool WouldMixTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
+        {
+            if (string.IsNullOrEmpty(topic)) return false;
+            var sig = new TopicSignature
+            {
+                Encoding = enc ?? "",
+                SchemaName = sName ?? "",
+                SchemaEncoding = sEnc ?? "",
+                Hash = ComputeSchemaHash(sContent, sName, sEnc)
+            };
+            return _topicSignatures.TryGetValue(topic, out var existing) && !existing.Equals(sig);
+        }
+
+        void RecordTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
+        {
+            if (string.IsNullOrEmpty(topic)) return;
+            if (_topicSignatures.ContainsKey(topic)) return;
+            _topicSignatures[topic] = new TopicSignature
+            {
+                Encoding = enc ?? "",
+                SchemaName = sName ?? "",
+                SchemaEncoding = sEnc ?? "",
+                Hash = ComputeSchemaHash(sContent, sName, sEnc)
+            };
         }
 
         class ChMap { public ushort McapId; public string Topic; public uint Seq; public List<(ulong, ulong)> Pending = new(); }
