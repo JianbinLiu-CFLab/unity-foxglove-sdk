@@ -8,10 +8,18 @@ namespace Unity.FoxgloveSDK.Transport
     /// </summary>
     public class PlaybackClock : IFoxgloveClock
     {
+        private enum PlaybackStatus : byte
+        {
+            Playing = 0,
+            Paused = 1,
+            Buffering = 2,
+            Ended = 3
+        }
+
         private readonly IFoxgloveClock _inner;
         private bool _enabled;
         private ulong _startNs, _endNs;
-        private byte _status; // 0=Playing, 1=Paused, 2=Buffering, 3=Ended
+        private PlaybackStatus _playbackStatus = PlaybackStatus.Paused;
         private ulong _currentTimeNs;
         private float _speed = 1f;
         private DateTime? _lastTickWallTime;
@@ -31,7 +39,7 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 if (!_enabled) return _inner.NowNs;
 
-                if (_status == 1 /* Paused */ || _status == 3 /* Ended */)
+                if (_playbackStatus == PlaybackStatus.Paused || _playbackStatus == PlaybackStatus.Ended)
                     return _currentTimeNs;
 
                 var now = DateTime.UtcNow;
@@ -42,7 +50,7 @@ namespace Unity.FoxgloveSDK.Transport
                     if (_currentTimeNs >= _endNs)
                     {
                         _currentTimeNs = _endNs;
-                        _status = 3; // Ended
+                        _playbackStatus = PlaybackStatus.Ended;
                     }
                 }
                 _lastTickWallTime = now;
@@ -56,7 +64,7 @@ namespace Unity.FoxgloveSDK.Transport
             _startNs = startNs;
             _endNs = endNs;
             _currentTimeNs = startNs;
-            _status = 1; // Paused
+            _playbackStatus = PlaybackStatus.Paused;
             _speed = 1f;
         }
 
@@ -69,18 +77,20 @@ namespace Unity.FoxgloveSDK.Transport
             switch (command)
             {
                 case 0: // Play
-                    _status = 0;
+                    _playbackStatus = PlaybackStatus.Playing;
                     _lastTickWallTime = DateTime.UtcNow;
                     break;
                 case 1: // Pause
-                    _status = 1;
+                    _playbackStatus = PlaybackStatus.Paused;
                     break;
             }
 
             if (hasSeek)
             {
                 _currentTimeNs = Math.Clamp(seekTimeNs, _startNs, _endNs);
-                _status = _status == 0 ? (byte)0 : (byte)1;
+                // Keep current status or switch to Paused if not Playing
+                if (_playbackStatus != PlaybackStatus.Playing)
+                    _playbackStatus = PlaybackStatus.Paused;
             }
         }
 
@@ -88,7 +98,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             return new PlaybackStateSnapshot
             {
-                Status = _status,
+                Status = (byte)_playbackStatus,
                 CurrentTimeNs = NowNs,
                 Speed = _speed,
                 DidSeek = didSeek,

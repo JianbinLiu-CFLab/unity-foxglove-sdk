@@ -76,39 +76,39 @@ namespace Unity.FoxgloveSDK.Core
         private void HandleServiceCallRequest(uint clientId, byte[] data)
         {
             if (!BinaryEncoding.TryDecodeClientServiceCallRequest(data,
-                    out var svcServiceId, out var svcCallId, out var svcEncoding, out var svcPayload))
+                    out var serviceId, out var callId, out var encoding, out var payload))
                 return;
 
-            if (svcEncoding != "json")
+            if (encoding != "json")
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Unsupported encoding: {svcEncoding}" }));
+                { ServiceId = serviceId, CallId = callId, Message = $"Unsupported encoding: {encoding}" }));
                 return;
             }
 
-            if (!_services.TryGet(svcServiceId, out _))
+            if (!_services.TryGet(serviceId, out _))
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Unknown service: {svcServiceId}" }));
+                { ServiceId = serviceId, CallId = callId, Message = $"Unknown service: {serviceId}" }));
                 return;
             }
 
-            if (svcPayload.Length > FoxgloveServiceRegistry.MaxPayloadBytes)
+            if (payload.Length > FoxgloveServiceRegistry.MaxPayloadBytes)
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = $"Payload exceeds 1 MiB limit" }));
+                { ServiceId = serviceId, CallId = callId, Message = $"Payload exceeds 1 MiB limit" }));
                 return;
             }
 
-            try { JToken.Parse(Encoding.UTF8.GetString(svcPayload)); }
+            try { JToken.Parse(Encoding.UTF8.GetString(payload)); }
             catch
             {
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new ServiceCallFailure
-                { ServiceId = svcServiceId, CallId = svcCallId, Message = "Malformed JSON payload" }));
+                { ServiceId = serviceId, CallId = callId, Message = "Malformed JSON payload" }));
                 return;
             }
 
-            _services.Enqueue(svcServiceId, svcCallId, clientId, svcEncoding, svcPayload);
+            _services.Enqueue(serviceId, callId, clientId, encoding, payload);
         }
     }
 }

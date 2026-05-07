@@ -170,18 +170,18 @@ namespace Unity.FoxgloveSDK.Core
         private bool HandlePlaybackControlRequest(uint clientId, byte[] data)
         {
             if (_runtime?.PlaybackEnabled != true) return false;
-            if (!BinaryEncoding.TryDecodePlaybackControlRequest(data, out var pbCmd, out var pbSpeed,
-                    out var pbHasSeek, out var pbSeekNs, out var pbReqId))
+            if (!BinaryEncoding.TryDecodePlaybackControlRequest(data, out var playbackCommand, out var playbackSpeed,
+                    out var playbackHasSeek, out var playbackSeekNs, out var playbackRequestId))
                 return false;
 
-            _runtime.ApplyPlaybackCommand(pbCmd, pbSpeed, pbHasSeek, pbSeekNs);
-            if (pbHasSeek) _runtime.ReplaySeek(pbSeekNs);
-            if (pbCmd == 0) _runtime.ReplayPlay();
-            else if (pbCmd == 1) _runtime.ReplayPause();
-            var state = _runtime.GetPlaybackState(true, pbReqId);
-            var pbFrame = BinaryEncoding.EncodePlaybackState(
+            _runtime.ApplyPlaybackCommand(playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs);
+            if (playbackHasSeek) _runtime.ReplaySeek(playbackSeekNs);
+            if (playbackCommand == 0) _runtime.ReplayPlay();
+            else if (playbackCommand == 1) _runtime.ReplayPause();
+            var state = _runtime.GetPlaybackState(true, playbackRequestId);
+            var playbackFrame = BinaryEncoding.EncodePlaybackState(
                 state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
-            _transport.SendBinary(clientId, pbFrame);
+            _transport.SendBinary(clientId, playbackFrame);
             return true;
         }
 
