@@ -68,6 +68,20 @@ namespace Unity.FoxgloveSDK.Core
         public FoxgloveRuntime(IFoxgloveLogger logger = null)
             : this(new ManagedWsBackend(logger), new SystemClock(), new DefaultSchemaRegistry(), logger) { }
 
+        /// <summary>Add a browser origin to the transport's CSWSH allowlist. No-op if the transport is not a ManagedWsBackend.</summary>
+        public void AddAllowedOrigin(string origin)
+        {
+            if (_transport is ManagedWsBackend mb)
+                mb.AddAllowedOrigin(origin);
+        }
+
+        /// <summary>Clear the transport's browser origin allowlist, blocking all browser clients.</summary>
+        public void ClearAllowedOrigins()
+        {
+            if (_transport is ManagedWsBackend mb)
+                mb.ClearAllowedOrigins();
+        }
+
         /// <summary>Full-injection constructor for custom transport, clock, schema registry, and logger.</summary>
         public FoxgloveRuntime(IFoxgloveTransport transport, IFoxgloveClock clock, ISchemaRegistry schemaRegistry, IFoxgloveLogger logger = null)
         {

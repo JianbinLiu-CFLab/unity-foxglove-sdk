@@ -95,6 +95,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _disableLivePublishers = true;
         private bool _livePublishersDisabled;
 
+        [Header("Security")]
+        [Tooltip("Allowed browser origins for WebSocket connections. Empty list rejects all browser-origin clients. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
+        [SerializeField] private List<string> _allowedBrowserOrigins = new();
+
         private Core.FoxgloveRuntime _runtime;
         private int _nextChannelId = 1;
         private bool _warnedNotRunning;
@@ -237,6 +241,7 @@ namespace Unity.FoxgloveSDK.Components
             SetupPlaybackControl();
             SetupRecording();
             SetupReplay();
+            SetupAllowedOrigins();
 
             _runtime.Start(_serverName, _host, _port);
             _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
@@ -323,6 +328,17 @@ namespace Unity.FoxgloveSDK.Components
             var coord = _coordinateMode == CoordinateMode.RightHand ? "RightHand" : "LeftHand";
             _runtime.SetRecordingCoordinateMode(coord);
             _runtime.EnableReplay(_replayFilePath);
+        }
+
+        /// <summary>Sync Inspector-configured browser origin allowlist to the transport before starting.</summary>
+        private void SetupAllowedOrigins()
+        {
+            _runtime.ClearAllowedOrigins();
+            if (_allowedBrowserOrigins != null)
+            {
+                foreach (var origin in _allowedBrowserOrigins)
+                    _runtime.AddAllowedOrigin(origin);
+            }
         }
 
         /// <summary>
