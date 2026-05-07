@@ -96,6 +96,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _livePublishersDisabled;
 
         [Header("Security")]
+        /// <summary>Inspector-configured browser origin allowlist for CSWSH protection. Empty list rejects all browser-origin clients.</summary>
         [Tooltip("Allowed browser origins for WebSocket connections. Empty list rejects all browser-origin clients. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
         [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new();
 
