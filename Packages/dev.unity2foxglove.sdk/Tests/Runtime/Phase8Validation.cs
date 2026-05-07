@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestTwoClientsDifferentChannelIds();
             TestClientDisconnectCleansUp();
             TestConnectionGraphLinkedToClientPublish();
+            TestDisconnectCleansGraphSubscribedTopics();
 
             Console.WriteLine($"Phase 8: {_passCount} checks passed.\n");
         }
@@ -194,6 +195,67 @@ namespace Unity.FoxgloveSDK.Tests
 
             var updates = fake.SentTexts[2].Where(t => t.Contains("connectionGraphUpdate")).ToList();
             Assert(updates.Count > 0, "Client advertise triggers graph update");
+        }
+
+        /// <summary>
+        /// When a client subscribed to server channels disconnects, its
+        /// subscribed-topic entries must be removed from the connection graph.
+        /// </summary>
+        private static void TestDisconnectCleansGraphSubscribedTopics()
+        {
+            var fake = new Phase8FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+
+            // Client 1 subscribes to channels and connection graph
+            fake.SimulateConnect(1);
+            fake.SimulateText(1, "{\"op\":\"subscribeConnectionGraph\"}");
+
+            // Register a server channel
+            session.RegisterChannel(new AdvertiseChannel { Id = 10, Topic = "/server/t1", Encoding = "json" });
+
+            // Client subscribes to the server channel
+            fake.SimulateText(1, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":10}]}");
+
+            // Client also advertises a client-published channel
+            fake.SimulateText(1, "{\"op\":\"advertise\",\"channels\":[{\"id\":5,\"topic\":\"/client/t1\",\"encoding\":\"json\"}]}");
+
+            // Capture the latest graph update sent to client 1 (via SendText, not BroadcastText)
+            var sentTo1 = fake.SentTexts[1];
+            var snapshots = sentTo1.Where(t => t.Contains("connectionGraphUpdate")).ToList();
+            var beforeDisconnect = JObject.Parse(snapshots.Last());
+            var subsBefore = (JArray)beforeDisconnect["subscribedTopics"];
+            var pubsBefore = (JArray)beforeDisconnect["publishedTopics"];
+            Assert(subsBefore != null && subsBefore.Count > 0, "Graph disconnect: subscribed topics exist before disconnect");
+            Assert(pubsBefore != null && pubsBefore.Count > 0, "Graph disconnect: published topics exist before disconnect");
+
+            // Disconnect client 1
+            fake.SimulateDisconnect(1);
+
+            // After disconnect, connect a new client who subscribes to graph.
+            // The snapshot must NOT contain the disconnected client's subscriptions.
+            fake.SimulateConnect(2);
+            fake.SimulateText(2, "{\"op\":\"subscribeConnectionGraph\"}");
+
+            var sentTo2 = fake.SentTexts[2];
+            var graphUpdates = sentTo2.Where(t => t.Contains("connectionGraphUpdate")).ToList();
+            Assert(graphUpdates.Count > 0, "Graph disconnect: graph update sent to new client");
+            var afterDisconnect = JObject.Parse(graphUpdates.Last());
+            var subsAfter = (JArray)afterDisconnect["subscribedTopics"];
+            var pubsAfter = (JArray)afterDisconnect["publishedTopics"];
+
+            var hasClientSub = subsAfter.Any(s =>
+            {
+                var ids = (JArray)((JObject)s)["subscriberIds"];
+                return ids?.Any(id => id?.ToString().StartsWith("client:1:") == true) == true;
+            });
+            Assert(!hasClientSub, "Graph disconnect: no subscribed topics from disconnected client");
+
+            var hasClientPub = pubsAfter.Any(p =>
+            {
+                var ids = (JArray)((JObject)p)["publisherIds"];
+                return ids?.Any(id => id?.ToString().StartsWith("client:1:") == true) == true;
+            });
+            Assert(!hasClientPub, "Graph disconnect: no published topics from disconnected client");
         }
 
         private sealed class Phase8FakeTransport : IFoxgloveTransport

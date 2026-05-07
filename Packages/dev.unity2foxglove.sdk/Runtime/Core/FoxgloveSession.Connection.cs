@@ -112,9 +112,15 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var msg = JsonConvert.DeserializeObject<Advertise>(json);
+                lock (_clientChannelsLock)
+                {
+                    foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
+                    {
+                        _clientChannels[(clientId, ch.Id)] = ch;
+                    }
+                }
                 foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
                 {
-                    _clientChannels[(clientId, ch.Id)] = ch;
                     _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}");
                     _graphDirty = true;
                 }
@@ -130,12 +136,15 @@ namespace Unity.FoxgloveSDK.Core
                 var msg = JsonConvert.DeserializeObject<Unadvertise>(json);
                 foreach (var chId in msg.ChannelIds ?? new List<uint>())
                 {
-                    if (_clientChannels.TryGetValue((clientId, chId), out var ch))
+                    AdvertiseChannel ch;
+                    lock (_clientChannelsLock)
                     {
-                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}");
-                        _graphDirty = true;
+                        if (!_clientChannels.TryGetValue((clientId, chId), out ch))
+                            continue;
                         _clientChannels.Remove((clientId, chId));
                     }
+                    _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}");
+                    _graphDirty = true;
                 }
                 BroadcastGraphUpdate();
             }
@@ -151,12 +160,15 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
             {
-                if (_clientChannels.TryGetValue((clientId, chId), out var ch))
+                AdvertiseChannel ch;
+                lock (_clientChannelsLock)
                 {
-                    OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
-                    _recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
-                        ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
+                    if (!_clientChannels.TryGetValue((clientId, chId), out ch))
+                        return;
                 }
+                OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
+                _recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
+                    ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
             }
         }
 
