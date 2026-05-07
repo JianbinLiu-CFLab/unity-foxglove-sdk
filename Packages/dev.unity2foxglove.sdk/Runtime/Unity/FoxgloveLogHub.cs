@@ -40,16 +40,24 @@ namespace Unity.FoxgloveSDK.Components
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
-            // Clean up any stale hub left from a previous Domain Reload
-            if (_instance == null)
+            if (_instance != null) return;
+
+            var existing = FindFirstObjectByType<FoxgloveLogHub>();
+            if (existing != null)
             {
-                var existing = FindFirstObjectByType<FoxgloveLogHub>();
-                if (existing != null)
-                {
+                // Reuse a user-placed scene hub; only clean up stale auto-created
+                // instances left from a previous Domain Reload.
+                var isStale = existing.name == "[FoxRunHub]"
+                    && (existing.hideFlags & HideFlags.HideAndDontSave) != 0;
+                if (isStale)
                     DestroyImmediate(existing.gameObject);
+                else
+                {
+                    _instance = existing;
+                    return;
                 }
             }
-            if (_instance != null) return;
+
             var go = new GameObject("[FoxRunHub]");
             DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;

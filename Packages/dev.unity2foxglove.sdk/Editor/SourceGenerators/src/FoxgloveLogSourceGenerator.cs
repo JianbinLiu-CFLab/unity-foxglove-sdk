@@ -67,10 +67,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     // Multi-variable field declarations like `[FoxRun] float _a, _b;`
                     // are ambiguous — report a diagnostic rather than silently skipping.
-                    var diag = Diagnostic.Create(Diags.MultiVariableDeclaration,
-                        fieldDecl.GetLocation());
-                    ctx.ReportDiagnostic(diag);
-                    return null;
+                    return MemberData.ForDiagnostic(fieldDecl.GetLocation());
                 }
                 symbol = ctx.SemanticModel.GetDeclaredSymbol(fieldDecl.Declaration.Variables[0], ct);
             }
@@ -126,7 +123,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static void Generate(SourceProductionContext spc, ImmutableArray<MemberData> items)
         {
-            var valid = items.Where(m => m != null).ToList();
+            foreach (var item in items.Where(m => m?.DiagnosticLocation != null))
+                spc.ReportDiagnostic(Diagnostic.Create(Diags.MultiVariableDeclaration, item.DiagnosticLocation));
+
+            var valid = items.Where(m => m != null && m.DiagnosticLocation == null).ToList();
             if (valid.Count == 0) return;
 
             var byClass = valid.GroupBy(m => (m.Ns, m.ClassName));
@@ -196,8 +196,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             for (int i = 0; i < topics.Count; i++)
             {
                 var rate = topicMap[topics[i]].Max(f => f.rate);
-                sb.AppendLine(CultureInfo.InvariantCulture,
-                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);");
+                sb.AppendLine(FormattableString.Invariant(
+                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);"));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -250,8 +250,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly string Ns, ClassName, MemberName, MemberType;
             public readonly bool IsPartial;
             public readonly TopicEntry[] Topics;
+            public readonly Location DiagnosticLocation;
+            public static MemberData ForDiagnostic(Location location) =>
+                new MemberData("", "", false, "", "", Array.Empty<TopicEntry>(), location);
             public MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t)
-            { Ns = ns; ClassName = cn; IsPartial = partial; MemberName = mn; MemberType = mt; Topics = t; }
+                : this(ns, cn, partial, mn, mt, t, null)
+            {
+            }
+            private MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t, Location diagnosticLocation)
+            { Ns = ns; ClassName = cn; IsPartial = partial; MemberName = mn; MemberType = mt; Topics = t; DiagnosticLocation = diagnosticLocation; }
         }
 
         private sealed class TopicEntry

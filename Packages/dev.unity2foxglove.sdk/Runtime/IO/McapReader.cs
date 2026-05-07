@@ -102,6 +102,8 @@ namespace Unity.FoxgloveSDK.IO
             var contentLength = ReadU64();
             if (contentLength > sizeLimit)
                 throw new InvalidDataException($"Record content length {contentLength} exceeds limit {sizeLimit}");
+            if (contentLength > int.MaxValue)
+                throw new InvalidDataException($"Record content length {contentLength} exceeds int.MaxValue");
             var content = new byte[contentLength];
             ReadExact(content, 0, (int)contentLength);
             return (opcode, content);

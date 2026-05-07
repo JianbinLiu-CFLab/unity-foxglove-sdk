@@ -230,8 +230,8 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var rate = topicMap[topics[i]].Max(f => f.RateHz);
-                sb.AppendLine(CultureInfo.InvariantCulture,
-                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);");
+                sb.AppendLine(FormattableString.Invariant(
+                    $"{pad}            case {i}: return new FoxgloveLogTopicInfo(\"{topics[i]}\", {rate}f);"));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
