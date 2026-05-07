@@ -28,7 +28,7 @@ Use this when you are evaluating the package as a user. If you cloned this repos
 1. Open the imported sample scene
 2. Click the **Play** button in the Unity Editor toolbar
 3. Open Foxglove Desktop and connect via `ws://127.0.0.1:8765`
-4. Import `FoxgloveLayout.json` (in Foxglove: `Layout > Import from file...`)
+4. Import the layout: drag `Assets/Samples/Unity2Foxglove SDK/<version>/Basic Visualization/FoxgloveSimpleLayout.json` into the Foxglove window, or use **Layout > Import from file...** and paste the full path
 5. Verify each panel feature (see below)
 
 ## Quick feature verification

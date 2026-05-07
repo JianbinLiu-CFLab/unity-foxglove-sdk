@@ -38,7 +38,7 @@ If you don't want to install these dependencies, use `Basic Visualization` inste
 
 1. Open Foxglove Desktop
 2. "Open connection" -> Foxglove WebSocket -> `ws://127.0.0.1:8765`
-3. Import `FoxgloveFullLayout.json`
+3. Import the layout: drag `Assets/Samples/Unity2Foxglove SDK/<version>/Full Demo Visualization/FoxgloveFullLayout.json` into the Foxglove window, or use **Layout > Import from file...** and paste the full path
 4. Topics: `/tf`, `/scene`, `/unity/camera`, `/debug/position`, `/debug/health`
 
 ## Verification
