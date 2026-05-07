@@ -20,8 +20,17 @@ namespace Unity.FoxgloveSDK.Editor
     /// </summary>
     public class FoxrunBuildPreprocess : IPreprocessBuildWithReport
     {
+        /// <summary>
+        /// Runs early (before most other build callbacks) so generated source
+        /// files are present for IL2CPP compilation.
+        /// </summary>
         public int callbackOrder => -100;
 
+        /// <summary>
+        /// Generates physical <c>_FoxRun.g.cs</c> fallback files and a
+        /// <c>FoxRun_link.xml</c> preservation file for IL2CPP builds,
+        /// then forces a synchronous asset database refresh.
+        /// </summary>
         public void OnPreprocessBuild(BuildReport report)
         {
             Debug.Log("[FoxrunBuildPreprocess] Generating FoxRun source files...");

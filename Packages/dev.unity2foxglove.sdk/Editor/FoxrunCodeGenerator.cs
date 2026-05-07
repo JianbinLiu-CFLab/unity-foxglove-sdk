@@ -142,6 +142,13 @@ namespace Unity.FoxgloveSDK.Editor
             return result;
         }
 
+        /// <summary>
+        /// Checks whether a type was declared <c>partial</c>.
+        /// <para>Runtime detection is not possible because the CLR erases partial
+        /// metadata. The build pipeline assumes every <c>MonoBehaviour</c> with
+        /// <c>[FoxRun]</c> members was declared partial; the Roslyn ISG enforces this
+        /// at Editor compile time via FOXRUN001.</para>
+        /// </summary>
         static bool IsPartial(Type type)
         {
             // Partial classes in C# have no runtime metadata at the type level.
@@ -153,6 +160,11 @@ namespace Unity.FoxgloveSDK.Editor
             return true;
         }
 
+        /// <summary>
+        /// Reflects over all instance fields and properties (public and non-public,
+        /// declared only) on the given type and collects <c>[FoxRun]</c> attributed
+        /// members as <c>MemberData</c> entries.
+        /// </summary>
         static List<MemberData> ScanType(Type type)
         {
             var result = new List<MemberData>();
@@ -266,6 +278,12 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Returns a C# anonymous-object expression for Unity value types
+        /// (<c>Vector3</c>, <c>Vector2</c>, <c>Quaternion</c>, <c>Color</c>) or the
+        /// raw member name for all other types. Strips the <c>UnityEngine.</c> prefix
+        /// before matching.
+        /// </summary>
         static string ValueExpr(string name, string typeName)
         {
             var t = typeName;
@@ -280,11 +298,31 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        /// <summary>
+        /// Immutable data record for one <c>[FoxRun]</c>-attributed member, used
+        /// during reflection-based scanning and source file generation.
+        /// </summary>
         public sealed class MemberData
         {
-            public readonly string MemberName, RawTypeName, Topic, SchemaName, ClassName, Ns;
+            /// <summary>Field or property name.</summary>
+            public readonly string MemberName;
+            /// <summary>Field or property type as full-qualified string.</summary>
+            public readonly string RawTypeName;
+            /// <summary>Topic string from the attribute.</summary>
+            public readonly string Topic;
+            /// <summary>Optional schema name.</summary>
+            public readonly string SchemaName;
+            /// <summary>Containing class name.</summary>
+            public readonly string ClassName;
+            /// <summary>Containing namespace (empty for global).</summary>
+            public readonly string Ns;
+            /// <summary>Publishing rate in Hz.</summary>
             public readonly float RateHz;
 
+            /// <summary>
+            /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
+            /// namespace/class context.
+            /// </summary>
             public MemberData(string name, Type type, string ns, string cn, string topic, float rate, string schema)
             {
                 MemberName = name;
@@ -296,6 +334,10 @@ namespace Unity.FoxgloveSDK.Editor
                 SchemaName = schema;
             }
 
+            /// <summary>
+            /// Constructs a <c>MemberData</c> with a raw type string and no
+            /// namespace/class context (used in tests or diagnostics).
+            /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema)
             {
                 MemberName = name;
