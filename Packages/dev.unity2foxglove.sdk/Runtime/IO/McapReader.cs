@@ -21,6 +21,10 @@ namespace Unity.FoxgloveSDK.IO
     {
         private readonly Stream _stream;
         private readonly byte[] _buf = new byte[8];
+
+        /// <summary>
+        /// Default maximum size for a single MCAP record, set to 256 MiB.
+        /// </summary>
         public const ulong DefaultRecordSizeLimit = 256UL * 1024 * 1024;
 
         public McapReader(Stream stream)
@@ -28,6 +32,9 @@ namespace Unity.FoxgloveSDK.IO
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         }
 
+        /// <summary>
+        /// Reads the MCAP file header, footer, and summary section, returning a parsed McapFileSummary.
+        /// </summary>
         public McapFileSummary ReadSummary(ulong recordSizeLimit = DefaultRecordSizeLimit)
         {
             // Verify leading magic
@@ -94,6 +101,9 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>
+        /// Reads one MCAP record from the current stream position, returning its opcode and content bytes.
+        /// </summary>
         public (byte opcode, byte[] content) ReadOneRecord(ulong sizeLimit = DefaultRecordSizeLimit)
         {
             var opcodeRaw = _stream.ReadByte();
@@ -109,6 +119,9 @@ namespace Unity.FoxgloveSDK.IO
             return (opcode, content);
         }
 
+        /// <summary>
+        /// Reads and decompresses a chunk's record data from the given offset and length.
+        /// </summary>
         public byte[] ReadChunkRecords(ulong chunkStartOffset, ulong chunkLength)
         {
             _stream.Seek((long)chunkStartOffset, SeekOrigin.Begin);
@@ -133,6 +146,9 @@ namespace Unity.FoxgloveSDK.IO
             return McapCompression.Decompress(compression, compressed, (int)uncompSize);
         }
 
+        /// <summary>
+        /// Parses MCAP messages from decompressed chunk data, optionally filtering by channel ID.
+        /// </summary>
         public List<McapMessage> ReadChunkMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
         {
             var messages = new List<McapMessage>();
@@ -156,6 +172,9 @@ namespace Unity.FoxgloveSDK.IO
 
         // ── Decode helpers ──
 
+        /// <summary>
+        /// Decodes an MCAP header record from raw content bytes.
+        /// </summary>
         public static McapHeader DecodeHeader(byte[] content)
         {
             var off = 0;
@@ -166,6 +185,9 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>
+        /// Decodes an MCAP schema record from raw content bytes.
+        /// </summary>
         public static McapSchema DecodeSchema(byte[] content)
         {
             var off = 0;
@@ -178,6 +200,9 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>
+        /// Decodes an MCAP channel record from raw content bytes.
+        /// </summary>
         public static McapChannel DecodeChannel(byte[] content)
         {
             var off = 0;
@@ -191,6 +216,9 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>
+        /// Decodes an MCAP message from the given byte buffer with offset and content length.
+        /// </summary>
         public static McapMessage DecodeMessage(byte[] buf, int off, int contentLen)
         {
             var start = off;
@@ -212,6 +240,9 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>
+        /// Decodes an MCAP chunk index record from raw content bytes.
+        /// </summary>
         public static McapChunkIndex DecodeChunkIndex(byte[] content)
         {
             var off = 0;
@@ -237,6 +268,9 @@ namespace Unity.FoxgloveSDK.IO
             return ci;
         }
 
+        /// <summary>
+        /// Decodes an MCAP statistics record from raw content bytes.
+        /// </summary>
         public static McapStatistics DecodeStatistics(byte[] content)
         {
             var off = 0;
@@ -262,6 +296,9 @@ namespace Unity.FoxgloveSDK.IO
             return s;
         }
 
+        /// <summary>
+        /// Decodes an MCAP metadata index record from raw content bytes.
+        /// </summary>
         public static McapMetadataIndex DecodeMetadataIndex(byte[] content)
         {
             var off = 0;
@@ -273,6 +310,9 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>
+        /// Decodes an MCAP metadata record from raw content bytes.
+        /// </summary>
         public static McapMetadata DecodeMetadata(byte[] content)
         {
             var off = 0;
@@ -289,6 +329,9 @@ namespace Unity.FoxgloveSDK.IO
             return new McapMetadata { Name = name, Metadata = meta };
         }
 
+        /// <summary>
+        /// Seeks to the given offset and reads a single metadata record.
+        /// </summary>
         public McapMetadata ReadMetadataAt(ulong offset)
         {
             _stream.Seek((long)offset, SeekOrigin.Begin);
@@ -298,6 +341,9 @@ namespace Unity.FoxgloveSDK.IO
             return DecodeMetadata(content);
         }
 
+        /// <summary>
+        /// Decodes an MCAP footer record from raw content bytes.
+        /// </summary>
         public static McapFooter DecodeFooter(byte[] content)
         {
             var off = 0;
@@ -311,6 +357,9 @@ namespace Unity.FoxgloveSDK.IO
 
         // ── Internal ──
 
+        /// <summary>
+        /// Reads 8 bytes from the stream and assembles them into a little-endian UInt64.
+        /// </summary>
         private ulong ReadU64()
         {
             ReadExact(_buf, 0, 8);
@@ -318,6 +367,9 @@ namespace Unity.FoxgloveSDK.IO
                  | ((ulong)_buf[4] << 32) | ((ulong)_buf[5] << 40) | ((ulong)_buf[6] << 48) | ((ulong)_buf[7] << 56);
         }
 
+        /// <summary>
+        /// Reads exactly <c>count</c> bytes from the stream into <c>buf</c> at the given offset.
+        /// </summary>
         private void ReadExact(byte[] buf, int offset, int count)
         {
             var read = 0;

@@ -20,32 +20,105 @@ namespace Unity.FoxgloveSDK.IO
     /// </summary>
     public class McapReplayEngine : IDisposable
     {
+        /// <summary>
+        /// Underlying MCAP binary reader.
+        /// </summary>
         private McapReader _reader;
+        /// <summary>
+        /// File stream for the loaded .mcap file.
+        /// </summary>
         private Stream _stream;
+        /// <summary>
+        /// Parsed summary of the loaded MCAP file.
+        /// </summary>
         private McapFileSummary _summary;
+        /// <summary>
+        /// Messages read ahead of their emission time, waiting to be flushed.
+        /// </summary>
         private readonly Queue<McapMessage> _pending = new();
 
         // Per-chunk state
+        /// <summary>
+        /// Index of the chunk currently being read, or -1 if none loaded.
+        /// </summary>
         private int _currentChunkIdx = -1;
+        /// <summary>
+        /// Decompressed record data for the current chunk.
+        /// </summary>
         private byte[] _currentUncompressed;
+        /// <summary>
+        /// Read cursor position within the current decompressed chunk.
+        /// </summary>
         private int _readOffset;
+        /// <summary>
+        /// Log time of the most recently emitted message, used to skip out-of-order records.
+        /// </summary>
         private ulong _lastEmitTime;
+        /// <summary>
+        /// Current replay time in nanoseconds.
+        /// </summary>
         private ulong _currentTimeNs;
 
+        /// <summary>
+        /// Base value for replay-generated channel IDs to avoid collisions with original IDs.
+        /// </summary>
         public const ulong ReplayChannelIdBase = 0x80000000UL;
+        /// <summary>
+        /// Maximum number of messages emitted per Tick call.
+        /// </summary>
         public int MaxMessagesPerTick = 1000;
 
+        /// <summary>
+        /// Whether a file has been loaded successfully.
+        /// </summary>
         public bool IsLoaded { get; private set; }
+        /// <summary>
+        /// Earliest message timestamp in nanoseconds.
+        /// </summary>
         public ulong StartTimeNs { get; private set; }
+        /// <summary>
+        /// Latest message timestamp in nanoseconds.
+        /// </summary>
         public ulong EndTimeNs { get; private set; }
+        /// <summary>
+        /// Whether seeking is supported (requires statistics and chunk indexes).
+        /// </summary>
         public bool CanSeek { get; private set; }
+        /// <summary>
+        /// Current replay timestamp in nanoseconds.
+        /// </summary>
         public ulong CurrentTimeNs => _currentTimeNs;
+        /// <summary>
+        /// Channels defined in the loaded MCAP file.
+        /// </summary>
         public IReadOnlyList<McapChannel> Channels => _summary?.Channels;
+        /// <summary>
+        /// Full summary of the loaded MCAP file.
+        /// </summary>
         public McapFileSummary Summary => _summary;
 
-        public enum Status { Playing, Paused, Buffering, Ended }
+        /// <summary>
+        /// Replay engine state.
+        /// </summary>
+        public enum Status
+        {
+            /// <summary>Actively emitting messages.</summary>
+            Playing,
+            /// <summary>Paused by user, not emitting.</summary>
+            Paused,
+            /// <summary>Messages are queued ahead of the current time but not yet due.</summary>
+            Buffering,
+            /// <summary>All messages have been emitted.</summary>
+            Ended
+        }
+        /// <summary>
+        /// Current replay engine state.
+        /// </summary>
         public Status CurrentStatus { get; private set; } = Status.Paused;
 
+        /// <summary>
+        /// Opens an .mcap file and reads its summary section, preparing for replay.
+        /// </summary>
         public void Load(string filePath)
         {
             _stream = File.OpenRead(filePath);
@@ -155,6 +228,9 @@ namespace Unity.FoxgloveSDK.IO
             return result;
         }
 
+        /// <summary>
+        /// Starts or resumes replay. If already ended, seeks back to start first.
+        /// </summary>
         public void Play()
         {
             if (!IsLoaded) return;
@@ -165,12 +241,18 @@ namespace Unity.FoxgloveSDK.IO
             CurrentStatus = Status.Playing;
         }
 
+        /// <summary>
+        /// Pauses replay, stopping message emission until Play is called.
+        /// </summary>
         public void Pause()
         {
             if (!IsLoaded) return;
             CurrentStatus = Status.Paused;
         }
 
+        /// <summary>
+        /// Seeks to the given timestamp, clearing pending messages and repositioning the chunk cursor.
+        /// </summary>
         public void Seek(ulong timeNs)
         {
             if (!IsLoaded || !CanSeek) return;
@@ -199,6 +281,9 @@ namespace Unity.FoxgloveSDK.IO
                 CurrentStatus = Status.Paused;
         }
 
+        /// <summary>
+        /// Releases the underlying file stream and resets loaded state.
+        /// </summary>
         public void Dispose()
         {
             _stream?.Dispose();
@@ -209,6 +294,10 @@ namespace Unity.FoxgloveSDK.IO
 
         // ── Internal ──
 
+        /// <summary>
+        /// Advances to the next chunk, decompresses it, and resets the read cursor.
+        /// Returns false if no more chunks remain.
+        /// </summary>
         private bool LoadNextChunk()
         {
             _currentChunkIdx++;
@@ -220,6 +309,9 @@ namespace Unity.FoxgloveSDK.IO
             return true;
         }
 
+        /// <summary>
+        /// Dequeues the oldest pending message and updates the last emitted time.
+        /// </summary>
         private McapMessage PopPending()
         {
             var m = _pending.Dequeue();
