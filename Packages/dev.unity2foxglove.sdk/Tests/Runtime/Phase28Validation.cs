@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestNoOriginAllowed();
             TestAllowedOriginAccepted();
             TestDisallowedOriginRejected();
+            TestFileOriginAllowed();
             Console.WriteLine($"Phase 28: {_passCount} checks passed.");
         }
 
@@ -125,6 +126,37 @@ namespace Unity.FoxgloveSDK.Tests
                     // Expected — server refuses the connection
                     Assert(true, "Disallowed Origin: connection rejected");
                 }
+            }
+            finally
+            {
+                backend.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// A WebSocket client that sends <c>Origin: file://</c> (as Foxglove
+        /// Desktop Electron does) must be accepted without being on the
+        /// allowlist, since file:// origins are local non-browser sources.
+        /// </summary>
+        static void TestFileOriginAllowed()
+        {
+            var backend = new ManagedWsBackend();
+            // Default allowlist is empty — but file:// should bypass the guard
+            backend.Start("127.0.0.1", 18794);
+
+            try
+            {
+                var ws = new ClientWebSocket();
+                ws.Options.AddSubProtocol("foxglove.sdk.v1");
+                ws.Options.SetRequestHeader("Origin", "file://");
+                var cts = new CancellationTokenSource(5000);
+                ws.ConnectAsync(new Uri("ws://127.0.0.1:18794/"), cts.Token).GetAwaiter().GetResult();
+                Assert(ws.State == WebSocketState.Open, "File Origin: connection accepted");
+                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (WebSocketException ex)
+            {
+                Assert(false, $"File Origin: unexpected error: {ex.Message}");
             }
             finally
             {

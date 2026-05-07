@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Components
 
         [Header("Security")]
         [Tooltip("Allowed browser origins for WebSocket connections. Empty list rejects all browser-origin clients. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
-        [SerializeField] private List<string> _allowedBrowserOrigins = new();
+        [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new();
 
         private Core.FoxgloveRuntime _runtime;
         private int _nextChannelId = 1;

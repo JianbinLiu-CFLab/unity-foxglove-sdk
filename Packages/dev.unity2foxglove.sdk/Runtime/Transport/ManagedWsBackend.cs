@@ -243,8 +243,10 @@ namespace Unity.FoxgloveSDK.Transport
                 return (false, null);
 
             // Origin guard: reject browser clients unless the origin is in the allowlist.
-            // Non-browser clients (Foxglove Desktop, CLI, etc.) typically do not send Origin.
-            if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin))
+            // file:// origins come from non-browser environments (Electron desktop apps,
+            // Foxglove Desktop) — they are not subject to CSWSH, so they are always allowed.
+            if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
+                && !origin.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
             {
                 bool allowed;
                 lock (_allowedOrigins) allowed = _allowedOrigins.Contains(origin);
