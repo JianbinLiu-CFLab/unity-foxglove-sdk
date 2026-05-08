@@ -21,7 +21,7 @@ Use this project when you want a complete, ready-to-run demo instead of installi
 
 ## Requirements
 
-- **Unity version**: 2022.3 or later (LTS recommended)
+- **Unity version**: 6000.0 LTSC or later (developed on 6000.3.14f1 LTSC; compatible with 6000.0.74f1 LTSC)
 - **Target platforms**: Windows, macOS, Linux standalone
 - **IL2CPP builds**: requires installation of the corresponding **Windows IL2CPP / Linux IL2CPP / macOS IL2CPP** Build Support modules
 - **Python 3.8+** (only needed for command-line IL2CPP builds)

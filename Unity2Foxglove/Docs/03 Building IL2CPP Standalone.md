@@ -22,7 +22,7 @@ The Unity Editor runs C# code using Mono JIT. However, many advanced features (s
 
 ### 2.1 Unity installation
 
-1. **Unity 2022.3 or later** is installed
+1. **Unity 6000.0 LTSC or later** is installed
 2. The **Build Support** module for the target platform is installed, especially **Windows IL2CPP** (or Linux IL2CPP, macOS IL2CPP)
 
    - Unity Hub > Installs > click the gear icon next to the Unity version > **Add modules**
