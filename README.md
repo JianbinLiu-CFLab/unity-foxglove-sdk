@@ -4,6 +4,10 @@
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Release](https://img.shields.io/badge/release-v1.0.0-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
+[![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
+[![Docs Check](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml)
+
+> **Positioning**: Unity2Foxglove is a **Unity-focused Foxglove SDK bridge**. It implements a practical subset of the official Foxglove WebSocket protocol and MCAP specification. It is **not** an official Foxglove SDK replacement and does not target feature parity with the multi-language foxglove-sdk ecosystem.
 
 A cross-platform Unity SDK for real-time runtime data streaming, MCAP recording and replay, and in-editor debugging. It runs inside Unity, speaks the Foxglove WebSocket protocol directly, and can work with [Foxglove](https://foxglove.dev), MCAP files, or custom clients.
 
@@ -171,7 +175,34 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 ---
 
-## 6. License
+## 6. Capabilities & Limitations
+
+### Supported
+
+- Real-time data streaming (transform, scene entities, camera images)
+- MCAP recording with LZ4/Zstd compression and topic-schema guard
+- MCAP replay (transform snapshot reconstruction, not deterministic replay)
+- Parameters (get, set, subscribe), Services (call/response), Connection Graph, Client Publish, Playback Control
+- Asset fetching (fetchAsset) with configurable asset roots
+- FoxRun attribute-based zero-code publishing via Roslyn Source Generator
+- IL2CPP build support with automatic link.xml generation
+
+### Not Supported
+
+- **WebGL** — the WebSocket server requires `System.Net.Sockets`, which is unavailable on WebGL
+- **Authentication / TLS** — no token, password, or certificate-based auth
+- **Multi-language SDK parity** — this is a Unity bridge, not a full foxglove-sdk replacement
+- **Deterministic replay** — MCAP replay is transform snapshot playback; non-deterministic components (physics, random, live input) are not replayed
+
+### Security
+
+- **CSWSH Origin Guard** (Phase 28): browser-origin WebSocket connections are rejected by default. An Inspector-configurable allowlist enables specific origins. `file://` origins (Electron/Foxglove Desktop) are always permitted.
+- **Default bind**: `127.0.0.1:8765`. Do not expose this port on untrusted networks.
+- **No authentication**: anyone who can reach the WebSocket port can connect and interact with parameters, services, and published data.
+
+---
+
+## 7. License
 
 This project is licensed under the [Apache License 2.0](LICENSE) so it can be used, modified, and integrated in research, commercial, and open-source Unity projects with a clear patent and attribution model.
 
