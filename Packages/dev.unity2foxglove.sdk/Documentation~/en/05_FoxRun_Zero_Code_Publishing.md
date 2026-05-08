@@ -91,5 +91,5 @@ You normally do not need to manage these files. The build preprocess step writes
 
 ## 5.7 Where to Learn More
 
-- Use [07 IL2CPP Build Guide](07%20IL2CPP%20Build%20Guide.md) for build verification.
-- Use [08 Architecture](08%20Architecture.md) for generator and fallback internals.
+- Use [07_IL2CPP_Build_Guide](07_IL2CPP_Build_Guide.md) for build verification.
+- Use [08_Architecture](08_Architecture.md) for generator and fallback internals.

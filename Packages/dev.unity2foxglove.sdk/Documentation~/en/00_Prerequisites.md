@@ -77,7 +77,7 @@ The Full Demo sample and `Unity2Foxglove` demo project use more Unity features t
 | URP | Full demo visuals | Basic sample is intentionally smaller. |
 | MCAP files | Recording/replay demos | You can skip this until you need offline playback. |
 
-If you want the simplest possible first test, use [03 Verifying Basic Visualization](03%20Verifying%20Basic%20Visualization.md).
+If you want the simplest possible first test, use [03_Verifying_Basic_Visualization](03_Verifying_Basic_Visualization.md).
 
 ## 0.7 Network Assumptions
 
@@ -106,4 +106,4 @@ Use this only on trusted networks.
 - You know whether you are using Basic sample, Full Demo sample, or `Unity2Foxglove`.
 - If building IL2CPP, Python and the target Unity build module are installed.
 
-Once this checklist passes, continue to [01 Installation and Quick Start](01%20Installation%20and%20Quick%20Start.md).
+Once this checklist passes, continue to [01_Installation_and_Quick_Start](01_Installation_and_Quick_Start.md).

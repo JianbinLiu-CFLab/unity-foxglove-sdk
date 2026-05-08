@@ -35,7 +35,7 @@ flowchart TD
 
 ## 1.4 用户文档
 
-- [01_快速开始.md](01_快速开始.md)：安装 package、挂载 `FoxgloveManager`、连接 Foxglove。
+- [01_安装与快速上手.md](01_安装与快速上手.md)：安装 package、挂载 `FoxgloveManager`、连接 Foxglove。
 - [02_Foxglove操作指南.md](02_Foxglove操作指南.md)：Topics、3D、Camera、Plot、Parameters、Services 面板怎么用。
 - [03_基础可视化.md](03_基础可视化.md)：跑通 `/tf`、`/scene`、`/unity/camera`。
 - [04_Parameters与Services.md](04_Parameters与Services.md)：远程参数和服务调用。
@@ -48,5 +48,3 @@ flowchart TD
 ## 1.5 维护者参考
 
 - [10_ISG构建过程.md](10_ISG构建过程.md)：FoxRun ISG 和 IL2CPP fallback 的构建细节。
-- [90_NativeBackend评估.md](90_NativeBackend评估.md)：Native backend 评估记录。
-- [91_FoxRun设计笔记.md](91_FoxRun设计笔记.md)：早期 FoxRun 设计笔记。
