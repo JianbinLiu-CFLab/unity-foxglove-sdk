@@ -1,0 +1,15 @@
+{
+  "name": "Unity.FoxgloveSDK.Proto",
+  "rootNamespace": "",
+  "references": [
+    "Unity.FoxgloveSDK"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [
+    "WebGL"
+  ],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": []
+}

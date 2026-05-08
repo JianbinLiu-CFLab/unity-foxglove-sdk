@@ -1,0 +1,4 @@
+<linker>
+  <!-- Preserve Google.Protobuf for IL2CPP — heavy reflection on .proto generated types -->
+  <assembly fullname="Google.Protobuf" preserve="all"/>
+</linker>

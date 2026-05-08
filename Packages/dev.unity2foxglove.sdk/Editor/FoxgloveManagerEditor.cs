@@ -139,6 +139,75 @@ namespace Unity.FoxgloveSDK.Editor
     }
 
     /// <summary>
+    /// Custom Inspector for publisher components. Draws the normal serialized
+    /// fields plus a read-only encoding summary resolved from manager policy
+    /// and publisher capabilities.
+    /// </summary>
+    [CustomEditor(typeof(Components.FoxglovePublisherBase), true)]
+    public class FoxglovePublisherBaseEditor : UnityEditor.Editor
+    {
+        public override void OnInspectorGUI()
+        {
+            serializedObject.Update();
+
+            var encodingOverride = serializedObject.FindProperty("_encodingOverride");
+            var prop = serializedObject.GetIterator();
+            if (prop.NextVisible(true))
+            {
+                do
+                {
+                    if (prop.name == "_encodingOverride")
+                        continue;
+
+                    using (new EditorGUI.DisabledScope(prop.propertyPath == "m_Script"))
+                    {
+                        EditorGUILayout.PropertyField(prop, true);
+                    }
+                }
+                while (prop.NextVisible(false));
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
+            if (encodingOverride != null)
+                EditorGUILayout.PropertyField(encodingOverride, new GUIContent("Encoding Override"));
+
+            serializedObject.ApplyModifiedProperties();
+
+            var publisher = (Components.FoxglovePublisherBase)target;
+            var resolution = publisher.EncodingResolution;
+
+            EditorGUILayout.Space();
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
+                EditorGUILayout.EnumPopup("Effective Encoding", resolution.Effective);
+            }
+
+            if (publisher.ConfiguredManager != null
+                && !publisher.ConfiguredManager.AllowPublisherOverride
+                && publisher.EncodingOverride != Components.PublisherEncodingOverride.UseManager)
+            {
+                EditorGUILayout.HelpBox(
+                    "FoxgloveManager disables publisher overrides; the global default is used.",
+                    MessageType.Info);
+            }
+            else if (resolution.Effective == Components.PublisherEffectiveEncoding.Unsupported)
+            {
+                EditorGUILayout.HelpBox(
+                    "This publisher declares no supported encoding and will not publish messages.",
+                    MessageType.Error);
+            }
+            else if (resolution.FellBack)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Requested {resolution.RequestedLabel}, but this publisher will emit {resolution.EffectiveLabel}.",
+                    MessageType.Warning);
+            }
+        }
+    }
+
+    /// <summary>
     /// Property drawer for <c>AssetRootDefinition</c> that renders a foldout with
     /// URI prefix, local root (with Browse button), and max size fields.
     /// </summary>

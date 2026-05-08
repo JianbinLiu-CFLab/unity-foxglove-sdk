@@ -71,6 +71,12 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
 
+        [Header("Publisher Encoding")]
+        [Tooltip("Global default encoding for publishers that support it.")]
+        [SerializeField] private GlobalEncoding _defaultPublisherEncoding = GlobalEncoding.Json;
+        [Tooltip("When enabled, individual publishers can override the global default.")]
+        [SerializeField] private bool _allowPublisherOverride = true;
+
         [Header("Coordinate System")]
         [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.LeftHand;
 
@@ -124,8 +130,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Fires when a replay message is forwarded (on main thread).</summary>
         public event System.Action<string, byte[]> OnReplayMessage;
 
-        private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _channelCache
-            = new System.Collections.Generic.Dictionary<(string, string), uint>();
+        private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding), uint> _channelCache
+            = new System.Collections.Generic.Dictionary<(string, string, string), uint>();
 
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;
@@ -162,6 +168,12 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>True if the WebSocket server is currently running.</summary>
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
+
+        /// <summary>Global default publisher encoding.</summary>
+        public GlobalEncoding DefaultPublisherEncoding => _defaultPublisherEncoding;
+
+        /// <summary>Whether individual publishers can override the global encoding.</summary>
+        public bool AllowPublisherOverride => _allowPublisherOverride;
 
         private void Awake()
         {
@@ -383,15 +395,15 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         /// <param name="topic">Topic name (e.g. "/tf").</param>
         /// <param name="schemaName">Schema name (e.g. "foxglove.FrameTransform").</param>
-        public uint GetOrRegisterSchemaChannel(string topic, string schemaName)
+        public uint GetOrRegisterSchemaChannel(string topic, string schemaName, string encoding = "json")
         {
-            var key = (topic, schemaName);
+            var key = (topic, schemaName, encoding);
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
             id = (uint)_nextChannelId++;
             _channelCache[key] = id;
-            _runtime.RegisterSchemaChannel(id, topic, schemaName);
+            _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
             return id;
         }
 
@@ -438,13 +450,33 @@ namespace Unity.FoxgloveSDK.Components
 
             var channelId = string.IsNullOrEmpty(schemaName)
                 ? GetOrRegisterChannel(topic, "json")
-                : GetOrRegisterSchemaChannel(topic, schemaName);
+                : GetOrRegisterSchemaChannel(topic, schemaName, "json");
             _runtime.PublishJson(channelId, message, logTimeNs);
+        }
+
+        /// <summary>
+        /// Publish a protobuf-encoded payload (serialized bytes) to the given topic.
+        /// Channel is auto-registered with encoding "protobuf" on first use.
+        /// </summary>
+        public void PublishProto(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+        {
+            if (!IsRunning)
+            {
+                if (!_warnedNotRunning)
+                {
+                    Debug.LogWarning("[Foxglove] PublishProto called but server is not running.");
+                    _warnedNotRunning = true;
+                }
+                return;
+            }
+
+            var channelId = GetOrRegisterSchemaChannel(topic, schemaName, "protobuf");
+            _runtime.Publish(channelId, payload, logTimeNs);
         }
 
         private uint GetOrRegisterChannel(string topic, string encoding)
         {
-            var key = (topic, encoding);
+            var key = (topic, "", encoding);
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 

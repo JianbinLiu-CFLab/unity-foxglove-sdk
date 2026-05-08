@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly PlaybackClock _playbackClock;
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
+        private bool _protobufSchemasRegistered;
 
         // Runtime-owned definitions survive Stop/Start cycles so
         // parameters and services are re-advertised on restart.
@@ -90,6 +91,7 @@ namespace Unity.FoxgloveSDK.Core
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
             _logger = logger ?? new ConsoleLogger();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
+            TryRegisterProtobufSchemas();
             _recording = new RecordingController(_logger);
             _replay = new ReplayController(_logger);
         }
@@ -143,7 +145,8 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Start the WebSocket server. Creates a new FoxgloveSession,
         /// attaches recording/replay controllers, and wires replay
-        /// message forwarding.
+        /// message forwarding. Protobuf encoding is enabled automatically
+        /// when the proto assembly is available.
         /// </summary>
         public void Start(string name, string host = "127.0.0.1", int port = 8765)
         {
@@ -152,6 +155,8 @@ namespace Unity.FoxgloveSDK.Core
 
             _session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
             _session.SetRuntimeContext(this);
+            if (_protobufSchemasRegistered)
+                _session.EnableProtobuf();
             _recording.AttachToSession(_playbackClock, _parameters, _session);
             _session.Start(host, port);
             _replay.RegisterChannels(_session);
@@ -212,11 +217,11 @@ namespace Unity.FoxgloveSDK.Core
             _session.Publish(channelId, payload, logTimeNs);
         }
 
-        /// <summary>Register a schema channel on the session.</summary>
-        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
+        /// <summary>Register a schema channel on the session with the given encoding (default "json").</summary>
+        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName, string encoding = "json")
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            _session.RegisterSchemaChannel(channelId, topic, schemaName);
+            _session.RegisterSchemaChannel(channelId, topic, schemaName, encoding);
         }
 
         /// <summary>Serialize and publish a JSON message. Timestamp is taken from the clock.</summary>
@@ -330,6 +335,33 @@ namespace Unity.FoxgloveSDK.Core
             _recording.Dispose();
             _replay.Dispose();
             _transport.Dispose();
+        }
+
+        /// <summary>
+        /// Try to load protobuf schema registration from the optional Proto assembly.
+        /// If the assembly is present, registers all 46 official Foxglove protobuf schemas.
+        /// This is a no-op if the proto assembly is not available.
+        /// </summary>
+        private void TryRegisterProtobufSchemas()
+        {
+            try
+            {
+                var type = Type.GetType(
+                    "Foxglove.Schemas.ProtobufSchemasSetup, Unity.FoxgloveSDK.Proto");
+                if (type == null) return;
+
+                var method = type.GetMethod("RegisterSchemas",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (method == null) return;
+
+                method.Invoke(null, new object[] { _schemaRegistry });
+                _protobufSchemasRegistered = true;
+            }
+            catch
+            {
+                // Protobuf assembly or its dependencies are not available — silently skip.
+                // This is expected in WebGL builds or setups without Google.Protobuf.
+            }
         }
     }
 }

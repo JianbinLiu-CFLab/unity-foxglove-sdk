@@ -88,6 +88,8 @@ class Program
             Phase28Validation.Validate();
             Console.WriteLine();
             Phase31Validation.Validate();
+            Console.WriteLine();
+            Phase32Validation.Run();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;
