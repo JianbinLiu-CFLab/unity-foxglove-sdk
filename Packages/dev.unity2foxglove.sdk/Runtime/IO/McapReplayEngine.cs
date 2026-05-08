@@ -121,15 +121,25 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Load(string filePath)
         {
+            ResetLoadedState(disposeStream: true);
+
             _stream = File.OpenRead(filePath);
-            _reader = new McapReader(_stream);
-            _summary = _reader.ReadSummary();
-            CanSeek = _summary.Statistics != null && _summary.ChunkIndexes.Count > 0;
-            StartTimeNs = _summary.Statistics?.MessageStartTime ?? 0;
-            EndTimeNs = _summary.Statistics?.MessageEndTime ?? 0;
-            _currentTimeNs = StartTimeNs;
-            IsLoaded = true;
-            CurrentStatus = Status.Paused;
+            try
+            {
+                _reader = new McapReader(_stream);
+                _summary = _reader.ReadSummary();
+                CanSeek = _summary.Statistics != null && _summary.ChunkIndexes.Count > 0;
+                StartTimeNs = _summary.Statistics?.MessageStartTime ?? 0;
+                EndTimeNs = _summary.Statistics?.MessageEndTime ?? 0;
+                _currentTimeNs = StartTimeNs;
+                IsLoaded = true;
+                CurrentStatus = Status.Paused;
+            }
+            catch
+            {
+                ResetLoadedState(disposeStream: true);
+                throw;
+            }
         }
 
         /// <summary>
@@ -286,13 +296,34 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Dispose()
         {
-            _stream?.Dispose();
-            _stream = null;
-            _reader = null;
-            IsLoaded = false;
+            ResetLoadedState(disposeStream: true);
         }
 
         // ── Internal ──
+
+        /// <summary>
+        /// Clears replay cursors and optionally disposes the currently open MCAP stream.
+        /// Used by both Dispose and repeated Load calls to avoid leaked file handles.
+        /// </summary>
+        private void ResetLoadedState(bool disposeStream)
+        {
+            if (disposeStream)
+                _stream?.Dispose();
+            _stream = null;
+            _reader = null;
+            _summary = null;
+            _pending.Clear();
+            _currentChunkIdx = -1;
+            _currentUncompressed = null;
+            _readOffset = 0;
+            _lastEmitTime = 0;
+            _currentTimeNs = 0;
+            StartTimeNs = 0;
+            EndTimeNs = 0;
+            CanSeek = false;
+            IsLoaded = false;
+            CurrentStatus = Status.Paused;
+        }
 
         /// <summary>
         /// Advances to the next chunk, decompresses it, and resets the read cursor.
@@ -304,7 +335,9 @@ namespace Unity.FoxgloveSDK.IO
             if (_currentChunkIdx >= _summary.ChunkIndexes.Count) return false;
 
             var ci = _summary.ChunkIndexes[_currentChunkIdx];
-            _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength);
+            _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength, out var crcValid);
+            if (!crcValid)
+                Console.Error.WriteLine($"[McapReplayEngine] Chunk {_currentChunkIdx} CRC mismatch — data may be corrupted.");
             _readOffset = 0;
             return true;
         }

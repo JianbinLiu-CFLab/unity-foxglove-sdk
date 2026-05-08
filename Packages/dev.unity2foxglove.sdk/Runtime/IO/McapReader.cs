@@ -37,12 +37,24 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public McapFileSummary ReadSummary(ulong recordSizeLimit = DefaultRecordSizeLimit)
         {
+            const int minFileBytes = 8 + 9 + 20 + 8;
+            if (_stream.CanSeek && _stream.Length < minFileBytes)
+                throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
+
             // Verify leading magic
             var magic = new byte[8];
             ReadExact(magic, 0, 8);
             for (var i = 0; i < McapWriter.Magic.Length; i++)
                 if (magic[i] != McapWriter.Magic[i])
                     throw new InvalidDataException("MCAP leading magic mismatch");
+
+            // Verify trailing magic before trusting footer offsets.
+            _stream.Seek(-8, SeekOrigin.End);
+            var trailingMagic = new byte[8];
+            ReadExact(trailingMagic, 0, 8);
+            for (var i = 0; i < McapWriter.Magic.Length; i++)
+                if (trailingMagic[i] != McapWriter.Magic[i])
+                    throw new InvalidDataException("MCAP trailing magic mismatch");
 
             // Read Footer: last 8 (trailing magic) + 9 + 20 bytes of footer record
             _stream.Seek(-(8 + 9 + 20), SeekOrigin.End);
@@ -84,6 +96,10 @@ namespace Unity.FoxgloveSDK.IO
                     case 0x0D:
                         metadataIndexes.Add(DecodeMetadataIndex(content));
                         break;
+                    case 0x09: // Attachment — skip
+                        break;
+                    case 0x0A: // AttachmentIndex — skip
+                        break;
                     case 0x0E: // SummaryOffset — skip
                         break;
                     default:
@@ -121,8 +137,9 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>
         /// Reads and decompresses a chunk's record data from the given offset and length.
+        /// Validates the uncompressed CRC32 if one is stored (non-zero).
         /// </summary>
-        public byte[] ReadChunkRecords(ulong chunkStartOffset, ulong chunkLength)
+        public byte[] ReadChunkRecords(ulong chunkStartOffset, ulong chunkLength, out bool crcValid)
         {
             _stream.Seek((long)chunkStartOffset, SeekOrigin.Begin);
             var (opcode, content) = ReadOneRecord();
@@ -139,11 +156,34 @@ namespace Unity.FoxgloveSDK.IO
 
             if (compSize > int.MaxValue || uncompSize > int.MaxValue)
                 throw new InvalidDataException($"Chunk compressed/uncompressed size exceeds int.MaxValue");
+            if (off + (int)compSize > content.Length)
+                throw new InvalidDataException("Chunk compressed data is truncated");
 
             var compressed = new byte[compSize];
             Buffer.BlockCopy(content, off, compressed, 0, (int)compSize);
 
-            return McapCompression.Decompress(compression, compressed, (int)uncompSize);
+            var uncompressed = McapCompression.Decompress(compression, compressed, (int)uncompSize);
+
+            if (crc != 0)
+            {
+                var computed = Util.Crc32Helper.Compute(uncompressed);
+                crcValid = computed == crc;
+            }
+            else
+            {
+                crcValid = true; // CRC not present — spec allows 0 to mean "not available"
+            }
+
+            return uncompressed;
+        }
+
+        /// <summary>
+        /// Reads and decompresses a chunk's record data (backward-compatible overload).
+        /// CRC validation result is discarded.
+        /// </summary>
+        public byte[] ReadChunkRecords(ulong chunkStartOffset, ulong chunkLength)
+        {
+            return ReadChunkRecords(chunkStartOffset, chunkLength, out _);
         }
 
         /// <summary>

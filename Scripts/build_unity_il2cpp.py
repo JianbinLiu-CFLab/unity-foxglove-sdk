@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -67,12 +68,20 @@ def default_target() -> str:
     return "win64"
 
 
+def unity_version_key(path: Path) -> Tuple[int, ...]:
+    """Extract a comparable Unity version tuple from a Hub editor path."""
+    for part in reversed(path.parts):
+        if re.match(r"^\d+\.\d+\.\d+", part):
+            return tuple(int(number) for number in re.findall(r"\d+", part))
+    return ()
+
+
 def newest_existing(paths: List[Path]) -> Optional[Path]:
-    """Return the most recently modified path among those that exist."""
+    """Return the newest Unity version among those that exist."""
     existing = [p for p in paths if p.exists()]
     if not existing:
         return None
-    return max(existing, key=lambda p: p.stat().st_mtime)
+    return max(existing, key=lambda p: (unity_version_key(p), p.stat().st_mtime))
 
 
 def find_unity_explicit(path: Optional[str]) -> Optional[Path]:
@@ -95,6 +104,46 @@ def find_unity_from_env() -> Optional[Path]:
                 return unity
             raise FileNotFoundError(f"{name} points to a missing file: {unity}")
     return None
+
+
+def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
+    """Resolve Unity from ProjectSettings/ProjectVersion.txt when available."""
+    version_file = project_path / "ProjectSettings" / "ProjectVersion.txt"
+    if not version_file.exists():
+        return None
+
+    editor_version = None
+    for line in version_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("m_EditorVersion:"):
+            editor_version = line.split(":", 1)[1].strip()
+            break
+    if not editor_version:
+        return None
+
+    system = platform.system().lower()
+    if system == "windows":
+        roots = [
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
+            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
+        ]
+        for root in roots:
+            unity = root / "Unity" / "Hub" / "Editor" / editor_version / "Editor" / "Unity.exe"
+            if unity.exists():
+                return unity
+    elif system == "darwin":
+        unity = Path("/Applications/Unity/Hub/Editor") / editor_version / "Unity.app" / "Contents" / "MacOS" / "Unity"
+        if unity.exists():
+            return unity
+    elif system == "linux":
+        for root in (Path.home() / "Unity" / "Hub" / "Editor", Path("/opt/Unity/Hub/Editor")):
+            unity = root / editor_version / "Editor" / "Unity"
+            if unity.exists():
+                return unity
+
+    raise FileNotFoundError(
+        f"Project requires Unity {editor_version}, but that editor was not found. "
+        "Pass --unity or set UNITY_EXE/UNITY_PATH."
+    )
 
 
 def find_unity_from_hub() -> Optional[Path]:
@@ -123,9 +172,14 @@ def find_unity_from_hub() -> Optional[Path]:
     return newest_existing(candidates)
 
 
-def find_unity(path: Optional[str]) -> Path:
-    """Resolve Unity executable, checking --unity, env var, then Hub discovery."""
-    unity = find_unity_explicit(path) or find_unity_from_env() or find_unity_from_hub()
+def find_unity(path: Optional[str], project_path: Path) -> Path:
+    """Resolve Unity executable, preferring explicit paths and the newest Hub install."""
+    unity = (
+        find_unity_explicit(path)
+        or find_unity_from_env()
+        or find_unity_from_hub()
+        or find_unity_from_project_version(project_path)
+    )
     if unity:
         return unity
 
@@ -149,7 +203,7 @@ def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path
     build_dir = (root / args.build_dir).resolve() if args.build_dir else default_build_dir(root, args.target)
     log_path = (root / args.log).resolve() if args.log else build_dir / "build.log"
     output_path = (root / args.output).resolve() if args.output else default_output_path(build_dir, args.target)
-    unity = find_unity(args.unity)
+    unity = find_unity(args.unity, project_path)
 
     if not project_path.exists():
         raise FileNotFoundError(f"Unity project was not found: {project_path}")
@@ -319,6 +373,7 @@ def main() -> int:
         print(f"[build_unity_il2cpp] {exc}", file=sys.stderr)
         return 2
 
+    print(f"[build_unity_il2cpp] Unity:    {cmd[0]}")
     print(f"[build_unity_il2cpp] Project:   {relative_to_root(project_path, root)}")
     print(f"[build_unity_il2cpp] Target:    {args.target}")
     print(f"[build_unity_il2cpp] Log:       {relative_to_root(log_path, root)}")

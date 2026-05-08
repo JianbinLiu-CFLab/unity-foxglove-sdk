@@ -21,6 +21,7 @@
     <Compile Include="../../Runtime/Transport/*.cs" />
     <Compile Include="../../Runtime/IO/*.cs" />
     <Compile Include="../../Runtime/Schemas/*.cs" />
+    <Compile Include="../../Runtime/Util/*.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SkeletonValidation.cs" />
     <Compile Include="Phase1Validation.cs" />
@@ -41,6 +42,8 @@
     <Compile Include="Phase17Validation.cs" />
     <Compile Include="Phase24DValidation.cs" />
     <Compile Include="Phase28Validation.cs" />
+    <Compile Include="Phase31Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
+    <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>
 </Project>
