@@ -273,9 +273,10 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (_chunkBuf.Length == 0) return;
             var raw = _chunkBuf.ToArray(); _chunkBuf.SetLength(0);
+            var rawCrc = Util.Crc32Helper.Compute(raw);
             var compressed = McapCompression.Compress(_compression, raw);
             var off = (ulong)_w.Position;
-            _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Length, 0, _compression, (ulong)compressed.Length, compressed);
+            _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Length, rawCrc, _compression, (ulong)compressed.Length, compressed);
             var chunkLen = (ulong)_w.Position - off;
             var mio = new Dictionary<ushort, ulong>();
             ulong mioTLen = 0;

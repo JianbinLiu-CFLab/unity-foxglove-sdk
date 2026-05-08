@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="src\**\*.cs" />
+    <Compile Include="..\Shared\FoxgloveSourceEmitter.cs" Link="Shared\FoxgloveSourceEmitter.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Must match Unity's built-in Roslyn: 4.2.2 for Unity 6000.3.x -->

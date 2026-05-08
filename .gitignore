@@ -12,6 +12,9 @@ obj/
 **/obj/
 build/
 
+# Python cache from local build scripts
+Scripts/__pycache__/
+
 # Unity generated folders
 Library/
 Temp/
