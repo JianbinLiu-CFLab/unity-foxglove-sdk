@@ -11,17 +11,17 @@ If you only want to run the ready-made demo project, start with `Unity2Foxglove/
 
 ## English Manual
 
-- [00 Prerequisites](en/00%20Prerequisites.md): required Unity, Foxglove, IDE, command-line, and build tools.
-- [01 Installation and Quick Start](en/01%20Installation%20and%20Quick%20Start.md): install the package and publish your first `/tf`, `/scene`, and `/unity/camera` topics.
-- [02 Foxglove Desktop Operation](en/02%20Foxglove%20Desktop%20Operation.md): connect Foxglove and use 3D, Image, Plot, Parameters, Service Call, and Problems panels.
-- [03 Verifying Basic Visualization](en/03%20Verifying%20Basic%20Visualization.md): import and verify the minimal Basic Visualization sample.
-- [04 Parameters and Services](en/04%20Parameters%20and%20Services.md): edit runtime parameters and call Unity services from Foxglove.
-- [05 FoxRun Zero Code Publishing](en/05%20FoxRun%20Zero%20Code%20Publishing.md): publish debug values with `[FoxRun]`.
-- [06 MCAP Recording and Replay](en/06%20MCAP%20Recording%20and%20Replay.md): record `.mcap` files, open them in Foxglove, and replay them in Unity.
-- [07 IL2CPP Build Guide](en/07%20IL2CPP%20Build%20Guide.md): build and verify standalone Players with the repository build script.
-- [08 Architecture](en/08%20Architecture.md): advanced overview of runtime, protocol, FoxRun, MCAP, and replay internals.
-- [09 Troubleshooting](en/09%20Troubleshooting.md): symptom-based fixes for connection, topics, panels, builds, and replay.
-- [10 Inspector Reference](en/10%20Inspector%20Reference.md): field-by-field reference for the main Unity components.
+- [00_Prerequisites](en/00_Prerequisites.md): required Unity, Foxglove, IDE, command-line, and build tools.
+- [01_Installation_and_Quick_Start](en/01_Installation_and_Quick_Start.md): install the package and publish your first `/tf`, `/scene`, and `/unity/camera` topics.
+- [02_Foxglove_Desktop_Operation](en/02_Foxglove_Desktop_Operation.md): connect Foxglove and use 3D, Image, Plot, Parameters, Service Call, and Problems panels.
+- [03_Verifying_Basic_Visualization](en/03_Verifying_Basic_Visualization.md): import and verify the minimal Basic Visualization sample.
+- [04_Parameters_and_Services](en/04_Parameters_and_Services.md): edit runtime parameters and call Unity services from Foxglove.
+- [05_FoxRun_Zero_Code_Publishing](en/05_FoxRun_Zero_Code_Publishing.md): publish debug values with `[FoxRun]`.
+- [06_MCAP_Recording_and_Replay](en/06_MCAP_Recording_and_Replay.md): record `.mcap` files, open them in Foxglove, and replay them in Unity.
+- [07_IL2CPP_Build_Guide](en/07_IL2CPP_Build_Guide.md): build and verify standalone Players with the repository build script.
+- [08_Architecture](en/08_Architecture.md): advanced overview of runtime, protocol, FoxRun, MCAP, and replay internals.
+- [09_Troubleshooting](en/09_Troubleshooting.md): symptom-based fixes for connection, topics, panels, builds, and replay.
+- [10_Inspector_Reference](en/10_Inspector_Reference.md): field-by-field reference for the main Unity components.
 
 ## Related Entry Points
 

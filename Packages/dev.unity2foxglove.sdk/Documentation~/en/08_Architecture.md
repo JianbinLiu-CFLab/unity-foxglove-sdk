@@ -44,7 +44,7 @@ Parameters are stored in a runtime parameter store and served through Foxglove's
 
 Services are registered with descriptors and handled on the Unity main thread so handlers can safely touch Unity objects.
 
-For user steps, see [04 Parameters and Services](04%20Parameters%20and%20Services.md).
+For user steps, see [04_Parameters_and_Services](04_Parameters_and_Services.md).
 
 ## 8.5 MCAP Recording and Replay
 
@@ -52,7 +52,7 @@ Recording attaches to the runtime publish path and writes MCAP records for chann
 
 Replay loads an MCAP file, seeks by time, and forwards replay messages through the runtime. Live publishers can be disabled during replay to avoid duplicate data.
 
-For user steps, see [06 MCAP Recording and Replay](06%20MCAP%20Recording%20and%20Replay.md).
+For user steps, see [06_MCAP_Recording_and_Replay](06_MCAP_Recording_and_Replay.md).
 
 ## 8.6 FoxRun Build Behavior
 
@@ -64,7 +64,7 @@ Generated files are meant to be build artifacts, not hand-edited source.
 
 Unity2Foxglove uses JSON serialization and reflection-heavy dependencies. IL2CPP builds need preservation rules for Newtonsoft.Json and the SDK runtime assembly.
 
-The practical build checklist is in [07 IL2CPP Build Guide](07%20IL2CPP%20Build%20Guide.md).
+The practical build checklist is in [07_IL2CPP_Build_Guide](07_IL2CPP_Build_Guide.md).
 
 ## 8.8 Extension Points
 
