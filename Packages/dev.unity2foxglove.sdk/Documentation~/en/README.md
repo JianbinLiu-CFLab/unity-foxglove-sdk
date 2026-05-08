@@ -9,7 +9,7 @@ Read this manual if you want to install Unity2Foxglove, connect Unity to Foxglov
 You will follow the same path most users need: install the package, connect Foxglove, publish Unity data, use Parameters and Services, record and replay MCAP, build a Player, and troubleshoot common problems.
 
 > [!NOTE]
-> SDK core targets Unity 2022.3+. The included `Unity2Foxglove` demo project is validated with Unity 6.
+> SDK core targets Unity 6000.0 LTSC or later (compatible with 6000.0.74f1 LTSC). Unity 2022 is not supported. The included `Unity2Foxglove` demo project is developed and tested on Unity 6000.3.14f1 LTSC.
 
 ## 1. Start Here
 

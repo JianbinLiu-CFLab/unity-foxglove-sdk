@@ -4,7 +4,7 @@ Complete demo sample mirroring the repository demo project. Includes Parameters,
 
 ## Prerequisites
 
-- Unity 6000.3 LTSC / Unity 6.3 LTSC (recommended)
+- Unity 6000.0 LTSC or later (developed on 6000.3.14f1 LTSC; compatible with 6000.0.74f1 LTSC)
 - Input System (`com.unity.inputsystem`)
 - Universal Render Pipeline (`com.unity.render-pipelines.universal`)
 
@@ -51,4 +51,4 @@ If you don't want to install these dependencies, use `Basic Visualization` inste
 - RawMessages: `/debug/position`, `/debug/health` (auto-published by FoxRun)
 - Mouse controls: left-drag rotate cube, right-drag pan cube, scroll scale cube
 
-Tested on: Unity 6000.3 LTSC, Windows Editor.
+Tested on: Unity 6000.3.14f1 LTSC, Windows Editor. Compatible with Unity 6000.0.74f1 LTSC.

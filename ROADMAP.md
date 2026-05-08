@@ -49,7 +49,7 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 ### 2.2 Platform Validation
 
-- Validate more Unity versions beyond the current Unity 2022.3+ package target and Unity 6 demo validation.
+- Validate more Unity versions beyond the current Unity 6000.0+ package target.
 - Expand IL2CPP checks across Windows, Linux, and macOS.
 - Add clearer guidance for package installation in fresh Unity projects.
 

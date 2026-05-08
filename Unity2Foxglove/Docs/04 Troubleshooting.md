@@ -16,7 +16,7 @@ Start here when Unity cannot open the demo, Foxglove cannot connect, `/debug/*` 
 
 **Troubleshooting steps**:
 
-1. **Confirm Unity version**: the project requires Unity 2022.3 or later. In Unity Hub > Installs, check the installed Unity editor version. If the version is too low, install 2022.3 LTS or newer.
+1. **Confirm Unity version**: the project requires Unity 6000.0 LTSC or later (developed on 6000.3.14f1 LTSC; compatible with 6000.0.74f1 LTSC). Unity 2022 is not supported.
 
 2. **Rebuild the Library directory**:
    - Close Unity Hub

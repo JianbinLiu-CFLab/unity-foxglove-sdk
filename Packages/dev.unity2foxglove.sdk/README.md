@@ -4,7 +4,7 @@ Stream Unity real-time data (Transforms, scene entities, camera frames, custom f
 
 ## Version requirements
 
-- Unity 2022.3 LTS+
+- Unity 6000.0 LTSC or later (developed on 6000.3.14f1 LTSC; compatible with 6000.0.74f1 LTSC)
 - Editor + Standalone Player (Windows/Linux/macOS)
 - Dependency: `com.unity.nuget.newtonsoft-json` 3.2.1
 

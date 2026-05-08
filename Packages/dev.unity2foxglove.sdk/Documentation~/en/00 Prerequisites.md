@@ -12,7 +12,7 @@ You will check which Unity version, Foxglove app, IDE, command-line tools, and o
 
 | Tool             | Recommended                                                         | Why you need it                                                | Notes                                                              |
 | ---------------- | ------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Unity Editor     | Unity 2022.3+ for SDK core; Unity 6.3 for the included demo project | Opens your project, imports the package, and runs Play Mode.   | The `Unity2Foxglove` demo project is validated with Unity 6.3 LTSC |
+| Unity Editor     | Unity 6000.0 LTSC or later (developed on 6000.3.14f1 LTSC; compatible with 6000.0.74f1 LTSC) | Opens your project, imports the package, and runs Play Mode.   | Unity 2022 is not supported. |
 | Foxglove Desktop | Latest stable desktop app                                           | Connects to Unity over Foxglove WebSocket and displays panels. | Use `ws://127.0.0.1:8765` for the default local connection.        |
 | Git              | Any recent version                                                  | Clones the repository or tracks package changes.               | Needed if you install from a repository path.                      |
 

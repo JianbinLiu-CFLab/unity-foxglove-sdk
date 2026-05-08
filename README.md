@@ -1,7 +1,7 @@
 # 1. Unity2Foxglove
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Unity](https://img.shields.io/badge/Unity-2022.3%2B-black?logo=unity)](https://unity.com/)
+[![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Release](https://img.shields.io/badge/release-v1.0.0-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
 
@@ -91,7 +91,7 @@ No external processes. No ROS installation. No platform lock-in. Just attach a `
 
 ## 2. Installation
 
-SDK core targets Unity 2022.3 or later. The included demo project and IL2CPP build workflow are validated with Unity 6.
+SDK core targets Unity 6000.0 LTSC or later (compatible with 6000.0.74f1 LTSC). The included demo project and IL2CPP build workflow are developed and tested on Unity 6000.3.14f1 LTSC.
 
 ### 2.1 Use as Unity Package (recommended)
 

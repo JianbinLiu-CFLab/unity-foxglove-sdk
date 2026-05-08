@@ -78,7 +78,7 @@ Common extension points:
 
 ## 8.9 Compatibility Notes
 
-- SDK core targets Unity 2022.3+.
-- The demo project is validated with Unity 6.
+- SDK core targets Unity 6000.0 LTSC or later. Unity 2022 is not supported.
+- The demo project is developed on Unity 6000.3.14f1 LTSC; compatible with Unity 6000.0.74f1 LTSC.
 - WebGL is excluded.
 - Foxglove WebSocket is bidirectional: Unity publishes data, Foxglove can send Parameters, Services, playback, assets, and client-published messages when those features are enabled.
