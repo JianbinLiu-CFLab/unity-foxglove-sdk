@@ -42,6 +42,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
 
+        /// <summary>Whether protobuf encoding support is enabled for channel registration.</summary>
+        private bool _protobufEnabled;
+
         // Session holds references via interface
         /// <summary>Runtime context for playback, assets, and lifecycle control.</summary>
         private IRuntimeContext _runtime;
@@ -168,19 +171,64 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>
-        /// Look up a schema by name and register it as a JSON-encoded channel.
-        /// Throws if the schema is not found in the registry.
+        /// Register a schema-based channel for advertisement and MCAP recording.
+        /// Supports both JSON ("jsonschema") and protobuf ("protobuf") encoding.
         /// </summary>
-        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName)
+        /// <param name="channelId">Foxglove channel ID.</param>
+        /// <param name="topic">Topic name (e.g. "/tf").</param>
+        /// <param name="encoding">Message encoding: "json" or "protobuf".</param>
+        /// <param name="schemaName">Schema name (e.g. "foxglove.FrameTransform").</param>
+        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName, string encoding = "json")
         {
-            if (!_schemaRegistry.TryGetSchema(schemaName, out var entry))
+            var messageEncoding = string.IsNullOrEmpty(encoding) ? "json" : encoding;
+            var expectedSchemaEncoding = ExpectedSchemaEncodingForMessageEncoding(messageEncoding);
+
+            var found = false;
+            SchemaEntry entry;
+            if (expectedSchemaEncoding != null && _schemaRegistry is IEncodingAwareSchemaRegistry encodingAwareRegistry)
+                found = encodingAwareRegistry.TryGetSchema(schemaName, expectedSchemaEncoding, out entry);
+            else
+                entry = default;
+
+            if (!found && !_schemaRegistry.TryGetSchema(schemaName, out entry))
                 throw new InvalidOperationException($"Schema not found: '{schemaName}'.");
+
+            var schemaEncoding = entry.Encoding;
+            var schema = entry.Content;
+            if (expectedSchemaEncoding != null
+                && !string.Equals(schemaEncoding, expectedSchemaEncoding, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Schema '{schemaName}' has schema encoding '{schemaEncoding}', " +
+                    $"but message encoding '{messageEncoding}' requires '{expectedSchemaEncoding}'.");
+            }
+
+            // For protobuf, the schema content is already base64-encoded FileDescriptorSet bytes.
+            // For JSON, the schema content is the raw JSON Schema text.
             RegisterChannel(new AdvertiseChannel
             {
                 Id = channelId, Topic = topic,
-                Encoding = "json", SchemaName = entry.Name,
-                SchemaEncoding = entry.Encoding, Schema = entry.Content
+                Encoding = messageEncoding, SchemaName = entry.Name,
+                SchemaEncoding = schemaEncoding, Schema = schema
             });
+        }
+
+        private static string ExpectedSchemaEncodingForMessageEncoding(string messageEncoding)
+        {
+            if (string.Equals(messageEncoding, "json", StringComparison.OrdinalIgnoreCase))
+                return "jsonschema";
+            if (string.Equals(messageEncoding, "protobuf", StringComparison.OrdinalIgnoreCase))
+                return "protobuf";
+            return null;
+        }
+
+        /// <summary>
+        /// Register a protobuf-encoded channel and advertise it.
+        /// Uses the schema registry to look up FileDescriptorSet bytes.
+        /// </summary>
+        public void RegisterProtobufSchemaChannel(uint channelId, string topic, string schemaName)
+        {
+            RegisterSchemaChannel(channelId, topic, schemaName, "protobuf");
         }
 
         // ── Publish ──
@@ -253,6 +301,12 @@ namespace Unity.FoxgloveSDK.Core
             _transport.BroadcastBinary(frame);
         }
 
+        /// <summary>Enable protobuf encoding support, updating supportedEncodings to include "protobuf".</summary>
+        public void EnableProtobuf() => _protobufEnabled = true;
+
+        /// <summary>Whether protobuf encoding support is enabled.</summary>
+        public bool IsProtobufEnabled => _protobufEnabled;
+
         /// <summary>Force a test log message for diagnostic verification.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
 
@@ -278,7 +332,9 @@ namespace Unity.FoxgloveSDK.Core
                     Capability.ConnectionGraph,
                     Capability.ClientPublish
                 },
-                SupportedEncodings = new List<string> { "json" },
+                SupportedEncodings = _protobufEnabled
+                    ? new List<string> { "json", "protobuf" }
+                    : new List<string> { "json" },
                 SessionId = SessionId
             };
 

@@ -1,35 +1,35 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Unity
+// Module: Runtime/Schemas/Proto
 // Purpose: Publishes a SceneUpdate with a single cube entity representing this GameObject to Foxglove /scene.
+// Supports JSON (default) and protobuf encoding.
 
 using System.Collections.Generic;
+using Google.Protobuf;
 using UnityEngine;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Google.Protobuf.WellKnownTypes;
+using UVector3 = UnityEngine.Vector3;
+using UColor = UnityEngine.Color;
 
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Publishes a SceneUpdate with a single cube entity representing this GameObject.
+    /// Supports dual encoding: JSON (default) and protobuf.
     /// </summary>
     public class FoxgloveSceneCubePublisher : FoxglovePublisher<SceneUpdateMessage>
     {
-        // ── Serialized fields ──
-        /// <summary>Foxglove entity ID. Falls back to GameObject name if empty.</summary>
         [SerializeField] private string _entityId = "";
-        /// <summary>Foxglove frame_id. Falls back to resolve chain or <c>"unity_world"</c>.</summary>
         [SerializeField] private string _frameId = "";
-        /// <summary>Size of the cube in Foxglove meters.</summary>
-        [SerializeField] private Vector3 _size = Vector3.one;
-        /// <summary>Color of the cube in the Foxglove scene.</summary>
-        [SerializeField] private Color _color = Color.green;
+        [SerializeField] private UVector3 _size = UVector3.one;
+        [SerializeField] private UColor _color = UColor.green;
 
-        /// <summary>
-        /// Gets or sets the cube colour. Setting the value also applies it
-        /// to the local Renderer and fires <see cref="OnSceneCubeColorChanged"/>.
-        /// </summary>
-        public Color SceneCubeColor
+        public override bool SupportsProtobufEncoding => true;
+
+        public UColor SceneCubeColor
         {
             get => _color;
             set
@@ -45,16 +45,14 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        /// <summary>Fired when SceneCubeColor changes (Inspector or Foxglove side). Subscribe to sync parameters.</summary>
-        public event System.Action<Color> OnSceneCubeColorChanged;
+        public event System.Action<UColor> OnSceneCubeColorChanged;
 
-        /// <summary>Writes <c>_BaseColor</c> to the Renderer's MaterialPropertyBlock.</summary>
-        private void ApplyColorToRenderer(Color c)
+        private void ApplyColorToRenderer(UColor c)
         {
-            var renderer = GetComponent<Renderer>();
+            var renderer = GetComponent<UnityEngine.Renderer>();
             if (renderer != null)
             {
-                var block = new MaterialPropertyBlock();
+                var block = new UnityEngine.MaterialPropertyBlock();
                 renderer.GetPropertyBlock(block);
                 block.SetColor("_BaseColor", c);
                 renderer.SetPropertyBlock(block);
@@ -62,10 +60,6 @@ namespace Unity.FoxgloveSDK.Components
         }
 
 #if UNITY_EDITOR
-        /// <summary>
-        /// Editor-only hook that fires <see cref="OnSceneCubeColorChanged"/>
-        /// and re-applies the colour to the Renderer on the next editor tick.
-        /// </summary>
         private void OnValidate()
         {
             UnityEditor.EditorApplication.delayCall += () =>
@@ -79,31 +73,22 @@ namespace Unity.FoxgloveSDK.Components
         }
 #endif
 
-        // ── Internal state ──
-        /// <summary>Cached reference to the co-located FoxgloveTransformPublisher.</summary>
         private FoxgloveTransformPublisher _transformPublisher;
 
-        /// <summary>Defaults the topic to <c>/scene</c> if not set.</summary>
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/scene";
         }
 
-        /// <summary>Caches the FoxgloveTransformPublisher on the same GameObject.</summary>
         protected override void OnEnable()
         {
             base.OnEnable();
             _transformPublisher = GetComponent<FoxgloveTransformPublisher>();
         }
 
-        /// <summary>Resolved entity ID, using GameObject name as fallback.</summary>
         private string ResolvedEntityId =>
             SanitizeFrameId(_entityId, gameObject.name);
 
-        /// <summary>
-        /// Resolved frame ID. Uses the explicit <c>_frameId</c> if set,
-        /// otherwise chains through FoxgloveTransformPublisher, falling back to <c>"unity_world"</c>.
-        /// </summary>
         private string ResolvedFrameId
         {
             get
@@ -118,10 +103,27 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        /// <summary>
-        /// Builds a <c>SceneUpdateMessage</c> containing a single cube entity
-        /// with identity pose, configured size, and configured colour.
-        /// </summary>
+        protected override void Update()
+        {
+            if (_manager == null) return;
+            if (!_publishOnEnable) return;
+            if (_manager.Runtime?.ReplayEnabled == true) return;
+            if (!ShouldPublishNow()) return;
+
+            var unixNs = CurrentLogTimeNs;
+
+            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            {
+                PublishProtobufSceneUpdate(unixNs);
+            }
+            else
+            {
+                var message = CreateMessage();
+                if (message == null) return;
+                Publish(message, unixNs);
+            }
+        }
+
         protected override SceneUpdateMessage CreateMessage()
         {
             return new SceneUpdateMessage
@@ -150,6 +152,42 @@ namespace Unity.FoxgloveSDK.Components
                     }
                 }
             };
+        }
+
+        private void PublishProtobufSceneUpdate(ulong unixNs)
+        {
+            var protoScene = new Foxglove.SceneUpdate
+            {
+                Entities =
+                {
+                    new Foxglove.SceneEntity
+                    {
+                        Id = ResolvedEntityId,
+                        FrameId = ResolvedFrameId,
+                        Timestamp = new Timestamp
+                        {
+                            Seconds = (long)(unixNs / 1_000_000_000UL),
+                            Nanos = (int)(unixNs % 1_000_000_000UL)
+                        },
+                        Lifetime = new Duration(),
+                        Cubes =
+                        {
+                            new Foxglove.CubePrimitive
+                            {
+                                Pose = new Foxglove.Pose
+                                {
+                                    Position = new Foxglove.Vector3 { X = 0, Y = 0, Z = 0 },
+                                    Orientation = new Foxglove.Quaternion { X = 0, Y = 0, Z = 0, W = 1 }
+                                },
+                                Size = new Foxglove.Vector3 { X = (double)_size.x, Y = (double)_size.y, Z = (double)_size.z },
+                                Color = new Foxglove.Color { R = (double)_color.r, G = (double)_color.g, B = (double)_color.b, A = (double)_color.a }
+                            }
+                        }
+                    }
+                }
+            };
+
+            PublishProto(protoScene.ToByteArray(), unixNs);
         }
     }
 }

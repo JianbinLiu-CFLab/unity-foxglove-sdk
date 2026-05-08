@@ -5,6 +5,7 @@
 // Purpose: Abstraction over foxglove schema storage and lookup.
 
 using System;
+using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Schemas
 {
@@ -21,6 +22,16 @@ namespace Unity.FoxgloveSDK.Schemas
         void Register(SchemaEntry entry);
     }
 
+    /// <summary>
+    /// Optional registry capability for resolving schemas when the same name exists
+    /// with multiple schema encodings, such as jsonschema and protobuf.
+    /// </summary>
+    public interface IEncodingAwareSchemaRegistry : ISchemaRegistry
+    {
+        /// <summary>Try to get a schema by full name and schema encoding.</summary>
+        bool TryGetSchema(string name, string encoding, out SchemaEntry entry);
+    }
+
     /// <summary>Schema metadata + content.</summary>
     public struct SchemaEntry
     {
@@ -30,15 +41,22 @@ namespace Unity.FoxgloveSDK.Schemas
         /// <summary>Encoding type: "jsonschema", "protobuf", "flatbuffer", "ros1msg", etc.</summary>
         public string Encoding;
 
-        /// <summary>Raw schema content (e.g. JSON Schema text).</summary>
+        /// <summary>Schema content as a string (e.g. JSON Schema text or base64-encoded binary).</summary>
         public string Content;
+
+        /// <summary>Binary schema content (e.g. protobuf FileDescriptorSet bytes).</summary>
+        public byte[] RawContent;
     }
 
     /// <summary>Minimal in-memory schema registry. Not thread-safe; use from main thread.</summary>
-    public class DefaultSchemaRegistry : ISchemaRegistry
+    public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry
     {
-        private readonly System.Collections.Generic.Dictionary<string, SchemaEntry> _schemas
-            = new System.Collections.Generic.Dictionary<string, SchemaEntry>();
+        private const string JsonSchemaEncoding = "jsonschema";
+
+        private readonly Dictionary<string, SchemaEntry> _schemas
+            = new Dictionary<string, SchemaEntry>();
+        private readonly Dictionary<string, SchemaEntry> _schemasByEncoding
+            = new Dictionary<string, SchemaEntry>();
 
         /// <summary>Try to get a schema by name.</summary>
         public bool TryGetSchema(string name, out SchemaEntry entry)
@@ -46,12 +64,46 @@ namespace Unity.FoxgloveSDK.Schemas
             return _schemas.TryGetValue(name, out entry);
         }
 
-        /// <summary>Register a schema, overwriting on duplicate name.</summary>
+        /// <summary>Try to get a schema by name and schema encoding.</summary>
+        public bool TryGetSchema(string name, string encoding, out SchemaEntry entry)
+        {
+            return _schemasByEncoding.TryGetValue(MakeKey(name, NormalizeEncoding(encoding)), out entry);
+        }
+
+        /// <summary>
+        /// Register a schema. Multiple encodings can coexist for the same name;
+        /// name-only lookup preserves jsonschema as the default when present.
+        /// </summary>
         public void Register(SchemaEntry entry)
         {
             if (string.IsNullOrEmpty(entry.Name))
                 throw new ArgumentException("Schema name is required", nameof(entry));
-            _schemas[entry.Name] = entry;
+
+            entry.Encoding = NormalizeEncoding(entry.Encoding);
+            _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
+
+            if (!_schemas.TryGetValue(entry.Name, out var existing)
+                || ShouldReplaceNameDefault(existing.Encoding, entry.Encoding))
+            {
+                _schemas[entry.Name] = entry;
+            }
+        }
+
+        private static string MakeKey(string name, string encoding)
+        {
+            return (name ?? string.Empty) + "\n" + NormalizeEncoding(encoding);
+        }
+
+        private static string NormalizeEncoding(string encoding)
+        {
+            return (encoding ?? string.Empty).ToLowerInvariant();
+        }
+
+        private static bool ShouldReplaceNameDefault(string existingEncoding, string newEncoding)
+        {
+            if (string.Equals(newEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase))
+                return true;
+            return !string.Equals(existingEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

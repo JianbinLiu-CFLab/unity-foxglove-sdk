@@ -12,15 +12,18 @@
     <PackageReference Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.4" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
 
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../Runtime/Unity/Attributes/*.cs" />
+    <Compile Include="../../Runtime/Unity/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Core/*.cs" />
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/*.cs" />
     <Compile Include="../../Runtime/IO/*.cs" />
     <Compile Include="../../Runtime/Schemas/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Proto/*.cs" Exclude="../../Runtime/Schemas/Proto/*Publisher.cs" />
     <Compile Include="../../Runtime/Util/*.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SkeletonValidation.cs" />
@@ -43,6 +46,7 @@
     <Compile Include="Phase24DValidation.cs" />
     <Compile Include="Phase28Validation.cs" />
     <Compile Include="Phase31Validation.cs" />
+    <Compile Include="Phase32Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>

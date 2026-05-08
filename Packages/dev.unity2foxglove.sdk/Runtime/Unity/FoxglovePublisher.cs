@@ -48,7 +48,7 @@ namespace Unity.FoxgloveSDK.Components
             if (message == null) return;
 
             var unixNs = CurrentLogTimeNs;
-            _manager.PublishJson(_topic, SchemaName, message, unixNs);
+            Publish(message, unixNs);
         }
     }
 }
