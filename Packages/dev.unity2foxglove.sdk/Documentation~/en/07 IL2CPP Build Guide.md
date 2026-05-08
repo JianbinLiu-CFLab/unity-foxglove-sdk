@@ -10,7 +10,7 @@ You will run the cross-platform build script, watch progress logs, find the outp
 
 ## 7.1 Before You Build
 
-Use the `Untiy2Foxglove` demo project for the standard repository build.
+Use the `Unity2Foxglove` demo project for the standard repository build.
 
 Check:
 

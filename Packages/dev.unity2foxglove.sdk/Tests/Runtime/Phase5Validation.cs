@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var root = FindRepoRoot();
             Assert(root != null, "Repo root found for Assets link.xml (active)");
-            var assetsDir = Path.Combine(root, "Untiy2Foxglove", "Assets");
+            var assetsDir = Path.Combine(root, "Unity2Foxglove", "Assets");
             var candidates = Directory.GetFiles(assetsDir, "link.xml", SearchOption.AllDirectories);
             Assert(candidates.Length > 0,
                 $"At least one Assets/**/link.xml found in {assetsDir} (Unity requires link.xml in Assets, not packaged Runtime)");

@@ -232,7 +232,7 @@ Packages/dev.unity2foxglove.sdk/Editor/FoxrunBuildPreprocess.cs
 路径：
 
 ```text
-Untiy2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs
+Unity2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs
 ```
 
 用途：
@@ -245,8 +245,8 @@ Untiy2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs
 
 ```gitignore
 # ISG generated source files are rebuilt before IL2CPP/CI builds
-Untiy2Foxglove/Assets/Scripts/Generated/
-Untiy2Foxglove/Assets/Scripts/Generated.meta
+Unity2Foxglove/Assets/Scripts/Generated/
+Unity2Foxglove/Assets/Scripts/Generated.meta
 ```
 
 # 4. Source Generator 构建规则
@@ -391,7 +391,7 @@ DeepSeek 先实现了 build-time 文件生成链路：
 - 新增 `Editor/FoxrunCodeGenerator.cs`。
 - 新增 `Editor/FoxrunBuildPreprocess.cs`。
 - 恢复 `FoxgloveBuild.cs`，移除临时 hack。
-- `.gitignore` 排除 `Untiy2Foxglove/Assets/Scripts/Generated/`。
+- `.gitignore` 排除 `Unity2Foxglove/Assets/Scripts/Generated/`。
 
 ## 6.2 构建时 NRE
 
@@ -423,7 +423,7 @@ var schema = fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.Sc
 同时补充忽略 Unity 自动生成的目录 meta：
 
 ```gitignore
-Untiy2Foxglove/Assets/Scripts/Generated.meta
+Unity2Foxglove/Assets/Scripts/Generated.meta
 ```
 
 ## 6.4 修复后的验证
@@ -434,7 +434,7 @@ IL2CPP 构建命令：
 & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' `
   -batchmode `
   -quit `
-  -projectPath '<repo-root>/Untiy2Foxglove' `
+  -projectPath '<repo-root>/Unity2Foxglove' `
   -executeMethod FoxgloveBuild.BuildWindowsIl2Cpp `
   -logFile '<repo-root>/build/Unity/il2cpp.log'
 ```
@@ -452,7 +452,7 @@ Build succeeded: build/Unity/WindowsIL2CPP/FoxgloveDemo.exe
 生成文件：
 
 ```text
-Untiy2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs
+Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs
 ```
 
 Player assembly 中可检索到：

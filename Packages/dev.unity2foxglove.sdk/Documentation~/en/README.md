@@ -9,7 +9,7 @@ Read this manual if you want to install Unity2Foxglove, connect Unity to Foxglov
 You will follow the same path most users need: install the package, connect Foxglove, publish Unity data, use Parameters and Services, record and replay MCAP, build a Player, and troubleshoot common problems.
 
 > [!NOTE]
-> SDK core targets Unity 2022.3+. The included `Untiy2Foxglove` demo project is validated with Unity 6.
+> SDK core targets Unity 2022.3+. The included `Unity2Foxglove` demo project is validated with Unity 6.
 
 ## 1. Start Here
 
@@ -39,4 +39,4 @@ You will follow the same path most users need: install the package, connect Foxg
 - Use your own Unity project when you want to integrate the SDK into an existing application.
 - Use `Samples~/BasicVisualization` when you want the smallest importable sample.
 - Use `Samples~/FullDemoVisualization` when you want the complete importable sample with Parameters, Services, FoxRun, MCAP, Input System, and URP.
-- Use `Untiy2Foxglove` when you want a ready-to-open development and acceptance project for this repository.
+- Use `Unity2Foxglove` when you want a ready-to-open development and acceptance project for this repository.

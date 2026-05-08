@@ -12,8 +12,8 @@ on:
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
-      - "Untiy2Foxglove/README.md"
-      - "Untiy2Foxglove/Docs/**"
+      - "Unity2Foxglove/README.md"
+      - "Unity2Foxglove/Docs/**"
       - "Scripts/**"
   pull_request:
     branches: [main]
@@ -26,8 +26,8 @@ on:
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
-      - "Untiy2Foxglove/README.md"
-      - "Untiy2Foxglove/Docs/**"
+      - "Unity2Foxglove/README.md"
+      - "Unity2Foxglove/Docs/**"
       - "Scripts/**"
 
 jobs:
@@ -49,8 +49,8 @@ jobs:
             "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
             "Packages/dev.unity2foxglove.sdk/Documentation~/en"
             "Packages/dev.unity2foxglove.sdk/Samples~"
-            "Untiy2Foxglove/README.md"
-            "Untiy2Foxglove/Docs"
+            "Unity2Foxglove/README.md"
+            "Unity2Foxglove/Docs"
             "Scripts"
           )
           if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME" "${files[@]}" \
@@ -77,8 +77,8 @@ jobs:
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/en"),
               Path("Packages/dev.unity2foxglove.sdk/Samples~"),
-              Path("Untiy2Foxglove/README.md"),
-              Path("Untiy2Foxglove/Docs"),
+              Path("Unity2Foxglove/README.md"),
+              Path("Unity2Foxglove/Docs"),
               Path("Scripts"),
           ]
 

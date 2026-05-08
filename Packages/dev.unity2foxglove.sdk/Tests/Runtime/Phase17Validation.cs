@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             var samplesDir = Path.Combine(pkgDir, "Samples~");
             var basicDir = Path.Combine(samplesDir, "BasicVisualization");
             var fullDir = Path.Combine(samplesDir, "FullDemoVisualization");
-            var configsDir = Path.Combine(repoRoot, "Untiy2Foxglove", "Configs");
+            var configsDir = Path.Combine(repoRoot, "Unity2Foxglove", "Configs");
 
             // ── 17A: package.json samples declaration ──
             var pkgJson = File.ReadAllText(Path.Combine(pkgDir, "package.json"));
@@ -141,18 +141,18 @@ namespace Unity.FoxgloveSDK.Tests
             // ── Demo project path hygiene ──
             // The demo project is part of the repository experience, so it also
             // must not serialize one developer's local clone path.
-            var demoDir = Path.Combine(repoRoot, "Untiy2Foxglove");
-            Assert(File.Exists(Path.Combine(demoDir, "README.md")), "Untiy2Foxglove README exists");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), repoRoot, "Untiy2Foxglove/README.md");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), repoRoot, "Untiy2Foxglove/Assets");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), repoRoot, "Untiy2Foxglove/Packages");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), repoRoot, "Untiy2Foxglove/Configs");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), repoRoot, "Untiy2Foxglove/Docs");
+            var demoDir = Path.Combine(repoRoot, "Unity2Foxglove");
+            Assert(File.Exists(Path.Combine(demoDir, "README.md")), "Unity2Foxglove README exists");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), repoRoot, "Unity2Foxglove/README.md");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), repoRoot, "Unity2Foxglove/Assets");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), repoRoot, "Unity2Foxglove/Packages");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), repoRoot, "Unity2Foxglove/Configs");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), repoRoot, "Unity2Foxglove/Docs");
 
             // ── 17D: Layout consistency ──
-            Assert(Directory.Exists(configsDir), "Untiy2Foxglove/Configs/ exists");
+            Assert(Directory.Exists(configsDir), "Unity2Foxglove/Configs/ exists");
             var configFullLayout = Path.Combine(configsDir, "FoxgloveFullLayout.json");
-            Assert(File.Exists(configFullLayout), "Untiy2Foxglove/Configs/FoxgloveFullLayout.json exists");
+            Assert(File.Exists(configFullLayout), "Unity2Foxglove/Configs/FoxgloveFullLayout.json exists");
             var sampleFullLayout = Path.Combine(fullDir, "FoxgloveFullLayout.json");
             var configContent = File.ReadAllText(configFullLayout);
             var sampleContent = File.ReadAllText(sampleFullLayout);

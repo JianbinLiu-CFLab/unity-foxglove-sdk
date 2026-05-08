@@ -28,7 +28,7 @@ https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk.git?path=/Packages/dev.un
 
 ### Open the Demo project
 
-1. Unity Hub > Open > select the `Untiy2Foxglove` directory in the repository
+1. Unity Hub > Open > select the `Unity2Foxglove` directory in the repository
 2. The scene is pre-configured with `FoxgloveManager` and all Publisher components
 3. Press Play
 4. Open Foxglove Desktop > Open connection > Foxglove WebSocket > `ws://127.0.0.1:8765`
@@ -71,7 +71,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 - [Project README](README.md)
 - [Package documentation](Packages/dev.unity2foxglove.sdk/Documentation~/README.md)
-- [Demo project](Untiy2Foxglove/README.md)
+- [Demo project](Unity2Foxglove/README.md)
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 

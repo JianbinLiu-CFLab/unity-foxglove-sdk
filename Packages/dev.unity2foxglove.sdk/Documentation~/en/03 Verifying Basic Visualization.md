@@ -28,7 +28,7 @@ It does not focus on:
 - MCAP recording/replay
 - IL2CPP acceptance
 
-Use `FullDemoVisualization` or `Untiy2Foxglove` for those.
+Use `FullDemoVisualization` or `Unity2Foxglove` for those.
 
 ## 3.2 Import the Sample
 

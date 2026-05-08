@@ -8,7 +8,7 @@ Unity2Foxglove SDK 是一个 Unity package，用于通过 Foxglove WebSocket 协
 
 ## 1.2 应用场景
 
-如果你只是想打开现成 demo project，请从 `Untiy2Foxglove/README.md` 开始。如果你要在自己的 Unity 项目里使用 package，请按下面顺序阅读。
+如果你只是想打开现成 demo project，请从 `Unity2Foxglove/README.md` 开始。如果你要在自己的 Unity 项目里使用 package，请按下面顺序阅读。
 
 ## 1.3 阅读路线
 

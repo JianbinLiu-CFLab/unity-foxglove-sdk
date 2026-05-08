@@ -279,7 +279,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--project",
-        default="Untiy2Foxglove",
+        default="Unity2Foxglove",
         help="Unity project path relative to the workspace root.",
     )
     parser.add_argument(

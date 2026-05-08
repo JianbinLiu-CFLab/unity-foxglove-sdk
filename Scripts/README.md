@@ -50,7 +50,7 @@ python Scripts\build_unity_il2cpp.py --target win64 --dry-run
 Sample output:
 
 ```text
-[build_unity_il2cpp] Project:   Untiy2Foxglove
+[build_unity_il2cpp] Project:   Unity2Foxglove
 [build_unity_il2cpp] Target:    win64
 [build_unity_il2cpp] Log:       build\Unity\win64-il2cpp-20260505-141111\build.log
 [build_unity_il2cpp] Output:    build\Unity\win64-il2cpp-20260505-141111\WindowsIL2CPP\FoxgloveDemo.exe
@@ -156,4 +156,4 @@ IL2CPP builds trigger `FoxrunBuildPreprocess`:
 [FoxrunBuildPreprocess] Generating FoxRun source files...
 ```
 
-If `/debug/*` topics are not visible in the Player, first check the build log for this message, and verify that `Untiy2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs` files were generated.
+If `/debug/*` topics are not visible in the Player, first check the build log for this message, and verify that `Unity2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs` files were generated.

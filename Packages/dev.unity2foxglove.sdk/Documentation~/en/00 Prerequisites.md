@@ -12,7 +12,7 @@ You will check which Unity version, Foxglove app, IDE, command-line tools, and o
 
 | Tool             | Recommended                                                         | Why you need it                                                | Notes                                                              |
 | ---------------- | ------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Unity Editor     | Unity 2022.3+ for SDK core; Unity 6.3 for the included demo project | Opens your project, imports the package, and runs Play Mode.   | The `Untiy2Foxglove` demo project is validated with Unity 6.3 LTSC |
+| Unity Editor     | Unity 2022.3+ for SDK core; Unity 6.3 for the included demo project | Opens your project, imports the package, and runs Play Mode.   | The `Unity2Foxglove` demo project is validated with Unity 6.3 LTSC |
 | Foxglove Desktop | Latest stable desktop app                                           | Connects to Unity over Foxglove WebSocket and displays panels. | Use `ws://127.0.0.1:8765` for the default local connection.        |
 | Git              | Any recent version                                                  | Clones the repository or tracks package changes.               | Needed if you install from a repository path.                      |
 
@@ -69,7 +69,7 @@ The package also includes runtime plugin assemblies for MCAP compression support
 
 ## 0.6 Optional Demo Dependencies
 
-The Full Demo sample and `Untiy2Foxglove` demo project use more Unity features than the Basic sample.
+The Full Demo sample and `Unity2Foxglove` demo project use more Unity features than the Basic sample.
 
 | Feature | Used by | Notes |
 |---|---|---|
@@ -103,7 +103,7 @@ Use this only on trusted networks.
 - Unity opens your project without package errors.
 - Foxglove Desktop is installed.
 - You can press Play in Unity.
-- You know whether you are using Basic sample, Full Demo sample, or `Untiy2Foxglove`.
+- You know whether you are using Basic sample, Full Demo sample, or `Unity2Foxglove`.
 - If building IL2CPP, Python and the target Unity build module are installed.
 
 Once this checklist passes, continue to [01 Installation and Quick Start](01%20Installation%20and%20Quick%20Start.md).
