@@ -2,7 +2,7 @@
 
 This folder contains the user-facing documentation for the Unity2Foxglove SDK package.
 
-If you only want to run the ready-made demo project, start with `Untiy2Foxglove/README.md` from the repository root. If you are installing the SDK into your own Unity project, start with the English user manual below.
+If you only want to run the ready-made demo project, start with `Unity2Foxglove/README.md` from the repository root. If you are installing the SDK into your own Unity project, start with the English user manual below.
 
 ## Languages
 
@@ -28,5 +28,5 @@ If you only want to run the ready-made demo project, start with `Untiy2Foxglove/
 - Package root: `Packages/dev.unity2foxglove.sdk`
 - Basic sample: `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization`
 - Full demo sample: `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization`
-- Standalone demo project: `Untiy2Foxglove`
+- Standalone demo project: `Unity2Foxglove`
 - Repository build scripts: `Scripts`

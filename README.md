@@ -82,10 +82,10 @@ No external processes. No ROS installation. No platform lock-in. Just attach a `
 ![Unity2Foxglove project layout](Pictures/Unity2Foxglove-Project-Layout.svg)
 
 - Use `Packages/dev.unity2foxglove.sdk` when you want to install the SDK into your own Unity project.
-- Use `Untiy2Foxglove` when you want a ready-to-open demo project for Foxglove panels, MCAP recording, replay, IL2CPP, and manual acceptance.
+- Use `Unity2Foxglove` when you want a ready-to-open demo project for Foxglove panels, MCAP recording, replay, IL2CPP, and manual acceptance.
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization` for the minimal publisher setup (no extra dependencies).
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization` for the complete demo experience (requires Input System + URP).
-- Use `Scripts/build_unity_il2cpp.py` together with `Untiy2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
+- Use `Scripts/build_unity_il2cpp.py` together with `Unity2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
 
 ---
 
@@ -114,12 +114,12 @@ If this repository is moved or forked, replace the owner/repository part of the 
 For quickly exploring all features without creating a new project.
 
 1. Clone this repository.
-2. Unity Hub > Open > select the `Untiy2Foxglove` directory.
+2. Unity Hub > Open > select the `Unity2Foxglove` directory.
 3. Wait for Unity Package Manager to resolve the local SDK package from `../../Packages/dev.unity2foxglove.sdk`.
 4. Press Play to start.
 
 > [!NOTE]
-> Keep `Untiy2Foxglove` inside this repository. If Unity cannot find `dev.unity2foxglove.sdk`, reopen the full repository or restore the manifest path to `file:../../Packages/dev.unity2foxglove.sdk`.
+> Keep `Unity2Foxglove` inside this repository. If Unity cannot find `dev.unity2foxglove.sdk`, reopen the full repository or restore the manifest path to `file:../../Packages/dev.unity2foxglove.sdk`.
 
 ---
 
@@ -140,14 +140,14 @@ Start with the document that matches what you are trying to do:
 | Goal | Read this |
 |------|-----------|
 | Install the SDK into your own Unity project | [Package documentation](Packages/dev.unity2foxglove.sdk/Documentation~/README.md) |
-| Open a ready-made project and verify Foxglove, MCAP, IL2CPP, and replay | [Demo project guide](Untiy2Foxglove/README.md) |
+| Open a ready-made project and verify Foxglove, MCAP, IL2CPP, and replay | [Demo project guide](Unity2Foxglove/README.md) |
 | Import the smallest possible UPM sample | [Basic Visualization sample](Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/README.md) |
 | Import the full UPM sample with Parameters, Services, FoxRun, MCAP, Input System, and URP | [Full Demo Visualization sample](Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/README.md) |
 
 The documentation is intentionally split by audience:
 
 - **Package docs** explain the reusable SDK: concepts, APIs, architecture, FoxRun, MCAP, IL2CPP, and troubleshooting.
-- **Demo docs** explain the standalone `Untiy2Foxglove` Unity project: Foxglove operation, manual acceptance, recordings, replay files, and build verification.
+- **Demo docs** explain the standalone `Unity2Foxglove` Unity project: Foxglove operation, manual acceptance, recordings, replay files, and build verification.
 - **Sample docs** explain what Unity Package Manager imports into a user's project.
 
 Release and compliance documents:

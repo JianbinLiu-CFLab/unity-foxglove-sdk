@@ -118,7 +118,7 @@ MCAP 录制时会记录每次 service call 的完成/失败状态（`foxglove.se
 
 ## FoxgloveDemoSetup 参考
 
-Demo 项目中的 `Untiy2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs` 是一个完整的 Parameters + Services 示例，包含：
+Demo 项目中的 `Unity2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs` 是一个完整的 Parameters + Services 示例，包含：
 
 - 注册 `/cube/color`（可写 json 参数）
 - 注册 `/cube/scale`（可写 float 参数）

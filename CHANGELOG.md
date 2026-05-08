@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - IL2CPP build: link.xml preservation, batch build via `FoxgloveBuild.BuildWindowsIl2Cpp` editor script
 - `FoxgloveParameterComponent`: drag-and-drop parameter exposure component
 - 465 automated dotnet tests covering all functional modules
-- Demo project (`Untiy2Foxglove`): ready-to-run demonstration scene
+- Demo project (`Unity2Foxglove`): ready-to-run demonstration scene
 - Sample (`BasicVisualization`): minimal setup example
 - Logger bridge: `IFoxgloveLogger` interface, making protocol errors traceable in Unity Console, dotnet tests, and IL2CPP Player
 

@@ -29,14 +29,14 @@ UserSettings/
 *.suo
 
 # MCAP recordings are runtime outputs, not source
-Untiy2Foxglove/Recordings/*
-!Untiy2Foxglove/Recordings/.gitkeep
+Unity2Foxglove/Recordings/*
+!Unity2Foxglove/Recordings/.gitkeep
 debug_mcap/
 .dotnet-home/
 
 # ISG generated source files are rebuilt before IL2CPP/CI builds
-Untiy2Foxglove/Assets/Scripts/Generated/
-Untiy2Foxglove/Assets/Scripts/Generated.meta
+Unity2Foxglove/Assets/Scripts/Generated/
+Unity2Foxglove/Assets/Scripts/Generated.meta
 
 # developer plans
 Plan/

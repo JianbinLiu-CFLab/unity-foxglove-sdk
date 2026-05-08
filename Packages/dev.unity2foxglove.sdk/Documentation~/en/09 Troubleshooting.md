@@ -57,7 +57,7 @@ Check:
 
 Check:
 
-- You are running Full Demo or `Untiy2Foxglove`, not Basic sample.
+- You are running Full Demo or `Unity2Foxglove`, not Basic sample.
 - The demo setup script is enabled.
 - Foxglove connected after Play Mode started.
 - Reconnect the WebSocket connection.
@@ -68,7 +68,7 @@ If Foxglove says the service has not been advertised:
 
 - Reconnect Foxglove.
 - Verify the service is registered after the Manager starts.
-- Use the Full Demo or `Untiy2Foxglove` for `/cube/reset_pose`.
+- Use the Full Demo or `Unity2Foxglove` for `/cube/reset_pose`.
 
 If Foxglove shows JSON errors:
 

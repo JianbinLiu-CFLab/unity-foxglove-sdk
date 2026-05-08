@@ -28,7 +28,7 @@ In the Full Demo, the important parameters are:
 
 ## 4.2 Use the Parameters Panel
 
-1. Open the Full Demo sample or `Untiy2Foxglove`.
+1. Open the Full Demo sample or `Unity2Foxglove`.
 2. Press **Play** in Unity.
 3. Connect Foxglove to `ws://127.0.0.1:8765`.
 4. Add a **Parameters** panel.
@@ -84,7 +84,7 @@ The cube should reset and the response should show `status: "ok"`.
 
 Check these in order:
 
-1. You are using the Full Demo sample or `Untiy2Foxglove`, not the Basic sample.
+1. You are using the Full Demo sample or `Unity2Foxglove`, not the Basic sample.
 2. Unity is in Play Mode.
 3. Foxglove is connected to `ws://127.0.0.1:8765`.
 4. The demo setup object is enabled.

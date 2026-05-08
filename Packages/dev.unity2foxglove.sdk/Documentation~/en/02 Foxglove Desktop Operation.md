@@ -38,13 +38,13 @@ It focuses on:
 
 ### 2.2.2 Full demo layout
 
-Use this for the Full Demo sample or `Untiy2Foxglove` project:
+Use this for the Full Demo sample or `Unity2Foxglove` project:
 
 `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/FoxgloveFullLayout.json`
 
 The standalone demo project also keeps a copy at:
 
-`Untiy2Foxglove/Configs/FoxgloveFullLayout.json`
+`Unity2Foxglove/Configs/FoxgloveFullLayout.json`
 
 It includes:
 

@@ -110,6 +110,6 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 
 ## 10.7 Demo-Only Scripts
 
-`FoxgloveDemoSetup` and `MouseDragCube` are demo/sample scripts. They are documented in the Full Demo sample and `Untiy2Foxglove` demo documentation rather than treated as SDK core API.
+`FoxgloveDemoSetup` and `MouseDragCube` are demo/sample scripts. They are documented in the Full Demo sample and `Unity2Foxglove` demo documentation rather than treated as SDK core API.
 
 Use them as examples, not as required components for your own project.
