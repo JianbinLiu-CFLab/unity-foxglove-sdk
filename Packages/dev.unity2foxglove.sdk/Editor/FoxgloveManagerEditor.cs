@@ -12,48 +12,215 @@ using UnityEditor;
 namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
-    /// Custom Inspector for <c>FoxgloveManager</c> that renders Browse buttons
-    /// for file/folder path fields alongside the default property drawer.
+    /// Custom Inspector for <c>FoxgloveManager</c> that groups the growing
+    /// runtime, recording, replay, security, and transport settings into
+    /// readable sections while preserving the original serialized fields.
     /// </summary>
     [CustomEditor(typeof(Components.FoxgloveManager))]
     public class FoxgloveManagerEditor : UnityEditor.Editor
     {
+        private static bool _serverExpanded = true;
+        private static bool _encodingExpanded = true;
+        private static bool _coordinateExpanded;
+        private static bool _assetsExpanded;
+        private static bool _playbackExpanded;
+        private static bool _recordingExpanded;
+        private static bool _replayExpanded;
+        private static bool _securityExpanded;
+        private static bool _transportExpanded;
+
         /// <summary>
-        /// Draws the default Inspector with Browse buttons for
-        /// <c>_replayFilePath</c> and <c>_recordingDirectory</c> fields.
+        /// Draws a curated Inspector for Manager settings and runtime status.
         /// </summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
 
-            var prop = serializedObject.GetIterator();
-            if (prop.NextVisible(true))
-            {
-                do
-                {
-                    if (prop.name == "_replayFilePath")
-                        DrawPathBrowse(prop, "Select MCAP File", "mcap", true, GetSmartDefault(prop.stringValue, true));
-                    else if (prop.name == "_recordingDirectory")
-                        DrawPathBrowse(prop, "Select Recording Directory", "", false, GetSmartDefault(prop.stringValue, false));
-                    else
-                        EditorGUILayout.PropertyField(prop, true);
-                }
-                while (prop.NextVisible(false));
-            }
+            DrawScriptProperty();
+            DrawCompactStatus();
+            DrawRecordingReplayWarning();
+
+            DrawSection("Server", ref _serverExpanded, DrawServerSection);
+            DrawSection("Publisher Encoding", ref _encodingExpanded, DrawPublisherEncodingSection);
+            DrawSection("Coordinate System", ref _coordinateExpanded, DrawCoordinateSection);
+            DrawSection("Assets", ref _assetsExpanded, DrawAssetsSection);
+            DrawSection("Playback Control", ref _playbackExpanded, DrawPlaybackSection);
+            DrawSection("MCAP Recording", ref _recordingExpanded, DrawRecordingSection);
+            DrawSection("MCAP Replay", ref _replayExpanded, DrawReplaySection);
+            DrawSection("Security", ref _securityExpanded, DrawSecuritySection);
+            DrawSection("Transport Health", ref _transportExpanded, DrawTransportHealth);
 
             serializedObject.ApplyModifiedProperties();
+        }
 
-            // Transport Health
-            DrawTransportHealth();
+        private void DrawScriptProperty()
+        {
+            var script = serializedObject.FindProperty("m_Script");
+            if (script == null) return;
+
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.PropertyField(script);
+            }
+        }
+
+        private void DrawCompactStatus()
+        {
+            var manager = (Components.FoxgloveManager)target;
+            var host = GetString("_host", "127.0.0.1");
+            var port = GetInt("_port", 8765);
+
+            EditorGUILayout.Space();
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                EditorGUILayout.LabelField("Status Summary", EditorStyles.boldLabel);
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.TextField("Endpoint", $"ws://{host}:{port}");
+                    EditorGUILayout.Toggle("Start On Enable", GetBool("_startOnEnable"));
+                    EditorGUILayout.Toggle("Recording Enabled", GetBool("_enableRecording"));
+                    EditorGUILayout.Toggle("Replay Enabled", GetBool("_enableReplay"));
+
+                    if (Application.isPlaying && manager != null)
+                    {
+                        EditorGUILayout.Toggle("Running", manager.IsRunning);
+                        var stats = manager.GetTransportStatsSnapshot();
+                        if (stats.Supported)
+                        {
+                            EditorGUILayout.IntField("Active Clients", stats.ActiveClientCount);
+                            if (stats.TotalQueuedFrames > 0)
+                                EditorGUILayout.LongField("Queued Frames", stats.TotalQueuedFrames);
+                            if (stats.TotalDroppedDataFrames > 0)
+                                EditorGUILayout.LongField("Dropped Data Frames", stats.TotalDroppedDataFrames);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void DrawRecordingReplayWarning()
+        {
+            if (GetBool("_enableRecording") && GetBool("_enableReplay"))
+            {
+                EditorGUILayout.HelpBox(
+                    "Recording and Replay cannot both run at the same time. At runtime, recording is kept and replay is disabled.",
+                    MessageType.Warning);
+            }
+        }
+
+        private static void DrawSection(string title, ref bool expanded, System.Action drawContents)
+        {
+            EditorGUILayout.Space();
+            expanded = EditorGUILayout.Foldout(expanded, title, true, EditorStyles.foldoutHeader);
+            if (!expanded)
+                return;
+
+            EditorGUI.indentLevel++;
+            drawContents();
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawServerSection()
+        {
+            DrawProperty("_serverName");
+            DrawProperty("_host");
+            DrawProperty("_port");
+            DrawProperty("_startOnEnable");
+            DrawProperty("_runInBackground");
+        }
+
+        private void DrawPublisherEncodingSection()
+        {
+            DrawProperty("_defaultPublisherEncoding");
+            DrawProperty("_allowPublisherOverride");
+        }
+
+        private void DrawCoordinateSection()
+        {
+            DrawProperty("_coordinateMode");
+        }
+
+        private void DrawAssetsSection()
+        {
+            DrawProperty("_assetRoots");
+        }
+
+        private void DrawPlaybackSection()
+        {
+            DrawProperty("_enablePlaybackControl");
+            DrawProperty("_playbackStartOffsetSeconds");
+            DrawProperty("_playbackDurationSeconds");
+        }
+
+        private void DrawRecordingSection()
+        {
+            DrawProperty("_enableRecording");
+            DrawProperty("_recordingPrefix");
+            var directory = serializedObject.FindProperty("_recordingDirectory");
+            if (directory != null)
+                DrawPathBrowse(directory, "Select Recording Directory", "", false, GetSmartDefault(directory.stringValue, false));
+            else
+                DrawMissingProperty("_recordingDirectory");
+            DrawProperty("_recordingChunkSizeKB");
+            DrawProperty("_recordingCompression");
+        }
+
+        private void DrawReplaySection()
+        {
+            DrawProperty("_enableReplay");
+            var replayPath = serializedObject.FindProperty("_replayFilePath");
+            if (replayPath != null)
+                DrawPathBrowse(replayPath, "Select MCAP File", "mcap", true, GetSmartDefault(replayPath.stringValue, true));
+            else
+                DrawMissingProperty("_replayFilePath");
+            DrawProperty("_replayAutoPlay");
+            DrawProperty("_disableLivePublishers");
+        }
+
+        private void DrawSecuritySection()
+        {
+            DrawProperty("_allowedBrowserOrigins");
+        }
+
+        private void DrawProperty(string propertyName)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop == null)
+            {
+                DrawMissingProperty(propertyName);
+                return;
+            }
+
+            EditorGUILayout.PropertyField(prop, true);
+        }
+
+        private static void DrawMissingProperty(string propertyName)
+        {
+            EditorGUILayout.HelpBox($"Serialized property '{propertyName}' was not found.", MessageType.Warning);
+        }
+
+        private string GetString(string propertyName, string fallback)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            return prop != null ? prop.stringValue : fallback;
+        }
+
+        private int GetInt(string propertyName, int fallback)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            return prop != null ? prop.intValue : fallback;
+        }
+
+        private bool GetBool(string propertyName)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            return prop != null && prop.boolValue;
         }
 
         private void DrawTransportHealth()
         {
             var manager = (Components.FoxgloveManager)target;
             if (manager == null) return;
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Transport Health", EditorStyles.boldLabel);
 
             if (!Application.isPlaying)
             {
@@ -161,13 +328,10 @@ namespace Unity.FoxgloveSDK.Editor
                     return dir;
             }
 
-            // Default to Recordings/ if it exists (only for directories, not files)
-            if (!isFile)
-            {
-                var recordingsDir = Path.Combine(GetDefaultDir(), "Recordings");
-                if (Directory.Exists(recordingsDir))
-                    return recordingsDir;
-            }
+            // Recording output and replay input both normally live under Recordings/.
+            var recordingsDir = Path.Combine(GetDefaultDir(), "Recordings");
+            if (Directory.Exists(recordingsDir))
+                return recordingsDir;
 
             return GetDefaultDir();
         }
