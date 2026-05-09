@@ -707,11 +707,15 @@ namespace Unity.FoxgloveSDK.Tests
                 runtime.Publish(1, payload);
                 Task.Delay(200).Wait();
 
-                // Use Task.WhenAny to check no message arrives without aborting the WebSocket
-                var recvTask = ws.ReceiveAsync(seg, CancellationToken.None);
+                // Use a cancellable receive so the negative assertion does not
+                // leave a pending ReceiveAsync that later aborts cleanup.
+                using var noMessageCts = new CancellationTokenSource();
+                var recvTask = ws.ReceiveAsync(seg, noMessageCts.Token);
                 var timeout = Task.Delay(800);
                 var winner = Task.WhenAny(recvTask, timeout).GetAwaiter().GetResult();
                 Assert(winner == timeout, "Integration: no message after unsubscribe");
+                if (winner == timeout)
+                    CancelAndObserveReceive(noMessageCts, recvTask);
 
                 CloseClientWebSocketForCleanup(ws);
             }
@@ -737,6 +741,14 @@ namespace Unity.FoxgloveSDK.Tests
                 // close handshake completes. Protocol assertions have already
                 // run, so this is cleanup rather than test behavior.
             }
+            catch (OperationCanceledException)
+            {
+                // Cancellation during cleanup should not fail completed protocol assertions.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed is cleanup.
+            }
             catch (InvalidOperationException)
             {
                 // Already closing/closed is also cleanup.
@@ -745,6 +757,17 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 ws.Dispose();
             }
+        }
+
+        private static void CancelAndObserveReceive(
+            CancellationTokenSource cts,
+            Task<WebSocketReceiveResult> recvTask)
+        {
+            try { cts.Cancel(); } catch { }
+            try { recvTask.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            catch (WebSocketException) { }
+            catch (ObjectDisposedException) { }
         }
     }
 }

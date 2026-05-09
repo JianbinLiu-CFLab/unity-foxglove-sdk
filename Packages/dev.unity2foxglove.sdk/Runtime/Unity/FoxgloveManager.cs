@@ -169,6 +169,16 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True if the WebSocket server is currently running.</summary>
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
 
+        /// <summary>
+        /// Get a read-only snapshot of transport client/queue health.
+        /// Returns <see cref="Transport.TransportStatsSnapshot.Unsupported"/> when the
+        /// runtime is null or the backend does not support stats.
+        /// </summary>
+        public Transport.TransportStatsSnapshot GetTransportStatsSnapshot()
+        {
+            return _runtime?.GetTransportStatsSnapshot() ?? Transport.TransportStatsSnapshot.Unsupported;
+        }
+
         /// <summary>Global default publisher encoding.</summary>
         public GlobalEncoding DefaultPublisherEncoding => _defaultPublisherEncoding;
 
