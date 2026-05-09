@@ -9,6 +9,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -17,7 +18,28 @@ namespace Unity.FoxgloveSDK.Components
     {
         public readonly string Topic;
         public readonly float RateHz;
-        public FoxgloveLogTopicInfo(string topic, float rateHz) { Topic = topic; RateHz = rateHz; }
+        public readonly FoxRunPublishMode PublishMode;
+        public readonly float ChangeEpsilon;
+        public readonly float ForceIntervalSeconds;
+
+        public FoxgloveLogTopicInfo(string topic, float rateHz)
+        {
+            Topic = topic;
+            RateHz = rateHz;
+            PublishMode = FoxRunPublishMode.FixedRate;
+            ChangeEpsilon = 0f;
+            ForceIntervalSeconds = 0f;
+        }
+
+        public FoxgloveLogTopicInfo(string topic, float rateHz, FoxRunPublishMode publishMode,
+            float changeEpsilon, float forceIntervalSeconds)
+        {
+            Topic = topic;
+            RateHz = rateHz;
+            PublishMode = publishMode;
+            ChangeEpsilon = changeEpsilon < 0 ? 0 : changeEpsilon;
+            ForceIntervalSeconds = forceIntervalSeconds;
+        }
     }
 
     /// <summary>
@@ -32,6 +54,20 @@ namespace Unity.FoxgloveSDK.Components
         FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index);
         /// <summary>Publish the value for the given topic index through the manager.</summary>
         void FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs);
+    }
+
+    /// <summary>
+    /// Optional interface for event-driven FoxRun sources.
+    /// Sources that implement this interface can suppress unchanged values
+    /// and publish heartbeat frames. Sources that do not implement it
+    /// continue to publish at fixed rate.
+    /// </summary>
+    public interface IFoxgloveLogPolicySource
+    {
+        /// <summary>Return true if the value for this topic should be published.</summary>
+        bool FoxgloveLog_ShouldPublish(int topicIndex, double nowSeconds);
+        /// <summary>Called after a successful publish to update last-value state.</summary>
+        void FoxgloveLog_MarkPublished(int topicIndex, double nowSeconds);
     }
 
     /// <summary>
@@ -115,12 +151,14 @@ namespace Unity.FoxgloveSDK.Components
             var nowNs = _mgr.NowNs;
             var dt = Time.deltaTime;
 
+            var nowSec = (double)Time.realtimeSinceStartup;
             _stale.Clear();
             foreach (var kv in _timers)
             {
                 if (kv.Key is MonoBehaviour mb && mb == null) { _stale.Add(kv.Key); continue; }
                 if (kv.Key is MonoBehaviour mb2 && !mb2.isActiveAndEnabled) continue;
                 var t = kv.Value;
+                var policySource = kv.Key as IFoxgloveLogPolicySource;
                 for (int i = 0; i < t.Length; i++)
                 {
                     t[i] -= dt;
@@ -128,7 +166,13 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         var info = kv.Key.FoxgloveLog_GetTopic(i);
                         t[i] = info.RateHz > 0 ? 1f / info.RateHz : 1f;
-                        kv.Key.FoxgloveLog_Publish(i, _mgr, nowNs);
+                        bool shouldPublish = policySource == null
+                            || policySource.FoxgloveLog_ShouldPublish(i, nowSec);
+                        if (shouldPublish)
+                        {
+                            kv.Key.FoxgloveLog_Publish(i, _mgr, nowNs);
+                            policySource?.FoxgloveLog_MarkPublished(i, nowSec);
+                        }
                     }
                 }
             }

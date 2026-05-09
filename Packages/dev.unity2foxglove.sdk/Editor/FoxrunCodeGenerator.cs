@@ -181,7 +181,8 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var a in attrs)
                 {
                     result.Add(new MemberData(
-                        fi.Name, fi.FieldType, ns, cn, a.Topic, a.RateHz, a.SchemaName ?? ""));
+                        fi.Name, fi.FieldType, ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
+                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds));
                 }
             }
             foreach (var pi in type.GetProperties(flags))
@@ -190,7 +191,8 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var a in attrs)
                 {
                     result.Add(new MemberData(
-                        pi.Name, pi.PropertyType, ns, cn, a.Topic, a.RateHz, a.SchemaName ?? ""));
+                        pi.Name, pi.PropertyType, ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
+                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds));
                 }
             }
             return result;
@@ -205,7 +207,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var first = members[0];
             var args = members.Select(m =>
-                new FoxgloveSourceEmitter.TopicMember(m.MemberName, m.RawTypeName, m.Topic, m.RateHz, m.SchemaName))
+                new FoxgloveSourceEmitter.TopicMember(m.MemberName, m.RawTypeName, m.Topic, m.RateHz, m.SchemaName,
+                    m.PublishMode, m.ChangeEpsilon, m.ForceIntervalSeconds))
                 .ToList();
 
             var core = FoxgloveSourceEmitter.EmitClass(first.Ns, first.ClassName, args);
@@ -241,12 +244,19 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string Ns;
             /// <summary>Publishing rate in Hz.</summary>
             public readonly float RateHz;
+            /// <summary>Publish mode as int enum value.</summary>
+            public readonly int PublishMode;
+            /// <summary>Change epsilon.</summary>
+            public readonly float ChangeEpsilon;
+            /// <summary>Heartbeat interval seconds.</summary>
+            public readonly float ForceIntervalSeconds;
 
             /// <summary>
             /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
             /// namespace/class context.
             /// </summary>
-            public MemberData(string name, Type type, string ns, string cn, string topic, float rate, string schema)
+            public MemberData(string name, Type type, string ns, string cn, string topic, float rate, string schema,
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f)
             {
                 MemberName = name;
                 RawTypeName = type.FullName ?? type.Name;
@@ -255,13 +265,17 @@ namespace Unity.FoxgloveSDK.Editor
                 Topic = topic;
                 RateHz = rate;
                 SchemaName = schema;
+                PublishMode = publishMode;
+                ChangeEpsilon = changeEpsilon;
+                ForceIntervalSeconds = forceIntervalSeconds;
             }
 
             /// <summary>
             /// Constructs a <c>MemberData</c> with a raw type string and no
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
-            public MemberData(string name, string rawType, string topic, float rate, string schema)
+            public MemberData(string name, string rawType, string topic, float rate, string schema,
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f)
             {
                 MemberName = name;
                 RawTypeName = rawType;
@@ -270,6 +284,9 @@ namespace Unity.FoxgloveSDK.Editor
                 SchemaName = schema;
                 Ns = "";
                 ClassName = "";
+                PublishMode = publishMode;
+                ChangeEpsilon = changeEpsilon;
+                ForceIntervalSeconds = forceIntervalSeconds;
             }
         }
     }
