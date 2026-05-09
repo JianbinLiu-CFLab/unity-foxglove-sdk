@@ -7,7 +7,7 @@
 [![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
 [![Docs Check](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml)
 
-> **Positioning**: Unity2Foxglove is a **Unity-focused Foxglove SDK bridge**. It implements a practical subset of the official Foxglove WebSocket protocol and MCAP specification. It is **not** an official Foxglove SDK replacement and does not target feature parity with the multi-language foxglove-sdk ecosystem.
+> **Positioning**: Unity2Foxglove is a **Unity-focused Foxglove SDK bridge**. It aims for official Foxglove SDK capability parity where that matters for Unity workflows, while adding Unity-native extensions such as `[FoxRun]`, Inspector-driven publishers, MCAP replay, and IL2CPP-oriented validation. It is not an official Foxglove project and does not target multi-language SDK parity.
 
 A cross-platform Unity SDK for real-time runtime data streaming, MCAP recording and replay, and in-editor debugging. It runs inside Unity, speaks the Foxglove WebSocket protocol directly, and can work with [Foxglove](https://foxglove.dev), MCAP files, or custom clients.
 
@@ -162,6 +162,10 @@ Release and compliance documents:
 - [v1.0.0 release notes](RELEASE_NOTES_v1.0.0.md)
 
 Development planning notes are not shipped with the repository. If you need the phase plans or implementation history, please contact the author.
+
+### 4.1 Citation / Research Positioning
+
+If you use Unity2Foxglove in research, please cite the software metadata in [CITATION.cff](CITATION.cff). A concise research-positioning note is available in [PAPER.md](PAPER.md).
 
 ---
 
