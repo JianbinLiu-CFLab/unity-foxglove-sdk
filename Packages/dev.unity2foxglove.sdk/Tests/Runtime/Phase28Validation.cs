@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var cts = new CancellationTokenSource(5000);
                 ws.ConnectAsync(new Uri("ws://127.0.0.1:18791/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "No Origin: connection accepted");
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+                CloseClientWebSocketForCleanup(ws);
             }
             catch (WebSocketException ex)
             {
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var cts = new CancellationTokenSource(5000);
                 ws.ConnectAsync(new Uri("ws://127.0.0.1:18792/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "Allowed Origin: connection accepted");
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+                CloseClientWebSocketForCleanup(ws);
             }
             catch (WebSocketException ex)
             {
@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var cts = new CancellationTokenSource(5000);
                 ws.ConnectAsync(new Uri("ws://127.0.0.1:18794/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "File Origin: connection accepted");
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+                CloseClientWebSocketForCleanup(ws);
             }
             catch (WebSocketException ex)
             {
@@ -161,6 +161,32 @@ namespace Unity.FoxgloveSDK.Tests
             finally
             {
                 backend.Dispose();
+            }
+        }
+
+        private static void CloseClientWebSocketForCleanup(ClientWebSocket ws)
+        {
+            if (ws == null)
+                return;
+
+            try
+            {
+                if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+                    ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (WebSocketException)
+            {
+                // Some runtimes observe the server-side TCP close before the
+                // WebSocket close handshake completes. The Origin assertion has
+                // already run, so this is cleanup rather than test behavior.
+            }
+            catch (InvalidOperationException)
+            {
+                // Already closing/closed is also cleanup.
+            }
+            finally
+            {
+                ws.Dispose();
             }
         }
     }

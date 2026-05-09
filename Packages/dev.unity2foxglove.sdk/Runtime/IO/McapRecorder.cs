@@ -14,6 +14,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -37,6 +38,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<ChannelRecordState> _channels = new();
         private readonly List<ChunkIndexState> _chunkIdx = new();
         private readonly List<MetadataIndexState> _metaIdx = new();
+        private readonly List<McapAttachmentIndex> _attachmentIdx = new();
+        private uint _attachmentCount;
         private MemoryStream _chunkBuf = new();
         private ushort _nextSid = 1, _nextCid = 1;
         private ulong _chunkSt, _chunkEt;
@@ -184,6 +187,19 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Write an attachment outside chunks. Flushes the active chunk first.
+        /// Safe no-op if recording failed or already closed.
+        /// </summary>
+        public void AddAttachment(string name, string mediaType, byte[] data, ulong logTimeNs, ulong createTimeNs = 0)
+        {
+            if (_recordingFailed || _closed) return;
+            FlushChunk();
+            var index = _w.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data);
+            _attachmentIdx.Add(index);
+            _attachmentCount++;
+        }
+
+        /// <summary>
         /// Write a server-side message by Foxglove channel ID to the current chunk.
         /// </summary>
         public void WriteMessage(uint fId, ulong logNs, byte[] payload)
@@ -206,43 +222,82 @@ namespace Unity.FoxgloveSDK.IO
 
             var sumStart = (ulong)_w.Position;
 
+            // Build summary + summary offset in a temporary stream so we can
+            // compute summary_crc before writing to the real stream.
+            using var summaryBuilder = new MemoryStream();
+            var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
+
             // Schema group
-            var schemaGrpStart = (ulong)_w.Position;
-            foreach (var s in _schemas) _w.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
-            var schemaGrpLen = (ulong)_w.Position - schemaGrpStart;
+            var schemaGrpStart = 0UL;
+            foreach (var s in _schemas)
+                summaryWriter.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
+            var schemaGrpLen = (ulong)summaryBuilder.Position - schemaGrpStart;
 
             // Channel group
-            var channelGrpStart = (ulong)_w.Position;
-            foreach (var c in _channels) _w.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
-            var channelGrpLen = (ulong)_w.Position - channelGrpStart;
+            var channelGrpStart = (ulong)summaryBuilder.Position;
+            foreach (var c in _channels)
+                summaryWriter.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
+            var channelGrpLen = (ulong)summaryBuilder.Position - channelGrpStart;
 
             // Statistics
-            var statsGrpStart = (ulong)_w.Position;
-            _w.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, 0, _metadataCount, (uint)_chunkCount, _msgSt, _msgEt,
+            var msgSt = _msgCount > 0 ? _msgSt : 0;
+            var msgEt = _msgCount > 0 ? _msgEt : 0;
+            var statsGrpStart = (ulong)summaryBuilder.Position;
+            summaryWriter.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, _attachmentCount, _metadataCount, (uint)_chunkCount, msgSt, msgEt,
                 AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
-            var statsGrpLen = (ulong)_w.Position - statsGrpStart;
+            var statsGrpLen = (ulong)summaryBuilder.Position - statsGrpStart;
 
             // ChunkIndex group
-            var chunkIdxGrpStart = (ulong)_w.Position;
+            var chunkIdxGrpStart = (ulong)summaryBuilder.Position;
             foreach (var ci in _chunkIdx)
-                _w.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
-            var chunkIdxGrpLen = (ulong)_w.Position - chunkIdxGrpStart;
+                summaryWriter.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
+            var chunkIdxGrpLen = (ulong)summaryBuilder.Position - chunkIdxGrpStart;
+
+            // AttachmentIndex group
+            var attIdxGrpStart = (ulong)summaryBuilder.Position;
+            foreach (var ai in _attachmentIdx)
+                summaryWriter.WriteAttachmentIndex(ai);
+            var attIdxGrpLen = (ulong)summaryBuilder.Position - attIdxGrpStart;
 
             // MetadataIndex group
-            var metaIdxGrpStart = (ulong)_w.Position;
+            var metaIdxGrpStart = (ulong)summaryBuilder.Position;
             foreach (var mi in _metaIdx)
-                _w.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
-            var metaIdxGrpLen = (ulong)_w.Position - metaIdxGrpStart;
+                summaryWriter.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
+            var metaIdxGrpLen = (ulong)summaryBuilder.Position - metaIdxGrpStart;
 
-            // SummaryOffset per group
-            var sumOffStart = (ulong)_w.Position;
-            if (schemaGrpLen > 0) _w.WriteSummaryOffset(0x03, schemaGrpStart, schemaGrpLen);
-            if (channelGrpLen > 0) _w.WriteSummaryOffset(0x04, channelGrpStart, channelGrpLen);
-            if (statsGrpLen > 0) _w.WriteSummaryOffset(0x0B, statsGrpStart, statsGrpLen);
-            if (chunkIdxGrpLen > 0) _w.WriteSummaryOffset(0x08, chunkIdxGrpStart, chunkIdxGrpLen);
-            if (metaIdxGrpLen > 0) _w.WriteSummaryOffset(0x0D, metaIdxGrpStart, metaIdxGrpLen);
+            // SummaryOffset per group (absolute offsets = sumStart + relative start)
+            var sumOffStart = sumStart + (ulong)summaryBuilder.Position;
+            if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(0x03, sumStart + schemaGrpStart, schemaGrpLen);
+            if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(0x04, sumStart + channelGrpStart, channelGrpLen);
+            if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(0x0B, sumStart + statsGrpStart, statsGrpLen);
+            if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(0x08, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
+            if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(0x0A, sumStart + attIdxGrpStart, attIdxGrpLen);
+            if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(0x0D, sumStart + metaIdxGrpStart, metaIdxGrpLen);
 
-            _w.WriteFooter(sumStart, sumOffStart, 0);
+            summaryWriter.Flush();
+            var summaryData = summaryBuilder.ToArray();
+
+            // Compute summary_crc per MCAP spec: CRC32 over summary_data, then
+            // continue CRC32 over footer prefix (opcode, length, sumStart, sumOffStart).
+            var footerPrefix = new byte[1 + 8 + 8 + 8];
+            footerPrefix[0] = 0x02;
+            footerPrefix[1] = 20; footerPrefix[2] = 0; footerPrefix[3] = 0; footerPrefix[4] = 0;
+            footerPrefix[5] = 0; footerPrefix[6] = 0; footerPrefix[7] = 0; footerPrefix[8] = 0;
+            footerPrefix[9] = (byte)sumStart; footerPrefix[10] = (byte)(sumStart >> 8);
+            footerPrefix[11] = (byte)(sumStart >> 16); footerPrefix[12] = (byte)(sumStart >> 24);
+            footerPrefix[13] = (byte)(sumStart >> 32); footerPrefix[14] = (byte)(sumStart >> 40);
+            footerPrefix[15] = (byte)(sumStart >> 48); footerPrefix[16] = (byte)(sumStart >> 56);
+            footerPrefix[17] = (byte)sumOffStart; footerPrefix[18] = (byte)(sumOffStart >> 8);
+            footerPrefix[19] = (byte)(sumOffStart >> 16); footerPrefix[20] = (byte)(sumOffStart >> 24);
+            footerPrefix[21] = (byte)(sumOffStart >> 32); footerPrefix[22] = (byte)(sumOffStart >> 40);
+            footerPrefix[23] = (byte)(sumOffStart >> 48); footerPrefix[24] = (byte)(sumOffStart >> 56);
+            var crcInput = new byte[summaryData.Length + footerPrefix.Length];
+            Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
+            Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
+            var summaryCrc = Crc32Helper.Compute(crcInput);
+
+            _w.WriteBytes(summaryData);
+            _w.WriteFooter(sumStart, sumOffStart, summaryCrc);
             _w.WriteMagic();
             _w.Flush();
         }

@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -64,8 +65,19 @@ namespace Unity.FoxgloveSDK.IO
 
             var footer = DecodeFooter(footerContent);
 
+            // Footer is at _stream.Length - 8 (trailing magic) - 1 (opcode) - 8 (length) - 20 (content).
+            var footerOffset = (ulong)_stream.Length - 8 - 1 - 8 - 20;
             if (footer.SummaryStart == 0)
                 throw new InvalidDataException("No summary section in MCAP file");
+            if (footer.SummaryStart > footerOffset)
+                throw new InvalidDataException("Footer summary_start is past the footer record");
+            if (footer.SummaryOffsetStart != 0 &&
+                (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
+                throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");
+
+            var summaryLen = footerOffset - footer.SummaryStart;
+            if (summaryLen > int.MaxValue)
+                throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
 
             // Read summary section
             _stream.Seek((long)footer.SummaryStart, SeekOrigin.Begin);
@@ -74,8 +86,9 @@ namespace Unity.FoxgloveSDK.IO
             McapStatistics stats = null;
             var chunkIndexes = new List<McapChunkIndex>();
             var metadataIndexes = new List<McapMetadataIndex>();
+            var attachmentIndexes = new List<McapAttachmentIndex>();
 
-            var summaryEnd = (ulong)_stream.Length - 8UL; // end before trailing magic
+            var summaryEnd = footerOffset;
             while ((ulong)_stream.Position < summaryEnd)
             {
                 var (op, content) = ReadOneRecord(recordSizeLimit);
@@ -96,9 +109,10 @@ namespace Unity.FoxgloveSDK.IO
                     case 0x0D:
                         metadataIndexes.Add(DecodeMetadataIndex(content));
                         break;
-                    case 0x09: // Attachment — skip
+                    case 0x09: // Attachment — skip (body records, not in summary)
                         break;
-                    case 0x0A: // AttachmentIndex — skip
+                    case 0x0A:
+                        attachmentIndexes.Add(DecodeAttachmentIndex(content));
                         break;
                     case 0x0E: // SummaryOffset — skip
                         break;
@@ -107,13 +121,43 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
+            // Validate summary CRC when non-zero (backward compatible with older files).
+            if (footer.SummaryCrc != 0)
+            {
+                // Summary section runs from summaryStart to the start of the Footer.
+                _stream.Seek((long)footer.SummaryStart, SeekOrigin.Begin);
+                var summaryBytes = new byte[(int)summaryLen];
+                ReadExact(summaryBytes, 0, (int)summaryLen);
+
+                var footerPrefix = new byte[1 + 8 + 8 + 8];
+                footerPrefix[0] = 0x02;
+                footerPrefix[1] = 20; footerPrefix[2] = 0; footerPrefix[3] = 0; footerPrefix[4] = 0;
+                footerPrefix[5] = 0; footerPrefix[6] = 0; footerPrefix[7] = 0; footerPrefix[8] = 0;
+                footerPrefix[9] = (byte)footer.SummaryStart; footerPrefix[10] = (byte)(footer.SummaryStart >> 8);
+                footerPrefix[11] = (byte)(footer.SummaryStart >> 16); footerPrefix[12] = (byte)(footer.SummaryStart >> 24);
+                footerPrefix[13] = (byte)(footer.SummaryStart >> 32); footerPrefix[14] = (byte)(footer.SummaryStart >> 40);
+                footerPrefix[15] = (byte)(footer.SummaryStart >> 48); footerPrefix[16] = (byte)(footer.SummaryStart >> 56);
+                footerPrefix[17] = (byte)footer.SummaryOffsetStart; footerPrefix[18] = (byte)(footer.SummaryOffsetStart >> 8);
+                footerPrefix[19] = (byte)(footer.SummaryOffsetStart >> 16); footerPrefix[20] = (byte)(footer.SummaryOffsetStart >> 24);
+                footerPrefix[21] = (byte)(footer.SummaryOffsetStart >> 32); footerPrefix[22] = (byte)(footer.SummaryOffsetStart >> 40);
+                footerPrefix[23] = (byte)(footer.SummaryOffsetStart >> 48); footerPrefix[24] = (byte)(footer.SummaryOffsetStart >> 56);
+
+                var crcInput = new byte[summaryBytes.Length + footerPrefix.Length];
+                Buffer.BlockCopy(summaryBytes, 0, crcInput, 0, summaryBytes.Length);
+                Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryBytes.Length, footerPrefix.Length);
+                var recomputed = Crc32Helper.Compute(crcInput);
+                if (recomputed != footer.SummaryCrc)
+                    throw new InvalidDataException("MCAP summary CRC mismatch");
+            }
+
             return new McapFileSummary
             {
                 Schemas = schemas,
                 Channels = channels,
                 Statistics = stats,
                 ChunkIndexes = chunkIndexes,
-                MetadataIndexes = metadataIndexes
+                MetadataIndexes = metadataIndexes,
+                AttachmentIndexes = attachmentIndexes
             };
         }
 
@@ -367,6 +411,77 @@ namespace Unity.FoxgloveSDK.IO
                 meta[k] = v;
             }
             return new McapMetadata { Name = name, Metadata = meta };
+        }
+
+        /// <summary>
+        /// Decodes an MCAP attachment record from raw content bytes.
+        /// </summary>
+        public static McapAttachment DecodeAttachment(byte[] content)
+        {
+            var off = 0;
+            var logTime = McapBinaryReader.ReadU64LE(content, ref off);
+            var createTime = McapBinaryReader.ReadU64LE(content, ref off);
+            var name = McapBinaryReader.ReadString(content, ref off);
+            var mediaType = McapBinaryReader.ReadString(content, ref off);
+            var dataSize = McapBinaryReader.ReadU64LE(content, ref off);
+            if (dataSize > int.MaxValue)
+                throw new InvalidDataException($"Attachment data size {dataSize} exceeds int.MaxValue");
+            if (content.Length - off < 4)
+                throw new InvalidDataException("Attachment content is truncated: CRC field extends past record");
+            var remaining = content.Length - off - 4;
+            if (dataSize > (ulong)remaining)
+                throw new InvalidDataException("Attachment content is truncated: data extends past CRC field");
+            var data = new byte[dataSize];
+            if (dataSize > 0)
+                Buffer.BlockCopy(content, off, data, 0, (int)dataSize);
+            off += (int)dataSize;
+            var storedCrc = (uint)(content[off] | (content[off + 1] << 8) | (content[off + 2] << 16) | (content[off + 3] << 24));
+            var crcValid = true;
+            if (storedCrc != 0)
+            {
+                var computed = Crc32Helper.Compute(new ReadOnlySpan<byte>(content, 0, content.Length - 4));
+                crcValid = computed == storedCrc;
+            }
+            return new McapAttachment
+            {
+                LogTime = logTime,
+                CreateTime = createTime,
+                Name = name,
+                MediaType = mediaType,
+                Data = data,
+                Crc = storedCrc,
+                CrcValid = crcValid
+            };
+        }
+
+        /// <summary>
+        /// Decodes an MCAP attachment index record from raw content bytes.
+        /// </summary>
+        public static McapAttachmentIndex DecodeAttachmentIndex(byte[] content)
+        {
+            var off = 0;
+            return new McapAttachmentIndex
+            {
+                Offset = McapBinaryReader.ReadU64LE(content, ref off),
+                Length = McapBinaryReader.ReadU64LE(content, ref off),
+                LogTime = McapBinaryReader.ReadU64LE(content, ref off),
+                CreateTime = McapBinaryReader.ReadU64LE(content, ref off),
+                DataSize = McapBinaryReader.ReadU64LE(content, ref off),
+                Name = McapBinaryReader.ReadString(content, ref off),
+                MediaType = McapBinaryReader.ReadString(content, ref off)
+            };
+        }
+
+        /// <summary>
+        /// Seeks to the given offset and reads a single attachment record.
+        /// </summary>
+        public McapAttachment ReadAttachmentAt(ulong offset)
+        {
+            _stream.Seek((long)offset, SeekOrigin.Begin);
+            var (opcode, content) = ReadOneRecord();
+            if (opcode != 0x09)
+                throw new InvalidDataException($"Expected Attachment (0x09) at offset {offset}, got 0x{opcode:X2}");
+            return DecodeAttachment(content);
         }
 
         /// <summary>
