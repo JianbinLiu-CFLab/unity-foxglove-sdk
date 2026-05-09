@@ -166,6 +166,44 @@ namespace Unity.FoxgloveSDK.IO
         public uint SummaryCrc;
     }
 
+    /// <summary>MCAP Attachment record — arbitrary binary artifact stored outside chunks.</summary>
+    public class McapAttachment
+    {
+        /// <summary>Log timestamp (nanoseconds).</summary>
+        public ulong LogTime;
+        /// <summary>Creation timestamp (nanoseconds).</summary>
+        public ulong CreateTime;
+        /// <summary>Attachment name.</summary>
+        public string Name;
+        /// <summary>MIME media type (e.g. <c>"text/plain"</c>).</summary>
+        public string MediaType;
+        /// <summary>Raw attachment data.</summary>
+        public byte[] Data;
+        /// <summary>CRC32 of the attachment record content before the CRC field.</summary>
+        public uint Crc;
+        /// <summary>Whether the CRC was non-zero and matched the recomputed checksum.</summary>
+        public bool CrcValid;
+    }
+
+    /// <summary>MCAP Attachment Index record — offset and metadata for an attachment in the file.</summary>
+    public class McapAttachmentIndex
+    {
+        /// <summary>Absolute byte offset of the Attachment record in the file.</summary>
+        public ulong Offset;
+        /// <summary>Total byte length of the Attachment record (opcode + 8-byte length + content).</summary>
+        public ulong Length;
+        /// <summary>Log timestamp (nanoseconds).</summary>
+        public ulong LogTime;
+        /// <summary>Creation timestamp (nanoseconds).</summary>
+        public ulong CreateTime;
+        /// <summary>Size of the attachment data payload in bytes (excluding uint64 prefix).</summary>
+        public ulong DataSize;
+        /// <summary>Attachment name.</summary>
+        public string Name;
+        /// <summary>MIME media type.</summary>
+        public string MediaType;
+    }
+
     /// <summary>Aggregated view of all summary records in an MCAP file.</summary>
     public class McapFileSummary
     {
@@ -179,5 +217,7 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapChunkIndex> ChunkIndexes = new();
         /// <summary>Metadata index entries for every metadata record.</summary>
         public List<McapMetadataIndex> MetadataIndexes = new();
+        /// <summary>Attachment index entries for every attachment.</summary>
+        public List<McapAttachmentIndex> AttachmentIndexes = new();
     }
 }

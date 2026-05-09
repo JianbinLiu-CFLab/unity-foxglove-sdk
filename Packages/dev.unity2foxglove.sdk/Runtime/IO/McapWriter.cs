@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -67,6 +68,52 @@ namespace Unity.FoxgloveSDK.IO
         public void WriteFooter(ulong summaryStart, ulong summaryOffsetStart, uint summaryCrc) { var m = new MemoryStream(); WriteU64(m, summaryStart); WriteU64(m, summaryOffsetStart); WriteU32(m, summaryCrc); WriteRecord(0x02, m.ToArray()); }
         /// <summary>Write a Summary Offset record (opcode <c>0x0E</c>).</summary>
         public void WriteSummaryOffset(byte groupOpcode, ulong start, ulong length) { var m = new MemoryStream(); m.WriteByte(groupOpcode); WriteU64(m, start); WriteU64(m, length); WriteRecord(0x0E, m.ToArray()); }
+        /// <summary>Write an Attachment record (opcode <c>0x09</c>) and return its index for summary registration.</summary>
+        public McapAttachmentIndex WriteAttachment(ulong logTime, ulong createTime, string name, string mediaType, byte[] data)
+        {
+            var off = (ulong)_stream.Position;
+            var m = new MemoryStream();
+            WriteU64(m, logTime);
+            WriteU64(m, createTime);
+            WriteString(m, name);
+            WriteString(m, mediaType);
+            WriteU64(m, (ulong)(data?.Length ?? 0));
+            if (data != null && data.Length > 0) m.Write(data, 0, data.Length);
+            var content = m.ToArray();
+            var crc = Crc32Helper.Compute(content);
+            var crcBytes = new byte[4];
+            crcBytes[0] = (byte)crc; crcBytes[1] = (byte)(crc >> 8); crcBytes[2] = (byte)(crc >> 16); crcBytes[3] = (byte)(crc >> 24);
+            var fullContent = new byte[content.Length + 4];
+            Buffer.BlockCopy(content, 0, fullContent, 0, content.Length);
+            Buffer.BlockCopy(crcBytes, 0, fullContent, content.Length, 4);
+            WriteRecord(0x09, fullContent);
+            var totalLen = (ulong)(1 + 8 + fullContent.Length);
+            return new McapAttachmentIndex
+            {
+                Offset = off,
+                Length = totalLen,
+                LogTime = logTime,
+                CreateTime = createTime,
+                DataSize = (ulong)(data?.Length ?? 0),
+                Name = name ?? "",
+                MediaType = mediaType ?? ""
+            };
+        }
+        /// <summary>Write an Attachment Index record (opcode <c>0x0A</c>).</summary>
+        public void WriteAttachmentIndex(McapAttachmentIndex index)
+        {
+            var m = new MemoryStream();
+            WriteU64(m, index.Offset);
+            WriteU64(m, index.Length);
+            WriteU64(m, index.LogTime);
+            WriteU64(m, index.CreateTime);
+            WriteU64(m, index.DataSize);
+            WriteString(m, index.Name);
+            WriteString(m, index.MediaType);
+            WriteRecord(0x0A, m.ToArray());
+        }
+        /// <summary>Write raw bytes directly to the underlying stream without MCAP opcode/length framing.</summary>
+        public void WriteBytes(byte[] data) { if (data != null && data.Length > 0) _stream.Write(data, 0, data.Length); }
         /// <summary>Flush the underlying stream.</summary>
         public void Flush() => _stream.Flush();
         /// <summary>Flush and, unless <c>leaveOpen</c> was set, dispose the underlying stream.</summary>
