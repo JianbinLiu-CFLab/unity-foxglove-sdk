@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Unity/Attributes
-// Purpose: FoxRun custom attribute — marks fields and properties for auto-publishing to Foxglove topics via source generators.
+// Purpose: FoxRun custom attribute - marks fields and properties for
+// source-generated publishing to Foxglove topics.
 
 using System;
 
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Mark a field or property to be auto-published as a Foxglove topic.
-    /// Usage: [FoxRun("/debug/health", RateHz = 5)]
-    /// The annotated class must be declared as partial.
+    /// Marks a field or property for source-generated publishing as a Foxglove
+    /// topic. The containing <c>MonoBehaviour</c> must be declared
+    /// <c>partial</c> so the generator can add the publish implementation.
     /// </summary>
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
     public class FoxRunAttribute : Attribute
@@ -34,6 +35,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Heartbeat interval in seconds for OnChangeOrInterval mode. Non-positive disables.</summary>
         public float ForceIntervalSeconds { get; set; } = 0f;
 
+        /// <summary>Create a FoxRun attribute for the given Foxglove topic.</summary>
         public FoxRunAttribute(string topic)
         {
             Topic = topic ?? throw new ArgumentNullException(nameof(topic));

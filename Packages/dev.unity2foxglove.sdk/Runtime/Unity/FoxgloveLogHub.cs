@@ -78,7 +78,7 @@ namespace Unity.FoxgloveSDK.Components
     [AddComponentMenu("")]
     public class FoxgloveLogHub : MonoBehaviour
     {
-        // ── Internal state ──
+        // Internal state
         /// <summary>Singleton instance.</summary>
         private static FoxgloveLogHub _instance;
         /// <summary>Cached reference to the FoxgloveManager.</summary>
@@ -125,7 +125,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Each frame: resolve the FoxgloveManager (with a 3-second retry cooldown),
         /// periodically scan for new log sources, and fire publishes for every source
-        /// whose per-topic countdown timer has elapsed.
+        /// whose per-topic countdown timer has elapsed. Event-driven sources can
+        /// veto a timer tick when the generated last-value policy says nothing
+        /// changed and no heartbeat is due.
         /// </summary>
         private void Update()
         {

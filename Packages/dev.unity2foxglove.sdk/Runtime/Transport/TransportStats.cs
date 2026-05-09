@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Transport
-// Purpose: Read-only transport health surface — immutable snapshots of
+// Purpose: Read-only transport health surface - immutable snapshots of
 // per-client queue and aggregate counters. Kept UnityEngine-free for
 // runtime testability.
 

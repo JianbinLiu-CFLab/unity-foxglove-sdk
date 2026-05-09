@@ -1,5 +1,9 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas/Proto
+// Purpose: Runtime registry that maps Foxglove protobuf schema names to
+// FileDescriptorSet bytes for live and MCAP channel registration.
 
 using System;
 using System.Collections.Generic;
@@ -83,7 +87,7 @@ namespace Foxglove.Schemas
         /// </summary>
         public int Count => _descriptors.Count;
 
-        // ── Helpers ──
+        // Helpers
 
         private static byte[] ReadAllBytes(Stream stream)
         {
@@ -101,7 +105,7 @@ namespace Foxglove.Schemas
         /// </summary>
         private void BuildDescriptorMap(FileDescriptorSet fds)
         {
-            // Build lookup: proto file name -> FileDescriptorProto
+            // Build lookup: proto file name -> FileDescriptorProto.
             var fileMap = new Dictionary<string, FileDescriptorProto>();
             foreach (var file in fds.File)
             {
@@ -114,11 +118,11 @@ namespace Foxglove.Schemas
                 if (file.Name == null || file.MessageType.Count == 0)
                     continue;
 
-                // Collect transitive dependencies for this file
+                // Collect transitive dependencies for this file.
                 var neededFiles = new HashSet<string>();
                 CollectDependencies(file.Name, fileMap, neededFiles);
 
-                // Build a minimal FileDescriptorSet
+                // Build a minimal FileDescriptorSet.
                 var subset = new FileDescriptorSet();
                 foreach (var depName in neededFiles)
                 {
@@ -128,7 +132,7 @@ namespace Foxglove.Schemas
 
                 var subsetBytes = subset.ToByteArray();
 
-                // Map each top-level message to this FileDescriptorSet
+                // Map each top-level message to this FileDescriptorSet.
                 foreach (var msg in file.MessageType)
                 {
                     var fullName = $"{file.Package}.{msg.Name}";

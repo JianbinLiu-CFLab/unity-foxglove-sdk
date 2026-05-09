@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas/Proto
+// Purpose: Base MonoBehaviour for typed protobuf publishers.
 
 using Google.Protobuf;
 using Unity.FoxgloveSDK.Components;
@@ -15,7 +18,9 @@ namespace Foxglove.Components
     /// <typeparam name="T">Protobuf message type implementing IMessage.</typeparam>
     public abstract class ProtobufPublisher<T> : FoxglovePublisherBase where T : class, IMessage, new()
     {
+        /// <summary>Typed protobuf publishers do not emit JSON payloads.</summary>
         public override bool SupportsJsonEncoding => false;
+        /// <summary>Typed protobuf publishers emit binary protobuf payloads.</summary>
         public override bool SupportsProtobufEncoding => true;
 
         /// <summary>
@@ -41,6 +46,10 @@ namespace Foxglove.Components
         /// <summary>Called at publish time. Subclass builds the protobuf message object.</summary>
         protected abstract T CreateMessage();
 
+        /// <summary>
+        /// Unity frame hook that applies base rate/replay guards and publishes
+        /// the current protobuf message when due.
+        /// </summary>
         protected virtual void Update()
         {
             if (_manager == null) return;

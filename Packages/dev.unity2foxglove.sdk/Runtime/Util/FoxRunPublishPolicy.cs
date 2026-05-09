@@ -7,10 +7,17 @@
 
 namespace Unity.FoxgloveSDK.Components
 {
+    /// <summary>
+    /// Publish policy used by generated <c>[FoxRun]</c> sources after the hub's
+    /// rate timer fires.
+    /// </summary>
     public enum FoxRunPublishMode
     {
+        /// <summary>Publish on every scheduled rate tick.</summary>
         FixedRate = 0,
+        /// <summary>Publish the first sample and subsequent changed values only.</summary>
         OnChange = 1,
+        /// <summary>Publish changed values, plus heartbeat samples at the force interval.</summary>
         OnChangeOrInterval = 2,
     }
 }
@@ -19,6 +26,9 @@ namespace Unity.FoxgloveSDK.Util
 {
     using Components;
 
+    /// <summary>
+    /// Stateless decision helper used by generated FoxRun code.
+    /// </summary>
     public static class FoxRunPublishPolicy
     {
         /// <summary>

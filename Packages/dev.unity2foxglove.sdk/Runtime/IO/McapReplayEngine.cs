@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/IO
-// Purpose: MCAP replay engine — loads an .mcap file, seeks by timestamp,
+// Purpose: MCAP replay engine - loads an .mcap file, seeks by timestamp,
 // plays/pauses, and emits messages to FoxgloveSession in log-time order.
 // Supports LZ4/Zstd compressed chunks via McapReader.
 
@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.IO
                     var len = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
                     if (_readOffset + (int)len > _currentUncompressed.Length) break;
 
-                    if (opcode == 0x05)
+                    if (opcode == McapWriter.OpcodeMessage)
                     {
                         var startOff = _readOffset;
                         var chId = McapBinaryReader.ReadU16LE(_currentUncompressed, ref _readOffset);
@@ -299,7 +299,7 @@ namespace Unity.FoxgloveSDK.IO
             ResetLoadedState(disposeStream: true);
         }
 
-        // ── Internal ──
+        // Internal
 
         /// <summary>
         /// Clears replay cursors and optionally disposes the currently open MCAP stream.
@@ -337,7 +337,7 @@ namespace Unity.FoxgloveSDK.IO
             var ci = _summary.ChunkIndexes[_currentChunkIdx];
             _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength, out var crcValid);
             if (!crcValid)
-                Console.Error.WriteLine($"[McapReplayEngine] Chunk {_currentChunkIdx} CRC mismatch — data may be corrupted.");
+                Console.Error.WriteLine($"[McapReplayEngine] Chunk {_currentChunkIdx} CRC mismatch; data may be corrupted.");
             _readOffset = 0;
             return true;
         }

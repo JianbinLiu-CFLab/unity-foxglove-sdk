@@ -147,7 +147,7 @@ namespace Unity.FoxgloveSDK.IO
             WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
-        // ── Message Writing ──
+        // Message writing
         private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
             if (_recordingFailed) return;
@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.IO
             var payloadLength = payload?.Length ?? 0;
             var contentLength = 2 + 4 + 8 + 8 + payloadLength;
             var off = (ulong)_chunkBuf.Position;
-            _chunkBuf.WriteByte(0x05);
+            _chunkBuf.WriteByte(McapWriter.OpcodeMessage);
             McapWriter.WriteU64(_chunkBuf, (ulong)contentLength);
             McapWriter.WriteU16(_chunkBuf, map.McapId);
             McapWriter.WriteU32(_chunkBuf, seq);
@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.IO
             WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
-        // ── Lifecycle ──
+        // Lifecycle
         /// <summary>
         /// Finalize the MCAP file: flush the last chunk, write summary groups,
         /// footer, and magic suffix.
@@ -267,30 +267,19 @@ namespace Unity.FoxgloveSDK.IO
 
             // SummaryOffset per group (absolute offsets = sumStart + relative start)
             var sumOffStart = sumStart + (ulong)summaryBuilder.Position;
-            if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(0x03, sumStart + schemaGrpStart, schemaGrpLen);
-            if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(0x04, sumStart + channelGrpStart, channelGrpLen);
-            if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(0x0B, sumStart + statsGrpStart, statsGrpLen);
-            if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(0x08, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
-            if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(0x0A, sumStart + attIdxGrpStart, attIdxGrpLen);
-            if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(0x0D, sumStart + metaIdxGrpStart, metaIdxGrpLen);
+            if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeSchema, sumStart + schemaGrpStart, schemaGrpLen);
+            if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChannel, sumStart + channelGrpStart, channelGrpLen);
+            if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, sumStart + statsGrpStart, statsGrpLen);
+            if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
+            if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, sumStart + attIdxGrpStart, attIdxGrpLen);
+            if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, sumStart + metaIdxGrpStart, metaIdxGrpLen);
 
             summaryWriter.Flush();
             var summaryData = summaryBuilder.ToArray();
 
             // Compute summary_crc per MCAP spec: CRC32 over summary_data, then
             // continue CRC32 over footer prefix (opcode, length, sumStart, sumOffStart).
-            var footerPrefix = new byte[1 + 8 + 8 + 8];
-            footerPrefix[0] = 0x02;
-            footerPrefix[1] = 20; footerPrefix[2] = 0; footerPrefix[3] = 0; footerPrefix[4] = 0;
-            footerPrefix[5] = 0; footerPrefix[6] = 0; footerPrefix[7] = 0; footerPrefix[8] = 0;
-            footerPrefix[9] = (byte)sumStart; footerPrefix[10] = (byte)(sumStart >> 8);
-            footerPrefix[11] = (byte)(sumStart >> 16); footerPrefix[12] = (byte)(sumStart >> 24);
-            footerPrefix[13] = (byte)(sumStart >> 32); footerPrefix[14] = (byte)(sumStart >> 40);
-            footerPrefix[15] = (byte)(sumStart >> 48); footerPrefix[16] = (byte)(sumStart >> 56);
-            footerPrefix[17] = (byte)sumOffStart; footerPrefix[18] = (byte)(sumOffStart >> 8);
-            footerPrefix[19] = (byte)(sumOffStart >> 16); footerPrefix[20] = (byte)(sumOffStart >> 24);
-            footerPrefix[21] = (byte)(sumOffStart >> 32); footerPrefix[22] = (byte)(sumOffStart >> 40);
-            footerPrefix[23] = (byte)(sumOffStart >> 48); footerPrefix[24] = (byte)(sumOffStart >> 56);
+            var footerPrefix = McapWriter.BuildFooterCrcPrefix(sumStart, sumOffStart);
             var crcInput = new byte[summaryData.Length + footerPrefix.Length];
             Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
             Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
@@ -307,7 +296,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Dispose() { Close(); _w.Dispose(); _chunkBuf.Dispose(); }
 
-        // ── Helpers ──
+        // Helpers
         IEnumerable<ChannelWriteState> AllChannelWriteStates()
         {
             var seen = new HashSet<ushort>();
@@ -359,7 +348,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         static string Sha256(string c) { using var h = SHA256.Create(); return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c))); }
 
-        // ── Schema Management ──
+        // Schema management
         ushort GetOrCreateSchema(string sName, string sEnc, string sContent)
         {
             if (string.IsNullOrEmpty(sName) && string.IsNullOrEmpty(sEnc) && string.IsNullOrEmpty(sContent))
@@ -430,7 +419,7 @@ namespace Unity.FoxgloveSDK.IO
         static string NormalizeMessageEncoding(string enc) =>
             string.IsNullOrEmpty(enc) ? "json" : enc;
 
-        // ── Channel Routing ──
+        // Channel routing
         bool TryReuseExistingTopicChannel(string topic, string enc, string sName, string sEnc,
             string sContent, out ChannelWriteState state)
         {
@@ -496,7 +485,7 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
-        // ── Nested State Types ──
+        // Nested state types
 
         /// <summary>
         /// Per-channel write accumulator tracking MCAP channel ID, sequence
