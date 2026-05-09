@@ -3,7 +3,7 @@
 //
 // Module: Runtime/Transport
 // Purpose: Pure C# WebSocket server backend using TcpListener and manual
-// RFC 6455 framing. No http.sys dependency — works on all platforms
+// RFC 6455 framing. No http.sys dependency - works on all platforms
 // without admin rights.
 
 using System;
@@ -25,13 +25,25 @@ namespace Unity.FoxgloveSDK.Transport
 {
     /// <summary>
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
-    /// No http.sys dependency — works on all platforms without admin rights.
+    /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IFoxgloveTransportStatsProvider, IDisposable
     {
+        /// <summary>Per-client send queue frame cap; stale data frames are dropped before this is exceeded.</summary>
         internal const int MaxQueuedFrames = 256;
+        /// <summary>Per-client send queue byte cap.</summary>
         internal const int MaxQueuedBytes = 8 * 1024 * 1024;
         private const byte FinBit = 0x80;
+        private const byte MaskBit = 0x80;
+        private const byte OpcodeMask = 0x0F;
+        private const byte PayloadLengthMask = 0x7F;
+        private const int MaxFrameHeaderBytes = 10;
+        private const int SmallPayloadLimit = 125;
+        private const byte Payload16BitLengthMarker = 126;
+        private const byte Payload64BitLengthMarker = 127;
+        private const int CloseDrainTimeoutMs = 250;
+        private const int SendQueueWaitMs = 100;
+        private const long DropLogIntervalFrames = 1000;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -46,7 +58,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Allowed browser origins for Cross-Site WebSocket Hijacking protection. Empty collection rejects all browser-origin clients.</summary>
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
 
-        // ── Aggregate health counters ──
+        // Aggregate health counters
         private long _totalAcceptedClients;
         private long _totalDisconnectedClients;
         private long _totalControlOverflowDisconnects;
@@ -143,7 +155,7 @@ namespace Unity.FoxgloveSDK.Transport
             _cts = null;
         }
 
-        // ── Transport Health ──
+        // Transport health
 
         /// <summary>Produce an immutable snapshot of current transport health.</summary>
         public TransportStatsSnapshot GetStatsSnapshot()
@@ -180,7 +192,7 @@ namespace Unity.FoxgloveSDK.Transport
             };
         }
 
-        // ── Origin Guard ──
+        // Origin guard
 
         /// <summary>Snapshot of currently allowed browser origins. Empty means no browser clients are allowed.</summary>
         public IReadOnlyCollection<string> AllowedOrigins
@@ -201,7 +213,7 @@ namespace Unity.FoxgloveSDK.Transport
             lock (_allowedOrigins) _allowedOrigins.Clear();
         }
 
-        // ── Internal ──
+        // Internal
 
         /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
         private async Task AcceptLoop(CancellationToken ct)
@@ -256,7 +268,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        // ── WebSocket Handshake (RFC 6455 §4) ──
+        // WebSocket handshake (RFC 6455 section 4)
 
         /// <summary>Parse HTTP upgrade request and complete the WebSocket opening handshake per RFC 6455.</summary>
         private (bool accepted, string subprotocol) Handshake(NetworkStream stream)
@@ -291,7 +303,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             // Origin guard: reject browser clients unless the origin is in the allowlist.
             // file:// origins come from non-browser environments (Electron desktop apps,
-            // Foxglove Desktop) — they are not subject to CSWSH, so they are always allowed.
+            // Foxglove Desktop); they are not subject to CSWSH, so they are always allowed.
             if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
                 && !origin.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
             {
@@ -349,7 +361,7 @@ namespace Unity.FoxgloveSDK.Transport
             return (true, selected);
         }
 
-        /// <summary>Compute the Sec-WebSocket-Accept response value per RFC 6455 §4.2.2.</summary>
+        /// <summary>Compute the Sec-WebSocket-Accept response value per RFC 6455 section 4.2.2.</summary>
         private static string ComputeAcceptKey(string wsKey)
         {
             const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -384,7 +396,7 @@ namespace Unity.FoxgloveSDK.Transport
             return sb.ToString();
         }
 
-        // ── Receive Loop ──
+        // Receive loop
 
         /// <summary>Continuously read frames, dispatch text/binary/close/ping, until the stream ends or is canceled.</summary>
         private void ReceiveLoop(uint clientId, WsConnection conn, CancellationToken ct)
@@ -401,7 +413,7 @@ namespace Unity.FoxgloveSDK.Transport
                     {
                         conn.TouchActivity();
                         HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
-                        conn.WaitForPendingSends(TimeSpan.FromMilliseconds(250));
+                        conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
                         return;
                     }
 
@@ -416,7 +428,7 @@ namespace Unity.FoxgloveSDK.Transport
                             break;
                         case WsOpcode.Close:
                             HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
-                            conn.WaitForPendingSends(TimeSpan.FromMilliseconds(250));
+                            conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
                             return;
                         case WsOpcode.Ping:
                             HandleEnqueueResult(clientId, conn, conn.SendPong(frame.Payload), "SendPong");
@@ -465,34 +477,34 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (payloadLength < 0)
                 throw new ArgumentOutOfRangeException(nameof(payloadLength));
-            if (destination.Length < 10)
+            if (destination.Length < MaxFrameHeaderBytes)
                 throw new ArgumentException("WebSocket frame header destination must be at least 10 bytes.", nameof(destination));
 
             var offset = 0;
             destination[offset++] = (byte)(FinBit | opcode);
 
-            if (payloadLength <= 125)
+            if (payloadLength <= SmallPayloadLimit)
             {
                 destination[offset++] = (byte)payloadLength;
                 return offset;
             }
 
-            if (payloadLength <= 65535)
+            if (payloadLength <= ushort.MaxValue)
             {
-                destination[offset++] = 126;
+                destination[offset++] = Payload16BitLengthMarker;
                 destination[offset++] = (byte)(payloadLength >> 8);
                 destination[offset++] = (byte)payloadLength;
                 return offset;
             }
 
-            destination[offset++] = 127;
+            destination[offset++] = Payload64BitLengthMarker;
             var len = (ulong)payloadLength;
             for (var i = 7; i >= 0; i--)
                 destination[offset++] = (byte)(len >> (i * 8));
             return offset;
         }
 
-        // ── WebSocket Connection ──
+        // WebSocket connection
 
         /// <summary>
         /// Per-connection framing layer: send/receive WebSocket frames over a single TCP stream.
@@ -584,6 +596,9 @@ namespace Unity.FoxgloveSDK.Transport
 
                     var dropped = 0;
                     var droppedBefore = _droppedDataFrames;
+                    // Preserve control frames by discarding stale data first.
+                    // If a control frame still cannot fit, the caller disconnects
+                    // the slow client so one socket cannot block protocol traffic.
                     while (!CanFitLocked(frame) && _dataFrames.Count > 0)
                     {
                         DropOldestDataLocked();
@@ -647,7 +662,7 @@ namespace Unity.FoxgloveSDK.Transport
                         if (_completed)
                             return false;
 
-                        Monitor.Wait(_lock, 100);
+                        Monitor.Wait(_lock, SendQueueWaitMs);
                     }
                 }
             }
@@ -680,7 +695,7 @@ namespace Unity.FoxgloveSDK.Transport
                 }
             }
 
-            // ── Health Snapshot ──
+            // Health snapshot
 
             public long DroppedDataFrames
             {
@@ -755,7 +770,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             private static bool ShouldLogDrop(long before, long after)
             {
-                return after > before && (before == 0 || after / 1000 > before / 1000);
+                return after > before && (before == 0 || after / DropLogIntervalFrames > before / DropLogIntervalFrames);
             }
         }
 
@@ -779,7 +794,7 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Maximum allowable payload size in bytes (64 MiB).</summary>
             internal const int MaxPayloadBytes = 64 * 1024 * 1024;
 
-            // ── Health Counters ──
+            // Health counters
             private readonly DateTime _connectedAtUtc = DateTime.UtcNow;
             private long _lastActivityMs;
             private long _sentFrames;
@@ -886,7 +901,7 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Build and write a complete WebSocket frame (FIN + opcode + length-prefixed payload).</summary>
             private void WriteFrame(byte opcode, byte[] payload)
             {
-                Span<byte> header = stackalloc byte[10];
+                Span<byte> header = stackalloc byte[MaxFrameHeaderBytes];
                 var headerLength = WriteFrameHeader(opcode, payload.Length, header);
                 _stream.Write(header.Slice(0, headerLength));
                 if (payload.Length > 0)
@@ -907,17 +922,17 @@ namespace Unity.FoxgloveSDK.Transport
                 if (!ReadExact(header, 0, 2)) return null;
 
                 var fin = (header[0] & FinBit) != 0;
-                var opcode = header[0] & 0x0F;
-                var masked = (header[1] & 0x80) != 0;
-                var payloadLen = (int)(header[1] & 0x7F);
+                var opcode = header[0] & OpcodeMask;
+                var masked = (header[1] & MaskBit) != 0;
+                var payloadLen = (int)(header[1] & PayloadLengthMask);
 
-                if (payloadLen == 126)
+                if (payloadLen == Payload16BitLengthMarker)
                 {
                     var ext = new byte[2];
                     if (!ReadExact(ext, 0, 2)) return null;
                     payloadLen = (ext[0] << 8) | ext[1];
                 }
-                else if (payloadLen == 127)
+                else if (payloadLen == Payload64BitLengthMarker)
                 {
                     var ext = new byte[8];
                     if (!ReadExact(ext, 0, 8)) return null;

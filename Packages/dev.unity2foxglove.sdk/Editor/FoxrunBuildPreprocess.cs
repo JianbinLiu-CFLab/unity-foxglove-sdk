@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor
-// Purpose: IPreprocessBuildWithReport hook — generates physical .g.cs
+// Purpose: IPreprocessBuildWithReport hook - generates physical .g.cs
 // fallback files for [FoxRun] annotated classes before IL2CPP Player build.
 
 using System;
@@ -62,9 +62,9 @@ namespace Unity.FoxgloveSDK.Editor
                 Debug.Log($"[FoxrunBuildPreprocess] Generated {files.Count} file(s): {names}");
             }
 
-            // Collect [FoxRun] types for IL2CPP preservation.
-            // This is done regardless of GenerateSourceFiles() output — the set of
-            // types discovered via reflection may differ from the ISG-compiled set.
+            // Collect [FoxRun] types for IL2CPP preservation even when no file
+            // changed on disk. Discovery happens in the Editor build step; the
+            // generated Player code still publishes without runtime reflection.
             var linkPath = Path.Combine(Application.dataPath, "FoxRun_link.xml");
             EnsureFoxRunLinkXml(linkPath);
         }
@@ -75,9 +75,9 @@ namespace Unity.FoxgloveSDK.Editor
         ///
         /// Three branches:
         /// <list type="bullet">
-        ///   <item>0 types found — delete stale link.xml, log info, continue</item>
-        ///   <item>N types found — generate link.xml, validate N entries, continue</item>
-        ///   <item>Scan/validation failure — <c>BuildFailedException</c></item>
+        ///   <item>0 types found - delete stale link.xml, log info, continue</item>
+        ///   <item>N types found - generate link.xml, validate N entries, continue</item>
+        ///   <item>Scan/validation failure - <c>BuildFailedException</c></item>
         /// </list>
         /// </summary>
         static void EnsureFoxRunLinkXml(string linkPath)

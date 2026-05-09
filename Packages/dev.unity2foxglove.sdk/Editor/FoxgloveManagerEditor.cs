@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor
-// Purpose: Custom Inspector for FoxgloveManager — adds Browse buttons
+// Purpose: Custom Inspector for FoxgloveManager - adds Browse buttons
 // for file/folder path fields.
 
 using System.IO;
@@ -306,15 +306,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Resolves the best starting directory for the file/folder picker.
-        /// <list><item>
-        /// <description>If <c>currentValue</c> is non-empty and resolves to an existing directory,
-        /// that directory is used.</description>
-        /// </item><item>
-        /// <description>For folder pickers, falls back to a project-level
-        /// <c>Recordings/</c> directory if it exists.</description>
-        /// </item><item>
-        /// <description>Final fallback is the project root.</description>
-        /// </item></list>
+        /// Prefers an existing value, then the project-level
+        /// <c>Recordings/</c> directory, then the project root.
         /// </summary>
         internal static string GetSmartDefault(string currentValue, bool isFile)
         {

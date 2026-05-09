@@ -1,5 +1,9 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Schemas/Proto
+// Purpose: Factory helpers for creating ProtobufSchemaRegistry from bundled,
+// in-memory, file, or embedded-resource descriptor data.
 
 using System.IO;
 using System.Reflection;

@@ -4,8 +4,8 @@
 // Module: Editor/Shared
 // Purpose: Shared code-generation template for [FoxRun] IFoxgloveLogSource
 // implementation. Used by both the Roslyn ISG (FoxgloveLogSourceGenerator) and
-// the reflection-based fallback (FoxrunCodeGenerator) to guarantee output
-// consistency across Editor and IL2CPP build paths.
+// the Editor build-time physical fallback (FoxrunCodeGenerator) to keep the
+// generated class body consistent across Editor and Player build paths.
 
 using System;
 using System.Collections.Generic;
@@ -17,9 +17,9 @@ namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
     /// Pure C# string-builder that produces the generated partial class
-    /// implementing <c>IFoxgloveLogSource</c>. Designed to be called from both
-    /// the Roslyn ISG and reflection-based code paths with the same input
-    /// structure to guarantee byte-identical output.
+    /// implementing <c>IFoxgloveLogSource</c>. Both the Roslyn ISG and the
+    /// build-time physical fallback call this emitter so policy and payload
+    /// generation cannot drift between Editor and Player paths.
     /// </summary>
     /// <remarks>
     /// This file lives under <c>Editor/Shared/</c> and is compiled by both:
@@ -81,15 +81,9 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Emits the generated partial class source for one class name / namespace
-        /// pair. The output matches what <c>FoxgloveLogSourceGenerator.EmitClass</c>
-        /// and <c>FoxrunCodeGenerator.EmitSourceFile</c> produce today, byte-for-byte.
-        /// </summary>
-        /// <param name="ns">Containing namespace (empty for global).</param>
-        /// <param name="className">Declaring class name.</param>
-        /// <param name="members">All <c>[FoxRun]</c> attributed members of this class.</param>
-        /// <summary>
         /// Emits a C# change-detection expression comparing current and last values.
+        /// The generated expression is part of the AOT-safe source and must not
+        /// rely on runtime reflection.
         /// </summary>
         public static string ChangeExpr(string member, string type, string lastVar, float epsilon)
         {
@@ -118,6 +112,13 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        /// <summary>
+        /// Emits the generated partial class source for one class name / namespace
+        /// pair.
+        /// </summary>
+        /// <param name="ns">Containing namespace (empty for global).</param>
+        /// <param name="className">Declaring class name.</param>
+        /// <param name="members">All <c>[FoxRun]</c> attributed members of this class.</param>
         /// <returns>Generated C# source as a string.</returns>
         public static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
         {
@@ -198,7 +199,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
 
-            // Policy methods — only emitted when at least one topic uses non-FixedRate
+            // Policy methods are emitted only when at least one topic uses a
+            // non-FixedRate mode; fixed-rate sources keep the smaller legacy shape.
             if (hasPolicy)
             {
                 sb.AppendLine();

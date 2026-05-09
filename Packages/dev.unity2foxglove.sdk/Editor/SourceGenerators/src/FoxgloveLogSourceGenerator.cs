@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         /// <summary>
         /// Quick syntax filter: returns <c>true</c> if the node is a field or property
-        /// declaration that has any attribute lists — cheap enough to run on every node.
+        /// declaration that has any attribute lists; cheap enough to run on every node.
         /// </summary>
         private static bool IsCandidate(SyntaxNode node)
         {
@@ -87,7 +87,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 if (fieldDecl.Declaration.Variables.Count > 1)
                 {
                     // Multi-variable field declarations like `[FoxRun] float _a, _b;`
-                    // are ambiguous — report a diagnostic rather than silently skipping.
+                    // are ambiguous: the attribute target cannot be mapped to one
+                    // topic member, so report a diagnostic instead of guessing.
                     return MemberData.ForDiagnostic(fieldDecl.GetLocation());
                 }
                 symbol = ctx.SemanticModel.GetDeclaredSymbol(fieldDecl.Declaration.Variables[0], ct);
@@ -178,7 +179,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// for one class name/namespace pair. Handles topic-to-member grouping,
         /// schema conflict warnings, name collision detection, and delegates code
         /// generation to <c>FoxgloveSourceEmitter.EmitClass</c> for output
-        /// consistency with the reflection-based fallback path.
+        /// consistency with the build-time physical fallback path.
         /// </summary>
         private static void EmitClass(SourceProductionContext spc, string ns, string className, MemberData[] members)
         {
