@@ -633,7 +633,7 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(channels?.Count == 1, "Restart: advertise has exactly 1 channel");
             Assert(channels[0]["topic"]?.ToString() == "/t2", "Restart: channel is /t2 (not old /t1)");
 
-            ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+            CloseClientWebSocketForCleanup(ws);
             runtime.Dispose();
         }
 
@@ -713,11 +713,37 @@ namespace Unity.FoxgloveSDK.Tests
                 var winner = Task.WhenAny(recvTask, timeout).GetAwaiter().GetResult();
                 Assert(winner == timeout, "Integration: no message after unsubscribe");
 
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+                CloseClientWebSocketForCleanup(ws);
             }
             finally
             {
                 runtime.Dispose();
+            }
+        }
+
+        private static void CloseClientWebSocketForCleanup(ClientWebSocket ws)
+        {
+            if (ws == null)
+                return;
+
+            try
+            {
+                if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+                    ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (WebSocketException)
+            {
+                // CI can observe the TCP stream closing before the WebSocket
+                // close handshake completes. Protocol assertions have already
+                // run, so this is cleanup rather than test behavior.
+            }
+            catch (InvalidOperationException)
+            {
+                // Already closing/closed is also cleanup.
+            }
+            finally
+            {
+                ws.Dispose();
             }
         }
     }
