@@ -30,6 +30,7 @@ UserSettings/
 *.user
 *.userprefs
 *.suo
+00 Inbox.sln
 
 # MCAP recordings are runtime outputs, not source
 Unity2Foxglove/Recordings/*
