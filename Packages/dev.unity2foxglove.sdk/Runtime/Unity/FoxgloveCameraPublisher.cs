@@ -9,6 +9,7 @@ using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -32,6 +33,18 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
         [SerializeField] private int _maxPendingReadbacks = 2;
 
+        [Header("Backpressure")]
+        [Tooltip("When enabled, transport queue pressure suppresses camera capture to reduce work.")]
+        [SerializeField] private bool _enableBackpressureAdaptation;
+        [Tooltip("Seconds to wait before resuming capture after backpressure is observed.")]
+        [Min(0)]
+        [SerializeField] private float _backpressureCooldownSeconds = 0.5f;
+        [Tooltip("Maximum encoded JPEG size in bytes; 0 means unlimited.")]
+        [Min(0)]
+        [SerializeField] private int _maxEncodedBytes;
+        [Tooltip("Log a warning each time a capture is skipped by backpressure.")]
+        [SerializeField] private bool _logBackpressureSkips;
+
         protected override string SchemaName => "foxglove.CompressedImage";
 
         // ── Internal state ──
@@ -48,6 +61,12 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True after OnDestroy starts, to suppress late callbacks.</summary>
         private bool _destroyed;
 
+        // ── Backpressure policy state ──
+        private long _lastDropCount;
+        private double _cooldownUntilSec;
+        private int _backpressureSkipLogCount;
+        private bool _backpressureBaselineInitialized;
+
         /// <summary>Defaults the topic to <c>/unity/camera</c> if not set.</summary>
         private void Awake()
         {
@@ -62,6 +81,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             base.OnEnable();
             _destroyed = false;
+            ResetBackpressureState();
             _sourceCam = GetComponent<Camera>();
 
             if (_captureRT == null)
@@ -95,6 +115,40 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
             if (_pendingRequests >= _maxPendingReadbacks) return;
 
+            if (!_enableBackpressureAdaptation)
+            {
+                _backpressureBaselineInitialized = false;
+            }
+            else
+            {
+                var stats = _manager.GetTransportStatsSnapshot();
+                var currentDrop = stats.Supported ? stats.TotalDroppedDataFrames : _lastDropCount;
+                var now = Time.unscaledTimeAsDouble;
+                if (stats.Supported && !_backpressureBaselineInitialized)
+                {
+                    _lastDropCount = currentDrop;
+                    _cooldownUntilSec = now;
+                    _backpressureBaselineInitialized = true;
+                }
+
+                var result = CameraBackpressurePolicy.Evaluate(
+                    enabled: true,
+                    currentTimeSec: now,
+                    cooldownSec: _backpressureCooldownSeconds,
+                    previousDropCount: _lastDropCount,
+                    currentDropCount: currentDrop,
+                    currentCooldownUntilSec: _cooldownUntilSec);
+
+                _lastDropCount = result.NextDropCount;
+                _cooldownUntilSec = result.NextCooldownUntilSec;
+
+                if (!result.AllowCapture)
+                {
+                    LogBackpressureSkip("[Foxglove] Camera capture skipped by backpressure cooldown.");
+                    return;
+                }
+            }
+
             _captureCam.Render();
             _pendingRequests++;
             AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, OnReadbackComplete);
@@ -123,6 +177,13 @@ namespace Unity.FoxgloveSDK.Components
             var jpeg = _texture2D.EncodeToJPG(_jpegQuality);
             if (jpeg == null || jpeg.Length == 0) return;
 
+            if (CameraBackpressurePolicy.ExceedsBudget(jpeg, _maxEncodedBytes))
+            {
+                LogBackpressureSkip(
+                    $"[Foxglove] Camera frame dropped: encoded size {jpeg.Length} exceeds budget {_maxEncodedBytes}.");
+                return;
+            }
+
             var unixNs = CurrentLogTimeNs;
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
 
@@ -135,6 +196,7 @@ namespace Unity.FoxgloveSDK.Components
             };
 
             Publish(msg, unixNs);
+            _backpressureSkipLogCount = 0;
         }
 
         /// <summary>
@@ -165,6 +227,22 @@ namespace Unity.FoxgloveSDK.Components
             if (_captureRT != null) { _captureRT.Release(); _captureRT = null; }
             if (_captureCam != null) { Destroy(_captureCam.gameObject); _captureCam = null; }
             if (_texture2D != null) { Destroy(_texture2D); _texture2D = null; }
+        }
+
+        private void ResetBackpressureState()
+        {
+            _lastDropCount = 0;
+            _cooldownUntilSec = 0;
+            _backpressureSkipLogCount = 0;
+            _backpressureBaselineInitialized = false;
+        }
+
+        private void LogBackpressureSkip(string message)
+        {
+            if (!_logBackpressureSkips || _backpressureSkipLogCount >= 10) return;
+
+            _backpressureSkipLogCount++;
+            Debug.LogWarning(message);
         }
     }
 }

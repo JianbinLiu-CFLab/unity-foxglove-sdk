@@ -21,6 +21,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Util;
+using static Unity.FoxgloveSDK.Util.CameraBackpressurePolicy;
 
 namespace Unity.FoxgloveSDK.Performance
 {
@@ -61,6 +62,7 @@ namespace Unity.FoxgloveSDK.Performance
             results.Add(RunMcapRecordNonePrebuiltPayload(warmup, topics, messages));
             results.Add(RunMcapReplayTick(warmup, topics, messages, isFull));
             results.Add(RunMcapRecordAttachmentSummary());
+            results.Add(RunCameraBackpressurePolicyMicro());
             results.Add(RunTransportQueueMicro());
 
             return results;
@@ -467,6 +469,73 @@ namespace Unity.FoxgloveSDK.Performance
                     notes = ex.Message
                 };
             }
+        }
+
+        private static PerformanceScenarioResult RunCameraBackpressurePolicyMicro()
+        {
+            // Measure policy evaluation overhead: run 100K evaluations in a
+            // tight loop, while still validating the key state transitions.
+            const int iterations = 100_000;
+            CameraBackpressureResult r = default;
+            long currentDrop = 0;
+            long previousDrop = 0;
+            double cooldownUntil = 0;
+            var pressureCount = 0;
+            var blockedCount = 0;
+            var allowedCount = 0;
+            var invalidState = false;
+
+            PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+                out var gen0Before, out var gen1Before, out var gen2Before);
+            var sw = Stopwatch.StartNew();
+
+            for (var i = 0; i < iterations; i++)
+            {
+                var currentTime = 10.0 + i * 0.001;
+                if (i > 0 && i % 1000 == 0)
+                    currentDrop++;
+
+                r = Evaluate(true, currentTime, 0.05, previousDrop, currentDrop, cooldownUntil);
+                if (r.PressureObserved)
+                    pressureCount++;
+                if (r.SkippedByCooldown)
+                    blockedCount++;
+                if (r.AllowCapture)
+                    allowedCount++;
+                if (!r.AllowCapture && !r.SkippedByCooldown)
+                    invalidState = true;
+                if (r.PressureObserved && r.NextDropCount != currentDrop)
+                    invalidState = true;
+
+                previousDrop = r.NextDropCount;
+                cooldownUntil = r.NextCooldownUntilSec;
+            }
+
+            sw.Stop();
+            CollectAllocMetrics(gcBeforeTotal, gcBeforeThread, gen0Before, gen1Before, gen2Before,
+                iterations, out var allocTotal, out var allocThread, out var allocPerMsg,
+                out var gen0, out var gen1, out var gen2, out var allocNotes);
+
+            var passed = !invalidState
+                && pressureCount > 0
+                && blockedCount > 0
+                && allowedCount > 0
+                && r.NextDropCount == currentDrop;
+
+            return new PerformanceScenarioResult
+            {
+                name = "CameraBackpressurePolicyMicro",
+                warmupMessageCount = 0,
+                messageCount = iterations,
+                elapsedMs = sw.ElapsedMilliseconds,
+                messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? iterations / sw.Elapsed.TotalSeconds : 0,
+                allocatedBytesTotal = allocTotal,
+                allocatedBytesCurrentThread = allocThread,
+                allocatedBytesPerMessage = allocPerMsg,
+                notes = "policy evaluation loop; 100K iterations; no Unity/GPU; "
+                    + $"pressure={pressureCount}, blocked={blockedCount}, allowed={allowedCount}",
+                passed = passed
+            };
         }
 
         private static PerformanceScenarioResult RunTransportQueueMicro()
