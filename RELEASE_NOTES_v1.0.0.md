@@ -4,7 +4,7 @@
 
 ## Overview
 
-Unity2Foxglove v1.0.0 is the first public release. It is a Unity SDK that streams real-time data (Transform, 3D scene, Camera frames, etc.) from Unity to the Foxglove visualization platform via WebSocket, with MCAP file recording and replay.
+Unity2Foxglove v1.0.0 is the first public release. It is a Unity SDK that streams real-time data (Transform, 3D scene, Camera frames, custom fields) from Unity to the Foxglove visualization platform via WebSocket, with MCAP file recording, replay, and protobuf support.
 
 ---
 
@@ -52,18 +52,11 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 ## Known limitations
 
-- **Protobuf binary encoding**: Currently only JSON encoding is supported. Protobuf is planned for v1.1.0
 - **WebGL**: Not supported due to dependency on `System.Net.Sockets.TcpListener`
-- **macOS / Linux**: Not yet verified; potential compatibility issues may exist
-- **Native Backend**: C native backend implementation exists in `Plugins/native/` but has not yet been integrated into the transport layer
-
----
-
-## v1.1.0 plan
-
-- Protobuf binary encoding support (full Foxglove WebSocket protocol compliance)
-- macOS platform verification
-- Native Backend integration
+- **macOS / Linux**: Not yet verified
+- **WSS / TLS**: Not implemented; default bind is `127.0.0.1`
+- **Authentication**: Not implemented
+- **Native Backend**: C native backend implementation exists but has not been integrated
 
 ---
 
@@ -73,6 +66,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - [Package documentation](Packages/dev.unity2foxglove.sdk/Documentation~/README.md)
 - [Demo project](Unity2Foxglove/README.md)
 - [Changelog](CHANGELOG.md)
+- [Roadmap](ROADMAP.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ---

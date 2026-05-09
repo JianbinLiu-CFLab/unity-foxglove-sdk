@@ -55,21 +55,21 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 ### 2.3 Protocol Coverage
 
-- Add Protobuf schema support if there is enough demand.
+- Protobuf schema catalog and protobuf publishing are implemented (Phase 32).
 - Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
 - Evaluate optional `wss://` support for remote or production deployments; local demos will continue to default to `ws://127.0.0.1`.
-- Continue aligning wire behavior with Foxglove protocol expectations.
 
 ### 2.4 MCAP and Replay
 
+- MCAP Attachment/AttachmentIndex and summary CRC are implemented (Phase 34).
+- MCAP writer hot-path allocation was reduced (Phase 37).
 - Add more replay adapters for Unity scene objects and custom user data.
-- Improve replay UX around file selection, timeline control, and coordinate-mode mismatch warnings.
 - Consider extracting reusable C# MCAP pieces if they become useful outside Unity.
 
 ### 2.5 Developer Experience
 
+- Transport health/observability Inspector section is implemented (Phase 36).
 - Improve `[FoxRun]` diagnostics and generated-source visibility.
-- Add more sample scripts that show recommended patterns rather than only protocol primitives.
 - Keep reducing setup friction for users who only want "press Play and connect Foxglove."
 
 ## 3. Long-Term Ideas
