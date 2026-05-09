@@ -152,17 +152,17 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (_recordingFailed) return;
             var seq = map.Seq++;
+            var payloadLength = payload?.Length ?? 0;
+            var contentLength = 2 + 4 + 8 + 8 + payloadLength;
             var off = (ulong)_chunkBuf.Position;
-            var m = new MemoryStream();
-            McapWriter.WriteU16(m, map.McapId);
-            McapWriter.WriteU32(m, seq);
-            McapWriter.WriteU64(m, logNs);
-            McapWriter.WriteU64(m, logNs);
-            if (payload != null) m.Write(payload, 0, payload.Length);
-            var content = m.ToArray();
             _chunkBuf.WriteByte(0x05);
-            McapWriter.WriteU64(_chunkBuf, (ulong)content.Length);
-            _chunkBuf.Write(content, 0, content.Length);
+            McapWriter.WriteU64(_chunkBuf, (ulong)contentLength);
+            McapWriter.WriteU16(_chunkBuf, map.McapId);
+            McapWriter.WriteU32(_chunkBuf, seq);
+            McapWriter.WriteU64(_chunkBuf, logNs);
+            McapWriter.WriteU64(_chunkBuf, logNs);
+            if (payloadLength > 0)
+                _chunkBuf.Write(payload, 0, payloadLength);
             map.Pending.Add((logNs, off));
             if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
             if (logNs > _msgEt) _msgEt = logNs;
