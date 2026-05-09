@@ -37,7 +37,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 
 ### 1.1.4 Cross-Platform Data Bridge
 
-- A pure C# WebSocket server that runs on any platform Unity supports (Windows, Linux, macOS).
+- A pure C# WebSocket server for Unity Editor and Standalone Player. Windows is verified for v1.0.0; macOS/Linux are intended targets but not yet verified.
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
