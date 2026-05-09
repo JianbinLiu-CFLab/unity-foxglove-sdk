@@ -360,9 +360,10 @@ namespace Unity.FoxgloveSDK.Tests
             runtime.Start("SchemaTest", "127.0.0.1", 18782);
             runtime.RegisterSchemaChannel(1, "/tf", "foxglove.FrameTransform");
 
+            ClientWebSocket ws = null;
             try
             {
-                var ws = new ClientWebSocket();
+                ws = new ClientWebSocket();
                 ws.Options.AddSubProtocol(Subprotocol.SdkV1);
                 var cts = new CancellationTokenSource(5000);
                 ws.ConnectAsync(new Uri("ws://127.0.0.1:18782/"), cts.Token).GetAwaiter().GetResult();
@@ -384,10 +385,12 @@ namespace Unity.FoxgloveSDK.Tests
                 Assert(ch["schemaName"]?.ToString() == "foxglove.FrameTransform", "schemaName in advertise");
                 Assert(ch["schemaEncoding"]?.ToString() == "jsonschema", "schemaEncoding in advertise");
                 Assert(ch["schema"]?.ToString().Length > 0, "schema content non-empty");
-
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
             }
-            finally { runtime.Dispose(); }
+            finally
+            {
+                CloseClientWebSocketForCleanup(ws);
+                runtime.Dispose();
+            }
         }
 
         /// <summary>
@@ -402,9 +405,10 @@ namespace Unity.FoxgloveSDK.Tests
             runtime.Start("SceneTest", "127.0.0.1", 18783);
             runtime.RegisterSchemaChannel(1, "/scene", "foxglove.SceneUpdate");
 
+            ClientWebSocket ws = null;
             try
             {
-                var ws = new ClientWebSocket();
+                ws = new ClientWebSocket();
                 ws.Options.AddSubProtocol(Subprotocol.SdkV1);
                 var cts = new CancellationTokenSource(10000);
                 ws.ConnectAsync(new Uri("ws://127.0.0.1:18783/"), cts.Token).GetAwaiter().GetResult();
@@ -461,10 +465,46 @@ namespace Unity.FoxgloveSDK.Tests
                 var payload = JObject.Parse(payloadJson);
                 Assert(payload["entities"]?[0]?["id"]?.ToString() == "phase3_cube", "entity id in payload");
                 Assert((double)payload["entities"][0]["cubes"][0]["size"]["x"] == 1.0, "cube size.x=1 in payload");
-
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
             }
-            finally { runtime.Dispose(); }
+            finally
+            {
+                CloseClientWebSocketForCleanup(ws);
+                runtime.Dispose();
+            }
+        }
+
+        private static void CloseClientWebSocketForCleanup(ClientWebSocket ws)
+        {
+            if (ws == null)
+                return;
+
+            try
+            {
+                if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+                    ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (WebSocketException)
+            {
+                // Some runners observe the TCP close before the WebSocket
+                // close handshake completes. Protocol assertions have already
+                // run, so this is cleanup rather than test behavior.
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation during cleanup should not fail completed assertions.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed is cleanup.
+            }
+            catch (InvalidOperationException)
+            {
+                // Already closing/closed is also cleanup.
+            }
+            finally
+            {
+                ws.Dispose();
+            }
         }
     }
 }
