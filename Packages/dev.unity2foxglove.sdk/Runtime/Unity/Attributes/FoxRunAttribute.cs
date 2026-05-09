@@ -25,6 +25,15 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Optional Foxglove schema name. If empty, publishes schemaless JSON.</summary>
         public string SchemaName { get; set; }
 
+        /// <summary>Publish mode: FixedRate (default), OnChange, or OnChangeOrInterval.</summary>
+        public FoxRunPublishMode PublishMode { get; set; } = FoxRunPublishMode.FixedRate;
+
+        /// <summary>Epsilon for float/double/Vector change detection. Negative treated as 0.</summary>
+        public float ChangeEpsilon { get; set; } = 0f;
+
+        /// <summary>Heartbeat interval in seconds for OnChangeOrInterval mode. Non-positive disables.</summary>
+        public float ForceIntervalSeconds { get; set; } = 0f;
+
         public FoxRunAttribute(string topic)
         {
             Topic = topic ?? throw new ArgumentNullException(nameof(topic));

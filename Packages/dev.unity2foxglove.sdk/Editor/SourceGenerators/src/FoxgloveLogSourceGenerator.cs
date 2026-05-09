@@ -127,12 +127,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     ? attr.ConstructorArguments[0].Value as string ?? "" : "";
                 float rateHz = 10f;
                 string schemaName = "";
+                int publishMode = 0;
+                float changeEpsilon = 0f;
+                float forceIntervalSeconds = 0f;
                 foreach (var named in attr.NamedArguments)
                 {
                     if (named.Key == "RateHz" && named.Value.Value is float rate) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
+                    if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
+                    if (named.Key == "ChangeEpsilon" && named.Value.Value is float eps) changeEpsilon = eps;
+                    if (named.Key == "ForceIntervalSeconds" && named.Value.Value is float fis) forceIntervalSeconds = fis;
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName));
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds));
             }
 
             string ns = containingType.ContainingNamespace != null
@@ -179,7 +185,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var args = new List<FoxgloveSourceEmitter.TopicMember>();
             foreach (var m in members)
                 foreach (var t in m.Topics)
-                    args.Add(new FoxgloveSourceEmitter.TopicMember(m.MemberName, m.MemberType, t.Topic, t.RateHz, t.SchemaName));
+                    args.Add(new FoxgloveSourceEmitter.TopicMember(m.MemberName, m.MemberType, t.Topic, t.RateHz, t.SchemaName,
+                        t.PublishMode, t.ChangeEpsilon, t.ForceIntervalSeconds));
 
             // Warn on schema conflicts
             var byTopic = args.GroupBy(a => a.Topic);
@@ -258,12 +265,30 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly string SchemaName;
             /// <summary>Publishing rate in Hz (default 10).</summary>
             public readonly float RateHz;
+            /// <summary>Publish mode enum value.</summary>
+            public readonly int PublishMode;
+            /// <summary>Change epsilon.</summary>
+            public readonly float ChangeEpsilon;
+            /// <summary>Heartbeat interval.</summary>
+            public readonly float ForceIntervalSeconds;
 
             /// <summary>
-            /// Creates a topic entry with the given topic, rate, and schema.
+            /// Creates a topic entry with the given topic, rate, and schema (backward compat).
             /// </summary>
             public TopicEntry(string topic, float rate, string schema)
-            { Topic = topic; RateHz = rate; SchemaName = schema; }
+                : this(topic, rate, schema, 0, 0f, 0f) { }
+
+            /// <summary>
+            /// Creates a topic entry with publish policy.
+            /// </summary>
+            public TopicEntry(string topic, float rate, string schema,
+                int publishMode, float changeEpsilon, float forceIntervalSeconds)
+            {
+                Topic = topic; RateHz = rate; SchemaName = schema;
+                PublishMode = publishMode;
+                ChangeEpsilon = changeEpsilon;
+                ForceIntervalSeconds = forceIntervalSeconds;
+            }
         }
 
         /// <summary>
