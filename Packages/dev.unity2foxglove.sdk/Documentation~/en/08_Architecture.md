@@ -52,21 +52,31 @@ Recording attaches to the runtime publish path and writes MCAP records for chann
 
 Replay loads an MCAP file, seeks by time, and forwards replay messages through the runtime. Live publishers can be disabled during replay to avoid duplicate data.
 
+Replay is snapshot-based. It forwards recorded topic messages and can drive supported objects from transform/scene snapshots, but it does not reconstruct a deterministic physics or input simulation.
+
 For user steps, see [06_MCAP_Recording_and_Replay](06_MCAP_Recording_and_Replay.md).
 
 ## 8.6 FoxRun Build Behavior
 
 In Editor, FoxRun uses a Roslyn source generator. For Player builds, a pre-build step writes physical `.g.cs` files so IL2CPP compiles the generated sources as normal Unity scripts.
 
+Runtime publishing uses generated accessors, not runtime reflection.
+
 Generated files are meant to be build artifacts, not hand-edited source.
 
-## 8.7 IL2CPP Preservation
+## 8.7 Transport Backpressure
+
+`ManagedWsBackend` uses one bounded send queue per connected client. Live topic `MessageData` frames and broadcast binary live frames use a drop-oldest policy when a client falls behind. Text protocol messages, direct binary responses, service responses, asset responses, `pong`, and `close` are control frames and are preserved ahead of live data.
+
+If a control frame still cannot fit after stale data is dropped, the slow client is disconnected. Queue size is an internal default in this phase, not an Inspector setting.
+
+## 8.8 IL2CPP Preservation
 
 Unity2Foxglove uses JSON serialization and reflection-heavy dependencies. IL2CPP builds need preservation rules for Newtonsoft.Json and the SDK runtime assembly.
 
 The practical build checklist is in [07_IL2CPP_Build_Guide](07_IL2CPP_Build_Guide.md).
 
-## 8.8 Extension Points
+## 8.9 Extension Points
 
 Common extension points:
 
@@ -76,7 +86,7 @@ Common extension points:
 - Add MCAP replay adapters for custom scene objects.
 - Add asset roots for file-backed resources.
 
-## 8.9 Compatibility Notes
+## 8.10 Compatibility Notes
 
 - SDK core targets Unity 6000.0 LTSC or later. Unity 2022 is not supported.
 - The demo project is developed on Unity 6000.3.14f1 LTSC; compatible with Unity 6000.0.74f1 LTSC.

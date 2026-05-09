@@ -249,8 +249,11 @@ namespace Unity.FoxgloveSDK.Core
             _recorder?.WriteMessage(channelId, logTimeNs, payload);
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {
-                _transport.SendBinary(clientId,
-                    BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload));
+                var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                if (_transport is IPrioritizedFoxgloveTransport prioritized)
+                    prioritized.SendDataBinary(clientId, frame);
+                else
+                    _transport.SendBinary(clientId, frame);
             }
         }
 
