@@ -15,6 +15,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
+using static Unity.FoxgloveSDK.Transport.TransportStatsSnapshot;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -321,6 +322,20 @@ namespace Unity.FoxgloveSDK.Core
                 _replay.Tick(_session, _playbackClock.NowNs);
             else
                 _session.BroadcastTime();
+        }
+
+        // ── Transport Health ──
+
+        /// <summary>
+        /// Get a read-only transport health snapshot.
+        /// Returns <see cref="TransportStatsSnapshot.Unsupported"/> for transports
+        /// that do not implement <see cref="IFoxgloveTransportStatsProvider"/>.
+        /// </summary>
+        public TransportStatsSnapshot GetTransportStatsSnapshot()
+        {
+            if (_transport is IFoxgloveTransportStatsProvider provider)
+                return provider.GetStatsSnapshot();
+            return Unsupported;
         }
 
         /// <summary>

@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -26,7 +27,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency — works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IFoxgloveTransportStatsProvider, IDisposable
     {
         internal const int MaxQueuedFrames = 256;
         internal const int MaxQueuedBytes = 8 * 1024 * 1024;
@@ -44,6 +45,12 @@ namespace Unity.FoxgloveSDK.Transport
         private int _nextClientId;
         /// <summary>Allowed browser origins for Cross-Site WebSocket Hijacking protection. Empty collection rejects all browser-origin clients.</summary>
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
+
+        // ── Aggregate health counters ──
+        private long _totalAcceptedClients;
+        private long _totalDisconnectedClients;
+        private long _totalControlOverflowDisconnects;
+        private long _totalDroppedDataFrames;
 
         public ManagedWsBackend(IFoxgloveLogger logger = null)
         {
@@ -136,6 +143,43 @@ namespace Unity.FoxgloveSDK.Transport
             _cts = null;
         }
 
+        // ── Transport Health ──
+
+        /// <summary>Produce an immutable snapshot of current transport health.</summary>
+        public TransportStatsSnapshot GetStatsSnapshot()
+        {
+            var clientList = new List<TransportClientStats>();
+            long totalQueuedFrames = 0;
+            long totalQueuedBytes = 0;
+            var droppedDisconnected = Interlocked.Read(ref _totalDroppedDataFrames);
+
+            foreach (var kv in _clients.ToArray())
+            {
+                var cs = kv.Value.GetClientStats(kv.Key);
+                clientList.Add(cs);
+                totalQueuedFrames += cs.QueuedFrames;
+                totalQueuedBytes += cs.QueuedBytes;
+            }
+
+            var totalDropped = droppedDisconnected;
+            foreach (var cs in clientList)
+                totalDropped += cs.DroppedDataFrames;
+
+            return new TransportStatsSnapshot
+            {
+                Supported = true,
+                IsRunning = IsRunning,
+                ActiveClientCount = clientList.Count,
+                TotalAcceptedClients = Interlocked.Read(ref _totalAcceptedClients),
+                TotalDisconnectedClients = Interlocked.Read(ref _totalDisconnectedClients),
+                TotalDroppedDataFrames = totalDropped,
+                ControlOverflowDisconnects = Interlocked.Read(ref _totalControlOverflowDisconnects),
+                TotalQueuedFrames = totalQueuedFrames,
+                TotalQueuedBytes = totalQueuedBytes,
+                Clients = clientList.AsReadOnly()
+            };
+        }
+
         // ── Origin Guard ──
 
         /// <summary>Snapshot of currently allowed browser origins. Empty means no browser clients are allowed.</summary>
@@ -200,6 +244,7 @@ namespace Unity.FoxgloveSDK.Transport
                     _clients[clientId] = conn;
                     conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
 
+                    Interlocked.Increment(ref _totalAcceptedClients);
                     OnClientConnected?.Invoke(clientId);
 
                     ReceiveLoop(clientId, conn, ct);
@@ -354,11 +399,13 @@ namespace Unity.FoxgloveSDK.Transport
                     // Reject fragmented text/binary frames (continuation not supported)
                     if (!frame.Fin && (frame.Opcode == WsOpcode.Text || frame.Opcode == WsOpcode.Binary))
                     {
+                        conn.TouchActivity();
                         HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
                         conn.WaitForPendingSends(TimeSpan.FromMilliseconds(250));
                         return;
                     }
 
+                    conn.TouchActivity();
                     switch (frame.Opcode)
                     {
                         case WsOpcode.Text:
@@ -392,6 +439,8 @@ namespace Unity.FoxgloveSDK.Transport
         private void DisconnectClient(uint clientId, WsConnection conn)
         {
             if (!_clients.TryRemove(clientId, out _)) return;
+            Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
+            Interlocked.Increment(ref _totalDisconnectedClients);
             OnClientDisconnected?.Invoke(clientId);
             try { conn.Dispose(); } catch { }
         }
@@ -406,6 +455,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (result.ShouldDisconnect)
             {
+                Interlocked.Increment(ref _totalControlOverflowDisconnects);
                 _logger.LogWarning($"Client {clientId} send queue overflowed on control frame during {operation}; disconnecting.");
                 DisconnectClient(clientId, conn);
             }
@@ -630,6 +680,42 @@ namespace Unity.FoxgloveSDK.Transport
                 }
             }
 
+            // ── Health Snapshot ──
+
+            public long DroppedDataFrames
+            {
+                get { lock (_lock) return _droppedDataFrames; }
+            }
+
+            public long DroppedDataFramesSnapshot
+            {
+                get { lock (_lock) return _droppedDataFrames; }
+            }
+
+            public WsSendQueueSnapshot GetSnapshot()
+            {
+                lock (_lock)
+                {
+                    return new WsSendQueueSnapshot
+                    {
+                        QueuedFrames = CountLocked,
+                        QueuedControlFrames = _controlFrames.Count,
+                        QueuedDataFrames = _dataFrames.Count,
+                        QueuedBytes = _queuedBytes,
+                        DroppedDataFrames = _droppedDataFrames
+                    };
+                }
+            }
+
+            internal struct WsSendQueueSnapshot
+            {
+                public int QueuedFrames;
+                public int QueuedControlFrames;
+                public int QueuedDataFrames;
+                public int QueuedBytes;
+                public long DroppedDataFrames;
+            }
+
             private int CountLocked => _controlFrames.Count + _dataFrames.Count;
 
             private bool CanFitLocked(QueuedFrame frame)
@@ -693,8 +779,50 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Maximum allowable payload size in bytes (64 MiB).</summary>
             internal const int MaxPayloadBytes = 64 * 1024 * 1024;
 
+            // ── Health Counters ──
+            private readonly DateTime _connectedAtUtc = DateTime.UtcNow;
+            private long _lastActivityMs;
+            private long _sentFrames;
+            private long _sentBytes;
+
             /// <summary>Create a connection on the given network stream.</summary>
-            public WsConnection(NetworkStream stream) => _stream = stream;
+            public WsConnection(NetworkStream stream)
+            {
+                _stream = stream;
+                _lastActivityMs = MonotonicMilliseconds();
+            }
+
+            public long DroppedDataFrames => _sendQueue.DroppedDataFramesSnapshot;
+
+            public TransportClientStats GetClientStats(uint clientId)
+            {
+                var snap = _sendQueue.GetSnapshot();
+                var nowTicks = DateTime.UtcNow.Ticks;
+                var nowMs = MonotonicMilliseconds();
+                return new TransportClientStats
+                {
+                    ClientId = clientId,
+                    ConnectedAtUtc = _connectedAtUtc,
+                    ConnectedDurationMs = (long)(new DateTime(nowTicks) - _connectedAtUtc).TotalMilliseconds,
+                    LastActivityAgeMs = nowMs - Interlocked.Read(ref _lastActivityMs),
+                    QueuedFrames = snap.QueuedFrames,
+                    QueuedControlFrames = snap.QueuedControlFrames,
+                    QueuedDataFrames = snap.QueuedDataFrames,
+                    QueuedBytes = snap.QueuedBytes,
+                    DroppedDataFrames = snap.DroppedDataFrames,
+                    SentFrames = Interlocked.Read(ref _sentFrames),
+                    SentBytes = Interlocked.Read(ref _sentBytes)
+                };
+            }
+
+            internal void TouchActivity() => Interlocked.Exchange(ref _lastActivityMs, MonotonicMilliseconds());
+
+            private static long MonotonicMilliseconds()
+            {
+                var ticks = Stopwatch.GetTimestamp();
+                var frequency = Stopwatch.Frequency;
+                return (ticks / frequency) * 1000 + (ticks % frequency) * 1000 / frequency;
+            }
 
             public void StartSendLoop(Action onSendFailed, CancellationToken parentToken)
             {
@@ -764,6 +892,9 @@ namespace Unity.FoxgloveSDK.Transport
                 if (payload.Length > 0)
                     _stream.Write(payload, 0, payload.Length);
                 _stream.Flush();
+                Interlocked.Increment(ref _sentFrames);
+                Interlocked.Add(ref _sentBytes, payload.Length);
+                TouchActivity();
             }
 
             /// <summary>
