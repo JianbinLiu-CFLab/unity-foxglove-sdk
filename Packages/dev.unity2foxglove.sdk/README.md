@@ -39,8 +39,9 @@ public partial class MyLogger : MonoBehaviour
 ## Features
 
 - Structured data publishing (FrameTransform, SceneUpdate, CompressedImage)
-- `[FoxRun]` attribute for zero-code auto-publishing
+- `[FoxRun]` attribute for zero-code auto-publishing through generated code, not runtime reflection
 - MCAP recording and replay (LZ4/Zstd compression)
+- Managed WebSocket backpressure for slow clients
 - Parameters remote read/write
 - Service remote invocation
 - IL2CPP standalone build support

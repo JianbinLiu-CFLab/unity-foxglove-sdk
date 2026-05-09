@@ -47,4 +47,14 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Invoked when binary data is received from a client.</summary>
         event Action<uint, byte[]> OnBinaryReceived;
     }
+
+    /// <summary>
+    /// Optional transport extension for live publish data that may be dropped
+    /// under per-client backpressure. Public transport API remains unchanged;
+    /// implementations that do not support priority fall back to SendBinary.
+    /// </summary>
+    internal interface IPrioritizedFoxgloveTransport
+    {
+        void SendDataBinary(uint clientId, byte[] data);
+    }
 }

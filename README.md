@@ -21,7 +21,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 
 - Live WebSocket streaming of Unity runtime data to Foxglove or any compatible client.
 - Zero external processes: the server runs entirely in-process.
-- Topics update at configurable rates (default 10 Hz), with sub-millisecond timestamp precision.
+- Topics update at configurable rates (default 10 Hz), with timestamps derived from `Stopwatch`; precision is hardware-dependent and typically sub-millisecond.
 
 ### 1.1.2 Runtime Debugging
 
@@ -32,7 +32,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 ### 1.1.3 MCAP Recording and Replay
 
 - Record entire sessions to [MCAP](https://mcap.dev) files with LZ4/Zstd compression.
-- **Drive scene reproduction**: replay recorded MCAP files to drive GameObjects, reconstructing the exact scene state from recorded data. Every Transform update, parameter change, and service call is preserved and replayed in sequence.
+- **Drive scene reproduction**: replay recorded MCAP files as timestamped snapshots for Transform and Scene topics. Recorded topic messages, parameter changes, and service call results are preserved in sequence, but replay is not a deterministic physics/input simulation.
 - **Why MCAP?** Open format, random-access seek, chunk compression, embedded schemas/channels, and a growing ecosystem of readers and tools across Python, Rust, C++, TypeScript, and now C#.
 
 ### 1.1.4 Cross-Platform Data Bridge
@@ -180,11 +180,12 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 ### Supported
 
 - Real-time data streaming (transform, scene entities, camera images)
+- Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
 - MCAP replay (transform snapshot reconstruction, not deterministic replay)
 - Parameters (get, set, subscribe), Services (call/response), Connection Graph, Client Publish, Playback Control
 - Asset fetching (fetchAsset) with configurable asset roots
-- FoxRun attribute-based zero-code publishing via Roslyn Source Generator
+- FoxRun attribute-based zero-code publishing via generated code: Roslyn source generation in Editor and physical `.g.cs` fallback generation for IL2CPP Player builds, not runtime reflection
 - IL2CPP build support with automatic link.xml generation
 
 ### Not Supported

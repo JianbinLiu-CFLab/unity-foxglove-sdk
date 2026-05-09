@@ -26,8 +26,12 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency — works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IDisposable
     {
+        internal const int MaxQueuedFrames = 256;
+        internal const int MaxQueuedBytes = 8 * 1024 * 1024;
+        private const byte FinBit = 0x80;
+
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
         /// <summary>Cancellation token source to stop accept/receive loops.</summary>
@@ -93,38 +97,35 @@ namespace Unity.FoxgloveSDK.Transport
         public void SendText(uint clientId, string json)
         {
             if (!_clients.TryGetValue(clientId, out var conn)) return;
-            try { conn.SendText(json); }
-            catch (IOException) { DisconnectClient(clientId, conn); }
-            catch (Exception ex) { _logger.LogError($"SendText error: {ex.Message}"); }
+            HandleEnqueueResult(clientId, conn, conn.SendText(json, FramePriority.Control), "SendText");
         }
 
         /// <summary>Send a binary frame to a specific client.</summary>
         public void SendBinary(uint clientId, byte[] data)
         {
             if (!_clients.TryGetValue(clientId, out var conn)) return;
-            try { conn.SendBinary(data); }
-            catch (IOException) { DisconnectClient(clientId, conn); }
-            catch (Exception ex) { _logger.LogError($"SendBinary error: {ex.Message}"); }
+            HandleEnqueueResult(clientId, conn, conn.SendBinary(data, FramePriority.Control), "SendBinary");
+        }
+
+        /// <summary>Send droppable live data to a specific client.</summary>
+        public void SendDataBinary(uint clientId, byte[] data)
+        {
+            if (!_clients.TryGetValue(clientId, out var conn)) return;
+            HandleEnqueueResult(clientId, conn, conn.SendBinary(data, FramePriority.Data), "SendDataBinary");
         }
 
         /// <summary>Send a UTF-8 text frame to every connected client.</summary>
         public void BroadcastText(string json)
         {
             foreach (var (id, conn) in _clients.ToArray())
-            {
-                try { conn.SendText(json); }
-                catch { DisconnectClient(id, conn); }
-            }
+                HandleEnqueueResult(id, conn, conn.SendText(json, FramePriority.Control), "BroadcastText");
         }
 
         /// <summary>Send a binary frame to every connected client.</summary>
         public void BroadcastBinary(byte[] data)
         {
             foreach (var (id, conn) in _clients.ToArray())
-            {
-                try { conn.SendBinary(data); }
-                catch { DisconnectClient(id, conn); }
-            }
+                HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastBinary");
         }
 
         /// <summary>Stop the server and release the cancellation token source.</summary>
@@ -197,6 +198,7 @@ namespace Unity.FoxgloveSDK.Transport
                     var clientId = (uint)Interlocked.Increment(ref _nextClientId);
                     var conn = new WsConnection(stream);
                     _clients[clientId] = conn;
+                    conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
 
                     OnClientConnected?.Invoke(clientId);
 
@@ -352,7 +354,8 @@ namespace Unity.FoxgloveSDK.Transport
                     // Reject fragmented text/binary frames (continuation not supported)
                     if (!frame.Fin && (frame.Opcode == WsOpcode.Text || frame.Opcode == WsOpcode.Binary))
                     {
-                        conn.SendClose();
+                        HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
+                        conn.WaitForPendingSends(TimeSpan.FromMilliseconds(250));
                         return;
                     }
 
@@ -365,10 +368,11 @@ namespace Unity.FoxgloveSDK.Transport
                             OnBinaryReceived?.Invoke(clientId, frame.Payload);
                             break;
                         case WsOpcode.Close:
-                            conn.SendClose();
+                            HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
+                            conn.WaitForPendingSends(TimeSpan.FromMilliseconds(250));
                             return;
                         case WsOpcode.Ping:
-                            conn.SendPong(frame.Payload);
+                            HandleEnqueueResult(clientId, conn, conn.SendPong(frame.Payload), "SendPong");
                             break;
                     }
                 }
@@ -392,18 +396,290 @@ namespace Unity.FoxgloveSDK.Transport
             try { conn.Dispose(); } catch { }
         }
 
+        private void HandleEnqueueResult(uint clientId, WsConnection conn, EnqueueResult result, string operation)
+        {
+            if (result.ShouldLogDataDrop)
+            {
+                _logger.LogWarning(
+                    $"Client {clientId} send queue dropped {result.DroppedDataFrames} stale data frame(s); total dropped={result.TotalDroppedDataFrames}.");
+            }
+
+            if (result.ShouldDisconnect)
+            {
+                _logger.LogWarning($"Client {clientId} send queue overflowed on control frame during {operation}; disconnecting.");
+                DisconnectClient(clientId, conn);
+            }
+        }
+
+        internal static int WriteFrameHeader(byte opcode, int payloadLength, Span<byte> destination)
+        {
+            if (payloadLength < 0)
+                throw new ArgumentOutOfRangeException(nameof(payloadLength));
+            if (destination.Length < 10)
+                throw new ArgumentException("WebSocket frame header destination must be at least 10 bytes.", nameof(destination));
+
+            var offset = 0;
+            destination[offset++] = (byte)(FinBit | opcode);
+
+            if (payloadLength <= 125)
+            {
+                destination[offset++] = (byte)payloadLength;
+                return offset;
+            }
+
+            if (payloadLength <= 65535)
+            {
+                destination[offset++] = 126;
+                destination[offset++] = (byte)(payloadLength >> 8);
+                destination[offset++] = (byte)payloadLength;
+                return offset;
+            }
+
+            destination[offset++] = 127;
+            var len = (ulong)payloadLength;
+            for (var i = 7; i >= 0; i--)
+                destination[offset++] = (byte)(len >> (i * 8));
+            return offset;
+        }
+
         // ── WebSocket Connection ──
 
         /// <summary>
         /// Per-connection framing layer: send/receive WebSocket frames over a single TCP stream.
-        /// Thread-safe for concurrent sends via <c>_sendLock</c>.
+        /// Outbound writes are serialized by the per-connection send loop.
         /// </summary>
+        internal enum FramePriority
+        {
+            Control,
+            Data
+        }
+
+        internal readonly struct QueuedFrame
+        {
+            public QueuedFrame(byte opcode, byte[] payload, FramePriority priority)
+            {
+                Opcode = opcode;
+                Payload = payload ?? Array.Empty<byte>();
+                Priority = priority;
+                SizeBytes = Payload.Length;
+            }
+
+            public byte Opcode { get; }
+            public byte[] Payload { get; }
+            public FramePriority Priority { get; }
+            public int SizeBytes { get; }
+        }
+
+        internal readonly struct EnqueueResult
+        {
+            public EnqueueResult(
+                bool accepted,
+                bool shouldDisconnect,
+                int droppedDataFrames,
+                long totalDroppedDataFrames,
+                bool shouldLogDataDrop)
+            {
+                Accepted = accepted;
+                ShouldDisconnect = shouldDisconnect;
+                DroppedDataFrames = droppedDataFrames;
+                TotalDroppedDataFrames = totalDroppedDataFrames;
+                ShouldLogDataDrop = shouldLogDataDrop;
+            }
+
+            public bool Accepted { get; }
+            public bool ShouldDisconnect { get; }
+            public int DroppedDataFrames { get; }
+            public long TotalDroppedDataFrames { get; }
+            public bool ShouldLogDataDrop { get; }
+        }
+
+        internal sealed class WsSendQueue
+        {
+            private readonly object _lock = new object();
+            private readonly Queue<QueuedFrame> _controlFrames = new Queue<QueuedFrame>();
+            private readonly Queue<QueuedFrame> _dataFrames = new Queue<QueuedFrame>();
+            private readonly int _maxFrames;
+            private readonly int _maxQueuedBytes;
+            private int _queuedBytes;
+            private bool _completed;
+            private long _droppedDataFrames;
+
+            public WsSendQueue(int maxFrames, int maxQueuedBytes)
+            {
+                _maxFrames = Math.Max(1, maxFrames);
+                _maxQueuedBytes = Math.Max(0, maxQueuedBytes);
+            }
+
+            public int Count
+            {
+                get { lock (_lock) return CountLocked; }
+            }
+
+            public int QueuedBytes
+            {
+                get { lock (_lock) return _queuedBytes; }
+            }
+
+            public bool IsCompleted
+            {
+                get { lock (_lock) return _completed; }
+            }
+
+            public EnqueueResult Enqueue(QueuedFrame frame)
+            {
+                lock (_lock)
+                {
+                    if (_completed)
+                        return new EnqueueResult(false, false, 0, _droppedDataFrames, false);
+
+                    var dropped = 0;
+                    var droppedBefore = _droppedDataFrames;
+                    while (!CanFitLocked(frame) && _dataFrames.Count > 0)
+                    {
+                        DropOldestDataLocked();
+                        dropped++;
+                    }
+
+                    if (!CanFitLocked(frame))
+                    {
+                        if (frame.Priority == FramePriority.Control)
+                        {
+                            return new EnqueueResult(
+                                false,
+                                true,
+                                dropped,
+                                _droppedDataFrames,
+                                ShouldLogDrop(droppedBefore, _droppedDataFrames));
+                        }
+
+                        dropped++;
+                        _droppedDataFrames++;
+                        return new EnqueueResult(
+                            false,
+                            false,
+                            dropped,
+                            _droppedDataFrames,
+                            ShouldLogDrop(droppedBefore, _droppedDataFrames));
+                    }
+
+                    if (frame.Priority == FramePriority.Control)
+                        _controlFrames.Enqueue(frame);
+                    else
+                        _dataFrames.Enqueue(frame);
+
+                    _queuedBytes += frame.SizeBytes;
+                    Monitor.Pulse(_lock);
+
+                    return new EnqueueResult(
+                        true,
+                        false,
+                        dropped,
+                        _droppedDataFrames,
+                        ShouldLogDrop(droppedBefore, _droppedDataFrames));
+                }
+            }
+
+            public bool TryDequeue(out QueuedFrame frame)
+            {
+                lock (_lock)
+                    return TryDequeueLocked(out frame);
+            }
+
+            public bool WaitToDequeue(CancellationToken ct, out QueuedFrame frame)
+            {
+                lock (_lock)
+                {
+                    while (true)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if (TryDequeueLocked(out frame))
+                            return true;
+                        if (_completed)
+                            return false;
+
+                        Monitor.Wait(_lock, 100);
+                    }
+                }
+            }
+
+            public void Complete()
+            {
+                lock (_lock)
+                {
+                    if (_completed) return;
+                    _completed = true;
+                    Monitor.PulseAll(_lock);
+                }
+            }
+
+            public bool WaitUntilEmpty(TimeSpan timeout)
+            {
+                var deadline = DateTime.UtcNow + timeout;
+                lock (_lock)
+                {
+                    while (CountLocked > 0)
+                    {
+                        var remaining = deadline - DateTime.UtcNow;
+                        if (remaining <= TimeSpan.Zero)
+                            return false;
+
+                        Monitor.Wait(_lock, remaining);
+                    }
+
+                    return true;
+                }
+            }
+
+            private int CountLocked => _controlFrames.Count + _dataFrames.Count;
+
+            private bool CanFitLocked(QueuedFrame frame)
+            {
+                return CountLocked + 1 <= _maxFrames
+                    && _queuedBytes + frame.SizeBytes <= _maxQueuedBytes;
+            }
+
+            private bool TryDequeueLocked(out QueuedFrame frame)
+            {
+                if (_controlFrames.Count > 0)
+                {
+                    frame = _controlFrames.Dequeue();
+                    _queuedBytes -= frame.SizeBytes;
+                    if (CountLocked == 0) Monitor.PulseAll(_lock);
+                    return true;
+                }
+
+                if (_dataFrames.Count > 0)
+                {
+                    frame = _dataFrames.Dequeue();
+                    _queuedBytes -= frame.SizeBytes;
+                    if (CountLocked == 0) Monitor.PulseAll(_lock);
+                    return true;
+                }
+
+                frame = default;
+                return false;
+            }
+
+            private void DropOldestDataLocked()
+            {
+                var dropped = _dataFrames.Dequeue();
+                _queuedBytes -= dropped.SizeBytes;
+                _droppedDataFrames++;
+            }
+
+            private static bool ShouldLogDrop(long before, long after)
+            {
+                return after > before && (before == 0 || after / 1000 > before / 1000);
+            }
+        }
+
         private sealed class WsConnection : IDisposable
         {
             /// <summary>Underlying TCP network stream.</summary>
             private readonly NetworkStream _stream;
-            /// <summary>Lock to serialize frame writes (RFC 6455 requires no interleaving).</summary>
-            private readonly object _sendLock = new object();
+            private readonly WsSendQueue _sendQueue = new WsSendQueue(MaxQueuedFrames, MaxQueuedBytes);
+            private CancellationTokenSource _sendCts;
+            private Task _sendTask;
 
             /// <summary>RFC 6455 opcode for text frames.</summary>
             private const byte OpText = 0x1;
@@ -411,12 +687,8 @@ namespace Unity.FoxgloveSDK.Transport
             private const byte OpBinary = 0x2;
             /// <summary>RFC 6455 opcode for close frames.</summary>
             private const byte OpClose = 0x8;
-            /// <summary>RFC 6455 opcode for ping frames.</summary>
-            private const byte OpPing = 0x9;
             /// <summary>RFC 6455 opcode for pong frames.</summary>
             private const byte OpPong = 0xA;
-            /// <summary>FIN bit mask in the first byte of a frame header.</summary>
-            private const byte FinBit = 0x80;
 
             /// <summary>Maximum allowable payload size in bytes (64 MiB).</summary>
             internal const int MaxPayloadBytes = 64 * 1024 * 1024;
@@ -424,59 +696,74 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Create a connection on the given network stream.</summary>
             public WsConnection(NetworkStream stream) => _stream = stream;
 
+            public void StartSendLoop(Action onSendFailed, CancellationToken parentToken)
+            {
+                if (_sendTask != null) return;
+
+                _sendCts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
+                var token = _sendCts.Token;
+                _sendTask = Task.Run(() => SendLoop(onSendFailed, token), token);
+            }
+
             /// <summary>Encode the string as UTF-8 and send it in a text frame.</summary>
-            public void SendText(string json)
+            public EnqueueResult SendText(string json, FramePriority priority)
             {
                 var payload = Encoding.UTF8.GetBytes(json);
-                SendFrame(OpText, payload);
+                return _sendQueue.Enqueue(new QueuedFrame(OpText, payload, priority));
             }
 
             /// <summary>Send raw bytes in a binary frame.</summary>
-            public void SendBinary(byte[] data)
+            public EnqueueResult SendBinary(byte[] data, FramePriority priority)
             {
-                SendFrame(OpBinary, data);
+                return _sendQueue.Enqueue(new QueuedFrame(OpBinary, data, priority));
             }
 
             /// <summary>Send a close frame with an empty payload to initiate graceful shutdown.</summary>
-            public void SendClose()
+            public EnqueueResult SendClose()
             {
-                try { SendFrame(OpClose, Array.Empty<byte>()); } catch { }
+                return _sendQueue.Enqueue(new QueuedFrame(OpClose, Array.Empty<byte>(), FramePriority.Control));
             }
 
             /// <summary>Echo back a pong frame with the given payload in response to a ping.</summary>
-            public void SendPong(byte[] data)
+            public EnqueueResult SendPong(byte[] data)
             {
-                SendFrame(OpPong, data);
+                return _sendQueue.Enqueue(new QueuedFrame(OpPong, data, FramePriority.Control));
+            }
+
+            public bool WaitForPendingSends(TimeSpan timeout)
+            {
+                return _sendQueue.WaitUntilEmpty(timeout);
+            }
+
+            private void SendLoop(Action onSendFailed, CancellationToken ct)
+            {
+                try
+                {
+                    while (_sendQueue.WaitToDequeue(ct, out var frame))
+                        WriteFrame(frame.Opcode, frame.Payload);
+                }
+                catch (OperationCanceledException) { }
+                catch (ObjectDisposedException) { }
+                catch (IOException) when (ct.IsCancellationRequested) { }
+                catch (IOException)
+                {
+                    onSendFailed?.Invoke();
+                }
+                catch
+                {
+                    onSendFailed?.Invoke();
+                }
             }
 
             /// <summary>Build and write a complete WebSocket frame (FIN + opcode + length-prefixed payload).</summary>
-            private void SendFrame(byte opcode, byte[] payload)
+            private void WriteFrame(byte opcode, byte[] payload)
             {
-                lock (_sendLock)
-                {
-                    var header = new List<byte> { (byte)(FinBit | opcode) };
-
-                    if (payload.Length <= 125)
-                    {
-                        header.Add((byte)payload.Length);
-                    }
-                    else if (payload.Length <= 65535)
-                    {
-                        header.Add(126);
-                        header.Add((byte)(payload.Length >> 8));
-                        header.Add((byte)payload.Length);
-                    }
-                    else
-                    {
-                        header.Add(127);
-                        for (var i = 7; i >= 0; i--)
-                            header.Add((byte)((ulong)payload.Length >> (i * 8)));
-                    }
-
-                    _stream.Write(header.ToArray(), 0, header.Count);
+                Span<byte> header = stackalloc byte[10];
+                var headerLength = WriteFrameHeader(opcode, payload.Length, header);
+                _stream.Write(header.Slice(0, headerLength));
+                if (payload.Length > 0)
                     _stream.Write(payload, 0, payload.Length);
-                    _stream.Flush();
-                }
+                _stream.Flush();
             }
 
             /// <summary>
@@ -553,8 +840,12 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Close and dispose the underlying network stream.</summary>
             public void Dispose()
             {
+                _sendQueue.Complete();
+                try { _sendCts?.Cancel(); } catch { }
                 try { _stream.Close(); } catch { }
                 try { _stream.Dispose(); } catch { }
+                try { _sendCts?.Dispose(); } catch { }
+                _sendCts = null;
             }
         }
 
