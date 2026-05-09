@@ -58,6 +58,7 @@ namespace Unity.FoxgloveSDK.Performance
             results.Add(RunMcapRecord(warmup, topics, messages, "", "McapRecordNone"));
             results.Add(RunMcapRecord(warmup, topics, messages, "lz4", "McapRecordLz4"));
             results.Add(RunMcapRecord(warmup, topics, messages, "zstd", "McapRecordZstd"));
+            results.Add(RunMcapRecordNonePrebuiltPayload(warmup, topics, messages));
             results.Add(RunMcapReplayTick(warmup, topics, messages, isFull));
             results.Add(RunMcapRecordAttachmentSummary());
             results.Add(RunTransportQueueMicro());
@@ -308,6 +309,54 @@ namespace Unity.FoxgloveSDK.Performance
                 result.notes = $"compression={compressionLabel}; payloadBytes={payloadBytes}; fileBytes={outputBytes}; payloadToFileRatio={ratio:F3}";
             }
 
+            return result;
+        }
+
+        private static PerformanceScenarioResult RunMcapRecordNonePrebuiltPayload(int warmup, int topics, int messages)
+        {
+            var payload = MakeJsonPayload(0, 0);
+            int warmupCount = warmup;
+            long outputBytes = 0;
+            long payloadBytes = 0;
+
+            var totalMessages = messages * topics;
+            var result = TimedScenario("McapRecordNonePrebuiltPayload", warmup * topics, totalMessages, () =>
+            {
+                using var ms = new MemoryStream();
+                using var recorder = new McapRecorder(ms, null, McapRecorder.DefaultChunkSizeBytes, "");
+                for (int t = 0; t < topics; t++)
+                    recorder.AddChannel((uint)(t + 1), $"/perf/prebuilt/{t}", "json", "test.PerfPb", "jsonschema", "{\"type\":\"object\"}");
+                for (int i = 0; i < warmupCount; i++)
+                {
+                    for (int t = 0; t < topics; t++)
+                        recorder.WriteMessage((uint)(t + 1), (ulong)i * 1000, payload);
+                }
+                recorder.Close();
+            }, count =>
+            {
+                int outer = count / topics;
+                var ms = new MemoryStream();
+                using var recorder = new McapRecorder(ms, null, McapRecorder.DefaultChunkSizeBytes, "");
+                for (int t = 0; t < topics; t++)
+                    recorder.AddChannel((uint)(t + 1), $"/perf/prebuilt/{t}", "json", "test.PerfPb", "jsonschema", "{\"type\":\"object\"}");
+                for (int i = 0; i < outer; i++)
+                {
+                    for (int t = 0; t < topics; t++)
+                        recorder.WriteMessage((uint)(t + 1), (ulong)i * 1000, payload);
+                }
+                recorder.Close();
+                outputBytes = ms.Length;
+                payloadBytes = (long)payload.Length * count;
+
+                ms.Position = 0;
+                var reader = new McapReader(ms);
+                var summary = reader.ReadSummary();
+                if (summary.Statistics.MessageCount != (ulong)count)
+                    throw new Exception($"MCAP message count mismatch: expected {count}, got {summary.Statistics.MessageCount}");
+            });
+
+            result.outputBytes = outputBytes;
+            result.notes = $"compression=none; prebuiltPayload=true; payloadBytes={payloadBytes}; fileBytes={outputBytes}; payloadBytesPerMessage={payload.Length}";
             return result;
         }
 
