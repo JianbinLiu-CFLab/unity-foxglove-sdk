@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Unity2Foxglove in research, please cite this software."
+title: "Unity2Foxglove"
+type: software
+authors:
+  - family-names: "Liu"
+    given-names: "Jianbin"
+license: "Apache-2.0"
+repository-code: "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk"
+url: "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk"
+version: "paper-evidence-2026-05-09"
+date-released: "2026-05-09"
+abstract: >-
+  Unity2Foxglove is a Unity-native real-time telemetry and MCAP
+  recording/replay pipeline for robotics visualization with Foxglove.
+keywords:
+  - Unity
+  - Foxglove
+  - MCAP
+  - robotics visualization
+  - telemetry
+  - IL2CPP
