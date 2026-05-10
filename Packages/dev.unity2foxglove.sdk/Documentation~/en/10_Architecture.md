@@ -23,7 +23,7 @@ Main pieces:
 1. A Unity component gathers data.
 2. The component resolves a `FoxgloveManager`.
 3. The Manager registers a schema/channel if needed.
-4. The component publishes JSON or binary payloads.
+4. The component publishes protobuf or JSON payloads, depending on the Manager and publisher encoding settings.
 5. `FoxgloveSession` sends data over the WebSocket transport.
 6. Foxglove Desktop renders the topic.
 
@@ -70,7 +70,7 @@ If a control frame still cannot fit after stale data is dropped, the slow client
 
 ## 10. IL2CPP Preservation
 
-Unity2Foxglove uses JSON serialization and reflection-heavy dependencies. IL2CPP builds need preservation rules for Newtonsoft.Json and the SDK runtime assembly.
+Unity2Foxglove supports both protobuf and JSON channels. Protobuf is the default for publishers that support it; JSON remains available for compatibility, debugging, and JSON-only publishers. IL2CPP builds still need preservation rules for Newtonsoft.Json and the SDK runtime assembly because the package keeps JSON paths available.
 
 The practical build checklist is in [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md).
 

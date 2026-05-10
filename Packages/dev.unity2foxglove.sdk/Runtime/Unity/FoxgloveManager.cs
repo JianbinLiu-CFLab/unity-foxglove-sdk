@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Components
 
         [Header("Publisher Encoding")]
         [Tooltip("Global default encoding for publishers that support it.")]
-        [SerializeField] private GlobalEncoding _defaultPublisherEncoding = GlobalEncoding.Json;
+        [SerializeField] private GlobalEncoding _defaultPublisherEncoding = GlobalEncoding.Protobuf;
         [Tooltip("When enabled, individual publishers can override the global default.")]
         [SerializeField] private bool _allowPublisherOverride = true;
 
