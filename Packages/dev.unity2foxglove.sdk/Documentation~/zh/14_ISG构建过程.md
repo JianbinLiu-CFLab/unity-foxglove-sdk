@@ -431,7 +431,7 @@ Unity2Foxglove/Assets/Scripts/Generated.meta
 IL2CPP 构建命令：
 
 ```powershell
-& 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' `
+& '<UnityEditor.exe>' `
   -batchmode `
   -quit `
   -projectPath '<repo-root>/Unity2Foxglove' `
@@ -586,4 +586,3 @@ Unable to resolve reference 'Microsoft.CodeAnalysis'
 3. `Assets/Scripts/Generated/*_FoxRun.g.cs` 正常生成。
 4. Player assembly 包含 `IFoxgloveLogSource` 实现。
 5. Foxglove 连接 Player 后能看到 `/debug/*`。
-
