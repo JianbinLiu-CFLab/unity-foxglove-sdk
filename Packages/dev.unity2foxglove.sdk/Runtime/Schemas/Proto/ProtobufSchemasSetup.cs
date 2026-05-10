@@ -34,7 +34,7 @@ namespace Foxglove.Schemas
         }
 
         /// <summary>
-        /// Register all 46 official Foxglove protobuf schemas into the given registry.
+        /// Register all bundled official Foxglove protobuf schemas into the given registry.
         /// Idempotent: each registry instance is only populated once.
         /// </summary>
         public static void RegisterSchemas(ISchemaRegistry schemaRegistry)

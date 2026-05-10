@@ -22,6 +22,7 @@ If you only want to run the ready-made demo project, start with `Unity2Foxglove/
 - [08_Architecture](en/08_Architecture.md): advanced overview of runtime, protocol, FoxRun, MCAP, and replay internals.
 - [09_Troubleshooting](en/09_Troubleshooting.md): symptom-based fixes for connection, topics, panels, builds, and replay.
 - [10_Inspector_Reference](en/10_Inspector_Reference.md): field-by-field reference for the main Unity components.
+- [11_Schema_Coverage](en/11_Schema_Coverage.md): official protobuf schema coverage, generic parity, and typed publisher UX boundaries.
 
 ## Related Entry Points
 
