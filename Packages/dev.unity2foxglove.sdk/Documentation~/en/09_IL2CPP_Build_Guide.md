@@ -1,14 +1,12 @@
-# 8. IL2CPP Build Guide
+## 1. Purpose
 
-## Who should read this
+Use this page to build and verify a standalone Unity Player with Unity2Foxglove enabled.
 
-Read this if you need to build and verify a standalone Unity Player with Unity2Foxglove.
-
-## What you will do
+## 2. Workflow
 
 You will run the cross-platform build script, watch progress logs, find the output Player and log file, and verify Foxglove topics in the Player.
 
-## 7.1 Before You Build
+## 3. Before You Build
 
 Use the `Unity2Foxglove` demo project for the standard repository build.
 
@@ -19,7 +17,7 @@ Check:
 - The repository package dependency uses a relative path.
 - The demo runs in Editor Play Mode first.
 
-## 7.2 Build from the Repository Root
+## 4. Build from the Repository Root
 
 Run:
 
@@ -40,7 +38,7 @@ If Unity is not auto-detected, pass it explicitly:
 python Scripts/build_unity_il2cpp.py --target win64 --unity "path/to/Unity"
 ```
 
-## 7.3 Watch Build Progress
+## 5. Watch Build Progress
 
 The script prints elapsed time and important Unity log lines so the terminal does not look frozen.
 
@@ -55,7 +53,7 @@ Build succeeded
 
 If FoxRun debug topics are expected in the Player, the preprocess lines are important.
 
-## 7.4 Output Files
+## 6. Output Files
 
 Build output and logs are written under:
 
@@ -69,7 +67,7 @@ Typical build log:
 
 `build/Unity/<target>-il2cpp-<timestamp>.log`
 
-## 7.5 Verify the Player
+## 7. Verify the Player
 
 1. Run the Player.
 2. Open Foxglove Desktop.
@@ -82,7 +80,7 @@ Typical build log:
 5. Open Parameters and Service Call panels if using the Full Demo.
 6. Call `/cube/reset_pose` with `{}`.
 
-## 7.6 Common Failures
+## 8. Common Failures
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
@@ -92,6 +90,6 @@ Typical build log:
 | JSON messages become `{}` in Player | Linker preservation problem. | Verify project `Assets/link.xml` exists and preserves Newtonsoft.Json and `Unity.FoxgloveSDK`. |
 | Compression-related build error | Compression DLLs are missing or excluded. | Verify package plugin DLLs and asmdef references. |
 
-## 7.7 What This Guide Does Not Cover
+## 9. Scope Exclusions
 
-This page is the practical build path. For source generator internals, linker behavior, and runtime architecture, read [09_Architecture](09_Architecture.md).
+This page is the practical build path. For source generator internals, linker behavior, and runtime architecture, read [10_Architecture](10_Architecture.md).

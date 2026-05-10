@@ -1,14 +1,12 @@
-# 3. Foxglove Operation
+## 1. Purpose
 
-## Who should read this
+Use this page when Unity is already running a Unity2Foxglove WebSocket server and the next task is operating Foxglove Desktop.
 
-Read this if Unity is already running a Unity2Foxglove WebSocket server and you want to operate Foxglove Desktop.
-
-## What you will do
+## 2. Workflow
 
 You will connect Foxglove, inspect topics, use common panels, import layouts, edit Parameters, call Services, and diagnose Problems panel messages.
 
-## 3.1 Connect to Unity
+## 3. Connect to Unity
 
 1. Start Play Mode in Unity.
 2. Open Foxglove Desktop.
@@ -19,11 +17,11 @@ You will connect Foxglove, inspect topics, use common panels, import layouts, ed
 
 If the connection succeeds, the top bar shows `ws://127.0.0.1:8765` and the **Topics** panel starts listing Unity topics.
 
-## 3.2 Import a Layout
+## 4. Import a Layout
 
 Use layouts to avoid rebuilding panels by hand.
 
-### 3.2.1 Basic layout
+### 4.1 Basic layout
 
 Use this for the Basic sample:
 
@@ -36,7 +34,7 @@ It focuses on:
 - Plot
 - Raw topic inspection
 
-### 3.2.2 Full demo layout
+### 4.2 Full demo layout
 
 Use this for the Full Demo sample or `Unity2Foxglove` project:
 
@@ -57,7 +55,7 @@ It includes:
 - Publish
 - Debug topics
 
-## 3.3 Topics Panel
+## 5. Topics Panel
 
 Use **Topics** to confirm what Unity is publishing.
 
@@ -70,7 +68,7 @@ Expected common topics:
 
 If a topic is missing, first check whether the related Unity component is enabled and whether its `Publish Rate Hz` is greater than `0`.
 
-## 3.4 3D Panel
+## 6. 3D Panel
 
 Use **3D** for transforms, scene primitives, and frame relationships.
 
@@ -81,7 +79,7 @@ Use **3D** for transforms, scene primitives, and frame relationships.
 
 If the object appears mirrored or rotated unexpectedly, check `FoxgloveManager > Coordinate Mode` and the Transform publisher settings.
 
-## 3.5 Image Panel
+## 7. Image Panel
 
 Use **Image** to view camera output.
 
@@ -91,7 +89,7 @@ Use **Image** to view camera output.
 
 If the panel is black, check the Unity Camera, resolution, JPEG quality, and whether another camera is rendering over it.
 
-## 3.6 Plot Panel
+## 8. Plot Panel
 
 Use **Plot** to watch numeric fields over time.
 
@@ -103,7 +101,7 @@ Useful paths for `/tf` include:
 
 Move the Cube in Unity and watch the curve change.
 
-## 3.7 Parameters Panel
+## 9. Parameters Panel
 
 Use **Parameters** to read and edit runtime values.
 
@@ -114,7 +112,7 @@ In the Full Demo, expected parameters include:
 
 Click a value, edit the JSON or number, and confirm the Unity object changes.
 
-## 3.8 Service Call Panel
+## 10. Service Call Panel
 
 Use **Service Call** for actions such as reset.
 
@@ -127,7 +125,7 @@ For the Full Demo:
 
 Do not put `/cube/reset_pose` inside the JSON request. The service name is selected in panel settings.
 
-## 3.9 Problems Panel
+## 11. Problems Panel
 
 Use **Problems** when something looks connected but does not work.
 
@@ -137,7 +135,7 @@ Common messages:
 - `Service call timed out`: verify the Unity side completed the service handler.
 - JSON parse error: the request box must contain valid JSON such as `{}`.
 
-## 3.10 Layout Tips
+## 12. Layout Tips
 
 - Keep a simple layout for first connection tests.
 - Keep a full layout for demo acceptance.

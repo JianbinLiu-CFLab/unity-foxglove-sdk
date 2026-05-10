@@ -1,14 +1,12 @@
-# 10. Troubleshooting
+## 1. Purpose
 
-## Who should read this
+Use this page when Unity, Foxglove, MCAP, FoxRun, or IL2CPP behavior does not match the expected guide results.
 
-Read this when Unity, Foxglove, MCAP, FoxRun, or IL2CPP behavior does not match the guides.
-
-## What you will do
+## 2. Workflow
 
 You will diagnose problems by symptom instead of by internal module.
 
-## 9.1 Foxglove Cannot Connect
+## 3. Foxglove Cannot Connect
 
 Check:
 
@@ -24,7 +22,7 @@ Try:
 - Change the Manager port if another process owns `8765`.
 - Reconnect Foxglove after Unity starts the server.
 
-## 9.2 Connected but No Topics
+## 4. Connected but No Topics
 
 Check:
 
@@ -34,7 +32,7 @@ Check:
 4. The Manager is running.
 5. If replay is enabled, **Disable Live Publishers** may have turned off live publishers.
 
-## 9.3 3D Panel Is Empty
+## 5. 3D Panel Is Empty
 
 Check:
 
@@ -43,7 +41,7 @@ Check:
 - `/scene` is visible if you expect cube primitives.
 - Coordinate mode matches your expectation.
 
-## 9.4 Camera Image Is Blank
+## 6. Camera Image Is Blank
 
 Check:
 
@@ -53,7 +51,7 @@ Check:
 - The Camera renders something in Unity Game view.
 - Async readbacks are not piling up because publish rate is too high.
 
-## 9.5 Parameters Panel Is Empty
+## 7. Parameters Panel Is Empty
 
 Check:
 
@@ -62,7 +60,7 @@ Check:
 - Foxglove connected after Play Mode started.
 - Reconnect the WebSocket connection.
 
-## 9.6 Service Call Fails
+## 8. Service Call Fails
 
 If Foxglove says the service has not been advertised:
 
@@ -80,7 +78,7 @@ If it times out:
 - Check Unity Console for handler errors.
 - Verify the GameObject that registers the service is enabled.
 
-## 9.7 FoxRun Topics Missing in Player
+## 9. FoxRun Topics Missing in Player
 
 Check the IL2CPP build log for:
 
@@ -90,7 +88,7 @@ Check the IL2CPP build log for:
 
 If it is missing, the Player build did not run the FoxRun fallback generation step.
 
-## 9.8 MCAP File Missing or Empty
+## 10. MCAP File Missing or Empty
 
 Check:
 
@@ -99,7 +97,7 @@ Check:
 - Unity stopped Play Mode cleanly so the file could close.
 - The recording directory is writable.
 
-## 9.9 Replay Looks Wrong
+## 11. Replay Looks Wrong
 
 Check:
 
@@ -108,7 +106,7 @@ Check:
 - **Disable Live Publishers** is enabled during replay tests.
 - A replay adapter exists for the object type you expect to drive.
 
-## 9.10 IL2CPP Build Fails
+## 12. IL2CPP Build Fails
 
 Check:
 
@@ -119,7 +117,7 @@ Check:
 
 If JSON messages become `{}` only in Player, verify the project has linker preservation for Newtonsoft.Json and `Unity.FoxgloveSDK`.
 
-## 9.11 Package Missing in Demo Project
+## 13. Package Missing in Demo Project
 
 The demo project expects the local package dependency to remain relative:
 

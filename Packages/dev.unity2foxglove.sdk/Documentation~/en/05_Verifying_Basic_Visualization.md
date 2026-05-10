@@ -1,14 +1,12 @@
-# 4. Basic Visualization Sample
+## 1. Purpose
 
-## Who should read this
+Use this page to verify the smallest package sample that proves Unity can publish live data to Foxglove.
 
-Read this if you want the smallest package sample that proves Unity can publish to Foxglove.
-
-## What you will do
+## 2. Workflow
 
 You will import the Basic sample, open its scene, connect Foxglove, and verify `/tf`, `/scene`, and `/unity/camera`.
 
-## 4.1 What This Sample Contains
+## 3. Sample Contents
 
 The Basic sample is intentionally small. It is for first contact, not a full feature tour.
 
@@ -30,7 +28,7 @@ It does not focus on:
 
 Use **Full Demo Visualization** or the repository `Unity2Foxglove/` project for those.
 
-## 4.2 Import the Sample
+## 4. Import the Sample
 
 1. Open **Window > Package Manager**.
 2. Select **Unity2Foxglove SDK**.
@@ -45,7 +43,7 @@ Open:
 
 `Assets/Samples/Unity2Foxglove SDK/<version>/Basic Visualization/Scenes/BasicVisualization.unity`
 
-## 4.3 Run the Sample
+## 5. Run the Sample
 
 1. Open the sample scene.
 2. Press **Play**.
@@ -53,7 +51,7 @@ Open:
 4. Open Foxglove Desktop.
 5. Connect to `ws://127.0.0.1:8765`.
 
-## 4.4 Import the Simple Layout
+## 6. Import the Simple Layout
 
 In Foxglove, import:
 
@@ -63,7 +61,7 @@ The layout is included with the imported sample and in the package at:
 
 `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/FoxgloveSimpleLayout.json`
 
-## 4.5 Verify the Result
+## 7. Verify the Result
 
 Expected topics:
 
@@ -79,7 +77,7 @@ Expected panels:
 
 To test live updates, select the Cube during Play Mode and change its Transform in the Inspector. Foxglove should update after the next publish tick.
 
-## 4.6 If It Does Not Work
+## 8. Troubleshooting
 
 - If Foxglove cannot connect, verify Unity is in Play Mode.
 - If `/unity/camera` is missing, verify the camera publisher is enabled.

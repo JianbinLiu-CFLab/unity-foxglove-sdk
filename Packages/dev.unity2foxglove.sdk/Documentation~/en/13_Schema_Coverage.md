@@ -1,8 +1,10 @@
-# 12. Official Schema Coverage
+## 1. Purpose
+
+Use this page to understand how Unity2Foxglove validates official Foxglove protobuf schema coverage, and where generic schema parity differs from dedicated Unity publisher UX.
 
 Unity2Foxglove includes the bundled official Foxglove protobuf schema snapshot generated under `Runtime/Schemas/Proto`.
 
-## What "Full Schema Coverage" Means
+## 2. Coverage Definition
 
 In this package, full official schema coverage means every bundled `foxglove.*` protobuf message is:
 
@@ -14,7 +16,7 @@ In this package, full official schema coverage means every bundled `foxglove.*` 
 
 The current bundled snapshot contains 46 official `foxglove.*` messages. Tests derive the expected count from the protobuf registry/descriptor metadata and require the explicit catalog to match it.
 
-## Generic Parity vs Dedicated Components
+## 3. Generic Parity vs Dedicated Components
 
 Generic protobuf support is the parity layer. It proves that all bundled official schemas can travel through the SDK's schema, publish, and MCAP paths.
 
@@ -29,7 +31,7 @@ Current dedicated or polished Unity paths include:
 
 Other schemas can still be used through generic protobuf channels and generated protobuf message classes.
 
-## Smoke MCAP
+## 4. Smoke MCAP
 
 From the repository root:
 
@@ -45,7 +47,7 @@ build/test_mcap/phase44_all_schemas_smoke.mcap
 
 Open that file in Foxglove Desktop and check the Problems panel. The smoke file is intended to validate protobuf schema parsing and MCAP metadata, not perfect panel rendering for every schema.
 
-## Follow-Up Typed Publisher Candidates
+## 5. Follow-Up Typed Publisher Candidates
 
 Potential future dedicated publishers include:
 
