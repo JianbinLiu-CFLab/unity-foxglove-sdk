@@ -77,7 +77,7 @@ The Full Demo sample and `Unity2Foxglove` demo project use more Unity features t
 | URP | Full demo visuals | Basic sample is intentionally smaller. |
 | MCAP files | Recording/replay demos | You can skip this until you need offline playback. |
 
-If you want the simplest possible first test, use [03_Verifying_Basic_Visualization](03_Verifying_Basic_Visualization.md).
+If you want the simplest possible first test, use [04_Verifying_Basic_Visualization](04_Verifying_Basic_Visualization.md).
 
 ## 0.7 Network Assumptions
 

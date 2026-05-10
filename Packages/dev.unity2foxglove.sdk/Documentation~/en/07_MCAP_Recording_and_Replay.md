@@ -1,4 +1,4 @@
-# 6. MCAP Recording and Replay
+# 7. MCAP Recording and Replay
 
 ## Who should read this
 

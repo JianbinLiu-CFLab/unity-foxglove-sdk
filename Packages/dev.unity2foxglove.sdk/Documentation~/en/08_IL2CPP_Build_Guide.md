@@ -1,4 +1,4 @@
-# 7. IL2CPP Build Guide
+# 8. IL2CPP Build Guide
 
 ## Who should read this
 
@@ -94,4 +94,4 @@ Typical build log:
 
 ## 7.7 What This Guide Does Not Cover
 
-This page is the practical build path. For source generator internals, linker behavior, and runtime architecture, read [08_Architecture](08_Architecture.md).
+This page is the practical build path. For source generator internals, linker behavior, and runtime architecture, read [09_Architecture](09_Architecture.md).
