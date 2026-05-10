@@ -8,11 +8,14 @@ authors:
 license: "Apache-2.0"
 repository-code: "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk"
 url: "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk"
-version: "paper-evidence-2026-05-09"
-date-released: "2026-05-09"
+version: "paper-evidence-2026-05-10"
+date-released: "2026-05-10"
 abstract: >-
   Unity2Foxglove is a Unity-native real-time telemetry and MCAP
-  recording/replay pipeline for robotics visualization with Foxglove.
+  recording/replay pipeline for robotics visualization with Foxglove. It
+  introduces an AOT-safe dual-host source generation architecture with a shared
+  emitter for zero-reflection telemetry publishing in Unity Editor and IL2CPP
+  Player builds.
 keywords:
   - Unity
   - Foxglove
