@@ -26,10 +26,14 @@ Current dedicated or polished Unity paths include:
 
 - `foxglove.FrameTransform`
 - `foxglove.SceneUpdate`
-- `foxglove.CompressedImage` through the JSON camera publisher
+- `foxglove.CompressedImage` through the camera publisher, with JSON and protobuf encoding support
 - `foxglove.Log`
 
 Other schemas can still be used through generic protobuf channels and generated protobuf message classes.
+
+Publisher Encoding defaults to Protobuf for new `FoxgloveManager` components. Publishers that support both encodings, such as the camera publisher, use protobuf unless the Manager or component override selects JSON. JSON-only publishers fall back to JSON automatically.
+
+For `foxglove.CompressedImage`, the JSON path stores JPEG data as base64 text because JSON has no binary field. The protobuf path stores the same JPEG payload as raw bytes in the official `bytes data` field, so it is the preferred path for camera streaming.
 
 ## 4. Smoke MCAP
 

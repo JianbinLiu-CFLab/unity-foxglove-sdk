@@ -286,6 +286,28 @@ public class Phase32Validation
         Check(unsupported.Effective == PublisherEffectiveEncoding.Unsupported && unsupported.FellBack,
             "32G-5: Publisher with no supported encodings resolves to Unsupported");
 
+        var managerSourcePath = Path.Combine(
+            Unity.FoxgloveSDK.Tests.Phase16Validation.FindRepoRoot(),
+            "Packages",
+            "dev.unity2foxglove.sdk",
+            "Runtime",
+            "Unity",
+            "FoxgloveManager.cs");
+        var managerSource = File.ReadAllText(managerSourcePath);
+        Check(managerSource.Contains("_defaultPublisherEncoding = GlobalEncoding.Protobuf"),
+            "32G-6: new FoxgloveManager defaults publisher encoding to protobuf");
+
+        var publisherBaseSourcePath = Path.Combine(
+            Unity.FoxgloveSDK.Tests.Phase16Validation.FindRepoRoot(),
+            "Packages",
+            "dev.unity2foxglove.sdk",
+            "Runtime",
+            "Unity",
+            "FoxglovePublisherBase.cs");
+        var publisherBaseSource = File.ReadAllText(publisherBaseSourcePath);
+        Check(publisherBaseSource.Contains("_manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf"),
+            "32G-7: publisher base unresolved-manager fallback matches protobuf default");
+
         Console.WriteLine($"\nPhase 32: {passed} passed, {failed} failed.");
         if (failed > 0)
             throw new Exception($"Phase 32: {failed} test(s) failed.");

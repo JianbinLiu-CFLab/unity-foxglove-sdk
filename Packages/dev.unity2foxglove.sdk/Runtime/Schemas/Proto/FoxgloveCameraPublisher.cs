@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Unity
+// Module: Runtime/Schemas/Proto
 // Purpose: Captures camera frames via AsyncGPUReadback and publishes them
-// as foxglove.CompressedImage JPEG frames.
+// as foxglove.CompressedImage JPEG frames in JSON or protobuf encoding.
 
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Util;
+using Foxglove.Schemas;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -20,14 +21,14 @@ namespace Unity.FoxgloveSDK.Components
     [RequireComponent(typeof(Camera))]
     public class FoxgloveCameraPublisher : FoxglovePublisherBase
     {
-        // ── Serialized fields ──
+        // Serialized fields
         /// <summary>Identifier for the Foxglove frame, e.g. <c>"unity_camera"</c>.</summary>
         [SerializeField] private string _frameId = "unity_camera";
         /// <summary>Capture resolution width in pixels.</summary>
         [SerializeField] private int _width = 640;
         /// <summary>Capture resolution height in pixels.</summary>
         [SerializeField] private int _height = 480;
-        /// <summary>JPEG quality 10–100.</summary>
+        /// <summary>JPEG quality 10-100.</summary>
         [Range(10, 100)]
         [SerializeField] private int _jpegQuality = 70;
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
@@ -46,8 +47,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _logBackpressureSkips;
 
         protected override string SchemaName => "foxglove.CompressedImage";
+        public override bool SupportsProtobufEncoding => true;
 
-        // ── Internal state ──
+        // Internal state
         /// <summary>Cached reference to the source Camera on this GameObject.</summary>
         private Camera _sourceCam;
         /// <summary>Hidden helper Camera rendering into <c>_captureRT</c>.</summary>
@@ -61,7 +63,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True after OnDestroy starts, to suppress late callbacks.</summary>
         private bool _destroyed;
 
-        // ── Backpressure policy state ──
+        // Backpressure policy state
         private long _lastDropCount;
         private double _cooldownUntilSec;
         private int _backpressureSkipLogCount;
@@ -185,11 +187,17 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var unixNs = CurrentLogTimeNs;
-            var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
+            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            {
+                var payload = CameraCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
+                PublishProto(payload, unixNs);
+                _backpressureSkipLogCount = 0;
+                return;
+            }
 
             var msg = new CompressedImageMessage
             {
-                Timestamp = time,
+                Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
                 FrameId = _frameId,
                 Data = Convert.ToBase64String(jpeg),
                 Format = "jpeg"

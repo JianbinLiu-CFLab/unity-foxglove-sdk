@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private PublisherEncodingResolution ResolvePublisherEncoding()
         {
-            var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Json;
+            var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf;
             var allowPublisherOverride = _manager == null || _manager.AllowPublisherOverride;
             return PublisherEncodingPolicy.Resolve(
                 managerDefault,

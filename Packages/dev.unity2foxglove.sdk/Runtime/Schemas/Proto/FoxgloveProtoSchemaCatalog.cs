@@ -52,7 +52,7 @@ namespace Foxglove.Schemas
             Entry("foxglove.CameraCalibration", typeof(Foxglove.CameraCalibration), "image", false, "Camera intrinsic and distortion calibration."),
             Entry("foxglove.CircleAnnotation", typeof(Foxglove.CircleAnnotation), "annotation", false, "Image annotation primitive."),
             Entry("foxglove.Color", typeof(Foxglove.Color), "geometry", false, "Shared RGBA color primitive."),
-            Entry("foxglove.CompressedImage", typeof(Foxglove.CompressedImage), "image", true, "Used by the JSON camera publisher; generic protobuf path is covered."),
+            Entry("foxglove.CompressedImage", typeof(Foxglove.CompressedImage), "image", true, "Dedicated camera publisher supports JSON and protobuf."),
             Entry("foxglove.CompressedPointCloud", typeof(Foxglove.CompressedPointCloud), "point cloud", false, "Compressed point cloud payload."),
             Entry("foxglove.CompressedVideo", typeof(Foxglove.CompressedVideo), "image", false, "Compressed video payload."),
             Entry("foxglove.CubePrimitive", typeof(Foxglove.CubePrimitive), "visualization", false, "Scene primitive."),

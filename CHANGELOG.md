@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.1.0 - 2026-05-10
+
+### Added
+
+- Camera protobuf parity: `FoxgloveCameraPublisher` can publish `/unity/camera` as official `foxglove.CompressedImage` protobuf.
+- Shared camera protobuf builder for constructing `foxglove.CompressedImage` messages with raw JPEG bytes in the official `bytes data` field.
+- Runtime validation for camera protobuf payload roundtrip, timestamp mapping, frame ID, format, and raw byte preservation.
+
+### Changed
+
+- New `FoxgloveManager` components now default Publisher Encoding to Protobuf.
+- JSON camera publishing remains available through Manager or per-publisher encoding override.
+- JSON-only publishers continue to fall back to JSON automatically under the Protobuf default.
+- Schema coverage documentation now identifies protobuf as the preferred camera streaming path.
+
+### Verified
+
+- Runtime validation suite: `All checks passed.`
+- Release package validation: `27 check(s) passed.`
+- Quick performance baseline: `10/10 PASS`.
+
 ## 1.0.0 - 2026-05-09
 
 ### Added

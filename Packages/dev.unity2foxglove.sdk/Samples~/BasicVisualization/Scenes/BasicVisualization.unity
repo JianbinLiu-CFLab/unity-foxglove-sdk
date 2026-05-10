@@ -319,7 +319,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
   m_Name:
-  m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
+  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 0}
   _topic:
   _publishRateHz: 10
