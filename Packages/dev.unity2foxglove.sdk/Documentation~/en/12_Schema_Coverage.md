@@ -1,4 +1,4 @@
-# Official Schema Coverage
+# 12. Official Schema Coverage
 
 Unity2Foxglove includes the bundled official Foxglove protobuf schema snapshot generated under `Runtime/Schemas/Proto`.
 

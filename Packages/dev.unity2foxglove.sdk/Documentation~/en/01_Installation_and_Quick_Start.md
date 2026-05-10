@@ -205,6 +205,6 @@ Move or rotate the Cube in the Scene view using the Move Tool or Rotate Tool whi
 
 ## 1.8 Next Steps
 
-- Use [02_Foxglove_Desktop_Operation](02_Foxglove_Desktop_Operation.md) to set up panels and layouts.
-- Use [03_Verifying_Basic_Visualization](03_Verifying_Basic_Visualization.md) if you want a packaged minimal scene.
-- Use [10_Inspector_Reference](10_Inspector_Reference.md) when you need to tune component fields.
+- Use [03_Foxglove_Desktop_Operation](03_Foxglove_Desktop_Operation.md) to set up panels and layouts.
+- Use [04_Verifying_Basic_Visualization](04_Verifying_Basic_Visualization.md) if you want a packaged minimal scene.
+- Use [11_Inspector_Reference](11_Inspector_Reference.md) when you need to tune component fields.

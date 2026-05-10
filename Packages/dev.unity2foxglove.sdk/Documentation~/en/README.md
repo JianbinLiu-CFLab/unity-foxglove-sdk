@@ -15,25 +15,26 @@ You will follow the same path most users need: install the package, connect Foxg
 
 - [00_Prerequisites](00_Prerequisites.md): install Unity, Foxglove Desktop, and optional developer tools.
 - [01_Installation_and_Quick_Start](01_Installation_and_Quick_Start.md): install the package and see `/tf`, `/scene`, and `/unity/camera`.
-- [02_Foxglove_Desktop_Operation](02_Foxglove_Desktop_Operation.md): use Foxglove Desktop panels and layouts.
-- [03_Verifying_Basic_Visualization](03_Verifying_Basic_Visualization.md): import the minimal package sample.
+- [02_Samples_and_Demo_Project](02_Samples_and_Demo_Project.md): choose the right project or package sample before opening Unity.
+- [03_Foxglove_Desktop_Operation](03_Foxglove_Desktop_Operation.md): use Foxglove Desktop panels and layouts.
+- [04_Verifying_Basic_Visualization](04_Verifying_Basic_Visualization.md): import the minimal package sample.
 
 ## 2. Runtime Control
 
-- [04_Parameters_and_Services](04_Parameters_and_Services.md): edit `/cube/color`, edit `/cube/scale`, and call `/cube/reset_pose`.
-- [05_FoxRun_Zero_Code_Publishing](05_FoxRun_Zero_Code_Publishing.md): publish debug topics with `[FoxRun]` attributes.
-- [10_Inspector_Reference](10_Inspector_Reference.md): understand the main Unity component fields.
+- [05_Parameters_and_Services](05_Parameters_and_Services.md): edit `/cube/color`, edit `/cube/scale`, and call `/cube/reset_pose`.
+- [06_FoxRun_Zero_Code_Publishing](06_FoxRun_Zero_Code_Publishing.md): publish debug topics with `[FoxRun]` attributes.
+- [11_Inspector_Reference](11_Inspector_Reference.md): understand the main Unity component fields.
 
 ## 3. Recording, Replay, and Builds
 
-- [06_MCAP_Recording_and_Replay](06_MCAP_Recording_and_Replay.md): record Unity data, open MCAP in Foxglove, and replay in Unity.
-- [07_IL2CPP_Build_Guide](07_IL2CPP_Build_Guide.md): build and verify a standalone Player with `Scripts/build_unity_il2cpp.py`.
+- [07_MCAP_Recording_and_Replay](07_MCAP_Recording_and_Replay.md): record Unity data, open MCAP in Foxglove, and replay in Unity.
+- [08_IL2CPP_Build_Guide](08_IL2CPP_Build_Guide.md): build and verify a standalone Player with `Scripts/build_unity_il2cpp.py`.
 
 ## 4. Advanced Reading
 
-- [08_Architecture](08_Architecture.md): runtime, protocol, MCAP, and FoxRun internals for advanced users.
-- [09_Troubleshooting](09_Troubleshooting.md): symptom-based fixes.
-- [11_Schema_Coverage](11_Schema_Coverage.md): official protobuf schema coverage and typed publisher boundaries.
+- [09_Architecture](09_Architecture.md): runtime, protocol, MCAP, and FoxRun internals for advanced users.
+- [10_Troubleshooting](10_Troubleshooting.md): symptom-based fixes.
+- [12_Schema_Coverage](12_Schema_Coverage.md): official protobuf schema coverage and typed publisher boundaries.
 
 ## 5. Which Project Should I Open?
 

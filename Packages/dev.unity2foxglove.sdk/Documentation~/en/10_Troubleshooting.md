@@ -1,4 +1,4 @@
-# 9. Troubleshooting
+# 10. Troubleshooting
 
 ## Who should read this
 

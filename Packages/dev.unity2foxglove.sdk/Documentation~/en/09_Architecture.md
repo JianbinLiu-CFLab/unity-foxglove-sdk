@@ -1,4 +1,4 @@
-# 8. Architecture
+# 9. Architecture
 
 ## Who should read this
 
@@ -44,7 +44,7 @@ Parameters are stored in a runtime parameter store and served through Foxglove's
 
 Services are registered with descriptors and handled on the Unity main thread so handlers can safely touch Unity objects.
 
-For user steps, see [04_Parameters_and_Services](04_Parameters_and_Services.md).
+For user steps, see [05_Parameters_and_Services](05_Parameters_and_Services.md).
 
 ## 8.5 MCAP Recording and Replay
 
@@ -54,7 +54,7 @@ Replay loads an MCAP file, seeks by time, and forwards replay messages through t
 
 Replay is snapshot-based. It forwards recorded topic messages and can drive supported objects from transform/scene snapshots, but it does not reconstruct a deterministic physics or input simulation.
 
-For user steps, see [06_MCAP_Recording_and_Replay](06_MCAP_Recording_and_Replay.md).
+For user steps, see [07_MCAP_Recording_and_Replay](07_MCAP_Recording_and_Replay.md).
 
 ## 8.6 FoxRun Build Behavior
 
@@ -74,7 +74,7 @@ If a control frame still cannot fit after stale data is dropped, the slow client
 
 Unity2Foxglove uses JSON serialization and reflection-heavy dependencies. IL2CPP builds need preservation rules for Newtonsoft.Json and the SDK runtime assembly.
 
-The practical build checklist is in [07_IL2CPP_Build_Guide](07_IL2CPP_Build_Guide.md).
+The practical build checklist is in [08_IL2CPP_Build_Guide](08_IL2CPP_Build_Guide.md).
 
 ## 8.9 Extension Points
 

@@ -1,4 +1,4 @@
-# 5. FoxRun
+# 6. FoxRun
 
 ## Who should read this
 
@@ -91,5 +91,5 @@ You normally do not need to manage these files. The build preprocess step writes
 
 ## 5.7 Where to Learn More
 
-- Use [07_IL2CPP_Build_Guide](07_IL2CPP_Build_Guide.md) for build verification.
-- Use [08_Architecture](08_Architecture.md) for generator and fallback internals.
+- Use [08_IL2CPP_Build_Guide](08_IL2CPP_Build_Guide.md) for build verification.
+- Use [09_Architecture](09_Architecture.md) for generator and fallback internals.
