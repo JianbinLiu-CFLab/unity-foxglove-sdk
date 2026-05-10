@@ -1,50 +1,37 @@
-# 1. Unity2Foxglove SDK 中文文档
+# Unity2Foxglove 中文用户文档
 
-Unity2Foxglove SDK 是一个 Unity package，用于通过 Foxglove WebSocket 协议把 Unity 中的 Transform、场景实体、相机画面、调试字段、Parameters、Services 和 MCAP 数据发送到 Foxglove。
+这组文档面向 Unity2Foxglove SDK 用户，用于安装 package、连接 Foxglove、运行样例、录制/回放 MCAP，并理解常见配置。
 
-## 1.1 目的
+## 当前状态
 
-这套中文文档面向 SDK 用户，帮助你把 `dev.unity2foxglove.sdk` 接入自己的 Unity 项目，而不是只运行仓库里的 demo。
+中文文档正在按英文用户手册的新结构逐步同步。当前已完成：
 
-## 1.2 应用场景
+- [00_概览](00_概览.md)
+- [01_前置条件](01_前置条件.md)
+- [02_安装与快速上手](02_安装与快速上手.md)
 
-如果你只是想打开现成 demo project，请从 `Unity2Foxglove/README.md` 开始。如果你要在自己的 Unity 项目里使用 package，请按下面顺序阅读。
+后续页面会继续整理和重译。未完成的章节可先参考英文文档。
 
-## 1.3 阅读路线
+## 中文页面
 
-```mermaid
-flowchart TD
-  A["01 快速开始"]
-  B["02 Foxglove 操作"]
-  C["03 基础可视化"]
-  D["04 Parameters 与 Services"]
-  E["05 FoxRun 自动发布"]
-  F["06 MCAP 录制回放"]
-  G["07 IL2CPP 构建"]
-  H["09 常见问题排查"]
+- [00_概览](00_概览.md)：文档入口和阅读路径。
+- [01_前置条件](01_前置条件.md)：开始前需要安装的软件和工具。
+- [02_安装与快速上手](02_安装与快速上手.md)：安装 package，添加 `FoxgloveManager`，发布 `/tf`，连接 Foxglove。
+- [04_Foxglove操作指南](04_Foxglove操作指南.md)：Foxglove Desktop 基本操作。
+- [05_基础可视化](05_基础可视化.md)：基础可视化 sample。
+- [06_Parameters与Services](06_Parameters与Services.md)：参数和服务调用。
+- [07_FoxRun自动发布](07_FoxRun自动发布.md)：使用 `[FoxRun]` 自动发布调试字段。
+- [08_MCAP录制回放](08_MCAP录制回放.md)：MCAP 录制和回放。
+- [09_IL2CPP构建](09_IL2CPP构建.md)：IL2CPP 构建。
+- [10_架构说明](10_架构说明.md)：SDK 架构和数据流。
+- [11_常见问题排查](11_常见问题排查.md)：常见问题排查。
 
-  A --> B
-  B --> C
-  C --> D
-  C --> E
-  C --> F
-  E --> G
-  F --> G
-  G --> H
-```
+## 英文页面
 
-## 1.4 用户文档
+- [Samples and Demo Project](../en/03_Samples_and_Demo_Project.md)
+- [Inspector Reference](../en/12_Inspector_Reference.md)
+- [Schema Coverage](../en/13_Schema_Coverage.md)
 
-- [01_安装与快速上手.md](01_安装与快速上手.md)：安装 package、挂载 `FoxgloveManager`、连接 Foxglove。
-- [02_Foxglove操作指南.md](02_Foxglove操作指南.md)：Topics、3D、Camera、Plot、Parameters、Services 面板怎么用。
-- [03_基础可视化.md](03_基础可视化.md)：跑通 `/tf`、`/scene`、`/unity/camera`。
-- [04_Parameters与Services.md](04_Parameters与Services.md)：远程参数和服务调用。
-- [05_FoxRun自动发布.md](05_FoxRun自动发布.md)：用 `[FoxRun]` 自动发布调试字段。
-- [06_MCAP录制回放.md](06_MCAP录制回放.md)：录制、压缩、回放 MCAP 文件。
-- [07_IL2CPP构建.md](07_IL2CPP构建.md)：IL2CPP 构建、`link.xml`、source generation fallback。
-- [08_架构说明.md](08_架构说明.md)：SDK 架构和数据流。
-- [09_常见问题排查.md](09_常见问题排查.md)：连接、topic、schema、构建、MCAP 常见问题。
+## 维护者参考
 
-## 1.5 维护者参考
-
-- [10_ISG构建过程.md](10_ISG构建过程.md)：FoxRun ISG 和 IL2CPP fallback 的构建细节。
+- [14_ISG构建过程](14_ISG构建过程.md)

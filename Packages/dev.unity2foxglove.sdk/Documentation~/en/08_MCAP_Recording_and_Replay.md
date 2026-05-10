@@ -1,14 +1,12 @@
-# 7. MCAP Recording and Replay
+## 1. Purpose
 
-## Who should read this
+Use this page to save Unity/Foxglove data to `.mcap` files and replay recorded files inside Unity.
 
-Read this if you want to save Unity/Foxglove data to `.mcap` files or replay recorded files inside Unity.
-
-## What you will do
+## 2. Workflow
 
 You will enable recording, choose an output location, open the result in Foxglove, replay an MCAP file in Unity, and verify playback.
 
-## 6.1 Record from Unity
+## 3. Record from Unity
 
 1. Select the GameObject with **FoxgloveManager**.
 2. Enable **MCAP Recording > Enable Recording**.
@@ -26,7 +24,7 @@ The generated file name uses:
 
 `<prefix>_<yyyyMMdd_HHmmss>.mcap`
 
-## 6.2 What Gets Recorded
+## 4. Recorded Data
 
 Depending on which features are active, recording can include:
 
@@ -36,7 +34,7 @@ Depending on which features are active, recording can include:
 - Service completion or failure metadata
 - Client-published messages when client publish support is used
 
-## 6.3 Open MCAP in Foxglove
+## 5. Open MCAP in Foxglove
 
 1. Open Foxglove Desktop.
 2. Choose **Open local file**.
@@ -46,7 +44,7 @@ Depending on which features are active, recording can include:
 
 If the file opens but topics are missing, verify recording was enabled before Play Mode started and that publishers were active.
 
-## 6.4 Replay MCAP in Unity
+## 6. Replay MCAP in Unity
 
 1. Select the GameObject with **FoxgloveManager**.
 2. Enable **MCAP Replay > Enable Replay**.
@@ -57,7 +55,7 @@ If the file opens but topics are missing, verify recording was enabled before Pl
 
 Unity should replay recorded messages and update replay adapters or forwarded Foxglove topics.
 
-## 6.5 Verify Replay
+## 7. Verify Replay
 
 Use this checklist:
 
@@ -67,11 +65,11 @@ Use this checklist:
 - Recorded coordinate mode matches the active Unity coordinate mode, or Unity logs a clear warning.
 - Seeking or pausing works if playback control is enabled.
 
-## 6.6 Recording and Replay Should Not Run Together
+## 8. Recording and Replay Should Not Run Together
 
 Unity2Foxglove treats recording and replay as separate modes. If both are enabled on the same Manager, replay is disabled to avoid mixing live output and file playback.
 
-## 6.7 Common Mistakes
+## 9. Common Mistakes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|

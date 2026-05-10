@@ -1,16 +1,14 @@
-# 11. Inspector Reference
+## 1. Purpose
 
-## Who should read this
+Use this page as the field reference for configuring Unity2Foxglove components in the Unity Inspector.
 
-Read this when you are configuring Unity2Foxglove components in the Unity Inspector.
-
-## What you will do
+## 2. Workflow
 
 You will learn what the main Inspector fields do, when to change them, and which mistakes commonly break Foxglove visualization.
 
-## 10.1 FoxgloveManager
+## 3. FoxgloveManager
 
-### 10.1.1 General
+### 3.1 General
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -20,13 +18,13 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Start On Enable | Enabled | Starts the server when the component is enabled. | Disable if another script controls lifecycle. | Disabling it and never calling `StartServer()`. |
 | Run In Background | Enabled | Keeps Unity running when focus changes. | Usually keep enabled for Foxglove tests. | Disabling it and wondering why updates pause. |
 
-### 10.1.2 Coordinate System
+### 3.2 Coordinate System
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
 | Coordinate Mode | `LeftHand` | Publishes Unity-native coordinates or converts to right-handed coordinates. | Use `RightHand` when integrating with ROS/Foxglove coordinate expectations. | Mixing modes between live publish, recording, and replay. |
 
-### 10.1.3 Assets and Playback
+### 3.3 Assets and Playback
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -35,7 +33,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Playback Start Offset Seconds | `0` | Start time offset for playback control. | Tune when simulating a time range. | Using negative or confusing offsets without checking timeline. |
 | Playback Duration Seconds | `60` | Playback control time window. | Increase for longer manual replay sessions. | Too short a range makes seeking confusing. |
 
-### 10.1.4 MCAP Recording
+### 3.4 MCAP Recording
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -45,7 +43,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Recording Chunk Size KB | `1024` | MCAP chunk size target. | Increase for large continuous recordings. | Very small chunks can make files inefficient. |
 | Recording Compression | `None` | Compression mode: `None`, `Lz4`, or `Zstd`. | Use `Lz4` or `Zstd` for larger recordings. | Forgetting compression DLLs when packaging. |
 
-### 10.1.5 MCAP Replay
+### 3.5 MCAP Replay
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -54,7 +52,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Replay Auto Play | Disabled | Starts replay automatically. | Enable for quick acceptance tests. | Expecting replay to advance while paused. |
 | Disable Live Publishers | Enabled | Disables live publishers during replay. | Keep enabled for clean replay verification. | Disabling it and mixing live and replayed messages. |
 
-## 10.2 FoxglovePublisherBase Fields
+## 4. FoxglovePublisherBase Fields
 
 These fields appear on publisher components derived from `FoxglovePublisherBase`.
 
@@ -66,7 +64,7 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 | Publish On Enable | Enabled | Starts publishing when the component is enabled. | Disable when another script controls publishing. | Disabling it and expecting automatic output. |
 | Warn If Manager Missing | Enabled | Logs a warning if no manager is found. | Disable only for intentionally inactive prefabs. | Hiding useful setup warnings. |
 
-## 10.3 FoxgloveTransformPublisher
+## 5. FoxgloveTransformPublisher
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -75,7 +73,7 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 | Topic | `/tf` | Transform topic. | Rarely change unless separating transform streams. | Using a non-`/tf` topic and forgetting to update Foxglove panels. |
 | Publish Rate Hz | `10` | Transform publish rate. | Increase for smoother motion; lower to reduce traffic. | Too high rates for many objects. |
 
-## 10.4 FoxgloveSceneCubePublisher
+## 6. FoxgloveSceneCubePublisher
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -85,7 +83,7 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 | Color | Green | Cube RGBA color. | Change for visual grouping. | Forgetting alpha if the color appears invisible. |
 | Topic | `/scene` | Scene update topic. | Change only when separating scene streams. | Changing topic without updating Foxglove 3D settings. |
 
-## 10.5 FoxgloveCameraPublisher
+## 7. FoxgloveCameraPublisher
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -97,7 +95,7 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 | Topic | `/unity/camera` | Image topic. | Change when publishing multiple cameras. | Two cameras publishing to the same topic unintentionally. |
 | Publish Rate Hz | `10` | Image publish rate. | Lower for slow networks; raise carefully. | High rate plus high resolution can overload the Player. |
 
-## 10.6 FoxgloveReplayObjectAdapter
+## 8. FoxgloveReplayObjectAdapter
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -108,7 +106,7 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 | Drive TF | Enabled | Applies replayed `/tf` transforms. | Disable if another system drives transforms. | Live scripts fighting replay updates. |
 | Drive Scene | Enabled | Applies replayed scene primitives. | Disable for TF-only replay. | Expecting scene primitives to move when disabled. |
 
-## 10.7 Demo-Only Scripts
+## 9. Demo-Only Scripts
 
 `FoxgloveDemoSetup` and `MouseDragCube` are demo/sample scripts. They are documented in the Full Demo sample and `Unity2Foxglove` demo documentation rather than treated as SDK core API.
 
