@@ -185,6 +185,13 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Whether individual publishers can override the global encoding.</summary>
         public bool AllowPublisherOverride => _allowPublisherOverride;
 
+        /// <summary>
+        /// True when replay is active and live publisher output should be
+        /// suppressed to avoid duplicate topic advertisements.
+        /// </summary>
+        public bool SuppressLivePublishersForReplay =>
+            _disableLivePublishers && (_runtime?.ReplayEnabled ?? false);
+
         private void Awake()
         {
             if (_runInBackground)
@@ -237,12 +244,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnDisable()
         {
-            StopServer();
+            StopServer(restoreLivePublishers: false);
         }
 
         private void OnDestroy()
         {
-            StopServer();
+            StopServer(restoreLivePublishers: false);
             _runtime?.Dispose();
             _runtime = null;
         }
@@ -325,7 +332,9 @@ namespace Unity.FoxgloveSDK.Components
         private void SetupRecording()
         {
             if (!_enableRecording) return;
-            var dir = string.IsNullOrEmpty(_recordingDirectory) ? Application.dataPath + "/../Recordings" : _recordingDirectory;
+            var dir = string.IsNullOrEmpty(_recordingDirectory)
+                ? System.IO.Path.Combine(ProjectRoot, "Recordings")
+                : ResolveProjectPath(_recordingDirectory);
             System.IO.Directory.CreateDirectory(dir);
             var path = System.IO.Path.Combine(dir, $"{_recordingPrefix}_{System.DateTime.Now:yyyyMMdd_HHmmss}.mcap");
             var comp = _recordingCompression switch
@@ -350,7 +359,25 @@ namespace Unity.FoxgloveSDK.Components
                 DisableLivePublishers();
             var coord = _coordinateMode == CoordinateMode.RightHand ? "RightHand" : "LeftHand";
             _runtime.SetRecordingCoordinateMode(coord);
-            _runtime.EnableReplay(_replayFilePath);
+            _runtime.EnableReplay(ResolveProjectPath(_replayFilePath));
+            if (!_runtime.ReplayEnabled)
+            {
+                RestoreLivePublishers();
+                return;
+            }
+            if (_replayAutoPlay)
+                _runtime.ReplayPlay();
+            else
+                _runtime.ReplayPause();
+        }
+
+        private static string ProjectRoot => System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, ".."));
+
+        private static string ResolveProjectPath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || System.IO.Path.IsPathRooted(path))
+                return path;
+            return System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectRoot, path));
         }
 
         /// <summary>Sync Inspector-configured browser origin allowlist to the transport before starting.</summary>
@@ -368,7 +395,9 @@ namespace Unity.FoxgloveSDK.Components
         /// Stop the WebSocket server and clean up transport subscriptions.
         /// Channel cache is cleared and live publishers are restored.
         /// </summary>
-        public void StopServer()
+        public void StopServer() => StopServer(restoreLivePublishers: true);
+
+        private void StopServer(bool restoreLivePublishers)
         {
             if (!IsRunning) return;
 
@@ -396,7 +425,8 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.Stop();
             _channelCache.Clear();
             _nextChannelId = 1;
-            RestoreLivePublishers();
+            if (restoreLivePublishers)
+                RestoreLivePublishers();
         }
 
         /// <summary>

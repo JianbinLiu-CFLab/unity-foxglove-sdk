@@ -10,6 +10,7 @@ using System.IO;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestClientPublishDoesNotCreateMixedTopicSchemas();
             TestCoordinateRoundtrip();
             TestReplayHandlerNoAccumulate();
+            TestRuntimeReplayPlayAdvancesPlaybackClock();
             Console.WriteLine($"Phase 13: {_passCount} checks passed.");
         }
 
@@ -389,6 +391,34 @@ namespace Unity.FoxgloveSDK.Tests
 
             Assert(count == 1, "HandlerNoAccum: trigger fires once after 3 Stop/Start cycles (expected=1, actual=" + count + ")");
             rt.Dispose();
+        }
+
+        /// <summary>
+        /// Runtime-level ReplayPlay must start the playback clock as well
+        /// as the replay engine. Otherwise auto-play replay remains frozen
+        /// at the first MCAP timestamp and cannot drive scene adapters.
+        /// </summary>
+        static void TestRuntimeReplayPlayAdvancesPlaybackClock()
+        {
+            var tmp = CreateTempMcap(2, 1_000_000UL);
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), new SystemClock(), new DefaultSchemaRegistry());
+            int count = 0;
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.OnReplayMessage += (topic, payload) => count++;
+                rt.Start("replay-clock-test", "127.0.0.1", 9878);
+                rt.ReplayPlay();
+                System.Threading.Thread.Sleep(20);
+                rt.Tick();
+
+                Assert(count == 2, "Runtime ReplayPlay advances playback clock and emits both messages (expected=2, actual=" + count + ")");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
         }
     }
 

@@ -18,22 +18,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check package.json is valid JSON
-        run: python3 -c "import json; json.load(open('Packages/dev.unity2foxglove.sdk/package.json'))"
-
-      - name: Check Runtime asmdef exists
-        run: test -f Packages/dev.unity2foxglove.sdk/Runtime/Unity.FoxgloveSDK.asmdef
-
-      - name: Check Documentation~/README.md exists
-        run: test -f "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
-
-      - name: Check Samples~/BasicVisualization/README.md exists
-        run: test -f "Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/README.md"
-
-      - name: Check no bin/obj in package
-        run: |
-          bad=$(find Packages/dev.unity2foxglove.sdk -type d \( -name bin -o -name obj \) 2>/dev/null)
-          if [ -n "$bad" ]; then echo "bin/obj found in package:"; echo "$bad"; exit 1; fi
-
-      - name: Check LICENSE exists
-        run: test -f Packages/dev.unity2foxglove.sdk/LICENSE
+      - name: Validate release package
+        run: python3 Scripts/validate_release_package.py
