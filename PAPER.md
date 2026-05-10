@@ -82,11 +82,10 @@ Unity2Foxglove should be evaluated against these systems as a Unity-focused brid
 
 ## Citation Note
 
-Software citation metadata is provided in [`CITATION.cff`](CITATION.cff). The initial evidence release is intended to use a tag such as `paper-evidence-2026-05-10`. A DOI should be added after archiving the GitHub release through Zenodo or another software archive.
+Software citation metadata is provided in [`CITATION.cff`](CITATION.cff). The archived evidence release DOI is [`10.5281/zenodo.20112834`](https://doi.org/10.5281/zenodo.20112834), corresponding to the `paper-evidence-2026-05-10` release.
 
 Recommended evidence workflow:
 
 1. Create a GitHub release from the evidence tag.
 2. Archive that release through Zenodo.
-3. Add the Zenodo DOI to [`CITATION.cff`](CITATION.cff), this file, and optionally the README badge area.
-4. Use the DOI-backed release as the reference implementation for technical reports or future paper submissions.
+3. Use the DOI-backed release as the reference implementation for technical reports or future paper submissions.
