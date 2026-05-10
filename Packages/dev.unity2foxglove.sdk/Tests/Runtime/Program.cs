@@ -36,6 +36,28 @@ class Program
             return RunServer(port, demo, demo3d);
         }
 
+        var phase44McapIdx = argList.IndexOf("--phase44-all-schemas-mcap");
+        if (phase44McapIdx >= 0)
+        {
+            if (phase44McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase44-all-schemas-mcap requires an output path.");
+                return 1;
+            }
+
+            try
+            {
+                Phase44Validation.GenerateAllSchemasMcap(argList[phase44McapIdx + 1]);
+                Console.WriteLine($"Phase 44 all-schema smoke MCAP written: {argList[phase44McapIdx + 1]}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to generate Phase 44 all-schema smoke MCAP: {ex.Message}");
+                return 1;
+            }
+        }
+
         return RunTests();
     }
 
@@ -102,6 +124,8 @@ class Program
             Phase40Validation.Validate();
             Console.WriteLine();
             Phase41Validation.Validate();
+            Console.WriteLine();
+            Phase44Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

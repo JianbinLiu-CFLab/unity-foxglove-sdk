@@ -33,6 +33,7 @@ You will follow the same path most users need: install the package, connect Foxg
 
 - [08_Architecture](08_Architecture.md): runtime, protocol, MCAP, and FoxRun internals for advanced users.
 - [09_Troubleshooting](09_Troubleshooting.md): symptom-based fixes.
+- [11_Schema_Coverage](11_Schema_Coverage.md): official protobuf schema coverage and typed publisher boundaries.
 
 ## 5. Which Project Should I Open?
 
