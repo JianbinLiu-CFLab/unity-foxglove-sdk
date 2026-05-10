@@ -300,9 +300,17 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Seek replay to the given nanosecond timestamp.</summary>
         public void ReplaySeek(ulong timeNs) => _replay.Seek(timeNs);
         /// <summary>Start or resume replay playback.</summary>
-        public void ReplayPlay() => _replay.Play();
+        public void ReplayPlay()
+        {
+            _playbackClock.Play();
+            _replay.Play();
+        }
         /// <summary>Pause replay playback.</summary>
-        public void ReplayPause() => _replay.Pause();
+        public void ReplayPause()
+        {
+            _playbackClock.Pause();
+            _replay.Pause();
+        }
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();

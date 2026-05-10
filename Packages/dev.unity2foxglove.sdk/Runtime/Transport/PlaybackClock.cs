@@ -111,11 +111,10 @@ namespace Unity.FoxgloveSDK.Transport
             switch (command)
             {
                 case 0: // Play
-                    _playbackStatus = PlaybackStatus.Playing;
-                    _lastTickWallTime = DateTime.UtcNow;
+                    Play();
                     break;
                 case 1: // Pause
-                    _playbackStatus = PlaybackStatus.Paused;
+                    Pause();
                     break;
             }
 
@@ -126,6 +125,21 @@ namespace Unity.FoxgloveSDK.Transport
                 if (_playbackStatus != PlaybackStatus.Playing)
                     _playbackStatus = PlaybackStatus.Paused;
             }
+        }
+
+        /// <summary>Start or resume playback without changing the current speed.</summary>
+        public void Play()
+        {
+            if (!_enabled) return;
+            _playbackStatus = PlaybackStatus.Playing;
+            _lastTickWallTime = DateTime.UtcNow;
+        }
+
+        /// <summary>Pause playback without changing the current speed or time.</summary>
+        public void Pause()
+        {
+            if (!_enabled) return;
+            _playbackStatus = PlaybackStatus.Paused;
         }
 
         /// <summary>Capture the current playback state as a serializable snapshot for protocol response.</summary>

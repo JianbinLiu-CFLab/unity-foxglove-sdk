@@ -196,6 +196,16 @@ def relative_to_root(path: Path, root: Path) -> str:
         return str(path)
 
 
+def resolve_unity_for_command(args: argparse.Namespace, project_path: Path) -> str:
+    """Resolve Unity, allowing an explicit dry-run placeholder for CI path checks."""
+    try:
+        return str(find_unity(args.unity, project_path))
+    except FileNotFoundError as exc:
+        if args.dry_run and args.allow_missing_unity:
+            return f"<Unity not found: {exc}>"
+        raise
+
+
 def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path]:
     """Build the full Unity batchmode command line from parsed arguments."""
     root = repo_root()
@@ -203,13 +213,13 @@ def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path
     build_dir = (root / args.build_dir).resolve() if args.build_dir else default_build_dir(root, args.target)
     log_path = (root / args.log).resolve() if args.log else build_dir / "build.log"
     output_path = (root / args.output).resolve() if args.output else default_output_path(build_dir, args.target)
-    unity = find_unity(args.unity, project_path)
+    unity = resolve_unity_for_command(args, project_path)
 
     if not project_path.exists():
         raise FileNotFoundError(f"Unity project was not found: {project_path}")
 
     cmd = [
-        str(unity),
+        unity,
         "-batchmode",
         "-quit",
         "-projectPath",
@@ -354,6 +364,11 @@ def parse_args() -> argparse.Namespace:
         help="Print the resolved project, target, and log path without starting Unity.",
     )
     parser.add_argument(
+        "--allow-missing-unity",
+        action="store_true",
+        help="Allow dry-run path validation when Unity is not installed. Valid only with --dry-run.",
+    )
+    parser.add_argument(
         "--progress-interval",
         type=int,
         default=15,
@@ -366,6 +381,13 @@ def main() -> int:
     """Main entry: parse args, build command, run Unity, report result."""
     args = parse_args()
     root = repo_root()
+
+    if args.allow_missing_unity and not args.dry_run:
+        print(
+            "[build_unity_il2cpp] --allow-missing-unity is only valid with --dry-run.",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         cmd, project_path, log_path, output_path = build_command(args)

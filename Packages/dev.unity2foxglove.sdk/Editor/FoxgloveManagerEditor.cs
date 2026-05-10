@@ -268,6 +268,8 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal static void DrawPathBrowse(SerializedProperty prop, string title, string extension, bool isFile, string defaultDir)
         {
+            NormalizeProjectRelativePath(prop);
+
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PropertyField(prop);
             if (GUILayout.Button("...", GUILayout.Width(30)))
@@ -342,6 +344,20 @@ namespace Unity.FoxgloveSDK.Editor
             if (normAbs.StartsWith(normRoot + "/"))
                 return normAbs.Substring(normRoot.Length + 1);
             return normAbs;
+        }
+
+        private static void NormalizeProjectRelativePath(SerializedProperty prop)
+        {
+            if (prop == null || prop.propertyType != SerializedPropertyType.String)
+                return;
+
+            var value = prop.stringValue;
+            if (string.IsNullOrEmpty(value) || !Path.IsPathRooted(value))
+                return;
+
+            var relative = MakeRelative(value);
+            if (relative != value)
+                prop.stringValue = relative;
         }
     }
 

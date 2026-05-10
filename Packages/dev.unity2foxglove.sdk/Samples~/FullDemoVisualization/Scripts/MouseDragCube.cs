@@ -22,6 +22,7 @@ public class MouseDragCube : MonoBehaviour
     [SerializeField] private FoxgloveDemoSetup _demo;
 
     private Vector2 _lastMouse;
+    private bool _isDragging;
 
     /// <summary>
     /// Finds the <c>FoxgloveDemoSetup</c> if not assigned.
@@ -46,16 +47,38 @@ public class MouseDragCube : MonoBehaviour
         if (mouse == null) return;
 
         var pos = mouse.position.ReadValue();
-        var delta = pos - _lastMouse;
-        _lastMouse = pos;
+        var leftPressed = mouse.leftButton.isPressed;
+        var rightPressed = mouse.rightButton.isPressed;
+        var dragging = leftPressed || rightPressed;
 
-        if (mouse.leftButton.isPressed)
+        if (!dragging)
+        {
+            _isDragging = false;
+            _lastMouse = pos;
+        }
+
+        var delta = Vector2.zero;
+        if (dragging)
+        {
+            if (!_isDragging)
+            {
+                _isDragging = true;
+                _lastMouse = pos;
+            }
+            else
+            {
+                delta = pos - _lastMouse;
+                _lastMouse = pos;
+            }
+        }
+
+        if (leftPressed)
         {
             transform.Rotate(cam.transform.up, -delta.x * _rotateSpeed * 0.1f, Space.World);
             transform.Rotate(cam.transform.right, delta.y * _rotateSpeed * 0.1f, Space.World);
         }
 
-        if (mouse.rightButton.isPressed)
+        if (rightPressed)
         {
             var right = cam.transform.right * delta.x * _panSpeed;
             var up = cam.transform.up * delta.y * _panSpeed;

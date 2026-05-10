@@ -142,6 +142,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (_mgr == null) return;
             }
             if (!_mgr.IsRunning) return;
+            if (_mgr.SuppressLivePublishersForReplay) return;
 
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f)
