@@ -378,6 +378,7 @@ MonoBehaviour:
   _replayFilePath:
   _replayAutoPlay: 0
   _disableLivePublishers: 0
+  _allowedBrowserOrigins: []
 --- !u!4 &1274802475
 Transform:
   m_ObjectHideFlags: 0

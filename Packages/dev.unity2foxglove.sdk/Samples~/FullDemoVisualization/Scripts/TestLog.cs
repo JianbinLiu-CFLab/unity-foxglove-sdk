@@ -13,15 +13,31 @@ using Unity.FoxgloveSDK.Components;
 /// </summary>
 public partial class TestLog : MonoBehaviour
 {
+    private Transform _trackedCube;
+
     [FoxRun("/debug/position")]
     private Vector3 _pos;
 
     [FoxRun("/debug/health", RateHz = 5)]
     private float _health = 100f;
 
+    [FoxRun("/debug/position2", RateHz = 10, PublishMode = FoxRunPublishMode.OnChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
+    public Vector3 position;
+
+    void Awake()
+    {
+        var cube = GameObject.Find("Cube");
+        _trackedCube = cube != null ? cube.transform : transform;
+    }
+
     /// <summary>
     /// Each frame, updates <c>_pos</c> from the Transform so the
     /// Foxglove publisher sees the latest position.
     /// </summary>
-    void Update() { _pos = transform.position; }
+    void Update()
+    {
+        var trackedPosition = _trackedCube != null ? _trackedCube.position : transform.position;
+        _pos = trackedPosition;
+        position = trackedPosition;
+    }
 }

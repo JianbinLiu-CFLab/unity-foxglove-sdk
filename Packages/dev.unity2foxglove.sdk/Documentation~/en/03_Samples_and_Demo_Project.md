@@ -18,7 +18,7 @@ Use **Basic Visualization** for the smallest first check. Use **Full Demo Visual
 | -------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | First connection smoke test                  | Basic Visualization       | Smallest scene; verifies `/tf`, `/scene`, `/unity/camera`, and the simple Foxglove layout.                         |
 | Full feature tour                            | Full Demo Visualization   | Includes publishers, Parameters, Services, FoxRun, camera streaming, MCAP workflows, and the full Foxglove layout. |
-| Repository development or release validation | `Unity2Foxglove/` project | Uses the same project structure as maintainer acceptance and build scripts.                                        |
+| SDK development, acceptance, or IL2CPP validation | `Unity2Foxglove/` project | Uses the same project structure as maintainer acceptance and build scripts.                                        |
 
 Start with **Basic Visualization** if you only want to know whether the package works. Use **Full Demo Visualization** when you want to explore the full workflow.
 
@@ -73,7 +73,7 @@ Full Demo Visualization is the larger importable sample. It mirrors the main use
 - transform, scene, camera, and log publishers
 - Parameter examples for `/cube/color` and `/cube/scale`
 - Service example for `/cube/reset_pose`
-- FoxRun debug topics such as `/debug/position` and `/debug/health`
+- FoxRun debug topics such as `/debug/position`, `/debug/position2`, and `/debug/health`
 - MCAP recording and replay configuration
 - Input System and URP sample assets
 
@@ -99,7 +99,7 @@ Full Demo Visualization is the larger importable sample. It mirrors the main use
 ### 4.4 Expected Result
 
 - `/tf`, `/scene`, and `/unity/camera` stream live.
-- `/debug/position` and `/debug/health` show FoxRun output.
+- `/debug/position`, `/debug/position2`, and `/debug/health` show FoxRun output.
 - `/cube/color` and `/cube/scale` appear in the Parameters panel.
 - `/cube/reset_pose` can be called from the Service Call panel.
 - The cube can be moved or reset while Foxglove updates.

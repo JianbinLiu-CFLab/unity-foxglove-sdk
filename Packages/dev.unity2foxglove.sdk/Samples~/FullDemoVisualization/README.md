@@ -65,7 +65,7 @@ Assets/Samples/Unity2Foxglove SDK/<version>/Full Demo Visualization/
 | Foxglove | `FoxgloveManager`, `FoxgloveDemoSetup` | Starts the server, registers parameters/services, and owns recording/replay settings |
 | Cube | `FoxgloveTransformPublisher`, `FoxgloveSceneCubePublisher`, `MouseDragCube` | Publishes transform/scene data and supports mouse-driven interaction |
 | Main Camera | `FoxgloveCameraPublisher` | Streams `/unity/camera` |
-| TestLog | `TestLog` with `[FoxRun]` fields | Publishes `/debug/position` and `/debug/health` |
+| TestLog | `TestLog` with `[FoxRun]` fields | Publishes `/debug/position`, `/debug/position2`, and `/debug/health` |
 
 ## Run Steps
 
@@ -95,7 +95,7 @@ Foxglove should show:
 
 | Area | Expected result |
 |------|-----------------|
-| Topics | `/tf`, `/scene`, `/unity/camera`, `/debug/position`, `/debug/health` |
+| Topics | `/tf`, `/scene`, `/unity/camera`, `/debug/position`, `/debug/position2`, `/debug/health` |
 | 3D | The cube and transform frame update live |
 | Image | The Unity camera stream appears on `/unity/camera` |
 | Plot | `/tf.translation.*` values update as the cube moves |
