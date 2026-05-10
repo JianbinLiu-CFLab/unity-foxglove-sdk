@@ -11,6 +11,12 @@
 
 A cross-platform Unity SDK for real-time runtime data streaming, MCAP recording and replay, and in-editor debugging. It runs inside Unity, speaks the Foxglove WebSocket protocol directly, and can work with [Foxglove](https://foxglove.dev), MCAP files, or custom clients.
 
+## Citation / Research Positioning
+
+Unity2Foxglove introduces an AOT-safe dual-host source generation architecture with a shared emitter for zero-reflection telemetry publishing in Unity Editor and IL2CPP Player builds.
+
+If you use this project in research, cite the software using [`CITATION.cff`](CITATION.cff) and see [`PAPER.md`](PAPER.md) for the research positioning, contribution boundaries, and evidence checklist. The `[FoxRun]` code-generation architecture is described in [`docs/research-shared-emitter-architecture.md`](docs/research-shared-emitter-architecture.md). A Zenodo DOI will be added after the evidence release is archived.
+
 ![Unity live streaming to Foxglove](Pictures/Foxglove_Real_Streaming.gif)
 
 ## 1.1 Purpose
@@ -186,7 +192,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - Real-time data streaming (transform, scene entities, camera images)
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
-- MCAP replay (transform snapshot reconstruction, not deterministic replay)
+- MCAP replay for transform snapshot reconstruction
 - Parameters (get, set, subscribe), Services (call/response), Connection Graph, Client Publish, Playback Control
 - Asset fetching (fetchAsset) with configurable asset roots
 - FoxRun attribute-based zero-code publishing via generated code: Roslyn source generation in Editor and physical `.g.cs` fallback generation for IL2CPP Player builds, not runtime reflection
@@ -194,10 +200,10 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 ### Not Supported
 
-- **WebGL** — the WebSocket server requires `System.Net.Sockets`, which is unavailable on WebGL
-- **Authentication / TLS** — no token, password, or certificate-based auth
-- **Multi-language SDK parity** — this is a Unity bridge, not a full foxglove-sdk replacement
-- **Deterministic replay** — MCAP replay is transform snapshot playback; non-deterministic components (physics, random, live input) are not replayed
+- **WebGL** - the WebSocket server requires `System.Net.Sockets`, which is unavailable on WebGL
+- **Authentication / TLS** - no token, password, or certificate-based auth
+- **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
+- **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
 
 ### Security
 

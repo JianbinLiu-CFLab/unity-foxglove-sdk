@@ -4,6 +4,10 @@ Working title:
 
 **Unity2Foxglove: A Unity-Native Real-Time Telemetry and MCAP Replay Pipeline for Robotics Visualization**
 
+## Reference Contribution Statement
+
+Unity2Foxglove introduces an AOT-safe dual-host source generation architecture with a shared emitter for zero-reflection telemetry publishing in Unity Editor and IL2CPP Player builds.
+
 ## Abstract
 
 Unity is widely used for robotics simulation, digital twins, and human-in-the-loop visualization, but moving runtime state from Unity into robotics visualization tools often depends on external bridge processes, manual publisher code, or reflection-heavy runtime inspection. These approaches can be fragile under Unity player builds and IL2CPP ahead-of-time compilation.
@@ -43,6 +47,10 @@ Unity can act as a reliable robotics telemetry source when the bridge is built a
 
    Runtime tests, performance baselines, manual smoke tests, and release closeout notes are treated as part of the project artifact rather than as separate informal validation.
 
+## Technical Note
+
+The source-generation mechanism behind `[FoxRun]` is described in more detail in [`docs/research-shared-emitter-architecture.md`](docs/research-shared-emitter-architecture.md). That note frames the implementation as a shared-emitter, dual-host AOT code-generation architecture: Roslyn and build-time physical file generation are separate hosts, while `FoxgloveSourceEmitter` remains the single source of generation semantics.
+
 ## Novelty Boundary
 
 Unity2Foxglove does not claim to invent Foxglove, MCAP, WebSocket transport, protobuf schemas, or source generators. Its contribution is the integration and validation of these ideas inside Unity's runtime and IL2CPP constraints, with a declarative telemetry mechanism designed for Unity developers.
@@ -74,4 +82,11 @@ Unity2Foxglove should be evaluated against these systems as a Unity-focused brid
 
 ## Citation Note
 
-Software citation metadata is provided in [`CITATION.cff`](CITATION.cff). The initial evidence release is intended to use a tag such as `paper-evidence-2026-05-09`. A DOI can be added after archiving the GitHub release through Zenodo or another software archive.
+Software citation metadata is provided in [`CITATION.cff`](CITATION.cff). The initial evidence release is intended to use a tag such as `paper-evidence-2026-05-10`. A DOI should be added after archiving the GitHub release through Zenodo or another software archive.
+
+Recommended evidence workflow:
+
+1. Create a GitHub release from the evidence tag.
+2. Archive that release through Zenodo.
+3. Add the Zenodo DOI to [`CITATION.cff`](CITATION.cff), this file, and optionally the README badge area.
+4. Use the DOI-backed release as the reference implementation for technical reports or future paper submissions.
