@@ -49,7 +49,7 @@ namespace Foxglove.Schemas
         private static readonly FoxgloveProtoSchemaCatalogEntry[] EntriesArray =
         {
             Entry("foxglove.ArrowPrimitive", typeof(Foxglove.ArrowPrimitive), "visualization", false, "Scene primitive."),
-            Entry("foxglove.CameraCalibration", typeof(Foxglove.CameraCalibration), "image", false, "Camera intrinsic and distortion calibration."),
+            Entry("foxglove.CameraCalibration", typeof(Foxglove.CameraCalibration), "image", true, "Dedicated camera calibration publisher supports JSON and protobuf."),
             Entry("foxglove.CircleAnnotation", typeof(Foxglove.CircleAnnotation), "annotation", false, "Image annotation primitive."),
             Entry("foxglove.Color", typeof(Foxglove.Color), "geometry", false, "Shared RGBA color primitive."),
             Entry("foxglove.CompressedImage", typeof(Foxglove.CompressedImage), "image", true, "Dedicated camera publisher supports JSON and protobuf."),
@@ -65,7 +65,7 @@ namespace Foxglove.Schemas
             Entry("foxglove.JointState", typeof(Foxglove.JointState), "robot state", false, "Single joint state."),
             Entry("foxglove.JointStates", typeof(Foxglove.JointStates), "robot state", false, "Batch joint state message."),
             Entry("foxglove.KeyValuePair", typeof(Foxglove.KeyValuePair), "metadata", false, "Shared metadata key/value primitive."),
-            Entry("foxglove.LaserScan", typeof(Foxglove.LaserScan), "range", false, "Laser scan payload."),
+            Entry("foxglove.LaserScan", typeof(Foxglove.LaserScan), "range", true, "Dedicated laser scan publisher supports JSON and protobuf."),
             Entry("foxglove.LinePrimitive", typeof(Foxglove.LinePrimitive), "visualization", false, "Scene primitive."),
             Entry("foxglove.LocationFix", typeof(Foxglove.LocationFix), "location", false, "Single geospatial fix."),
             Entry("foxglove.LocationFixes", typeof(Foxglove.LocationFixes), "location", false, "Batch geospatial fix message."),
@@ -76,7 +76,7 @@ namespace Foxglove.Schemas
             Entry("foxglove.Point2", typeof(Foxglove.Point2), "geometry", false, "2D point primitive."),
             Entry("foxglove.Point3", typeof(Foxglove.Point3), "geometry", false, "3D point primitive."),
             Entry("foxglove.Point3InFrame", typeof(Foxglove.Point3InFrame), "geometry", false, "3D point with frame and timestamp."),
-            Entry("foxglove.PointCloud", typeof(Foxglove.PointCloud), "point cloud", false, "Uncompressed point cloud payload."),
+            Entry("foxglove.PointCloud", typeof(Foxglove.PointCloud), "point cloud", true, "Dedicated Ouster-ready point cloud publisher supports JSON and protobuf."),
             Entry("foxglove.PointsAnnotation", typeof(Foxglove.PointsAnnotation), "annotation", false, "Image annotation primitive."),
             Entry("foxglove.Pose", typeof(Foxglove.Pose), "geometry", false, "Position and orientation primitive."),
             Entry("foxglove.PoseInFrame", typeof(Foxglove.PoseInFrame), "geometry", false, "Pose with frame and timestamp."),
