@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -102,7 +103,8 @@ namespace Unity.FoxgloveSDK.Core
                 _transport.SendText(subId, json);
             if (_graphDirty)
             {
-                _recorder?.WriteMetadata("foxglove.connection_graph", json);
+                var recorder = Volatile.Read(ref _recorder);
+                recorder?.WriteMetadata("foxglove.connection_graph", json);
                 _graphDirty = false;
             }
         }
@@ -169,7 +171,8 @@ namespace Unity.FoxgloveSDK.Core
                         return;
                 }
                 OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
-                _recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
+                var recorder = Volatile.Read(ref _recorder);
+                recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
                     ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
             }
         }
@@ -183,16 +186,17 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private bool HandlePlaybackControlRequest(uint clientId, byte[] data)
         {
-            if (_runtime?.PlaybackEnabled != true) return false;
+            var runtime = Volatile.Read(ref _runtime);
+            if (runtime?.PlaybackEnabled != true) return false;
             if (!BinaryEncoding.TryDecodePlaybackControlRequest(data, out var playbackCommand, out var playbackSpeed,
                     out var playbackHasSeek, out var playbackSeekNs, out var playbackRequestId))
                 return false;
 
-            _runtime.ApplyPlaybackCommand(playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs);
-            if (playbackHasSeek) _runtime.ReplaySeek(playbackSeekNs);
-            if (playbackCommand == 0) _runtime.ReplayPlay();
-            else if (playbackCommand == 1) _runtime.ReplayPause();
-            var state = _runtime.GetPlaybackState(true, playbackRequestId);
+            runtime.ApplyPlaybackCommand(playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs);
+            if (playbackHasSeek) runtime.ReplaySeek(playbackSeekNs);
+            if (playbackCommand == 0) runtime.ReplayPlay();
+            else if (playbackCommand == 1) runtime.ReplayPause();
+            var state = runtime.GetPlaybackState(true, playbackRequestId);
             var playbackFrame = BinaryEncoding.EncodePlaybackState(
                 state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
             _transport.SendBinary(clientId, playbackFrame);
@@ -215,12 +219,13 @@ namespace Unity.FoxgloveSDK.Core
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(0, "Malformed JSON"));
                 return;
             }
-            if (_runtime?.Assets == null || !_runtime.Assets.HasRoots)
+            var runtime = Volatile.Read(ref _runtime);
+            if (runtime?.Assets == null || !runtime.Assets.HasRoots)
             {
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, "No asset roots registered"));
                 return;
             }
-            if (_runtime.Assets.TryRead(msg.Uri, out var data, out var error))
+            if (runtime.Assets.TryRead(msg.Uri, out var data, out var error))
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseSuccess(msg.RequestId, data));
             else
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, error));

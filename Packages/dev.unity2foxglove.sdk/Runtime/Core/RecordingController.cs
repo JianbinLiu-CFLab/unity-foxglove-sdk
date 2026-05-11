@@ -75,6 +75,9 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void AttachToSession(PlaybackClock clock, FoxgloveParameterStore parameters, FoxgloveSession session)
         {
+            if (_recorder != null)
+                DetachFromSession();
+
             _playbackClock = clock;
             _parameters = parameters;
             if (!_recordingEnabled || _recordingPath == null) return;
@@ -97,6 +100,7 @@ namespace Unity.FoxgloveSDK.Core
                     snapshot.Add(new { name = p.Name, type = p.Type, value = p.Value, timestamp = snapshotTime });
                 recorder.WriteMetadata("foxglove.parameters.snapshot",
                     JsonConvert.SerializeObject(snapshot));
+                parameters.OnParameterChanged -= OnParameterChanged;
                 parameters.OnParameterChanged += OnParameterChanged;
 
                 // All setup succeeded — transfer ownership to session

@@ -55,6 +55,18 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock) { return _graphSubscribers.ToList(); }
         }
 
+        /// <summary>Clear graph subscribers and all topology state.</summary>
+        public void Clear()
+        {
+            lock (_lock)
+            {
+                _graphSubscribers.Clear();
+                _publishedTopics.Clear();
+                _subscribedTopics.Clear();
+                _advertisedServices.Clear();
+            }
+        }
+
         // ── Topology updates ──
 
         /// <summary>Add a publisher to the given topic.</summary>

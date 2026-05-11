@@ -36,6 +36,9 @@ class Program
             return RunServer(port, demo, demo3d);
         }
 
+        if (argList.Contains("--phase50"))
+            return RunPhase50Only();
+
         var phase44McapIdx = argList.IndexOf("--phase44-all-schemas-mcap");
         if (phase44McapIdx >= 0)
         {
@@ -59,6 +62,21 @@ class Program
         }
 
         return RunTests();
+    }
+
+    private static int RunPhase50Only()
+    {
+        try
+        {
+            Phase50Validation.Validate();
+            Console.WriteLine("\nPhase 50 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
     }
 
     /// <summary>
@@ -130,6 +148,8 @@ class Program
             Phase48Validation.Validate();
             Console.WriteLine();
             Phase49Validation.Validate();
+            Console.WriteLine();
+            Phase50Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

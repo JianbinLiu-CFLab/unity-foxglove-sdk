@@ -36,7 +36,6 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (_color == value)
                 {
-                    ApplyColorToRenderer(value);
                     return;
                 }
                 _color = value;

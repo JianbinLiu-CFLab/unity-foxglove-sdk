@@ -325,6 +325,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (_session == null) return;
             _session.DrainServiceCalls();
+            _playbackClock.Tick();
 
             if (_replay.IsEnabled)
                 _replay.Tick(_session, _playbackClock.NowNs);

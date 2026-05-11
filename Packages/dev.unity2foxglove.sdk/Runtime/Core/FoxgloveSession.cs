@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
@@ -81,9 +82,9 @@ namespace Unity.FoxgloveSDK.Core
         internal IFoxgloveTransport Transport => _transport;
 
         /// <summary>Inject the runtime context for playback and asset access.</summary>
-        internal void SetRuntimeContext(IRuntimeContext ctx) => _runtime = ctx;
+        internal void SetRuntimeContext(IRuntimeContext ctx) => Volatile.Write(ref _runtime, ctx);
         /// <summary>Attach an MCAP recorder for session recording.</summary>
-        internal void SetRecorder(McapRecorder r) => _recorder = r;
+        internal void SetRecorder(McapRecorder r) => Volatile.Write(ref _recorder, r);
 
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
@@ -115,12 +116,16 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
 
-        /// <summary>Clear all channels, subscriptions, and parameter subscriptions.</summary>
+        /// <summary>Clear all transient session channels, subscriptions, and graph state.</summary>
         public void ClearSession()
         {
             _channels.Clear();
             _subscriptions.Clear();
             _paramSubs.Clear();
+            lock (_clientChannelsLock)
+                _clientChannels.Clear();
+            _graph.Clear();
+            _graphDirty = false;
         }
 
         /// <summary>Stop the transport and detach all event handlers.</summary>
@@ -131,6 +136,7 @@ namespace Unity.FoxgloveSDK.Core
             _transport.OnClientDisconnected -= OnClientDisconnected;
             _transport.OnTextReceived -= OnClientText;
             _transport.OnBinaryReceived -= OnClientBinary;
+            OnClientMessage = null;
         }
 
         // ── Channel API ──
@@ -144,7 +150,8 @@ namespace Unity.FoxgloveSDK.Core
             _channels.Register(channel);
             _graph.SetPublishedTopic(channel.Topic, "unity");
             _graphDirty = true;
-            _recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
+            var recorder = Volatile.Read(ref _recorder);
+            recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
                 channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
@@ -246,7 +253,8 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_channels.Get(channelId) == null) return;
-            _recorder?.WriteMessage(channelId, logTimeNs, payload);
+            var recorder = Volatile.Read(ref _recorder);
+            recorder?.WriteMessage(channelId, logTimeNs, payload);
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {
                 var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
@@ -341,15 +349,16 @@ namespace Unity.FoxgloveSDK.Core
                 SessionId = SessionId
             };
 
-            if (_runtime?.PlaybackEnabled == true)
+            var runtime = Volatile.Read(ref _runtime);
+            if (runtime?.PlaybackEnabled == true)
             {
                 info.Capabilities.Add(Capability.PlaybackControl);
-                var startNs = _runtime.GetPlaybackStartNs();
-                var endNs = _runtime.GetPlaybackEndNs();
+                var startNs = runtime.GetPlaybackStartNs();
+                var endNs = runtime.GetPlaybackEndNs();
                 info.DataStartTime = new DataTimestamp { Sec = startNs / 1_000_000_000, Nsec = (uint)(startNs % 1_000_000_000) };
                 info.DataEndTime = new DataTimestamp { Sec = endNs / 1_000_000_000, Nsec = (uint)(endNs % 1_000_000_000) };
             }
-            if (_runtime?.Assets?.HasRoots == true)
+            if (runtime?.Assets?.HasRoots == true)
                 info.Capabilities.Add(Capability.Assets);
 
             _transport.SendText(clientId, JsonConvert.SerializeObject(info,

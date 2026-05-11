@@ -8,6 +8,7 @@
 
 using System;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
@@ -45,12 +46,13 @@ namespace Unity.FoxgloveSDK.Core
 
             foreach (var call in _services.DrainCompleted())
             {
+                var recorder = Volatile.Read(ref _recorder);
                 if (call.FailureMessage != null)
                 {
                     var fail = new ServiceCallFailure
                     { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
                     _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
-                    _recorder?.WriteMetadata("foxglove.services",
+                    recorder?.WriteMetadata("foxglove.services",
                         JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
                             status = "failure", message = call.FailureMessage,
                             timestamp = _clock.NowNs }));
@@ -60,7 +62,7 @@ namespace Unity.FoxgloveSDK.Core
                     var frame = BinaryEncoding.EncodeServerServiceCallResponse(
                         call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
                     _transport.SendBinary(call.ClientId, frame);
-                    _recorder?.WriteMetadata("foxglove.services",
+                    recorder?.WriteMetadata("foxglove.services",
                         JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
                             status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
                             timestamp = _clock.NowNs }));

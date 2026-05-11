@@ -41,7 +41,10 @@ namespace Unity.FoxgloveSDK.Transport
         private const int SmallPayloadLimit = 125;
         private const byte Payload16BitLengthMarker = 126;
         private const byte Payload64BitLengthMarker = 127;
+        private const int MaxHandshakeLineBytes = 8192;
+        private const int MaxHandshakeHeaders = 100;
         private const int CloseDrainTimeoutMs = 250;
+        private const int SendLoopCloseTimeoutMs = 1000;
         private const int SendQueueWaitMs = 100;
         private const long DropLogIntervalFrames = 1000;
 
@@ -237,33 +240,41 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Perform WebSocket handshake, register the connection, and enter the receive loop.</summary>
         private void HandleClient(TcpClient tcpClient, CancellationToken ct)
         {
+            WsConnection conn = null;
             try
             {
-                using (tcpClient)
+                var stream = tcpClient.GetStream();
+                stream.ReadTimeout = 5000;
+                stream.WriteTimeout = 5000;
+
+                var (accepted, subprotocol) = Handshake(stream);
+                if (!accepted)
                 {
-                    var stream = tcpClient.GetStream();
-                    stream.ReadTimeout = 5000;
-                    stream.WriteTimeout = 5000;
-
-                    var (accepted, subprotocol) = Handshake(stream);
-                    if (!accepted)
-                        return;
-
-                    stream.ReadTimeout = Timeout.Infinite;
-
-                    var clientId = (uint)Interlocked.Increment(ref _nextClientId);
-                    var conn = new WsConnection(stream);
-                    _clients[clientId] = conn;
-                    conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
-
-                    Interlocked.Increment(ref _totalAcceptedClients);
-                    OnClientConnected?.Invoke(clientId);
-
-                    ReceiveLoop(clientId, conn, ct);
+                    try { tcpClient.Close(); } catch { }
+                    try { tcpClient.Dispose(); } catch { }
+                    return;
                 }
+
+                stream.ReadTimeout = Timeout.Infinite;
+                stream.WriteTimeout = Timeout.Infinite;
+
+                var clientId = (uint)Interlocked.Increment(ref _nextClientId);
+                conn = new WsConnection(tcpClient, stream);
+                _clients[clientId] = conn;
+                conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
+
+                Interlocked.Increment(ref _totalAcceptedClients);
+                OnClientConnected?.Invoke(clientId);
+
+                ReceiveLoop(clientId, conn, ct);
             }
             catch (Exception ex)
             {
+                if (conn == null)
+                {
+                    try { tcpClient.Close(); } catch { }
+                    try { tcpClient.Dispose(); } catch { }
+                }
                 _logger.LogError($"Client handler error: {ex.Message}");
             }
         }
@@ -273,7 +284,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Parse HTTP upgrade request and complete the WebSocket opening handshake per RFC 6455.</summary>
         private (bool accepted, string subprotocol) Handshake(NetworkStream stream)
         {
-            var requestLine = ReadLineRaw(stream);
+            string requestLine;
+            try { requestLine = ReadLineRaw(stream, MaxHandshakeLineBytes); }
+            catch (InvalidDataException) { return (false, null); }
             if (string.IsNullOrEmpty(requestLine))
                 return (false, null);
 
@@ -283,8 +296,17 @@ namespace Unity.FoxgloveSDK.Transport
 
             var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             string line;
-            while (!string.IsNullOrEmpty(line = ReadLineRaw(stream)))
+            var headerCount = 0;
+            while (true)
             {
+                try { line = ReadLineRaw(stream, MaxHandshakeLineBytes); }
+                catch (InvalidDataException) { return (false, null); }
+                if (string.IsNullOrEmpty(line))
+                    break;
+                headerCount++;
+                if (headerCount > MaxHandshakeHeaders)
+                    return (false, null);
+
                 var colon = line.IndexOf(':');
                 if (colon > 0)
                     headers[line.Substring(0, colon).Trim()] = line.Substring(colon + 1).Trim();
@@ -371,16 +393,26 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Read one line byte-by-byte, avoiding StreamReader buffering that could steal frame data.</summary>
-        private static string ReadLineRaw(NetworkStream stream)
+        private static string ReadLineRaw(NetworkStream stream, int maxBytes)
         {
             var sb = new StringBuilder();
+            var bytesRead = 0;
             while (true)
             {
                 var b = stream.ReadByte();
                 if (b < 0) return sb.Length > 0 ? sb.ToString() : null;
+                bytesRead++;
+                if (bytesRead > maxBytes)
+                    throw new InvalidDataException("WebSocket handshake line exceeds maximum length.");
                 if (b == '\r')
                 {
                     var next = stream.ReadByte();
+                    if (next >= 0)
+                    {
+                        bytesRead++;
+                        if (bytesRead > maxBytes)
+                            throw new InvalidDataException("WebSocket handshake line exceeds maximum length.");
+                    }
                     if (next == '\n') break;
                     if (next >= 0) sb.Append((char)next);
                 }
@@ -776,11 +808,14 @@ namespace Unity.FoxgloveSDK.Transport
 
         private sealed class WsConnection : IDisposable
         {
+            /// <summary>Underlying TCP client owned by this connection after handshake.</summary>
+            private readonly TcpClient _tcpClient;
             /// <summary>Underlying TCP network stream.</summary>
             private readonly NetworkStream _stream;
             private readonly WsSendQueue _sendQueue = new WsSendQueue(MaxQueuedFrames, MaxQueuedBytes);
             private CancellationTokenSource _sendCts;
             private Task _sendTask;
+            private int _disposed;
 
             /// <summary>RFC 6455 opcode for text frames.</summary>
             private const byte OpText = 0x1;
@@ -801,8 +836,9 @@ namespace Unity.FoxgloveSDK.Transport
             private long _sentBytes;
 
             /// <summary>Create a connection on the given network stream.</summary>
-            public WsConnection(NetworkStream stream)
+            public WsConnection(TcpClient tcpClient, NetworkStream stream)
             {
+                _tcpClient = tcpClient;
                 _stream = stream;
                 _lastActivityMs = MonotonicMilliseconds();
             }
@@ -876,6 +912,26 @@ namespace Unity.FoxgloveSDK.Transport
             public bool WaitForPendingSends(TimeSpan timeout)
             {
                 return _sendQueue.WaitUntilEmpty(timeout);
+            }
+
+            public bool WaitForSendLoop(TimeSpan timeout)
+            {
+                var task = _sendTask;
+                if (task == null)
+                    return true;
+
+                try
+                {
+                    return task.Wait(timeout);
+                }
+                catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+                {
+                    return true;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return true;
+                }
             }
 
             private void SendLoop(Action onSendFailed, CancellationToken ct)
@@ -986,10 +1042,19 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Close and dispose the underlying network stream.</summary>
             public void Dispose()
             {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                    return;
+
                 _sendQueue.Complete();
-                try { _sendCts?.Cancel(); } catch { }
+                if (!WaitForSendLoop(TimeSpan.FromMilliseconds(SendLoopCloseTimeoutMs)))
+                {
+                    try { _sendCts?.Cancel(); } catch { }
+                    WaitForSendLoop(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                }
                 try { _stream.Close(); } catch { }
                 try { _stream.Dispose(); } catch { }
+                try { _tcpClient?.Close(); } catch { }
+                try { _tcpClient?.Dispose(); } catch { }
                 try { _sendCts?.Dispose(); } catch { }
                 _sendCts = null;
             }

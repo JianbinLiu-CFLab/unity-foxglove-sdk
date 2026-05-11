@@ -186,7 +186,10 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var opcode = _currentUncompressed[_readOffset++];
                     var len = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                    if (_readOffset + (int)len > _currentUncompressed.Length) break;
+                    if (len > int.MaxValue)
+                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
+                    var recordLength = (int)len;
+                    if (recordLength > _currentUncompressed.Length - _readOffset) break;
 
                     if (opcode == McapWriter.OpcodeMessage)
                     {
@@ -195,7 +198,9 @@ namespace Unity.FoxgloveSDK.IO
                         var seq = McapBinaryReader.ReadU32LE(_currentUncompressed, ref _readOffset);
                         var logNs = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
                         var pubNs = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                        var dataLen = (int)len - (_readOffset - startOff);
+                        var dataLen = recordLength - (_readOffset - startOff);
+                        if (dataLen < 0 || dataLen > _currentUncompressed.Length - _readOffset)
+                            throw new InvalidDataException("MCAP chunk message record is truncated.");
                         var data = new byte[dataLen];
                         Buffer.BlockCopy(_currentUncompressed, _readOffset, data, 0, dataLen);
                         _readOffset += dataLen;
@@ -220,7 +225,7 @@ namespace Unity.FoxgloveSDK.IO
                     }
                     else
                     {
-                        _readOffset += (int)len;
+                        _readOffset += recordLength;
                     }
                 }
             }

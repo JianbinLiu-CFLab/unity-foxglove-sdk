@@ -92,6 +92,13 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
         private float _mgrSearchCooldown;
 
+        /// <summary>Reset static state when Unity enters Play Mode without domain reload.</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            _instance = null;
+        }
+
         /// <summary>
         /// Ensures exactly one hub exists after scene load.
         /// Reuses a user-placed scene hub if present, otherwise creates a hidden
