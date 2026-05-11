@@ -4,7 +4,7 @@
 
 This note describes the source-generation architecture behind Unity2Foxglove's `[FoxRun]` telemetry mechanism. The central idea is to separate **when code is generated** from **what code is generated**. A platform-neutral shared emitter owns the generated-source semantics, while multiple host integrations invoke that emitter at different lifecycle points: a Roslyn source generator for Unity Editor ergonomics, and a build-time physical `.g.cs` writer for IL2CPP Player builds.
 
-The result is a zero-runtime-reflection telemetry path: runtime code does not scan assemblies, inspect attributes, or emit IL dynamically. It only executes statically generated publisher code that has already been produced during compilation or build preparation.
+The result is a zero-CLR-reflection telemetry binding path: runtime code does not scan assemblies, inspect attributes, call `FieldInfo.GetValue()`, or emit IL dynamically to discover telemetry members. It only executes statically generated publisher code that has already been produced during compilation or build preparation.
 
 This architecture is motivated by Unity IL2CPP and broader C#/.NET AOT constraints, where reflection-heavy runtime discovery can be fragile under trimming, ahead-of-time compilation, or platform-specific build pipelines.
 
@@ -134,6 +134,8 @@ Runtime code only executes generated publishers. It does not:
 
 This is the boundary that makes the telemetry path AOT-oriented instead of reflection-oriented.
 
+Unity2Foxglove may still use Unity scene queries such as finding active `MonoBehaviour` instances that implement generated interfaces. That is runtime discovery in the Unity object model, not CLR reflection-based telemetry binding. The precise claim is therefore **zero CLR reflection for telemetry member discovery and field/property access**, not "no runtime object lookup anywhere."
+
 ## Unity2Foxglove Implementation Evidence
 
 | Evidence | Location | Meaning |
@@ -143,7 +145,7 @@ This is the boundary that makes the telemetry path AOT-oriented instead of refle
 | Build-time host | `Editor/FoxrunCodeGenerator.cs` | Physical `.g.cs` generation path |
 | Build preprocess hook | `Editor/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
 | User declaration API | `Runtime/Unity/Attributes/FoxRunAttribute.cs` | Topic/rate/schema/policy declaration surface |
-| Runtime scheduler | `Runtime/Unity/FoxgloveLogHub.cs` | Executes generated publishers without runtime discovery |
+| Runtime scheduler | `Runtime/Unity/FoxgloveLogHub.cs` | Executes generated publishers without CLR reflection-based member binding |
 
 This implementation also generates `FoxRun_link.xml` for IL2CPP preservation. That is separate from publisher execution: it is a build-time preservation artifact, not a runtime reflection scanner.
 
@@ -163,6 +165,27 @@ For FoxRun publishers, the relevant equivalence surface includes:
 
 Text snapshots are useful, but they are not enough. Unity2Foxglove combines emitter tests, policy tests, runtime tests, IL2CPP smoke validation, and manual Foxglove checks to reduce drift risk.
 
+There is an important caveat: the Roslyn host and the Unity build-time writer can resolve the input model through different mechanisms. For example, a Roslyn incremental source generator observes syntax and semantic model data, while a Unity build-time writer may inspect loaded assemblies during the Editor build phase. The shared emitter prevents drift after the model is resolved, but it does not automatically prove that both hosts resolved the exact same model. A release-quality validation strategy must therefore check both:
+
+- **model equivalence**: the same members, topics, schemas, publish modes, and diagnostics are passed to the emitter;
+- **output equivalence**: the generated Roslyn source and physical `.g.cs` source are observably equivalent for telemetry behavior.
+
+Phase 50 explicitly starts closing this gap by adding physical generated-file freshness checks for `TestLog_FoxRun.g.cs`. A deeper semantic diff between Roslyn-generated output and build-time output remains a higher-confidence follow-up.
+
+## Shared Emitter Failure Mode
+
+A shared emitter removes a large class of host drift bugs, but it is also a single source of generated-code defects. If the emitter mishandles string escaping, locale-sensitive numeric formatting, topic grouping, or publish-mode precedence, both hosts can produce the same wrong code.
+
+This is not a reason to avoid a shared emitter. It means the emitter must be treated as a compiler component:
+
+- user-controlled strings must be escaped before entering C# literals;
+- floating-point and timestamp formatting must be culture-invariant;
+- publish-mode precedence needs tests and diagnostics;
+- generated source should have snapshot or structural tests;
+- physical fallback output should be checked for freshness before IL2CPP release validation.
+
+This is why the evidence chain must include emitter-level tests, not only runtime smoke tests.
+
 ## Validation Strategy
 
 The architecture should be validated at multiple levels:
@@ -178,25 +201,38 @@ The architecture should be validated at multiple levels:
 
 Unity2Foxglove already includes validation phases that cover shared emitter behavior, FoxRun attribute defaults, publish-policy generation, MCAP recording/replay, package hygiene, and manual Unity/Foxglove acceptance.
 
-## Related Work Boundary
+## Related Work and Prior Art
 
 This architecture sits near several existing practices, but has a different target:
 
 | System / Practice | Similarity | Difference |
 | --- | --- | --- |
-| `System.Text.Json` source generation | Replaces reflection-heavy serialization metadata with generated code | Focused on JSON serialization contracts, not Unity telemetry publication |
-| MessagePack-CSharp AOT generation | Uses pre-generated code for AOT environments | Focused on formatter/serializer generation |
-| Unity Netcode source generators | Uses source generation to avoid runtime reflection in Unity networking | Product domain is ECS/network replication rather than telemetry publishing |
-| Refitter / Refit source generation | Shows multiple codegen entry points and NativeAOT-oriented client generation | Input is OpenAPI/interface contracts, not runtime telemetry attributes |
-| Rerun-style declarative logging | Provides a low-friction developer experience for visualization/logging | Unity2Foxglove adapts declarative telemetry to Unity/Foxglove/IL2CPP constraints |
+| [`System.Text.Json` source generation](https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation) | Replaces reflection-heavy serialization metadata with generated code; Microsoft documents source generation as useful for trimming and Native AOT scenarios | Focused on JSON serialization contracts, not Unity telemetry publication; normally one Roslyn host, not Unity Editor plus IL2CPP physical fallback |
+| [MessagePack-CSharp AOT generation](https://msgpack.org/index.html) | Provides AOT code generation for Unity/Xamarin-style strict-AOT environments; `mpc` uses Roslyn analysis to generate C# ahead of time | Focused on formatter/resolver generation rather than telemetry publishers; the CLI path is usually a developer/build tool, not a Unity-specific dual-host telemetry workflow |
+| [Unity Netcode for Entities source generators](https://docs.unity.cn/Packages/com.unity.netcode%401.4/manual/source-generators.html) | Unity uses Roslyn source generation to produce serialization/registration code and avoid runtime reflection for replicated networking types | Product domain is DOTS/ECS networking, not MonoBehaviour telemetry or Foxglove/MCAP publication; generated output is part of Unity Netcode's package pipeline |
+| [Refitter MSBuild generation](https://refitter.github.io/articles/msbuild.html) | Shows a multi-entry code-generation workflow where CLI/MSBuild tooling can generate physical `.cs` files before compilation | Input is OpenAPI contract files, not runtime telemetry attributes; output is REST client code rather than Unity publisher code |
+| [Refit NativeAOT/trimming guidance](https://github.com/reactiveui/refit#native-aot--trimming-guidance) | Recommends source-generator-first usage for Native AOT and trimming-sensitive applications | Focused on HTTP client interface implementations and DTO serialization metadata, not scene/runtime telemetry binding |
+| [ReactiveMarbles ObservableEvents source generator](https://www.nuget.org/packages/ReactiveMarbles.ObservableEvents.SourceGenerator/) | Uses source generation to remove event-to-observable boilerplate and generate typed code from C# declarations | Targets event binding/reactive APIs, not AOT-safe telemetry publishing into visualization tools |
+| [Rerun logging APIs](https://ref.rerun.io/docs/python/0.31.2/common/logging_functions/) | Provides a declarative low-friction logging experience for visualization through calls like `rr.log(entity_path, entity)` | Rerun's primary public SDKs are Python/Rust/C++; Unity2Foxglove adapts declarative telemetry to Unity, Foxglove schemas, MCAP, and IL2CPP constraints |
 
 The important boundary is conservative: Unity2Foxglove does not claim to invent source generation or AOT pre-generation. It claims that a shared-emitter, dual-host architecture is a practical way to make declarative Unity telemetry work across Editor and IL2CPP Player builds without runtime reflection.
+
+The closest prior-art pattern is MessagePack-CSharp's AOT generation ecosystem: it recognizes that Unity/IL2CPP needs ahead-of-time generated C# instead of runtime code generation. The key difference is domain and host integration. Unity2Foxglove applies that AOT discipline to field/property-level telemetry, uses a shared emitter as the single telemetry generation semantics source, and integrates the physical fallback into Unity's Player build path.
+
+The strongest prior-art contrast is therefore not "nobody uses source generators." Many systems do. The narrower claim is that, to the best of our knowledge, public Unity telemetry tooling has not documented this exact combination:
+
+- declarative field/property telemetry attributes;
+- Roslyn Editor host;
+- Unity build-time physical `.g.cs` host for IL2CPP;
+- shared emitter as the generation-semantics source;
+- zero CLR reflection for telemetry member binding at runtime;
+- Foxglove-compatible streaming and MCAP evidence in the same Unity package.
 
 ## Novelty Boundary
 
 The strongest defensible novelty claim is:
 
-> Unity2Foxglove demonstrates a Unity-native telemetry pipeline in which a shared emitter prevents semantic drift between Editor-time Roslyn generation and Player-build physical `.g.cs` generation, enabling zero-runtime-reflection Foxglove telemetry under IL2CPP constraints.
+> Unity2Foxglove demonstrates a Unity-native telemetry pipeline in which a shared emitter prevents semantic drift between Editor-time Roslyn generation and Player-build physical `.g.cs` generation, enabling Foxglove telemetry with zero CLR reflection for telemetry member binding under IL2CPP constraints.
 
 The claim should avoid overstatements such as:
 
@@ -221,7 +257,7 @@ Before turning this note into a paper section, the following evidence would make
 
 3. **Generated-output equivalence checks**
 
-   Compare Roslyn and physical writer output at the semantic level rather than only through text snapshots.
+   Compare Roslyn and physical writer output at the semantic level rather than only through text snapshots. A minimal release gate should at least detect stale physical `.g.cs` files for demo/sample sources; a stronger gate should compare resolved generation models and generated output structure between hosts.
 
 4. **Player-build performance smoke**
 
@@ -240,3 +276,5 @@ Before turning this note into a paper section, the following evidence would make
 - Refitter: [GitHub repository](https://github.com/christianhelle/refitter)
 - Refit: [NativeAOT and trimming guidance](https://github.com/reactiveui/refit#native-aot--trimming-guidance)
 - ReactiveUI Refit issue 1389: [Refit should be linker-friendly and support trimming](https://github.com/reactiveui/refit/issues/1389)
+- ReactiveMarbles ObservableEvents source generator: [NuGet package](https://www.nuget.org/packages/ReactiveMarbles.ObservableEvents.SourceGenerator/)
+- Rerun Python API: [Logging functions](https://ref.rerun.io/docs/python/0.31.2/common/logging_functions/)
