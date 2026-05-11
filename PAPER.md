@@ -6,7 +6,7 @@ Working title:
 
 ## Reference Contribution Statement
 
-Unity2Foxglove introduces an AOT-safe dual-host source generation architecture with a shared emitter for zero-reflection telemetry publishing in Unity Editor and IL2CPP Player builds.
+Unity2Foxglove introduces an AOT-safe dual-host source generation architecture with a shared emitter for telemetry publishing that avoids CLR reflection-based member discovery and field/property access in Unity Editor and IL2CPP Player builds.
 
 ## Abstract
 
@@ -59,15 +59,22 @@ The project is also not an official Foxglove SDK or a replacement for Foxglove's
 
 ## Related Work Boundary
 
-Relevant comparison points include:
+Relevant comparison points include Foxglove's official SDKs and bridge tools, Unity robotics bridge approaches that rely on ROS or separate middleware processes, Rerun-style declarative logging, AOT-oriented C# source-generation systems, and general MCAP libraries.
 
-- Foxglove's official SDKs and bridge tools, which define the protocol and ecosystem targets.
-- Unity robotics bridge approaches that rely on ROS or separate middleware processes.
-- Rerun and other visualization/logging tools that offer declarative data logging in other runtime environments.
-- AOT-oriented C# source-generation systems used for serialization or dependency injection.
-- General MCAP libraries that provide broader file-format APIs outside Unity.
+The closest technical neighbors are source-generation systems that reduce runtime reflection or support AOT builds:
 
-Unity2Foxglove should be evaluated against these systems as a Unity-focused bridge and validation pipeline, not as a universal robotics middleware or general-purpose MCAP library.
+| System / practice | Relevance | Boundary |
+| --- | --- | --- |
+| [`System.Text.Json` source generation](https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation) | Shows source generation replacing reflection-heavy metadata collection for trimming and Native AOT scenarios | Serialization contracts, not Unity telemetry publishers |
+| [MessagePack-CSharp AOT generation](https://msgpack.org/index.html) | Shows ahead-of-time C# generation for Unity/IL2CPP-style strict-AOT environments | Formatter/resolver generation, not Foxglove telemetry or Unity build-hook publisher generation |
+| [Unity Netcode for Entities source generators](https://docs.unity.cn/Packages/com.unity.netcode%401.4/manual/source-generators.html) | Shows Unity using Roslyn generation to avoid runtime reflection in networking code | DOTS/ECS networking, not MonoBehaviour telemetry and MCAP |
+| [Refitter MSBuild generation](https://refitter.github.io/articles/msbuild.html) and [Refit NativeAOT guidance](https://github.com/reactiveui/refit#native-aot--trimming-guidance) | Show build-time/source-generator-first patterns for .NET clients | REST/OpenAPI/interface clients, not runtime scene telemetry |
+| [ReactiveMarbles ObservableEvents source generator](https://www.nuget.org/packages/ReactiveMarbles.ObservableEvents.SourceGenerator/) | Shows C# event-to-observable boilerplate generated at compile time | Event wrapper generation, not telemetry publisher generation |
+| [Rerun logging APIs](https://ref.rerun.io/docs/python/0.31.2/common/logging_functions/) | Show declarative visualization logging as a developer experience | Primary SDKs are not Unity/C# IL2CPP telemetry packages |
+
+Unity2Foxglove should be evaluated against these systems as a Unity-focused bridge and validation pipeline, not as a universal robotics middleware or general-purpose MCAP library. Its source-generation claim is also intentionally narrow: the runtime path is zero **CLR reflection** for telemetry member discovery and field/property access. Unity scene queries may still be used to find generated telemetry sources.
+
+The shared-emitter design prevents host drift after the generation model is resolved, but it also makes the emitter a high-leverage component: escaping, culture-invariant formatting, publish-mode precedence, and model-equivalence tests must be part of the validation story. The detailed technical note tracks these boundaries in [`docs/research-shared-emitter-architecture.md`](docs/research-shared-emitter-architecture.md).
 
 ## Evidence Table
 
