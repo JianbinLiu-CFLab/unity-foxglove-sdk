@@ -166,9 +166,9 @@ Release and compliance documents:
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
-- [v1.2.0 release notes](RELEASE_NOTES_v1.2.0.md)
-- [v1.1.0 release notes](RELEASE_NOTES_v1.1.0.md)
-- [v1.0.0 release notes](RELEASE_NOTES_v1.0.0.md)
+- [v1.2.0 release notes](docs/releases/RELEASE_NOTES_v1.2.0.md)
+- [v1.1.0 release notes](docs/releases/RELEASE_NOTES_v1.1.0.md)
+- [v1.0.0 release notes](docs/releases/RELEASE_NOTES_v1.0.0.md)
 
 Development planning notes are not shipped with the repository. If you need the phase plans or implementation history, please contact the author.
 

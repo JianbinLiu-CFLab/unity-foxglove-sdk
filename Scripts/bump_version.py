@@ -79,9 +79,12 @@ class VersionBump:
         text = text.replace(f"release-v{old_version}", f"release-v{self.version}")
         text = text.replace(f"verified for v{old_version}", f"verified for v{self.version}")
 
-        release_note = f"- [v{self.version} release notes](RELEASE_NOTES_v{self.version}.md)"
+        release_note = f"- [v{self.version} release notes](docs/releases/RELEASE_NOTES_v{self.version}.md)"
         if release_note not in text:
-            marker = re.compile(r"(^- \[v\d+\.\d+\.\d+ release notes\]\(RELEASE_NOTES_v\d+\.\d+\.\d+\.md\)$)", re.MULTILINE)
+            marker = re.compile(
+                r"(^- \[v\d+\.\d+\.\d+ release notes\]\(docs/releases/RELEASE_NOTES_v\d+\.\d+\.\d+\.md\)$)",
+                re.MULTILINE,
+            )
             match = marker.search(text)
             if match:
                 text = text[: match.start()] + release_note + "\n" + text[match.start() :]
@@ -121,7 +124,7 @@ class VersionBump:
         self.write_if_changed(path, text, f"insert changelog section for {self.version}")
 
     def create_release_notes(self) -> None:
-        path = self.root / f"RELEASE_NOTES_v{self.version}.md"
+        path = self.root / "docs/releases" / f"RELEASE_NOTES_v{self.version}.md"
         if path.exists():
             return
 
