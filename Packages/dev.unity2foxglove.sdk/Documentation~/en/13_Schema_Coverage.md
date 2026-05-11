@@ -27,6 +27,9 @@ Current dedicated or polished Unity paths include:
 - `foxglove.FrameTransform`
 - `foxglove.SceneUpdate`
 - `foxglove.CompressedImage` through the camera publisher, with JSON and protobuf encoding support
+- `foxglove.PointCloud` through `FoxglovePointCloudPublisher`, with JSON and protobuf encoding support
+- `foxglove.LaserScan` through `FoxgloveLaserScanPublisher`, with JSON and protobuf encoding support
+- `foxglove.CameraCalibration` through `FoxgloveCameraCalibrationPublisher`, with JSON and protobuf encoding support
 - `foxglove.Log`
 
 Other schemas can still be used through generic protobuf channels and generated protobuf message classes.
@@ -55,10 +58,9 @@ Open that file in Foxglove Desktop and check the Problems panel. The smoke file 
 
 Potential future dedicated publishers include:
 
-- PointCloud
-- LaserScan
-- CameraCalibration
 - Odometry
 - LocationFix
+- RawImage
+- RawAudio
 
 These should be added when a real demo, dataset, or user workflow needs a polished Unity Inspector experience.

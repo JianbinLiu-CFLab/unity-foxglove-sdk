@@ -54,6 +54,7 @@
     <Compile Include="FoxgloveProtoSampleFactory.cs" />
     <Compile Include="Phase44Validation.cs" />
     <Compile Include="Phase48Validation.cs" />
+    <Compile Include="Phase49Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>
