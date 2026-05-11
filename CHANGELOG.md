@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.2.0 - 2026-05-11
+
+### Added
+
+- Dedicated typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration`.
+- Shared message builders for point cloud, laser scan, and camera calibration payload construction.
+- Runtime validation and manual acceptance notes for Phase 49 sensor typed publisher parity.
+
+### Fixed
+
+- Completed the `foxglove.PointCloud` JSON schema field item metadata so Foxglove Desktop can parse JSON mode.
+
+### Verified
+
+- Runtime validation suite: `All checks passed.`
+- Release package validation: `27 check(s) passed.`
+- Manual FullDemo smoke verified PointCloud, LaserScan, and CameraCalibration in Protobuf and JSON modes.
+
 ## 1.1.0 - 2026-05-10
 
 ### Added

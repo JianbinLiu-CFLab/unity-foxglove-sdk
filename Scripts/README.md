@@ -2,6 +2,27 @@
 
 Project-level helper scripts. All scripts use relative paths derived from their own location to resolve the workspace root — no hardcoded absolute paths.
 
+## Package Version Bump
+
+Entry script:
+
+```text
+Scripts/bump_version.py
+```
+
+Purpose:
+
+- Synchronize the Unity package version across `package.json`, runtime metadata validation, README badges, package README notes, changelog, and release-note stubs.
+- Support a dry run before editing files.
+- Avoid git commits, tags, GitHub releases, or DOI changes. Those remain manual release steps.
+
+Basic usage:
+
+```powershell
+python Scripts\bump_version.py 1.2.0 --date 2026-05-11 --dry-run
+python Scripts\bump_version.py 1.2.0 --date 2026-05-11
+```
+
 ## Unity IL2CPP Build
 
 Entry script:
