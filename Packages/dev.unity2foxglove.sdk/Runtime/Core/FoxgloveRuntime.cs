@@ -39,6 +39,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Active session; null before Start or after Stop.</summary>
         private FoxgloveSession _session;
         private readonly IFoxgloveTransport _transport;
+        private readonly IFoxgloveClock _wallClock;
         private readonly PlaybackClock _playbackClock;
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
@@ -64,6 +65,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _playbackControlLock = new();
         private bool _replaySnapshotPending;
         private ulong _replaySnapshotTimeNs;
+        private ulong _replaySnapshotReadyWallNs;
         private bool _replaySceneSnapshotPending;
         private ulong _replaySceneSnapshotTimeNs;
 
@@ -95,7 +97,8 @@ namespace Unity.FoxgloveSDK.Core
         public FoxgloveRuntime(IFoxgloveTransport transport, IFoxgloveClock clock, ISchemaRegistry schemaRegistry, IFoxgloveLogger logger = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-            _playbackClock = new PlaybackClock(clock ?? new SystemClock());
+            _wallClock = clock ?? new SystemClock();
+            _playbackClock = new PlaybackClock(_wallClock);
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
             _logger = logger ?? new ConsoleLogger();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
@@ -204,6 +207,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             ClearPendingReplaySnapshot();
             ClearPendingReplaySceneSnapshot();
+            _replay.CancelPanelHistory();
             if (_replayForwarder != null)
             {
                 _replay.OnReplayMessage -= _replayForwarder;
@@ -342,6 +346,7 @@ namespace Unity.FoxgloveSDK.Core
                 if (cmd == 0)
                 {
                     ClearPendingReplaySnapshot();
+                    _replay.ResetPanelHistoryProgress();
                     _replay.Play();
                 }
                 else if (cmd == 1)
@@ -349,6 +354,9 @@ namespace Unity.FoxgloveSDK.Core
                     _replay.Pause();
                     ClearPendingReplaySnapshot();
                 }
+
+                if (hasSeek && cmd == 1)
+                    QueueReplaySnapshot(seekNs);
 
                 return _playbackClock.ToState(hasSeek, requestId);
             }
@@ -376,6 +384,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _replay.Seek(timeNs);
                 QueueReplaySceneSnapshot(timeNs);
+                QueueReplaySnapshot(timeNs);
             }
         }
         /// <summary>Start or resume replay playback.</summary>
@@ -385,6 +394,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 ClearPendingReplaySnapshot();
                 ClearPendingReplaySceneSnapshot();
+                _replay.ResetPanelHistoryProgress();
                 _playbackClock.Play();
                 _replay.Play();
             }
@@ -404,7 +414,9 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replaySnapshotLock)
             {
+                _replay.CancelPanelHistory();
                 _replaySnapshotTimeNs = timeNs;
+                _replaySnapshotReadyWallNs = _wallClock.NowNs + ReplayController.ScrubHistoryDebounceNs;
                 _replaySnapshotPending = true;
             }
         }
@@ -415,6 +427,8 @@ namespace Unity.FoxgloveSDK.Core
             {
                 timeNs = _replaySnapshotTimeNs;
                 if (!_replaySnapshotPending)
+                    return false;
+                if (_wallClock.NowNs < _replaySnapshotReadyWallNs)
                     return false;
                 _replaySnapshotPending = false;
                 return true;
@@ -448,6 +462,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _replaySnapshotPending = false;
                 _replaySnapshotTimeNs = 0;
+                _replaySnapshotReadyWallNs = 0;
             }
         }
 
@@ -484,6 +499,8 @@ namespace Unity.FoxgloveSDK.Core
                         _replay.ApplySnapshotToScene(sceneSnapshotTimeNs);
                     if (TryConsumeReplaySnapshot(out var snapshotTimeNs))
                         _replay.PublishSnapshot(_session, snapshotTimeNs);
+                    else
+                        _replay.DrainPanelHistory(_session);
                     _replay.Tick(_session, _playbackClock.NowNs);
                 }
                 else

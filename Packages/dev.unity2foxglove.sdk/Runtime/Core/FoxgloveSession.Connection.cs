@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.Core
                     $"client={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
                     out var stateTrace))
                     _logger.LogWarning(stateTrace);
-                _transport.SendBinary(request.ClientId, playbackFrame);
+                _transport.BroadcastBinary(playbackFrame);
             }
         }
 

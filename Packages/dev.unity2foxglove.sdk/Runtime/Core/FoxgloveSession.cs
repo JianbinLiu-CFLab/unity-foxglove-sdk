@@ -389,6 +389,48 @@ namespace Unity.FoxgloveSDK.Core
             BroadcastDataBinary(data);
         }
 
+        /// <summary>
+        /// Return per-client queue headroom for replay history pacing when the
+        /// transport exposes managed queue statistics.
+        /// </summary>
+        internal bool TryGetReplayQueueHeadroom(
+            int reserveFrames,
+            int reserveBytes,
+            out int frameHeadroom,
+            out int byteHeadroom)
+        {
+            frameHeadroom = int.MaxValue;
+            byteHeadroom = int.MaxValue;
+
+            if (_transport is not IFoxgloveTransportStatsProvider provider)
+                return false;
+
+            var stats = provider.GetStatsSnapshot();
+            if (stats == null || !stats.Supported)
+                return false;
+
+            if (stats.Clients == null || stats.Clients.Count == 0)
+            {
+                frameHeadroom = 0;
+                byteHeadroom = 0;
+                return true;
+            }
+
+            var minFrames = int.MaxValue;
+            var minBytes = int.MaxValue;
+            var frameReserve = Math.Max(0, reserveFrames);
+            var byteReserve = Math.Max(0, reserveBytes);
+            foreach (var client in stats.Clients)
+            {
+                minFrames = Math.Min(minFrames, ManagedWsBackend.MaxQueuedFrames - client.QueuedFrames - frameReserve);
+                minBytes = Math.Min(minBytes, ManagedWsBackend.MaxQueuedBytes - client.QueuedBytes - byteReserve);
+            }
+
+            frameHeadroom = Math.Max(0, minFrames);
+            byteHeadroom = Math.Max(0, minBytes);
+            return true;
+        }
+
         /// <summary>Enable protobuf encoding support, updating supportedEncodings to include "protobuf".</summary>
         public void EnableProtobuf() => _protobufEnabled = true;
 
