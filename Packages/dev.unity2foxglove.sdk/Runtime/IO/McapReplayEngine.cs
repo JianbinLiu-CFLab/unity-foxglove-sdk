@@ -329,6 +329,83 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Reads every message in the inclusive range [<paramref name="fromTimeNs"/>,
+        /// <paramref name="toTimeNs"/>] in chronological order without changing the
+        /// active replay cursor. Used to rebuild Foxglove time-series panels after
+        /// a seek while paused.
+        /// </summary>
+        public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result)
+        {
+            if (result == null) throw new ArgumentNullException(nameof(result));
+            result.Clear();
+
+            if (!IsLoaded || !CanSeek)
+                return result;
+
+            var clampedFrom = fromTimeNs < StartTimeNs ? StartTimeNs : fromTimeNs;
+            var clampedTo = toTimeNs > EndTimeNs ? EndTimeNs : toTimeNs;
+            if (clampedTo < clampedFrom)
+                return result;
+
+            foreach (var chunkIndex in _summary.ChunkIndexes)
+            {
+                if (chunkIndex.MessageStartTime > clampedTo)
+                    break;
+                if (chunkIndex.MessageEndTime < clampedFrom)
+                    continue;
+
+                var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
+                if (!crcValid)
+                    Console.Error.WriteLine("[McapReplayEngine] History chunk CRC mismatch; data may be corrupted.");
+
+                var offset = 0;
+                while (offset + 9 <= uncompressed.Length)
+                {
+                    var opcode = uncompressed[offset++];
+                    var len = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
+                    if (len > int.MaxValue)
+                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
+                    var recordLength = (int)len;
+                    if (recordLength > uncompressed.Length - offset) break;
+
+                    if (opcode != McapWriter.OpcodeMessage)
+                    {
+                        offset += recordLength;
+                        continue;
+                    }
+
+                    var startOff = offset;
+                    var chId = McapBinaryReader.ReadU16LE(uncompressed, ref offset);
+                    var seq = McapBinaryReader.ReadU32LE(uncompressed, ref offset);
+                    var logNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
+                    var pubNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
+                    var dataLen = recordLength - (offset - startOff);
+                    if (dataLen < 0 || dataLen > uncompressed.Length - offset)
+                        throw new InvalidDataException("MCAP chunk message record is truncated.");
+                    var data = new byte[dataLen];
+                    Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
+                    offset += dataLen;
+
+                    if (logNs < clampedFrom || logNs > clampedTo)
+                        continue;
+
+                    result.Add(new McapMessage
+                    {
+                        ChannelId = chId,
+                        Sequence = seq,
+                        LogTime = logNs,
+                        PublishTime = pubNs,
+                        Data = data
+                    });
+                }
+            }
+
+            if (result.Count > 1)
+                result.Sort(CompareMessages);
+            return result;
+        }
+
+        /// <summary>
         /// Starts or resumes replay. If already ended, seeks back to start first.
         /// </summary>
         public void Play()

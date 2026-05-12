@@ -24,6 +24,14 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class ReplayController : IDisposable
     {
+        internal const ulong ScrubHistoryDebounceNs = 250_000_000UL;
+        internal const ulong ScrubHistoryWindowNs = 30_000_000_000UL;
+        internal const int ScrubHistoryMaxMessagesPerTick = 256;
+        internal const int ScrubHistoryMaxMessagesPerRequest = 5000;
+        internal const int ScrubHistoryQueueReserveFrames = 32;
+        internal const int ScrubHistoryQueueReserveBytes = 512 * 1024;
+        private const int MessageDataFrameOverheadBytes = 32;
+
         /// <summary>Active replay engine, or null when not replaying.</summary>
         private McapReplayEngine _replayEngine;
         /// <summary>Whether replay has been enabled and successfully loaded.</summary>
@@ -36,6 +44,12 @@ namespace Unity.FoxgloveSDK.Core
         private readonly List<McapMessage> _replayTickBuffer = new();
         /// <summary>Reusable paused-seek snapshot buffer to avoid per-request list allocations.</summary>
         private readonly List<McapMessage> _replaySnapshotBuffer = new();
+        private readonly List<McapMessage> _panelHistoryBuffer = new();
+        private bool _panelHistoryActive;
+        private int _panelHistoryOffset;
+        private ulong _panelHistoryParkTimeNs;
+        private bool _hasPanelHistoryTime;
+        private ulong _lastPanelHistoryTimeNs;
         /// <summary>
         /// Guards the MCAP replay cursor. Playback control requests arrive on
         /// the WebSocket receive thread, while replay ticks run on Unity's
@@ -117,6 +131,8 @@ namespace Unity.FoxgloveSDK.Core
                     playbackClock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
                     _replayEngine.Play();
                     _replayEnabled = true;
+                    _hasPanelHistoryTime = false;
+                    _lastPanelHistoryTimeNs = 0;
                 }
                 catch (Exception ex)
                 {
@@ -136,6 +152,12 @@ namespace Unity.FoxgloveSDK.Core
                 _replayEngine?.Dispose();
                 _replayEngine = null;
                 _replayEnabled = false;
+                _panelHistoryBuffer.Clear();
+                _panelHistoryActive = false;
+                _panelHistoryOffset = 0;
+                _panelHistoryParkTimeNs = 0;
+                _hasPanelHistoryTime = false;
+                _lastPanelHistoryTimeNs = 0;
             }
         }
 
@@ -183,30 +205,137 @@ namespace Unity.FoxgloveSDK.Core
                 if (!_replayEnabled || _replayEngine == null) return;
                 var messages = _replayEngine.Tick(nowNs, _replayTickBuffer);
                 if (messages == null || messages.Count == 0) return;
-                PublishMessages(session, messages, nowNs, "Tick");
+                PublishMessages(session, messages, nowNs, "Tick", forwardToScene: true);
             }
         }
 
         /// <summary>
-        /// Publish the latest message at or before <paramref name="timeNs"/> for
-        /// each replay channel. This refreshes Foxglove panels after paused
-        /// seek/pause commands where normal ticking is intentionally stopped.
+        /// Publish historical messages through <paramref name="timeNs"/> so
+        /// Foxglove panels can rebuild time-series views after a paused seek.
+        /// The scene uses a separate latest-state snapshot path.
         /// </summary>
         public void PublishSnapshot(FoxgloveSession session, ulong timeNs)
         {
             lock (_replayEngineLock)
             {
                 if (!_replayEnabled || _replayEngine == null || session == null) return;
-                var messages = _replayEngine.Snapshot(timeNs, _replaySnapshotBuffer);
-                PublishMessages(session, messages, timeNs, "Snapshot");
+                var startNs = _replayEngine.StartTimeNs;
+                var clampedTo = timeNs > _replayEngine.EndTimeNs ? _replayEngine.EndTimeNs : timeNs;
+                if (clampedTo < startNs) clampedTo = startNs;
+
+                ulong fromNs;
+                if (_hasPanelHistoryTime && clampedTo >= _lastPanelHistoryTimeNs)
+                    fromNs = _lastPanelHistoryTimeNs < ulong.MaxValue ? _lastPanelHistoryTimeNs + 1UL : ulong.MaxValue;
+                else
+                    fromNs = clampedTo > ScrubHistoryWindowNs ? clampedTo - ScrubHistoryWindowNs : startNs;
+                if (fromNs < startNs) fromNs = startNs;
+
+                _replayEngine.History(fromNs, clampedTo, _panelHistoryBuffer);
+                if (_panelHistoryBuffer.Count > ScrubHistoryMaxMessagesPerRequest)
+                    _panelHistoryBuffer.RemoveRange(0, _panelHistoryBuffer.Count - ScrubHistoryMaxMessagesPerRequest);
+                _panelHistoryOffset = 0;
+                _panelHistoryParkTimeNs = clampedTo;
+                _panelHistoryActive = true;
+                DrainPanelHistoryLocked(session);
             }
+        }
+
+        public void DrainPanelHistory(FoxgloveSession session)
+        {
+            lock (_replayEngineLock)
+            {
+                DrainPanelHistoryLocked(session);
+            }
+        }
+
+        public void CancelPanelHistory()
+        {
+            lock (_replayEngineLock)
+            {
+                _panelHistoryBuffer.Clear();
+                _panelHistoryActive = false;
+                _panelHistoryOffset = 0;
+                _panelHistoryParkTimeNs = 0;
+            }
+        }
+
+        public void ResetPanelHistoryProgress()
+        {
+            lock (_replayEngineLock)
+            {
+                _panelHistoryBuffer.Clear();
+                _panelHistoryActive = false;
+                _panelHistoryOffset = 0;
+                _panelHistoryParkTimeNs = 0;
+                _hasPanelHistoryTime = false;
+                _lastPanelHistoryTimeNs = 0;
+            }
+        }
+
+        private void DrainPanelHistoryLocked(FoxgloveSession session)
+        {
+            if (session == null || !_panelHistoryActive) return;
+
+            var frameBudget = ScrubHistoryMaxMessagesPerTick;
+            var byteBudget = int.MaxValue;
+            if (session.TryGetReplayQueueHeadroom(
+                ScrubHistoryQueueReserveFrames,
+                ScrubHistoryQueueReserveBytes,
+                out var queueFrameHeadroom,
+                out var queueByteHeadroom))
+            {
+                frameBudget = Math.Min(frameBudget, queueFrameHeadroom);
+                byteBudget = queueByteHeadroom;
+            }
+
+            if (frameBudget <= 0 || byteBudget <= 0) return;
+
+            var sentFrames = 0;
+            var sentBytes = 0;
+            while (_panelHistoryOffset < _panelHistoryBuffer.Count && sentFrames < frameBudget)
+            {
+                var msg = _panelHistoryBuffer[_panelHistoryOffset];
+                var estimatedBytes = EstimateMessageDataFrameBytes(msg);
+                if (sentBytes + estimatedBytes > byteBudget)
+                    break;
+
+                var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | msg.ChannelId);
+                string topic = null;
+                _channelTopicMap?.TryGetValue(msg.ChannelId, out topic);
+                session.PublishReplay(replayId, msg.Data, msg.LogTime, "History", topic);
+                _panelHistoryOffset++;
+                sentFrames++;
+                sentBytes += estimatedBytes;
+            }
+
+            if (_panelHistoryOffset >= _panelHistoryBuffer.Count)
+            {
+                if (_panelHistoryParkTimeNs > 0)
+                {
+                    if (FoxgloveReplayTrace.TryTime("History", _panelHistoryParkTimeNs, "data", out var trace))
+                        _logger.LogWarning(trace);
+                    session.BroadcastReplayBinary(BinaryEncoding.EncodeTime(_panelHistoryParkTimeNs));
+                }
+
+                _lastPanelHistoryTimeNs = _panelHistoryParkTimeNs;
+                _hasPanelHistoryTime = true;
+                _panelHistoryBuffer.Clear();
+                _panelHistoryOffset = 0;
+                _panelHistoryParkTimeNs = 0;
+                _panelHistoryActive = false;
+            }
+        }
+
+        private static int EstimateMessageDataFrameBytes(McapMessage message)
+        {
+            return MessageDataFrameOverheadBytes + (message.Data?.Length ?? 0);
         }
 
         /// <summary>
         /// Apply the latest replay messages at or before <paramref name="timeNs"/>
         /// to local scene listeners without publishing MessageData to Foxglove.
-        /// Used by paused seek/scrub so Unity can follow the timeline while the
-        /// WebSocket playback stream stays in the official paused state.
+        /// Used by paused seek/scrub so Unity can follow the timeline without
+        /// relying on the separate Foxglove panel snapshot stream.
         /// </summary>
         public void ApplySnapshotToScene(ulong timeNs)
         {
@@ -223,7 +352,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private void PublishMessages(FoxgloveSession session, IReadOnlyList<McapMessage> messages, ulong? broadcastTimeNs, string source)
+        private void PublishMessages(FoxgloveSession session, IReadOnlyList<McapMessage> messages, ulong? broadcastTimeNs, string source, bool forwardToScene)
         {
             if (session == null) return;
             if (broadcastTimeNs.HasValue && broadcastTimeNs.Value > 0)
@@ -237,19 +366,15 @@ namespace Unity.FoxgloveSDK.Core
             ulong latestLogTime = 0;
             if (messages != null)
             {
-                var stampSnapshotAtSeekTime =
-                    string.Equals(source, "Snapshot", StringComparison.Ordinal)
-                    && broadcastTimeNs.HasValue;
                 foreach (var msg in messages)
                 {
                     var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | msg.ChannelId);
                     string topic = null;
                     _channelTopicMap?.TryGetValue(msg.ChannelId, out topic);
-                    var outgoingLogTime = stampSnapshotAtSeekTime ? broadcastTimeNs.Value : msg.LogTime;
-                    session.PublishReplay(replayId, msg.Data, outgoingLogTime, source, topic);
+                    session.PublishReplay(replayId, msg.Data, msg.LogTime, source, topic);
                     if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
 
-                    if (topic != null)
+                    if (forwardToScene && topic != null)
                         OnReplayMessage?.Invoke(topic, msg.Data);
                 }
             }

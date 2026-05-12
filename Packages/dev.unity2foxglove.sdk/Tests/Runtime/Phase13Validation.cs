@@ -55,8 +55,11 @@ namespace Unity.FoxgloveSDK.Tests
             TestReplayObjectAdapterRoutesProtobufBeforeJsonParse();
             TestReplayControllerSerializesReplayCursorAccess();
             TestPlaybackControlRunsOnRuntimeTick();
+            TestPlaybackSeekBroadcastsDidSeekStateToAllClients();
             TestPausedReplaySeekFollowsOfficialPlaybackControlFlow();
             TestPausedReplaySeekAppliesSceneOnlySnapshot();
+            TestActivePausedScrubDoesNotEmitPanelHistoryUntilSettled();
+            TestReplayPlayInvalidatesPanelHistoryDeltaWatermark();
             TestReplaySuppressesRuntimeLivePublish();
             TestReplaySuppressesRuntimeLiveChannelAdvertise();
             TestReplayUsesDataPriorityForSeekReset();
@@ -112,6 +115,20 @@ namespace Unity.FoxgloveSDK.Tests
                 rec.AddChannel(1, "/test", "json", "", "", "");
                 for (int i = 0; i < messageCount; i++)
                     rec.WriteMessage(1, (ulong)(i + 1) * intervalNs, Encoding.UTF8.GetBytes("{}"));
+                rec.Close();
+            }
+            return tmp;
+        }
+
+        static string CreateTempTimedMcap(params ulong[] logTimesNs)
+        {
+            var tmp = Path.GetTempFileName();
+            using (var fs = new FileStream(tmp, FileMode.Truncate, FileAccess.Write))
+            {
+                var rec = new McapRecorder(fs);
+                rec.AddChannel(1, "/test", "json", "", "", "");
+                foreach (var logTimeNs in logTimesNs)
+                    rec.WriteMessage(1, logTimeNs, Encoding.UTF8.GetBytes("{\"v\":" + logTimeNs + "}"));
                 rec.Close();
             }
             return tmp;
@@ -568,8 +585,40 @@ namespace Unity.FoxgloveSDK.Tests
             var clockTickIndex = runtimeSource.IndexOf("_playbackClock.Tick()", StringComparison.Ordinal);
             Assert(drainIndex >= 0 && clockTickIndex > drainIndex,
                 "Runtime drains playback controls before advancing replay time");
-            Assert(replaySource.Contains("PublishMessages(session, messages, nowNs, \"Tick\")", StringComparison.Ordinal),
+            Assert(replaySource.Contains("PublishMessages(session, messages, nowNs, \"Tick\", forwardToScene: true)", StringComparison.Ordinal),
                 "Replay Tick broadcasts playback time before replay message frames");
+        }
+
+        static void TestPlaybackSeekBroadcastsDidSeekStateToAllClients()
+        {
+            var tmp = CreateTempMcap(2, 1_000_000UL);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("playback-state-broadcast", "127.0.0.1", 9886);
+                transport.SimulateConnect(7);
+                transport.SimulateConnect(8);
+                transport.ClearBinary(7);
+                transport.ClearBinary(8);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 1_000_000UL));
+                rt.Tick();
+
+                Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(7)) == 1,
+                    "Playback seek sends didSeek PlaybackState to the requesting client");
+                Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(8)) == 1,
+                    "Playback seek broadcasts didSeek PlaybackState to other connected clients");
+                Assert(transport.SentBinaryFrames(7)[0][14] == 1 && transport.SentBinaryFrames(8)[0][14] == 1,
+                    "Broadcast PlaybackState preserves didSeek=true for all clients");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
         }
 
         static void TestPausedReplaySeekFollowsOfficialPlaybackControlFlow()
@@ -684,6 +733,108 @@ namespace Unity.FoxgloveSDK.Tests
                     "Paused replay seek forwards the snapshot topic to Unity scene listeners");
                 Assert(messageFrames == 0,
                     "Paused replay seek scene snapshot is not published as Foxglove MessageData");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestActivePausedScrubDoesNotEmitPanelHistoryUntilSettled()
+        {
+            var second = 1_000_000_000UL;
+            var tmp = CreateTempTimedMcap(1 * second, 10 * second, 20 * second, 40 * second);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            var sceneMessageCount = 0;
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.OnReplayMessage += (_, _) => sceneMessageCount++;
+                rt.Start("active-paused-scrub", "127.0.0.1", 9887);
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+                transport.ClearBinary(7);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 40 * second));
+                rt.Tick();
+                clock.AdvanceNs(100_000_000UL);
+                rt.Tick();
+                Assert(CountMessageFrames(transport.SentBinaryFrames(7)) == 0,
+                    "Active paused scrub does not publish panel history before the settled debounce");
+
+                transport.ClearBinary(7);
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 20 * second));
+                rt.Tick();
+                clock.AdvanceNs(100_000_000UL);
+                rt.Tick();
+                Assert(CountMessageFrames(transport.SentBinaryFrames(7)) == 0,
+                    "Superseded paused scrub keeps panel history suppressed while drag is still active");
+
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs - 100_000_000UL);
+                rt.Tick();
+
+                var logTimes = MessageLogTimes(transport.SentBinaryFrames(7));
+                Assert(logTimes.Count == 3
+                    && logTimes[0] == 1 * second
+                    && logTimes[1] == 10 * second
+                    && logTimes[2] == 20 * second,
+                    "Settled paused scrub publishes bounded chronological panel history");
+                Assert(sceneMessageCount >= 2,
+                    "Active paused scrub still updates the Unity scene immediately for each seek");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplayPlayInvalidatesPanelHistoryDeltaWatermark()
+        {
+            var second = 1_000_000_000UL;
+            var tmp = CreateTempTimedMcap(1 * second, 10 * second, 20 * second, 40 * second);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("play-invalidates-history-watermark", "127.0.0.1", 9888);
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+                transport.ClearBinary(7);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 20 * second));
+                rt.Tick();
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+                Assert(MessageLogTimes(transport.SentBinaryFrames(7)).Count == 3,
+                    "Initial settled paused seek publishes history through the seek time");
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 0, hasSeek: false, seekNs: 0));
+                rt.Tick();
+                transport.ClearBinary(7);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 40 * second));
+                rt.Tick();
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+
+                var logTimes = MessageLogTimes(transport.SentBinaryFrames(7));
+                Assert(logTimes.Count == 3
+                    && logTimes[0] == 10 * second
+                    && logTimes[1] == 20 * second
+                    && logTimes[2] == 40 * second,
+                    "Replay Play invalidates paused history delta watermark so the next paused seek rebuilds the bounded window");
             }
             finally
             {
@@ -853,6 +1004,39 @@ namespace Unity.FoxgloveSDK.Tests
             return frame;
         }
 
+        static int CountPlaybackStateFrames(IReadOnlyList<byte[]> frames)
+        {
+            var count = 0;
+            foreach (var frame in frames)
+            {
+                if (frame.Length > 0 && frame[0] == ServerOpcode.PlaybackState)
+                    count++;
+            }
+            return count;
+        }
+
+        static int CountMessageFrames(IReadOnlyList<byte[]> frames)
+        {
+            var count = 0;
+            foreach (var frame in frames)
+            {
+                if (BinaryEncoding.TryDecodeServerMessageData(frame, out _, out _, out _))
+                    count++;
+            }
+            return count;
+        }
+
+        static List<ulong> MessageLogTimes(IReadOnlyList<byte[]> frames)
+        {
+            var result = new List<ulong>();
+            foreach (var frame in frames)
+            {
+                if (BinaryEncoding.TryDecodeServerMessageData(frame, out _, out var logTimeNs, out _))
+                    result.Add(logTimeNs);
+            }
+            return result;
+        }
+
         static int CountOccurrences(string text, string value)
         {
             var count = 0;
@@ -871,7 +1055,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Fake transport for Phase 13 that tracks <c>IsRunning</c> state.
     /// </summary>
-    class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport
+    class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
     {
         public readonly List<string> SentText = new List<string>();
         private readonly Dictionary<uint, List<byte[]>> _sentBinary = new Dictionary<uint, List<byte[]>>();
@@ -880,6 +1064,9 @@ namespace Unity.FoxgloveSDK.Tests
         public int DataBinaryCount { get; private set; }
         public int ControlBroadcastBinaryCount { get; private set; }
         public int DataBroadcastBinaryCount { get; private set; }
+        public bool StatsSupported { get; set; } = true;
+        public int SimulatedQueuedFrames { get; set; }
+        public int SimulatedQueuedBytes { get; set; }
         public bool IsRunning { get; private set; }
         public void Start(string host, int port) { IsRunning = true; }
         public void Stop() { IsRunning = false; }
@@ -941,11 +1128,45 @@ namespace Unity.FoxgloveSDK.Tests
             OnClientConnected?.Invoke(clientId);
         }
         public void ClearDataQueues() => ClearDataQueuesCount++;
+        public TransportStatsSnapshot GetStatsSnapshot()
+        {
+            if (!StatsSupported)
+                return TransportStatsSnapshot.Unsupported;
+
+            var clients = new List<TransportClientStats>();
+            foreach (var clientId in _sentBinary.Keys)
+            {
+                clients.Add(new TransportClientStats
+                {
+                    ClientId = clientId,
+                    QueuedFrames = SimulatedQueuedFrames,
+                    QueuedBytes = SimulatedQueuedBytes
+                });
+            }
+
+            return new TransportStatsSnapshot
+            {
+                Supported = true,
+                IsRunning = IsRunning,
+                ActiveClientCount = clients.Count,
+                Clients = clients
+            };
+        }
         public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         public void SimulateBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
         public event Action<uint> OnClientConnected;
         public event Action<uint> OnClientDisconnected;
         public event Action<uint, string> OnTextReceived;
         public event Action<uint, byte[]> OnBinaryReceived;
+    }
+
+    class Phase13FakeClock : IFoxgloveClock
+    {
+        public ulong NowNs { get; private set; }
+
+        public void AdvanceNs(ulong deltaNs)
+        {
+            NowNs += deltaNs;
+        }
     }
 }
