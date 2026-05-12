@@ -41,18 +41,24 @@ namespace Unity.FoxgloveSDK.Core
         public bool IsTimedOut(TimeSpan timeout) => DateTime.UtcNow - CreatedAt > timeout;
 
         /// <summary>Mark the call as completed with a success response.</summary>
-        internal void Complete(string encoding, byte[] payload)
+        internal bool Complete(string encoding, byte[] payload)
         {
+            if (IsCompleted)
+                return false;
             ResponseEncoding = encoding;
             ResponsePayload = payload;
             IsCompleted = true;
+            return true;
         }
 
         /// <summary>Mark the call as completed with a failure message.</summary>
-        internal void Fail(string message)
+        internal bool Fail(string message)
         {
+            if (IsCompleted)
+                return false;
             FailureMessage = message;
             IsCompleted = true;
+            return true;
         }
     }
 }

@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 
 namespace Unity.FoxgloveSDK.Core
@@ -45,28 +46,31 @@ namespace Unity.FoxgloveSDK.Core
         public bool TryResolve(string uri, out string path, out string error)
         {
             path = null; error = null;
+            List<KeyValuePair<string, AssetRoot>> roots;
             lock (_lock)
             {
-                foreach (var (prefix, root) in _roots)
-                {
-                    if (!uri.StartsWith(prefix, StringComparison.Ordinal))
-                        continue;
-                    var relative = uri.Substring(prefix.Length);
-                    relative = Uri.UnescapeDataString(relative);
-                    relative = relative.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-                    var resolved = Path.GetFullPath(Path.Combine(root.LocalRoot, relative));
-                    if (!resolved.StartsWith(root.LocalRoot + Path.DirectorySeparatorChar) && resolved != root.LocalRoot)
-                    { error = $"Path traversal denied: {uri}"; return false; }
-                    if (Directory.Exists(resolved))
-                    { error = $"Path is a directory: {uri}"; return false; }
-                    if (!File.Exists(resolved))
-                    { error = $"File not found: {uri}"; return false; }
-                    var fi = new FileInfo(resolved);
-                    if (fi.Length > root.MaxBytes)
-                    { error = $"File exceeds size limit ({root.MaxBytes} bytes): {fi.Length}"; return false; }
-                    path = resolved;
-                    return true;
-                }
+                roots = _roots.ToList();
+            }
+
+            foreach (var (prefix, root) in roots)
+            {
+                if (!uri.StartsWith(prefix, StringComparison.Ordinal))
+                    continue;
+                var relative = uri.Substring(prefix.Length);
+                relative = Uri.UnescapeDataString(relative);
+                relative = relative.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                var resolved = Path.GetFullPath(Path.Combine(root.LocalRoot, relative));
+                if (!resolved.StartsWith(root.LocalRoot + Path.DirectorySeparatorChar) && resolved != root.LocalRoot)
+                { error = $"Path traversal denied: {uri}"; return false; }
+                if (Directory.Exists(resolved))
+                { error = $"Path is a directory: {uri}"; return false; }
+                if (!File.Exists(resolved))
+                { error = $"File not found: {uri}"; return false; }
+                var fi = new FileInfo(resolved);
+                if (fi.Length > root.MaxBytes)
+                { error = $"File exceeds size limit ({root.MaxBytes} bytes): {fi.Length}"; return false; }
+                path = resolved;
+                return true;
             }
             error = $"No asset root registered for URI: {uri}";
             return false;
