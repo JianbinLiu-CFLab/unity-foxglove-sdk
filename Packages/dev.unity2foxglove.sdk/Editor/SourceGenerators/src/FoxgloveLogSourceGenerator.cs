@@ -207,8 +207,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
 
             // Warn when a multi-member topic mixes policy knobs. The emitter
-            // remains deterministic by taking the maximum value per topic, but
-            // authors should split topics or align policy for readability.
+            // remains deterministic by applying trigger precedence first, then
+            // the existing policy precedence, but authors should split topics
+            // or align policy for readability.
             foreach (var grp in byTopic)
             {
                 var mixedPolicy = grp.Select(a => a.PublishMode).Distinct().Count() > 1
@@ -336,7 +337,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// <summary>FOXRUN005: same-topic members have mixed publish policy settings.</summary>
             public static readonly DiagnosticDescriptor MixedTopicPolicy = new DiagnosticDescriptor(
                 "FOXRUN005", "Mixed same-topic PublishMode policy",
-                "Topic '{0}' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses the maximum value per policy setting.",
+                "Topic '{0}' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses OnTrigger precedence before scheduled policy settings.",
                 "FoxRun", DiagnosticSeverity.Warning, true);
         }
     }

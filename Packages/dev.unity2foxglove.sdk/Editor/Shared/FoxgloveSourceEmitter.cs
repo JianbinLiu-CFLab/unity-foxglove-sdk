@@ -156,6 +156,13 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var topics = topicMap.Keys.ToList();
+            var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPublishMode(kvp.Value));
+            var triggerTopicIndexes = topics
+                .Select((topic, index) => new { topic, index })
+                .Where(x => topicModes[x.topic] == 3)
+                .Select(x => x.index)
+                .ToList();
+            var triggerMembers = BuildTriggerMembers(members, topics, topicModes);
             var hasPolicy = members.Any(m => m.PublishMode != 0);
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
@@ -188,12 +195,13 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[i]];
                 var rate = fields.Max(m => m.RateHz);
-                var mode = fields.Max(m => m.PublishMode);
+                var mode = topicModes[topics[i]];
                 var eps = fields.Max(m => m.ChangeEpsilon);
                 var forceInt = fields.Max(m => m.ForceIntervalSeconds);
                 var topic = CSharpStringLiteral(topics[i]);
                 sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, (FoxRunPublishMode){4}, {5}f, {6}f);", pad, i, topic, rate, mode, eps, forceInt));
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, {6}f);",
+                    pad, i, topic, rate, PublishModeLiteral(mode), eps, forceInt));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -223,6 +231,30 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
 
+            if (triggerMembers.Count > 0)
+            {
+                sb.AppendLine();
+                foreach (var trigger in triggerMembers)
+                {
+                    sb.AppendLine($"{pad}    public bool {trigger.MethodName}()");
+                    sb.AppendLine($"{pad}    {{");
+                    sb.AppendLine($"{pad}        var published = false;");
+                    foreach (var topicIndex in trigger.TopicIndexes)
+                        sb.AppendLine($"{pad}        published |= FoxgloveLogHub.Trigger(this, {topicIndex});");
+                    sb.AppendLine($"{pad}        return published;");
+                    sb.AppendLine($"{pad}    }}");
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine($"{pad}    public bool FoxRun_TriggerAll()");
+                sb.AppendLine($"{pad}    {{");
+                sb.AppendLine($"{pad}        var published = false;");
+                foreach (var topicIndex in triggerTopicIndexes)
+                    sb.AppendLine($"{pad}        published |= FoxgloveLogHub.Trigger(this, {topicIndex});");
+                sb.AppendLine($"{pad}        return published;");
+                sb.AppendLine($"{pad}    }}");
+            }
+
             // Policy methods are emitted only when at least one topic uses a
             // non-FixedRate mode; fixed-rate sources keep the smaller legacy shape.
             if (hasPolicy)
@@ -232,7 +264,8 @@ namespace Unity.FoxgloveSDK.Editor
                 for (int i = 0; i < topics.Count; i++)
                 {
                     var fields = topicMap[topics[i]];
-                    if (fields.All(f => f.PublishMode == 0)) continue;
+                    var mode = topicModes[topics[i]];
+                    if (mode == 0 || mode == 3) continue;
                     sb.AppendLine($"{pad}    private bool __hasLast_{i};");
                     sb.AppendLine($"{pad}    private double __lastPublishSec_{i};");
                     for (int j = 0; j < fields.Count; j++)
@@ -262,9 +295,15 @@ namespace Unity.FoxgloveSDK.Editor
                 for (int i = 0; i < topics.Count; i++)
                 {
                     var fields = topicMap[topics[i]];
-                    if (fields.All(f => f.PublishMode == 0))
+                    var mode = topicModes[topics[i]];
+                    if (mode == 0)
                     {
                         sb.AppendLine($"{pad}            case {i}: return true;");
+                        continue;
+                    }
+                    if (mode == 3)
+                    {
+                        sb.AppendLine($"{pad}            case {i}: return false;");
                         continue;
                     }
                     sb.AppendLine($"{pad}            case {i}:");
@@ -275,7 +314,6 @@ namespace Unity.FoxgloveSDK.Editor
                         var eps = f.ChangeEpsilon;
                         sb.AppendLine($"{pad}                if (!changed) changed = {ChangeExpr(f.MemberName, f.TypeName, "__last_" + i + "_" + j, eps)};");
                     }
-                    var mode = fields.Max(f => f.PublishMode);
                     var forceInt = fields.Max(f => f.ForceIntervalSeconds);
                     sb.AppendLine($"{pad}                return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(" +
                         $"{PublishModeLiteral(mode)}, nowSec, __hasLast_{i}, changed, __lastPublishSec_{i}, {FloatLiteral(forceInt < 0 ? 0 : forceInt)});");
@@ -293,7 +331,8 @@ namespace Unity.FoxgloveSDK.Editor
                 for (int i = 0; i < topics.Count; i++)
                 {
                     var fields = topicMap[topics[i]];
-                    if (fields.All(f => f.PublishMode == 0)) continue;
+                    var mode = topicModes[topics[i]];
+                    if (mode == 0 || mode == 3) continue;
                     sb.AppendLine($"{pad}            case {i}:");
                     for (int j = 0; j < fields.Count; j++)
                         sb.AppendLine($"{pad}                __last_{i}_{j} = this.{fields[j].MemberName};");
@@ -343,8 +382,96 @@ namespace Unity.FoxgloveSDK.Editor
                 case 0: return "FoxRunPublishMode.FixedRate";
                 case 1: return "FoxRunPublishMode.OnChange";
                 case 2: return "FoxRunPublishMode.OnChangeOrInterval";
+                case 3: return "FoxRunPublishMode.OnTrigger";
                 default: return FormattableString.Invariant($"(FoxRunPublishMode){mode}");
             }
+        }
+
+        private static int TopicPublishMode(IReadOnlyList<TopicMember> fields)
+        {
+            if (fields.Any(f => f.PublishMode == 3))
+                return 3;
+            if (fields.Any(f => f.PublishMode == 2))
+                return 2;
+            if (fields.Any(f => f.PublishMode == 1))
+                return 1;
+            return fields.Max(f => f.PublishMode);
+        }
+
+        private sealed class TriggerMember
+        {
+            public readonly string MethodName;
+            public readonly List<int> TopicIndexes;
+
+            public TriggerMember(string methodName, List<int> topicIndexes)
+            {
+                MethodName = methodName;
+                TopicIndexes = topicIndexes;
+            }
+        }
+
+        private static List<TriggerMember> BuildTriggerMembers(
+            IReadOnlyList<TopicMember> members,
+            IReadOnlyList<string> topics,
+            IReadOnlyDictionary<string, int> topicModes)
+        {
+            var usedNames = new HashSet<string>();
+            var result = new List<TriggerMember>();
+
+            foreach (var group in members.Where(m => m.PublishMode == 3).GroupBy(m => m.MemberName).OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                var topicIndexes = group
+                    .Select(m => IndexOfTopic(topics, m.Topic))
+                    .Where(i => i >= 0 && topicModes[topics[i]] == 3)
+                    .Distinct()
+                    .OrderBy(i => i)
+                    .ToList();
+                if (topicIndexes.Count == 0)
+                    continue;
+
+                var baseName = "FoxRun_Trigger_" + SanitizeIdentifier(group.Key.TrimStart('_'));
+                var methodName = baseName;
+                var suffix = 2;
+                while (!usedNames.Add(methodName))
+                    methodName = baseName + "_" + suffix++;
+
+                result.Add(new TriggerMember(methodName, topicIndexes));
+            }
+
+            return result;
+        }
+
+        private static int IndexOfTopic(IReadOnlyList<string> topics, string topic)
+        {
+            for (var i = 0; i < topics.Count; i++)
+                if (topics[i] == topic)
+                    return i;
+            return -1;
+        }
+
+        private static string SanitizeIdentifier(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "Member";
+
+            var sb = new StringBuilder(value.Length + 1);
+            if (!IsIdentifierStart(value[0]))
+                sb.Append('_');
+
+            foreach (var ch in value)
+                sb.Append(IsIdentifierPart(ch) ? ch : '_');
+
+            return sb.ToString();
+        }
+
+        private static bool IsIdentifierStart(char ch)
+        {
+            return ch == '_' || char.IsLetter(ch);
+        }
+
+        private static bool IsIdentifierPart(char ch)
+        {
+            return ch == '_' || char.IsLetterOrDigit(ch);
         }
     }
 }
