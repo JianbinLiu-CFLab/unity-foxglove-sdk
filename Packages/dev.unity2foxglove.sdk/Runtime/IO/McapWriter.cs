@@ -26,7 +26,16 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Current byte position in the underlying stream.</summary>
         public long Position => _stream.Position;
         /// <summary>MCAP magic bytes: <c>{ 0x89, M, C, A, P, 0x30, 0x0D, 0x0A }</c>.</summary>
-        public static readonly byte[] Magic = { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P', 0x30, 0x0D, 0x0A };
+        private static readonly byte[] MagicBytes = { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P', 0x30, 0x0D, 0x0A };
+
+        /// <summary>
+        /// MCAP magic bytes. Returns a defensive copy so callers cannot mutate
+        /// the process-wide writer/reader constant.
+        /// </summary>
+        public static byte[] Magic => (byte[])MagicBytes.Clone();
+
+        /// <summary>Internal non-allocating view of the immutable magic bytes.</summary>
+        internal static ReadOnlySpan<byte> MagicSpan => MagicBytes;
 
         /// <summary>Length of the MCAP magic prefix/suffix in bytes.</summary>
         internal const int MagicLength = 8;
@@ -59,7 +68,7 @@ namespace Unity.FoxgloveSDK.IO
         public McapWriter(Stream stream, bool leaveOpen = false) { _stream = stream; _leaveOpen = leaveOpen; }
 
         /// <summary>Write the MCAP magic bytes at the start of the file.</summary>
-        public void WriteMagic() => _stream.Write(Magic, 0, Magic.Length);
+        public void WriteMagic() => _stream.Write(MagicBytes, 0, MagicBytes.Length);
 
         /// <summary>Write a raw MCAP record: 1-byte opcode, 8-byte LE length prefix, then the content payload.</summary>
         public void WriteRecord(byte opcode, byte[] content)
@@ -78,7 +87,11 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Write a Message record (opcode <c>0x05</c>).</summary>
         public void WriteMessage(ushort channelId, uint seq, ulong logTime, ulong publishTime, byte[] data) { var m = new MemoryStream(); WriteU16(m, channelId); WriteU32(m, seq); WriteU64(m, logTime); WriteU64(m, publishTime); if (data != null) m.Write(data, 0, data.Length); WriteRecord(OpcodeMessage, m.ToArray()); }
         /// <summary>Write a Chunk record (opcode <c>0x06</c>). Chunks contain compressed records plus start/end times, sizes, and checksums.</summary>
-        public void WriteChunk(ulong startTime, ulong endTime, ulong uncompressedSize, uint uncompressedCrc, string compression, ulong compressedSize, byte[] records) { var m = new MemoryStream(); WriteU64(m, startTime); WriteU64(m, endTime); WriteU64(m, uncompressedSize); WriteU32(m, uncompressedCrc); WriteString(m, compression); WriteU64(m, compressedSize); m.Write(records ?? new byte[0], 0, records?.Length ?? 0); WriteRecord(OpcodeChunk, m.ToArray()); }
+        public void WriteChunk(ulong startTime, ulong endTime, ulong uncompressedSize, uint uncompressedCrc, string compression, ulong compressedSize, byte[] records)
+            => WriteChunk(startTime, endTime, uncompressedSize, uncompressedCrc, compression, compressedSize,
+                new ArraySegment<byte>(records ?? Array.Empty<byte>()));
+        /// <summary>Write a Chunk record from an existing byte segment, avoiding a caller-side copy.</summary>
+        public void WriteChunk(ulong startTime, ulong endTime, ulong uncompressedSize, uint uncompressedCrc, string compression, ulong compressedSize, ArraySegment<byte> records) { var m = new MemoryStream(); WriteU64(m, startTime); WriteU64(m, endTime); WriteU64(m, uncompressedSize); WriteU32(m, uncompressedCrc); WriteString(m, compression); WriteU64(m, compressedSize); if (records.Array != null && records.Count > 0) m.Write(records.Array, records.Offset, records.Count); WriteRecord(OpcodeChunk, m.ToArray()); }
         /// <summary>Write a Metadata record (opcode <c>0x0C</c>).</summary>
         public void WriteMetadata(string name, Dictionary<string,string> meta) { var m = new MemoryStream(); WriteString(m, name); WriteStringMap(m, meta ?? new()); WriteRecord(OpcodeMetadata, m.ToArray()); }
         /// <summary>Write a Metadata Index record (opcode <c>0x0D</c>).</summary>

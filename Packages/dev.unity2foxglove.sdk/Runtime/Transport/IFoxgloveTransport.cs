@@ -56,5 +56,16 @@ namespace Unity.FoxgloveSDK.Transport
     internal interface IPrioritizedFoxgloveTransport
     {
         void SendDataBinary(uint clientId, byte[] data);
+        void BroadcastDataBinary(byte[] data);
+    }
+
+    /// <summary>
+    /// Optional transport extension used when playback seeks to an older
+    /// timestamp. Implementations may drop queued data frames while preserving
+    /// control frames so stale pre-seek data cannot arrive after a reset.
+    /// </summary>
+    internal interface IReplayResettableFoxgloveTransport
+    {
+        void ClearDataQueues();
     }
 }

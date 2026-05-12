@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Performance
         public void SendBinary(uint clientId, byte[] data) { BinaryCount++; }
         public void BroadcastBinary(byte[] data) { }
         public void SendDataBinary(uint clientId, byte[] data) { DataBinaryCount++; }
+        public void BroadcastDataBinary(byte[] data) { DataBinaryCount++; }
         public void Dispose() { }
 
         public void SimulateConnect(uint clientId, string subProtocol = "foxglove.sdk.v1")

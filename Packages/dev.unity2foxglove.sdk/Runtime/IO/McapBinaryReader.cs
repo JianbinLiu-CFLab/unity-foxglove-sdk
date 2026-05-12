@@ -82,8 +82,8 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Check whether the bytes at <c>off</c> match the MCAP magic bytes.</summary>
         public static bool MatchesMagic(byte[] buf, int off)
         {
-            var magic = McapWriter.Magic;
-            if (off + magic.Length > buf.Length) return false;
+            var magic = McapWriter.MagicSpan;
+            if (buf == null || off < 0 || off > buf.Length - magic.Length) return false;
             for (var i = 0; i < magic.Length; i++)
                 if (buf[off + i] != magic[i]) return false;
             return true;

@@ -204,7 +204,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!snap.IsRunning, "36C-1: transport not running before start");
 
             // Start + stop
-            runtime.Start("phase36-test", "127.0.0.1", 18765);
+            runtime.Start("phase36-test", "127.0.0.1", GetFreeTcpPort());
             snap = runtime.GetTransportStatsSnapshot();
             Check(snap.IsRunning, "36C-1b: transport running after start");
             Check(snap.Supported, "36C-1c: managed backend is supported");
