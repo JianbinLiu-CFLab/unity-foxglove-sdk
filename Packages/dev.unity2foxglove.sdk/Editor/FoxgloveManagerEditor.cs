@@ -369,6 +369,10 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(Components.FoxglovePublisherBase), true)]
     public class FoxglovePublisherBaseEditor : UnityEditor.Editor
     {
+        /// <summary>
+        /// Draws the shared publisher inspector, including encoding override
+        /// controls and inherited serialized fields.
+        /// </summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();

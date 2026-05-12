@@ -9,8 +9,16 @@ using Unity.FoxgloveSDK.Schemas;
 
 namespace Foxglove.Schemas
 {
+    /// <summary>
+    /// Shared conversion helpers used by generated protobuf publishers and JSON
+    /// schema publishers so timestamp and identity-pose defaults stay aligned.
+    /// </summary>
     internal static class FoxgloveProtoBuilderUtil
     {
+        /// <summary>
+        /// Converts Unix nanoseconds to the JSON schema time DTO used by
+        /// Unity2Foxglove schema builders.
+        /// </summary>
         public static FoxgloveTime ToJsonTime(ulong unixNs)
         {
             return new FoxgloveTime
@@ -20,6 +28,9 @@ namespace Foxglove.Schemas
             };
         }
 
+        /// <summary>
+        /// Converts Unix nanoseconds to a Google.Protobuf timestamp.
+        /// </summary>
         public static Timestamp ToTimestamp(ulong unixNs)
         {
             return new Timestamp
@@ -29,6 +40,10 @@ namespace Foxglove.Schemas
             };
         }
 
+        /// <summary>
+        /// Creates a JSON schema identity pose with zero position and identity
+        /// orientation.
+        /// </summary>
         public static FoxglovePose JsonIdentityPose()
         {
             return new FoxglovePose
@@ -38,6 +53,10 @@ namespace Foxglove.Schemas
             };
         }
 
+        /// <summary>
+        /// Creates a protobuf identity pose with zero position and identity
+        /// orientation.
+        /// </summary>
         public static Foxglove.Pose ProtoIdentityPose()
         {
             return new Foxglove.Pose

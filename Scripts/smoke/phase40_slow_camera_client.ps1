@@ -1,3 +1,8 @@
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Slow Foxglove camera client smoke for backpressure validation.
+
 param(
     [int]$AdvertiseTimeoutSeconds = 10,
     [int]$FallbackMaxChannelId = 128,
