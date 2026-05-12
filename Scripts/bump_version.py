@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
 """Synchronize Unity2Foxglove package version references.
 
 This script updates the package version, the runtime package-metadata

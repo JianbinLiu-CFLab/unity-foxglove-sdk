@@ -1,3 +1,8 @@
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Generate and self-check a Phase 34 MCAP attachment smoke fixture.
+
 param(
     [string]$OutputPath
 )

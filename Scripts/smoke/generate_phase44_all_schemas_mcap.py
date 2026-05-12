@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
 """Generate the Phase 44 all-schema MCAP smoke fixture.
 
 This script is intentionally thin: the MCAP generation logic lives in the

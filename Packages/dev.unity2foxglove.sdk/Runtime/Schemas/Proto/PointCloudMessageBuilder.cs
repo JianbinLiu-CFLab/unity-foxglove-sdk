@@ -14,6 +14,10 @@ namespace Foxglove.Schemas
     /// <summary>Built PointCloud payloads sharing the same packed bytes.</summary>
     public sealed class PointCloudBuildResult
     {
+        /// <summary>
+        /// Creates paired JSON/protobuf payloads that share the same packed point
+        /// byte buffer.
+        /// </summary>
         public PointCloudBuildResult(PointCloudMessage json, Foxglove.PointCloud protobuf, byte[] data)
         {
             Json = json;

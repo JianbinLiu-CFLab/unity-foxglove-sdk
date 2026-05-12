@@ -72,6 +72,10 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
         internal void FireForTests(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
 
+        /// <summary>
+        /// Creates a replay controller using the provided logger for warnings and
+        /// playback diagnostics.
+        /// </summary>
         public ReplayController(IFoxgloveLogger logger)
         {
             _logger = logger;
@@ -240,6 +244,11 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Sends the next batch of buffered scrub-history messages to the session,
+        /// respecting replay queue headroom and per-tick history budgets.
+        /// </summary>
+        /// <param name="session">Session that receives replay history frames.</param>
         public void DrainPanelHistory(FoxgloveSession session)
         {
             lock (_replayEngineLock)
@@ -248,6 +257,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Cancels the current panel-history drain while leaving the last observed
+        /// panel request time intact for debounce decisions.
+        /// </summary>
         public void CancelPanelHistory()
         {
             lock (_replayEngineLock)
@@ -259,6 +272,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Clears panel-history progress and debounce state after replay stops or
+        /// the active replay source changes.
+        /// </summary>
         public void ResetPanelHistoryProgress()
         {
             lock (_replayEngineLock)

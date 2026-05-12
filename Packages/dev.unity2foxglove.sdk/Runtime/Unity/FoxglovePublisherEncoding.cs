@@ -41,6 +41,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public readonly struct PublisherEncodingResolution
     {
+        /// <summary>
+        /// Creates a resolved publisher encoding result.
+        /// </summary>
         public PublisherEncodingResolution(
             PublisherEffectiveEncoding requested,
             PublisherEffectiveEncoding effective,
@@ -65,6 +68,10 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public static class PublisherEncodingPolicy
     {
+        /// <summary>
+        /// Resolves the effective wire encoding from manager defaults, publisher
+        /// overrides, and the publisher's supported serialization formats.
+        /// </summary>
         public static PublisherEncodingResolution Resolve(
             GlobalEncoding managerDefault,
             bool allowPublisherOverride,
@@ -85,6 +92,9 @@ namespace Unity.FoxgloveSDK.Components
             return new PublisherEncodingResolution(requested, fallback, fellBack: true);
         }
 
+        /// <summary>
+        /// Converts a resolved encoding value to the Foxglove protocol label.
+        /// </summary>
         public static string ToProtocolEncoding(PublisherEffectiveEncoding encoding)
         {
             switch (encoding)

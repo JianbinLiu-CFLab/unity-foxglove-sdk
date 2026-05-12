@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Phase 32 validation for protobuf encoding, schema catalog, publish, and MCAP paths.
 
 using System;
 using System.Collections.Generic;
