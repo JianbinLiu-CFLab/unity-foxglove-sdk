@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(asmdef.Contains("\"name\": \"Unity.FoxgloveSDK\""), "asmdef name matches namespace");
 
             ValidateRepositoryHeaders(repoRoot);
+            ValidateWorkflowScriptReferences(repoRoot);
             ValidateGeneratedSourceProvenance(repoRoot);
             ValidateThirdPartyNotices(repoRoot);
 
@@ -196,6 +197,37 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return trimmedLine.StartsWith("\"\"\"", StringComparison.Ordinal)
                 || trimmedLine.StartsWith("'''", StringComparison.Ordinal);
+        }
+
+        static void ValidateWorkflowScriptReferences(string repoRoot)
+        {
+            var workflowsDir = Path.Combine(repoRoot, ".github", "workflows");
+            var workflowFiles = Directory.GetFiles(workflowsDir, "*.yml", SearchOption.TopDirectoryOnly)
+                .Concat(Directory.GetFiles(workflowsDir, "*.yaml", SearchOption.TopDirectoryOnly))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            var stalePaths = new[]
+            {
+                "Scripts/validate_release_package.py",
+                "Scripts/build_unity_il2cpp.py",
+                "Scripts/bump_version.py",
+                "Scripts/run_performance_baseline.py",
+                "Scripts/sync_full_demo_sample.py",
+                "Scripts/smoke/generate_phase34_attachment_smoke.ps1",
+                "Scripts/smoke/generate_phase44_all_schemas_mcap.py",
+                "Scripts/smoke/phase40_slow_camera_client.ps1",
+                "Unity2Foxglove/Tests/test_ws.py",
+                "Unity2Foxglove/Tests/test_fetch_asset.ps1",
+            };
+
+            foreach (var path in workflowFiles)
+            {
+                var text = File.ReadAllText(path).Replace('\\', '/');
+                var relativePath = Path.GetRelativePath(repoRoot, path).Replace(Path.DirectorySeparatorChar, '/');
+                foreach (var stalePath in stalePaths)
+                    Assert(!text.Contains(stalePath), $"{relativePath} does not reference stale script path {stalePath}");
+            }
         }
 
         static void ValidateGeneratedSourceProvenance(string repoRoot)
