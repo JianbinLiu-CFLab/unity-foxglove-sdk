@@ -112,6 +112,28 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private static string CSharpStringLiteral(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "";
+
+            var sb = new StringBuilder(value.Length);
+            foreach (var ch in value)
+            {
+                switch (ch)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    case '\0': sb.Append("\\0"); break;
+                    default: sb.Append(ch); break;
+                }
+            }
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Emits the generated partial class source for one class name / namespace
         /// pair.
@@ -169,8 +191,9 @@ namespace Unity.FoxgloveSDK.Editor
                 var mode = fields.Max(m => m.PublishMode);
                 var eps = fields.Max(m => m.ChangeEpsilon);
                 var forceInt = fields.Max(m => m.ForceIntervalSeconds);
+                var topic = CSharpStringLiteral(topics[i]);
                 sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, (FoxRunPublishMode){4}, {5}f, {6}f);", pad, i, topics[i], rate, mode, eps, forceInt));
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, (FoxRunPublishMode){4}, {5}f, {6}f);", pad, i, topic, rate, mode, eps, forceInt));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -186,8 +209,9 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                var schema = fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "";
-                sb.Append($"{pad}            case {i}: mgr.PublishJson(\"{topics[i]}\", \"{schema}\", new {{ ");
+                var schema = CSharpStringLiteral(fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "");
+                var topic = CSharpStringLiteral(topics[i]);
+                sb.Append($"{pad}            case {i}: mgr.PublishJson(\"{topic}\", \"{schema}\", new {{ ");
                 for (int j = 0; j < fields.Count; j++)
                 {
                     if (j > 0) sb.Append(", ");
@@ -296,13 +320,14 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var t = type;
             if (t.StartsWith("UnityEngine.")) t = t.Substring(12);
+            var access = "this." + name;
             switch (t)
             {
-                case "Vector3": return $"new {{ x = {name}.x, y = {name}.y, z = {name}.z }}";
-                case "Vector2": return $"new {{ x = {name}.x, y = {name}.y }}";
-                case "Quaternion": return $"new {{ x = {name}.x, y = {name}.y, z = {name}.z, w = {name}.w }}";
-                case "Color": return $"new {{ r = {name}.r, g = {name}.g, b = {name}.b, a = {name}.a }}";
-                default: return name;
+                case "Vector3": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z }}";
+                case "Vector2": return $"new {{ x = {access}.x, y = {access}.y }}";
+                case "Quaternion": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z, w = {access}.w }}";
+                case "Color": return $"new {{ r = {access}.r, g = {access}.g, b = {access}.b, a = {access}.a }}";
+                default: return access;
             }
         }
 

@@ -39,12 +39,14 @@ debug_mcap/
 .dotnet-home/
 
 # ISG generated source files are rebuilt before IL2CPP/CI builds
-Unity2Foxglove/Assets/Scripts/Generated/
+Unity2Foxglove/Assets/Scripts/Generated/*
 Unity2Foxglove/Assets/Scripts/Generated.meta
+!Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs
+!Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs.meta
 
 # developer plans
 Plan/
-Developer
+Developer/*
 
 # temporary test/verification projects
 Unitytest/

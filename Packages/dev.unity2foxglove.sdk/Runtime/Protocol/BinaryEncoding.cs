@@ -91,11 +91,15 @@ namespace Unity.FoxgloveSDK.Protocol
             callId = ReadU32LE(data, 5);
             var encodingLength = ReadU32LE(data, 9);
 
-            if (data.Length < 13 + encodingLength)
+            if (encodingLength > int.MaxValue)
                 return false;
 
-            encoding = System.Text.Encoding.UTF8.GetString(data, 13, (int)encodingLength);
-            var payloadOffset = 13 + (int)encodingLength;
+            var encodingLengthInt = (int)encodingLength;
+            if (encodingLengthInt > data.Length - 13)
+                return false;
+
+            encoding = System.Text.Encoding.UTF8.GetString(data, 13, encodingLengthInt);
+            var payloadOffset = 13 + encodingLengthInt;
             payload = new byte[data.Length - payloadOffset];
             Buffer.BlockCopy(data, payloadOffset, payload, 0, payload.Length);
             return true;
@@ -222,8 +226,10 @@ namespace Unity.FoxgloveSDK.Protocol
             hasSeek = data[6] != 0;
             seekTimeNs = ReadU64LE(data, 7);
             var idLen = ReadU32LE(data, 15);
-            if (data.Length < 19 + idLen) return false;
-            requestId = idLen > 0 ? System.Text.Encoding.UTF8.GetString(data, 19, (int)idLen) : null;
+            if (idLen > int.MaxValue) return false;
+            var idLenInt = (int)idLen;
+            if (idLenInt > data.Length - 19) return false;
+            requestId = idLenInt > 0 ? System.Text.Encoding.UTF8.GetString(data, 19, idLenInt) : null;
             return true;
         }
 

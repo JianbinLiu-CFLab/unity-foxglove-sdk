@@ -27,6 +27,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private double _syntheticRangeMeters = 2.0;
 
         private bool _warnedIntensityMismatch;
+        private double[] _syntheticRanges;
+        private int _syntheticRangesCount;
+        private double _syntheticRangesMeters;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.LaserScanSchemaName;
         public override bool SupportsProtobufEncoding => true;
@@ -76,11 +79,23 @@ namespace Unity.FoxgloveSDK.Components
             if (_ranges != null && _ranges.Length > 0)
                 return _ranges;
 
+            return BuildSyntheticRanges();
+        }
+
+        private double[] BuildSyntheticRanges()
+        {
             var count = Mathf.Max(1, _syntheticSampleCount);
-            var ranges = new double[count];
-            for (var i = 0; i < ranges.Length; i++)
-                ranges[i] = _syntheticRangeMeters;
-            return ranges;
+            if (_syntheticRanges == null
+                || _syntheticRangesCount != count
+                || Math.Abs(_syntheticRangesMeters - _syntheticRangeMeters) > double.Epsilon)
+            {
+                _syntheticRanges = new double[count];
+                _syntheticRangesCount = count;
+                _syntheticRangesMeters = _syntheticRangeMeters;
+                for (var i = 0; i < _syntheticRanges.Length; i++)
+                    _syntheticRanges[i] = _syntheticRangeMeters;
+            }
+            return _syntheticRanges;
         }
     }
 }

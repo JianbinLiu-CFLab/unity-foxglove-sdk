@@ -56,6 +56,19 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Compress raw bytes using the specified compression algorithm.</summary>
         public static byte[] Compress(string compression, byte[] data)
         {
+            var compressed = Compress(compression, new ArraySegment<byte>(data ?? Array.Empty<byte>()));
+            if (compressed.Array == null || compressed.Count == 0)
+                return Array.Empty<byte>();
+            if (compressed.Offset == 0 && compressed.Count == compressed.Array.Length)
+                return compressed.Array;
+            var copy = new byte[compressed.Count];
+            Buffer.BlockCopy(compressed.Array, compressed.Offset, copy, 0, compressed.Count);
+            return copy;
+        }
+
+        /// <summary>Compress raw bytes from an existing segment, preserving no-op chunks without copying.</summary>
+        public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data)
+        {
             switch (compression)
             {
                 case "":
@@ -64,12 +77,17 @@ namespace Unity.FoxgloveSDK.IO
                     using (var ms = new MemoryStream())
                     {
                         using (var lz4 = LZ4Stream.Encode(ms, K4os.Compression.LZ4.LZ4Level.L12_MAX, leaveOpen: true))
-                            lz4.Write(data, 0, data.Length);
-                        return ms.ToArray();
+                            lz4.Write(data.Array, data.Offset, data.Count);
+                        return new ArraySegment<byte>(ms.ToArray());
                     }
                 case "zstd":
                     using (var compressor = new Compressor())
-                        return compressor.Wrap(data).ToArray();
+                    {
+                        var copy = new byte[data.Count];
+                        if (data.Array != null && data.Count > 0)
+                            Buffer.BlockCopy(data.Array, data.Offset, copy, 0, data.Count);
+                        return new ArraySegment<byte>(compressor.Wrap(copy).ToArray());
+                    }
                 default:
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");
             }

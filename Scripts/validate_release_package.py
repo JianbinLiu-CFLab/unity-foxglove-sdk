@@ -31,7 +31,7 @@ UNITY_META_EXTENSIONS = {
 
 FORBIDDEN_PUBLIC_PATTERNS = (
     ("local Windows path", re.compile(r"\b[A-Za-z]:[\\/]")),
-    ("Developer/ reference", re.compile(r"Developer[\\/]")),
+    ("private docs reference", re.compile(r"Dev" r"eloper[\\/]")),
     ("Obsidian pasted image", re.compile(r"Pasted image", re.IGNORECASE)),
     ("Obsidian embed", re.compile(r"!\[\[")),
     ("TODO marker", re.compile(r"\bTODO\b")),

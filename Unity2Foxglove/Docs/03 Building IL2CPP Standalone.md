@@ -181,7 +181,7 @@ If `[FoxrunBuildPreprocess]` is missing, FoxRun log topics may not be generated 
 
 ## 8. IL2CPP Player verification checklist
 
-Verify each item according to the manual acceptance steps in **[04 Troubleshooting](04%20Troubleshooting.md)** and the developer guides under `Developer/`, with special attention to:
+Verify each item according to the manual acceptance steps in **[04 Troubleshooting](04%20Troubleshooting.md)** and the SDK package documentation under `Packages/dev.unity2foxglove.sdk/Documentation~/`, with special attention to:
 
 - [ ] WebSocket connection successful; all topics visible
 - [ ] `/tf` topic: coordinate frame works correctly

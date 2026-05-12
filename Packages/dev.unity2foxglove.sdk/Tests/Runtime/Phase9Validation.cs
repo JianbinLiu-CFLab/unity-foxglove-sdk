@@ -284,6 +284,7 @@ namespace Unity.FoxgloveSDK.Tests
             fake.SimulateConnect(1);
             var json = fake.SentTexts[1][0];
             Assert(json.Contains("playbackControl"), "playbackControl capability when enabled");
+            Assert(!json.Contains("rangedPlayback"), "serverInfo does not advertise non-standard rangedPlayback capability");
             Assert(json.Contains("dataStartTime"), "dataStartTime when playback enabled");
             Assert(json.Contains("dataEndTime"), "dataEndTime when playback enabled");
         }
