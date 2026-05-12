@@ -5,7 +5,9 @@
 // Purpose: Validates package metadata (package.json, LICENSE), .gitignore build artifact coverage, CI workflows, and asmdef consistency.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -72,11 +74,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var requiredHeaderFiles = new[]
             {
-                "Scripts/bump_version.py",
-                "Scripts/run_performance_baseline.py",
-                "Scripts/smoke/generate_phase34_attachment_smoke.ps1",
-                "Scripts/smoke/generate_phase44_all_schemas_mcap.py",
-                "Scripts/smoke/phase40_slow_camera_client.ps1",
+                "Scripts/build_tools/unity_il2cpp.py",
+                "Scripts/performance/run_baseline.py",
+                "Scripts/release/bump_version.py",
+                "Scripts/release/validate_package.py",
+                "Scripts/samples/sync_full_demo.py",
+                "Scripts/smoke/phase34_attachment_mcap.py",
+                "Scripts/smoke/phase44_all_schemas_mcap.py",
+                "Scripts/smoke/phase40_slow_camera_client.py",
+                "Scripts/smoke/tf_websocket_smoke.py",
+                "Scripts/smoke/fetch_asset_smoke.py",
                 "Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs",
             };
 
@@ -89,12 +96,106 @@ namespace Unity.FoxgloveSDK.Tests
                     $"{relativePath} has Unity2Foxglove copyright header");
                 Assert(text.Contains("SPDX-License-Identifier: Apache-2.0"),
                     $"{relativePath} has Apache-2.0 SPDX header");
+
+                if (relativePath.EndsWith(".py", StringComparison.Ordinal))
+                {
+                    Assert(text.Contains("# Purpose:"), $"{relativePath} has purpose header");
+                    Assert(text.Contains("# Usage:"), $"{relativePath} has usage header");
+                    Assert(text.Contains("# Inputs:"), $"{relativePath} has inputs header");
+                    Assert(text.Contains("# Outputs:"), $"{relativePath} has outputs header");
+                }
             }
+
+            ValidatePythonDocstrings(repoRoot);
 
             var phase32Path = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "Phase32Validation.cs");
             var phase32 = File.ReadAllText(phase32Path);
             Assert(phase32.Contains("// Module: Tests/Runtime"), "Phase32Validation.cs has module header");
             Assert(phase32.Contains("// Purpose:"), "Phase32Validation.cs has purpose header");
+
+            var scriptsDir = Path.Combine(repoRoot, "Scripts");
+            var powershellScripts = Directory.GetFiles(scriptsDir, "*.ps1", SearchOption.AllDirectories);
+            Assert(powershellScripts.Length == 0, "Scripts contains no PowerShell-only helper scripts");
+
+            var rootPythonScripts = Directory.GetFiles(scriptsDir, "*.py", SearchOption.TopDirectoryOnly);
+            Assert(rootPythonScripts.Length == 0, "Scripts root contains no loose Python helper scripts");
+
+            var legacyTestsDir = Path.Combine(repoRoot, "Unity2Foxglove", "Tests");
+            Assert(!Directory.Exists(legacyTestsDir), "Unity2Foxglove/Tests legacy script folder removed");
+        }
+
+        static void ValidatePythonDocstrings(string repoRoot)
+        {
+            var scriptsDir = Path.Combine(repoRoot, "Scripts");
+            var pythonFiles = Directory.GetFiles(scriptsDir, "*.py", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            foreach (var path in pythonFiles)
+            {
+                AssertPythonDefinitionsHaveDocstrings(repoRoot, path);
+            }
+        }
+
+        static void AssertPythonDefinitionsHaveDocstrings(string repoRoot, string path)
+        {
+            var lines = File.ReadAllLines(path);
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var trimmed = lines[index].TrimStart();
+                if (!IsPythonDefinitionStart(trimmed))
+                    continue;
+
+                var declarationEnd = FindPythonDeclarationEnd(lines, index);
+                var docLine = FindNextNonEmptyLine(lines, declarationEnd + 1);
+                var relativePath = Path.GetRelativePath(repoRoot, path).Replace(Path.DirectorySeparatorChar, '/');
+                Assert(docLine >= 0 && IsPythonDocstringLine(lines[docLine].TrimStart()),
+                    $"{relativePath}:{index + 1} has a docstring");
+            }
+        }
+
+        static bool IsPythonDefinitionStart(string trimmedLine)
+        {
+            return trimmedLine.StartsWith("def ", StringComparison.Ordinal)
+                || trimmedLine.StartsWith("async def ", StringComparison.Ordinal)
+                || trimmedLine.StartsWith("class ", StringComparison.Ordinal);
+        }
+
+        static int FindPythonDeclarationEnd(IReadOnlyList<string> lines, int start)
+        {
+            var parenDepth = 0;
+            for (var index = start; index < lines.Count; index++)
+            {
+                foreach (var ch in lines[index])
+                {
+                    if (ch == '(')
+                        parenDepth++;
+                    else if (ch == ')')
+                        parenDepth--;
+                }
+
+                if (parenDepth <= 0 && lines[index].TrimEnd().EndsWith(":", StringComparison.Ordinal))
+                    return index;
+            }
+
+            return start;
+        }
+
+        static int FindNextNonEmptyLine(IReadOnlyList<string> lines, int start)
+        {
+            for (var index = start; index < lines.Count; index++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[index]))
+                    return index;
+            }
+
+            return -1;
+        }
+
+        static bool IsPythonDocstringLine(string trimmedLine)
+        {
+            return trimmedLine.StartsWith("\"\"\"", StringComparison.Ordinal)
+                || trimmedLine.StartsWith("'''", StringComparison.Ordinal);
         }
 
         static void ValidateGeneratedSourceProvenance(string repoRoot)

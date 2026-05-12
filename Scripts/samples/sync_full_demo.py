@@ -5,6 +5,9 @@
 # Purpose: Synchronize the Full Demo Visualization source files between
 # the live Unity2Foxglove demo project, the package Samples~ source, and
 # an optional Unity project that has imported the sample.
+# Usage: python Scripts/samples/sync_full_demo.py --dry-run
+# Inputs: Live demo assets, package Samples~ target, optional Unity project/sample path.
+# Outputs: Copies or reports changed Full Demo sample files.
 
 from __future__ import annotations
 
@@ -16,19 +19,40 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent.parent
+# Number of parent directories between this script and the repository root.
+REPO_ROOT_PARENT_DEPTH = 2
 
+# Process exit codes returned by this synchronization CLI.
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+# Candidate list handling for imported sample auto-discovery.
+MAX_AUTODETECTED_IMPORTED_SAMPLE_ROOTS = 1
+FIRST_CANDIDATE_INDEX = 0
+
+# Counters used in the final sync summary.
+INITIAL_CHANGED_COUNT = 0
+CHANGE_INCREMENT = 1
+
+ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+
+# Source roots in the live Unity demo project.
 DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
 DEMO_CONFIGS = ROOT / "Unity2Foxglove" / "Configs"
+
+# Destination root for the package sample that is shipped to Unity users.
 PACKAGE_SAMPLE = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Samples~" / "FullDemoVisualization"
 
 
 @dataclass(frozen=True)
 class FileMap:
+    """Maps one live-demo source file to its packaged sample destination."""
+
     demo: Path
     sample: Path
 
 
+# Canonical list of files mirrored between the live demo and package sample.
 FILE_MAPS = (
     FileMap(DEMO_CONFIGS / "FoxgloveFullLayout.json", PACKAGE_SAMPLE / "FoxgloveFullLayout.json"),
     FileMap(DEMO_ASSETS / "InputSystem_Actions.inputactions", PACKAGE_SAMPLE / "InputSystem_Actions.inputactions"),
@@ -59,6 +83,7 @@ FILE_MAPS = (
 
 
 def rel(path: Path, root: Path = ROOT) -> str:
+    """Format a path relative to a root when possible."""
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
@@ -66,6 +91,7 @@ def rel(path: Path, root: Path = ROOT) -> str:
 
 
 def resolve_path(path: str | None, base: Path = ROOT) -> Path | None:
+    """Resolve an optional CLI path relative to a base directory."""
     if path is None:
         return None
     p = Path(path)
@@ -75,6 +101,7 @@ def resolve_path(path: str | None, base: Path = ROOT) -> Path | None:
 
 
 def imported_sample_root(target_project: Path, explicit_path: Path | None) -> Path:
+    """Locate the imported Full Demo sample root in an external Unity project."""
     if explicit_path is not None:
         return explicit_path
 
@@ -93,17 +120,19 @@ def imported_sample_root(target_project: Path, explicit_path: Path | None) -> Pa
             "Could not find an imported Full Demo Visualization sample under "
             f"{samples_root}. Re-import the sample or pass --imported-sample-path."
         )
-    if len(candidates) > 1:
+    if len(candidates) > MAX_AUTODETECTED_IMPORTED_SAMPLE_ROOTS:
         joined = ", ".join(str(p) for p in candidates)
         raise RuntimeError(f"Multiple imported Full Demo samples found; pass --imported-sample-path. Candidates: {joined}")
-    return candidates[0]
+    return candidates[FIRST_CANDIDATE_INDEX]
 
 
 def sample_relative(sample_path: Path) -> Path:
+    """Return a package-sample path relative to the sample root."""
     return sample_path.relative_to(PACKAGE_SAMPLE)
 
 
 def imported_maps(imported_root: Path, source: str) -> list[tuple[Path, Path]]:
+    """Build copy pairs for syncing files into an imported sample."""
     pairs = []
     for item in FILE_MAPS:
         sample_rel = sample_relative(item.sample)
@@ -114,6 +143,7 @@ def imported_maps(imported_root: Path, source: str) -> list[tuple[Path, Path]]:
 
 
 def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
+    """Build ordered source/destination pairs for the selected sync mode."""
     mode = args.mode
     if mode == "demo-to-package":
         return [(m.demo, m.sample) for m in FILE_MAPS]
@@ -135,6 +165,7 @@ def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
 
 
 def copy_file(src: Path, dst: Path, dry_run: bool) -> str:
+    """Copy one file if content differs, returning a printable status label."""
     if not src.exists():
         raise FileNotFoundError(f"Source file missing: {rel(src)}")
 
@@ -150,6 +181,7 @@ def copy_file(src: Path, dst: Path, dry_run: bool) -> str:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for sample synchronization."""
     parser = argparse.ArgumentParser(
         description="Synchronize Full Demo Visualization files using repo-relative paths by default."
     )
@@ -176,21 +208,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the selected sample synchronization mode."""
     args = parse_args()
     try:
         pairs = build_pairs(args)
-        changed = 0
+        changed = INITIAL_CHANGED_COUNT
         for src, dst in pairs:
             status = copy_file(src, dst, args.dry_run)
             if status != "unchanged":
-                changed += 1
+                changed += CHANGE_INCREMENT
             print(f"[{status}] {rel(src)} -> {rel(dst)}")
         verb = "would update" if args.dry_run else "updated"
-        print(f"\nsync_full_demo_sample: {verb} {changed} file(s); checked {len(pairs)} file(s).")
-        return 0
+        print(f"\nsync_full_demo: {verb} {changed} file(s); checked {len(pairs)} file(s).")
+        return EXIT_SUCCESS
     except Exception as exc:
-        print(f"sync_full_demo_sample: {exc}", file=sys.stderr)
-        return 1
+        print(f"sync_full_demo: {exc}", file=sys.stderr)
+        return EXIT_FAILURE
 
 
 if __name__ == "__main__":

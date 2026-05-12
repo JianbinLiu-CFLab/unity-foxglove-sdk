@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Synchronize Unity2Foxglove package version references.
+# Usage: python Scripts/release/bump_version.py 1.3.0 --date 2026-05-12
+# Inputs: Target semantic version, optional --date, optional --dry-run.
+# Outputs: Updates package metadata, changelog, README, and release-note stubs unless --dry-run.
+
 """Synchronize Unity2Foxglove package version references.
 
 This script updates the package version, the runtime package-metadata
@@ -18,17 +24,36 @@ from datetime import date
 from pathlib import Path
 
 
+# Semantic version grammar accepted by the release helper.
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+# Process exit code for a successful synchronization or dry run.
+EXIT_SUCCESS = 0
+
+# Number of parent directories between this file and the repository root.
+REPO_ROOT_PARENT_DEPTH = 2
+
+# Text replacements that update a single canonical occurrence.
+SINGLE_REPLACEMENT = 1
+
+# Regex capture groups for the package.json version replacement pattern.
+VERSION_PROPERTY_PREFIX_GROUP = 1
+VERSION_PROPERTY_SUFFIX_GROUP = 3
 
 
 @dataclass
 class PlannedChange:
+    """Records one file that would be changed, or was changed, by the bump."""
+
     path: Path
     action: str
 
 
 class VersionBump:
+    """Coordinates all package-version edits for one target release."""
+
     def __init__(self, root: Path, version: str, release_date: str, dry_run: bool) -> None:
+        """Store the release context and initialize the change log."""
         self.root = root
         self.version = version
         self.release_date = release_date
@@ -36,12 +61,15 @@ class VersionBump:
         self.changes: list[PlannedChange] = []
 
     def rel(self, path: Path) -> str:
+        """Format a path relative to the repository root for console output."""
         return path.relative_to(self.root).as_posix()
 
     def read(self, path: Path) -> str:
+        """Read a UTF-8 text file."""
         return path.read_text(encoding="utf-8")
 
     def write_if_changed(self, path: Path, content: str, action: str) -> None:
+        """Record and optionally write a file when the generated content differs."""
         original = self.read(path) if path.exists() else None
         if original == content:
             return
@@ -52,6 +80,7 @@ class VersionBump:
             path.write_text(content, encoding="utf-8", newline="\n")
 
     def package_version(self) -> str:
+        """Read the current semantic version from package.json."""
         package_json = self.root / "Packages/dev.unity2foxglove.sdk/package.json"
         data = json.loads(self.read(package_json))
         version = data.get("version")
@@ -60,15 +89,21 @@ class VersionBump:
         return version
 
     def replace_version_property(self, old_version: str) -> None:
+        """Replace the canonical package.json version property."""
         path = self.root / "Packages/dev.unity2foxglove.sdk/package.json"
         text = self.read(path)
         pattern = re.compile(r'("version"\s*:\s*")(\d+\.\d+\.\d+)(")')
-        updated, count = pattern.subn(lambda m: f"{m.group(1)}{self.version}{m.group(3)}", text, count=1)
-        if count != 1:
+        updated, count = pattern.subn(
+            lambda m: f"{m.group(VERSION_PROPERTY_PREFIX_GROUP)}{self.version}{m.group(VERSION_PROPERTY_SUFFIX_GROUP)}",
+            text,
+            count=SINGLE_REPLACEMENT,
+        )
+        if count != SINGLE_REPLACEMENT:
             raise ValueError(f"Expected one version property in {self.rel(path)}")
         self.write_if_changed(path, updated, f"set package version {old_version} -> {self.version}")
 
     def update_phase16_assertion(self) -> None:
+        """Keep the Phase16 package-version assertion aligned with package.json."""
         path = self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs"
         text = self.read(path)
         text = re.sub(r'"\\"version\\": \\"\d+\.\d+\.\d+\\""', f'"\\"version\\": \\"{self.version}\\""', text)
@@ -76,6 +111,7 @@ class VersionBump:
         self.write_if_changed(path, text, f"update Phase16 package version assertion to {self.version}")
 
     def update_readme(self, old_version: str) -> None:
+        """Update root README badges and release-note links for the target version."""
         path = self.root / "README.md"
         text = self.read(path)
         text = text.replace(f"release-v{old_version}", f"release-v{self.version}")
@@ -96,12 +132,14 @@ class VersionBump:
         self.write_if_changed(path, text, f"update README version references to {self.version}")
 
     def update_package_readme(self, old_version: str) -> None:
+        """Update the package README verified-version note."""
         path = self.root / "Packages/dev.unity2foxglove.sdk/README.md"
         text = self.read(path)
         text = text.replace(f"verified for v{old_version}", f"verified for v{self.version}")
         self.write_if_changed(path, text, f"update package README verified version to {self.version}")
 
     def update_changelog(self) -> None:
+        """Insert a changelog section for the target version when it is absent."""
         path = self.root / "CHANGELOG.md"
         text = self.read(path)
         heading = f"## {self.version} - "
@@ -122,10 +160,11 @@ class VersionBump:
         delimiter = "---\n\n"
         if delimiter not in text:
             raise ValueError(f"Cannot find changelog insertion point in {self.rel(path)}")
-        text = text.replace(delimiter, delimiter + entry, 1)
+        text = text.replace(delimiter, delimiter + entry, SINGLE_REPLACEMENT)
         self.write_if_changed(path, text, f"insert changelog section for {self.version}")
 
     def create_release_notes(self) -> None:
+        """Create a release-note stub for the target version when missing."""
         path = self.root / "docs/releases" / f"RELEASE_NOTES_v{self.version}.md"
         if path.exists():
             return
@@ -141,15 +180,16 @@ class VersionBump:
             "- Existing Unity scenes keep serialized Inspector values unless changed manually.\n\n"
             "## Verification\n\n"
             "Run before publishing the release:\n\n"
-            "```powershell\n"
+            "```bash\n"
             "dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj\n"
-            "python Scripts/validate_release_package.py\n"
-            "python Scripts/run_performance_baseline.py --quick --output build/performance/release\n"
+            "python Scripts/release/validate_package.py\n"
+            "python Scripts/performance/run_baseline.py --quick --output build/performance/release\n"
             "```\n"
         )
         self.write_if_changed(path, content, f"create release notes for {self.version}")
 
     def run(self) -> int:
+        """Apply or report every version-bump edit."""
         old_version = self.package_version()
         self.replace_version_property(old_version)
         self.update_phase16_assertion()
@@ -161,15 +201,16 @@ class VersionBump:
         prefix = "[DRY-RUN]" if self.dry_run else "[bump_version]"
         if not self.changes:
             print(f"{prefix} version references are already synchronized for {self.version}.")
-            return 0
+            return EXIT_SUCCESS
 
         print(f"{prefix} planned changes:" if self.dry_run else f"{prefix} updated files:")
         for change in self.changes:
             print(f"  - {self.rel(change.path)}: {change.action}")
-        return 0
+        return EXIT_SUCCESS
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the version-bump workflow."""
     parser = argparse.ArgumentParser(description="Synchronize Unity2Foxglove package version references.")
     parser.add_argument("version", help="Target semantic version, for example 1.2.0.")
     parser.add_argument("--date", default=date.today().isoformat(), help="Release date for new changelog/release notes.")
@@ -178,11 +219,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Validate CLI input and run the package-version synchronization."""
     args = parse_args()
     if not VERSION_RE.match(args.version):
         raise SystemExit(f"Invalid version '{args.version}'. Expected MAJOR.MINOR.PATCH.")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
     return VersionBump(root, args.version, args.date, args.dry_run).run()
 
 

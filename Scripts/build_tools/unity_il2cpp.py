@@ -3,19 +3,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Purpose: Cross-platform IL2CPP standalone Player build script.
-# Usage: python Scripts/build_unity_il2cpp.py --target win64
+# Usage: python Scripts/build_tools/unity_il2cpp.py --target win64
 # Inputs: --target (win64|linux64|macos), --unity (path, optional)
 # Outputs: Defaults to build/Unity/<target>-il2cpp-<timestamp>/; overridable via --build-dir and --output.
 
 """Build the Unity Foxglove demo project for IL2CPP standalone.
 
 The script resolves project and output paths relative to its own location.
-No hard-coded absolute paths — safe to use across clones.
+No hard-coded absolute paths - safe to use across clones.
 
 Examples:
-  python Scripts/build_unity_il2cpp.py
-  python Scripts/build_unity_il2cpp.py --target linux64
-  python Scripts/build_unity_il2cpp.py --target macos --unity /path/to/Unity
+  python Scripts/build_tools/unity_il2cpp.py
+  python Scripts/build_tools/unity_il2cpp.py --target linux64
+  python Scripts/build_tools/unity_il2cpp.py --target macos --unity /path/to/Unity
 """
 
 from __future__ import annotations
@@ -32,7 +32,34 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 
+# Build targets supported by the Unity-side FoxgloveBuild method.
 TARGETS = ("win64", "linux64", "macos")
+
+# Number of parent directories between this script and the repository root.
+REPO_ROOT_PARENT_DEPTH = 2
+
+# Process exit codes returned by this build CLI.
+EXIT_SUCCESS = 0
+EXIT_USAGE_ERROR = 2
+
+# Time constants used for elapsed-time formatting and log polling.
+SECONDS_PER_HOUR = 3_600
+SECONDS_PER_MINUTE = 60
+LOG_POLL_SLEEP_SECONDS = 1
+
+# Keep progress heartbeats useful while avoiding console spam.
+DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
+MIN_PROGRESS_INTERVAL_SECONDS = 1
+
+# Split only the ProjectVersion key/value separator.
+PROJECT_VERSION_SPLIT_MAX = 1
+PROJECT_VERSION_VALUE_INDEX = 1
+
+# Initial offsets and command indexes used for log tailing and diagnostics.
+INITIAL_LOG_OFFSET = 0
+UNITY_EXECUTABLE_COMMAND_INDEX = 0
+
+# Log markers that indicate important Unity/Bee/IL2CPP build progress or failures.
 IMPORTANT_LOG_MARKERS = (
     "[Foxrun",
     "[FoxgloveBuild]",
@@ -52,8 +79,8 @@ IMPORTANT_LOG_MARKERS = (
 
 
 def repo_root() -> Path:
-    """Repository root — two levels up from this script's location."""
-    return Path(__file__).resolve().parent.parent
+    """Repository root resolved from the configured parent-depth constant."""
+    return Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 
 
 def default_target() -> str:
@@ -115,7 +142,7 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
     editor_version = None
     for line in version_file.read_text(encoding="utf-8", errors="replace").splitlines():
         if line.startswith("m_EditorVersion:"):
-            editor_version = line.split(":", 1)[1].strip()
+            editor_version = line.split(":", PROJECT_VERSION_SPLIT_MAX)[PROJECT_VERSION_VALUE_INDEX].strip()
             break
     if not editor_version:
         return None
@@ -257,8 +284,8 @@ def default_output_path(build_dir: Path, target: str) -> Path:
 def format_elapsed(seconds: float) -> str:
     """Format elapsed seconds as mm:ss or hh:mm:ss."""
     total = int(seconds)
-    hours, remainder = divmod(total, 3600)
-    minutes, seconds = divmod(remainder, 60)
+    hours, remainder = divmod(total, SECONDS_PER_HOUR)
+    minutes, seconds = divmod(remainder, SECONDS_PER_MINUTE)
     if hours:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     return f"{minutes:02d}:{seconds:02d}"
@@ -293,7 +320,7 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int)
     """Run the Unity process, tailing important log lines at the given interval."""
     started = time.monotonic()
     next_heartbeat = started + interval
-    offset = 0
+    offset = INITIAL_LOG_OFFSET
 
     process = subprocess.Popen(cmd, cwd=root)
     while True:
@@ -315,7 +342,7 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int)
             )
             next_heartbeat = now + interval
 
-        time.sleep(1)
+        time.sleep(LOG_POLL_SLEEP_SECONDS)
 
     offset, lines = read_new_important_lines(log_path, offset)
     for line in lines:
@@ -371,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--progress-interval",
         type=int,
-        default=15,
+        default=DEFAULT_PROGRESS_INTERVAL_SECONDS,
         help="Seconds between progress heartbeats while Unity is running.",
     )
     return parser.parse_args()
@@ -387,15 +414,15 @@ def main() -> int:
             "[build_unity_il2cpp] --allow-missing-unity is only valid with --dry-run.",
             file=sys.stderr,
         )
-        return 2
+        return EXIT_USAGE_ERROR
 
     try:
         cmd, project_path, log_path, output_path = build_command(args)
     except Exception as exc:
         print(f"[build_unity_il2cpp] {exc}", file=sys.stderr)
-        return 2
+        return EXIT_USAGE_ERROR
 
-    print(f"[build_unity_il2cpp] Unity:    {cmd[0]}")
+    print(f"[build_unity_il2cpp] Unity:    {cmd[UNITY_EXECUTABLE_COMMAND_INDEX]}")
     print(f"[build_unity_il2cpp] Project:   {relative_to_root(project_path, root)}")
     print(f"[build_unity_il2cpp] Target:    {args.target}")
     print(f"[build_unity_il2cpp] Log:       {relative_to_root(log_path, root)}")
@@ -403,15 +430,15 @@ def main() -> int:
 
     if args.dry_run:
         print("[build_unity_il2cpp] Dry run only; Unity was not started.")
-        return 0
+        return EXIT_SUCCESS
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
-    returncode = run_with_progress(cmd, root, log_path, max(1, args.progress_interval))
-    if returncode == 0:
+    returncode = run_with_progress(cmd, root, log_path, max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval))
+    if returncode == EXIT_SUCCESS:
         print("[build_unity_il2cpp] Build command completed successfully.")
     else:
         print(
