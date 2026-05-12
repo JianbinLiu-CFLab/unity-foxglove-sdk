@@ -316,13 +316,11 @@ namespace Unity.FoxgloveSDK.IO
         void FlushChunk()
         {
             if (_chunkBuf.Length == 0) return;
-            if (!_chunkBuf.TryGetBuffer(out var raw))
-                throw new InvalidOperationException("MCAP chunk buffer is not publicly visible.");
-            var rawCrc = Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count));
+            var raw = _chunkBuf.ToArray(); _chunkBuf.SetLength(0);
+            var rawCrc = Util.Crc32Helper.Compute(raw);
             var compressed = McapCompression.Compress(_compression, raw);
             var off = (ulong)_w.Position;
-            _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
-            _chunkBuf.SetLength(0);
+            _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Length, rawCrc, _compression, (ulong)compressed.Length, compressed);
             var chunkLen = (ulong)_w.Position - off;
             var mio = new Dictionary<ushort, ulong>();
             ulong mioTLen = 0;
@@ -336,7 +334,7 @@ namespace Unity.FoxgloveSDK.IO
                 mioTLen += len;
                 map.Pending.Clear();
             }
-            _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
+            _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Length, UncompressedSize = (ulong)raw.Length });
             _chunkCount++; _chunkSt = _chunkEt = 0;
         }
 

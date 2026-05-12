@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Transport
         private ulong _currentTimeNs;
         /// <summary>Playback speed multiplier (1.0 = real-time).</summary>
         private float _speed = 1f;
-        /// <summary>Wall-clock timestamp of the last Tick call, used for elapsed-time calculation.</summary>
+        /// <summary>Wall-clock timestamp of the last Tick or NowNs read, used for elapsed-time calculation.</summary>
         private DateTime? _lastTickWallTime;
 
         /// <summary>Create a playback clock backed by the given inner clock (defaults to SystemClock).</summary>
@@ -58,57 +58,33 @@ namespace Unity.FoxgloveSDK.Transport
         public ulong EndNs => _endNs;
 
         /// <summary>
-        /// Current time in nanoseconds. This property is a pure read.
+        /// Current time in nanoseconds.
         /// When playback is disabled, delegates to the inner system clock.
-        /// When playback is enabled, returns the current frozen or ticked position.
+        /// When paused or ended, returns the frozen position. Otherwise advances by elapsed wall time scaled by speed.
         /// </summary>
         public ulong NowNs
         {
             get
             {
                 if (!_enabled) return _inner.NowNs;
-                return _currentTimeNs;
-            }
-        }
 
-        /// <summary>Advance playback time using the current UTC wall clock.</summary>
-        public void Tick() => Tick(DateTime.UtcNow);
+                if (_playbackStatus == PlaybackStatus.Paused || _playbackStatus == PlaybackStatus.Ended)
+                    return _currentTimeNs;
 
-        /// <summary>Advance playback time using a deterministic UTC wall-clock value.</summary>
-        internal void Tick(DateTime nowUtc)
-        {
-            if (!_enabled)
-                return;
-
-            if (_playbackStatus != PlaybackStatus.Playing)
-            {
-                _lastTickWallTime = nowUtc;
-                return;
-            }
-
-            if (_lastTickWallTime.HasValue)
-            {
-                var elapsedTicks = (nowUtc - _lastTickWallTime.Value).Ticks;
-                if (elapsedTicks > 0)
+                var now = DateTime.UtcNow;
+                if (_lastTickWallTime.HasValue)
                 {
-                    var advanceNs = elapsedTicks * 100d * (double)_speed;
-                    if (advanceNs > 0)
+                    var elapsed = (now - _lastTickWallTime.Value).Ticks;
+                    _currentTimeNs += (ulong)(elapsed * _speed * 100); // 1 tick = 100ns
+                    if (_currentTimeNs >= _endNs)
                     {
-                        var remainingNs = _endNs > _currentTimeNs ? _endNs - _currentTimeNs : 0UL;
-                        if (advanceNs >= remainingNs)
-                        {
-                            _currentTimeNs = _endNs;
-                            _playbackStatus = PlaybackStatus.Ended;
-                        }
-                        else
-                        {
-                            _currentTimeNs += (ulong)advanceNs;
-                        }
+                        _currentTimeNs = _endNs;
+                        _playbackStatus = PlaybackStatus.Ended;
                     }
                 }
+                _lastTickWallTime = now;
+                return _currentTimeNs;
             }
-
-            _lastTickWallTime = nowUtc;
         }
 
         /// <summary>Activate playback mode and set the time range. Clock starts paused at <c>startNs</c>.</summary>
@@ -120,7 +96,6 @@ namespace Unity.FoxgloveSDK.Transport
             _currentTimeNs = startNs;
             _playbackStatus = PlaybackStatus.Paused;
             _speed = 1f;
-            _lastTickWallTime = null;
         }
 
         /// <summary>
@@ -146,7 +121,6 @@ namespace Unity.FoxgloveSDK.Transport
             if (hasSeek)
             {
                 _currentTimeNs = Math.Clamp(seekTimeNs, _startNs, _endNs);
-                _lastTickWallTime = null;
                 // Keep current status or switch to Paused if not Playing
                 if (_playbackStatus != PlaybackStatus.Playing)
                     _playbackStatus = PlaybackStatus.Paused;
@@ -158,7 +132,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (!_enabled) return;
             _playbackStatus = PlaybackStatus.Playing;
-            _lastTickWallTime ??= DateTime.UtcNow;
+            _lastTickWallTime = DateTime.UtcNow;
         }
 
         /// <summary>Pause playback without changing the current speed or time.</summary>
@@ -166,7 +140,6 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (!_enabled) return;
             _playbackStatus = PlaybackStatus.Paused;
-            _lastTickWallTime = null;
         }
 
         /// <summary>Capture the current playback state as a serializable snapshot for protocol response.</summary>

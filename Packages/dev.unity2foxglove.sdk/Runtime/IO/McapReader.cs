@@ -47,17 +47,16 @@ namespace Unity.FoxgloveSDK.IO
             // Verify leading magic
             var magic = new byte[8];
             ReadExact(magic, 0, 8);
-            var expectedMagic = McapWriter.MagicSpan;
-            for (var i = 0; i < expectedMagic.Length; i++)
-                if (magic[i] != expectedMagic[i])
+            for (var i = 0; i < McapWriter.Magic.Length; i++)
+                if (magic[i] != McapWriter.Magic[i])
                     throw new InvalidDataException("MCAP leading magic mismatch");
 
             // Verify trailing magic before trusting footer offsets.
             _stream.Seek(-8, SeekOrigin.End);
             var trailingMagic = new byte[8];
             ReadExact(trailingMagic, 0, 8);
-            for (var i = 0; i < expectedMagic.Length; i++)
-                if (trailingMagic[i] != expectedMagic[i])
+            for (var i = 0; i < McapWriter.Magic.Length; i++)
+                if (trailingMagic[i] != McapWriter.Magic[i])
                     throw new InvalidDataException("MCAP trailing magic mismatch");
 
             // Read Footer before trailing magic.

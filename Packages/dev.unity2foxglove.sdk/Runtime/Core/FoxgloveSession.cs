@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
@@ -56,8 +55,6 @@ namespace Unity.FoxgloveSDK.Core
         private readonly FoxgloveServiceRegistry _services;
         private readonly ConnectionGraphRegistry _graph = new();
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
-        private readonly object _playbackControlsLock = new();
-        private readonly Queue<PendingPlaybackControl> _pendingPlaybackControls = new();
         /// <summary>Lock protecting <c>_clientChannels</c> concurrent access.</summary>
         private readonly object _clientChannelsLock = new();
         /// <summary>Raised when a client-published binary message is received.</summary>
@@ -66,32 +63,10 @@ namespace Unity.FoxgloveSDK.Core
         private McapRecorder _recorder;
         private long _lastTimeBroadcastTicks;
 
-        private readonly struct PendingPlaybackControl
-        {
-            public readonly uint ClientId;
-            public readonly byte Command;
-            public readonly float Speed;
-            public readonly bool HasSeek;
-            public readonly ulong SeekNs;
-            public readonly string RequestId;
-
-            public PendingPlaybackControl(uint clientId, byte command, float speed, bool hasSeek, ulong seekNs, string requestId)
-            {
-                ClientId = clientId;
-                Command = command;
-                Speed = speed;
-                HasSeek = hasSeek;
-                SeekNs = seekNs;
-                RequestId = requestId;
-            }
-        }
-
         /// <summary>Server name sent in serverInfo.</summary>
         public string Name { get; }
-        /// <summary>Unique session id. Sent in serverInfo and rotated on replay seeks.</summary>
-        private string _sessionId;
-        /// <summary>Unique session id per active visualization segment. Sent in serverInfo.</summary>
-        public string SessionId => Volatile.Read(ref _sessionId);
+        /// <summary>Unique session id per start. Sent in serverInfo.</summary>
+        public string SessionId { get; }
         /// <summary>Whether the transport is currently listening.</summary>
         public bool IsRunning => _transport.IsRunning;
         /// <summary>Schema registry attached to this session.</summary>
@@ -106,9 +81,9 @@ namespace Unity.FoxgloveSDK.Core
         internal IFoxgloveTransport Transport => _transport;
 
         /// <summary>Inject the runtime context for playback and asset access.</summary>
-        internal void SetRuntimeContext(IRuntimeContext ctx) => Volatile.Write(ref _runtime, ctx);
+        internal void SetRuntimeContext(IRuntimeContext ctx) => _runtime = ctx;
         /// <summary>Attach an MCAP recorder for session recording.</summary>
-        internal void SetRecorder(McapRecorder r) => Volatile.Write(ref _recorder, r);
+        internal void SetRecorder(McapRecorder r) => _recorder = r;
 
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
@@ -125,7 +100,7 @@ namespace Unity.FoxgloveSDK.Core
             _logger = logger ?? new ConsoleLogger();
             _parameters = paramStore ?? new FoxgloveParameterStore();
             _services = serviceRegistry ?? new FoxgloveServiceRegistry();
-            _sessionId = Guid.NewGuid().ToString();
+            SessionId = Guid.NewGuid().ToString();
 
             _transport.OnClientConnected += OnClientConnected;
             _transport.OnClientDisconnected += OnClientDisconnected;
@@ -140,17 +115,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
 
-        /// <summary>Clear all transient session channels, subscriptions, and graph state.</summary>
+        /// <summary>Clear all channels, subscriptions, and parameter subscriptions.</summary>
         public void ClearSession()
         {
             _channels.Clear();
             _subscriptions.Clear();
             _paramSubs.Clear();
-            _services.ClearPendingCalls();
-            lock (_clientChannelsLock)
-                _clientChannels.Clear();
-            _graph.Clear();
-            _graphDirty = false;
         }
 
         /// <summary>Stop the transport and detach all event handlers.</summary>
@@ -161,7 +131,6 @@ namespace Unity.FoxgloveSDK.Core
             _transport.OnClientDisconnected -= OnClientDisconnected;
             _transport.OnTextReceived -= OnClientText;
             _transport.OnBinaryReceived -= OnClientBinary;
-            OnClientMessage = null;
         }
 
         // ── Channel API ──
@@ -175,8 +144,7 @@ namespace Unity.FoxgloveSDK.Core
             _channels.Register(channel);
             _graph.SetPublishedTopic(channel.Topic, "unity");
             _graphDirty = true;
-            var recorder = Volatile.Read(ref _recorder);
-            recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
+            _recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
                 channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
@@ -277,53 +245,15 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
-            var channel = _channels.Get(channelId);
-            if (channel == null) return;
-            var recorder = Volatile.Read(ref _recorder);
-            recorder?.WriteMessage(channelId, logTimeNs, payload);
+            if (_channels.Get(channelId) == null) return;
+            _recorder?.WriteMessage(channelId, logTimeNs, payload);
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {
                 var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
                 if (_transport is IPrioritizedFoxgloveTransport prioritized)
-                {
-                    if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                        _logger.LogWarning(trace);
                     prioritized.SendDataBinary(clientId, frame);
-                }
                 else
-                {
-                    if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                        _logger.LogWarning(trace);
                     _transport.SendBinary(clientId, frame);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Publish replay data without recording it again. Replay frames use
-        /// the transport data queue so playback seeks can drop stale pre-seek
-        /// frames while preserving protocol control frames.
-        /// </summary>
-        internal void PublishReplay(uint channelId, byte[] payload, ulong logTimeNs, string source = "Replay", string topic = null)
-        {
-            var channel = _channels.Get(channelId);
-            if (channel == null) return;
-            topic ??= channel.Topic;
-            foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
-            {
-                var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                if (_transport is IPrioritizedFoxgloveTransport prioritized)
-                {
-                    if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                        _logger.LogWarning(trace);
-                    prioritized.SendDataBinary(clientId, frame);
-                }
-                else
-                {
-                    if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                        _logger.LogWarning(trace);
-                    _transport.SendBinary(clientId, frame);
-                }
             }
         }
 
@@ -371,22 +301,7 @@ namespace Unity.FoxgloveSDK.Core
             _lastTimeBroadcastTicks = now;
 
             var frame = BinaryEncoding.EncodeTime(_clock.NowNs);
-            BroadcastDataBinary(frame);
-        }
-
-        /// <summary>Broadcast droppable data binary frames when the transport supports priority queues.</summary>
-        internal void BroadcastDataBinary(byte[] data)
-        {
-            if (_transport is IPrioritizedFoxgloveTransport prioritized)
-                prioritized.BroadcastDataBinary(data);
-            else
-                _transport.BroadcastBinary(data);
-        }
-
-        /// <summary>Broadcast replay time/data frames through the clearable data queue.</summary>
-        internal void BroadcastReplayBinary(byte[] data)
-        {
-            BroadcastDataBinary(data);
+            _transport.BroadcastBinary(frame);
         }
 
         /// <summary>Enable protobuf encoding support, updating supportedEncodings to include "protobuf".</summary>
@@ -398,20 +313,15 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Force a test log message for diagnostic verification.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
 
-        /// <summary>
-        /// Drop stale queued data frames before publishing replay data after
-        /// a seek. PlaybackState.didSeek tells Foxglove to reset panel state;
-        /// the WebSocket session and subscriptions must remain intact.
-        /// </summary>
-        internal void ClearQueuedDataForPlaybackSeek()
-        {
-            if (FoxgloveReplayTrace.TryEvent("CLEAR_DATA", "reason=playbackSeek", out var trace))
-                _logger.LogWarning(trace);
-            if (_transport is IReplayResettableFoxgloveTransport resettable)
-                resettable.ClearDataQueues();
-        }
+        // ── Transport event handlers ──
 
-        private ServerInfo CreateServerInfo()
+        /// <summary>
+        /// On client connect: send serverInfo (with current capabilities),
+        /// advertise all registered channels/services, and seed the connection
+        /// graph. Capabilities like PlaybackControl and Assets are conditionally
+        /// included based on runtime state.
+        /// </summary>
+        private void OnClientConnected(uint clientId)
         {
             var info = new ServerInfo
             {
@@ -431,30 +341,19 @@ namespace Unity.FoxgloveSDK.Core
                 SessionId = SessionId
             };
 
-            var runtime = Volatile.Read(ref _runtime);
-            if (runtime?.PlaybackEnabled == true)
+            if (_runtime?.PlaybackEnabled == true)
             {
                 info.Capabilities.Add(Capability.PlaybackControl);
-                var startNs = runtime.GetPlaybackStartNs();
-                var endNs = runtime.GetPlaybackEndNs();
+                var startNs = _runtime.GetPlaybackStartNs();
+                var endNs = _runtime.GetPlaybackEndNs();
                 info.DataStartTime = new DataTimestamp { Sec = startNs / 1_000_000_000, Nsec = (uint)(startNs % 1_000_000_000) };
                 info.DataEndTime = new DataTimestamp { Sec = endNs / 1_000_000_000, Nsec = (uint)(endNs % 1_000_000_000) };
             }
-            if (runtime?.Assets?.HasRoots == true)
+            if (_runtime?.Assets?.HasRoots == true)
                 info.Capabilities.Add(Capability.Assets);
 
-            return info;
-        }
-
-        private static string SerializeServerInfo(ServerInfo info)
-        {
-            return JsonConvert.SerializeObject(info,
-                new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-        }
-
-        private void SendSessionSnapshot(uint clientId)
-        {
-            _transport.SendText(clientId, SerializeServerInfo(CreateServerInfo()));
+            _transport.SendText(clientId, JsonConvert.SerializeObject(info,
+                new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }));
 
             var chs = _channels.GetAll();
             if (chs.Count > 0)
@@ -463,34 +362,6 @@ namespace Unity.FoxgloveSDK.Core
             var svcs = _services.GetAll();
             if (svcs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
-        }
-
-        private void BroadcastSessionSnapshot()
-        {
-            _transport.BroadcastText(SerializeServerInfo(CreateServerInfo()));
-
-            var chs = _channels.GetAll();
-            if (chs.Count > 0)
-                _transport.BroadcastText(JsonConvert.SerializeObject(new Advertise { Channels = chs }));
-
-            var svcs = _services.GetAll();
-            if (svcs.Count > 0)
-                _transport.BroadcastText(JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
-        }
-
-        // ── Transport event handlers ──
-
-        /// <summary>
-        /// On client connect: send serverInfo (with current capabilities),
-        /// advertise all registered channels/services, and seed the connection
-        /// graph. Capabilities like PlaybackControl and Assets are conditionally
-        /// included based on runtime state.
-        /// </summary>
-        private void OnClientConnected(uint clientId)
-        {
-            SendSessionSnapshot(clientId);
-            var chs = _channels.GetAll();
-            var svcs = _services.GetAll();
 
             foreach (var ch in chs)
                 _graph.SetPublishedTopic(ch.Topic, "unity");

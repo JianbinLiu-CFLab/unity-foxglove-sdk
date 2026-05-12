@@ -53,11 +53,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Unregister a service by ID.</summary>
         public bool Unregister(uint serviceId)
         {
-            lock (_lock)
-            {
-                _handlers.Remove(serviceId);
-                return _services.Remove(serviceId);
-            }
+            lock (_lock) { return _services.Remove(serviceId); }
         }
 
         /// <summary>Get a service descriptor by ID, or null.</summary>
@@ -139,17 +135,14 @@ namespace Unity.FoxgloveSDK.Core
             var completed = new List<FoxgloveServiceCall>();
             lock (_lock)
             {
-                var completedKeys = new List<(uint clientId, uint callId)>();
-                foreach (var (key, call) in _pending)
+                foreach (var (key, call) in _pending.ToList())
                 {
                     if (call.IsCompleted)
                     {
                         completed.Add(call);
-                        completedKeys.Add(key);
+                        _pending.Remove(key);
                     }
                 }
-                foreach (var key in completedKeys)
-                    _pending.Remove(key);
             }
             return completed;
         }
@@ -183,16 +176,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Remove all pending service calls while keeping registered service definitions and handlers.</summary>
-        public void ClearPendingCalls()
-        {
-            lock (_lock) { _pending.Clear(); }
-        }
-
         /// <summary>Remove all services and pending calls.</summary>
         public void Clear()
         {
-            lock (_lock) { _services.Clear(); _pending.Clear(); _handlers.Clear(); }
+            lock (_lock) { _services.Clear(); _pending.Clear(); }
         }
     }
 }

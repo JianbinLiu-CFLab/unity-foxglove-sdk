@@ -32,8 +32,6 @@ private string _status;
 
 The user describes what should be published. The system handles how to publish it.
 
-For Unity developers, this is intentionally close to the familiar `[SerializeField]` mental model: mark a member in a `MonoBehaviour`, keep the runtime code ordinary, and let the tooling build the supporting infrastructure around that declaration.
-
 In a normal JIT runtime, such APIs are often implemented by runtime reflection: scan assemblies, find attributes, read fields, infer schemas, and publish values. That approach is convenient, but it becomes brittle under Unity IL2CPP and other AOT/trimming environments:
 
 - reflected members can be stripped unless explicitly preserved,
@@ -136,9 +134,7 @@ Runtime code only executes generated publishers. It does not:
 
 This is the boundary that makes the telemetry path AOT-oriented instead of reflection-oriented.
 
-Unity2Foxglove may still use explicit registration hooks plus a fallback Unity scene query, such as finding active `MonoBehaviour` instances and checking whether they implement `IFoxgloveLogSource`. That is runtime discovery in the Unity object model, not CLR reflection-based telemetry binding. The generated partial type implements the interface, and publisher execution then calls generated methods rather than inspecting fields or attributes.
-
-The IL2CPP preservation story is also part of the boundary. Before a Player build, the build preprocess path writes physical `_FoxRun.g.cs` fallback files and generates `Assets/FoxRun_link.xml` entries for detected `[FoxRun]` user `MonoBehaviour` types with `preserve="all"`. If that scan or validation fails, the build fails fast instead of silently relying on stripped metadata. The precise runtime claim is therefore **zero CLR reflection for telemetry member discovery and field/property access**, not "no runtime object lookup anywhere" and not "no build-time reflection anywhere."
+Unity2Foxglove may still use Unity scene queries such as finding active `MonoBehaviour` instances that implement generated interfaces. That is runtime discovery in the Unity object model, not CLR reflection-based telemetry binding. The precise claim is therefore **zero CLR reflection for telemetry member discovery and field/property access**, not "no runtime object lookup anywhere."
 
 ## Unity2Foxglove Implementation Evidence
 
@@ -148,9 +144,8 @@ The IL2CPP preservation story is also part of the boundary. Before a Player buil
 | Roslyn host | `Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs` | Editor source generation path |
 | Build-time host | `Editor/FoxrunCodeGenerator.cs` | Physical `.g.cs` generation path |
 | Build preprocess hook | `Editor/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
-| IL2CPP preservation | `Editor/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
 | User declaration API | `Runtime/Unity/Attributes/FoxRunAttribute.cs` | Topic/rate/schema/policy declaration surface |
-| Runtime scheduler | `Runtime/Unity/FoxgloveLogHub.cs` | Registers or discovers generated publisher interfaces without CLR reflection-based member binding |
+| Runtime scheduler | `Runtime/Unity/FoxgloveLogHub.cs` | Executes generated publishers without CLR reflection-based member binding |
 
 This implementation also generates `FoxRun_link.xml` for IL2CPP preservation. That is separate from publisher execution: it is a build-time preservation artifact, not a runtime reflection scanner.
 
@@ -177,8 +172,6 @@ There is an important caveat: the Roslyn host and the Unity build-time writer ca
 
 Phase 50 explicitly starts closing this gap by adding physical generated-file freshness checks for `TestLog_FoxRun.g.cs`. A deeper semantic diff between Roslyn-generated output and build-time output remains a higher-confidence follow-up.
 
-A practical next step is to make each host emit a normalized generation descriptor, for example JSON containing the declaring type, member name, member type, topic, schema, rate, publish mode, diagnostics, and preservation requirements. CI can then diff the descriptors before comparing generated source. That keeps the check close to the model-equivalence claim without requiring tests to compare host-specific Roslyn or Unity object graphs directly.
-
 ## Shared Emitter Failure Mode
 
 A shared emitter removes a large class of host drift bugs, but it is also a single source of generated-code defects. If the emitter mishandles string escaping, locale-sensitive numeric formatting, topic grouping, or publish-mode precedence, both hosts can produce the same wrong code.
@@ -191,7 +184,7 @@ This is not a reason to avoid a shared emitter. It means the emitter must be tre
 - generated source should have snapshot or structural tests;
 - physical fallback output should be checked for freshness before IL2CPP release validation.
 
-For example, if the emitter accidentally used the current UI culture and produced a floating-point literal such as `1,5f` instead of `1.5f`, the first line of defense should be emitter-output validation: source snapshots or structural checks around `FoxgloveSourceEmitter` should fail before the generated code reaches a Player build. Runtime behavior tests are the second line of defense, confirming that generated publishers actually publish the expected topics and payloads. This is why the evidence chain must include emitter-level tests, not only runtime smoke tests.
+This is why the evidence chain must include emitter-level tests, not only runtime smoke tests.
 
 ## Validation Strategy
 
@@ -201,7 +194,6 @@ The architecture should be validated at multiple levels:
 | --- | --- |
 | Emitter output tests | Lock generated source structure |
 | Generation-model tests | Confirm parsed metadata survives into the emitter model |
-| Normalized descriptor diff | Future release gate comparing Roslyn and build-time host models before source comparison |
 | Runtime behavior tests | Confirm generated publishers publish expected payloads |
 | IL2CPP build smoke | Confirm physical fallback files participate in Player builds |
 | Manual Foxglove smoke | Confirm topics appear and update in the target viewer |
@@ -226,8 +218,6 @@ This architecture sits near several existing practices, but has a different targ
 The important boundary is conservative: Unity2Foxglove does not claim to invent source generation or AOT pre-generation. It claims that a shared-emitter, dual-host architecture is a practical way to make declarative Unity telemetry work across Editor and IL2CPP Player builds without runtime reflection.
 
 The closest prior-art pattern is MessagePack-CSharp's AOT generation ecosystem: it recognizes that Unity/IL2CPP needs ahead-of-time generated C# instead of runtime code generation. The key difference is domain and host integration. Unity2Foxglove applies that AOT discipline to field/property-level telemetry, uses a shared emitter as the single telemetry generation semantics source, and integrates the physical fallback into Unity's Player build path.
-
-A useful future comparison is Unity2Rerun or any other Unity telemetry target that reuses the same declaration-to-model layer. If a second target can share the model resolution and most emitter infrastructure while swapping only the runtime adapter and schema mapping, the architecture is better described as multi-target declarative telemetry rather than only a dual-host Foxglove generator. That claim should wait for measured migration evidence instead of being assumed here.
 
 The strongest prior-art contrast is therefore not "nobody uses source generators." Many systems do. The narrower claim is that, to the best of our knowledge, public Unity telemetry tooling has not documented this exact combination:
 
@@ -263,11 +253,11 @@ Before turning this note into a paper section, the following evidence would make
 
 2. **Emitter migration/churn analysis**
 
-   If the shared-emitter pattern is reused in Unity2Rerun, measure how much code changes in the declaration/model layer, shared emitter infrastructure, schema mapping, and runtime adapter layer.
+   If the shared-emitter pattern is reused in Unity2Rerun, measure how much code changes in the emitter/model layer versus runtime adapter layer.
 
-3. **Model and generated-output equivalence checks**
+3. **Generated-output equivalence checks**
 
-   Compare Roslyn and physical writer output at the semantic level rather than only through text snapshots. A minimal release gate should at least detect stale physical `.g.cs` files for demo/sample sources; a stronger gate should have both hosts emit normalized JSON descriptors, diff resolved generation models, and then compare generated output structure between hosts.
+   Compare Roslyn and physical writer output at the semantic level rather than only through text snapshots. A minimal release gate should at least detect stale physical `.g.cs` files for demo/sample sources; a stronger gate should compare resolved generation models and generated output structure between hosts.
 
 4. **Player-build performance smoke**
 

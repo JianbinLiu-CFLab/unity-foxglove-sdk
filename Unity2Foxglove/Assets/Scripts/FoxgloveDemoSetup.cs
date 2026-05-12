@@ -26,7 +26,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
     private bool _syncingColor;
     private SynchronizationContext _unityContext;
     private FoxgloveSceneCubePublisher _scenePublisher;
-    private GameObject _cachedCube;
 
     /// <summary>
     /// Initializes parameters <c>/cube/color</c> and <c>/cube/scale</c>,
@@ -132,11 +131,9 @@ public class FoxgloveDemoSetup : MonoBehaviour
     /// </summary>
     private GameObject FindCube()
     {
-        if (_cachedCube != null)
-            return _cachedCube;
-        _cachedCube = GameObject.Find("Cube");
-        if (_cachedCube == null) _cachedCube = GameObject.FindGameObjectWithTag("Player");
-        return _cachedCube;
+        var cube = GameObject.Find("Cube");
+        if (cube == null) cube = GameObject.FindGameObjectWithTag("Player");
+        return cube;
     }
 
     // Called by MouseDragCube when scroll changes scale.

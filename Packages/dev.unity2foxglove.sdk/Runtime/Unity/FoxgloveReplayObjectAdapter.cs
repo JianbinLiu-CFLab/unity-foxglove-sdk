@@ -5,9 +5,7 @@
 // Purpose: Drives Unity GameObjects from MCAP replay /tf and /scene topic messages via FoxgloveManager.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -105,91 +103,32 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Receives raw replay messages from FoxgloveManager.
-        /// Routes <c>/tf</c> and <c>/scene</c> JSON or protobuf payloads to their handlers.
+        /// Receives raw JSON replay messages from FoxgloveManager.
+        /// Routes <c>/tf</c> and <c>/scene</c> topics to their handlers.
         /// </summary>
         private void OnReplayMessage(string topic, byte[] payload)
         {
-            if (payload == null) return;
-
             try
             {
+                var json = Encoding.UTF8.GetString(payload);
+                var obj = JObject.Parse(json);
+
                 switch (topic)
                 {
                     case "/tf":
-                        if (!_driveTf) return;
-                        if (TryParseJsonObject(payload, out var tfJson))
-                            HandleFrameTransform(tfJson);
-                        else
-                            HandleFrameTransform(ParseProtobuf("Foxglove.FrameTransform", payload));
+                        if (_driveTf) HandleFrameTransform(obj);
                         break;
                     case "/scene":
-                        if (!_driveScene) return;
-                        if (TryParseJsonObject(payload, out var sceneJson))
-                            HandleSceneUpdate(sceneJson);
-                        else
-                            HandleSceneUpdate(ParseProtobuf("Foxglove.SceneUpdate", payload));
+                        if (_driveScene) HandleSceneUpdate(obj);
                         break;
                     default:
-                        return;
+                        break;
                 }
             }
             catch (Exception ex)
             {
                 if (_warnedTopics.Add(topic))
                     Debug.LogWarning($"[Foxglove Replay] Failed to parse {topic}: {ex.Message}");
-            }
-        }
-
-        private static bool TryParseJsonObject(byte[] payload, out JObject obj)
-        {
-            obj = null;
-            if (!LooksLikeJsonObject(payload)) return false;
-
-            var json = Encoding.UTF8.GetString(payload);
-            obj = JObject.Parse(json);
-            return true;
-        }
-
-        private static bool LooksLikeJsonObject(byte[] payload)
-        {
-            for (var i = 0; i < payload.Length; i++)
-            {
-                var b = payload[i];
-                if (b == (byte)' ' || b == (byte)'\t' || b == (byte)'\r' || b == (byte)'\n')
-                    continue;
-                return b == (byte)'{';
-            }
-
-            return false;
-        }
-
-        private static object ParseProtobuf(string typeName, byte[] payload)
-        {
-            var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto");
-            if (type == null)
-                throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
-
-            var parser = type.GetProperty("Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-            if (parser == null)
-                throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
-
-            var parseFrom = parser.GetType().GetMethod(
-                "ParseFrom",
-                BindingFlags.Public | BindingFlags.Instance,
-                null,
-                new[] { typeof(byte[]) },
-                null);
-            if (parseFrom == null)
-                throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
-
-            try
-            {
-                return parseFrom.Invoke(parser, new object[] { payload });
-            }
-            catch (TargetInvocationException ex) when (ex.InnerException != null)
-            {
-                throw ex.InnerException;
             }
         }
 
@@ -222,33 +161,6 @@ namespace Unity.FoxgloveSDK.Components
             if (rotation != null)
             {
                 var fr = new Quaternion((float)rotation["x"], (float)rotation["y"], (float)rotation["z"], (float)rotation["w"]);
-                target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
-            }
-        }
-
-        /// <summary>
-        /// Parses a <c>/tf</c> protobuf message and applies position and rotation
-        /// to the resolved child frame Transform.
-        /// </summary>
-        private void HandleFrameTransform(object tf)
-        {
-            var childFrameId = GetStringProperty(tf, "ChildFrameId");
-            if (string.IsNullOrEmpty(childFrameId)) return;
-
-            var target = ResolveFrame(childFrameId);
-            if (target == null) return;
-
-            var translation = GetPropertyValue(tf, "Translation");
-            if (translation != null)
-            {
-                var fp = ToUnityVector(translation);
-                target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
-            }
-
-            var rotation = GetPropertyValue(tf, "Rotation");
-            if (rotation != null)
-            {
-                var fr = ToUnityQuaternion(rotation);
                 target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
             }
         }
@@ -317,35 +229,6 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Parses a <c>/scene</c> protobuf message and applies cube/model primitives
-        /// to the resolved entity Transforms. Deletions are ignored.
-        /// </summary>
-        private void HandleSceneUpdate(object scene)
-        {
-            if (scene == null) return;
-
-            var entities = GetPropertyValue(scene, "Entities") as IEnumerable;
-            if (entities == null) return;
-
-            foreach (var entity in entities)
-            {
-                var entityId = GetStringProperty(entity, "Id");
-                if (string.IsNullOrEmpty(entityId)) continue;
-
-                var target = ResolveEntity(entityId);
-                if (target == null) continue;
-
-                var cube = GetFirstItem(GetPropertyValue(entity, "Cubes"));
-                if (cube != null)
-                    ApplyCubePrimitive(cube, target);
-
-                var model = GetFirstItem(GetPropertyValue(entity, "Models"));
-                if (model != null)
-                    ApplyModelPrimitive(model, target);
-            }
-        }
-
-        /// <summary>
         /// Looks up an entity by ID. Checks the cache first, then auto-lookup
         /// via <c>GameObject.Find</c>. Logs a warning on first miss.
         /// </summary>
@@ -379,32 +262,10 @@ namespace Unity.FoxgloveSDK.Components
             ApplyPrimitive(cube, target, "size");
         }
 
-        /// <summary>Applies size, pose, and color from a cube primitive protobuf object.</summary>
-        private void ApplyCubePrimitive(object cube, Transform target)
-        {
-            if (cube == null) return;
-            ApplyPrimitive(
-                GetPropertyValue(cube, "Pose"),
-                GetPropertyValue(cube, "Size"),
-                GetPropertyValue(cube, "Color"),
-                target);
-        }
-
         /// <summary>Applies scale, pose, and color from a model primitive JSON object.</summary>
         private void ApplyModelPrimitive(JObject model, Transform target)
         {
             ApplyPrimitive(model, target, "scale");
-        }
-
-        /// <summary>Applies scale, pose, and color from a model primitive protobuf object.</summary>
-        private void ApplyModelPrimitive(object model, Transform target)
-        {
-            if (model == null) return;
-            ApplyPrimitive(
-                GetPropertyValue(model, "Pose"),
-                GetPropertyValue(model, "Scale"),
-                GetPropertyValue(model, "Color"),
-                target);
         }
 
         /// <summary>
@@ -449,77 +310,5 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
         }
-
-        /// <summary>
-        /// Parses pose, size/scale, and color from a primitive protobuf object and
-        /// applies them to the target Transform and its Renderer.
-        /// </summary>
-        private void ApplyPrimitive(object pose, object scale, object color, Transform target)
-        {
-            if (pose != null)
-            {
-                var position = GetPropertyValue(pose, "Position");
-                if (position != null)
-                {
-                    var fp = ToUnityVector(position);
-                    target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
-                }
-
-                var orientation = GetPropertyValue(pose, "Orientation");
-                if (orientation != null)
-                {
-                    var fr = ToUnityQuaternion(orientation);
-                    target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
-                }
-            }
-
-            if (scale != null)
-                target.localScale = ToUnityVector(scale);
-
-            if (color != null)
-                ApplyColor(color, target);
-        }
-
-        private void ApplyColor(object color, Transform target)
-        {
-            var renderer = target.GetComponent<Renderer>();
-            if (renderer == null) return;
-
-            if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
-            renderer.GetPropertyBlock(_propBlock);
-            _propBlock.SetColor("_BaseColor", new UnityEngine.Color(
-                GetFloatProperty(color, "R"),
-                GetFloatProperty(color, "G"),
-                GetFloatProperty(color, "B"),
-                GetFloatProperty(color, "A")));
-            renderer.SetPropertyBlock(_propBlock);
-        }
-
-        private static object GetPropertyValue(object source, string propertyName)
-            => source?.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(source);
-
-        private static string GetStringProperty(object source, string propertyName)
-            => GetPropertyValue(source, propertyName) as string;
-
-        private static float GetFloatProperty(object source, string propertyName)
-        {
-            var value = GetPropertyValue(source, propertyName);
-            return value == null ? 0f : Convert.ToSingle(value);
-        }
-
-        private static object GetFirstItem(object collection)
-        {
-            var enumerable = collection as IEnumerable;
-            if (enumerable == null) return null;
-            foreach (var item in enumerable)
-                return item;
-            return null;
-        }
-
-        private static Vector3 ToUnityVector(object value)
-            => new Vector3(GetFloatProperty(value, "X"), GetFloatProperty(value, "Y"), GetFloatProperty(value, "Z"));
-
-        private static Quaternion ToUnityQuaternion(object value)
-            => new Quaternion(GetFloatProperty(value, "X"), GetFloatProperty(value, "Y"), GetFloatProperty(value, "Z"), GetFloatProperty(value, "W"));
     }
 }

@@ -24,7 +24,6 @@ namespace Unity.FoxgloveSDK.Tests
             TestDataOverflowDropsOldestData();
             TestControlOverflowDropsDataAndSendsControlFirst();
             TestControlOnlyOverflowRequestsDisconnect();
-            TestClearDataFramesPreservesControlFrames();
             TestWebSocketHeaderLengths();
             TestSendQueueCompleteIsIdempotent();
             TestLivePublishUsesDataPrioritySend();
@@ -77,21 +76,6 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.ShouldDisconnect, "33A-3b: control-only overflow requests disconnect");
             Check(result.DroppedDataFrames == 0, "33A-3c: no data frames were available to drop");
             Check(queue.Count == 2, "33A-3d: existing control frames remain queued");
-        }
-
-        private static void TestClearDataFramesPreservesControlFrames()
-        {
-            var queue = new ManagedWsBackend.WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024);
-            queue.Enqueue(Data(1));
-            queue.Enqueue(Control(9));
-            queue.Enqueue(Data(2));
-
-            var dropped = queue.ClearDataFrames();
-            Check(dropped == 2, "33A-3e: seek reset drops queued data frames");
-            Check(queue.Count == 1, "33A-3f: seek reset preserves queued control frames");
-            Check(queue.TryDequeue(out var frame) && frame.Priority == ManagedWsBackend.FramePriority.Control,
-                "33A-3g: preserved control frame still dequeues");
-            Check(frame.Payload[0] == 9, "33A-3h: preserved control frame payload is unchanged");
         }
 
         private static void TestWebSocketHeaderLengths()
@@ -185,7 +169,6 @@ namespace Unity.FoxgloveSDK.Tests
             public void Dispose() { }
             public void BroadcastText(string json) { }
             public void BroadcastBinary(byte[] data) { }
-            public void BroadcastDataBinary(byte[] data) { }
             public void SendText(uint clientId, string json) { }
             public void SendBinary(uint clientId, byte[] data) => ControlBinaryCount++;
             public void SendDataBinary(uint clientId, byte[] data) => DataBinaryCount++;
