@@ -37,7 +37,11 @@ public class FoxgloveDemoSetup : MonoBehaviour
     {
         _unityContext = SynchronizationContext.Current;
         if (_manager == null) _manager = GetComponent<FoxgloveManager>();
-        if (_manager?.Runtime == null) return;
+        if (_manager?.Runtime?.Session == null)
+        {
+            Debug.LogWarning("[FoxgloveDemo] FoxgloveManager is not running; demo parameters and services were not registered.");
+            return;
+        }
 
         var rt = _manager.Runtime;
 

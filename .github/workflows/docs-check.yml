@@ -7,8 +7,7 @@ on:
       - "README.md"
       - "ROADMAP.md"
       - "CHANGELOG.md"
-      - "RELEASE_NOTES_v1.1.0.md"
-      - "RELEASE_NOTES_v1.0.0.md"
+      - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
@@ -22,8 +21,7 @@ on:
       - "README.md"
       - "ROADMAP.md"
       - "CHANGELOG.md"
-      - "RELEASE_NOTES_v1.1.0.md"
-      - "RELEASE_NOTES_v1.0.0.md"
+      - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
@@ -46,8 +44,7 @@ jobs:
             README.md
             ROADMAP.md
             CHANGELOG.md
-            RELEASE_NOTES_v1.1.0.md
-            RELEASE_NOTES_v1.0.0.md
+            "docs/releases"
             THIRD_PARTY_NOTICES.md
             "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
             "Packages/dev.unity2foxglove.sdk/Documentation~/en"
@@ -75,8 +72,7 @@ jobs:
               Path("README.md"),
               Path("ROADMAP.md"),
               Path("CHANGELOG.md"),
-              Path("RELEASE_NOTES_v1.1.0.md"),
-              Path("RELEASE_NOTES_v1.0.0.md"),
+              Path("docs/releases"),
               Path("THIRD_PARTY_NOTICES.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/en"),

@@ -13,6 +13,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
 | Server Name | `Unity Foxglove SDK` | Name shown to Foxglove in server info. | Change when multiple Unity apps are visible. | Expecting it to change the WebSocket URL. |
+| Transport Mode | `WebSocket` | Chooses plain `ws://` or secure `wss://`. | Use `SecureWebSocket` when Unity should host TLS directly. | Expecting one manager to run both plain and secure listeners at once. |
 | Host | `127.0.0.1` | Interface the server binds to. | Use `0.0.0.0` only when remote machines must connect. | Binding publicly without understanding network exposure. |
 | Port | `8765` | WebSocket port. | Change if another process uses `8765`. | Connecting Foxglove to the old port after changing it. |
 | Start On Enable | Enabled | Starts the server when the component is enabled. | Disable if another script controls lifecycle. | Disabling it and never calling `StartServer()`. |
@@ -51,6 +52,23 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Replay File Path | Empty | Path to the `.mcap` file. | Set before Play Mode for replay. | Leaving a personal absolute path in shared scenes. |
 | Replay Auto Play | Disabled | Starts replay automatically. | Enable for quick acceptance tests. | Expecting replay to advance while paused. |
 | Disable Live Publishers | Enabled | Disables live publishers during replay. | Keep enabled for clean replay verification. | Disabling it and mixing live and replayed messages. |
+
+### 3.6 Security / WSS
+
+| Field | Default | What it does | When to change it | Common mistakes |
+|---|---:|---|---|---|
+| Allow Hosted Foxglove Web | Enabled | Adds `https://app.foxglove.dev` to the browser Origin allowlist at runtime. Layout, project, user, and query-string changes do not affect this origin. | Leave enabled for hosted Foxglove Web. | Disabling it while expecting the hosted web app to connect. |
+| Allowed Browser Origins | `https://app.foxglove.dev` | Additional browser Origin allowlist entries for CSWSH protection. Full page URLs are accepted and normalized to `scheme://host[:port]`. | Add a custom/private web app origin once. | Adding `*`; wildcard origins are not supported. |
+| Certificate Pfx Path | Empty | PFX certificate and private key for WSS. | Required for `SecureWebSocket`. | Pointing to a `.crt` without a private key. |
+| Certificate Password | Empty | Password for the PFX file. | Set when the PFX is password protected. | Logging or sharing real passwords. |
+| Shared Token | Empty | Optional query-token gate. | Use with WSS for simple local/LAN gating. | Treating it as strong authentication or using it over plain `ws://`. |
+| Generate Local Dev Certificate | Button | Creates an ignored local self-signed certificate with OpenSSL and fills the WSS fields. | Use for local Editor or demo WSS setup when OpenSSL is on `PATH`. | Treating the generated PFX as production trust material. |
+| Root CA Distributor Enabled | Disabled | Starts a small HTTP server for downloading the root CA. | Enable for first-time local trust setup. | Trusting the HTTP download without checking the SHA-256 fingerprint. |
+| Root CA Distributor Host | `127.0.0.1` | Bind address for the CA HTTP server. | Keep loopback for local setup; use LAN addresses only intentionally. | Binding `0.0.0.0` on untrusted networks. |
+| Root CA Distributor Port | `8766` | HTTP port for the CA distributor. | Change if another process uses it. | Confusing it with the WebSocket port. |
+| Root CA File Path | Empty | Root CA file served by the distributor. | Set when the distributor is enabled. | Serving the wrong certificate file. |
+
+When another person or device imports the CA, require a manual verification step: compare the `Root CA SHA-256` value shown in Unity with the fingerprint shown on the distributor root page before trusting the certificate. Keep the shared token out of approval records and deliver it through a separate trusted channel. The local generator fills project fields only; it does not import the CA into any OS trust store.
 
 ## 4. FoxglovePublisherBase Fields
 

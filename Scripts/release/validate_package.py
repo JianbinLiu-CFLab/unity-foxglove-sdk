@@ -58,9 +58,9 @@ FORBIDDEN_PUBLIC_PATTERNS = (
     ("private docs reference", re.compile(r"Dev" r"eloper[\\/]")),
     ("Obsidian pasted image", re.compile(r"Pasted image", re.IGNORECASE)),
     ("Obsidian embed", re.compile(r"!\[\[")),
-    ("TODO marker", re.compile(r"\bTODO\b")),
+    ("to-do marker", re.compile(r"\bTO" r"DO\b")),
     ("TBD marker", re.compile(r"\bTBD\b")),
-    ("FIXME marker", re.compile(r"\bFIXME\b")),
+    ("fix-me marker", re.compile(r"\bFIX" r"ME\b")),
 )
 
 # Directory path parts that indicate local/generated sample artifacts.

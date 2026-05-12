@@ -320,6 +320,7 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
+  _transportMode: 1
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
   _coordinateMode: 1
@@ -339,7 +340,16 @@ MonoBehaviour:
   _replayFilePath: Recordings/foxglove_20260511_230904.mcap
   _replayAutoPlay: 0
   _disableLivePublishers: 0
-  _allowedBrowserOrigins: []
+  _allowHostedFoxgloveWeb: 1
+  _allowedBrowserOrigins:
+  - https://app.foxglove.dev
+  _certificatePfxPath: UserSettings/Unity2Foxglove/Certificates/unity2foxglove-local-dev.pfx
+  _certificatePassword: 
+  _rootCaDistributorEnabled: 1
+  _rootCaDistributorHost: 127.0.0.1
+  _rootCaDistributorPort: 8766
+  _rootCaFilePath: UserSettings/Unity2Foxglove/Certificates/unity2foxglove-local-dev-root.crt
+  _sharedToken: 
 --- !u!4 &346350282
 Transform:
   m_ObjectHideFlags: 0
@@ -529,7 +539,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &534487833
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -537,7 +547,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 534487832}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9360d8900353de14e93374b6565b62ac, type: 3}
   m_Name: 

@@ -6,6 +6,7 @@
 // for file/folder path fields.
 
 using System.IO;
+using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 using UnityEditor;
 
@@ -28,6 +29,17 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _replayExpanded;
         private static bool _securityExpanded;
         private static bool _transportExpanded;
+        private const string LocalRootCaDistributorHost = "127.0.0.1";
+        private const int LocalRootCaDistributorPort = 8766;
+        private const string LocalRootCaPageUrl = "http://127.0.0.1:8766/";
+        private static FoxgloveCertificateDistributor _editorRootCaDistributor;
+
+        static FoxgloveManagerEditor()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += StopEditorRootCaDistributor;
+            EditorApplication.quitting += StopEditorRootCaDistributor;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        }
 
         /// <summary>
         /// Draws a curated Inspector for Manager settings and runtime status.
@@ -39,6 +51,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawScriptProperty();
             DrawCompactStatus();
             DrawRecordingReplayWarning();
+            EnsureSecureSettingsVisible();
 
             DrawSection("Server", ref _serverExpanded, DrawServerSection);
             DrawSection("Publisher Encoding", ref _encodingExpanded, DrawPublisherEncodingSection);
@@ -69,6 +82,11 @@ namespace Unity.FoxgloveSDK.Editor
             var manager = (Components.FoxgloveManager)target;
             var host = GetString("_host", "127.0.0.1");
             var port = GetInt("_port", 8765);
+            var isSecure = IsSecureMode();
+            var token = GetString("_sharedToken", "");
+            var endpoint = FoxgloveAppUrl.BuildWebSocketEndpoint(host, port, isSecure, token, redactToken: true);
+            var foxgloveWebUrl = FoxgloveAppUrl.BuildHostedWebSocketUrl(host, port, isSecure, token: token);
+            var redactedFoxgloveWebUrl = FoxgloveAppUrl.BuildHostedWebSocketUrl(host, port, isSecure, token: token, redactToken: true);
 
             EditorGUILayout.Space();
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
@@ -76,7 +94,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.LabelField("Status Summary", EditorStyles.boldLabel);
                 using (new EditorGUI.DisabledScope(true))
                 {
-                    EditorGUILayout.TextField("Endpoint", $"ws://{host}:{port}");
+                    EditorGUILayout.TextField("Endpoint", endpoint);
+                    EditorGUILayout.TextField("Foxglove Web URL", redactedFoxgloveWebUrl);
                     EditorGUILayout.Toggle("Start On Enable", GetBool("_startOnEnable"));
                     EditorGUILayout.Toggle("Recording Enabled", GetBool("_enableRecording"));
                     EditorGUILayout.Toggle("Replay Enabled", GetBool("_enableReplay"));
@@ -95,6 +114,15 @@ namespace Unity.FoxgloveSDK.Editor
                         }
                     }
                 }
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Copy Foxglove Web URL"))
+                        EditorGUIUtility.systemCopyBuffer = foxgloveWebUrl;
+
+                    if (GUILayout.Button("Open Foxglove Web"))
+                        Application.OpenURL(foxgloveWebUrl);
+                }
             }
         }
 
@@ -106,6 +134,12 @@ namespace Unity.FoxgloveSDK.Editor
                     "Recording and Replay cannot both run at the same time. At runtime, recording is kept and replay is disabled.",
                     MessageType.Warning);
             }
+        }
+
+        private void EnsureSecureSettingsVisible()
+        {
+            if (IsSecureMode() && string.IsNullOrWhiteSpace(GetString("_certificatePfxPath", "")))
+                _securityExpanded = true;
         }
 
         private static void DrawSection(string title, ref bool expanded, System.Action drawContents)
@@ -123,6 +157,7 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawServerSection()
         {
             DrawProperty("_serverName");
+            DrawProperty("_transportMode");
             DrawProperty("_host");
             DrawProperty("_port");
             DrawProperty("_startOnEnable");
@@ -179,7 +214,88 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawSecuritySection()
         {
+            DrawProperty("_allowHostedFoxgloveWeb");
             DrawProperty("_allowedBrowserOrigins");
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Security / WSS", EditorStyles.boldLabel);
+            DrawSecureWebSocketSection();
+        }
+
+        private void DrawSecureWebSocketSection()
+        {
+            var isSecure = IsSecureMode();
+            DrawSecureWebSocketFields(isSecure);
+
+            EditorGUILayout.Space();
+            if (GUILayout.Button("Generate Local Dev Certificate"))
+                GenerateLocalDevCertificate();
+
+            var host = GetString("_host", "127.0.0.1");
+            var port = GetInt("_port", 8765);
+            var token = GetString("_sharedToken", "");
+            var secureUrl = $"wss://{host}:{port}" + (string.IsNullOrEmpty(token) ? "" : "?token=REDACTED");
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.TextField("Secure URL", secureUrl);
+            }
+
+            if (!isSecure)
+                EditorGUILayout.HelpBox("Select SecureWebSocket transport mode to enable WSS settings.", MessageType.Info);
+
+            var distributorHost = GetString("_rootCaDistributorHost", "127.0.0.1");
+            if (distributorHost != "127.0.0.1" && distributorHost != "localhost")
+            {
+                EditorGUILayout.HelpBox(
+                    "Root CA distributor is not bound to loopback. Only use this on trusted networks.",
+                    MessageType.Warning);
+            }
+
+            var rootPath = GetString("_rootCaFilePath", "");
+            var fingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(ResolveProjectPath(rootPath));
+            if (!string.IsNullOrEmpty(fingerprint))
+            {
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.TextField("Root CA SHA-256", fingerprint);
+                EditorGUILayout.HelpBox(
+                    "Import the generated root CA manually only after comparing this SHA-256 fingerprint through a trusted channel.",
+                    MessageType.Info);
+            }
+
+            if (GetBool("_rootCaDistributorEnabled"))
+            {
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.TextField(
+                        "Root CA URL",
+                        $"http://{distributorHost}:{GetInt("_rootCaDistributorPort", 8766)}/rootCA.crt");
+                }
+            }
+
+            DrawCertificateUtilityButtons(fingerprint, secureUrl);
+        }
+
+        private void DrawSecureWebSocketFields(bool isSecure)
+        {
+            using (new EditorGUI.DisabledScope(!isSecure))
+            {
+                var pfx = serializedObject.FindProperty("_certificatePfxPath");
+                if (pfx != null)
+                    DrawPathBrowse(pfx, "Select WSS PFX Certificate", "pfx", true, GetSmartDefault(pfx.stringValue, true));
+                else
+                    DrawMissingProperty("_certificatePfxPath");
+
+                DrawPasswordProperty("_certificatePassword", "Certificate Password");
+                DrawPasswordProperty("_sharedToken", "Shared Token");
+                DrawProperty("_rootCaDistributorEnabled");
+                DrawProperty("_rootCaDistributorHost");
+                DrawProperty("_rootCaDistributorPort");
+
+                var rootCa = serializedObject.FindProperty("_rootCaFilePath");
+                if (rootCa != null)
+                    DrawPathBrowse(rootCa, "Select Root CA File", "crt", true, GetSmartDefault(rootCa.stringValue, true));
+                else
+                    DrawMissingProperty("_rootCaFilePath");
+            }
         }
 
         private void DrawProperty(string propertyName)
@@ -215,6 +331,130 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var prop = serializedObject.FindProperty(propertyName);
             return prop != null && prop.boolValue;
+        }
+
+        private void SetString(string propertyName, string value)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop != null)
+                prop.stringValue = value ?? string.Empty;
+        }
+
+        private void SetBool(string propertyName, bool value)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop != null)
+                prop.boolValue = value;
+        }
+
+        private void SetInt(string propertyName, int value)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop != null)
+                prop.intValue = value;
+        }
+
+        private bool IsSecureMode()
+        {
+            var prop = serializedObject.FindProperty("_transportMode");
+            return prop != null && prop.enumValueIndex == (int)FoxgloveTransportMode.SecureWebSocket;
+        }
+
+        private void DrawPasswordProperty(string propertyName, string label)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop == null)
+            {
+                DrawMissingProperty(propertyName);
+                return;
+            }
+
+            prop.stringValue = EditorGUILayout.PasswordField(label, prop.stringValue);
+        }
+
+        private void GenerateLocalDevCertificate()
+        {
+            if (!EditorUtility.DisplayDialog(
+                    "Generate Local Dev Certificate",
+                    "Generate a self-signed local-development certificate under UserSettings using OpenSSL, then fill the WSS fields. This does not import the root CA into your OS trust store.",
+                    "Generate",
+                    "Cancel"))
+            {
+                return;
+            }
+
+            serializedObject.ApplyModifiedProperties();
+            var host = GetString("_host", "127.0.0.1");
+            try
+            {
+                var result = FoxgloveLocalDevCertificateGenerator.Generate(host);
+
+                Undo.RecordObject(target, "Generate Local Dev WSS Certificate");
+                serializedObject.Update();
+                SetString("_certificatePfxPath", MakeRelative(result.PfxPath));
+                SetString("_certificatePassword", result.CertificatePassword);
+                SetBool("_rootCaDistributorEnabled", true);
+                SetString("_rootCaDistributorHost", LocalRootCaDistributorHost);
+                SetInt("_rootCaDistributorPort", LocalRootCaDistributorPort);
+                SetString("_rootCaFilePath", MakeRelative(result.RootCaPath));
+                serializedObject.ApplyModifiedProperties();
+                EditorUtility.SetDirty(target);
+
+                var fingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(result.RootCaPath);
+                var pageStarted = StartEditorRootCaDistributor(
+                    result.RootCaPath,
+                    LocalRootCaDistributorHost,
+                    LocalRootCaDistributorPort,
+                    out var pageError);
+                Debug.Log(
+                    "[Foxglove] Generated local development WSS certificate. "
+                    + $"Root CA SHA-256={fingerprint}. Import the root CA manually after fingerprint verification.");
+
+                if (pageStarted)
+                {
+                    Debug.Log($"[Foxglove] Local Root CA page is available at {LocalRootCaPageUrl}");
+                    Application.OpenURL(LocalRootCaPageUrl);
+                }
+                else
+                {
+                    Debug.LogWarning(
+                        $"[Foxglove] Generated the local development certificate, but could not start "
+                        + $"the Root CA page at {LocalRootCaPageUrl}: {pageError}");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[Foxglove] Failed to generate local development WSS certificate: {ex.Message}");
+            }
+        }
+
+        private void DrawCertificateUtilityButtons(string fingerprint, string secureUrl)
+        {
+            var pfxPath = ResolveProjectPath(GetString("_certificatePfxPath", ""));
+            var rootPath = ResolveProjectPath(GetString("_rootCaFilePath", ""));
+            var hasCertificateFiles = File.Exists(pfxPath) || File.Exists(rootPath);
+
+            using (new EditorGUI.DisabledScope(!hasCertificateFiles))
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Reveal Certificate Folder"))
+                    {
+                        var revealPath = File.Exists(rootPath) ? rootPath : pfxPath;
+                        EditorUtility.RevealInFinder(revealPath);
+                    }
+
+                    if (GUILayout.Button("Copy Root CA SHA-256"))
+                    {
+                        EditorGUIUtility.systemCopyBuffer = fingerprint ?? string.Empty;
+                    }
+
+                    if (GUILayout.Button("Copy Redacted WSS URL"))
+                    {
+                        EditorGUIUtility.systemCopyBuffer = secureUrl ?? string.Empty;
+                    }
+                }
+            }
         }
 
         private void DrawTransportHealth()
@@ -344,6 +584,56 @@ namespace Unity.FoxgloveSDK.Editor
             if (normAbs.StartsWith(normRoot + "/"))
                 return normAbs.Substring(normRoot.Length + 1);
             return normAbs;
+        }
+
+        private static string ResolveProjectPath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || Path.IsPathRooted(path))
+                return path;
+            return Path.GetFullPath(Path.Combine(GetDefaultDir(), path));
+        }
+
+        private static bool StartEditorRootCaDistributor(string rootCaPath, string host, int port, out string error)
+        {
+            StopEditorRootCaDistributor();
+            error = string.Empty;
+
+            try
+            {
+                _editorRootCaDistributor = new FoxgloveCertificateDistributor(
+                    rootCaPath,
+                    logger: new Components.UnityLogger());
+                _editorRootCaDistributor.Start(host, port);
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                error = ex.Message;
+                StopEditorRootCaDistributor();
+                return false;
+            }
+        }
+
+        private static void StopEditorRootCaDistributor()
+        {
+            try
+            {
+                _editorRootCaDistributor?.Dispose();
+            }
+            catch
+            {
+                // Best effort cleanup during editor reload/play-mode transitions.
+            }
+            finally
+            {
+                _editorRootCaDistributor = null;
+            }
+        }
+
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.EnteredPlayMode)
+                StopEditorRootCaDistributor();
         }
 
         private static void NormalizeProjectRelativePath(SerializedProperty prop)

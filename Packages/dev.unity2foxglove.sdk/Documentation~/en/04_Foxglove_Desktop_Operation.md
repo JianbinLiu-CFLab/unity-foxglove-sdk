@@ -17,6 +17,8 @@ You will connect Foxglove, inspect topics, use common panels, import layouts, ed
 
 If the connection succeeds, the top bar shows `ws://127.0.0.1:8765` and the **Topics** panel starts listing Unity topics.
 
+Foxglove Web works through the same plain local WebSocket endpoint when its browser Origin is allowed. Keep `FoxgloveManager > Security > Allow Hosted Foxglove Web` enabled for `https://app.foxglove.dev`; hosted Foxglove Web does not require copying the current layout URL. Use the Inspector **Open Foxglove Web** or **Copy Foxglove Web URL** action to generate the hosted app URL with `ds.url=ws://127.0.0.1:8765`. Project, user, layout, and query-string changes do not require separate allowlist entries. If you disable the hosted-web toggle, browser-origin clients are rejected while Foxglove Desktop continues to work.
+
 ## 4. Import a Layout
 
 Use layouts to avoid rebuilding panels by hand.

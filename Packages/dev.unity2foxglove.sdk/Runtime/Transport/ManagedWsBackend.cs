@@ -27,12 +27,12 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         /// <summary>Per-client send queue frame cap; stale data frames are dropped before this is exceeded.</summary>
-        internal const int MaxQueuedFrames = 256;
+        internal const int MaxQueuedFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
         /// <summary>Per-client send queue byte cap.</summary>
-        internal const int MaxQueuedBytes = 8 * 1024 * 1024;
+        internal const int MaxQueuedBytes = ManagedWebSocketOptions.DefaultMaxQueuedBytes;
         private const byte FinBit = 0x80;
         private const byte MaskBit = 0x80;
         private const byte OpcodeMask = 0x0F;
@@ -54,6 +54,8 @@ namespace Unity.FoxgloveSDK.Transport
         private CancellationTokenSource _cts;
         /// <summary>Active WebSocket connections keyed by client ID.</summary>
         private readonly ConcurrentDictionary<uint, WsConnection> _clients = new ConcurrentDictionary<uint, WsConnection>();
+        /// <summary>Shared managed WebSocket options for queue capacity and token gate.</summary>
+        private readonly ManagedWebSocketOptions _options;
         /// <summary>Logger instance for diagnostic output.</summary>
         private readonly IFoxgloveLogger _logger;
         /// <summary>Monotonically increasing counter for assigning client IDs.</summary>
@@ -68,7 +70,11 @@ namespace Unity.FoxgloveSDK.Transport
         private long _totalDroppedDataFrames;
 
         public ManagedWsBackend(IFoxgloveLogger logger = null)
+            : this(new ManagedWebSocketOptions(), logger) { }
+
+        public ManagedWsBackend(ManagedWebSocketOptions options, IFoxgloveLogger logger = null)
         {
+            _options = options ?? new ManagedWebSocketOptions();
             _logger = logger ?? new ConsoleLogger();
         }
 
@@ -85,7 +91,7 @@ namespace Unity.FoxgloveSDK.Transport
         public event Action<uint, byte[]> OnBinaryReceived;
 
         /// <summary>Bind the TCP listener to <c>host</c>:<c>port</c> and begin accepting connections.</summary>
-        public void Start(string host, int port)
+        public virtual void Start(string host, int port)
         {
             if (_listener != null)
                 throw new InvalidOperationException("Server already started");
@@ -105,7 +111,7 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
-        public void Stop()
+        public virtual void Stop()
         {
             _cts?.Cancel();
             foreach (var (id, conn) in _clients.ToArray())
@@ -165,7 +171,7 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Stop the server and release the cancellation token source.</summary>
-        public void Dispose()
+        public virtual void Dispose()
         {
             Stop();
             _cts?.Dispose();
@@ -205,6 +211,8 @@ namespace Unity.FoxgloveSDK.Transport
                 ControlOverflowDisconnects = Interlocked.Read(ref _totalControlOverflowDisconnects),
                 TotalQueuedFrames = totalQueuedFrames,
                 TotalQueuedBytes = totalQueuedBytes,
+                MaxQueuedFramesPerClient = _options.MaxQueuedFramesPerClient,
+                MaxQueuedBytesPerClient = _options.MaxQueuedBytesPerClient,
                 Clients = clientList.AsReadOnly()
             };
         }
@@ -217,17 +225,34 @@ namespace Unity.FoxgloveSDK.Transport
             get { lock (_allowedOrigins) return _allowedOrigins.ToList(); }
         }
 
-        /// <summary>Add an origin to the allowlist (case-insensitive). Example: <c>http://localhost:3000</c>.</summary>
+        /// <summary>Add an origin to the allowlist (case-insensitive). Full page URLs are normalized to their browser Origin.</summary>
         public void AddAllowedOrigin(string origin)
         {
-            if (string.IsNullOrEmpty(origin)) return;
-            lock (_allowedOrigins) _allowedOrigins.Add(origin);
+            var normalized = NormalizeAllowedOrigin(origin);
+            if (string.IsNullOrEmpty(normalized)) return;
+            lock (_allowedOrigins) _allowedOrigins.Add(normalized);
         }
 
         /// <summary>Remove all origins from the allowlist, blocking all browser clients.</summary>
         public void ClearAllowedOrigins()
         {
             lock (_allowedOrigins) _allowedOrigins.Clear();
+        }
+
+        internal static string NormalizeAllowedOrigin(string originOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(originOrUrl))
+                return null;
+
+            var value = originOrUrl.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+                && !string.IsNullOrEmpty(uri.Scheme)
+                && !string.IsNullOrEmpty(uri.Host))
+            {
+                return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            }
+
+            return value.TrimEnd('/');
         }
 
         // Internal
@@ -255,25 +280,34 @@ namespace Unity.FoxgloveSDK.Transport
         private void HandleClient(TcpClient tcpClient, CancellationToken ct)
         {
             WsConnection conn = null;
+            Stream stream = null;
             try
             {
-                var stream = tcpClient.GetStream();
-                stream.ReadTimeout = 5000;
-                stream.WriteTimeout = 5000;
+                stream = CreateClientStream(tcpClient);
+                ConfigureStreamTimeouts(stream, 5000, 5000);
 
                 var (accepted, subprotocol) = Handshake(stream);
                 if (!accepted)
                 {
+                    try { stream?.Close(); } catch { }
+                    try { stream?.Dispose(); } catch { }
                     try { tcpClient.Close(); } catch { }
                     try { tcpClient.Dispose(); } catch { }
                     return;
                 }
 
-                stream.ReadTimeout = Timeout.Infinite;
-                stream.WriteTimeout = Timeout.Infinite;
+                if (stream.CanTimeout)
+                {
+                    stream.ReadTimeout = Timeout.Infinite;
+                    stream.WriteTimeout = Timeout.Infinite;
+                }
 
                 var clientId = AllocateClientId();
-                conn = new WsConnection(tcpClient, stream);
+                conn = new WsConnection(
+                    tcpClient,
+                    stream,
+                    _options.MaxQueuedFramesPerClient,
+                    _options.MaxQueuedBytesPerClient);
                 _clients[clientId] = conn;
                 conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
 
@@ -286,11 +320,28 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 if (conn == null)
                 {
+                    try { stream?.Close(); } catch { }
+                    try { stream?.Dispose(); } catch { }
                     try { tcpClient.Close(); } catch { }
                     try { tcpClient.Dispose(); } catch { }
                 }
                 _logger.LogError($"Client handler error: {ex.Message}");
             }
+        }
+
+        /// <summary>Create the stream used by the WebSocket core. Secure backends override this to return SslStream.</summary>
+        protected virtual Stream CreateClientStream(TcpClient tcpClient)
+        {
+            return tcpClient.GetStream();
+        }
+
+        private static void ConfigureStreamTimeouts(Stream stream, int readTimeout, int writeTimeout)
+        {
+            if (stream == null || !stream.CanTimeout)
+                return;
+
+            stream.ReadTimeout = readTimeout;
+            stream.WriteTimeout = writeTimeout;
         }
 
         private uint AllocateClientId()
@@ -310,7 +361,7 @@ namespace Unity.FoxgloveSDK.Transport
         // WebSocket handshake (RFC 6455 section 4)
 
         /// <summary>Parse HTTP upgrade request and complete the WebSocket opening handshake per RFC 6455.</summary>
-        private (bool accepted, string subprotocol) Handshake(NetworkStream stream)
+        private (bool accepted, string subprotocol) Handshake(Stream stream)
         {
             string requestLine;
             try { requestLine = ReadLineRaw(stream, MaxHandshakeLineBytes); }
@@ -321,6 +372,7 @@ namespace Unity.FoxgloveSDK.Transport
             var parts = requestLine.Split(' ');
             if (parts.Length < 3 || parts[0] != "GET")
                 return (false, null);
+            var requestTarget = parts[1];
 
             var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             string line;
@@ -365,6 +417,20 @@ namespace Unity.FoxgloveSDK.Transport
                         $"Rejected WebSocket Origin '{origin}'. Add it to allowed origins to permit browser clients.");
                     var forbid = Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\n\r\n");
                     stream.Write(forbid, 0, forbid.Length);
+                    return (false, null);
+                }
+            }
+
+            if (_options.RequireToken)
+            {
+                var token = ManagedWebSocketOptions.GetQueryParameter(requestTarget, "token");
+                if (!_options.IsTokenAccepted(token))
+                {
+                    _logger.LogWarning(token == null
+                        ? "Rejected WebSocket client with missing token."
+                        : "Rejected WebSocket client with invalid token.");
+                    var unauthorized = Encoding.ASCII.GetBytes("HTTP/1.1 401 Unauthorized\r\n\r\n");
+                    stream.Write(unauthorized, 0, unauthorized.Length);
                     return (false, null);
                 }
             }
@@ -421,7 +487,7 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Read one line byte-by-byte, avoiding StreamReader buffering that could steal frame data.</summary>
-        private static string ReadLineRaw(NetworkStream stream, int maxBytes)
+        private static string ReadLineRaw(Stream stream, int maxBytes)
         {
             var sb = new StringBuilder();
             var bytesRead = 0;
@@ -531,6 +597,20 @@ namespace Unity.FoxgloveSDK.Transport
                 _logger.LogWarning($"Client {clientId} send queue overflowed on control frame during {operation}; disconnecting.");
                 DisconnectClient(clientId, conn);
             }
+        }
+
+        private static bool IsExpectedStreamShutdown(Exception ex)
+        {
+            if (ex is ObjectDisposedException)
+                return true;
+
+            if (ex is AggregateException aggregate)
+            {
+                var inner = aggregate.Flatten().InnerExceptions;
+                return inner.Count > 0 && inner.All(IsExpectedStreamShutdown);
+            }
+
+            return false;
         }
 
         internal static int WriteFrameHeader(byte opcode, int payloadLength, Span<byte> destination)
@@ -855,9 +935,9 @@ namespace Unity.FoxgloveSDK.Transport
         {
             /// <summary>Underlying TCP client owned by this connection after handshake.</summary>
             private readonly TcpClient _tcpClient;
-            /// <summary>Underlying TCP network stream.</summary>
-            private readonly NetworkStream _stream;
-            private readonly WsSendQueue _sendQueue = new WsSendQueue(MaxQueuedFrames, MaxQueuedBytes);
+            /// <summary>Underlying plain or TLS stream.</summary>
+            private readonly Stream _stream;
+            private readonly WsSendQueue _sendQueue;
             private CancellationTokenSource _sendCts;
             private Task _sendTask;
             private int _disposed;
@@ -881,10 +961,11 @@ namespace Unity.FoxgloveSDK.Transport
             private long _sentBytes;
 
             /// <summary>Create a connection on the given network stream.</summary>
-            public WsConnection(TcpClient tcpClient, NetworkStream stream)
+            public WsConnection(TcpClient tcpClient, Stream stream, int maxQueuedFrames, int maxQueuedBytes)
             {
                 _tcpClient = tcpClient;
                 _stream = stream;
+                _sendQueue = new WsSendQueue(maxQueuedFrames, maxQueuedBytes);
                 _lastActivityMs = MonotonicMilliseconds();
             }
 
@@ -1079,13 +1160,21 @@ namespace Unity.FoxgloveSDK.Transport
             /// <summary>Read exactly <c>count</c> bytes into the buffer, returning <c>false</c> if the stream ends early.</summary>
             private bool ReadExact(byte[] buffer, int offset, int count)
             {
-                while (count > 0)
+                try
                 {
-                    var read = _stream.Read(buffer, offset, count);
-                    if (read == 0) return false;
-                    offset += read;
-                    count -= read;
+                    while (count > 0)
+                    {
+                        var read = _stream.Read(buffer, offset, count);
+                        if (read == 0) return false;
+                        offset += read;
+                        count -= read;
+                    }
                 }
+                catch (Exception ex) when (IsExpectedStreamShutdown(ex))
+                {
+                    return false;
+                }
+
                 return true;
             }
 

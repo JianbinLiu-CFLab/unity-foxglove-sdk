@@ -378,7 +378,8 @@ MonoBehaviour:
   _replayFilePath:
   _replayAutoPlay: 0
   _disableLivePublishers: 0
-  _allowedBrowserOrigins: []
+  _allowedBrowserOrigins:
+  - https://app.foxglove.dev
 --- !u!4 &1274802475
 Transform:
   m_ObjectHideFlags: 0

@@ -7,6 +7,9 @@
 // WebSocket server, coordinate mode, asset roots, playback control, MCAP
 // recording, and MCAP replay.
 
+using System.IO;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -70,6 +73,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private int _port = 8765;
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
+        [SerializeField] private FoxgloveTransportMode _transportMode = FoxgloveTransportMode.WebSocket;
 
         [Header("Publisher Encoding")]
         [Tooltip("Global default encoding for publishers that support it.")]
@@ -102,11 +106,21 @@ namespace Unity.FoxgloveSDK.Components
         private bool _livePublishersDisabled;
 
         [Header("Security")]
-        /// <summary>Inspector-configured browser origin allowlist for CSWSH protection. Empty list rejects all browser-origin clients.</summary>
-        [Tooltip("Allowed browser origins for WebSocket connections. Empty list rejects all browser-origin clients. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
-        [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new();
+        [Tooltip("Allow hosted Foxglove Web at https://app.foxglove.dev. This is independent of project, user, layout, and query string.")]
+        [SerializeField] private bool _allowHostedFoxgloveWeb = true;
+        /// <summary>Additional Inspector-configured browser origins for CSWSH protection.</summary>
+        [Tooltip("Additional browser origins for custom/private WebSocket clients. Full page URLs are accepted and normalized. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
+        [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new() { "https://app.foxglove.dev" };
+        [SerializeField] private string _certificatePfxPath = "";
+        [SerializeField] private string _certificatePassword = "";
+        [SerializeField] private bool _rootCaDistributorEnabled;
+        [SerializeField] private string _rootCaDistributorHost = "127.0.0.1";
+        [SerializeField] private int _rootCaDistributorPort = 8766;
+        [SerializeField] private string _rootCaFilePath = "";
+        [SerializeField] private string _sharedToken = "";
 
         private Core.FoxgloveRuntime _runtime;
+        private FoxgloveCertificateDistributor _certificateDistributor;
         private int _nextChannelId = 1;
         private bool _warnedNotRunning;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
@@ -197,7 +211,9 @@ namespace Unity.FoxgloveSDK.Components
             if (_runInBackground)
                 Application.runInBackground = true;
 
-            _runtime = new Core.FoxgloveRuntime(new UnityLogger());
+            var logger = new UnityLogger();
+            var transport = CreateTransport(logger);
+            _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
 
             // Recording and replay cannot both be active. When both are enabled,
             // replay is disabled and recording is kept — replay relies on file data
@@ -250,6 +266,8 @@ namespace Unity.FoxgloveSDK.Components
         private void OnDestroy()
         {
             StopServer(restoreLivePublishers: false);
+            _certificateDistributor?.Dispose();
+            _certificateDistributor = null;
             _runtime?.Dispose();
             _runtime = null;
         }
@@ -267,13 +285,26 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            if (!ValidateTransportConfiguration())
+                return;
+
             RegisterAssetRoots();
             SetupPlaybackControl();
             SetupRecording();
             SetupReplay();
             SetupAllowedOrigins();
 
-            _runtime.Start(_serverName, _host, _port);
+            try
+            {
+                StartCertificateDistributorIfNeeded();
+                _runtime.Start(_serverName, _host, _port);
+            }
+            catch
+            {
+                StopCertificateDistributor();
+                throw;
+            }
+
             _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
             _runtime.OnReplayMessage += _replayForwarder;
             _warnedNotRunning = false;
@@ -288,7 +319,50 @@ namespace Unity.FoxgloveSDK.Components
                 _runtime.Session.OnClientMessage += _clientMessageForwarder;
             }
 
-            Debug.Log($"[Foxglove] Server started on ws://{_host}:{_port}");
+            Debug.Log($"[Foxglove] Server started on {BuildConnectionUrl(redactToken: true)}");
+        }
+
+        /// <summary>Create the selected plain or secure transport from Inspector settings.</summary>
+        private IFoxgloveTransport CreateTransport(Core.IFoxgloveLogger logger)
+        {
+            var options = new ManagedWebSocketOptions
+            {
+                SharedToken = _sharedToken ?? string.Empty
+            };
+
+            if (_transportMode == FoxgloveTransportMode.SecureWebSocket)
+            {
+                var tlsOptions = new FoxgloveTlsOptions
+                {
+                    CertificatePfxPath = ResolveProjectPath(_certificatePfxPath),
+                    CertificatePassword = _certificatePassword ?? string.Empty
+                };
+                return new ManagedWssBackend(tlsOptions, options, logger);
+            }
+
+            return new ManagedWsBackend(options, logger);
+        }
+
+        /// <summary>Validate transport-specific Inspector settings before mutating runtime startup state.</summary>
+        private bool ValidateTransportConfiguration()
+        {
+            if (_transportMode != FoxgloveTransportMode.SecureWebSocket)
+                return true;
+
+            var pfxPath = ResolveProjectPath(_certificatePfxPath);
+            if (string.IsNullOrWhiteSpace(pfxPath))
+            {
+                Debug.LogError("[Foxglove] SecureWebSocket requires Certificate Pfx Path. Set a .pfx file in Security / WSS or switch Transport Mode to WebSocket.");
+                return false;
+            }
+
+            if (!File.Exists(pfxPath))
+            {
+                Debug.LogError($"[Foxglove] SecureWebSocket certificate PFX was not found: {pfxPath}");
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -380,10 +454,53 @@ namespace Unity.FoxgloveSDK.Components
             return System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectRoot, path));
         }
 
+        private string BuildConnectionUrl(bool redactToken)
+        {
+            var scheme = _transportMode == FoxgloveTransportMode.SecureWebSocket ? "wss" : "ws";
+            var url = $"{scheme}://{_host}:{_port}";
+            if (!string.IsNullOrEmpty(_sharedToken))
+                url += $"?token={_sharedToken}";
+            return redactToken ? ManagedWebSocketOptions.RedactUrl(url) : url;
+        }
+
+        private void StartCertificateDistributorIfNeeded()
+        {
+            if (_transportMode != FoxgloveTransportMode.SecureWebSocket || !_rootCaDistributorEnabled)
+                return;
+
+            var rootCaPath = ResolveProjectPath(_rootCaFilePath);
+            if (string.IsNullOrEmpty(rootCaPath) || !File.Exists(rootCaPath))
+            {
+                Debug.LogWarning("[Foxglove] Root CA distributor is enabled, but the root CA file is missing.");
+                return;
+            }
+
+            if (_rootCaDistributorHost != "127.0.0.1" && _rootCaDistributorHost != "localhost")
+            {
+                Debug.LogWarning("[Foxglove] Root CA distributor is not bound to loopback. Only use this on trusted networks.");
+            }
+
+            StopCertificateDistributor();
+            _certificateDistributor = new FoxgloveCertificateDistributor(rootCaPath, logger: new UnityLogger());
+            _certificateDistributor.Start(_rootCaDistributorHost, _rootCaDistributorPort);
+            Debug.Log(
+                $"[Foxglove] Root CA distributor started on http://{_rootCaDistributorHost}:{_rootCaDistributorPort}/rootCA.crt "
+                + $"SHA-256={_certificateDistributor.RootCaSha256Fingerprint}");
+        }
+
+        private void StopCertificateDistributor()
+        {
+            _certificateDistributor?.Dispose();
+            _certificateDistributor = null;
+        }
+
         /// <summary>Sync Inspector-configured browser origin allowlist to the transport before starting.</summary>
         private void SetupAllowedOrigins()
         {
             _runtime.ClearAllowedOrigins();
+            if (_allowHostedFoxgloveWeb)
+                _runtime.AddAllowedOrigin(FoxgloveAppUrl.HostedWebBaseUrl);
+
             if (_allowedBrowserOrigins != null)
             {
                 foreach (var origin in _allowedBrowserOrigins)
@@ -399,7 +516,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private void StopServer(bool restoreLivePublishers)
         {
-            if (!IsRunning) return;
+            if (!IsRunning)
+            {
+                StopCertificateDistributor();
+                return;
+            }
 
             var transport = _runtime.Session?.Transport;
             // Unsubscribe transport events and client message forwarder before
@@ -423,6 +544,7 @@ namespace Unity.FoxgloveSDK.Components
                 _replayForwarder = null;
             }
             _runtime.Stop();
+            StopCertificateDistributor();
             _channelCache.Clear();
             _nextChannelId = 1;
             if (restoreLivePublishers)

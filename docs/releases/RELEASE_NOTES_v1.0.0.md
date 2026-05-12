@@ -62,12 +62,12 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 ## Related documentation
 
-- [Project README](README.md)
-- [Package documentation](Packages/dev.unity2foxglove.sdk/Documentation~/README.md)
-- [Demo project](Unity2Foxglove/README.md)
-- [Changelog](CHANGELOG.md)
-- [Roadmap](ROADMAP.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Project README](../../README.md)
+- [Package documentation](../../Packages/dev.unity2foxglove.sdk/Documentation~/README.md)
+- [Demo project](../../Unity2Foxglove/README.md)
+- [Changelog](../../CHANGELOG.md)
+- [Roadmap](../../ROADMAP.md)
+- [Third-party notices](../../THIRD_PARTY_NOTICES.md)
 
 ---
 
