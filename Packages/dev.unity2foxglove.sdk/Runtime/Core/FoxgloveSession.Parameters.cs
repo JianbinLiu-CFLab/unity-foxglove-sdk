@@ -69,11 +69,11 @@ namespace Unity.FoxgloveSDK.Core
         /// parameter names, excluding the originating client so it does not
         /// receive its own change echo.
         /// </summary>
-        private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint excludeClient)
+        private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint? excludeClient)
         {
             foreach (var subscribedClientId in _paramSubs.GetSubscribedClientIds())
             {
-                if (subscribedClientId == excludeClient) continue;
+                if (excludeClient.HasValue && subscribedClientId == excludeClient.Value) continue;
                 foreach (var parameterName in names)
                 {
                     if (_paramSubs.IsSubscribed(subscribedClientId, parameterName))
@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.Core
                 return;
 
             var broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
-            foreach (var cid in GetParamSubscribersForChanged(names, 0))
+            foreach (var cid in GetParamSubscribersForChanged(names, null))
                 _transport.SendText(cid, broadcastJson);
         }
 

@@ -59,6 +59,13 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ReplayController _replay;
         /// <summary>Delegate bridging replay OnReplayMessage to the runtime's own event.</summary>
         private Action<string, byte[]> _replayForwarder;
+        private readonly object _replaySnapshotLock = new();
+        private readonly object _replaySceneSnapshotLock = new();
+        private readonly object _playbackControlLock = new();
+        private bool _replaySnapshotPending;
+        private ulong _replaySnapshotTimeNs;
+        private bool _replaySceneSnapshotPending;
+        private ulong _replaySceneSnapshotTimeNs;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
@@ -154,16 +161,33 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
-            _session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
-            _session.SetRuntimeContext(this);
-            if (_protobufSchemasRegistered)
-                _session.EnableProtobuf();
-            _recording.AttachToSession(_playbackClock, _parameters, _session);
-            _session.Start(host, port);
-            _replay.RegisterChannels(_session);
+            var session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
+            Action<string, byte[]> replayForwarder = null;
+            try
+            {
+                session.SetRuntimeContext(this);
+                if (_protobufSchemasRegistered)
+                    session.EnableProtobuf();
+                _recording.AttachToSession(_playbackClock, _parameters, session);
+                session.Start(host, port);
 
-            _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
-            _replay.OnReplayMessage += _replayForwarder;
+                _session = session;
+                _replay.RegisterChannels(session);
+
+                replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
+                _replay.OnReplayMessage += replayForwarder;
+                _replayForwarder = replayForwarder;
+            }
+            catch
+            {
+                if (replayForwarder != null)
+                    _replay.OnReplayMessage -= replayForwarder;
+                _replayForwarder = null;
+                _recording.DetachFromSession();
+                session.Dispose();
+                _session = null;
+                throw;
+            }
         }
 
         /// <summary>Fires when the replay engine forwards a message (e.g. for UI update).</summary>
@@ -178,6 +202,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Stop()
         {
+            ClearPendingReplaySnapshot();
+            ClearPendingReplaySceneSnapshot();
             if (_replayForwarder != null)
             {
                 _replay.OnReplayMessage -= _replayForwarder;
@@ -194,6 +220,7 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
             _session.RegisterChannel(channel);
         }
 
@@ -208,6 +235,7 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
             _session.Publish(channelId, payload);
         }
 
@@ -215,6 +243,7 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
             _session.Publish(channelId, payload, logTimeNs);
         }
 
@@ -222,6 +251,7 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterSchemaChannel(uint channelId, string topic, string schemaName, string encoding = "json")
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
             _session.RegisterSchemaChannel(channelId, topic, schemaName, encoding);
         }
 
@@ -229,6 +259,7 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
             _session.PublishJson(channelId, message);
         }
 
@@ -236,6 +267,7 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
             _session.PublishJson(channelId, message, logTimeNs);
         }
 
@@ -281,11 +313,46 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Apply a playback command to the clock.</summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
-            => _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
+        {
+            lock (_playbackControlLock)
+                _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
+        }
 
         /// <summary>Get a snapshot of the playback clock state for a response.</summary>
         public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
-            => _playbackClock.ToState(didSeek, requestId);
+        {
+            lock (_playbackControlLock)
+                return _playbackClock.ToState(didSeek, requestId);
+        }
+
+        /// <summary>Apply a decoded playback control request on the runtime owner thread.</summary>
+        public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
+            byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
+        {
+            lock (_playbackControlLock)
+            {
+                _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
+
+                if (hasSeek)
+                {
+                    _replay.Seek(seekNs);
+                    QueueReplaySceneSnapshot(seekNs);
+                }
+
+                if (cmd == 0)
+                {
+                    ClearPendingReplaySnapshot();
+                    _replay.Play();
+                }
+                else if (cmd == 1)
+                {
+                    _replay.Pause();
+                    ClearPendingReplaySnapshot();
+                }
+
+                return _playbackClock.ToState(hasSeek, requestId);
+            }
+        }
 
         // ── Replay (delegated) ──
 
@@ -296,20 +363,101 @@ namespace Unity.FoxgloveSDK.Core
         public void EnableReplay(string filePath)
             => _replay.Enable(filePath, _playbackClock, _recording.IsEnabled, _recording.CoordinateMode);
         /// <summary>Disable replay and dispose the engine.</summary>
-        public void DisableReplay() => _replay.Disable();
+        public void DisableReplay()
+        {
+            ClearPendingReplaySnapshot();
+            ClearPendingReplaySceneSnapshot();
+            _replay.Disable();
+        }
         /// <summary>Seek replay to the given nanosecond timestamp.</summary>
-        public void ReplaySeek(ulong timeNs) => _replay.Seek(timeNs);
+        public void ReplaySeek(ulong timeNs)
+        {
+            lock (_playbackControlLock)
+            {
+                _replay.Seek(timeNs);
+                QueueReplaySceneSnapshot(timeNs);
+            }
+        }
         /// <summary>Start or resume replay playback.</summary>
         public void ReplayPlay()
         {
-            _playbackClock.Play();
-            _replay.Play();
+            lock (_playbackControlLock)
+            {
+                ClearPendingReplaySnapshot();
+                ClearPendingReplaySceneSnapshot();
+                _playbackClock.Play();
+                _replay.Play();
+            }
         }
         /// <summary>Pause replay playback.</summary>
         public void ReplayPause()
         {
-            _playbackClock.Pause();
-            _replay.Pause();
+            lock (_playbackControlLock)
+            {
+                _playbackClock.Pause();
+                _replay.Pause();
+                ClearPendingReplaySnapshot();
+            }
+        }
+
+        private void QueueReplaySnapshot(ulong timeNs)
+        {
+            lock (_replaySnapshotLock)
+            {
+                _replaySnapshotTimeNs = timeNs;
+                _replaySnapshotPending = true;
+            }
+        }
+
+        private bool TryConsumeReplaySnapshot(out ulong timeNs)
+        {
+            lock (_replaySnapshotLock)
+            {
+                timeNs = _replaySnapshotTimeNs;
+                if (!_replaySnapshotPending)
+                    return false;
+                _replaySnapshotPending = false;
+                return true;
+            }
+        }
+
+        private void QueueReplaySceneSnapshot(ulong timeNs)
+        {
+            lock (_replaySceneSnapshotLock)
+            {
+                _replaySceneSnapshotTimeNs = timeNs;
+                _replaySceneSnapshotPending = true;
+            }
+        }
+
+        private bool TryConsumeReplaySceneSnapshot(out ulong timeNs)
+        {
+            lock (_replaySceneSnapshotLock)
+            {
+                timeNs = _replaySceneSnapshotTimeNs;
+                if (!_replaySceneSnapshotPending)
+                    return false;
+                _replaySceneSnapshotPending = false;
+                return true;
+            }
+        }
+
+        private void ClearPendingReplaySnapshot()
+        {
+            lock (_replaySnapshotLock)
+            {
+                _replaySnapshotPending = false;
+                _replaySnapshotTimeNs = 0;
+            }
+        }
+
+        private void ClearPendingReplaySceneSnapshot()
+        {
+            lock (_replaySceneSnapshotLock)
+            {
+                _replaySceneSnapshotPending = false;
+                _replaySceneSnapshotTimeNs = 0;
+            }
         }
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
@@ -324,13 +472,23 @@ namespace Unity.FoxgloveSDK.Core
         public void Tick()
         {
             if (_session == null) return;
+            _session.DrainPlaybackControls();
             _session.DrainServiceCalls();
-            _playbackClock.Tick();
+            lock (_playbackControlLock)
+            {
+                _playbackClock.Tick();
 
-            if (_replay.IsEnabled)
-                _replay.Tick(_session, _playbackClock.NowNs);
-            else
-                _session.BroadcastTime();
+                if (_replay.IsEnabled)
+                {
+                    if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
+                        _replay.ApplySnapshotToScene(sceneSnapshotTimeNs);
+                    if (TryConsumeReplaySnapshot(out var snapshotTimeNs))
+                        _replay.PublishSnapshot(_session, snapshotTimeNs);
+                    _replay.Tick(_session, _playbackClock.NowNs);
+                }
+                else
+                    _session.BroadcastTime();
+            }
         }
 
         // ── Transport Health ──
@@ -381,10 +539,11 @@ namespace Unity.FoxgloveSDK.Core
                 method.Invoke(null, new object[] { _schemaRegistry });
                 _protobufSchemasRegistered = true;
             }
-            catch
+            catch (Exception ex)
             {
-                // Protobuf assembly or its dependencies are not available — silently skip.
-                // This is expected in WebGL builds or setups without Google.Protobuf.
+                // Protobuf support is optional. Keep startup non-fatal, but emit
+                // one diagnostic so real schema-registration failures are visible.
+                _logger.LogWarning($"Optional protobuf schema registration failed; continuing without protobuf support: {ex.Message}");
             }
         }
     }

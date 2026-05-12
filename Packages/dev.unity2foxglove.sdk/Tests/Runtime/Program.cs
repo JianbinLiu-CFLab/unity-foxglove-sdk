@@ -39,6 +39,12 @@ class Program
         if (argList.Contains("--phase50"))
             return RunPhase50Only();
 
+        if (argList.Contains("--phase51"))
+            return RunPhase51Only();
+
+        if (argList.Contains("--phase13"))
+            return RunPhase13Only();
+
         var phase44McapIdx = argList.IndexOf("--phase44-all-schemas-mcap");
         if (phase44McapIdx >= 0)
         {
@@ -70,6 +76,36 @@ class Program
         {
             Phase50Validation.Validate();
             Console.WriteLine("\nPhase 50 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase51Only()
+    {
+        try
+        {
+            Phase51Validation.Validate();
+            Console.WriteLine("\nPhase 51 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase13Only()
+    {
+        try
+        {
+            Phase13Validation.Validate();
+            Console.WriteLine("\nPhase 13 checks passed.");
             return 0;
         }
         catch (Exception ex)
@@ -150,6 +186,8 @@ class Program
             Phase49Validation.Validate();
             Console.WriteLine();
             Phase50Validation.Validate();
+            Console.WriteLine();
+            Phase51Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

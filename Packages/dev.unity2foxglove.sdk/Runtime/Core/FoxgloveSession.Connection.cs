@@ -180,9 +180,10 @@ namespace Unity.FoxgloveSDK.Core
         // ── PlaybackControl ──
 
         /// <summary>
-        /// Decode and apply a playback control command (play, pause, seek).
-        /// Responds with a PlaybackState binary frame. Returns true if the
-        /// frame was recognized as a playback control request.
+        /// Decode a playback control command and queue it for the runtime
+        /// owner thread. The WebSocket receive loop runs on a transport
+        /// thread, while replay cursor and clock updates are drained from
+        /// Unity's main-thread tick.
         /// </summary>
         private bool HandlePlaybackControlRequest(uint clientId, byte[] data)
         {
@@ -192,15 +193,57 @@ namespace Unity.FoxgloveSDK.Core
                     out var playbackHasSeek, out var playbackSeekNs, out var playbackRequestId))
                 return false;
 
-            runtime.ApplyPlaybackCommand(playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs);
-            if (playbackHasSeek) runtime.ReplaySeek(playbackSeekNs);
-            if (playbackCommand == 0) runtime.ReplayPlay();
-            else if (playbackCommand == 1) runtime.ReplayPause();
-            var state = runtime.GetPlaybackState(true, playbackRequestId);
-            var playbackFrame = BinaryEncoding.EncodePlaybackState(
-                state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
-            _transport.SendBinary(clientId, playbackFrame);
+            lock (_playbackControlsLock)
+            {
+                _pendingPlaybackControls.Enqueue(new PendingPlaybackControl(
+                    clientId, playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs, playbackRequestId));
+            }
+
             return true;
+        }
+
+        /// <summary>
+        /// Apply queued playback control requests on the runtime owner thread.
+        /// </summary>
+        internal void DrainPlaybackControls()
+        {
+            while (true)
+            {
+                PendingPlaybackControl request;
+                lock (_playbackControlsLock)
+                {
+                    if (_pendingPlaybackControls.Count == 0)
+                        return;
+                    request = _pendingPlaybackControls.Dequeue();
+                }
+
+                var runtime = Volatile.Read(ref _runtime);
+                if (runtime?.PlaybackEnabled != true)
+                    continue;
+
+                if (request.HasSeek)
+                    FoxgloveReplayTrace.ResetBudget();
+
+                if (FoxgloveReplayTrace.TryEvent(
+                    "CONTROL",
+                    $"client={request.ClientId} command={request.Command} speed={request.Speed} hasSeek={request.HasSeek} seek={request.SeekNs} requestId={request.RequestId}",
+                    out var controlTrace))
+                    _logger.LogWarning(controlTrace);
+
+                var state = runtime.ApplyPlaybackControl(
+                    request.Command, request.Speed, request.HasSeek, request.SeekNs, request.RequestId);
+                if (request.HasSeek)
+                    ClearQueuedDataForPlaybackSeek();
+
+                var playbackFrame = BinaryEncoding.EncodePlaybackState(
+                    state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
+                if (FoxgloveReplayTrace.TryEvent(
+                    "STATE",
+                    $"client={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
+                    out var stateTrace))
+                    _logger.LogWarning(stateTrace);
+                _transport.SendBinary(request.ClientId, playbackFrame);
+            }
         }
 
         // ── Assets ──

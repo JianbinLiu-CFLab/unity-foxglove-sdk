@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.3.0 - 2026-05-12
+
+### Added
+
+- Version prepared for the next Unity2Foxglove package release.
+
+### Changed
+
+- Release notes and package metadata are synchronized for this version.
+
+### Verified
+
+- Runtime validation suite should be run before tagging this release.
+- Release package validation should be run before tagging this release.
+
 ## 1.2.0 - 2026-05-11
 
 ### Added

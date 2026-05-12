@@ -320,13 +320,14 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var t = type;
             if (t.StartsWith("UnityEngine.")) t = t.Substring(12);
+            var access = "this." + name;
             switch (t)
             {
-                case "Vector3": return $"new {{ x = {name}.x, y = {name}.y, z = {name}.z }}";
-                case "Vector2": return $"new {{ x = {name}.x, y = {name}.y }}";
-                case "Quaternion": return $"new {{ x = {name}.x, y = {name}.y, z = {name}.z, w = {name}.w }}";
-                case "Color": return $"new {{ r = {name}.r, g = {name}.g, b = {name}.b, a = {name}.a }}";
-                default: return name;
+                case "Vector3": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z }}";
+                case "Vector2": return $"new {{ x = {access}.x, y = {access}.y }}";
+                case "Quaternion": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z, w = {access}.w }}";
+                case "Color": return $"new {{ r = {access}.r, g = {access}.g, b = {access}.b, a = {access}.a }}";
+                default: return access;
             }
         }
 

@@ -32,7 +32,9 @@ namespace Unity.FoxgloveSDK.Core
                     return;
                 }
 
-                if (!_clients.TryGetValue(clientId, out var subs) || subs == null)
+                if (_clients.TryGetValue(clientId, out var subs) && subs == null)
+                    return; // already subscribed to all; named subscribe cannot narrow it
+                if (subs == null)
                     subs = new HashSet<string>();
 
                 foreach (var n in names)

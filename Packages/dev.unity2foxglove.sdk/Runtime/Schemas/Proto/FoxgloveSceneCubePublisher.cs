@@ -26,6 +26,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _frameId = "";
         [SerializeField] private UVector3 _size = UVector3.one;
         [SerializeField] private UColor _color = UColor.green;
+        private UnityEngine.Renderer _renderer;
+        private UnityEngine.MaterialPropertyBlock _propertyBlock;
 
         public override bool SupportsProtobufEncoding => true;
 
@@ -48,14 +50,21 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ApplyColorToRenderer(UColor c)
         {
-            var renderer = GetComponent<UnityEngine.Renderer>();
-            if (renderer != null)
+            EnsureRendererCache();
+            if (_renderer != null)
             {
-                var block = new UnityEngine.MaterialPropertyBlock();
-                renderer.GetPropertyBlock(block);
-                block.SetColor("_BaseColor", c);
-                renderer.SetPropertyBlock(block);
+                _renderer.GetPropertyBlock(_propertyBlock);
+                _propertyBlock.SetColor("_BaseColor", c);
+                _renderer.SetPropertyBlock(_propertyBlock);
             }
+        }
+
+        private void EnsureRendererCache()
+        {
+            if (_renderer == null)
+                _renderer = GetComponent<UnityEngine.Renderer>();
+            if (_propertyBlock == null)
+                _propertyBlock = new UnityEngine.MaterialPropertyBlock();
         }
 
 #if UNITY_EDITOR
@@ -77,12 +86,14 @@ namespace Unity.FoxgloveSDK.Components
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/scene";
+            EnsureRendererCache();
         }
 
         protected override void OnEnable()
         {
             base.OnEnable();
             _transformPublisher = GetComponent<FoxgloveTransformPublisher>();
+            EnsureRendererCache();
         }
 
         private string ResolvedEntityId =>

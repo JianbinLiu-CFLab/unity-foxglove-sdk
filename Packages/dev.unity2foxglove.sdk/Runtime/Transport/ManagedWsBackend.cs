@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IFoxgloveTransportStatsProvider, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IDisposable
     {
         /// <summary>Per-client send queue frame cap; stale data frames are dropped before this is exceeded.</summary>
         internal const int MaxQueuedFrames = 256;
@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Logger instance for diagnostic output.</summary>
         private readonly IFoxgloveLogger _logger;
         /// <summary>Monotonically increasing counter for assigning client IDs.</summary>
-        private int _nextClientId;
+        private long _nextClientId;
         /// <summary>Allowed browser origins for Cross-Site WebSocket Hijacking protection. Empty collection rejects all browser-origin clients.</summary>
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
 
@@ -147,7 +147,21 @@ namespace Unity.FoxgloveSDK.Transport
         public void BroadcastBinary(byte[] data)
         {
             foreach (var (id, conn) in _clients.ToArray())
-                HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastBinary");
+                HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Control), "BroadcastBinary");
+        }
+
+        /// <summary>Send droppable live data binary frames to every connected client.</summary>
+        public void BroadcastDataBinary(byte[] data)
+        {
+            foreach (var (id, conn) in _clients.ToArray())
+                HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
+        }
+
+        /// <summary>Drop queued data frames for all clients while preserving protocol control frames.</summary>
+        public void ClearDataQueues()
+        {
+            foreach (var (_, conn) in _clients.ToArray())
+                conn.ClearDataFrames();
         }
 
         /// <summary>Stop the server and release the cancellation token source.</summary>
@@ -258,7 +272,7 @@ namespace Unity.FoxgloveSDK.Transport
                 stream.ReadTimeout = Timeout.Infinite;
                 stream.WriteTimeout = Timeout.Infinite;
 
-                var clientId = (uint)Interlocked.Increment(ref _nextClientId);
+                var clientId = AllocateClientId();
                 conn = new WsConnection(tcpClient, stream);
                 _clients[clientId] = conn;
                 conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
@@ -276,6 +290,20 @@ namespace Unity.FoxgloveSDK.Transport
                     try { tcpClient.Dispose(); } catch { }
                 }
                 _logger.LogError($"Client handler error: {ex.Message}");
+            }
+        }
+
+        private uint AllocateClientId()
+        {
+            while (true)
+            {
+                var next = Interlocked.Increment(ref _nextClientId);
+                if (next <= 0 || next > uint.MaxValue)
+                    throw new InvalidOperationException("WebSocket client id space exhausted.");
+
+                var clientId = (uint)next;
+                if (clientId != 0 && !_clients.ContainsKey(clientId))
+                    return clientId;
             }
         }
 
@@ -709,6 +737,23 @@ namespace Unity.FoxgloveSDK.Transport
                 }
             }
 
+            public int ClearDataFrames()
+            {
+                lock (_lock)
+                {
+                    var dropped = _dataFrames.Count;
+                    while (_dataFrames.Count > 0)
+                    {
+                        var frame = _dataFrames.Dequeue();
+                        _queuedBytes -= frame.SizeBytes;
+                    }
+
+                    _droppedDataFrames += dropped;
+                    if (CountLocked == 0) Monitor.PulseAll(_lock);
+                    return dropped;
+                }
+            }
+
             public bool WaitUntilEmpty(TimeSpan timeout)
             {
                 var deadline = DateTime.UtcNow + timeout;
@@ -895,6 +940,11 @@ namespace Unity.FoxgloveSDK.Transport
             public EnqueueResult SendBinary(byte[] data, FramePriority priority)
             {
                 return _sendQueue.Enqueue(new QueuedFrame(OpBinary, data, priority));
+            }
+
+            public int ClearDataFrames()
+            {
+                return _sendQueue.ClearDataFrames();
             }
 
             /// <summary>Send a close frame with an empty payload to initiate graceful shutdown.</summary>
