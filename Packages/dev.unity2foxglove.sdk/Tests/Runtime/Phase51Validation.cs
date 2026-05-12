@@ -323,9 +323,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFileOrganizationDecisionIsRecorded()
         {
-            var report = ReadRepoText("Developer/29 Maintainability and Optimization Closure.md");
-            Check(report.Contains("P3-7") && report.Contains("file organization", StringComparison.OrdinalIgnoreCase),
-                "51D-3: file organization decision is recorded in the developer report");
+            var sceneCubePublisher = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveSceneCubePublisher.cs");
+            var transformPublisher = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveTransformPublisher.cs");
+            Check(File.Exists(sceneCubePublisher) && File.Exists(sceneCubePublisher + ".meta")
+                && File.Exists(transformPublisher) && File.Exists(transformPublisher + ".meta"),
+                "51D-3: file organization decision preserves publisher file locations and Unity .meta files");
         }
 
         private static byte[] BuildServiceCallFrame(uint serviceId, uint callId, string json)
@@ -364,10 +366,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        private static string RepoPath(string relativePath)
+        {
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
                 throw new InvalidOperationException("Could not find repo root.");
-            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static bool ThrowsAny(Action action)

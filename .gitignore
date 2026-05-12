@@ -47,7 +47,6 @@ Unity2Foxglove/Assets/Scripts/Generated.meta
 # developer plans
 Plan/
 Developer/*
-!Developer/28 Critical Stability and Security Fixes.md
 
 # temporary test/verification projects
 Unitytest/

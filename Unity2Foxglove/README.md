@@ -108,7 +108,7 @@ After importing the layout, the Foxglove interface should display the following 
 3. **Call service**: In the Service Call panel, click **Call service**. The cube returns to origin and plot curves return to zero.
 4. **Check FoxRun**: Confirm the Raw Messages panel shows `/debug/position` and `/debug/health` topic data.
 
-For detailed step-by-step instructions, see **Developer/01 Installation and Quick Start**. For the manual acceptance checklist, see **Developer/02 Foxglove Desktop Operation**.
+For detailed step-by-step instructions, see the SDK documentation under `Packages/dev.unity2foxglove.sdk/Documentation~/` and the troubleshooting guide in `Docs/04 Troubleshooting.md`.
 
 ## IL2CPP build
 
