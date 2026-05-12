@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Messages read ahead of their emission time, waiting to be flushed.
         /// </summary>
-        private readonly List<McapMessage> _pending = new();
+        private readonly Queue<McapMessage> _pending = new();
 
         // Per-chunk state
         /// <summary>
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Maximum number of messages emitted per Tick call.
         /// </summary>
-        public int MaxMessagesPerTick = 8;
+        public int MaxMessagesPerTick = 1000;
 
         /// <summary>
         /// Whether a file has been loaded successfully.
@@ -149,45 +149,28 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapMessage> Tick(ulong nowNs)
         {
             var result = new List<McapMessage>();
-            return Tick(nowNs, result);
-        }
-
-        /// <summary>
-        /// Emit messages due between last tick time and nowNs into a caller-owned
-        /// result buffer. The buffer is cleared before use to avoid per-frame
-        /// list allocation in replay controllers.
-        /// </summary>
-        public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)
-        {
-            if (result == null) throw new ArgumentNullException(nameof(result));
-            result.Clear();
 
             if (!IsLoaded || CurrentStatus == Status.Paused || CurrentStatus == Status.Ended)
                 return result;
 
             var clampedNow = nowNs > EndTimeNs ? EndTimeNs : nowNs;
             _currentTimeNs = clampedNow;
-            var emitAfter = _lastEmitTime;
 
-            // Flush previously buffered messages that are now due.
-            // Filter against emitAfter to drop stale overflow messages
-            // whose logTime fell below _lastEmitTime after sort-based capping.
-            SortPending();
-            while (_pending.Count > 0)
+            // Flush previously buffered messages that are now due
+            while (_pending.Count > 0 && result.Count < MaxMessagesPerTick)
             {
-                if (_pending[0].LogTime > clampedNow) break;
-                if (_pending[0].LogTime < emitAfter) { _pending.RemoveAt(0); continue; }
+                if (_pending.Peek().LogTime > clampedNow) break;
                 result.Add(PopPending());
             }
 
-            if (_pending.Count > 0 && _pending[0].LogTime <= clampedNow)
+            if (_pending.Count > 0)
             {
                 CurrentStatus = Status.Buffering;
-                return FinishTickResult(result);
+                return result;
             }
 
             if (!CanSeek)
-                return FinishTickResult(result);
+                return result;
 
             // Advance through chunks
             while (_currentChunkIdx < _summary.ChunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0))
@@ -203,10 +186,7 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var opcode = _currentUncompressed[_readOffset++];
                     var len = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                    if (len > int.MaxValue)
-                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
-                    var recordLength = (int)len;
-                    if (recordLength > _currentUncompressed.Length - _readOffset) break;
+                    if (_readOffset + (int)len > _currentUncompressed.Length) break;
 
                     if (opcode == McapWriter.OpcodeMessage)
                     {
@@ -215,28 +195,32 @@ namespace Unity.FoxgloveSDK.IO
                         var seq = McapBinaryReader.ReadU32LE(_currentUncompressed, ref _readOffset);
                         var logNs = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
                         var pubNs = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                        var dataLen = recordLength - (_readOffset - startOff);
-                        if (dataLen < 0 || dataLen > _currentUncompressed.Length - _readOffset)
-                            throw new InvalidDataException("MCAP chunk message record is truncated.");
+                        var dataLen = (int)len - (_readOffset - startOff);
                         var data = new byte[dataLen];
                         Buffer.BlockCopy(_currentUncompressed, _readOffset, data, 0, dataLen);
                         _readOffset += dataLen;
 
-                        if (logNs < emitAfter) continue;
+                        if (logNs < _lastEmitTime) continue;
                         if (logNs > clampedNow)
                         {
-                            AddPending(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
+                            _pending.Enqueue(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
                             continue;
                         }
 
-                        // Collect all eligible messages; FinishTickResult caps
-                        // at MaxMessagesPerTick and moves the sorted tail to
-                        // pending so overflow never violates _lastEmitTime.
-                        result.Add(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
+                        var msg = new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data };
+                        if (result.Count < MaxMessagesPerTick)
+                        {
+                            result.Add(msg);
+                            _lastEmitTime = logNs;
+                        }
+                        else
+                        {
+                            _pending.Enqueue(msg);
+                        }
                     }
                     else
                     {
-                        _readOffset += recordLength;
+                        _readOffset += (int)len;
                     }
                 }
             }
@@ -251,80 +235,6 @@ namespace Unity.FoxgloveSDK.IO
                 CurrentStatus = Status.Buffering;
             }
 
-            SortPending();
-            return FinishTickResult(result);
-        }
-
-        /// <summary>
-        /// Reads the latest message at or before <paramref name="timeNs"/> for
-        /// each channel without changing the active replay cursor. Used to
-        /// refresh Foxglove panels after paused seek/pause commands.
-        /// </summary>
-        public List<McapMessage> Snapshot(ulong timeNs, List<McapMessage> result)
-        {
-            if (result == null) throw new ArgumentNullException(nameof(result));
-            result.Clear();
-
-            if (!IsLoaded || !CanSeek)
-                return result;
-
-            var clampedTime = timeNs > EndTimeNs ? EndTimeNs : timeNs;
-            if (clampedTime < StartTimeNs)
-                clampedTime = StartTimeNs;
-
-            var latestByChannel = new Dictionary<ushort, McapMessage>();
-            foreach (var chunkIndex in _summary.ChunkIndexes)
-            {
-                if (chunkIndex.MessageStartTime > clampedTime)
-                    break;
-
-                var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
-                if (!crcValid)
-                    Console.Error.WriteLine("[McapReplayEngine] Snapshot chunk CRC mismatch; data may be corrupted.");
-
-                var offset = 0;
-                while (offset + 9 <= uncompressed.Length)
-                {
-                    var opcode = uncompressed[offset++];
-                    var len = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    if (len > int.MaxValue)
-                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
-                    var recordLength = (int)len;
-                    if (recordLength > uncompressed.Length - offset) break;
-
-                    if (opcode != McapWriter.OpcodeMessage)
-                    {
-                        offset += recordLength;
-                        continue;
-                    }
-
-                    var startOff = offset;
-                    var chId = McapBinaryReader.ReadU16LE(uncompressed, ref offset);
-                    var seq = McapBinaryReader.ReadU32LE(uncompressed, ref offset);
-                    var logNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    var pubNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    var dataLen = recordLength - (offset - startOff);
-                    if (dataLen < 0 || dataLen > uncompressed.Length - offset)
-                        throw new InvalidDataException("MCAP chunk message record is truncated.");
-                    var data = new byte[dataLen];
-                    Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
-                    offset += dataLen;
-
-                    if (logNs <= clampedTime)
-                    {
-                        latestByChannel[chId] = new McapMessage
-                        {
-                            ChannelId = chId,
-                            Sequence = seq,
-                            LogTime = logNs,
-                            PublishTime = pubNs,
-                            Data = data
-                        };
-                    }
-                }
-            }
-
-            result.AddRange(latestByChannel.Values.OrderBy(m => m.LogTime).ThenBy(m => m.ChannelId));
             return result;
         }
 
@@ -437,54 +347,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         private McapMessage PopPending()
         {
-            var m = _pending[0];
-            _pending.RemoveAt(0);
+            var m = _pending.Dequeue();
+            _lastEmitTime = m.LogTime;
             return m;
-        }
-
-        private void AddPending(McapMessage message)
-        {
-            _pending.Add(message);
-        }
-
-        private void SortPending()
-        {
-            if (_pending.Count > 1)
-                _pending.Sort(CompareMessages);
-        }
-
-        private List<McapMessage> FinishTickResult(List<McapMessage> result)
-        {
-            if (result.Count <= 0)
-                return result;
-
-            if (result.Count > 1)
-                result.Sort(CompareMessages);
-
-            // Cap at MaxMessagesPerTick. Because the list is sorted, the
-            // tail (highest logTimes) is moved to pending. This guarantees
-            // every pending message has logTime >= _lastEmitTime, preventing
-            // cross-frame time regression ("Data went back in time").
-            if (result.Count > MaxMessagesPerTick)
-            {
-                for (int i = MaxMessagesPerTick; i < result.Count; i++)
-                    AddPending(result[i]);
-                result.RemoveRange(MaxMessagesPerTick, result.Count - MaxMessagesPerTick);
-            }
-
-            _lastEmitTime = result[result.Count - 1].LogTime;
-            return result;
-        }
-
-        private static int CompareMessages(McapMessage a, McapMessage b)
-        {
-            var cmp = a.LogTime.CompareTo(b.LogTime);
-            if (cmp != 0) return cmp;
-            cmp = a.ChannelId.CompareTo(b.ChannelId);
-            if (cmp != 0) return cmp;
-            cmp = a.Sequence.CompareTo(b.Sequence);
-            if (cmp != 0) return cmp;
-            return a.PublishTime.CompareTo(b.PublishTime);
         }
     }
 }

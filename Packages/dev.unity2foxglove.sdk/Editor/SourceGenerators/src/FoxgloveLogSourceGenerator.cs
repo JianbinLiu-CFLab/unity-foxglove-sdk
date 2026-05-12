@@ -206,18 +206,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.NameConflict, Location.None, className, grp.Key));
             }
 
-            // Warn when a multi-member topic mixes policy knobs. The emitter
-            // remains deterministic by taking the maximum value per topic, but
-            // authors should split topics or align policy for readability.
-            foreach (var grp in byTopic)
-            {
-                var mixedPolicy = grp.Select(a => a.PublishMode).Distinct().Count() > 1
-                    || grp.Select(a => a.ChangeEpsilon).Distinct().Count() > 1
-                    || grp.Select(a => a.ForceIntervalSeconds).Distinct().Count() > 1;
-                if (mixedPolicy)
-                    spc.ReportDiagnostic(Diagnostic.Create(Diags.MixedTopicPolicy, Location.None, grp.Key));
-            }
-
             var source = FoxgloveSourceEmitter.EmitClass(ns, className, args);
             spc.AddSource($"{className}_FoxRun.g.cs", source);
         }
@@ -332,12 +320,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "FOXRUN004", "Multi-variable field declaration",
                 "[FoxRun] on a field declaration with multiple variables is not supported. Split into separate declarations.",
                 "FoxRun", DiagnosticSeverity.Error, true);
-
-            /// <summary>FOXRUN005: same-topic members have mixed publish policy settings.</summary>
-            public static readonly DiagnosticDescriptor MixedTopicPolicy = new DiagnosticDescriptor(
-                "FOXRUN005", "Mixed same-topic PublishMode policy",
-                "Topic '{0}' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses the maximum value per policy setting.",
-                "FoxRun", DiagnosticSeverity.Warning, true);
         }
     }
 }

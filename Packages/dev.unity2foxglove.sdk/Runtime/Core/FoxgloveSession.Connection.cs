@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -103,8 +102,7 @@ namespace Unity.FoxgloveSDK.Core
                 _transport.SendText(subId, json);
             if (_graphDirty)
             {
-                var recorder = Volatile.Read(ref _recorder);
-                recorder?.WriteMetadata("foxglove.connection_graph", json);
+                _recorder?.WriteMetadata("foxglove.connection_graph", json);
                 _graphDirty = false;
             }
         }
@@ -171,8 +169,7 @@ namespace Unity.FoxgloveSDK.Core
                         return;
                 }
                 OnClientMessage?.Invoke(clientId, chId, ch.Topic, payload);
-                var recorder = Volatile.Read(ref _recorder);
-                recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
+                _recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
                     ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
             }
         }
@@ -180,70 +177,26 @@ namespace Unity.FoxgloveSDK.Core
         // ── PlaybackControl ──
 
         /// <summary>
-        /// Decode a playback control command and queue it for the runtime
-        /// owner thread. The WebSocket receive loop runs on a transport
-        /// thread, while replay cursor and clock updates are drained from
-        /// Unity's main-thread tick.
+        /// Decode and apply a playback control command (play, pause, seek).
+        /// Responds with a PlaybackState binary frame. Returns true if the
+        /// frame was recognized as a playback control request.
         /// </summary>
         private bool HandlePlaybackControlRequest(uint clientId, byte[] data)
         {
-            var runtime = Volatile.Read(ref _runtime);
-            if (runtime?.PlaybackEnabled != true) return false;
+            if (_runtime?.PlaybackEnabled != true) return false;
             if (!BinaryEncoding.TryDecodePlaybackControlRequest(data, out var playbackCommand, out var playbackSpeed,
                     out var playbackHasSeek, out var playbackSeekNs, out var playbackRequestId))
                 return false;
 
-            lock (_playbackControlsLock)
-            {
-                _pendingPlaybackControls.Enqueue(new PendingPlaybackControl(
-                    clientId, playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs, playbackRequestId));
-            }
-
+            _runtime.ApplyPlaybackCommand(playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs);
+            if (playbackHasSeek) _runtime.ReplaySeek(playbackSeekNs);
+            if (playbackCommand == 0) _runtime.ReplayPlay();
+            else if (playbackCommand == 1) _runtime.ReplayPause();
+            var state = _runtime.GetPlaybackState(true, playbackRequestId);
+            var playbackFrame = BinaryEncoding.EncodePlaybackState(
+                state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
+            _transport.SendBinary(clientId, playbackFrame);
             return true;
-        }
-
-        /// <summary>
-        /// Apply queued playback control requests on the runtime owner thread.
-        /// </summary>
-        internal void DrainPlaybackControls()
-        {
-            while (true)
-            {
-                PendingPlaybackControl request;
-                lock (_playbackControlsLock)
-                {
-                    if (_pendingPlaybackControls.Count == 0)
-                        return;
-                    request = _pendingPlaybackControls.Dequeue();
-                }
-
-                var runtime = Volatile.Read(ref _runtime);
-                if (runtime?.PlaybackEnabled != true)
-                    continue;
-
-                if (request.HasSeek)
-                    FoxgloveReplayTrace.ResetBudget();
-
-                if (FoxgloveReplayTrace.TryEvent(
-                    "CONTROL",
-                    $"client={request.ClientId} command={request.Command} speed={request.Speed} hasSeek={request.HasSeek} seek={request.SeekNs} requestId={request.RequestId}",
-                    out var controlTrace))
-                    _logger.LogWarning(controlTrace);
-
-                var state = runtime.ApplyPlaybackControl(
-                    request.Command, request.Speed, request.HasSeek, request.SeekNs, request.RequestId);
-                if (request.HasSeek)
-                    ClearQueuedDataForPlaybackSeek();
-
-                var playbackFrame = BinaryEncoding.EncodePlaybackState(
-                    state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
-                if (FoxgloveReplayTrace.TryEvent(
-                    "STATE",
-                    $"client={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
-                    out var stateTrace))
-                    _logger.LogWarning(stateTrace);
-                _transport.SendBinary(request.ClientId, playbackFrame);
-            }
         }
 
         // ── Assets ──
@@ -262,13 +215,12 @@ namespace Unity.FoxgloveSDK.Core
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(0, "Malformed JSON"));
                 return;
             }
-            var runtime = Volatile.Read(ref _runtime);
-            if (runtime?.Assets == null || !runtime.Assets.HasRoots)
+            if (_runtime?.Assets == null || !_runtime.Assets.HasRoots)
             {
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, "No asset roots registered"));
                 return;
             }
-            if (runtime.Assets.TryRead(msg.Uri, out var data, out var error))
+            if (_runtime.Assets.TryRead(msg.Uri, out var data, out var error))
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseSuccess(msg.RequestId, data));
             else
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(msg.RequestId, error));

@@ -274,16 +274,11 @@ MonoBehaviour:
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
-  _encodingOverride: 0
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 2
-  _enableBackpressureAdaptation: 0
-  _backpressureCooldownSeconds: 0.5
-  _maxEncodedBytes: 0
-  _logBackpressureSkips: 0
 --- !u!1 &346350280
 GameObject:
   m_ObjectHideFlags: 0
@@ -320,8 +315,6 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
-  _defaultPublisherEncoding: 1
-  _allowPublisherOverride: 1
   _coordinateMode: 1
   _assetRoots:
   - uriPrefix: asset://demo/
@@ -335,10 +328,10 @@ MonoBehaviour:
   _recordingDirectory: 
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
-  _enableReplay: 1
-  _replayFilePath: Recordings/foxglove_20260511_230904.mcap
-  _replayAutoPlay: 1
-  _disableLivePublishers: 1
+  _enableReplay: 0
+  _replayFilePath: 
+  _replayAutoPlay: 0
+  _disableLivePublishers: 0
   _allowedBrowserOrigins: []
 --- !u!4 &346350282
 Transform:
@@ -578,7 +571,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1529818994
 Transform:
   m_ObjectHideFlags: 0
@@ -601,12 +594,11 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1529818993}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
-  position: {x: 0, y: 0, z: 0}
 --- !u!1 &2004464831
 GameObject:
   m_ObjectHideFlags: 0
@@ -646,7 +638,6 @@ MonoBehaviour:
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
-  _encodingOverride: 0
   _entityId: 
   _frameId: 
   _size: {x: 1, y: 1, z: 1}
@@ -668,7 +659,6 @@ MonoBehaviour:
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
-  _encodingOverride: 0
   _parentFrameId: unity_world
   _childFrameId: 
 --- !u!65 &2004464834

@@ -478,9 +478,6 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishJson(string topic, string schemaName, object message, ulong logTimeNs)
         {
-            if (SuppressLivePublishersForReplay)
-                return;
-
             if (!IsRunning)
             {
                 if (!_warnedNotRunning)
@@ -503,9 +500,6 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void PublishProto(string topic, string schemaName, byte[] payload, ulong logTimeNs)
         {
-            if (SuppressLivePublishersForReplay)
-                return;
-
             if (!IsRunning)
             {
                 if (!_warnedNotRunning)

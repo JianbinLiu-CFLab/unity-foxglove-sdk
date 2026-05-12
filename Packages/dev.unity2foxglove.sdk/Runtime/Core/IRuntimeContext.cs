@@ -33,10 +33,6 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Get a snapshot of the current playback state for wire encoding.</summary>
         PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId);
 
-        /// <summary>Apply a decoded playback control request on the runtime owner thread.</summary>
-        PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
-            byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId);
-
         /// <summary>Seek replay to a given log-time in nanoseconds.</summary>
         void ReplaySeek(ulong timeNs);
 

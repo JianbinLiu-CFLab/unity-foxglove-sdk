@@ -91,28 +91,6 @@ namespace Unity.FoxgloveSDK.Components
         private float _scanTimer;
         /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
         private float _mgrSearchCooldown;
-        private const float ScanIntervalSeconds = 2f;
-
-        /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>
-        public static void RegisterSource(IFoxgloveLogSource source)
-        {
-            if (_instance != null)
-                _instance.AddSource(source);
-        }
-
-        /// <summary>Unregister a generated FoxRun source from the hub cache.</summary>
-        public static void UnregisterSource(IFoxgloveLogSource source)
-        {
-            if (_instance != null && source != null)
-                _instance._timers.Remove(source);
-        }
-
-        /// <summary>Reset static state when Unity enters Play Mode without domain reload.</summary>
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStaticState()
-        {
-            _instance = null;
-        }
 
         /// <summary>
         /// Ensures exactly one hub exists after scene load.
@@ -169,7 +147,7 @@ namespace Unity.FoxgloveSDK.Components
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f)
             {
-                _scanTimer = ScanIntervalSeconds;
+                _scanTimer = 2f;
                 Scan();
             }
 
@@ -214,18 +192,13 @@ namespace Unity.FoxgloveSDK.Components
             var all = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             foreach (var mb in all)
             {
-                if (mb is IFoxgloveLogSource src)
-                    AddSource(src);
+                if (mb is IFoxgloveLogSource src && !_timers.ContainsKey(src))
+                {
+                    var count = src.FoxgloveLog_TopicCount;
+                    if (count > 0)
+                        _timers[src] = new float[count];
+                }
             }
-        }
-
-        private void AddSource(IFoxgloveLogSource source)
-        {
-            if (source == null || _timers.ContainsKey(source))
-                return;
-            var count = source.FoxgloveLog_TopicCount;
-            if (count > 0)
-                _timers[source] = new float[count];
         }
 
         /// <summary>Clears all timers and nulls the singleton reference.</summary>

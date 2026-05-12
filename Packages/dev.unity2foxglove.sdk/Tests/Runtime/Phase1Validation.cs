@@ -8,8 +8,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -161,17 +159,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestRealWebSocketConnect()
         {
             using var runtime = new FoxgloveRuntime();
-            var port = GetFreeTcpPort(18767);
-            runtime.Start("IntegrationTest", "127.0.0.1", port);
-            Thread.Sleep(50);
+            runtime.Start("IntegrationTest", "127.0.0.1", 18765);
 
             try
             {
                 var ws = new ClientWebSocket();
                 ws.Options.AddSubProtocol(Subprotocol.SdkV1);
 
-                var cts = new CancellationTokenSource(10000);
-                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
+                var cts = new CancellationTokenSource(5000);
+                ws.ConnectAsync(new Uri("ws://127.0.0.1:18765/"), cts.Token).GetAwaiter().GetResult();
 
                 Assert(ws.State == WebSocketState.Open, "WebSocket connected");
                 Assert(ws.SubProtocol == Subprotocol.SdkV1, "Server echoed subprotocol foxglove.sdk.v1");
@@ -206,9 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestBadSubprotocolRejected()
         {
             using var runtime = new FoxgloveRuntime();
-            var port = GetFreeTcpPort(18768);
-            runtime.Start("BadSubprotocolTest", "127.0.0.1", port);
-            Thread.Sleep(50);
+            runtime.Start("BadSubprotocolTest", "127.0.0.1", 18766);
 
             try
             {
@@ -219,7 +213,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var cts = new CancellationTokenSource(3000);
                 try
                 {
-                    ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
+                    ws.ConnectAsync(new Uri("ws://127.0.0.1:18766/"), cts.Token).GetAwaiter().GetResult();
 
                     // Connection may succeed at HTTP level but server closes immediately.
                     // ReceiveAsync will return a Close frame or throw.
@@ -243,46 +237,6 @@ namespace Unity.FoxgloveSDK.Tests
             finally
             {
                 runtime.Dispose();
-            }
-        }
-
-        private static int GetFreeTcpPort(int preferredPort)
-        {
-            if (CanBind(preferredPort))
-                return preferredPort;
-            return GetEphemeralTcpPort();
-        }
-
-        private static bool CanBind(int port)
-        {
-            TcpListener listener = null;
-            try
-            {
-                listener = new TcpListener(IPAddress.Loopback, port);
-                listener.Start();
-                return true;
-            }
-            catch (SocketException)
-            {
-                return false;
-            }
-            finally
-            {
-                listener?.Stop();
-            }
-        }
-
-        private static int GetEphemeralTcpPort()
-        {
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            try
-            {
-                return ((IPEndPoint)listener.LocalEndpoint).Port;
-            }
-            finally
-            {
-                listener.Stop();
             }
         }
     }
