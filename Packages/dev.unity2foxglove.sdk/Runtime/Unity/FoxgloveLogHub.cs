@@ -107,6 +107,23 @@ namespace Unity.FoxgloveSDK.Components
                 _instance._timers.Remove(source);
         }
 
+        /// <summary>
+        /// Publish one generated FoxRun topic immediately from user code.
+        /// Intended for Unity main-thread callbacks; external callbacks should
+        /// marshal data back to the main thread before calling generated trigger
+        /// methods because generated publishers may read Unity-owned state.
+        /// </summary>
+        /// <returns>
+        /// True only after publish dispatch succeeds. Normal unavailable states
+        /// return false instead of throwing.
+        /// </returns>
+        public static bool Trigger(IFoxgloveLogSource source, int topicIndex)
+        {
+            if (_instance == null || source == null)
+                return false;
+            return _instance.TriggerSource(source, topicIndex);
+        }
+
         /// <summary>Reset static state when Unity enters Play Mode without domain reload.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticState()
@@ -191,6 +208,8 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         var info = kv.Key.FoxgloveLog_GetTopic(i);
                         t[i] = info.RateHz > 0 ? 1f / info.RateHz : 1f;
+                        if (info.PublishMode == FoxRunPublishMode.OnTrigger)
+                            continue;
                         bool shouldPublish = policySource == null
                             || policySource.FoxgloveLog_ShouldPublish(i, nowSec);
                         if (shouldPublish)
@@ -226,6 +245,25 @@ namespace Unity.FoxgloveSDK.Components
             var count = source.FoxgloveLog_TopicCount;
             if (count > 0)
                 _timers[source] = new float[count];
+        }
+
+        private bool TriggerSource(IFoxgloveLogSource source, int topicIndex)
+        {
+            if (source == null)
+                return false;
+            if (topicIndex < 0 || topicIndex >= source.FoxgloveLog_TopicCount)
+                return false;
+            if (_mgr == null)
+                _mgr = FindFirstObjectByType<FoxgloveManager>();
+            if (_mgr == null || !_mgr.IsRunning)
+                return false;
+            if (_mgr.SuppressLivePublishersForReplay)
+                return false;
+
+            source.FoxgloveLog_Publish(topicIndex, _mgr, _mgr.NowNs);
+            if (source is IFoxgloveLogPolicySource policySource)
+                policySource.FoxgloveLog_MarkPublished(topicIndex, Time.realtimeSinceStartup);
+            return true;
         }
 
         /// <summary>Clears all timers and nulls the singleton reference.</summary>

@@ -15,12 +15,19 @@ public partial class TestLog : MonoBehaviour
 {
     private Transform _trackedCube;
 
+    // Minimal form: [FoxRun("topic")].
+    // Publishes at the default fixed rate and uses the field value as payload.
     [FoxRun("/debug/position")]
     private Vector3 _pos;
 
+    // RateHz is an option. It lowers this topic's scheduled publish rate to 5 Hz.
     [FoxRun("/debug/health", RateHz = 5)]
     private float _health = 100f;
 
+    // Change-driven options:
+    // - PublishMode = OnChangeOrInterval publishes changed values.
+    // - ChangeEpsilon suppresses tiny Vector jitter.
+    // - ForceIntervalSeconds still sends a heartbeat every second.
     [FoxRun("/debug/position2", RateHz = 10, PublishMode = FoxRunPublishMode.OnChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
     public Vector3 position;
 

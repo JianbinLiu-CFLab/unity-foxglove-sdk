@@ -26,7 +26,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Optional Foxglove schema name. If empty, publishes schemaless JSON.</summary>
         public string SchemaName { get; set; }
 
-        /// <summary>Publish mode: FixedRate (default), OnChange, or OnChangeOrInterval.</summary>
+        /// <summary>
+        /// Publish mode: FixedRate (default), OnChange, OnChangeOrInterval, or
+        /// OnTrigger. OnTrigger topics publish only when generated trigger
+        /// methods are called explicitly by user code.
+        /// </summary>
         public FoxRunPublishMode PublishMode { get; set; } = FoxRunPublishMode.FixedRate;
 
         /// <summary>Epsilon for float/double/Vector change detection. Negative treated as 0.</summary>

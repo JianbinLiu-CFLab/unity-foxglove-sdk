@@ -388,6 +388,7 @@ namespace Unity.FoxgloveSDK.Performance
             {
                 using var engine = new McapReplayEngine();
                 engine.Load(fixturePath);
+                engine.MaxMessagesPerTick = Math.Max(engine.MaxMessagesPerTick, topics);
                 engine.Seek(0);
                 engine.Play();
                 for (int i = 0; i < warmupCount; i++)
@@ -400,6 +401,7 @@ namespace Unity.FoxgloveSDK.Performance
                 int outer = count / topics;
                 using var engine = new McapReplayEngine();
                 engine.Load(fixturePath);
+                engine.MaxMessagesPerTick = Math.Max(engine.MaxMessagesPerTick, topics);
                 engine.Seek(0);
                 engine.Play();
                 int totalMessages = 0;

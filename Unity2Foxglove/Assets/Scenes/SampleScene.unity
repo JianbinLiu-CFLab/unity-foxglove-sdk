@@ -335,10 +335,10 @@ MonoBehaviour:
   _recordingDirectory: 
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
-  _enableReplay: 1
+  _enableReplay: 0
   _replayFilePath: Recordings/foxglove_20260511_230904.mcap
-  _replayAutoPlay: 1
-  _disableLivePublishers: 1
+  _replayAutoPlay: 0
+  _disableLivePublishers: 0
   _allowedBrowserOrigins: []
 --- !u!4 &346350282
 Transform:
@@ -513,6 +513,55 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!1 &534487832
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 534487834}
+  - component: {fileID: 534487833}
+  m_Layer: 0
+  m_Name: 'FoxRun_Trigger_Smoke '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &534487833
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 534487832}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9360d8900353de14e93374b6565b62ac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Phase53FoxRunTriggerSmoke
+  fixedCounter: 0
+  triggerCounter: 0
+  eventName: idle
+  groupedTimerValue: 0
+  lastTriggerResult: not triggered
+--- !u!4 &534487834
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 534487832}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -578,7 +627,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1529818994
 Transform:
   m_ObjectHideFlags: 0
@@ -601,7 +650,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1529818993}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
   m_Name: 
@@ -792,3 +841,4 @@ SceneRoots:
   - {fileID: 346350282}
   - {fileID: 2004464837}
   - {fileID: 1529818994}
+  - {fileID: 534487834}

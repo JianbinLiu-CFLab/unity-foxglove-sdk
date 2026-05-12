@@ -19,6 +19,8 @@ namespace Unity.FoxgloveSDK.Components
         OnChange = 1,
         /// <summary>Publish changed values, plus heartbeat samples at the force interval.</summary>
         OnChangeOrInterval = 2,
+        /// <summary>Publish only when user code calls a generated trigger method.</summary>
+        OnTrigger = 3,
     }
 }
 
@@ -62,6 +64,9 @@ namespace Unity.FoxgloveSDK.Util
                     if (!hasPreviousValue) return true;
                     if (valueChanged) return true;
                     if (forceIntervalSec > 0 && nowSec - lastPublishSec >= forceIntervalSec) return true;
+                    return false;
+
+                case FoxRunPublishMode.OnTrigger:
                     return false;
 
                 default:
