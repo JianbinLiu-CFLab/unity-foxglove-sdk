@@ -15,7 +15,7 @@ public partial class TestLog : MonoBehaviour
 {
     private Transform _trackedCube;
 
-    // Minimal form: [FoxRun("topic")].
+    // Minimal form uses only a topic path.
     // Publishes at the default fixed rate and uses the field value as payload.
     [FoxRun("/debug/position")]
     private Vector3 _pos;
