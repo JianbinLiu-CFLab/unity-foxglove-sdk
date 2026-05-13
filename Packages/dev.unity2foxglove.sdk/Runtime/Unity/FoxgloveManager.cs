@@ -456,11 +456,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private string BuildConnectionUrl(bool redactToken)
         {
-            var scheme = _transportMode == FoxgloveTransportMode.SecureWebSocket ? "wss" : "ws";
-            var url = $"{scheme}://{_host}:{_port}";
-            if (!string.IsNullOrEmpty(_sharedToken))
-                url += $"?token={_sharedToken}";
-            return redactToken ? ManagedWebSocketOptions.RedactUrl(url) : url;
+            return FoxgloveAppUrl.BuildWebSocketEndpoint(
+                _host,
+                _port,
+                _transportMode == FoxgloveTransportMode.SecureWebSocket,
+                _sharedToken,
+                redactToken);
         }
 
         private void StartCertificateDistributorIfNeeded()

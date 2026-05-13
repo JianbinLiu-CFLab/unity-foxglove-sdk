@@ -46,6 +46,12 @@ namespace Unity.FoxgloveSDK.Core
         public bool TryResolve(string uri, out string path, out string error)
         {
             path = null; error = null;
+            if (string.IsNullOrWhiteSpace(uri))
+            {
+                error = "Asset URI is required";
+                return false;
+            }
+
             List<KeyValuePair<string, AssetRoot>> roots;
             lock (_lock)
             {
@@ -57,7 +63,15 @@ namespace Unity.FoxgloveSDK.Core
                 if (!uri.StartsWith(prefix, StringComparison.Ordinal))
                     continue;
                 var relative = uri.Substring(prefix.Length);
-                relative = Uri.UnescapeDataString(relative);
+                try
+                {
+                    relative = Uri.UnescapeDataString(relative);
+                }
+                catch (UriFormatException ex)
+                {
+                    error = $"Invalid asset URI: {ex.Message}";
+                    return false;
+                }
                 relative = relative.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                 var resolved = Path.GetFullPath(Path.Combine(root.LocalRoot, relative));
                 if (!resolved.StartsWith(root.LocalRoot + Path.DirectorySeparatorChar) && resolved != root.LocalRoot)

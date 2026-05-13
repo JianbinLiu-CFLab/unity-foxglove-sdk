@@ -155,7 +155,7 @@ Unity2Foxglove currently uses two hosts:
 | Roslyn source generator | Editor-time authoring and compile feedback | In-memory generated source via `AddSource()` |
 | Unity build-time writer | IL2CPP Player build determinism | Physical `.g.cs` files before build |
 
-The Roslyn path is fast and ergonomic during development. The physical `.g.cs` path gives the Player build a normal source file that participates in compilation and IL2CPP conversion.
+The Roslyn path is implemented as an incremental source generator. It is fast and ergonomic during development because it can participate in Unity's analyzer pipeline without requiring the user to run a separate generation step. The physical `.g.cs` path gives the Player build a normal source file that participates in compilation and IL2CPP conversion.
 
 ### 5.5 Runtime Layer
 
@@ -250,7 +250,8 @@ The contribution is not the invention of Roslyn source generators, AOT pre-gener
 - users declare telemetry with attributes,
 - Editor and Player generation paths share one emitter,
 - runtime telemetry publishing does not depend on reflection,
-- generated behavior is covered by repeatable tests and release checks.
+- generated behavior is covered by repeatable tests and release checks,
+- generated files and validation artifacts can be archived as part of a traceable release evidence chain.
 
 The strongest defensible novelty claim is:
 
@@ -264,6 +265,8 @@ The claim should avoid overstatements such as:
 - claims that the project is a complete general-purpose MCAP library.
 
 The work is best framed as system integration and domain adaptation: existing code-generation ideas are organized into a new telemetry-specific architecture with Unity IL2CPP as the high-pressure target environment.
+
+The traceability value is secondary to the AOT safety claim, but important for robotics and simulation evidence. A release can archive the physical `_FoxRun.g.cs` output, generation descriptors, validation logs, and MCAP smoke artifacts to show which telemetry bindings participated in a Player build. This makes missing or changed telemetry topics easier to audit after a recorded experiment.
 
 A useful future comparison is Unity2Rerun or any other Unity telemetry target that reuses the same declaration-to-model layer. If a second target can share the model resolution and most emitter infrastructure while swapping only the runtime adapter and schema mapping, the architecture is better described as multi-target declarative telemetry rather than only a dual-host Foxglove generator. That claim should wait for measured migration evidence instead of being assumed here.
 
@@ -279,7 +282,9 @@ Before turning this note into a paper section, the following evidence would stre
 
 4. **Player-build performance smoke.** Capture IL2CPP Player evidence for frame cost, allocations, and publisher behavior.
 
-5. **Public evidence release.** Tag the exact version, archive it through Zenodo, and cite that DOI from `CITATION.cff`, `PAPER.md`, and release notes.
+5. **Traceability bundle.** Archive physical `_FoxRun.g.cs` outputs, normalized generation descriptors, validation logs, and MCAP smoke artifacts with the release evidence so the telemetry binding used in an experiment can be audited later.
+
+6. **Public evidence release.** Tag the exact version, archive it through Zenodo, and cite that DOI from `CITATION.cff`, `PAPER.md`, and release notes.
 
 ## 12 Conclusion
 

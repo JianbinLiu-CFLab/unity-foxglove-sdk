@@ -113,12 +113,15 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
         public virtual void Stop()
         {
-            _cts?.Cancel();
+            var cts = _cts;
+            _cts = null;
+            cts?.Cancel();
             foreach (var (id, conn) in _clients.ToArray())
                 DisconnectClient(id, conn);
 
             try { _listener?.Stop(); } catch { }
             _listener = null;
+            cts?.Dispose();
         }
 
         /// <summary>Send a UTF-8 text frame to a specific client.</summary>
@@ -1130,6 +1133,13 @@ namespace Unity.FoxgloveSDK.Transport
                     payloadLen = (int)len64;
                 }
 
+                if (!masked)
+                    return null;
+
+                if (IsControlOpcode(opcode)
+                    && (!IsKnownControlOpcode(opcode) || !fin || payloadLen > SmallPayloadLimit))
+                    return null;
+
                 byte[] mask = null;
                 if (masked)
                 {
@@ -1156,6 +1166,11 @@ namespace Unity.FoxgloveSDK.Transport
                     Payload = payload
                 };
             }
+
+            private static bool IsControlOpcode(int opcode) => opcode >= WsOpcode.Close;
+
+            private static bool IsKnownControlOpcode(int opcode) =>
+                opcode == WsOpcode.Close || opcode == WsOpcode.Ping || opcode == WsOpcode.Pong;
 
             /// <summary>Read exactly <c>count</c> bytes into the buffer, returning <c>false</c> if the stream ends early.</summary>
             private bool ReadExact(byte[] buffer, int offset, int count)

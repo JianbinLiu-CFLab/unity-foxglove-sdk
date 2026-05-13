@@ -147,8 +147,7 @@ namespace Unity.FoxgloveSDK.Core
             // Re-advertise immediately so connected clients pick up the new service
             if (_session != null)
             {
-                var adv = new AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
-                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
+                _session.AdvertiseRegisteredService(id);
             }
             return id;
         }
