@@ -139,7 +139,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckHeader(int payloadLength, byte[] expected, string label)
         {
             var actual = new byte[10];
-            var written = ManagedWsBackend.WriteFrameHeader(WsOpcode.Binary, payloadLength, actual);
+            var written = WsFrameCodec.WriteFrameHeader(WsOpcode.Binary, payloadLength, actual);
             Check(written == expected.Length, $"{label} byte count");
             for (var i = 0; i < expected.Length; i++)
                 Check(actual[i] == expected[i], $"{label} byte {i}");

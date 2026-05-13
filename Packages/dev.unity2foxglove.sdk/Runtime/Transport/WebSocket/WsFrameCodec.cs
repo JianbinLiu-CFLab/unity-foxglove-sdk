@@ -190,4 +190,19 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Unmasked payload data.</summary>
         public byte[] Payload;
     }
+
+    /// <summary>RFC 6455 WebSocket opcode constants.</summary>
+    internal static class WsOpcode
+    {
+        /// <summary>Text frame opcode (0x1).</summary>
+        public const byte Text = 0x1;
+        /// <summary>Binary frame opcode (0x2).</summary>
+        public const byte Binary = 0x2;
+        /// <summary>Close frame opcode (0x8).</summary>
+        public const byte Close = 0x8;
+        /// <summary>Ping frame opcode (0x9).</summary>
+        public const byte Ping = 0x9;
+        /// <summary>Pong frame opcode (0xA).</summary>
+        public const byte Pong = 0xA;
+    }
 }

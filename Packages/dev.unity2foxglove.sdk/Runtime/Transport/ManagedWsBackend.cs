@@ -14,12 +14,10 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Authentication;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Core;
-using Unity.FoxgloveSDK.Protocol;
 
 namespace Unity.FoxgloveSDK.Transport
 {
@@ -29,12 +27,6 @@ namespace Unity.FoxgloveSDK.Transport
     /// </summary>
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
-        /// <summary>Per-client send queue frame cap; stale data frames are dropped before this is exceeded.</summary>
-        internal const int MaxQueuedFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
-        /// <summary>Per-client send queue byte cap.</summary>
-        internal const int MaxQueuedBytes = ManagedWebSocketOptions.DefaultMaxQueuedBytes;
-        private const int MaxHandshakeLineBytes = 8192;
-        private const int MaxHandshakeHeaders = 100;
         private const int CloseDrainTimeoutMs = 250;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
@@ -45,12 +37,14 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly ConcurrentDictionary<uint, WsConnection> _clients = new ConcurrentDictionary<uint, WsConnection>();
         /// <summary>Shared managed WebSocket options for queue capacity and token gate.</summary>
         private readonly ManagedWebSocketOptions _options;
+        private readonly WsHandshakeHandler _handshakeHandler;
         /// <summary>Logger instance for diagnostic output.</summary>
         private readonly IFoxgloveLogger _logger;
         /// <summary>Monotonically increasing counter for assigning client IDs.</summary>
         private long _nextClientId;
         /// <summary>Allowed browser origins for Cross-Site WebSocket Hijacking protection. Empty collection rejects all browser-origin clients.</summary>
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _allowedOriginsLock = new object();
 
         // Aggregate health counters
         private long _totalAcceptedClients;
@@ -65,6 +59,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             _options = options ?? new ManagedWebSocketOptions();
             _logger = logger ?? new ConsoleLogger();
+            _handshakeHandler = new WsHandshakeHandler(_options, _allowedOrigins, _allowedOriginsLock, _logger);
         }
 
         /// <summary>Whether the TCP listener is actively accepting connections.</summary>
@@ -214,7 +209,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Snapshot of currently allowed browser origins. Empty means no browser clients are allowed.</summary>
         public IReadOnlyCollection<string> AllowedOrigins
         {
-            get { lock (_allowedOrigins) return _allowedOrigins.ToList(); }
+            get { lock (_allowedOriginsLock) return _allowedOrigins.ToList(); }
         }
 
         /// <summary>Add an origin to the allowlist (case-insensitive). Full page URLs are normalized to their browser Origin.</summary>
@@ -222,13 +217,13 @@ namespace Unity.FoxgloveSDK.Transport
         {
             var normalized = NormalizeAllowedOrigin(origin);
             if (string.IsNullOrEmpty(normalized)) return;
-            lock (_allowedOrigins) _allowedOrigins.Add(normalized);
+            lock (_allowedOriginsLock) _allowedOrigins.Add(normalized);
         }
 
         /// <summary>Remove all origins from the allowlist, blocking all browser clients.</summary>
         public void ClearAllowedOrigins()
         {
-            lock (_allowedOrigins) _allowedOrigins.Clear();
+            lock (_allowedOriginsLock) _allowedOrigins.Clear();
         }
 
         internal static string NormalizeAllowedOrigin(string originOrUrl)
@@ -278,7 +273,7 @@ namespace Unity.FoxgloveSDK.Transport
                 stream = CreateClientStream(tcpClient);
                 ConfigureStreamTimeouts(stream, 5000, 5000);
 
-                var (accepted, subprotocol) = Handshake(stream);
+                var (accepted, _) = _handshakeHandler.Handshake(stream);
                 if (!accepted)
                 {
                     try { stream?.Close(); } catch { }
@@ -389,170 +384,6 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        // WebSocket handshake (RFC 6455 section 4)
-
-        /// <summary>Parse HTTP upgrade request and complete the WebSocket opening handshake per RFC 6455.</summary>
-        private (bool accepted, string subprotocol) Handshake(Stream stream)
-        {
-            string requestLine;
-            try { requestLine = ReadLineRaw(stream, MaxHandshakeLineBytes); }
-            catch (InvalidDataException) { return (false, null); }
-            if (string.IsNullOrEmpty(requestLine))
-                return (false, null);
-
-            var parts = requestLine.Split(' ');
-            if (parts.Length < 3 || parts[0] != "GET")
-                return (false, null);
-            var requestTarget = parts[1];
-
-            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            string line;
-            var headerCount = 0;
-            while (true)
-            {
-                try { line = ReadLineRaw(stream, MaxHandshakeLineBytes); }
-                catch (InvalidDataException) { return (false, null); }
-                if (string.IsNullOrEmpty(line))
-                    break;
-                headerCount++;
-                if (headerCount > MaxHandshakeHeaders)
-                    return (false, null);
-
-                var colon = line.IndexOf(':');
-                if (colon > 0)
-                    headers[line.Substring(0, colon).Trim()] = line.Substring(colon + 1).Trim();
-            }
-
-            if (!headers.TryGetValue("Connection", out var conn) ||
-                conn.IndexOf("Upgrade", StringComparison.OrdinalIgnoreCase) < 0)
-                return (false, null);
-
-            if (!headers.TryGetValue("Upgrade", out var upgrade) ||
-                !upgrade.Equals("websocket", StringComparison.OrdinalIgnoreCase))
-                return (false, null);
-
-            if (!headers.TryGetValue("Sec-WebSocket-Key", out var wsKey))
-                return (false, null);
-
-            // Origin guard: reject browser clients unless the origin is in the allowlist.
-            // file:// origins come from non-browser environments (Electron desktop apps,
-            // Foxglove Desktop); they are not subject to CSWSH, so they are always allowed.
-            if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
-                && !origin.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-            {
-                bool allowed;
-                lock (_allowedOrigins) allowed = _allowedOrigins.Contains(origin);
-                if (!allowed)
-                {
-                    _logger.LogWarning(
-                        $"Rejected WebSocket Origin '{origin}'. Add it to allowed origins to permit browser clients.");
-                    var forbid = Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\n\r\n");
-                    stream.Write(forbid, 0, forbid.Length);
-                    return (false, null);
-                }
-            }
-
-            if (_options.RequireToken)
-            {
-                var token = ManagedWebSocketOptions.GetQueryParameter(requestTarget, "token");
-                if (!_options.IsTokenAccepted(token))
-                {
-                    _logger.LogWarning(token == null
-                        ? "Rejected WebSocket client with missing token."
-                        : "Rejected WebSocket client with invalid token.");
-                    var unauthorized = Encoding.ASCII.GetBytes("HTTP/1.1 401 Unauthorized\r\n\r\n");
-                    stream.Write(unauthorized, 0, unauthorized.Length);
-                    return (false, null);
-                }
-            }
-
-            // Subprotocol negotiation
-            string selected = null;
-            if (headers.TryGetValue("Sec-WebSocket-Protocol", out var clientProtocols))
-            {
-                foreach (var cp in clientProtocols.Split(',').Select(p => p.Trim()))
-                {
-                    foreach (var a in Subprotocol.Accepted)
-                    {
-                        if (cp.Equals(a, StringComparison.OrdinalIgnoreCase))
-                        {
-                            selected = a;
-                            break;
-                        }
-                    }
-                    if (selected != null) break;
-                }
-            }
-
-            if (selected == null)
-            {
-                _logger.LogError("Client connected without accepted subprotocol, closing.");
-                var reject = Encoding.ASCII.GetBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
-                stream.Write(reject, 0, reject.Length);
-                return (false, null);
-            }
-
-            // Compute Sec-WebSocket-Accept
-            var acceptKey = ComputeAcceptKey(wsKey);
-            var response = new StringBuilder();
-            response.Append("HTTP/1.1 101 Switching Protocols\r\n");
-            response.Append("Upgrade: websocket\r\n");
-            response.Append("Connection: Upgrade\r\n");
-            response.Append($"Sec-WebSocket-Accept: {acceptKey}\r\n");
-            response.Append($"Sec-WebSocket-Protocol: {selected}\r\n");
-            response.Append("\r\n");
-
-            var responseBytes = Encoding.ASCII.GetBytes(response.ToString());
-            stream.Write(responseBytes, 0, responseBytes.Length);
-
-            return (true, selected);
-        }
-
-        /// <summary>Compute the Sec-WebSocket-Accept response value per RFC 6455 section 4.2.2.</summary>
-        private static string ComputeAcceptKey(string wsKey)
-        {
-            const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-            using var sha1 = SHA1.Create();
-            var hash = sha1.ComputeHash(Encoding.ASCII.GetBytes(wsKey + magic));
-            return Convert.ToBase64String(hash);
-        }
-
-        /// <summary>Read one line byte-by-byte, avoiding StreamReader buffering that could steal frame data.</summary>
-        private static string ReadLineRaw(Stream stream, int maxBytes)
-        {
-            var sb = new StringBuilder();
-            var bytesRead = 0;
-            while (true)
-            {
-                var b = stream.ReadByte();
-                if (b < 0) return sb.Length > 0 ? sb.ToString() : null;
-                bytesRead++;
-                if (bytesRead > maxBytes)
-                    throw new InvalidDataException("WebSocket handshake line exceeds maximum length.");
-                if (b == '\r')
-                {
-                    var next = stream.ReadByte();
-                    if (next >= 0)
-                    {
-                        bytesRead++;
-                        if (bytesRead > maxBytes)
-                            throw new InvalidDataException("WebSocket handshake line exceeds maximum length.");
-                    }
-                    if (next == '\n') break;
-                    if (next >= 0) sb.Append((char)next);
-                }
-                else if (b == '\n')
-                {
-                    break;
-                }
-                else
-                {
-                    sb.Append((char)b);
-                }
-            }
-            return sb.ToString();
-        }
-
         // Receive loop
 
         /// <summary>Continuously read frames, dispatch text/binary/close/ping, until the stream ends or is canceled.</summary>
@@ -630,25 +461,5 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        internal static int WriteFrameHeader(byte opcode, int payloadLength, Span<byte> destination)
-        {
-            return WsFrameCodec.WriteFrameHeader(opcode, payloadLength, destination);
-        }
-
-    }
-
-    /// <summary>RFC 6455 WebSocket opcode constants.</summary>
-    internal static class WsOpcode
-    {
-        /// <summary>Text frame opcode (0x1).</summary>
-        public const byte Text = 0x1;
-        /// <summary>Binary frame opcode (0x2).</summary>
-        public const byte Binary = 0x2;
-        /// <summary>Close frame opcode (0x8).</summary>
-        public const byte Close = 0x8;
-        /// <summary>Ping frame opcode (0x9).</summary>
-        public const byte Ping = 0x9;
-        /// <summary>Pong frame opcode (0xA).</summary>
-        public const byte Pong = 0xA;
     }
 }
