@@ -257,31 +257,22 @@ namespace Unity.FoxgloveSDK.Tests
             using var backend = new ManagedWsBackend(logger);
             using var tcpClient = new TcpClient();
             var stream = new Phase52DisposedReadStream();
-
-            var connType = typeof(ManagedWsBackend).GetNestedType("WsConnection", BindingFlags.NonPublic);
-            var constructor = connType.GetConstructor(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                types: new[] { typeof(TcpClient), typeof(Stream), typeof(int), typeof(int) },
-                modifiers: null);
-            var conn = constructor.Invoke(new object[]
-            {
+            var conn = new WsConnection(
                 tcpClient,
                 stream,
                 ManagedWebSocketOptions.DefaultMaxQueuedFrames,
-                ManagedWebSocketOptions.DefaultMaxQueuedBytes
-            });
+                ManagedWebSocketOptions.DefaultMaxQueuedBytes);
 
             try
             {
                 var receiveLoop = typeof(ManagedWsBackend).GetMethod(
                     "ReceiveLoop",
                     BindingFlags.Instance | BindingFlags.NonPublic);
-                receiveLoop.Invoke(backend, new[] { (object)1u, conn, CancellationToken.None });
+                receiveLoop.Invoke(backend, new object[] { 1u, conn, CancellationToken.None });
             }
             finally
             {
-                (conn as IDisposable)?.Dispose();
+                conn.Dispose();
                 stream.Dispose();
             }
 
@@ -722,33 +713,10 @@ namespace Unity.FoxgloveSDK.Tests
             throw new Exception($"[FAIL] {label}");
         }
 
-        private static object ReadFrameFromBytes(byte[] frameBytes)
+        private static WsFrame ReadFrameFromBytes(byte[] frameBytes)
         {
-            using var tcpClient = new TcpClient();
             using var stream = new MemoryStream(frameBytes);
-            var connType = typeof(ManagedWsBackend).GetNestedType("WsConnection", BindingFlags.NonPublic);
-            var constructor = connType.GetConstructor(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                types: new[] { typeof(TcpClient), typeof(Stream), typeof(int), typeof(int) },
-                modifiers: null);
-            var conn = constructor.Invoke(new object[]
-            {
-                tcpClient,
-                stream,
-                ManagedWebSocketOptions.DefaultMaxQueuedFrames,
-                ManagedWebSocketOptions.DefaultMaxQueuedBytes
-            });
-
-            try
-            {
-                var readFrame = connType.GetMethod("ReadFrame", BindingFlags.Instance | BindingFlags.Public);
-                return readFrame.Invoke(conn, Array.Empty<object>());
-            }
-            finally
-            {
-                (conn as IDisposable)?.Dispose();
-            }
+            return WsFrameCodec.TryReadFrame(stream, out var frame) ? frame : null;
         }
 
         private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin)

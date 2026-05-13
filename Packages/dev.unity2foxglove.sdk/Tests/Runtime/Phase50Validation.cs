@@ -120,12 +120,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagedWebSocketOrderedShutdownSource()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/ManagedWsBackend.cs");
-            Check(!source.Contains("using (tcpClient)"),
+            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/ManagedWsBackend.cs");
+            var connectionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
+            Check(!backendSource.Contains("using (tcpClient)"),
                 "50B-1: HandleClient does not dispose TcpClient before the send loop owns shutdown");
-            Check(source.Contains("WaitForSendLoop") && source.Contains(".Wait(timeout)"),
+            Check(connectionSource.Contains("WaitForSendLoop") && connectionSource.Contains(".Wait(timeout)"),
                 "50B-2: WsConnection waits for send loop completion before closing stream/socket");
-            Check(source.Contains("stream.WriteTimeout = Timeout.Infinite"),
+            Check(backendSource.Contains("stream.WriteTimeout = Timeout.Infinite"),
                 "50B-3: handshake write timeout is reset after upgrade");
         }
 
