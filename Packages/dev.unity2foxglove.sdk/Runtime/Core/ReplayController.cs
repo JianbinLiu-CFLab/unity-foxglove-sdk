@@ -143,6 +143,8 @@ namespace Unity.FoxgloveSDK.Core
                     _logger.LogError($"Failed to load MCAP replay: {ex.Message}");
                     _replayEngine?.Dispose();
                     _replayEngine = null;
+                    _summarySchemas = null;
+                    _channelTopicMap = null;
                     _replayEnabled = false;
                 }
             }
@@ -156,6 +158,8 @@ namespace Unity.FoxgloveSDK.Core
                 _replayEngine?.Dispose();
                 _replayEngine = null;
                 _replayEnabled = false;
+                _summarySchemas = null;
+                _channelTopicMap = null;
                 _panelHistoryBuffer.Clear();
                 _panelHistoryActive = false;
                 _panelHistoryOffset = 0;
@@ -234,9 +238,7 @@ namespace Unity.FoxgloveSDK.Core
                     fromNs = clampedTo > ScrubHistoryWindowNs ? clampedTo - ScrubHistoryWindowNs : startNs;
                 if (fromNs < startNs) fromNs = startNs;
 
-                _replayEngine.History(fromNs, clampedTo, _panelHistoryBuffer);
-                if (_panelHistoryBuffer.Count > ScrubHistoryMaxMessagesPerRequest)
-                    _panelHistoryBuffer.RemoveRange(0, _panelHistoryBuffer.Count - ScrubHistoryMaxMessagesPerRequest);
+                _replayEngine.History(fromNs, clampedTo, _panelHistoryBuffer, ScrubHistoryMaxMessagesPerRequest);
                 _panelHistoryOffset = 0;
                 _panelHistoryParkTimeNs = clampedTo;
                 _panelHistoryActive = true;

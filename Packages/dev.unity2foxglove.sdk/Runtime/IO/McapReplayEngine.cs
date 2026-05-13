@@ -206,7 +206,8 @@ namespace Unity.FoxgloveSDK.IO
                     if (len > int.MaxValue)
                         throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
                     var recordLength = (int)len;
-                    if (recordLength > _currentUncompressed.Length - _readOffset) break;
+                    if (recordLength > _currentUncompressed.Length - _readOffset)
+                        throw new InvalidDataException("MCAP chunk inner record is truncated.");
 
                     if (opcode == McapWriter.OpcodeMessage)
                     {
@@ -290,7 +291,8 @@ namespace Unity.FoxgloveSDK.IO
                     if (len > int.MaxValue)
                         throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
                     var recordLength = (int)len;
-                    if (recordLength > uncompressed.Length - offset) break;
+                    if (recordLength > uncompressed.Length - offset)
+                        throw new InvalidDataException("MCAP chunk inner record is truncated.");
 
                     if (opcode != McapWriter.OpcodeMessage)
                     {
@@ -335,6 +337,13 @@ namespace Unity.FoxgloveSDK.IO
         /// a seek while paused.
         /// </summary>
         public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result)
+            => History(fromTimeNs, toTimeNs, result, maxMessages: 0);
+
+        /// <summary>
+        /// Reads messages in [fromTimeNs, toTimeNs], retaining only the latest
+        /// <paramref name="maxMessages"/> when a positive cap is supplied.
+        /// </summary>
+        public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
             result.Clear();
@@ -366,7 +375,8 @@ namespace Unity.FoxgloveSDK.IO
                     if (len > int.MaxValue)
                         throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
                     var recordLength = (int)len;
-                    if (recordLength > uncompressed.Length - offset) break;
+                    if (recordLength > uncompressed.Length - offset)
+                        throw new InvalidDataException("MCAP chunk inner record is truncated.");
 
                     if (opcode != McapWriter.OpcodeMessage)
                     {
@@ -389,14 +399,14 @@ namespace Unity.FoxgloveSDK.IO
                     if (logNs < clampedFrom || logNs > clampedTo)
                         continue;
 
-                    result.Add(new McapMessage
+                    AddHistoryMessage(result, new McapMessage
                     {
                         ChannelId = chId,
                         Sequence = seq,
                         LogTime = logNs,
                         PublishTime = pubNs,
                         Data = data
-                    });
+                    }, maxMessages);
                 }
             }
 
@@ -522,6 +532,16 @@ namespace Unity.FoxgloveSDK.IO
         private void AddPending(McapMessage message)
         {
             _pending.Add(message);
+        }
+
+        private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages)
+        {
+            result.Add(message);
+            if (maxMessages > 0 && result.Count > maxMessages)
+            {
+                result.Sort(CompareMessages);
+                result.RemoveRange(0, result.Count - maxMessages);
+            }
         }
 
         private void SortPending()
