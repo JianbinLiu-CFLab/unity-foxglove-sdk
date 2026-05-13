@@ -44,7 +44,7 @@ These tools are useful when you edit code, run validation tests, or use reposito
 | Visual Studio | [Visual Studio download page](https://visualstudio.microsoft.com/downloads/) | You write C# scripts, custom publishers, `[FoxRun]` fields, Parameters, or Services. Recommended default on Windows. |
 | JetBrains Rider | [Rider product page](https://www.jetbrains.com/rider/) | You prefer Rider for Unity/C# development. |
 | Visual Studio Code | [VS Code download page](https://code.visualstudio.com/) | You want a lightweight editor with C# and Unity extensions. |
-| Python 3 | [Python download page](https://www.python.org/downloads/) | You run repository helper scripts such as `Scripts/build_unity_il2cpp.py`. |
+| Python 3 | [Python download page](https://www.python.org/downloads/) | You run repository helper scripts such as `Scripts/build_tools/unity_il2cpp.py`. |
 | .NET SDK | [.NET download page](https://dotnet.microsoft.com/download) | You run runtime validation tests or performance baselines from the command line. |
 
 ## 5. First-Run Checklist

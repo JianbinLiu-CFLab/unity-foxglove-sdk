@@ -6,15 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.4.0 - 2026-05-13
+
+### Added
+
+- Unity-native secure WebSocket mode through `ManagedWssBackend`, using PFX certificates and `SslStream` while reusing the managed WebSocket protocol path.
+- Optional shared query-token gate with fixed-time comparison and redacted Inspector/log display.
+- Root CA distributor and Inspector local-development certificate generation workflow for WSS smoke tests.
+- FoxRun `OnTrigger` publish mode for explicit event-style telemetry snapshots.
+- Paused MCAP replay scrubbing with scene-only latest-at snapshots and bounded panel-history rebuild after seek debounce.
+
+### Changed
+
+- `FoxgloveManager` now exposes `WebSocket` / `SecureWebSocket` transport mode selection and WSS security fields in the Inspector.
+- Hosted Foxglove Web URL generation now matches the official plain-loopback behavior and switches to `wss://` only when secure mode is selected.
+- Replay seek handling now clears stale data-priority queues, broadcasts `didSeek` playback state, and suppresses live publishers during replay more consistently.
+- Script documentation now points to the reorganized `Scripts/release`, `Scripts/build_tools`, `Scripts/performance`, and `Scripts/smoke` entry points.
+
+### Fixed
+
+- Hardened WebSocket handshake limits, playback-clock reads, service lifecycle cleanup, client-publish state cleanup, replay bounds checks, and generated FoxRun source escaping.
+
+### Verified
+
+- Runtime validation suite should be run before tagging this release.
+- Release package validation should be run before tagging this release.
+- Manual WSS and replay-scrub smoke tests should be repeated before publishing binary evidence.
+
 ## 1.3.0 - 2026-05-12
 
 ### Added
 
-- Version prepared for the next Unity2Foxglove package release.
+- Internal release-document and package-metadata synchronization for the v1.3.0 package line.
 
 ### Changed
 
-- Release notes and package metadata are synchronized for this version.
+- README badges, package metadata, and release note links were aligned for v1.3.0.
 
 ### Verified
 

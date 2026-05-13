@@ -22,20 +22,20 @@ Check:
 Run:
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64
+python Scripts/build_tools/unity_il2cpp.py --target win64
 ```
 
 Other targets:
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target linux64
-python Scripts/build_unity_il2cpp.py --target macos
+python Scripts/build_tools/unity_il2cpp.py --target linux64
+python Scripts/build_tools/unity_il2cpp.py --target macos
 ```
 
 If Unity is not auto-detected, pass it explicitly:
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --unity "path/to/Unity"
+python Scripts/build_tools/unity_il2cpp.py --target win64 --unity "path/to/Unity"
 ```
 
 ## 5. Watch Build Progress

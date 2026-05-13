@@ -23,7 +23,7 @@ Validated before release:
 
 ```powershell
 dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
-python Scripts/validate_release_package.py
+python Scripts/release/validate_package.py
 ```
 
 Manual smoke:

@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
-[![Release](https://img.shields.io/badge/release-v1.3.0-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
+[![Release](https://img.shields.io/badge/release-v1.4.0-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20112834.svg)](https://doi.org/10.5281/zenodo.20112834)
 [![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
 [![Docs Check](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml)
@@ -44,7 +44,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 
 ### 1.1.4 Cross-Platform Data Bridge
 
-- A pure C# WebSocket server for Unity Editor and Standalone Player. Windows is verified for v1.3.0; macOS/Linux are intended targets but not yet verified.
+- A pure C# WebSocket server for Unity Editor and Standalone Player. Windows is verified for v1.4.0; macOS/Linux are intended targets but not yet verified.
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
@@ -96,7 +96,7 @@ No external processes. No ROS installation. No platform lock-in. Just attach a `
 - Use `Unity2Foxglove` when you want a ready-to-open demo project for Foxglove panels, MCAP recording, replay, IL2CPP, and manual acceptance.
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization` for the minimal publisher setup (no extra dependencies).
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization` for the complete demo experience (requires Input System + URP).
-- Use `Scripts/build_unity_il2cpp.py` together with `Unity2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
+- Use `Scripts/build_tools/unity_il2cpp.py` together with `Unity2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
 
 ---
 
@@ -166,6 +166,7 @@ Release and compliance documents:
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [v1.4.0 release notes](docs/releases/RELEASE_NOTES_v1.4.0.md)
 - [v1.3.0 release notes](docs/releases/RELEASE_NOTES_v1.3.0.md)
 - [v1.2.0 release notes](docs/releases/RELEASE_NOTES_v1.2.0.md)
 - [v1.1.0 release notes](docs/releases/RELEASE_NOTES_v1.1.0.md)
@@ -194,26 +195,30 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 ### Supported
 
 - Real-time data streaming (transform, scene entities, camera images)
+- Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON or Protobuf mode
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
-- MCAP replay for transform snapshot reconstruction
+- MCAP replay for transform/scene snapshot reconstruction, paused scrub scene updates, and bounded panel-history replay after seek debounce
 - Parameters (get, set, subscribe), Services (call/response), Connection Graph, Client Publish, Playback Control
 - Asset fetching (fetchAsset) with configurable asset roots
-- FoxRun attribute-based zero-code publishing via generated code: Roslyn source generation in Editor and physical `.g.cs` fallback generation for IL2CPP Player builds, not runtime reflection
+- FoxRun attribute-based zero-code publishing via generated code, including fixed-rate, change-driven, interval, and explicit `OnTrigger` topics
+- Optional Unity-native WSS/TLS transport, local dev certificate generation, root CA distribution helper, and lightweight shared query-token gate
 - IL2CPP build support with automatic link.xml generation
 
 ### Not Supported
 
 - **WebGL** - the WebSocket server requires `System.Net.Sockets`, which is unavailable on WebGL
-- **Authentication / TLS** - no token, password, or certificate-based auth
+- **Production authentication / authorization** - the shared token is a lightweight local/LAN gate, not OAuth, mTLS, users, roles, or permissions
 - **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
 
 ### Security
 
 - **CSWSH Origin Guard** (Phase 28): browser-origin WebSocket connections are rejected by default. An Inspector-configurable allowlist enables specific origins. `file://` origins (Electron/Foxglove Desktop) are always permitted.
+- **SecureWebSocket mode**: optional `wss://` support loads a PFX certificate and private key in Unity. The root CA distributor is only a bootstrap helper; verify the SHA-256 fingerprint before trusting a CA.
+- **Shared token gate**: optional `?token=...` matching can reject missing or wrong tokens before WebSocket upgrade. Prefer using it with WSS; do not treat it as strong identity.
 - **Default bind**: `127.0.0.1:8765`. Do not expose this port on untrusted networks.
-- **No authentication**: anyone who can reach the WebSocket port can connect and interact with parameters, services, and published data.
+- **Plain WebSocket remains default**: anyone who can reach an unsecured plain WebSocket port can interact with parameters, services, and published data unless the optional token gate is configured.
 
 ---
 

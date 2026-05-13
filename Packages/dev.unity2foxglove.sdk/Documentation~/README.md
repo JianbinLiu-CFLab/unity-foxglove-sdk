@@ -26,6 +26,8 @@ If you only want to run the ready-made demo project, start with `Unity2Foxglove/
 - [11_Troubleshooting](en/11_Troubleshooting.md): symptom-based fixes for connection, topics, panels, builds, and replay.
 - [12_Inspector_Reference](en/12_Inspector_Reference.md): field-by-field reference for the main Unity components.
 - [13_Schema_Coverage](en/13_Schema_Coverage.md): official protobuf schema coverage, generic parity, and typed publisher UX boundaries.
+- [14_Typed_Sensor_Publishers](en/14_Typed_Sensor_Publishers.md): PointCloud, LaserScan, and CameraCalibration publishers.
+- [15_Secure_WSS](en/15_Secure_WSS.md): optional Unity-native WSS/TLS setup, root CA distribution, and token-gate limitations.
 
 ## Related Entry Points
 

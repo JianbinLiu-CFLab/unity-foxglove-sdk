@@ -5,7 +5,7 @@ Stream Unity real-time data (Transforms, scene entities, camera frames, custom f
 ## Version requirements
 
 - Unity 6000.0 LTSC or later (developed on 6000.3.14f1 LTSC; compatible with 6000.0.74f1 LTSC)
-- Editor + Standalone Player. Windows is verified for v1.3.0; macOS/Linux are intended targets but not yet verified.
+- Editor + Standalone Player. Windows is verified for v1.4.0; macOS/Linux are intended targets but not yet verified.
 - Dependency: `com.unity.nuget.newtonsoft-json` 3.2.1
 
 ## Quick install
@@ -39,9 +39,12 @@ public partial class MyLogger : MonoBehaviour
 ## Features
 
 - Structured data publishing (FrameTransform, SceneUpdate, CompressedImage)
-- `[FoxRun]` attribute for zero-code auto-publishing through generated code, not runtime reflection
+- Typed sensor publishers for PointCloud, LaserScan, and CameraCalibration
+- `[FoxRun]` attribute for generated fixed-rate, change-driven, interval, and explicit trigger publishing
 - MCAP recording and replay (LZ4/Zstd compression)
+- Paused replay scrubbing with Unity scene snapshot updates and bounded panel-history rebuilds
 - Managed WebSocket backpressure for slow clients
+- Optional Unity-native WSS/TLS mode and lightweight shared query-token gate
 - Parameters remote read/write
 - Service remote invocation
 - IL2CPP standalone build support
