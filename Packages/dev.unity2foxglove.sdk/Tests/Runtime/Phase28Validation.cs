@@ -7,6 +7,7 @@
 // pass through to subprotocol negotiation.
 
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -34,6 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passCount = 0;
             TestNoOriginAllowed();
             TestAllowedOriginAccepted();
+            TestFullWebPageUrlAllowlistNormalizesToOrigin();
             TestDisallowedOriginRejected();
             TestFileOriginAllowed();
             Console.WriteLine($"Phase 28: {_passCount} checks passed.");
@@ -92,6 +94,40 @@ namespace Unity.FoxgloveSDK.Tests
             catch (WebSocketException ex)
             {
                 Assert(false, $"Allowed Origin: unexpected error: {ex.Message}");
+            }
+            finally
+            {
+                backend.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Users often copy the full Foxglove Web address, including project,
+        /// layout, and query parameters. The transport must store only the
+        /// browser Origin part for CSWSH matching.
+        /// </summary>
+        static void TestFullWebPageUrlAllowlistNormalizesToOrigin()
+        {
+            var backend = new ManagedWsBackend();
+            backend.AddAllowedOrigin("https://app.foxglove.dev/cf-lab/p/prj_0eKcTwvTR2XowsUv/view?layoutId=lay_0eMDFZm9GZOZLDOT&ds=foxglove-websocket");
+            backend.Start("127.0.0.1", 18795);
+
+            try
+            {
+                Assert(backend.AllowedOrigins.Contains("https://app.foxglove.dev"),
+                    "Full URL allowlist: stored browser origin only");
+
+                var ws = new ClientWebSocket();
+                ws.Options.AddSubProtocol("foxglove.sdk.v1");
+                ws.Options.SetRequestHeader("Origin", "https://app.foxglove.dev");
+                var cts = new CancellationTokenSource(5000);
+                ws.ConnectAsync(new Uri("ws://127.0.0.1:18795/"), cts.Token).GetAwaiter().GetResult();
+                Assert(ws.State == WebSocketState.Open, "Full URL allowlist: origin connection accepted");
+                CloseClientWebSocketForCleanup(ws);
+            }
+            catch (WebSocketException ex)
+            {
+                Assert(false, $"Full URL allowlist: unexpected error: {ex.Message}");
             }
             finally
             {

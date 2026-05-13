@@ -33,6 +33,7 @@ You will follow the same path most users need: install the package, connect Foxg
 - [10_Architecture](10_Architecture.md): runtime, protocol, MCAP, and FoxRun internals for advanced users.
 - [11_Troubleshooting](11_Troubleshooting.md): symptom-based fixes.
 - [13_Schema_Coverage](13_Schema_Coverage.md): official protobuf schema coverage and typed publisher boundaries.
+- [15_Secure_WSS](15_Secure_WSS.md): optional Unity-native WSS/TLS setup, root CA distribution, and token gate notes.
 
 ## 7. Project Selection
 

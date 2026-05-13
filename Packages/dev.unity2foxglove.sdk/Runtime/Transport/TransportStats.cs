@@ -46,6 +46,10 @@ namespace Unity.FoxgloveSDK.Transport
         public long TotalQueuedFrames { get; init; }
         /// <summary>Total queued bytes across all active clients (sum of snapshots).</summary>
         public long TotalQueuedBytes { get; init; }
+        /// <summary>Configured per-client queued-frame capacity for this transport.</summary>
+        public int MaxQueuedFramesPerClient { get; init; }
+        /// <summary>Configured per-client queued-byte capacity for this transport.</summary>
+        public int MaxQueuedBytesPerClient { get; init; }
         /// <summary>Per-client health details, one entry per connected client.</summary>
         public IReadOnlyList<TransportClientStats> Clients { get; init; }
 

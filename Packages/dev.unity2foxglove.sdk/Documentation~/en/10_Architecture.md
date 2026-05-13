@@ -15,7 +15,8 @@ Main pieces:
 - `FoxgloveManager`: MonoBehaviour entry point and Inspector-facing configuration.
 - `FoxgloveRuntime`: runtime coordinator for session, recording, replay, assets, parameters, and services.
 - `FoxgloveSession`: protocol-level WebSocket session handling server info, channels, messages, Parameters, Services, client publish, assets, playback control, and connection graph.
-- `ManagedWsBackend`: managed WebSocket transport.
+- `ManagedWsBackend`: managed plain WebSocket transport.
+- `ManagedWssBackend`: optional Unity-native TLS WebSocket transport. It authenticates an `SslStream`, then reuses the same managed WebSocket handshake, frame, queue, Origin Guard, token gate, and stats logic as `ManagedWsBackend`.
 - Publisher components: Unity-facing components that publish Transform, Scene, Camera, and FoxRun data.
 
 ## 4. Live Data Path
@@ -68,13 +69,21 @@ Generated files are meant to be build artifacts, not hand-edited source.
 
 If a control frame still cannot fit after stale data is dropped, the slow client is disconnected. Queue size is an internal default in this phase, not an Inspector setting.
 
-## 10. IL2CPP Preservation
+## 10. Secure WebSocket Mode
+
+`FoxgloveManager` can run either plain `ws://` or secure `wss://` for one manager instance. The default remains plain `ws://127.0.0.1:8765` for existing scenes. Selecting `SecureWebSocket` constructs `ManagedWssBackend` and injects it into `FoxgloveRuntime`; it does not rely on the runtime default constructor.
+
+WSS mode uses a PFX certificate with a private key. The optional root CA distributor is an HTTP bootstrap helper only. Users must compare the displayed SHA-256 fingerprint before importing or trusting the CA. Binding the distributor to `0.0.0.0` exposes the CA download page to the network and should be used only on trusted lab networks.
+
+The optional query token is a lightweight connection gate. It is protected in transit only after TLS is established. Do not treat it as OAuth, mTLS, or user identity. URLs and Inspector labels redact token values.
+
+## 11. IL2CPP Preservation
 
 Unity2Foxglove supports both protobuf and JSON channels. Protobuf is the default for publishers that support it; JSON remains available for compatibility, debugging, and JSON-only publishers. IL2CPP builds still need preservation rules for Newtonsoft.Json and the SDK runtime assembly because the package keeps JSON paths available.
 
 The practical build checklist is in [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md).
 
-## 11. Extension Points
+## 12. Extension Points
 
 Common extension points:
 
@@ -84,7 +93,7 @@ Common extension points:
 - Add MCAP replay adapters for custom scene objects.
 - Add asset roots for file-backed resources.
 
-## 12. Compatibility Notes
+## 13. Compatibility Notes
 
 - SDK core targets Unity 6000.0 LTSC or later. Unity 2022 is not supported.
 - The demo project is developed on Unity 6000.3.14f1 LTSC; compatible with Unity 6000.0.74f1 LTSC.

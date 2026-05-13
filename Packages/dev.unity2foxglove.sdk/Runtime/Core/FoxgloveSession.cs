@@ -416,14 +416,17 @@ namespace Unity.FoxgloveSDK.Core
                 return true;
             }
 
+            if (stats.MaxQueuedFramesPerClient <= 0 || stats.MaxQueuedBytesPerClient <= 0)
+                return false;
+
             var minFrames = int.MaxValue;
             var minBytes = int.MaxValue;
             var frameReserve = Math.Max(0, reserveFrames);
             var byteReserve = Math.Max(0, reserveBytes);
             foreach (var client in stats.Clients)
             {
-                minFrames = Math.Min(minFrames, ManagedWsBackend.MaxQueuedFrames - client.QueuedFrames - frameReserve);
-                minBytes = Math.Min(minBytes, ManagedWsBackend.MaxQueuedBytes - client.QueuedBytes - byteReserve);
+                minFrames = Math.Min(minFrames, stats.MaxQueuedFramesPerClient - client.QueuedFrames - frameReserve);
+                minBytes = Math.Min(minBytes, stats.MaxQueuedBytesPerClient - client.QueuedBytes - byteReserve);
             }
 
             frameHeadroom = Math.Max(0, minFrames);
