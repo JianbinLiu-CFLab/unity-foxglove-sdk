@@ -116,10 +116,10 @@ The SDK provides a command-line script for IL2CPP standalone player builds:
 
 ```powershell
 # Run from the repository root (target auto-selected based on current OS)
-python Scripts/build_unity_il2cpp.py
+python Scripts/build_tools/unity_il2cpp.py
 
 # Explicitly specify Windows 64-bit
-python Scripts/build_unity_il2cpp.py --target win64
+python Scripts/build_tools/unity_il2cpp.py --target win64
 ```
 
 After building, run the generated Player and connect Foxglove to `ws://127.0.0.1:8765` to verify all features.

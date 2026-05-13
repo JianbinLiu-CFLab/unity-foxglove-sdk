@@ -2,11 +2,11 @@
 
 Release date: 2026-05-12
 
-Unity2Foxglove v1.3.0 prepares the next package release. Replace this summary with the final user-facing release description before publishing.
+Unity2Foxglove v1.3.0 was a package metadata and release-document synchronization step between the typed sensor publisher release and the later v1.4.0 security/replay documentation refresh.
 
 ## Highlights
 
-- Version metadata and release documents have been prepared.
+- Package metadata, README badges, and release-note links were synchronized for v1.3.0.
 
 ## Compatibility Notes
 
@@ -14,10 +14,10 @@ Unity2Foxglove v1.3.0 prepares the next package release. Replace this summary wi
 
 ## Verification
 
-Run before publishing the release:
+Run before publishing a release from this branch:
 
 ```powershell
 dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
-python Scripts/validate_release_package.py
-python Scripts/run_performance_baseline.py --quick --output build/performance/release
+python Scripts/release/validate_package.py
+python Scripts/performance/run_baseline.py --quick --output build/performance/release
 ```

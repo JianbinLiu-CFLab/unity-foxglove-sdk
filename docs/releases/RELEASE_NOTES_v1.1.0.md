@@ -22,8 +22,8 @@ Unity2Foxglove v1.1.0 focuses on camera protobuf parity and makes Protobuf the d
 Validated before release:
 
 - `dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj`
-- `python Scripts/validate_release_package.py`
-- `python Scripts/run_performance_baseline.py --quick --output build/performance/phase48-default-protobuf`
+- `python Scripts/release/validate_package.py`
+- `python Scripts/performance/run_baseline.py --quick --output build/performance/phase48-default-protobuf`
 
 Manual smoke:
 

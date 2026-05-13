@@ -41,16 +41,16 @@ Run from the repository root:
 
 ```powershell
 # Default: auto-select target based on current OS
-python Scripts/build_unity_il2cpp.py
+python Scripts/build_tools/unity_il2cpp.py
 
 # Explicitly specify Windows 64-bit
-python Scripts/build_unity_il2cpp.py --target win64
+python Scripts/build_tools/unity_il2cpp.py --target win64
 
 # Specify Linux 64-bit
-python Scripts/build_unity_il2cpp.py --target linux64
+python Scripts/build_tools/unity_il2cpp.py --target linux64
 
 # Specify macOS
-python Scripts/build_unity_il2cpp.py --target macos
+python Scripts/build_tools/unity_il2cpp.py --target macos
 ```
 
 The build script automatically:
@@ -68,14 +68,14 @@ If the script does not auto-find Unity, pass the path to your local Unity Editor
 Replace `<path-to-your-Unity.exe>` with the Unity version installed on your machine.
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --unity "<path-to-your-Unity.exe>"
+python Scripts/build_tools/unity_il2cpp.py --target win64 --unity "<path-to-your-Unity.exe>"
 ```
 
 Or set via environment variable:
 
 ```powershell
 $env:UNITY_EXE = "<path-to-your-Unity.exe>"
-python Scripts/build_unity_il2cpp.py --target win64
+python Scripts/build_tools/unity_il2cpp.py --target win64
 ```
 
 For example, a typical Unity Hub installation on Windows may look like:
@@ -89,7 +89,7 @@ $env:UNITY_EXE = "C:\Program Files\Unity\Hub\Editor\<unity-version>\Editor\Unity
 Custom build output directory (default: `build/Unity/<target>-il2cpp-<timestamp>/`):
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --build-dir build\Unity\my-custom-build
+python Scripts/build_tools/unity_il2cpp.py --target win64 --build-dir build\Unity\my-custom-build
 ```
 
 ### 4.3 --output: specify Player output path
@@ -97,13 +97,13 @@ python Scripts/build_unity_il2cpp.py --target win64 --build-dir build\Unity\my-c
 Precisely control the Player executable location:
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --output build\Unity\manual\WindowsIL2CPP\FoxgloveDemo.exe
+python Scripts/build_tools/unity_il2cpp.py --target win64 --output build\Unity\manual\WindowsIL2CPP\FoxgloveDemo.exe
 ```
 
 ### 4.4 --log: specify build log path
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --log build\Unity\custom-build.log
+python Scripts/build_tools/unity_il2cpp.py --target win64 --log build\Unity\custom-build.log
 ```
 
 ### 4.5 --dry-run: trial run (check parameters only, do not start Unity)
@@ -111,7 +111,7 @@ python Scripts/build_unity_il2cpp.py --target win64 --log build\Unity\custom-bui
 Verify paths and parameters before a real build:
 
 ```powershell
-python Scripts/build_unity_il2cpp.py --target win64 --dry-run
+python Scripts/build_tools/unity_il2cpp.py --target win64 --dry-run
 ```
 
 Example output:
@@ -128,7 +128,7 @@ Example output:
 
 ```powershell
 # Print build progress every 30 seconds (default 15 seconds)
-python Scripts/build_unity_il2cpp.py --target win64 --progress-interval 30
+python Scripts/build_tools/unity_il2cpp.py --target win64 --progress-interval 30
 ```
 
 ## 5. Build output structure

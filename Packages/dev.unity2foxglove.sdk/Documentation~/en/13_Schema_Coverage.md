@@ -43,7 +43,7 @@ For `foxglove.CompressedImage`, the JSON path stores JPEG data as base64 text be
 From the repository root:
 
 ```bash
-python Scripts/smoke/generate_phase44_all_schemas_mcap.py
+python Scripts/smoke/phase44_all_schemas_mcap.py
 ```
 
 The script writes:

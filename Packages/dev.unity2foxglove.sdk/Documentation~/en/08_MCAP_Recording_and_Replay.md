@@ -55,6 +55,13 @@ If the file opens but topics are missing, verify recording was enabled before Pl
 
 Unity should replay recorded messages and update replay adapters or forwarded Foxglove topics.
 
+Paused seeking and scrubbing use two related paths:
+
+- Unity scene objects receive a latest-at snapshot immediately, so replay adapters can follow the requested timeline even while playback is paused.
+- Foxglove panels receive bounded chronological history after a short debounce window, so active dragging does not flood the WebSocket client with stale panel data.
+
+This is scene reproduction and bounded panel history, not deterministic simulation replay.
+
 ## 7. Verify Replay
 
 Use this checklist:
@@ -64,6 +71,7 @@ Use this checklist:
 - Foxglove can connect while replay is active.
 - Recorded coordinate mode matches the active Unity coordinate mode, or Unity logs a clear warning.
 - Seeking or pausing works if playback control is enabled.
+- During paused scrubbing, the Unity scene updates promptly and Foxglove does not receive stale queued replay frames after seek reset.
 
 ## 8. Recording and Replay Should Not Run Together
 
