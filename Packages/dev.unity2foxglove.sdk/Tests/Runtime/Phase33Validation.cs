@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestDataOverflowDropsOldestData()
         {
-            var queue = new ManagedWsBackend.WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024);
+            var queue = new WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024);
 
             Check(queue.Enqueue(Data(1)).Accepted, "33A-1: data frame 1 accepted");
             Check(queue.Enqueue(Data(2)).Accepted, "33A-1b: data frame 2 accepted");
@@ -52,7 +52,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestControlOverflowDropsDataAndSendsControlFirst()
         {
-            var queue = new ManagedWsBackend.WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024);
+            var queue = new WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024);
             queue.Enqueue(Data(1));
             queue.Enqueue(Data(2));
             queue.Enqueue(Data(3));
@@ -61,14 +61,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.Accepted, "33A-2: control accepted into full data queue");
             Check(result.DroppedDataFrames == 1, "33A-2b: oldest data dropped to preserve control");
             Check(queue.Count == 3, "33A-2c: queue remains bounded");
-            Check(queue.TryDequeue(out var first) && first.Priority == ManagedWsBackend.FramePriority.Control,
+            Check(queue.TryDequeue(out var first) && first.Priority == FramePriority.Control,
                 "33A-2d: control frame dequeues before older data");
             Check(first.Payload[0] == 9, "33A-2e: dequeued control frame is the inserted frame");
         }
 
         private static void TestControlOnlyOverflowRequestsDisconnect()
         {
-            var queue = new ManagedWsBackend.WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024);
+            var queue = new WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024);
             queue.Enqueue(Control(1));
             queue.Enqueue(Control(2));
 
@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestClearDataFramesPreservesControlFrames()
         {
-            var queue = new ManagedWsBackend.WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024);
+            var queue = new WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024);
             queue.Enqueue(Data(1));
             queue.Enqueue(Control(9));
             queue.Enqueue(Data(2));
@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Tests
             var dropped = queue.ClearDataFrames();
             Check(dropped == 2, "33A-3e: seek reset drops queued data frames");
             Check(queue.Count == 1, "33A-3f: seek reset preserves queued control frames");
-            Check(queue.TryDequeue(out var frame) && frame.Priority == ManagedWsBackend.FramePriority.Control,
+            Check(queue.TryDequeue(out var frame) && frame.Priority == FramePriority.Control,
                 "33A-3g: preserved control frame still dequeues");
             Check(frame.Payload[0] == 9, "33A-3h: preserved control frame payload is unchanged");
         }
@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestSendQueueCompleteIsIdempotent()
         {
-            var queue = new ManagedWsBackend.WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024);
+            var queue = new WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024);
             queue.Enqueue(Data(1));
             queue.Complete();
             queue.Complete();
@@ -145,16 +145,16 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(actual[i] == expected[i], $"{label} byte {i}");
         }
 
-        private static ManagedWsBackend.QueuedFrame Data(byte marker, int length = 1)
+        private static QueuedFrame Data(byte marker, int length = 1)
         {
             var payload = new byte[length];
             payload[0] = marker;
-            return new ManagedWsBackend.QueuedFrame(WsOpcode.Binary, payload, ManagedWsBackend.FramePriority.Data);
+            return new QueuedFrame(WsOpcode.Binary, payload, FramePriority.Data);
         }
 
-        private static ManagedWsBackend.QueuedFrame Control(byte marker)
+        private static QueuedFrame Control(byte marker)
         {
-            return new ManagedWsBackend.QueuedFrame(WsOpcode.Text, new[] { marker }, ManagedWsBackend.FramePriority.Control);
+            return new QueuedFrame(WsOpcode.Text, new[] { marker }, FramePriority.Control);
         }
 
         private static void Check(bool condition, string label)

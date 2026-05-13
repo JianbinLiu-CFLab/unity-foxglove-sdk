@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestQueueSnapshotCounts()
         {
-            var q = new ManagedWsBackend.WsSendQueue(maxFrames: 10, maxQueuedBytes: 1024 * 1024);
+            var q = new WsSendQueue(maxFrames: 10, maxQueuedBytes: 1024 * 1024);
 
             q.Enqueue(C(1));
             q.Enqueue(C(2));
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestDataOverflowIncrementsDropped()
         {
-            var q = new ManagedWsBackend.WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024 * 1024);
+            var q = new WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024 * 1024);
             q.Enqueue(D(1));
             q.Enqueue(D(2));
             q.Enqueue(D(3));
@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestControlOverflowDisconnectObservable()
         {
-            var q = new ManagedWsBackend.WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024 * 1024);
+            var q = new WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024 * 1024);
             q.Enqueue(C(1));
             q.Enqueue(C(2));
             var result = q.Enqueue(C(3));
@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestSnapshotImmutability()
         {
-            var q = new ManagedWsBackend.WsSendQueue(maxFrames: 10, maxQueuedBytes: 1024 * 1024);
+            var q = new WsSendQueue(maxFrames: 10, maxQueuedBytes: 1024 * 1024);
             q.Enqueue(D(1));
             q.Enqueue(D(2));
 
@@ -216,10 +216,10 @@ namespace Unity.FoxgloveSDK.Tests
             // No exception thrown = pass
         }
 
-        private static ManagedWsBackend.QueuedFrame D(byte b) =>
-            new(WsOpcode.Binary, new[] { b }, ManagedWsBackend.FramePriority.Data);
-        private static ManagedWsBackend.QueuedFrame C(byte b) =>
-            new(WsOpcode.Text, new[] { b }, ManagedWsBackend.FramePriority.Control);
+        private static QueuedFrame D(byte b) =>
+            new(WsOpcode.Binary, new[] { b }, FramePriority.Data);
+        private static QueuedFrame C(byte b) =>
+            new(WsOpcode.Text, new[] { b }, FramePriority.Control);
 
         private static void Check(bool condition, string label)
         {
