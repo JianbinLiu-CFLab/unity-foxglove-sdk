@@ -116,14 +116,23 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var msg = JsonConvert.DeserializeObject<Advertise>(json);
+                var channels = msg?.Channels ?? new List<AdvertiseChannel>();
+                if (channels.Any(ch => ch == null
+                                       || string.IsNullOrWhiteSpace(ch.Topic)
+                                       || string.IsNullOrWhiteSpace(ch.Encoding)))
+                {
+                    _logger.LogWarning($"Client advertise rejected from client {clientId}: channel topic and encoding are required");
+                    return;
+                }
+
                 lock (_clientChannelsLock)
                 {
-                    foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
+                    foreach (var ch in channels)
                     {
                         _clientChannels[(clientId, ch.Id)] = ch;
                     }
                 }
-                foreach (var ch in msg.Channels ?? new List<AdvertiseChannel>())
+                foreach (var ch in channels)
                 {
                     _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}");
                     _graphDirty = true;
@@ -195,6 +204,8 @@ namespace Unity.FoxgloveSDK.Core
 
             lock (_playbackControlsLock)
             {
+                while (_pendingPlaybackControls.Count >= MaxPendingPlaybackControls)
+                    _pendingPlaybackControls.Dequeue();
                 _pendingPlaybackControls.Enqueue(new PendingPlaybackControl(
                     clientId, playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs, playbackRequestId));
             }
@@ -260,6 +271,12 @@ namespace Unity.FoxgloveSDK.Core
             catch
             {
                 _transport.SendBinary(clientId, BinaryEncoding.EncodeFetchAssetResponseError(0, "Malformed JSON"));
+                return;
+            }
+            if (msg == null || string.IsNullOrWhiteSpace(msg.Uri))
+            {
+                _transport.SendBinary(clientId,
+                    BinaryEncoding.EncodeFetchAssetResponseError(msg?.RequestId ?? 0, "Asset URI is required"));
                 return;
             }
             var runtime = Volatile.Read(ref _runtime);

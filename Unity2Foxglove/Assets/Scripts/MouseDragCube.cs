@@ -17,8 +17,8 @@ public class MouseDragCube : MonoBehaviour
     [SerializeField] private float _rotateSpeed = 3f;
     [SerializeField] private float _panSpeed = 0.01f;
     [SerializeField] private float _scaleSpeed = 0.5f;
-    [SerializeField] private float _minScale = 0.2f;
-    [SerializeField] private float _maxScale = 5f;
+    [SerializeField] private float _minScale = FoxgloveDemoSetup.ScaleMinimum;
+    [SerializeField] private float _maxScale = FoxgloveDemoSetup.ScaleMaximum;
     [SerializeField] private FoxgloveDemoSetup _demo;
 
     private Vector2 _lastMouse;

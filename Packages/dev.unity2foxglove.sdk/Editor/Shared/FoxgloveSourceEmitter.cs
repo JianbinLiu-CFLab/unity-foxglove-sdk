@@ -81,6 +81,19 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
+        /// Returns the stable generated source file name for a FoxRun partial
+        /// class. Global-namespace classes keep the historical
+        /// <c>ClassName_FoxRun.g.cs</c> shape; namespaced classes include the
+        /// namespace identity to avoid Roslyn hint-name and physical fallback
+        /// file collisions.
+        /// </summary>
+        public static string GeneratedSourceName(string ns, string className)
+        {
+            var identity = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
+            return SanitizeFileStem(identity) + "_FoxRun.g.cs";
+        }
+
+        /// <summary>
         /// Emits a C# change-detection expression comparing current and last values.
         /// The generated expression is part of the AOT-safe source and must not
         /// rely on runtime reflection.
@@ -89,26 +102,27 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var t = type.StartsWith("UnityEngine.") ? type.Substring(12) : type;
             var eps = FloatLiteral(epsilon < 0 ? 0 : epsilon);
+            var access = MemberAccess(member);
             switch (t)
             {
                 case "float":
                 case "Single":
                 case "System.Single":
-                    return $"__foxrun_float_changed(this.{member}, {lastVar}, {eps})";
+                    return $"__foxrun_float_changed({access}, {lastVar}, {eps})";
                 case "double":
                 case "Double":
                 case "System.Double":
-                    return $"__foxrun_double_changed(this.{member}, {lastVar}, {eps})";
+                    return $"__foxrun_double_changed({access}, {lastVar}, {eps})";
                 case "Vector3":
-                    return $"__foxrun_float_changed(this.{member}.x, {lastVar}.x, {eps}) || __foxrun_float_changed(this.{member}.y, {lastVar}.y, {eps}) || __foxrun_float_changed(this.{member}.z, {lastVar}.z, {eps})";
+                    return $"__foxrun_float_changed({access}.x, {lastVar}.x, {eps}) || __foxrun_float_changed({access}.y, {lastVar}.y, {eps}) || __foxrun_float_changed({access}.z, {lastVar}.z, {eps})";
                 case "Vector2":
-                    return $"__foxrun_float_changed(this.{member}.x, {lastVar}.x, {eps}) || __foxrun_float_changed(this.{member}.y, {lastVar}.y, {eps})";
+                    return $"__foxrun_float_changed({access}.x, {lastVar}.x, {eps}) || __foxrun_float_changed({access}.y, {lastVar}.y, {eps})";
                 case "Quaternion":
-                    return $"__foxrun_float_changed(this.{member}.x, {lastVar}.x, {eps}) || __foxrun_float_changed(this.{member}.y, {lastVar}.y, {eps}) || __foxrun_float_changed(this.{member}.z, {lastVar}.z, {eps}) || __foxrun_float_changed(this.{member}.w, {lastVar}.w, {eps})";
+                    return $"__foxrun_float_changed({access}.x, {lastVar}.x, {eps}) || __foxrun_float_changed({access}.y, {lastVar}.y, {eps}) || __foxrun_float_changed({access}.z, {lastVar}.z, {eps}) || __foxrun_float_changed({access}.w, {lastVar}.w, {eps})";
                 case "Color":
-                    return $"__foxrun_float_changed(this.{member}.r, {lastVar}.r, {eps}) || __foxrun_float_changed(this.{member}.g, {lastVar}.g, {eps}) || __foxrun_float_changed(this.{member}.b, {lastVar}.b, {eps}) || __foxrun_float_changed(this.{member}.a, {lastVar}.a, {eps})";
+                    return $"__foxrun_float_changed({access}.r, {lastVar}.r, {eps}) || __foxrun_float_changed({access}.g, {lastVar}.g, {eps}) || __foxrun_float_changed({access}.b, {lastVar}.b, {eps}) || __foxrun_float_changed({access}.a, {lastVar}.a, {eps})";
                 default:
-                    return $"!EqualityComparer<{type}>.Default.Equals(this.{member}, {lastVar})";
+                    return $"!EqualityComparer<{type}>.Default.Equals({access}, {lastVar})";
             }
         }
 
@@ -222,14 +236,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var fields = topicMap[topics[i]];
                 var schema = CSharpStringLiteral(fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "");
                 var topic = CSharpStringLiteral(topics[i]);
-                sb.Append($"{pad}            case {i}: mgr.PublishJson(\"{topic}\", \"{schema}\", new {{ ");
-                for (int j = 0; j < fields.Count; j++)
-                {
-                    if (j > 0) sb.Append(", ");
-                    var cleanName = fields[j].MemberName.TrimStart('_');
-                    sb.Append($"{cleanName} = {ValueExpr(fields[j].MemberName, fields[j].TypeName)}");
-                }
-                sb.AppendLine($" }}, nowNs); break;");
+                sb.AppendLine($"{pad}            case {i}: mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs); break;");
             }
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
@@ -338,7 +345,7 @@ namespace Unity.FoxgloveSDK.Editor
                     if (mode == 0 || mode == 3) continue;
                     sb.AppendLine($"{pad}            case {i}:");
                     for (int j = 0; j < fields.Count; j++)
-                        sb.AppendLine($"{pad}                __last_{i}_{j} = this.{fields[j].MemberName};");
+                        sb.AppendLine($"{pad}                __last_{i}_{j} = {MemberAccess(fields[j].MemberName)};");
                     sb.AppendLine($"{pad}                __hasLast_{i} = true;");
                     sb.AppendLine($"{pad}                __lastPublishSec_{i} = nowSec;");
                     sb.AppendLine($"{pad}                break;");
@@ -362,7 +369,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var t = type;
             if (t.StartsWith("UnityEngine.")) t = t.Substring(12);
-            var access = "this." + name;
+            var access = MemberAccess(name);
             switch (t)
             {
                 case "Vector3": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z }}";
@@ -371,6 +378,44 @@ namespace Unity.FoxgloveSDK.Editor
                 case "Color": return $"new {{ r = {access}.r, g = {access}.g, b = {access}.b, a = {access}.a }}";
                 default: return access;
             }
+        }
+
+        private static string PayloadExpr(IReadOnlyList<TopicMember> fields)
+        {
+            var jsonNames = fields.Select(f => JsonFieldName(f.MemberName)).ToList();
+            if (jsonNames.All(IsAnonymousPropertyName))
+            {
+                var sb = new StringBuilder("new { ");
+                for (int j = 0; j < fields.Count; j++)
+                {
+                    if (j > 0) sb.Append(", ");
+                    sb.Append($"{EscapeIdentifier(jsonNames[j])} = {ValueExpr(fields[j].MemberName, fields[j].TypeName)}");
+                }
+                sb.Append(" }");
+                return sb.ToString();
+            }
+
+            var dict = new StringBuilder("new Dictionary<string, object> { ");
+            for (int j = 0; j < fields.Count; j++)
+            {
+                if (j > 0) dict.Append(", ");
+                dict.Append($"[\"{CSharpStringLiteral(jsonNames[j])}\"] = {ValueExpr(fields[j].MemberName, fields[j].TypeName)}");
+            }
+            dict.Append(" }");
+            return dict.ToString();
+        }
+
+        private static string JsonFieldName(string memberName)
+        {
+            var name = memberName != null && memberName.StartsWith("@", StringComparison.Ordinal)
+                ? memberName.Substring(1)
+                : memberName ?? "";
+            return name.TrimStart('_');
+        }
+
+        private static string MemberAccess(string memberName)
+        {
+            return "this." + EscapeIdentifier(memberName);
         }
 
         private static string FloatLiteral(float value)
@@ -465,6 +510,130 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.Append(IsIdentifierPart(ch) ? ch : '_');
 
             return sb.ToString();
+        }
+
+        private static string SanitizeFileStem(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "FoxRunSource";
+
+            var sb = new StringBuilder(value.Length + 1);
+            foreach (var ch in value)
+                sb.Append(IsIdentifierPart(ch) ? ch : '_');
+
+            return sb.Length == 0 ? "FoxRunSource" : sb.ToString();
+        }
+
+        private static string EscapeIdentifier(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return value;
+
+            var bare = value.StartsWith("@", StringComparison.Ordinal) ? value.Substring(1) : value;
+            return IsCSharpKeyword(bare) ? "@" + bare : value;
+        }
+
+        private static bool IsAnonymousPropertyName(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return false;
+
+            var bare = value.StartsWith("@", StringComparison.Ordinal) ? value.Substring(1) : value;
+            if (string.IsNullOrEmpty(bare) || !IsIdentifierStart(bare[0]))
+                return false;
+
+            for (var i = 1; i < bare.Length; i++)
+                if (!IsIdentifierPart(bare[i]))
+                    return false;
+
+            return true;
+        }
+
+        private static bool IsCSharpKeyword(string value)
+        {
+            switch (value)
+            {
+                case "abstract":
+                case "as":
+                case "base":
+                case "bool":
+                case "break":
+                case "byte":
+                case "case":
+                case "catch":
+                case "char":
+                case "checked":
+                case "class":
+                case "const":
+                case "continue":
+                case "decimal":
+                case "default":
+                case "delegate":
+                case "do":
+                case "double":
+                case "else":
+                case "enum":
+                case "event":
+                case "explicit":
+                case "extern":
+                case "false":
+                case "finally":
+                case "fixed":
+                case "float":
+                case "for":
+                case "foreach":
+                case "goto":
+                case "if":
+                case "implicit":
+                case "in":
+                case "int":
+                case "interface":
+                case "internal":
+                case "is":
+                case "lock":
+                case "long":
+                case "namespace":
+                case "new":
+                case "null":
+                case "object":
+                case "operator":
+                case "out":
+                case "override":
+                case "params":
+                case "private":
+                case "protected":
+                case "public":
+                case "readonly":
+                case "ref":
+                case "return":
+                case "sbyte":
+                case "sealed":
+                case "short":
+                case "sizeof":
+                case "stackalloc":
+                case "static":
+                case "string":
+                case "struct":
+                case "switch":
+                case "this":
+                case "throw":
+                case "true":
+                case "try":
+                case "typeof":
+                case "uint":
+                case "ulong":
+                case "unchecked":
+                case "unsafe":
+                case "ushort":
+                case "using":
+                case "virtual":
+                case "void":
+                case "volatile":
+                case "while":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static bool IsIdentifierStart(char ch)

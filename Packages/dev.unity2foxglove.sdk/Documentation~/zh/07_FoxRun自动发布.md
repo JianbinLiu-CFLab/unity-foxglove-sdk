@@ -50,6 +50,9 @@ public partial class TestLog : MonoBehaviour       // 必须是 partial
 | `topic` | `string` | 必填 | Foxglove 话题名，如 `"/debug/position"` |
 | `RateHz` | `float` | `10f` | 发布频率（Hz） |
 | `SchemaName` | `string` | `""` | Schema 名称。为空时发布 schemaless JSON；填写已注册的 schema 名则 3D 面板可渲染 |
+| `PublishMode` | `FoxRunPublishMode` | `FixedRate` | 发布策略：固定频率、变化触发、变化或心跳、手动触发 |
+| `ChangeEpsilon` | `float` | `0f` | `OnChange` / `OnChangeOrInterval` 的数值变化阈值 |
+| `ForceIntervalSeconds` | `float` | `0f` | `OnChangeOrInterval` 的强制心跳间隔 |
 
 ### SchemaName 参数
 
@@ -64,6 +67,19 @@ private Vector3 _pose;  // 3D 面板可识别并渲染
 - `foxglove.FrameTransform`
 - `foxglove.SceneUpdate`
 - `foxglove.CompressedImage`
+
+### PublishMode 参数
+
+`PublishMode` 用于控制自动发布策略：
+
+| 模式 | 行为 |
+|------|------|
+| `FixedRate` | 按 `RateHz` 固定频率发布 |
+| `OnChange` | 值发生变化时发布；数值类型使用 `ChangeEpsilon` 判断变化 |
+| `OnChangeOrInterval` | 值变化时发布；长时间无变化时按 `ForceIntervalSeconds` 发送心跳 |
+| `OnTrigger` | 不按扫描 tick 自动发布，由生成的 `FoxRun_Trigger...()` 方法或 `FoxRun_TriggerAll()` 手动触发 |
+
+同一 topic 上的多个成员如果混用了不同 `PublishMode`、`ChangeEpsilon` 或 `ForceIntervalSeconds`，生成器会报告 `FOXRUN005`，提醒将 topic 拆分或统一策略。
 
 ## 支持的类型
 
@@ -118,7 +134,7 @@ ISG DLL 位置：`Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceG
 
 ISG 在 IL2CPP 编译时不生效，因此在 Player 构建前，`FoxrunBuildPreprocess`（`IPreprocessBuildWithReport`）会调用 `FoxrunCodeGenerator.GenerateSourceFiles()` 生成真实 `.g.cs` 文件到 `Assets/Scripts/Generated/`。
 
-生成的文件格式为 `{ClassName}_FoxRun.g.cs`，包裹在 `#if !UNITY_EDITOR` 中，仅在 Player 编译时生效。
+生成的文件格式为 `{ClassName}_FoxRun.g.cs`；如果类位于命名空间中，则文件名会包含命名空间片段（例如 `Robotics_Sim_TestLog_FoxRun.g.cs`），避免同名类覆盖。生成文件包裹在 `#if !UNITY_EDITOR` 中，仅在 Player 编译时生效。
 
 ### 生成文件对比
 
@@ -141,7 +157,7 @@ ISG 在 IL2CPP 编译时不生效，因此在 Player 构建前，`FoxrunBuildPre
 
 - 每个 topic 有自己的冷却时间：`cooldown = 1f / RateHz`
 - 当冷却计时器归零时才触发一次发布，然后重置
-- `RateHz = 0` 时不做限制，每帧都发（谨慎使用）
+- `RateHz` 小于或等于 0 时使用 1 秒冷却，不会退化成每帧发布
 - 多次标注同一 topic 的不同字段取最大的 `RateHz` 值
 
 ## 诊断
@@ -153,6 +169,8 @@ ISG 会报告以下诊断：
 | `FOXRUN001` | Error | 类未声明为 `partial`。必须添加 `partial` 关键字 |
 | `FOXRUN002` | Warning | 同一 topic 的多个字段指定了不同的 `SchemaName` 值 |
 | `FOXRUN003` | Warning | 去除下划线前缀后字段名碰撞（如 `_pos` 和 `pos`） |
+| `FOXRUN004` | Error | 在同一个字段声明里用 `[FoxRun]` 标注多个变量 |
+| `FOXRUN005` | Warning | 同一 topic 的多个成员混用了不同发布策略参数 |
 
 ## 常见问题
 

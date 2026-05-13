@@ -91,6 +91,7 @@ namespace Unity.FoxgloveSDK.Components
         private float _scanTimer;
         /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
         private float _mgrSearchCooldown;
+        /// <summary>Fallback scene scan interval used when generated sources did not self-register.</summary>
         private const float ScanIntervalSeconds = 2f;
 
         /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>

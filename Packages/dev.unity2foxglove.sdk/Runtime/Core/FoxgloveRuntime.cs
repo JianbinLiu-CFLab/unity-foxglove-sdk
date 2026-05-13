@@ -147,10 +147,23 @@ namespace Unity.FoxgloveSDK.Core
             // Re-advertise immediately so connected clients pick up the new service
             if (_session != null)
             {
-                var adv = new AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
-                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
+                _session.AdvertiseRegisteredService(id);
             }
             return id;
+        }
+
+        /// <summary>
+        /// Unregister a service and notify connected clients when the runtime
+        /// is currently serving a session.
+        /// </summary>
+        public bool UnregisterService(uint serviceId)
+        {
+            if (serviceId == 0)
+                return false;
+
+            return _session != null
+                ? _session.UnregisterService(serviceId)
+                : _services.Unregister(serviceId);
         }
 
         /// <summary>

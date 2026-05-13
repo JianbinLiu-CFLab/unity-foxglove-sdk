@@ -87,22 +87,30 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Remove all subscriptions targeting a channel (e.g. on unadvertise).</summary>
-        public void RemoveChannel(uint channelId)
+        /// <summary>
+        /// Remove all subscriptions targeting a channel and return removed
+        /// client/subscription pairs for connection graph cleanup.
+        /// </summary>
+        public List<(uint clientId, uint subscriptionId, uint channelId)> RemoveChannel(uint channelId)
         {
             lock (_lock)
             {
-                foreach (var subs in _clients.Values)
+                var removed = new List<(uint, uint, uint)>();
+                foreach (var (clientId, subs) in _clients)
                 {
                     var toRemove = new List<uint>();
                     foreach (var (subId, chId) in subs)
                     {
                         if (chId == channelId)
+                        {
                             toRemove.Add(subId);
+                            removed.Add((clientId, subId, chId));
+                        }
                     }
                     foreach (var sid in toRemove)
                         subs.Remove(sid);
                 }
+                return removed;
             }
         }
 

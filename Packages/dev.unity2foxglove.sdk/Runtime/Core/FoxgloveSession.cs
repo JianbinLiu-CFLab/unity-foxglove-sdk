@@ -58,6 +58,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
         private readonly object _playbackControlsLock = new();
         private readonly Queue<PendingPlaybackControl> _pendingPlaybackControls = new();
+        /// <summary>Maximum queued playback control requests awaiting the runtime owner tick.</summary>
+        internal const int MaxPendingPlaybackControls = 64;
         /// <summary>Lock protecting <c>_clientChannels</c> concurrent access.</summary>
         private readonly object _clientChannelsLock = new();
         /// <summary>Raised when a client-published binary message is received.</summary>
@@ -196,7 +198,12 @@ namespace Unity.FoxgloveSDK.Core
                 _graphDirty = true;
             }
             if (!_channels.Remove(channelId)) return;
-            _subscriptions.RemoveChannel(channelId);
+            foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
+            {
+                if (ch != null)
+                    _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{subId}");
+                _graphDirty = true;
+            }
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Unadvertise { ChannelIds = new List<uint> { channelId } }));
             BroadcastGraphUpdate();
@@ -279,6 +286,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             var channel = _channels.Get(channelId);
             if (channel == null) return;
+            payload ??= Array.Empty<byte>();
             var recorder = Volatile.Read(ref _recorder);
             recorder?.WriteMessage(channelId, logTimeNs, payload);
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
@@ -308,6 +316,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             var channel = _channels.Get(channelId);
             if (channel == null) return;
+            payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {
@@ -344,12 +353,50 @@ namespace Unity.FoxgloveSDK.Core
         public uint RegisterService(Protocol.ServiceDescriptor descriptor)
         {
             var id = _services.Register(descriptor);
-            var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { _services.GetById(id) } };
+            AdvertiseRegisteredService(id);
+            return id;
+        }
+
+        /// <summary>
+        /// Unregister a service endpoint, unadvertise it from clients, and
+        /// remove its connection-graph provider edge.
+        /// </summary>
+        public bool UnregisterService(uint serviceId)
+        {
+            var service = _services.GetById(serviceId);
+            if (!_services.Unregister(serviceId))
+                return false;
+
+            _transport.BroadcastText(JsonConvert.SerializeObject(new UnadvertiseServices
+            {
+                ServiceIds = new List<uint> { serviceId }
+            }));
+
+            if (service != null)
+            {
+                _graph.RemoveAdvertisedService(service.Name, "unity");
+                _graphDirty = true;
+                BroadcastGraphUpdate();
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Advertise an already-registered service and update the connection graph.
+        /// Used by runtime-owned service registrations that share this session registry.
+        /// </summary>
+        internal void AdvertiseRegisteredService(uint serviceId)
+        {
+            var service = _services.GetById(serviceId);
+            if (service == null)
+                return;
+
+            var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { service } };
             _transport.BroadcastText(JsonConvert.SerializeObject(adv));
-            _graph.AddAdvertisedService(descriptor.Name, "unity");
+            _graph.AddAdvertisedService(service.Name, "unity");
             _graphDirty = true;
             BroadcastGraphUpdate();
-            return id;
         }
 
         // ── Time ──
@@ -362,10 +409,10 @@ namespace Unity.FoxgloveSDK.Core
         public void BroadcastTime(float rateHz = 10f)
         {
             var now = DateTime.UtcNow.Ticks;
-            var effectiveRate = rateHz > 0 ? rateHz : 10f;
-            var interval = TimeSpan.TicksPerSecond / (long)effectiveRate;
-            if (effectiveRate > TimeSpan.TicksPerSecond)
-                interval = 1L;
+            var effectiveRate = rateHz > 0f && !float.IsNaN(rateHz) && !float.IsInfinity(rateHz)
+                ? rateHz
+                : 10f;
+            var interval = Math.Max(1L, (long)(TimeSpan.TicksPerSecond / (double)effectiveRate));
             if (now - _lastTimeBroadcastTicks < interval)
                 return;
             _lastTimeBroadcastTicks = now;
@@ -576,6 +623,7 @@ namespace Unity.FoxgloveSDK.Core
 
             _graph.RemoveClient(clientId);
             _graphDirty = true;
+            BroadcastGraphUpdate();
         }
 
         /// <summary>

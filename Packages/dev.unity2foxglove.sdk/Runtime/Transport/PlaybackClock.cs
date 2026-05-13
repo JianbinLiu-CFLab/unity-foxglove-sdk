@@ -157,6 +157,11 @@ namespace Unity.FoxgloveSDK.Transport
         public void Play()
         {
             if (!_enabled) return;
+            if (_playbackStatus == PlaybackStatus.Ended)
+            {
+                _currentTimeNs = _startNs;
+                _lastTickWallTime = null;
+            }
             _playbackStatus = PlaybackStatus.Playing;
             _lastTickWallTime ??= DateTime.UtcNow;
         }

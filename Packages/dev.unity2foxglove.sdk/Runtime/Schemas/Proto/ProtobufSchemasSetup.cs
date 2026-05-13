@@ -5,7 +5,6 @@
 // Purpose: Convenience bootstrap for registering bundled Foxglove protobuf
 // schemas and enabling protobuf message encoding support.
 
-using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Foxglove.Schemas
@@ -18,12 +17,8 @@ namespace Foxglove.Schemas
     /// </summary>
     public static class ProtobufSchemasSetup
     {
-        // Reference equality is intentional: each schema registry instance must
-        // be populated once, but separate sessions/registries remain independent.
-        private static readonly HashSet<ISchemaRegistry> _seenRegistries = new();
-
         /// <summary>
-        /// Register all protobuf schemas into the given registry (idempotent per-registry)
+        /// Register all protobuf schemas into the given registry
         /// and enable protobuf encoding support on the session.
         /// </summary>
         public static void Initialize(ISchemaRegistry schemaRegistry, Unity.FoxgloveSDK.Core.FoxgloveSession session)
@@ -35,16 +30,12 @@ namespace Foxglove.Schemas
 
         /// <summary>
         /// Register all bundled official Foxglove protobuf schemas into the given registry.
-        /// Idempotent: each registry instance is only populated once.
+        /// Re-registering is safe because schema registries overwrite existing
+        /// entries for the same schema name and encoding.
         /// </summary>
         public static void RegisterSchemas(ISchemaRegistry schemaRegistry)
         {
             if (schemaRegistry == null) return;
-            lock (_seenRegistries)
-            {
-                if (!_seenRegistries.Add(schemaRegistry))
-                    return;
-            }
             ProtobufSchemaRegistryLoader.FromDefault(schemaRegistry).RegisterAll();
         }
     }

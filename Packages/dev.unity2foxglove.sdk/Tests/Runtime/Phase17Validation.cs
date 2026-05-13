@@ -95,6 +95,20 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(fullDir, "Settings", "UniversalRenderPipelineGlobalSettings.asset")), "FullDemo URP global settings exists");
             Assert(File.Exists(Path.Combine(fullDir, "Settings", "UniversalRenderPipelineGlobalSettings.asset.meta")), "FullDemo URP global settings meta exists");
 
+            var fullScene = File.ReadAllText(Path.Combine(fullDir, "Scenes", "FullDemoVisualization.unity"));
+            Assert(!fullScene.Contains("Assembly-CSharp::Phase53FoxRunTriggerSmoke"), "FullDemo scene has current FoxRun trigger class identifier");
+
+            var defaultVolumeProfile = File.ReadAllText(Path.Combine(fullDir, "Settings", "DefaultVolumeProfile.asset"));
+            Assert(!defaultVolumeProfile.Contains("Unity.RenderPipelines.Core.Editor.Tests"), "FullDemo default volume profile has no URP Editor.Tests components");
+
+            var demoSetupSource = File.ReadAllText(Path.Combine(fullDir, "Scripts", "FoxgloveDemoSetup.cs"));
+            Assert(demoSetupSource.Contains("OnClientMessage -= OnClientMessageReceived"), "FullDemo demo setup unsubscribes client message callback");
+            Assert(demoSetupSource.Contains("UnregisterService(_resetSvcId)"), "FullDemo demo setup unregisters reset service on destroy");
+            Assert(demoSetupSource.Contains("Mathf.Clamp") && demoSetupSource.Contains("ScaleMinimum") && demoSetupSource.Contains("ScaleMaximum"), "FullDemo demo setup clamps remote scale parameter");
+
+            var sampleSyncSource = File.ReadAllText(Path.Combine(repoRoot, "Scripts", "samples", "sync_full_demo.py"));
+            Assert(sampleSyncSource.Contains("\"  _recordingDirectory:\""), "FullDemo sample sync scrubs recording directory");
+
             // ── Forbidden items in samples ──
             var forbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
             foreach (var sampleDir in new[] { basicDir, fullDir })

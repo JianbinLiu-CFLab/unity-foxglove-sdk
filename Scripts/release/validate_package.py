@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
+THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 
 # File extensions that Unity tracks with .meta sidecar files in samples.
 UNITY_META_EXTENSIONS = {
@@ -61,6 +62,17 @@ FORBIDDEN_PUBLIC_PATTERNS = (
     ("to-do marker", re.compile(r"\bTO" r"DO\b")),
     ("TBD marker", re.compile(r"\bTBD\b")),
     ("fix-me marker", re.compile(r"\bFIX" r"ME\b")),
+    ("removed Unity IL2CPP build script path", re.compile(r"Scripts[\\/]+build_unity_il2cpp\.py")),
+    ("Unity Editor.Tests component", re.compile(r"Unity\.RenderPipelines\.Core\.Editor\.Tests")),
+    ("stale Phase scene class identifier", re.compile(r"Assembly-CSharp::Phase\d+")),
+)
+
+# Bundled binary dependencies that must be named in the third-party notice file.
+THIRD_PARTY_NOTICE_REQUIREMENTS = (
+    (
+        PACKAGE / "Plugins" / "Google.Protobuf" / "Google.Protobuf.dll",
+        ("Google.Protobuf", "BSD-3-Clause", "Plugins/Google.Protobuf/Google.Protobuf.dll"),
+    ),
 )
 
 # Directory path parts that indicate local/generated sample artifacts.
@@ -309,6 +321,29 @@ def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     add(results, "Google.Protobuf DLL/asmdef naming", not offenders, "; ".join(offenders) if offenders else "no collision")
 
 
+def check_third_party_notices(results: list[CheckResult]) -> None:
+    """Ensure every bundled binary dependency has a matching license notice."""
+    if not THIRD_PARTY_NOTICES.exists():
+        add(results, "third-party notices exist", False, rel(THIRD_PARTY_NOTICES))
+        return
+
+    notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
+    missing: list[str] = []
+    for artifact, required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
+        if not artifact.exists():
+            continue
+        absent = [token for token in required_tokens if token not in notices]
+        if absent:
+            missing.append(f"{rel(artifact)} missing {', '.join(absent)}")
+
+    add(
+        results,
+        "third-party notices cover bundled binaries",
+        not missing,
+        "; ".join(missing) if missing else "all bundled binary notices present",
+    )
+
+
 def print_results(results: list[CheckResult]) -> None:
     """Print check results as aligned PASS/FAIL lines."""
     name_width = max(len(r.name) for r in results) if results else EMPTY_RESULT_NAME_WIDTH
@@ -330,6 +365,7 @@ def main() -> int:
     check_forbidden_sample_artifacts(results)
     check_package_build_artifacts(results)
     check_google_protobuf_collision(results)
+    check_third_party_notices(results)
 
     print_results(results)
     failed = [r for r in results if not r.ok]

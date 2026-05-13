@@ -82,15 +82,55 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Maximum service payload size in bytes (1 MiB).</summary>
         public const int MaxPayloadBytes = 1_048_576;
+        /// <summary>Maximum pending service calls accepted from a single client.</summary>
+        public const int MaxPendingCallsPerClient = 64;
+        /// <summary>Maximum pending service calls accepted across all clients.</summary>
+        public const int MaxPendingCallsTotal = 256;
         /// <summary>Default service call timeout (10 seconds).</summary>
         public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
 
         /// <summary>Enqueue a new service call using the client-provided callId.</summary>
         public FoxgloveServiceCall Enqueue(uint serviceId, uint callId, uint clientId, string encoding, byte[] payload)
         {
+            if (TryEnqueue(serviceId, callId, clientId, encoding, payload, out var call, out var error))
+                return call;
+            throw new InvalidOperationException(error);
+        }
+
+        /// <summary>
+        /// Try to enqueue a service call while enforcing pending-call budgets.
+        /// </summary>
+        public bool TryEnqueue(
+            uint serviceId,
+            uint callId,
+            uint clientId,
+            string encoding,
+            byte[] payload,
+            out FoxgloveServiceCall call,
+            out string error)
+        {
             lock (_lock)
             {
-                var call = new FoxgloveServiceCall
+                var key = (clientId, callId);
+                if (!_pending.ContainsKey(key))
+                {
+                    var clientPending = _pending.Keys.Count(k => k.clientId == clientId);
+                    if (clientPending >= MaxPendingCallsPerClient)
+                    {
+                        call = null;
+                        error = $"Too many pending service calls for client {clientId}";
+                        return false;
+                    }
+
+                    if (_pending.Count >= MaxPendingCallsTotal)
+                    {
+                        call = null;
+                        error = "Too many pending service calls";
+                        return false;
+                    }
+                }
+
+                call = new FoxgloveServiceCall
                 {
                     ServiceId = serviceId,
                     CallId = callId,
@@ -99,8 +139,9 @@ namespace Unity.FoxgloveSDK.Core
                     Payload = payload,
                     CreatedAt = DateTime.UtcNow
                 };
-                _pending[(clientId, callId)] = call;
-                return call;
+                _pending[key] = call;
+                error = null;
+                return true;
             }
         }
 

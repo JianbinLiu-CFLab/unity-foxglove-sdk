@@ -36,6 +36,9 @@ namespace Foxglove.Schemas
     /// <summary>Builds <c>foxglove.PointCloud</c> JSON/protobuf payloads from typed points.</summary>
     public static class PointCloudMessageBuilder
     {
+        /// <summary>Maximum packed point-cloud byte buffer built in one call.</summary>
+        public const int MaxPackedDataBytes = 64 * 1024 * 1024;
+
         /// <summary>Create JSON, protobuf, and packed byte forms for a point cloud frame.</summary>
         public static PointCloudBuildResult Build(PointCloudFrame frame)
         {
@@ -117,7 +120,8 @@ namespace Foxglove.Schemas
 
         private static byte[] Pack(PointCloudFrame frame, PointCloudLayout layout)
         {
-            using (var stream = new MemoryStream())
+            var capacity = ValidatePackedDataBudget(frame, layout);
+            using (var stream = new MemoryStream(capacity))
             using (var writer = new BinaryWriter(stream))
             {
                 foreach (var point in frame.Points)
@@ -134,6 +138,18 @@ namespace Foxglove.Schemas
 
                 return stream.ToArray();
             }
+        }
+
+        private static int ValidatePackedDataBudget(PointCloudFrame frame, PointCloudLayout layout)
+        {
+            var packedBytes = checked((long)frame.Points.Count * layout.Stride);
+            if (packedBytes > MaxPackedDataBytes)
+            {
+                throw new InvalidOperationException(
+                    $"PointCloud packed data exceeds {MaxPackedDataBytes} bytes ({packedBytes} requested).");
+            }
+
+            return (int)packedBytes;
         }
 
         private sealed class PointCloudLayout

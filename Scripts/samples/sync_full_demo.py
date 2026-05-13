@@ -48,6 +48,7 @@ PACKAGE_SAMPLE = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Samples~" / "Fu
 PORTABLE_FULL_DEMO_SCENE_OVERRIDES = (
     ("  _transportMode:", "  _transportMode: 0"),
     ("  _replayFilePath:", "  _replayFilePath:"),
+    ("  _recordingDirectory:", "  _recordingDirectory:"),
     ("  _certificatePfxPath:", "  _certificatePfxPath:"),
     ("  _certificatePassword:", "  _certificatePassword:"),
     ("  _rootCaDistributorEnabled:", "  _rootCaDistributorEnabled: 0"),

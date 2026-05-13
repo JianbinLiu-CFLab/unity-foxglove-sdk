@@ -24,12 +24,19 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class ReplayController : IDisposable
     {
+        /// <summary>Settled-scrub debounce before panel history is rebuilt, set to 250 ms.</summary>
         internal const ulong ScrubHistoryDebounceNs = 250_000_000UL;
+        /// <summary>Maximum paused-scrub panel history window, set to the 30 seconds before the seek target.</summary>
         internal const ulong ScrubHistoryWindowNs = 30_000_000_000UL;
+        /// <summary>Maximum settled history messages sent per Unity tick to avoid main-thread stalls.</summary>
         internal const int ScrubHistoryMaxMessagesPerTick = 256;
+        /// <summary>Maximum messages retained for one settled history rebuild before transport headroom is applied.</summary>
         internal const int ScrubHistoryMaxMessagesPerRequest = 5000;
+        /// <summary>Minimum transport frame headroom preserved while draining settled history messages.</summary>
         internal const int ScrubHistoryQueueReserveFrames = 32;
+        /// <summary>Minimum transport byte headroom preserved while draining settled history messages.</summary>
         internal const int ScrubHistoryQueueReserveBytes = 512 * 1024;
+        /// <summary>Approximate binary MessageData framing overhead used for replay history byte budgeting.</summary>
         private const int MessageDataFrameOverheadBytes = 32;
 
         /// <summary>Active replay engine, or null when not replaying.</summary>
@@ -143,6 +150,8 @@ namespace Unity.FoxgloveSDK.Core
                     _logger.LogError($"Failed to load MCAP replay: {ex.Message}");
                     _replayEngine?.Dispose();
                     _replayEngine = null;
+                    _summarySchemas = null;
+                    _channelTopicMap = null;
                     _replayEnabled = false;
                 }
             }
@@ -156,6 +165,8 @@ namespace Unity.FoxgloveSDK.Core
                 _replayEngine?.Dispose();
                 _replayEngine = null;
                 _replayEnabled = false;
+                _summarySchemas = null;
+                _channelTopicMap = null;
                 _panelHistoryBuffer.Clear();
                 _panelHistoryActive = false;
                 _panelHistoryOffset = 0;
@@ -234,9 +245,7 @@ namespace Unity.FoxgloveSDK.Core
                     fromNs = clampedTo > ScrubHistoryWindowNs ? clampedTo - ScrubHistoryWindowNs : startNs;
                 if (fromNs < startNs) fromNs = startNs;
 
-                _replayEngine.History(fromNs, clampedTo, _panelHistoryBuffer);
-                if (_panelHistoryBuffer.Count > ScrubHistoryMaxMessagesPerRequest)
-                    _panelHistoryBuffer.RemoveRange(0, _panelHistoryBuffer.Count - ScrubHistoryMaxMessagesPerRequest);
+                _replayEngine.History(fromNs, clampedTo, _panelHistoryBuffer, ScrubHistoryMaxMessagesPerRequest);
                 _panelHistoryOffset = 0;
                 _panelHistoryParkTimeNs = clampedTo;
                 _panelHistoryActive = true;

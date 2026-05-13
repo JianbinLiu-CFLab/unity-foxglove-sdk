@@ -27,6 +27,10 @@ namespace Unity.FoxgloveSDK.IO
         /// Default maximum size for a single MCAP record, set to 256 MiB.
         /// </summary>
         public const ulong DefaultRecordSizeLimit = 256UL * 1024 * 1024;
+        /// <summary>
+        /// Default maximum decompressed size for a single MCAP chunk, set to 64 MiB.
+        /// </summary>
+        public const ulong DefaultChunkUncompressedSizeLimit = 64UL * 1024 * 1024;
 
         public McapReader(Stream stream)
         {
@@ -180,7 +184,11 @@ namespace Unity.FoxgloveSDK.IO
         /// Reads and decompresses a chunk's record data from the given offset and length.
         /// Validates the uncompressed CRC32 if one is stored (non-zero).
         /// </summary>
-        public byte[] ReadChunkRecords(ulong chunkStartOffset, ulong chunkLength, out bool crcValid)
+        public byte[] ReadChunkRecords(
+            ulong chunkStartOffset,
+            ulong chunkLength,
+            out bool crcValid,
+            ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
         {
             _stream.Seek((long)chunkStartOffset, SeekOrigin.Begin);
             var (opcode, content) = ReadOneRecord();
@@ -197,10 +205,12 @@ namespace Unity.FoxgloveSDK.IO
 
             if (compSize > int.MaxValue || uncompSize > int.MaxValue)
                 throw new InvalidDataException($"Chunk compressed/uncompressed size exceeds int.MaxValue");
+            if (uncompressedSizeLimit > 0 && uncompSize > uncompressedSizeLimit)
+                throw new InvalidDataException($"Chunk uncompressed size {uncompSize} exceeds limit {uncompressedSizeLimit}");
             if (off + (int)compSize > content.Length)
                 throw new InvalidDataException("Chunk compressed data is truncated");
 
-            var compressed = new byte[compSize];
+            var compressed = new byte[(int)compSize];
             Buffer.BlockCopy(content, off, compressed, 0, (int)compSize);
 
             var uncompressed = McapCompression.Decompress(compression, compressed, (int)uncompSize);

@@ -43,6 +43,8 @@ namespace Unity.FoxgloveSDK.Tests
             TestWssOriginGuardRejectsDisallowedOrigin();
             TestSecureStopStartReleasesPort();
             TestReceiveLoopIgnoresSslStreamDisposalRace();
+            TestWebSocketFrameProtocolRejectsInvalidClientFrames();
+            TestManagedBackendStopDisposesCancellationSource();
             TestHostedFoxgloveWebUrlMatchesOfficialSdk();
             TestManagerDefaultsAllowFoxgloveWebOrigin();
             TestCertificateDistributorServesRootAndFingerprint();
@@ -259,6 +261,37 @@ namespace Unity.FoxgloveSDK.Tests
                 "52B-4: receive loop ignores SSL stream disposal race during shutdown");
         }
 
+        private static void TestWebSocketFrameProtocolRejectsInvalidClientFrames()
+        {
+            Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("hi"), masked: false, fin: true)) == null,
+                "52B-5: client frames without masking are rejected");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Ping, Encoding.UTF8.GetBytes("x"), masked: true, fin: false)) == null,
+                "52B-5b: fragmented control frames are rejected");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Ping, new byte[126], masked: true, fin: true)) == null,
+                "52B-5c: oversized control frames are rejected before dispatch");
+        }
+
+        private static void TestManagedBackendStopDisposesCancellationSource()
+        {
+            var port = GetFreeTcpPort();
+            using var backend = new ManagedWsBackend();
+            backend.Start("127.0.0.1", port);
+
+            var ctsField = typeof(ManagedWsBackend).GetField("_cts", BindingFlags.Instance | BindingFlags.NonPublic);
+            var firstCts = (CancellationTokenSource)ctsField.GetValue(backend);
+            backend.Stop();
+
+            CheckThrows<ObjectDisposedException>(() =>
+            {
+                var _ = firstCts.Token;
+            }, "52B-6: Stop disposes the previous cancellation token source before restart");
+
+            backend.Start("127.0.0.1", port);
+            backend.Stop();
+        }
+
         private static void TestManagerDefaultsAllowFoxgloveWebOrigin()
         {
             const string foxgloveWebOrigin = "https://app.foxglove.dev";
@@ -387,6 +420,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editorSource.Contains("REDACTED"), "52C-1f: Inspector redacts token display");
             Check(managerSource.Contains("ValidateTransportConfiguration"),
                 "52C-1g: manager preflights WSS certificate configuration before start");
+            Check(managerSource.Contains("FoxgloveAppUrl.BuildWebSocketEndpoint(")
+                  && !managerSource.Contains("url += $\"?token={_sharedToken}\""),
+                "52C-1g2: manager connection URL redaction uses encoded endpoint builder");
 
             var startIndex = demoSource.IndexOf("private void Start()", StringComparison.Ordinal);
             var sessionGuardIndex = demoSource.IndexOf("_manager?.Runtime?.Session == null", startIndex, StringComparison.Ordinal);
@@ -621,6 +657,72 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             throw new Exception($"[FAIL] {label}");
+        }
+
+        private static object ReadFrameFromBytes(byte[] frameBytes)
+        {
+            using var tcpClient = new TcpClient();
+            using var stream = new MemoryStream(frameBytes);
+            var connType = typeof(ManagedWsBackend).GetNestedType("WsConnection", BindingFlags.NonPublic);
+            var constructor = connType.GetConstructor(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(TcpClient), typeof(Stream), typeof(int), typeof(int) },
+                modifiers: null);
+            var conn = constructor.Invoke(new object[]
+            {
+                tcpClient,
+                stream,
+                ManagedWebSocketOptions.DefaultMaxQueuedFrames,
+                ManagedWebSocketOptions.DefaultMaxQueuedBytes
+            });
+
+            try
+            {
+                var readFrame = connType.GetMethod("ReadFrame", BindingFlags.Instance | BindingFlags.Public);
+                return readFrame.Invoke(conn, Array.Empty<object>());
+            }
+            finally
+            {
+                (conn as IDisposable)?.Dispose();
+            }
+        }
+
+        private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin)
+        {
+            payload ??= Array.Empty<byte>();
+            using var ms = new MemoryStream();
+            ms.WriteByte((byte)((fin ? 0x80 : 0x00) | opcode));
+
+            var maskFlag = masked ? 0x80 : 0x00;
+            if (payload.Length <= 125)
+            {
+                ms.WriteByte((byte)(maskFlag | payload.Length));
+            }
+            else if (payload.Length <= ushort.MaxValue)
+            {
+                ms.WriteByte((byte)(maskFlag | 126));
+                ms.WriteByte((byte)(payload.Length >> 8));
+                ms.WriteByte((byte)payload.Length);
+            }
+            else
+            {
+                throw new InvalidDataException("Test frame payload is too large.");
+            }
+
+            if (masked)
+            {
+                var mask = new byte[] { 0x12, 0x34, 0x56, 0x78 };
+                ms.Write(mask, 0, mask.Length);
+                for (var i = 0; i < payload.Length; i++)
+                    ms.WriteByte((byte)(payload[i] ^ mask[i % mask.Length]));
+            }
+            else
+            {
+                ms.Write(payload, 0, payload.Length);
+            }
+
+            return ms.ToArray();
         }
 
         private static string ReadRepoText(string relativePath)

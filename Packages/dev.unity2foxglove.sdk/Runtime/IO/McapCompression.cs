@@ -23,7 +23,10 @@ namespace Unity.FoxgloveSDK.IO
             switch (compression)
             {
                 case "":
-                    return data;
+                    if ((data?.Length ?? 0) != uncompressedSize)
+                        throw new InvalidDataException(
+                            $"Uncompressed chunk size mismatch: expected {uncompressedSize}, got {data?.Length ?? 0}");
+                    return data ?? Array.Empty<byte>();
                 case "lz4":
                     using (var ms = new MemoryStream(data))
                     using (var lz4 = LZ4Stream.Decode(ms, leaveOpen: false))

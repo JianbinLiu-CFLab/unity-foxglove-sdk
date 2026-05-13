@@ -76,18 +76,16 @@ namespace Unity.FoxgloveSDK.Components
         private readonly HashSet<string> _warnedAuto = new();
         /// <summary>Reusable MaterialPropertyBlock for colour application.</summary>
         private MaterialPropertyBlock _propBlock;
+        /// <summary>Whether this adapter is currently subscribed to replay messages.</summary>
+        private bool _subscribed;
 
         /// <summary>
-        /// Resolves the FoxgloveManager and subscribes to replay messages.
-        /// Loads manual FrameMapping and EntityMapping overrides into the lookup cache.
+        /// Resolves the FoxgloveManager and loads manual FrameMapping and
+        /// EntityMapping overrides into the lookup cache.
         /// </summary>
         private void Start()
         {
-            if (_manager == null)
-                _manager = FindFirstObjectByType<FoxgloveManager>();
-            if (_manager != null)
-                _manager.OnReplayMessage += OnReplayMessage;
-
+            ResolveManager();
             foreach (var fm in _frameOverrides)
                 if (!string.IsNullOrEmpty(fm.ChildFrameId) && fm.Target != null)
                     _frameCache[fm.ChildFrameId] = fm.Target;
@@ -95,13 +93,49 @@ namespace Unity.FoxgloveSDK.Components
             foreach (var em in _entityOverrides)
                 if (!string.IsNullOrEmpty(em.EntityId) && em.Target != null)
                     _entityCache[em.EntityId] = em.Target;
+
+            if (isActiveAndEnabled)
+                SubscribeReplay();
         }
 
-        /// <summary>Unsubscribes from replay messages.</summary>
+        /// <summary>Subscribes to replay messages while the component is enabled.</summary>
+        private void OnEnable()
+        {
+            ResolveManager();
+            SubscribeReplay();
+        }
+
+        /// <summary>Unsubscribes from replay messages when the component is disabled.</summary>
+        private void OnDisable()
+        {
+            UnsubscribeReplay();
+        }
+
+        /// <summary>Ensures replay messages are detached during object destruction.</summary>
         private void OnDestroy()
         {
+            UnsubscribeReplay();
+        }
+
+        private void ResolveManager()
+        {
+            if (_manager == null)
+                _manager = FindFirstObjectByType<FoxgloveManager>();
+        }
+
+        private void SubscribeReplay()
+        {
+            if (_subscribed || _manager == null) return;
+            _manager.OnReplayMessage += OnReplayMessage;
+            _subscribed = true;
+        }
+
+        private void UnsubscribeReplay()
+        {
+            if (!_subscribed) return;
             if (_manager != null)
                 _manager.OnReplayMessage -= OnReplayMessage;
+            _subscribed = false;
         }
 
         /// <summary>

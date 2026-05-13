@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.Core
     {
         internal static bool Enabled = false;
 
+        /// <summary>Maximum trace lines emitted per budget reset to keep debug logging bounded.</summary>
         private const int MaxLines = 512;
         private static long _ordinal;
         private static int _lines;

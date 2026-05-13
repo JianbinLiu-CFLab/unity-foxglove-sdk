@@ -105,6 +105,31 @@ flowchart TD
   State --> FoxglovePanels
 ```
 
+The contrast with a single-stream replay loop is the important architectural boundary:
+
+```mermaid
+flowchart LR
+  subgraph SingleStream["Single-stream replay"]
+    SSeek["Seek / scrub request"] --> SReplay["Ordered replay stream"]
+    SReplay --> SUnity["Unity scene"]
+    SReplay --> SPanels["Foxglove panels"]
+    SOld["Stale queued frames"] -.-> SUnity
+    SOld -.-> SPanels
+    SPanels --> SWarn["Backwards-time warnings / unstable panels"]
+  end
+
+  subgraph SplitPath["Split-path replay"]
+    PSeek["Seek / scrub request"] --> PTick["Unity runtime tick"]
+    PTick --> PState["PlaybackState + didSeek broadcast"]
+    PTick --> PSnapshot["Latest-at scene snapshot"]
+    PTick --> PQueue["Clear stale data queue"]
+    PTick --> PHistory["Settled bounded history"]
+    PSnapshot --> PUnity["Unity scene"]
+    PHistory --> PPanels["Foxglove panels"]
+    PState --> PPanels
+  end
+```
+
 ## 5 Architecture
 
 ### 5.1 Playback Control Serialization
@@ -146,6 +171,8 @@ The current implementation supports the following user-facing behavior:
 - Foxglove remains connected and stable during repeated paused scrubbing.
 - The Plot panel may show the current coherent point rather than a continuous historical curve.
 - Pressing Play after paused seek resumes replay successfully.
+
+Scene reproduction applies recorded telemetry state to Unity objects. It does not re-simulate physics, user input, random state, gameplay logic, or other nondeterministic systems from the original run.
 
 This is a deliberate semantic boundary. A single point in paused mode is acceptable for scene reproduction. A continuous Plot curve requires a bounded history-window policy and is a separate feature described in Section 9.
 
@@ -192,16 +219,14 @@ The current completed claim is **scene reproduction**, not full historical panel
 
 ## 9 Future Work
 
-The next research and engineering step is bounded panel history reconstruction:
+The current implementation includes bounded server-push history for settled paused scrubs: active dragging suppresses panel history, superseded history generations are cancelled, and the server keeps the history response within configured message and transport headroom budgets. The remaining research and engineering step is full continuous Plot reconstruction for large MCAP files:
 
-- Forward paused scrub can publish a delta range.
-- Backward paused scrub may rebuild a bounded window (e.g., 30 seconds before the seek target).
-- Long MCAP files need caps and backpressure-aware batching.
-- Active dragging should continue to suppress heavy panel history.
-- Settled scrub should publish only after the seek stabilizes.
-- Old history generations should be cancelled when a newer seek arrives.
+- Forward paused scrub can publish richer delta ranges.
+- Backward paused scrub can rebuild a bounded window (e.g., 30 seconds before the seek target) without exceeding latency budgets.
+- Large-MCAP scrub latency needs deeper indexing, benchmark evidence, and backpressure-aware batching.
+- Client-side caching or range-capable asset access may reduce repeated server-side scans.
 
-An alternative architecture is client-side preloading: serving the MCAP file via Foxglove's `fetchAsset` capability so the client performs its own range queries locally. This would more closely match Foxglove's native MCAP playback behavior but requires changes to both the server asset pipeline and the client panel configuration. The bounded server-push approach was chosen for Phase 54 because it works within the existing WebSocket streaming model.
+An alternative architecture is client-side preloading: serving the MCAP file via Foxglove's `fetchAsset` capability so the client performs its own range queries locally. A more client-native variant would expose indexed MCAP assets through `fetchAsset` or a range-capable asset service, letting Foxglove-side code perform cached range queries directly. This could reduce server-push pressure for large MCAP files and align more closely with native MCAP playback behavior, but it requires client or panel support, cache invalidation policy, asset authorization design, and agreement on how cloud-hosted or remote MCAP indexes are discovered. The bounded server-push approach was chosen for Phase 54 because it works within the existing WebSocket streaming model.
 
 This follow-up would extend scene reproduction into full dual-consumer replay: latest-at for Unity scene state, bounded range for Foxglove analytical panels.
 
@@ -209,7 +234,7 @@ This follow-up would extend scene reproduction into full dual-consumer replay: l
 
 This note describes a replay architecture that separates remote timeline control, Unity scene reproduction, and Foxglove panel data delivery. The architecture uses the latest-at/range distinction — established in systems such as Rerun — as an architectural boundary between scene state and analytical panel history, applied to a remote WebSocket-controlled Unity replay loop.
 
-The current system demonstrates stable paused scrubbing without backwards-time warnings, while bounded panel history reconstruction remains future work. The contribution is best understood as a compositional systems contribution: mature pieces exist in neighboring systems, but their combination creates a system shape for Unity-based telemetry replay that, to the best of our knowledge, has not been documented before.
+The current system demonstrates stable paused scrubbing without backwards-time warnings and includes bounded server-push history for settled panel updates. Full continuous Plot reconstruction, large-MCAP scrub latency, and client-side range caching remain future work. The contribution is best understood as a compositional systems contribution: mature pieces exist in neighboring systems, but their combination creates a system shape for Unity-based telemetry replay that, to the best of our knowledge, has not been documented before.
 
 ## References
 

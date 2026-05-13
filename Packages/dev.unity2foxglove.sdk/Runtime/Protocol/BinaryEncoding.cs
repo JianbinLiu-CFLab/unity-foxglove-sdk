@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Protocol
         /// </summary>
         public static byte[] EncodeServerMessageData(uint subscriptionId, ulong logTimeNs, byte[] payload)
         {
+            payload ??= Array.Empty<byte>();
             var frame = new byte[1 + 4 + 8 + payload.Length];
             frame[0] = ServerOpcode.MessageData;
             WriteU32LE(frame, 1, subscriptionId);

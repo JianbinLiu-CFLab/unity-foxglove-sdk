@@ -551,7 +551,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9360d8900353de14e93374b6565b62ac, type: 3}
   m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::Phase53FoxRunTriggerSmoke
+  m_EditorClassIdentifier: Assembly-CSharp::FoxRunTriggerTelemetrySmoke
   fixedCounter: 0
   triggerCounter: 0
   eventName: idle

@@ -456,11 +456,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private string BuildConnectionUrl(bool redactToken)
         {
-            var scheme = _transportMode == FoxgloveTransportMode.SecureWebSocket ? "wss" : "ws";
-            var url = $"{scheme}://{_host}:{_port}";
-            if (!string.IsNullOrEmpty(_sharedToken))
-                url += $"?token={_sharedToken}";
-            return redactToken ? ManagedWebSocketOptions.RedactUrl(url) : url;
+            return FoxgloveAppUrl.BuildWebSocketEndpoint(
+                _host,
+                _port,
+                _transportMode == FoxgloveTransportMode.SecureWebSocket,
+                _sharedToken,
+                redactToken);
         }
 
         private void StartCertificateDistributorIfNeeded()
@@ -563,9 +564,10 @@ namespace Unity.FoxgloveSDK.Components
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
-            id = (uint)_nextChannelId++;
-            _channelCache[key] = id;
+            id = (uint)_nextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
+            _nextChannelId++;
+            _channelCache[key] = id;
             return id;
         }
 
@@ -588,6 +590,16 @@ namespace Unity.FoxgloveSDK.Components
         public uint RegisterService(Unity.FoxgloveSDK.Protocol.ServiceDescriptor descriptor)
         {
             return _runtime?.RegisterService(descriptor) ?? 0;
+        }
+
+        /// <summary>
+        /// Unregister a service. Returns false when the runtime is null or
+        /// when the service ID is not registered.
+        /// </summary>
+        /// <param name="serviceId">Service identifier returned by RegisterService.</param>
+        public bool UnregisterService(uint serviceId)
+        {
+            return _runtime?.UnregisterService(serviceId) == true;
         }
 
         /// <summary>
@@ -639,7 +651,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName, "protobuf");
-            _runtime.Publish(channelId, payload, logTimeNs);
+            _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
         }
 
         private uint GetOrRegisterChannel(string topic, string encoding)
@@ -648,8 +660,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
-            id = (uint)_nextChannelId++;
-            _channelCache[key] = id;
+            id = (uint)_nextChannelId;
             _runtime.RegisterChannel(new Protocol.AdvertiseChannel
             {
                 Id = id,
@@ -658,6 +669,8 @@ namespace Unity.FoxgloveSDK.Components
                 SchemaName = "",
                 Schema = ""
             });
+            _nextChannelId++;
+            _channelCache[key] = id;
             return id;
         }
 

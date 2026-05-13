@@ -124,7 +124,7 @@ namespace Unity.FoxgloveSDK.Editor
             foreach (var kv in byClass)
             {
                 var source = EmitSourceFile(kv.Value.ToArray());
-                var fileName = $"{kv.Key.ClassName}_FoxRun.g.cs";
+                var fileName = FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
                 var absolutePath = Path.Combine(Application.dataPath, "Scripts/Generated", fileName);
 
                 bool shouldWrite = true;

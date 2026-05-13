@@ -33,13 +33,21 @@ namespace Unity.FoxgloveSDK.Transport
         internal const int MaxQueuedFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
         /// <summary>Per-client send queue byte cap.</summary>
         internal const int MaxQueuedBytes = ManagedWebSocketOptions.DefaultMaxQueuedBytes;
+        /// <summary>RFC 6455 FIN bit in the first WebSocket frame header byte.</summary>
         private const byte FinBit = 0x80;
+        /// <summary>RFC 6455 MASK bit in the second WebSocket frame header byte.</summary>
         private const byte MaskBit = 0x80;
+        /// <summary>RFC 6455 low-nibble opcode mask for the first frame header byte.</summary>
         private const byte OpcodeMask = 0x0F;
+        /// <summary>RFC 6455 payload-length mask for the second frame header byte.</summary>
         private const byte PayloadLengthMask = 0x7F;
+        /// <summary>Maximum WebSocket frame header size: 2 base bytes plus 8 extended length bytes.</summary>
         private const int MaxFrameHeaderBytes = 10;
+        /// <summary>RFC 6455 inline payload-length limit before extended length markers are used.</summary>
         private const int SmallPayloadLimit = 125;
+        /// <summary>RFC 6455 marker for the 16-bit extended payload-length field.</summary>
         private const byte Payload16BitLengthMarker = 126;
+        /// <summary>RFC 6455 marker for the 64-bit extended payload-length field.</summary>
         private const byte Payload64BitLengthMarker = 127;
         private const int MaxHandshakeLineBytes = 8192;
         private const int MaxHandshakeHeaders = 100;
@@ -113,12 +121,15 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
         public virtual void Stop()
         {
-            _cts?.Cancel();
+            var cts = _cts;
+            _cts = null;
+            cts?.Cancel();
             foreach (var (id, conn) in _clients.ToArray())
                 DisconnectClient(id, conn);
 
             try { _listener?.Stop(); } catch { }
             _listener = null;
+            cts?.Dispose();
         }
 
         /// <summary>Send a UTF-8 text frame to a specific client.</summary>
@@ -1130,6 +1141,13 @@ namespace Unity.FoxgloveSDK.Transport
                     payloadLen = (int)len64;
                 }
 
+                if (!masked)
+                    return null;
+
+                if (IsControlOpcode(opcode)
+                    && (!IsKnownControlOpcode(opcode) || !fin || payloadLen > SmallPayloadLimit))
+                    return null;
+
                 byte[] mask = null;
                 if (masked)
                 {
@@ -1156,6 +1174,11 @@ namespace Unity.FoxgloveSDK.Transport
                     Payload = payload
                 };
             }
+
+            private static bool IsControlOpcode(int opcode) => opcode >= WsOpcode.Close;
+
+            private static bool IsKnownControlOpcode(int opcode) =>
+                opcode == WsOpcode.Close || opcode == WsOpcode.Ping || opcode == WsOpcode.Pong;
 
             /// <summary>Read exactly <c>count</c> bytes into the buffer, returning <c>false</c> if the stream ends early.</summary>
             private bool ReadExact(byte[] buffer, int offset, int count)
