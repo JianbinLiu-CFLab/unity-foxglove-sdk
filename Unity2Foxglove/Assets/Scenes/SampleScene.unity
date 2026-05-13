@@ -320,7 +320,7 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
-  _transportMode: 1
+  _transportMode: 0
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
   _coordinateMode: 1

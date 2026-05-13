@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestWrongTokenRejectedBeforeUpgrade();
             TestTlsOptionsValidateDeterministicPfx();
             TestWssHandshakeAndServerInfo();
+            TestWssTlsHandshakeAbortIsWarning();
             TestWssOriginGuardRejectsDisallowedOrigin();
             TestSecureStopStartReleasesPort();
             TestReceiveLoopIgnoresSslStreamDisposalRace();
@@ -175,6 +176,33 @@ namespace Unity.FoxgloveSDK.Tests
             var firstTextFrame = ReadServerTextFrame(ssl);
             Check(firstTextFrame.Contains("\"op\":\"serverInfo\""),
                 "52B-2b: WSS client receives serverInfo frame");
+        }
+
+        private static void TestWssTlsHandshakeAbortIsWarning()
+        {
+            using var fixture = Phase52CertificateFixture.Create();
+            var port = GetFreeTcpPort();
+            var logger = new Phase52CaptureLogger();
+            using var backend = new ManagedWssBackend(
+                new FoxgloveTlsOptions
+                {
+                    CertificatePfxPath = fixture.PfxPath,
+                    CertificatePassword = fixture.Password
+                },
+                logger: logger);
+            backend.Start("127.0.0.1", port);
+
+            using (var client = new TcpClient())
+            {
+                client.Connect("127.0.0.1", port);
+            }
+
+            WaitUntil(() => logger.WarningCount + logger.ErrorCount > 0, TestTimeoutMs);
+            Check(logger.ErrorCount == 0,
+                "52B-2c: WSS TLS handshake abort is not logged as a server error");
+            Check(logger.WarningCount > 0
+                  && logger.LastWarning.Contains("TLS/WebSocket handshake"),
+                "52B-2d: WSS TLS handshake abort warning names the handshake stage");
         }
 
         private static void TestWssOriginGuardRejectsDisallowedOrigin()
@@ -461,11 +489,35 @@ namespace Unity.FoxgloveSDK.Tests
                   && !certGeneratorSource.Contains("security add-trusted-cert")
                   && !certGeneratorSource.Contains("update-ca-certificates"),
                 "52C-1l: certificate generator does not silently import OS trust");
-            Check(!certGeneratorSource.Contains("CertificateRequest"),
-                "52C-1m: Editor certificate generator avoids CertificateRequest for Unity profile compatibility");
-            Check(certGeneratorSource.Contains("openssl")
-                  && !certGeneratorSource.Contains("powershell", StringComparison.OrdinalIgnoreCase),
-                "52C-1n: Editor certificate generator uses the cross-platform OpenSSL path only");
+            Check(!certGeneratorSource.Contains("winget", StringComparison.OrdinalIgnoreCase)
+                  && !certGeneratorSource.Contains("choco", StringComparison.OrdinalIgnoreCase)
+                  && !certGeneratorSource.Contains("brew install", StringComparison.OrdinalIgnoreCase)
+                  && !certGeneratorSource.Contains("apt install", StringComparison.OrdinalIgnoreCase),
+                "52C-1l2: certificate generator does not silently install OpenSSL");
+            Check(certGeneratorSource.Contains("BuiltInLocalDevCertificateBackend")
+                  && certGeneratorSource.Contains("MonoSecurityLocalDevCertificateBackend")
+                  && certGeneratorSource.Contains("Mono.Security.X509.X509CertificateBuilder")
+                  && certGeneratorSource.Contains("Mono.Security.X509.PKCS12")
+                  && certGeneratorSource.Contains("FoxgloveLocalDevCertificateOptions.BuiltIn"),
+                "52C-1m: Editor certificate generator defaults to a Unity/Mono built-in backend");
+            Check(!certGeneratorSource.Contains("new CertificateRequest"),
+                "52C-1m1: built-in certificate backend does not depend on CertificateRequest");
+            Check(certGeneratorSource.Contains("ToArray(context.IpAddresses),")
+                  && certGeneratorSource.Contains("Array.Empty<string>()")
+                  && !certGeneratorSource.Contains("Array.Empty<string>(),\n                ToArray(context.IpAddresses)"),
+                "52C-1m1b: built-in certificate backend writes 127.0.0.1 as an IP SAN, not a URI SAN");
+            Check(certGeneratorSource.Contains("KeyUsageOid")
+                  && certGeneratorSource.Contains("0x03, 0x02, 0x02, 0xA4"),
+                "52C-1m1c: built-in certificate backend includes digitalSignature, keyEncipherment, and keyCertSign");
+            Check(certGeneratorSource.Contains("TypeLoadException")
+                  && certGeneratorSource.Contains("MissingMethodException")
+                  && certGeneratorSource.Contains("BuiltInUnavailable"),
+                "52C-1m2: built-in certificate backend reports missing Unity profile APIs as unavailable");
+            Check(certGeneratorSource.Contains("OpenSslLocalDevCertificateBackend")
+                  && certGeneratorSource.Contains("OpenSslResolver")
+                  && editorSource.Contains("Unity2Foxglove.LocalDevCertificate.Backend")
+                  && editorSource.Contains("Choose OpenSSL"),
+                "52C-1n: OpenSSL certificate backend is an explicitly selectable fallback");
             Check(certGeneratorSource.Contains("-macalg sha1")
                   && certGeneratorSource.Contains("-keypbe PBE-SHA1-3DES")
                   && certGeneratorSource.Contains("-certpbe PBE-SHA1-3DES"),
@@ -631,6 +683,17 @@ namespace Unity.FoxgloveSDK.Tests
             return port;
         }
 
+        private static void WaitUntil(Func<bool> predicate, int timeoutMs)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (predicate())
+                    return;
+                Thread.Sleep(10);
+            }
+        }
+
         private static void Check(bool condition, string label)
         {
             if (condition)
@@ -774,15 +837,19 @@ namespace Unity.FoxgloveSDK.Tests
         {
             public int WarningCount { get; private set; }
             public int ErrorCount { get; private set; }
+            public string LastWarning { get; private set; }
+            public string LastError { get; private set; }
 
             public void LogWarning(string message)
             {
                 WarningCount++;
+                LastWarning = message ?? string.Empty;
             }
 
             public void LogError(string message)
             {
                 ErrorCount++;
+                LastError = message ?? string.Empty;
             }
         }
 
