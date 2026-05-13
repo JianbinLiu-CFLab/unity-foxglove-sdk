@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Schemas
     /// <summary>Minimal in-memory schema registry. Not thread-safe; use from main thread.</summary>
     public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry
     {
+        /// <summary>Foxglove schemaEncoding value for JSON Schema definitions.</summary>
         private const string JsonSchemaEncoding = "jsonschema";
 
         private readonly Dictionary<string, SchemaEntry> _schemas

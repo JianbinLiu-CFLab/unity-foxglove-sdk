@@ -33,13 +33,21 @@ namespace Unity.FoxgloveSDK.Transport
         internal const int MaxQueuedFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
         /// <summary>Per-client send queue byte cap.</summary>
         internal const int MaxQueuedBytes = ManagedWebSocketOptions.DefaultMaxQueuedBytes;
+        /// <summary>RFC 6455 FIN bit in the first WebSocket frame header byte.</summary>
         private const byte FinBit = 0x80;
+        /// <summary>RFC 6455 MASK bit in the second WebSocket frame header byte.</summary>
         private const byte MaskBit = 0x80;
+        /// <summary>RFC 6455 low-nibble opcode mask for the first frame header byte.</summary>
         private const byte OpcodeMask = 0x0F;
+        /// <summary>RFC 6455 payload-length mask for the second frame header byte.</summary>
         private const byte PayloadLengthMask = 0x7F;
+        /// <summary>Maximum WebSocket frame header size: 2 base bytes plus 8 extended length bytes.</summary>
         private const int MaxFrameHeaderBytes = 10;
+        /// <summary>RFC 6455 inline payload-length limit before extended length markers are used.</summary>
         private const int SmallPayloadLimit = 125;
+        /// <summary>RFC 6455 marker for the 16-bit extended payload-length field.</summary>
         private const byte Payload16BitLengthMarker = 126;
+        /// <summary>RFC 6455 marker for the 64-bit extended payload-length field.</summary>
         private const byte Payload64BitLengthMarker = 127;
         private const int MaxHandshakeLineBytes = 8192;
         private const int MaxHandshakeHeaders = 100;

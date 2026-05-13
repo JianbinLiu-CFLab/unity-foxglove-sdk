@@ -24,7 +24,9 @@ namespace Unity.FoxgloveSDK.Transport
     /// </summary>
     public sealed class FoxgloveCertificateDistributor : IDisposable
     {
+        /// <summary>Maximum root CA file size served by the local setup helper.</summary>
         private const int MaxCertificateFileBytes = 1024 * 1024;
+        /// <summary>Maximum HTTP request-line length accepted by the tiny local distributor.</summary>
         private const int MaxRequestLineBytes = 4096;
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
