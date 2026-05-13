@@ -358,6 +358,31 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>
+        /// Unregister a service endpoint, unadvertise it from clients, and
+        /// remove its connection-graph provider edge.
+        /// </summary>
+        public bool UnregisterService(uint serviceId)
+        {
+            var service = _services.GetById(serviceId);
+            if (!_services.Unregister(serviceId))
+                return false;
+
+            _transport.BroadcastText(JsonConvert.SerializeObject(new UnadvertiseServices
+            {
+                ServiceIds = new List<uint> { serviceId }
+            }));
+
+            if (service != null)
+            {
+                _graph.RemoveAdvertisedService(service.Name, "unity");
+                _graphDirty = true;
+                BroadcastGraphUpdate();
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Advertise an already-registered service and update the connection graph.
         /// Used by runtime-owned service registrations that share this session registry.
         /// </summary>

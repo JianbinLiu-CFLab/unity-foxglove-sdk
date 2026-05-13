@@ -593,6 +593,16 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Unregister a service. Returns false when the runtime is null or
+        /// when the service ID is not registered.
+        /// </summary>
+        /// <param name="serviceId">Service identifier returned by RegisterService.</param>
+        public bool UnregisterService(uint serviceId)
+        {
+            return _runtime?.UnregisterService(serviceId) == true;
+        }
+
+        /// <summary>
         /// Serialize a message to JSON and publish. Safe no-op if the server
         /// is not running — the first such call per session emits a warning.
         /// </summary>

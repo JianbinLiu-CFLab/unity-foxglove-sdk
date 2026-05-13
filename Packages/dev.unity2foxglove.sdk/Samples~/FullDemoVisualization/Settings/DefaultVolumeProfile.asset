@@ -44,28 +44,6 @@ MonoBehaviour:
   balance:
     m_OverrideState: 1
     m_Value: 0
---- !u!114 &-8104416584915340131
-MonoBehaviour:
-  m_ObjectHideFlags: 3
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: CopyPasteTestComponent2
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Editor.Tests:UnityEditor.Rendering.Tests:VolumeComponentCopyPasteTests/CopyPasteTestComponent2
-  active: 1
-  p1:
-    m_OverrideState: 1
-    m_Value: 0
-  p2:
-    m_OverrideState: 1
-    m_Value: 0
-  p21:
-    m_OverrideState: 1
-    m_Value: 0
 --- !u!114 &-7750755424749557576
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -239,19 +217,6 @@ MonoBehaviour:
   maxNits:
     m_OverrideState: 1
     m_Value: 1000
---- !u!114 &-5360449096862653589
-MonoBehaviour:
-  m_ObjectHideFlags: 3
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: VolumeComponentSupportedEverywhere
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Editor.Tests:UnityEngine.Rendering.Tests:VolumeComponentEditorSupportedOnTests/VolumeComponentSupportedEverywhere
-  active: 1
 --- !u!114 &-5139089513906902183
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -414,28 +379,6 @@ MonoBehaviour:
   tint:
     m_OverrideState: 1
     m_Value: 0
---- !u!114 &-581120513425526550
-MonoBehaviour:
-  m_ObjectHideFlags: 3
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: CopyPasteTestComponent3
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Editor.Tests:UnityEditor.Rendering.Tests:VolumeComponentCopyPasteTests/CopyPasteTestComponent3
-  active: 1
-  p1:
-    m_OverrideState: 1
-    m_Value: 0
-  p2:
-    m_OverrideState: 1
-    m_Value: 0
-  p31:
-    m_OverrideState: 1
-    m_Value: {r: 0, g: 0, b: 0, a: 1}
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -856,19 +799,6 @@ MonoBehaviour:
   intensity:
     m_OverrideState: 1
     m_Value: 0
---- !u!114 &6940869943325143175
-MonoBehaviour:
-  m_ObjectHideFlags: 3
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: VolumeComponentSupportedOnAnySRP
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Editor.Tests:UnityEngine.Rendering.Tests:VolumeComponentEditorSupportedOnTests/VolumeComponentSupportedOnAnySRP
-  active: 1
 --- !u!114 &7173750748008157695
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -965,22 +895,3 @@ MonoBehaviour:
   blueOutBlueIn:
     m_OverrideState: 1
     m_Value: 100
---- !u!114 &9122958982931076880
-MonoBehaviour:
-  m_ObjectHideFlags: 3
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: CopyPasteTestComponent1
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Editor.Tests:UnityEditor.Rendering.Tests:VolumeComponentCopyPasteTests/CopyPasteTestComponent1
-  active: 1
-  p1:
-    m_OverrideState: 1
-    m_Value: 0
-  p2:
-    m_OverrideState: 1
-    m_Value: 0

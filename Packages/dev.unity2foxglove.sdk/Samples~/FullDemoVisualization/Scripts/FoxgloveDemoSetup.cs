@@ -18,6 +18,9 @@ using Unity.FoxgloveSDK.Schemas;
 /// </summary>
 public class FoxgloveDemoSetup : MonoBehaviour
 {
+    internal const float ScaleMinimum = 0.2f;
+    internal const float ScaleMaximum = 5f;
+
     [SerializeField] private FoxgloveManager _manager;
 
     private uint _resetSvcId;
@@ -71,8 +74,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         });
 
         // Phase 8: log client-published messages to Unity Console.
-        rt.Session.OnClientMessage += (cid, chId, topic, payload) =>
-            Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={Encoding.UTF8.GetString(payload)}");
+        rt.Session.OnClientMessage += OnClientMessageReceived;
 
         // Advertise /unity/client_log so Foxglove sees foxglove.Log in the schema picker.
         _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
@@ -98,8 +100,18 @@ public class FoxgloveDemoSetup : MonoBehaviour
     /// </summary>
     private void OnDestroy()
     {
-        if (_manager?.Runtime != null)
-            _manager.Runtime.Parameters.OnParameterChanged -= OnParameterChanged;
+        var runtime = _manager?.Runtime;
+        if (runtime != null)
+        {
+            runtime.Parameters.OnParameterChanged -= OnParameterChanged;
+            if (runtime.Session != null)
+                runtime.Session.OnClientMessage -= OnClientMessageReceived;
+            if (_resetSvcId != 0)
+            {
+                runtime.UnregisterService(_resetSvcId);
+                _resetSvcId = 0;
+            }
+        }
         if (_scenePublisher != null)
             _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
     }
@@ -119,12 +131,16 @@ public class FoxgloveDemoSetup : MonoBehaviour
             try
             {
                 float s = (float)scaleParam.Value.Value<double>();
-                if (Mathf.Abs(s - _lastAppliedScale) > 0.001f)
+                if (!float.IsNaN(s) && !float.IsInfinity(s))
                 {
-                    _lastAppliedScale = s;
-                    var cube = FindCube();
-                    if (cube != null)
-                        cube.transform.localScale = new Vector3(s, s, s);
+                    var clamped = Mathf.Clamp(s, ScaleMinimum, ScaleMaximum);
+                    if (Mathf.Abs(clamped - _lastAppliedScale) > 0.001f)
+                    {
+                        _lastAppliedScale = clamped;
+                        var cube = FindCube();
+                        if (cube != null)
+                            cube.transform.localScale = new Vector3(clamped, clamped, clamped);
+                    }
                 }
             }
             catch { }
@@ -150,8 +166,17 @@ public class FoxgloveDemoSetup : MonoBehaviour
     /// </summary>
     public void SyncScaleToParameter(float s)
     {
-        _manager?.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(s));
-        _lastAppliedScale = s;
+        if (float.IsNaN(s) || float.IsInfinity(s))
+            return;
+
+        var clamped = Mathf.Clamp(s, ScaleMinimum, ScaleMaximum);
+        _manager?.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(clamped));
+        _lastAppliedScale = clamped;
+    }
+
+    private void OnClientMessageReceived(uint cid, uint chId, string topic, byte[] payload)
+    {
+        Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={Encoding.UTF8.GetString(payload)}");
     }
 
     /// <summary>

@@ -61,6 +61,8 @@ FORBIDDEN_PUBLIC_PATTERNS = (
     ("to-do marker", re.compile(r"\bTO" r"DO\b")),
     ("TBD marker", re.compile(r"\bTBD\b")),
     ("fix-me marker", re.compile(r"\bFIX" r"ME\b")),
+    ("Unity Editor.Tests component", re.compile(r"Unity\.RenderPipelines\.Core\.Editor\.Tests")),
+    ("stale Phase scene class identifier", re.compile(r"Assembly-CSharp::Phase\d+")),
 )
 
 # Directory path parts that indicate local/generated sample artifacts.

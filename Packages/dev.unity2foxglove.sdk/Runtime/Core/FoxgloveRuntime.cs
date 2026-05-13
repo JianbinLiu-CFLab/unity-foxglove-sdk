@@ -153,6 +153,20 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>
+        /// Unregister a service and notify connected clients when the runtime
+        /// is currently serving a session.
+        /// </summary>
+        public bool UnregisterService(uint serviceId)
+        {
+            if (serviceId == 0)
+                return false;
+
+            return _session != null
+                ? _session.UnregisterService(serviceId)
+                : _services.Unregister(serviceId);
+        }
+
+        /// <summary>
         /// Start the WebSocket server. Creates a new FoxgloveSession,
         /// attaches recording/replay controllers, and wires replay
         /// message forwarding. Protobuf encoding is enabled automatically
