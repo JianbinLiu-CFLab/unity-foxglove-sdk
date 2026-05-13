@@ -43,6 +43,18 @@ DEMO_CONFIGS = ROOT / "Unity2Foxglove" / "Configs"
 # Destination root for the package sample that is shipped to Unity users.
 PACKAGE_SAMPLE = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Samples~" / "FullDemoVisualization"
 
+# Fields that are useful in the live demo during local acceptance testing but
+# must stay portable in the packaged/imported sample.
+PORTABLE_FULL_DEMO_SCENE_OVERRIDES = (
+    ("  _transportMode:", "  _transportMode: 0"),
+    ("  _replayFilePath:", "  _replayFilePath:"),
+    ("  _certificatePfxPath:", "  _certificatePfxPath:"),
+    ("  _certificatePassword:", "  _certificatePassword:"),
+    ("  _rootCaDistributorEnabled:", "  _rootCaDistributorEnabled: 0"),
+    ("  _rootCaFilePath:", "  _rootCaFilePath:"),
+    ("  _sharedToken:", "  _sharedToken:"),
+)
+
 
 @dataclass(frozen=True)
 class FileMap:
@@ -65,6 +77,14 @@ FILE_MAPS = (
     FileMap(DEMO_ASSETS / "Scripts" / "MouseDragCube.cs.meta", PACKAGE_SAMPLE / "Scripts" / "MouseDragCube.cs.meta"),
     FileMap(DEMO_ASSETS / "Scripts" / "TestLog.cs", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs"),
     FileMap(DEMO_ASSETS / "Scripts" / "TestLog.cs.meta", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs.meta"),
+    FileMap(
+        DEMO_ASSETS / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs",
+        PACKAGE_SAMPLE / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs",
+    ),
+    FileMap(
+        DEMO_ASSETS / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs.meta",
+        PACKAGE_SAMPLE / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs.meta",
+    ),
     FileMap(DEMO_ASSETS / "Settings" / "DefaultVolumeProfile.asset", PACKAGE_SAMPLE / "Settings" / "DefaultVolumeProfile.asset"),
     FileMap(DEMO_ASSETS / "Settings" / "DefaultVolumeProfile.asset.meta", PACKAGE_SAMPLE / "Settings" / "DefaultVolumeProfile.asset.meta"),
     FileMap(DEMO_ASSETS / "Settings" / "Mobile_Renderer.asset", PACKAGE_SAMPLE / "Settings" / "Mobile_Renderer.asset"),
@@ -142,6 +162,36 @@ def imported_maps(imported_root: Path, source: str) -> list[tuple[Path, Path]]:
     return pairs
 
 
+def is_demo_scene_to_sample_copy(src: Path, dst: Path) -> bool:
+    """Return true when copying the live demo scene into a sample location."""
+    demo_scene = DEMO_ASSETS / "Scenes" / "SampleScene.unity"
+    return src.resolve() == demo_scene.resolve() and dst.name == "FullDemoVisualization.unity"
+
+
+def with_line_ending(line: str, content: str) -> str:
+    """Return content with the original line ending from line."""
+    if line.endswith("\r\n"):
+        return content + "\r\n"
+    if line.endswith("\n"):
+        return content + "\n"
+    return content
+
+
+def portable_full_demo_scene_payload(src: Path) -> bytes:
+    """Read the demo scene and rewrite local-only defaults for sample users."""
+    lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+    rewritten = []
+    for line in lines:
+        body = line.rstrip("\r\n").rstrip()
+        replacement = None
+        for prefix, value in PORTABLE_FULL_DEMO_SCENE_OVERRIDES:
+            if body.startswith(prefix):
+                replacement = value
+                break
+        rewritten.append(with_line_ending(line, replacement if replacement is not None else body))
+    return "".join(rewritten).encode("utf-8")
+
+
 def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
     """Build ordered source/destination pairs for the selected sync mode."""
     mode = args.mode
@@ -168,6 +218,16 @@ def copy_file(src: Path, dst: Path, dry_run: bool) -> str:
     """Copy one file if content differs, returning a printable status label."""
     if not src.exists():
         raise FileNotFoundError(f"Source file missing: {rel(src)}")
+
+    portable_payload = portable_full_demo_scene_payload(src) if is_demo_scene_to_sample_copy(src, dst) else None
+    if portable_payload is not None:
+        if dst.exists() and dst.read_bytes() == portable_payload:
+            return "unchanged"
+        if dry_run:
+            return "would copy"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(portable_payload)
+        return "copied"
 
     if dst.exists() and filecmp.cmp(src, dst, shallow=False):
         return "unchanged"
