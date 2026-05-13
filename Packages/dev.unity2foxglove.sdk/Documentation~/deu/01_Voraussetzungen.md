@@ -44,7 +44,7 @@ Diese Werkzeuge sind hilfreich, wenn du Code bearbeitest, Validierungstests ausf
 | Visual Studio | [Visual Studio download page](https://visualstudio.microsoft.com/downloads/) | C#-Skripte, custom publishers, `[FoxRun]` fields, Parameters oder Services. Empfohlener Standard unter Windows. |
 | JetBrains Rider | [Rider product page](https://www.jetbrains.com/rider/) | Wenn du Rider für Unity/C#-Entwicklung bevorzugst. |
 | Visual Studio Code | [VS Code download page](https://code.visualstudio.com/) | Leichtgewichtige Bearbeitung mit C#- und Unity-Erweiterungen. |
-| Python 3 | [Python download page](https://www.python.org/downloads/) | Repository-Hilfsskripte wie `Scripts/build_unity_il2cpp.py`. |
+| Python 3 | [Python download page](https://www.python.org/downloads/) | Repository-Hilfsskripte wie `Scripts/build_tools/unity_il2cpp.py`. |
 | .NET SDK | [.NET download page](https://dotnet.microsoft.com/download) | Runtime validation tests oder performance baselines über die Kommandozeile. |
 
 ## 5. Checkliste für den ersten Lauf

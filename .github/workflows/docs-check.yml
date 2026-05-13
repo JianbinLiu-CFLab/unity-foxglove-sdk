@@ -7,10 +7,16 @@ on:
       - "README.md"
       - "ROADMAP.md"
       - "CHANGELOG.md"
+      - "CITATION.cff"
+      - "PAPER.md"
+      - "docs/research-*.md"
       - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
+      - "Packages/dev.unity2foxglove.sdk/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/zh/**"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/deu/**"
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
       - "Unity2Foxglove/README.md"
       - "Unity2Foxglove/Docs/**"
@@ -21,10 +27,16 @@ on:
       - "README.md"
       - "ROADMAP.md"
       - "CHANGELOG.md"
+      - "CITATION.cff"
+      - "PAPER.md"
+      - "docs/research-*.md"
       - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
+      - "Packages/dev.unity2foxglove.sdk/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/zh/**"
+      - "Packages/dev.unity2foxglove.sdk/Documentation~/deu/**"
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
       - "Unity2Foxglove/README.md"
       - "Unity2Foxglove/Docs/**"
@@ -44,17 +56,22 @@ jobs:
             README.md
             ROADMAP.md
             CHANGELOG.md
-            "docs/releases"
+            CITATION.cff
+            PAPER.md
+            docs
             THIRD_PARTY_NOTICES.md
+            "Packages/dev.unity2foxglove.sdk/README.md"
             "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
             "Packages/dev.unity2foxglove.sdk/Documentation~/en"
+            "Packages/dev.unity2foxglove.sdk/Documentation~/zh"
+            "Packages/dev.unity2foxglove.sdk/Documentation~/deu"
             "Packages/dev.unity2foxglove.sdk/Samples~"
             "Unity2Foxglove/README.md"
             "Unity2Foxglove/Docs"
             "Scripts"
           )
-          if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME" "${files[@]}" \
-            -g "*.md" -g "*.json" -g "*.py" -g "*.ps1"; then
+          if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME|TBD|Pasted image|Scripts[\\/]build[_]unity[_]il2cpp\\.py" "${files[@]}" \
+            -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff"; then
             echo "Forbidden local path, placeholder, or Obsidian-only embed found in public docs."
             exit 1
           fi
@@ -72,10 +89,15 @@ jobs:
               Path("README.md"),
               Path("ROADMAP.md"),
               Path("CHANGELOG.md"),
-              Path("docs/releases"),
+              Path("CITATION.cff"),
+              Path("PAPER.md"),
+              Path("docs"),
               Path("THIRD_PARTY_NOTICES.md"),
+              Path("Packages/dev.unity2foxglove.sdk/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/en"),
+              Path("Packages/dev.unity2foxglove.sdk/Documentation~/zh"),
+              Path("Packages/dev.unity2foxglove.sdk/Documentation~/deu"),
               Path("Packages/dev.unity2foxglove.sdk/Samples~"),
               Path("Unity2Foxglove/README.md"),
               Path("Unity2Foxglove/Docs"),
@@ -84,10 +106,11 @@ jobs:
 
           files = []
           for root in roots:
-              if root.is_file() and root.suffix.lower() == ".md":
+              if root.is_file() and root.suffix.lower() in {".md", ".cff"}:
                   files.append(root)
               elif root.is_dir():
                   files.extend(root.rglob("*.md"))
+                  files.extend(root.rglob("*.cff"))
 
           link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
           missing = []

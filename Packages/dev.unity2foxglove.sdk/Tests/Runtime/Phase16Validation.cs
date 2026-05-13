@@ -65,6 +65,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             ValidateRepositoryHeaders(repoRoot);
             ValidateWorkflowScriptReferences(repoRoot);
+            ValidateDocsWorkflowCoverage(repoRoot);
+            ValidatePublicDocsScriptReferences(repoRoot);
+            ValidateResearchDoiPolicy(repoRoot);
             ValidateGeneratedSourceProvenance(repoRoot);
             ValidateThirdPartyNotices(repoRoot);
 
@@ -230,6 +233,74 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        static void ValidateDocsWorkflowCoverage(string repoRoot)
+        {
+            var docsWorkflowPath = Path.Combine(repoRoot, ".github", "workflows", "docs-check.yml");
+            Assert(File.Exists(docsWorkflowPath), "docs-check.yml exists");
+            var workflow = File.ReadAllText(docsWorkflowPath).Replace('\\', '/');
+
+            var requiredPublicDocs = new[]
+            {
+                "CITATION.cff",
+                "PAPER.md",
+                "docs/research-*.md",
+                "Packages/dev.unity2foxglove.sdk/README.md",
+                "Packages/dev.unity2foxglove.sdk/Documentation~/zh",
+                "Packages/dev.unity2foxglove.sdk/Documentation~/deu",
+            };
+
+            foreach (var requiredPath in requiredPublicDocs)
+                Assert(workflow.Contains(requiredPath), $"docs-check covers {requiredPath}");
+        }
+
+        static void ValidatePublicDocsScriptReferences(string repoRoot)
+        {
+            var publicDocsRoots = new[]
+            {
+                "README.md",
+                "PAPER.md",
+                "docs",
+                "Packages/dev.unity2foxglove.sdk/README.md",
+                "Packages/dev.unity2foxglove.sdk/Documentation~",
+                "Packages/dev.unity2foxglove.sdk/Samples~",
+            };
+
+            foreach (var root in publicDocsRoots)
+            {
+                var path = Path.Combine(repoRoot, root.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(path))
+                {
+                    AssertPublicDocHasNoStaleScriptPath(repoRoot, path);
+                    continue;
+                }
+
+                if (!Directory.Exists(path))
+                    continue;
+
+                foreach (var file in Directory.GetFiles(path, "*.md", SearchOption.AllDirectories))
+                    AssertPublicDocHasNoStaleScriptPath(repoRoot, file);
+            }
+        }
+
+        static void AssertPublicDocHasNoStaleScriptPath(string repoRoot, string path)
+        {
+            var relativePath = Path.GetRelativePath(repoRoot, path).Replace(Path.DirectorySeparatorChar, '/');
+            var text = File.ReadAllText(path).Replace('\\', '/');
+            Assert(!text.Contains("Scripts/build_unity_il2cpp.py"),
+                $"{relativePath} does not reference removed build_unity_il2cpp.py");
+        }
+
+        static void ValidateResearchDoiPolicy(string repoRoot)
+        {
+            var researchPath = Path.Combine(repoRoot, "docs", "research-shared-emitter-architecture.md");
+            Assert(File.Exists(researchPath), "shared-emitter research note exists");
+            var research = File.ReadAllText(researchPath);
+            Assert(!research.Contains("cite that DOI from `CITATION.cff`"),
+                "shared-emitter research note keeps CITATION.cff on the Concept DOI policy");
+            Assert(research.Contains("Concept DOI") && research.Contains("version-specific DOI"),
+                "shared-emitter research note distinguishes Concept DOI from version-specific DOI");
+        }
+
         static void ValidateGeneratedSourceProvenance(string repoRoot)
         {
             var generated = FoxgloveSourceEmitter.EmitClass(
@@ -257,6 +328,8 @@ namespace Unity.FoxgloveSDK.Tests
             var notices = File.ReadAllText(noticesPath);
             Assert(notices.Contains("Runtime/Schemas/Proto"), "third-party notices cover generated protobuf C# sources");
             Assert(notices.Contains("foxglove_schemas.pb"), "third-party notices cover protobuf descriptor asset");
+            Assert(notices.Contains("Google.Protobuf") && notices.Contains("BSD-3-Clause"),
+                "third-party notices cover bundled Google.Protobuf runtime DLL");
             Assert(notices.Contains("does not claim authorship"), "third-party notices preserve upstream schema authorship");
         }
 

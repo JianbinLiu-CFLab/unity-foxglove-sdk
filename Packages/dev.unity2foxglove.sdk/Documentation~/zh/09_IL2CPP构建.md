@@ -99,17 +99,17 @@ partial class TestLog : IFoxgloveLogSource
 
 ## 构建脚本
 
-项目提供 Python 构建脚本 `Scripts/build_unity_il2cpp.py`：
+项目提供 Python 构建脚本 `Scripts/build_tools/unity_il2cpp.py`：
 
 ```bash
 # 构建 Windows x64 IL2CPP Player
-python Scripts/build_unity_il2cpp.py --target win64
+python Scripts/build_tools/unity_il2cpp.py --target win64
 
 # 构建 Linux x64 IL2CPP Player
-python Scripts/build_unity_il2cpp.py --target linux64
+python Scripts/build_tools/unity_il2cpp.py --target linux64
 
 # 构建 macOS IL2CPP Player
-python Scripts/build_unity_il2cpp.py --target macos --unity /path/to/Unity.app
+python Scripts/build_tools/unity_il2cpp.py --target macos --unity /path/to/Unity.app
 ```
 
 ### 构建输出

@@ -26,7 +26,7 @@ Der übliche Weg ist: Package installieren, Foxglove verbinden, Unity-Daten ver�
 ## 5. Aufzeichnung, Wiedergabe und Builds
 
 - [MCAP Recording and Replay (English)](../en/08_MCAP_Recording_and_Replay.md): Unity-Daten aufzeichnen, MCAP in Foxglove öffnen und in Unity wiedergeben.
-- [IL2CPP Build Guide (English)](../en/09_IL2CPP_Build_Guide.md): einen Standalone Player mit `Scripts/build_unity_il2cpp.py` bauen und prüfen.
+- [IL2CPP Build Guide (English)](../en/09_IL2CPP_Build_Guide.md): einen Standalone Player mit `Scripts/build_tools/unity_il2cpp.py` bauen und prüfen.
 
 ## 6. Weiterführende Themen
 
