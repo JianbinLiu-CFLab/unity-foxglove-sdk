@@ -57,6 +57,9 @@ class Program
         if (argList.Contains("--phase55"))
             return RunPhase55Only();
 
+        if (argList.Contains("--phase56"))
+            return RunPhase56Only();
+
         if (argList.Contains("--phase13"))
             return RunPhase13Only();
 
@@ -190,6 +193,21 @@ class Program
         }
     }
 
+    private static int RunPhase56Only()
+    {
+        try
+        {
+            Phase56Validation.Validate();
+            Console.WriteLine("\nPhase 56 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -286,6 +304,8 @@ class Program
             Phase54Validation.Validate();
             Console.WriteLine();
             Phase55Validation.Validate();
+            Console.WriteLine();
+            Phase56Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

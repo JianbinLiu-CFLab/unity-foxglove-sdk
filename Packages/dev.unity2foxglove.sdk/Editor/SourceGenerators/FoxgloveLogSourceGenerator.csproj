@@ -10,6 +10,8 @@
   <ItemGroup>
     <Compile Include="src\**\*.cs" />
     <Compile Include="..\Shared\FoxgloveSourceEmitter.cs" Link="Shared\FoxgloveSourceEmitter.cs" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
   <ItemGroup>
     <!-- Must match Unity's built-in Roslyn: 4.2.2 for Unity 6000.3.x -->

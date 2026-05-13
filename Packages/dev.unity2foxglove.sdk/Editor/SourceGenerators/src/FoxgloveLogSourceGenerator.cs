@@ -220,7 +220,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
 
             var source = FoxgloveSourceEmitter.EmitClass(ns, className, args);
-            spc.AddSource($"{className}_FoxRun.g.cs", source);
+            spc.AddSource(FoxgloveSourceEmitter.GeneratedSourceName(ns, className), source);
         }
 
         /// <summary>
