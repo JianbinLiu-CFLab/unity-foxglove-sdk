@@ -564,9 +564,10 @@ namespace Unity.FoxgloveSDK.Components
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
-            id = (uint)_nextChannelId++;
-            _channelCache[key] = id;
+            id = (uint)_nextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
+            _nextChannelId++;
+            _channelCache[key] = id;
             return id;
         }
 
@@ -640,7 +641,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName, "protobuf");
-            _runtime.Publish(channelId, payload, logTimeNs);
+            _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
         }
 
         private uint GetOrRegisterChannel(string topic, string encoding)
@@ -649,8 +650,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
-            id = (uint)_nextChannelId++;
-            _channelCache[key] = id;
+            id = (uint)_nextChannelId;
             _runtime.RegisterChannel(new Protocol.AdvertiseChannel
             {
                 Id = id,
@@ -659,6 +659,8 @@ namespace Unity.FoxgloveSDK.Components
                 SchemaName = "",
                 Schema = ""
             });
+            _nextChannelId++;
+            _channelCache[key] = id;
             return id;
         }
 

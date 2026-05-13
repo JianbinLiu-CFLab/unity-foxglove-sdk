@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Proto
 // Purpose: Publishes foxglove.PointCloud messages from decoded frames or Unity transforms.
 
+using System;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
@@ -26,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _includeSyntheticIntensity;
 
         private PointCloudFrame _pendingFrame;
+        private bool _warnedPointCloudBudget;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.PointCloudSchemaName;
         public override bool SupportsProtobufEncoding => true;
@@ -51,7 +53,7 @@ namespace Unity.FoxgloveSDK.Components
             ResolveManager();
             if (_manager == null || frame == null) return;
 
-            var prepared = PrepareFrame(frame, logTimeNs);
+            var prepared = ClampFrameToPointBudget(frame, logTimeNs);
             PublishPreparedFrame(prepared, logTimeNs);
         }
 
@@ -63,7 +65,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
 
             var unixNs = CurrentLogTimeNs;
-            var frame = _pendingFrame != null ? PrepareFrame(_pendingFrame, unixNs) : CreateFrameFromTransforms(unixNs);
+            var frame = _pendingFrame != null ? ClampFrameToPointBudget(_pendingFrame, unixNs) : CreateFrameFromTransforms(unixNs);
             _pendingFrame = null;
             if (frame == null || frame.Points.Count == 0) return;
 
@@ -82,18 +84,39 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private PointCloudFrame PrepareFrame(PointCloudFrame frame, ulong unixNs)
+        private PointCloudFrame ClampFrameToPointBudget(PointCloudFrame frame, ulong unixNs)
         {
-            if (frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId))
+            var maxPoints = Math.Max(1, _maxPoints);
+            if (frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && frame.Points.Count <= maxPoints)
+            {
+                _warnedPointCloudBudget = false;
                 return frame;
+            }
 
             var copy = new PointCloudFrame
             {
                 UnixNs = frame.UnixNs == 0 ? unixNs : frame.UnixNs,
                 FrameId = string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId
             };
-            foreach (var point in frame.Points)
-                copy.Points.Add(point);
+
+            var count = Math.Min(frame.Points.Count, maxPoints);
+            for (var i = 0; i < count; i++)
+                copy.Points.Add(frame.Points[i]);
+
+            if (frame.Points.Count > maxPoints)
+            {
+                if (!_warnedPointCloudBudget)
+                {
+                    Debug.LogWarning(
+                        $"[Foxglove] PointCloud frame truncated from {frame.Points.Count} to {maxPoints} points.");
+                    _warnedPointCloudBudget = true;
+                }
+            }
+            else
+            {
+                _warnedPointCloudBudget = false;
+            }
+
             return copy;
         }
 
@@ -127,7 +150,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void AddPoint(PointCloudFrame frame, Transform source, ref int added)
         {
-            if (source == null || added >= _maxPoints) return;
+            if (source == null || added >= Math.Max(1, _maxPoints)) return;
 
             UVector3 pos = Manager != null && Manager.ActiveCoordinateMode == CoordinateMode.RightHand
                 ? CoordinateConverter.UnityToFoxglovePosition(source.position)

@@ -286,6 +286,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             var channel = _channels.Get(channelId);
             if (channel == null) return;
+            payload ??= Array.Empty<byte>();
             var recorder = Volatile.Read(ref _recorder);
             recorder?.WriteMessage(channelId, logTimeNs, payload);
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
@@ -315,6 +316,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             var channel = _channels.Get(channelId);
             if (channel == null) return;
+            payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
             foreach (var (clientId, subscriptionId) in _subscriptions.GetSubscribersForChannel(channelId))
             {

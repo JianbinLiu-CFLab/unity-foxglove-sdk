@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Components
         [Range(10, 100)]
         [SerializeField] private int _jpegQuality = 70;
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
-        [SerializeField] private int _maxPendingReadbacks = 2;
+        [SerializeField, Min(1)] private int _maxPendingReadbacks = 2;
 
         [Header("Backpressure")]
         [Tooltip("When enabled, transport queue pressure suppresses camera capture to reduce work.")]
@@ -115,7 +115,8 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null) return;
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
-            if (_pendingRequests >= _maxPendingReadbacks) return;
+            var maxPendingReadbacks = Math.Max(1, _maxPendingReadbacks);
+            if (_pendingRequests >= maxPendingReadbacks) return;
 
             if (!_enableBackpressureAdaptation)
             {
@@ -164,7 +165,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
 
-            if (_destroyed || !enabled) return;
+            if (_destroyed || !isActiveAndEnabled) return;
             if (req.hasError)
             {
                 Debug.LogWarning("[Foxglove] AsyncGPUReadback failed");
@@ -210,7 +211,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Does NOT destroy resources; disable/re-enable must be safe.
         /// <c>LateUpdate</c> stops naturally when the component is disabled,
-        /// and in-flight readback callbacks check <c>!enabled</c> to skip publishing.
+        /// and in-flight readback callbacks check <c>!isActiveAndEnabled</c>
+        /// to skip publishing after component or GameObject disable.
         /// </summary>
         protected override void OnDisable()
         {
