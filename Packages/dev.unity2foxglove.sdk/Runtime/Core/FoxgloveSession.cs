@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ParameterSubscriptionRegistry _paramSubs = new();
         /// <summary>Registered service descriptors and pending call queue.</summary>
         private readonly FoxgloveServiceRegistry _services;
-        private readonly ConnectionGraphRegistry _graph = new();
+        private readonly SessionGraphHandler _graph;
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
         private readonly object _playbackControlsLock = new();
         private readonly Queue<PendingPlaybackControl> _pendingPlaybackControls = new();
@@ -128,6 +128,7 @@ namespace Unity.FoxgloveSDK.Core
             _parameters = paramStore ?? new FoxgloveParameterStore();
             _services = serviceRegistry ?? new FoxgloveServiceRegistry();
             _sessionId = Guid.NewGuid().ToString();
+            _graph = new SessionGraphHandler(_transport, _logger, () => Volatile.Read(ref _recorder));
 
             _transport.OnClientConnected += OnClientConnected;
             _transport.OnClientDisconnected += OnClientDisconnected;
@@ -152,7 +153,6 @@ namespace Unity.FoxgloveSDK.Core
             lock (_clientChannelsLock)
                 _clientChannels.Clear();
             _graph.Clear();
-            _graphDirty = false;
         }
 
         /// <summary>Stop the transport and detach all event handlers.</summary>
@@ -175,14 +175,13 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             _channels.Register(channel);
-            _graph.SetPublishedTopic(channel.Topic, "unity");
-            _graphDirty = true;
+            _graph.SetUnityPublishedTopic(channel.Topic);
             var recorder = Volatile.Read(ref _recorder);
             recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
                 channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
-            BroadcastGraphUpdate();
+            _graph.BroadcastUpdate();
         }
 
         /// <summary>
@@ -193,20 +192,16 @@ namespace Unity.FoxgloveSDK.Core
         {
             var ch = _channels.Get(channelId);
             if (ch != null)
-            {
-                _graph.RemovePublishedTopic(ch.Topic, "unity");
-                _graphDirty = true;
-            }
+                _graph.RemoveUnityPublishedTopic(ch.Topic);
             if (!_channels.Remove(channelId)) return;
             foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
             {
                 if (ch != null)
-                    _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{subId}");
-                _graphDirty = true;
+                    _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
             }
             _transport.BroadcastText(JsonConvert.SerializeObject(
                 new Unadvertise { ChannelIds = new List<uint> { channelId } }));
-            BroadcastGraphUpdate();
+            _graph.BroadcastUpdate();
         }
 
         /// <summary>
@@ -374,9 +369,8 @@ namespace Unity.FoxgloveSDK.Core
 
             if (service != null)
             {
-                _graph.RemoveAdvertisedService(service.Name, "unity");
-                _graphDirty = true;
-                BroadcastGraphUpdate();
+                _graph.RemoveAdvertisedService(service.Name);
+                _graph.BroadcastUpdate();
             }
 
             return true;
@@ -394,9 +388,8 @@ namespace Unity.FoxgloveSDK.Core
 
             var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { service } };
             _transport.BroadcastText(JsonConvert.SerializeObject(adv));
-            _graph.AddAdvertisedService(service.Name, "unity");
-            _graphDirty = true;
-            BroadcastGraphUpdate();
+            _graph.AddAdvertisedService(service.Name);
+            _graph.BroadcastUpdate();
         }
 
         // ── Time ──
@@ -584,11 +577,7 @@ namespace Unity.FoxgloveSDK.Core
             var chs = _channels.GetAll();
             var svcs = _services.GetAll();
 
-            foreach (var ch in chs)
-                _graph.SetPublishedTopic(ch.Topic, "unity");
-            foreach (var svc in svcs)
-                _graph.AddAdvertisedService(svc.Name, "unity");
-            _graphDirty = true;
+            _graph.SeedUnityState(chs, svcs);
         }
 
         /// <summary>
@@ -605,7 +594,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var ch = _channels.Get(chId);
                 if (ch != null)
-                    _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{subId}");
+                    _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
             }
 
             _paramSubs.RemoveClient(clientId);
@@ -617,13 +606,12 @@ namespace Unity.FoxgloveSDK.Core
                 foreach (var k in toRemove)
                 {
                     if (_clientChannels.Remove(k, out var ch))
-                        _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{k.chId}");
+                        _graph.RemoveClientPublishedTopic(clientId, k.chId, ch.Topic);
                 }
             }
 
             _graph.RemoveClient(clientId);
-            _graphDirty = true;
-            BroadcastGraphUpdate();
+            _graph.BroadcastUpdate();
         }
 
         /// <summary>

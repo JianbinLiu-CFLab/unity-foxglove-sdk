@@ -33,13 +33,12 @@ namespace Unity.FoxgloveSDK.Core
                     if (ch != null)
                     {
                         _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
-                        _graph.AddSubscribedTopic(ch.Topic, $"client:{clientId}:{sub.Id}");
-                        _graphDirty = true;
+                        _graph.AddSubscribedTopic(clientId, sub.Id, ch.Topic);
                     }
                 }
             }
             catch (Exception ex) { _logger.LogWarning($"subscribe parse error: {ex.Message}"); }
-            BroadcastGraphUpdate();
+            _graph.BroadcastUpdate();
         }
 
         /// <summary>
@@ -58,15 +57,12 @@ namespace Unity.FoxgloveSDK.Core
                     {
                         var ch = _channels.Get(chId);
                         if (ch != null)
-                        {
-                            _graph.RemoveSubscribedTopic(ch.Topic, $"client:{clientId}:{subId}");
-                            _graphDirty = true;
-                        }
+                            _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
                     }
                 }
             }
             catch (Exception ex) { _logger.LogWarning($"unsubscribe parse error: {ex.Message}"); }
-            BroadcastGraphUpdate();
+            _graph.BroadcastUpdate();
         }
 
         // ── ConnectionGraph ──
@@ -78,35 +74,12 @@ namespace Unity.FoxgloveSDK.Core
         private void HandleSubscribeConnectionGraph(uint clientId)
         {
             _graph.Subscribe(clientId);
-            var snapshot = _graph.GetSnapshot();
-            _transport.SendText(clientId, JsonConvert.SerializeObject(snapshot));
         }
 
         /// <summary>Unsubscribe a client from connection graph updates.</summary>
         private void HandleUnsubscribeConnectionGraph(uint clientId)
         {
             _graph.Unsubscribe(clientId);
-        }
-
-        /// <summary>Whether the connection graph has pending changes to broadcast.</summary>
-        private bool _graphDirty;
-
-        /// <summary>
-        /// Broadcast the current connection graph snapshot to all subscribed
-        /// clients. When dirty, also writes the snapshot as MCAP metadata so
-        /// the graph state is preserved in recordings.
-        /// </summary>
-        private void BroadcastGraphUpdate()
-        {
-            var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
-            foreach (var subId in _graph.GetSubscribers())
-                _transport.SendText(subId, json);
-            if (_graphDirty)
-            {
-                var recorder = Volatile.Read(ref _recorder);
-                recorder?.WriteMetadata("foxglove.connection_graph", json);
-                _graphDirty = false;
-            }
         }
 
         // ── ClientPublish ──
@@ -134,10 +107,9 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 foreach (var ch in channels)
                 {
-                    _graph.AddPublishedTopic(ch.Topic, $"client:{clientId}:{ch.Id}");
-                    _graphDirty = true;
+                    _graph.AddClientPublishedTopic(clientId, ch.Id, ch.Topic);
                 }
-                BroadcastGraphUpdate();
+                _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning($"Client advertise parse error from client {clientId}: {ex.Message}"); }
         }
@@ -156,10 +128,9 @@ namespace Unity.FoxgloveSDK.Core
                             continue;
                         _clientChannels.Remove((clientId, chId));
                     }
-                    _graph.RemovePublishedTopic(ch.Topic, $"client:{clientId}:{chId}");
-                    _graphDirty = true;
+                    _graph.RemoveClientPublishedTopic(clientId, chId, ch.Topic);
                 }
-                BroadcastGraphUpdate();
+                _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning($"Client unadvertise parse error from client {clientId}: {ex.Message}"); }
         }
