@@ -136,5 +136,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - WebGL platform is not supported (depends on `TcpListener`)
 - macOS / Linux platforms have not been verified
-- WSS/TLS and authentication are not implemented
+- WSS/TLS and authentication are not implemented in v1.0.0. This historical limitation changed in v1.4.0: optional Unity-native WSS/TLS and a lightweight shared query-token gate are now available, but production authentication/authorization is still out of scope.
 - Native Backend (C implementation) has not yet been integrated into the transport layer

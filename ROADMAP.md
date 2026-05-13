@@ -57,7 +57,7 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 - Protobuf schema catalog and protobuf publishing are implemented (Phase 32).
 - Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
-- Evaluate optional `wss://` support for remote or production deployments; local demos will continue to default to `ws://127.0.0.1`.
+- Optional Unity-native `wss://` support, the local development certificate generator, Root CA distributor, hosted-browser Origin allowance, and shared token gate are implemented in v1.4.0. Future work should focus on clearer remote-access guidance and production deployment boundaries; local demos continue to default to `ws://127.0.0.1`.
 
 ### 2.4 MCAP and Replay
 

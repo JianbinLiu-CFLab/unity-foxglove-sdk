@@ -25,6 +25,7 @@
 - [09_IL2CPP构建](09_IL2CPP构建.md)：IL2CPP 构建。
 - [10_架构说明](10_架构说明.md)：SDK 架构和数据流。
 - [11_常见问题排查](11_常见问题排查.md)：常见问题排查。
+- [15_Secure_WSS](15_Secure_WSS.md)：可选 Unity-native WSS/TLS、本地开发证书、Root CA 分发和 shared token 限制。
 
 ## 英文页面
 
