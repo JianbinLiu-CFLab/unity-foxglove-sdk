@@ -89,7 +89,7 @@ The shared-emitter design prevents host drift after the generation model is reso
 
 ## Citation Note
 
-Software citation metadata is provided in [`CITATION.cff`](CITATION.cff). The archived evidence release DOI is [`10.5281/zenodo.20112834`](https://doi.org/10.5281/zenodo.20112834), corresponding to the `paper-evidence-2026-05-10` release.
+Software citation metadata is provided in [`CITATION.cff`](CITATION.cff), using the Zenodo Concept DOI [`10.5281/zenodo.20112833`](https://doi.org/10.5281/zenodo.20112833) for the evolving software record. The archived evidence release DOI is [`10.5281/zenodo.20112834`](https://doi.org/10.5281/zenodo.20112834), corresponding to the `paper-evidence-2026-05-10` release.
 
 Recommended evidence workflow:
 

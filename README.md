@@ -4,7 +4,7 @@
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Release](https://img.shields.io/badge/release-v1.4.0-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20112834.svg)](https://doi.org/10.5281/zenodo.20112834)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20112833.svg)](https://doi.org/10.5281/zenodo.20112833)
 [![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
 [![Docs Check](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml)
 
@@ -16,7 +16,7 @@ A cross-platform Unity SDK for real-time runtime data streaming, MCAP recording 
 
 Unity2Foxglove introduces an AOT-safe dual-host source generation architecture with a shared emitter for zero-reflection telemetry publishing in Unity Editor and IL2CPP Player builds.
 
-If you use this project in research, cite the archived evidence release DOI [`10.5281/zenodo.20112834`](https://doi.org/10.5281/zenodo.20112834) or use [`CITATION.cff`](CITATION.cff). See [`PAPER.md`](PAPER.md) for the research positioning, contribution boundaries, and evidence checklist. The `[FoxRun]` code-generation architecture is described in [`docs/research-shared-emitter-architecture.md`](docs/research-shared-emitter-architecture.md).
+If you use this project in research, cite the Zenodo Concept DOI [`10.5281/zenodo.20112833`](https://doi.org/10.5281/zenodo.20112833) or use [`CITATION.cff`](CITATION.cff). For reproducible reports that must pin an exact artifact, cite the version-specific DOI shown on the relevant Zenodo release page. See [`PAPER.md`](PAPER.md) for the research positioning, contribution boundaries, and evidence checklist. The `[FoxRun]` code-generation architecture is described in [`docs/research-shared-emitter-architecture.md`](docs/research-shared-emitter-architecture.md).
 
 ![Unity live streaming to Foxglove](Pictures/Foxglove_Real_Streaming.gif)
 
@@ -176,7 +176,7 @@ Development planning notes are not shipped with the repository. If you need the 
 
 ### 4.1 Citation / Research Positioning
 
-If you use Unity2Foxglove in research, please cite the software metadata in [CITATION.cff](CITATION.cff). A concise research-positioning note is available in [PAPER.md](PAPER.md).
+If you use Unity2Foxglove in research, please cite the software metadata in [CITATION.cff](CITATION.cff). The Zenodo Concept DOI points to the latest archived version; use a version-specific Zenodo DOI when reproducibility requires an exact release. A concise research-positioning note is available in [PAPER.md](PAPER.md).
 
 ---
 

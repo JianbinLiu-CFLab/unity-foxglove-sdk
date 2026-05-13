@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use Unity2Foxglove in research, please cite this software."
+message: "If you use Unity2Foxglove in research, please cite this software. Use the version-specific Zenodo DOI when an exact archived release is required."
 title: "Unity2Foxglove"
 type: software
 authors:
@@ -8,9 +8,7 @@ authors:
 license: "Apache-2.0"
 repository-code: "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk"
 url: "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk"
-doi: "10.5281/zenodo.20112834"
-version: "paper-evidence-2026-05-10"
-date-released: "2026-05-10"
+doi: "10.5281/zenodo.20112833"
 abstract: >-
   Unity2Foxglove is a Unity-native real-time telemetry and MCAP
   recording/replay pipeline for robotics visualization with Foxglove. It
