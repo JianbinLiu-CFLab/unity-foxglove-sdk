@@ -17,7 +17,7 @@ Unity2Foxglove v1.4.0 focuses on secure local/LAN connection options, event-driv
 
 - Existing Unity scenes keep serialized Inspector values unless changed manually.
 - Existing scenes continue to use plain `WebSocket` mode unless `SecureWebSocket` is selected.
-- WSS mode requires a PFX certificate containing a private key. The local certificate generator uses OpenSSL and writes ignored files under `UserSettings/Unity2Foxglove/Certificates/`.
+- WSS mode requires a PFX certificate containing a private key. The local certificate generator defaults to the built-in Unity/Mono certificate backend and writes ignored files under `UserSettings/Unity2Foxglove/Certificates/`. OpenSSL remains available only as an explicit fallback generator.
 - Foxglove Web on local loopback does not require WSS. Use WSS when Unity should own TLS for demos, lab setups, or LAN scenarios.
 - FoxRun `OnTrigger` topics publish only when user code calls the generated trigger method after updating the value.
 - Replay scrub improvements target coherent scene reproduction and bounded panel history. They are not deterministic physics/input replay.
