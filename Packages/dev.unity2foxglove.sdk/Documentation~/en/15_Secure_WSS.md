@@ -20,12 +20,13 @@ One `FoxgloveManager` runs one listener mode at a time. Plain and secure listene
 2. Set **Transport Mode** to `SecureWebSocket`.
 3. Keep **Host** as `127.0.0.1` for local tests.
 4. Keep **Port** as `8765`, or choose another free port.
-5. Click **Generate Local Dev Certificate** in **Security / WSS**.
-6. Confirm that **Certificate Pfx Path** and **Root Ca File Path** were filled automatically.
-7. Confirm the displayed **Root CA SHA-256** fingerprint.
-8. Import/trust the generated root CA manually only after fingerprint verification.
-9. Enter Play Mode.
-10. Use the Inspector **Open Foxglove Web** or **Copy Foxglove Web URL** action. It will use `wss://127.0.0.1:8765` only when `SecureWebSocket` is selected.
+5. Keep **Certificate Generator** set to `Built-in` for the normal no-OpenSSL path.
+6. Click **Generate Local Dev Certificate** in **Security / WSS**.
+7. Confirm that **Certificate Pfx Path** and **Root Ca File Path** were filled automatically.
+8. Confirm the displayed **Root CA SHA-256** fingerprint.
+9. Import/trust the generated root CA manually only after fingerprint verification.
+10. Enter Play Mode.
+11. Use the Inspector **Open Foxglove Web** or **Copy Foxglove Web URL** action. It will use `wss://127.0.0.1:8765` only when `SecureWebSocket` is selected.
 
 The generated local-development certificate is written under:
 
@@ -35,7 +36,7 @@ UserSettings/Unity2Foxglove/Certificates/
 
 `UserSettings/` is ignored by git. Do not copy the generated PFX private-key file into tracked source folders.
 
-The Inspector generator uses OpenSSL on Windows, macOS, and Linux. Install OpenSSL and make sure `openssl` or `openssl.exe` is on `PATH` before using the button.
+The Inspector generator uses Unity's built-in Mono certificate APIs by default, so normal local development does not require OpenSSL. OpenSSL is optional and is used only when you select the OpenSSL certificate generator. If you choose OpenSSL, install it, add `openssl` or `openssl.exe` to `PATH`, set `UNITY2FOXGLOVE_OPENSSL`, or choose the executable in the Inspector.
 
 If the shared token gate is enabled, connect with:
 
@@ -94,7 +95,7 @@ Do not paste the shared token into the approval record. Record only how it was d
 
 ## 6. Test Certificate Examples
 
-The Inspector generator is the preferred path for local development. It uses OpenSSL internally. Use these commands only when you need custom certificate names, validity, or subject alternative names.
+The Inspector generator is the preferred path for local development and does not require OpenSSL in the default built-in mode. Use these OpenSSL commands only when you explicitly choose the OpenSSL backend or need custom certificate names, validity, or subject alternative names.
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -sha256 -days 30 -nodes \
@@ -132,7 +133,10 @@ Prefer token gating with WSS, and do not use sensitive account passwords as toke
 | Symptom | Check |
 |---|---|
 | WSS fails immediately | Confirm the PFX path, password, private key, and certificate validity dates. |
+| Built-in certificate generation fails | This should be rare because the default path uses Unity's bundled Mono certificate APIs. Capture the Unity Console details; as a manual fallback, select the OpenSSL certificate generator, then install OpenSSL or choose an OpenSSL executable. |
+| OpenSSL generator says OpenSSL was not found | Install OpenSSL, install Git for Windows, add `openssl.exe` to `PATH`, set `UNITY2FOXGLOVE_OPENSSL`, or click **Choose OpenSSL**. |
 | `unsupported HMAC` while loading PFX | Regenerate the PFX with the Inspector button or use the OpenSSL command above; Unity Mono cannot read OpenSSL 3's default PKCS#12 algorithms. |
+| Unity logs a TLS/WebSocket handshake warning | The client disconnected before WebSocket upgrade. For browsers, re-import the newly generated root CA after regenerating a certificate and reload the Foxglove page. |
 | Browser refuses WSS | Import/trust the root CA and connect using a host covered by the certificate, or switch back to plain `WebSocket` for same-machine local development. |
 | Foxglove Web is rejected with `Rejected WebSocket Origin 'https://app.foxglove.dev'` | Enable **Allow Hosted Foxglove Web**. For custom web deployments, add that deployment's origin to **Allowed Browser Origins**. |
 | Token connection fails | Confirm the query token exactly matches the Inspector token. |

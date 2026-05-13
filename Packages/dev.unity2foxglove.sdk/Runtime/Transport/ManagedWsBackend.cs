@@ -14,6 +14,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -336,7 +337,12 @@ namespace Unity.FoxgloveSDK.Transport
                     try { tcpClient.Close(); } catch { }
                     try { tcpClient.Dispose(); } catch { }
                 }
-                _logger.LogError($"Client handler error: {ex.Message}");
+
+                var detail = FormatExceptionChain(ex);
+                if (conn == null && IsPreWebSocketHandshakeClientFailure(ex))
+                    _logger.LogWarning($"Client disconnected during TLS/WebSocket handshake: {detail}");
+                else
+                    _logger.LogError($"Client handler error: {detail}");
             }
         }
 
@@ -344,6 +350,40 @@ namespace Unity.FoxgloveSDK.Transport
         protected virtual Stream CreateClientStream(TcpClient tcpClient)
         {
             return tcpClient.GetStream();
+        }
+
+        private static bool IsPreWebSocketHandshakeClientFailure(Exception ex)
+        {
+            if (ex == null)
+                return false;
+
+            if (ex is AuthenticationException || ex is IOException || ex is SocketException)
+                return true;
+
+            if (ex is AggregateException aggregate)
+                return aggregate.InnerExceptions.Any(IsPreWebSocketHandshakeClientFailure);
+
+            return IsPreWebSocketHandshakeClientFailure(ex.InnerException);
+        }
+
+        private static string FormatExceptionChain(Exception ex)
+        {
+            if (ex == null)
+                return string.Empty;
+
+            var sb = new StringBuilder();
+            var current = ex;
+            while (current != null)
+            {
+                if (sb.Length > 0)
+                    sb.Append(" Inner: ");
+                sb.Append(current.GetType().Name);
+                sb.Append(": ");
+                sb.Append(current.Message);
+                current = current.InnerException;
+            }
+
+            return sb.ToString();
         }
 
         private static void ConfigureStreamTimeouts(Stream stream, int readTimeout, int writeTimeout)

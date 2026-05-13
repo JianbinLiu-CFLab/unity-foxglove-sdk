@@ -62,13 +62,14 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Certificate Pfx Path | Empty | PFX certificate and private key for WSS. | Required for `SecureWebSocket`. | Pointing to a `.crt` without a private key. |
 | Certificate Password | Empty | Password for the PFX file. | Set when the PFX is password protected. | Logging or sharing real passwords. |
 | Shared Token | Empty | Optional query-token gate. | Use with WSS for simple local/LAN gating. | Treating it as strong authentication or using it over plain `ws://`. |
-| Generate Local Dev Certificate | Button | Creates an ignored local self-signed certificate with OpenSSL and fills the WSS fields. | Use for local Editor or demo WSS setup when OpenSSL is on `PATH`. | Treating the generated PFX as production trust material. |
+| Certificate Generator | `Built-in` | Selects the local development certificate backend. | Keep `Built-in` for the normal Unity/Mono no-OpenSSL path. Choose `OpenSSL` only when you need the fallback path. | Expecting the SDK to install OpenSSL automatically. |
+| Generate Local Dev Certificate | Button | Creates an ignored local self-signed certificate and fills the WSS fields. | Use for local Editor or demo WSS setup. | Treating the generated PFX as production trust material. |
 | Root CA Distributor Enabled | Disabled | Starts a small HTTP server for downloading the root CA. | Enable for first-time local trust setup. | Trusting the HTTP download without checking the SHA-256 fingerprint. |
 | Root CA Distributor Host | `127.0.0.1` | Bind address for the CA HTTP server. | Keep loopback for local setup; use LAN addresses only intentionally. | Binding `0.0.0.0` on untrusted networks. |
 | Root CA Distributor Port | `8766` | HTTP port for the CA distributor. | Change if another process uses it. | Confusing it with the WebSocket port. |
 | Root CA File Path | Empty | Root CA file served by the distributor. | Set when the distributor is enabled. | Serving the wrong certificate file. |
 
-When another person or device imports the CA, require a manual verification step: compare the `Root CA SHA-256` value shown in Unity with the fingerprint shown on the distributor root page before trusting the certificate. Keep the shared token out of approval records and deliver it through a separate trusted channel. The local generator fills project fields only; it does not import the CA into any OS trust store.
+When another person or device imports the CA, require a manual verification step: compare the `Root CA SHA-256` value shown in Unity with the fingerprint shown on the distributor root page before trusting the certificate. Keep the shared token out of approval records and deliver it through a separate trusted channel. The local generator fills project fields only; it does not import the CA into any OS trust store. The default built-in generator uses Unity's bundled Mono certificate APIs; OpenSSL is optional and used only when the OpenSSL generator is selected.
 
 ## 4. FoxglovePublisherBase Fields
 
