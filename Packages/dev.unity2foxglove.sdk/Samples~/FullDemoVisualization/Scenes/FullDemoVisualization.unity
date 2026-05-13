@@ -223,8 +223,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
   m_RequiresOpaqueTextureOption: 2
@@ -267,18 +267,23 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 0}
-  _topic: 
+  _topic:
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
+  _encodingOverride: 0
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 2
+  _enableBackpressureAdaptation: 0
+  _backpressureCooldownSeconds: 0.5
+  _maxEncodedBytes: 0
+  _logBackpressureSkips: 0
 --- !u!1 &346350280
 GameObject:
   m_ObjectHideFlags: 0
@@ -308,13 +313,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
+  _transportMode: 0
+  _defaultPublisherEncoding: 1
+  _allowPublisherOverride: 1
   _coordinateMode: 1
   _assetRoots:
   - uriPrefix: asset://demo/
@@ -325,15 +333,23 @@ MonoBehaviour:
   _playbackDurationSeconds: 60
   _enableRecording: 0
   _recordingPrefix: foxglove
-  _recordingDirectory: 
+  _recordingDirectory:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
   _replayFilePath:
   _replayAutoPlay: 0
   _disableLivePublishers: 0
+  _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins:
   - https://app.foxglove.dev
+  _certificatePfxPath:
+  _certificatePassword:
+  _rootCaDistributorEnabled: 0
+  _rootCaDistributorHost: 127.0.0.1
+  _rootCaDistributorPort: 8766
+  _rootCaFilePath:
+  _sharedToken:
 --- !u!4 &346350282
 Transform:
   m_ObjectHideFlags: 0
@@ -359,7 +375,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c65c7a2314563254aab3e6689c67c1b6, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup
   _manager: {fileID: 0}
 --- !u!114 &346350284
@@ -372,7 +388,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b3d0f1e2a4b5c6d7e8f9a0b1c2d3e4f5, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveReplayObjectAdapter
   _manager: {fileID: 0}
   _autoLookup: 1
@@ -488,8 +504,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
   m_CustomShadowLayers: 0
@@ -507,6 +523,55 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!1 &534487832
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 534487834}
+  - component: {fileID: 534487833}
+  m_Layer: 0
+  m_Name: 'FoxRun_Trigger_Smoke '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &534487833
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 534487832}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9360d8900353de14e93374b6565b62ac, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase53FoxRunTriggerSmoke
+  fixedCounter: 0
+  triggerCounter: 0
+  eventName: idle
+  groupedTimerValue: 0
+  lastTriggerResult: not triggered
+--- !u!4 &534487834
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 534487832}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -534,8 +599,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_IsGlobal: 1
   priority: 0
   blendDistance: 0
@@ -598,8 +663,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
+  position: {x: 0, y: 0, z: 0}
 --- !u!1 &2004464831
 GameObject:
   m_ObjectHideFlags: 0
@@ -632,15 +698,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 49c73532e06675941b2a1b734765dc2d, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSceneCubePublisher
   _manager: {fileID: 0}
-  _topic: 
+  _topic:
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
-  _entityId: 
-  _frameId: 
+  _encodingOverride: 0
+  _entityId:
+  _frameId:
   _size: {x: 1, y: 1, z: 1}
   _color: {r: 0.21568628, g: 0.21568628, b: 0.21568628, a: 1}
 --- !u!114 &2004464833
@@ -653,15 +720,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4c1d6a066ac4948418f4df6fdc4c5e3c, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
   _manager: {fileID: 0}
-  _topic: 
+  _topic:
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
+  _encodingOverride: 0
   _parentFrameId: unity_world
-  _childFrameId: 
+  _childFrameId:
 --- !u!65 &2004464834
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -765,7 +833,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe56e0e2a70f9a949b4f5f57cafbab36, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::MouseDragCube
   _rotateSpeed: 3
   _panSpeed: 0.01
@@ -783,3 +851,4 @@ SceneRoots:
   - {fileID: 346350282}
   - {fileID: 2004464837}
   - {fileID: 1529818994}
+  - {fileID: 534487834}
