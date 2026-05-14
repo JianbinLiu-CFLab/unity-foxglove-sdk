@@ -6,6 +6,7 @@
 // Provides FoxgloveManager auto-resolution, publish-rate throttling,
 // frame ID sanitization, encoding override, and publish helpers.
 
+using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -29,7 +30,7 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Override the global default encoding for this publisher.")]
         [SerializeField] protected PublisherEncodingOverride _encodingOverride = PublisherEncodingOverride.UseManager;
 
-        private float _lastPublishTime = float.NegativeInfinity;
+        private FixedRatePublishState _publishRateState;
         private bool _warnedManagerMissing;
         private string _lastEncodingWarningKey;
 
@@ -127,17 +128,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True if enough time has elapsed since last publish.</summary>
         protected bool ShouldPublishNow()
         {
-            var effectiveRateHz = EffectivePublishRateHz;
-            if (effectiveRateHz <= 0) return true;
-
-            var interval = 1f / effectiveRateHz;
-            var now = Time.unscaledTime;
-            if (now - _lastPublishTime >= interval)
-            {
-                _lastPublishTime = now;
-                return true;
-            }
-            return false;
+            return FixedRatePublishScheduler.ShouldPublish(
+                Time.unscaledTimeAsDouble,
+                EffectivePublishRateHz,
+                ref _publishRateState,
+                nonPositivePublishesEveryFrame: true);
         }
 
         /// <summary>Replace spaces with underscores. Use fallback if empty.</summary>

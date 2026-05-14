@@ -96,7 +96,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "71C-6: publisher resolves rates through PublisherRatePolicy");
             Check(shouldPublish.Contains("EffectivePublishRateHz") && !shouldPublish.Contains("1f / _publishRateHz"),
                 "71C-7: ShouldPublishNow uses effective publish rate");
-            Check(shouldPublish.Contains("effectiveRateHz <= 0") || shouldPublish.Contains("rateHz <= 0"),
+            Check(shouldPublish.Contains("effectiveRateHz <= 0")
+                    || shouldPublish.Contains("rateHz <= 0")
+                    || shouldPublish.Contains("nonPositivePublishesEveryFrame: true"),
                 "71C-8: ShouldPublishNow preserves non-positive no-throttle semantics");
             Check(rateResolution.Contains("FindFirstObjectByType<FoxgloveManager>()"),
                 "71C-9: effective rate can preview scene manager defaults without serialized manager reference");
@@ -134,7 +136,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "71E-2: source generator still reads explicit FoxRun RateHz");
             Check(emitterSource.Contains("fields.Max(m => m.RateHz)") || emitterSource.Contains("m.RateHz"),
                 "71E-3: shared emitter still emits FoxRun topic RateHz metadata");
-            Check(hubSource.Contains("info.RateHz > 0 ? 1f / info.RateHz : 1f"),
+            Check(hubSource.Contains("info.RateHz > 0 ? 1f / info.RateHz : 1f")
+                    || hubSource.Contains("info.RateHz > 0 ? info.RateHz : 1f"),
                 "71E-4: FoxgloveLogHub still throttles FoxRun from topic RateHz");
         }
 
