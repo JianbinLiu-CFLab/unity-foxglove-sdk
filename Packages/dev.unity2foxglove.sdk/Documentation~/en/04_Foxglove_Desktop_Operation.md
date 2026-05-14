@@ -131,6 +131,15 @@ Do not put `/cube/reset_pose` inside the JSON request. The service name is selec
 
 Use **Problems** when something looks connected but does not work.
 
+Unity scripts can also publish explicit diagnostics to this panel:
+
+```csharp
+manager.PublishWarningStatus("Replay file is missing", "replay/file");
+manager.RemoveStatus("replay/file");
+```
+
+Use a stable ID when the status represents a condition that can later be cleared. These calls are explicit diagnostics; Unity console logs are not mirrored to the Problems panel automatically.
+
 Common messages:
 
 - `service has not been advertised`: reconnect Foxglove or verify the Unity service registration.
