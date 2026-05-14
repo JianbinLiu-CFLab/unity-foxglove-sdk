@@ -83,8 +83,8 @@ namespace Unity.FoxgloveSDK.Components
         private static FoxgloveLogHub _instance;
         /// <summary>Cached reference to the FoxgloveManager.</summary>
         private FoxgloveManager _mgr;
-        /// <summary>Per-source countdown timers for rate throttling.</summary>
-        private readonly Dictionary<IFoxgloveLogSource, float[]> _timers = new();
+        /// <summary>Per-source scheduler state for rate throttling.</summary>
+        private readonly Dictionary<IFoxgloveLogSource, FixedRatePublishState[]> _timers = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
         private readonly List<IFoxgloveLogSource> _stale = new();
         /// <summary>Countdown until the next Scan for new sources.</summary>
@@ -165,7 +165,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Each frame: resolve the FoxgloveManager (with a 3-second retry cooldown),
         /// periodically scan for new log sources, and fire publishes for every source
-        /// whose per-topic countdown timer has elapsed. Event-driven sources can
+        /// whose per-topic cadence is due. Event-driven sources can
         /// veto a timer tick when the generated last-value policy says nothing
         /// changed and no heartbeat is due.
         /// </summary>
@@ -192,9 +192,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var nowNs = _mgr.NowNs;
-            var dt = Time.deltaTime;
-
-            var nowSec = (double)Time.realtimeSinceStartup;
+            var nowSec = Time.realtimeSinceStartupAsDouble;
             _stale.Clear();
             foreach (var kv in _timers)
             {
@@ -204,13 +202,17 @@ namespace Unity.FoxgloveSDK.Components
                 var policySource = kv.Key as IFoxgloveLogPolicySource;
                 for (int i = 0; i < t.Length; i++)
                 {
-                    t[i] -= dt;
-                    if (t[i] <= 0f)
+                    var info = kv.Key.FoxgloveLog_GetTopic(i);
+                    if (info.PublishMode == FoxRunPublishMode.OnTrigger)
+                        continue;
+
+                    var rateHz = info.RateHz > 0 ? info.RateHz : 1f;
+                    if (FixedRatePublishScheduler.ShouldPublish(
+                            nowSec,
+                            rateHz,
+                            ref t[i],
+                            nonPositivePublishesEveryFrame: false))
                     {
-                        var info = kv.Key.FoxgloveLog_GetTopic(i);
-                        t[i] = info.RateHz > 0 ? 1f / info.RateHz : 1f;
-                        if (info.PublishMode == FoxRunPublishMode.OnTrigger)
-                            continue;
                         bool shouldPublish = policySource == null
                             || policySource.FoxgloveLog_ShouldPublish(i, nowSec);
                         if (shouldPublish)
@@ -245,7 +247,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             var count = source.FoxgloveLog_TopicCount;
             if (count > 0)
-                _timers[source] = new float[count];
+                _timers[source] = new FixedRatePublishState[count];
         }
 
         private bool TriggerSource(IFoxgloveLogSource source, int topicIndex)
@@ -263,7 +265,7 @@ namespace Unity.FoxgloveSDK.Components
 
             source.FoxgloveLog_Publish(topicIndex, _mgr, _mgr.NowNs);
             if (source is IFoxgloveLogPolicySource policySource)
-                policySource.FoxgloveLog_MarkPublished(topicIndex, Time.realtimeSinceStartup);
+                policySource.FoxgloveLog_MarkPublished(topicIndex, Time.realtimeSinceStartupAsDouble);
             return true;
         }
 

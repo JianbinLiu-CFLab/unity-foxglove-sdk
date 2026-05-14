@@ -227,6 +227,29 @@ python Scripts/smoke/tf_websocket_smoke.py
 python Scripts/smoke/tf_websocket_smoke.py --port 8765 --max-frames 20
 ```
 
+## Smoke: Topic Rate Probe
+
+Entry script:
+
+```text
+Scripts/smoke/topic_rate_probe.py
+```
+
+Purpose:
+
+- Connect to a running Foxglove WebSocket or WSS endpoint.
+- Wait for `advertise`, find the requested topic's channel ID, and subscribe.
+- Measure protocol-level `MessageData` cadence without relying on Foxglove UI rate smoothing.
+- Print wall-clock rate, log-time rate, interval jitter, payload size, and a target-rate verdict.
+
+Basic usage:
+
+```bash
+python Scripts/smoke/topic_rate_probe.py --port 8765 --topic /tf --duration 15 --target-hz 40
+python Scripts/smoke/topic_rate_probe.py --url ws://127.0.0.1:8765 --topic /scene --target-hz 10
+python Scripts/smoke/topic_rate_probe.py --url wss://127.0.0.1:8765 --insecure --token FoxRun --topic /tf --target-hz 40
+```
+
 ## Smoke: fetchAsset Client
 
 Entry script:
