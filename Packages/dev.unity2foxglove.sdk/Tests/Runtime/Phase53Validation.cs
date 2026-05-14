@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTriggerApiSourceContract()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveLogHub.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
 
             Check(source.Contains("public static bool Trigger(IFoxgloveLogSource source, int topicIndex)"),
                 "53D-1: FoxgloveLogHub exposes stable trigger API");

@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase52Validation
     {
         private const int TestTimeoutMs = 5000;
+        private const int QuietLogWaitMs = 250;
         private const string ValidToken = "phase52-secret";
         private const string WrongToken = "phase52-wrong";
         private static int _passCount;
@@ -40,7 +41,8 @@ namespace Unity.FoxgloveSDK.Tests
             TestWrongTokenRejectedBeforeUpgrade();
             TestTlsOptionsValidateDeterministicPfx();
             TestWssHandshakeAndServerInfo();
-            TestWssTlsHandshakeAbortIsWarning();
+            TestWssTlsHandshakeAbortIsQuietByDefault();
+            TestWssTlsHandshakeAbortCanBeLoggedWhenEnabled();
             TestWssOriginGuardRejectsDisallowedOrigin();
             TestSecureStopStartReleasesPort();
             TestReceiveLoopIgnoresSslStreamDisposalRace();
@@ -67,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(snap.MaxQueuedBytesPerClient == ManagedWebSocketOptions.DefaultMaxQueuedBytes,
                 "52A-1c: stats expose max queued bytes per client");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveSession.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
             Check(!source.Contains("ManagedWsBackend.MaxQueuedFrames"),
                 "52A-1d: replay headroom no longer reads ManagedWsBackend.MaxQueuedFrames");
             Check(!source.Contains("ManagedWsBackend.MaxQueuedBytes"),
@@ -179,7 +181,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "52B-2b: WSS client receives serverInfo frame");
         }
 
-        private static void TestWssTlsHandshakeAbortIsWarning()
+        private static void TestWssTlsHandshakeAbortIsQuietByDefault()
         {
             using var fixture = Phase52CertificateFixture.Create();
             var port = GetFreeTcpPort();
@@ -193,17 +195,41 @@ namespace Unity.FoxgloveSDK.Tests
                 logger: logger);
             backend.Start("127.0.0.1", port);
 
-            using (var client = new TcpClient())
-            {
-                client.Connect("127.0.0.1", port);
-            }
+            ConnectAndCloseTcp(port);
+
+            WaitUntil(() => logger.WarningCount + logger.ErrorCount > 0, QuietLogWaitMs);
+            Check(logger.ErrorCount == 0,
+                "52B-2c: WSS TLS handshake abort is not logged as a server error");
+            Check(logger.WarningCount == 0,
+                "52B-2d: WSS TLS handshake abort is quiet by default");
+        }
+
+        private static void TestWssTlsHandshakeAbortCanBeLoggedWhenEnabled()
+        {
+            using var fixture = Phase52CertificateFixture.Create();
+            var port = GetFreeTcpPort();
+            var logger = new Phase52CaptureLogger();
+            using var backend = new ManagedWssBackend(
+                new FoxgloveTlsOptions
+                {
+                    CertificatePfxPath = fixture.PfxPath,
+                    CertificatePassword = fixture.Password
+                },
+                new ManagedWebSocketOptions
+                {
+                    LogPreHandshakeClientDisconnects = true
+                },
+                logger);
+            backend.Start("127.0.0.1", port);
+
+            ConnectAndCloseTcp(port);
 
             WaitUntil(() => logger.WarningCount + logger.ErrorCount > 0, TestTimeoutMs);
             Check(logger.ErrorCount == 0,
-                "52B-2c: WSS TLS handshake abort is not logged as a server error");
+                "52B-2e: WSS TLS handshake abort opt-in logging is not a server error");
             Check(logger.WarningCount > 0
                   && logger.LastWarning.Contains("TLS/WebSocket handshake"),
-                "52B-2d: WSS TLS handshake abort warning names the handshake stage");
+                "52B-2f: WSS TLS handshake abort opt-in warning names the handshake stage");
         }
 
         private static void TestWssOriginGuardRejectsDisallowedOrigin()
@@ -450,8 +476,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var managerSource = ReadManagerSource();
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
-            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxgloveManagerEditor.cs");
-            var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxgloveLocalDevCertificateGenerator.cs");
+            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Certificates/FoxgloveLocalDevCertificateGenerator.cs");
             var demoSource = ReadRepoText("Unity2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs");
 
             Check(managerSource.Contains("_transportMode"), "52C-1: manager stores transport mode");
@@ -710,6 +736,12 @@ namespace Unity.FoxgloveSDK.Tests
             return port;
         }
 
+        private static void ConnectAndCloseTcp(int port)
+        {
+            using var client = new TcpClient();
+            client.Connect("127.0.0.1", port);
+        }
+
         private static void WaitUntil(Func<bool> predicate, int timeoutMs)
         {
             var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -805,11 +837,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var parts = new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveManager.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Server.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Setup.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Publishing.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Certificate.cs"
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Certificate.cs"
             };
             var source = new System.Text.StringBuilder();
             foreach (var part in parts)

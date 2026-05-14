@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyProtobufSchemaSetupDoesNotStronglyRetainRegistries()
         {
-            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/ProtobufSchemasSetup.cs");
+            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemasSetup.cs");
             Check(!setup.Contains("HashSet<ISchemaRegistry>") && !setup.Contains("_seenRegistries"),
                 "57A-1: protobuf setup no longer keeps a static strong set of schema registries");
 
@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagerCachesSchemaChannelsOnlyAfterSuccessfulRegistration()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Publishing.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var registerIndex = manager.IndexOf("_runtime.RegisterSchemaChannel", StringComparison.Ordinal);
             var cacheIndex = manager.IndexOf("_channelCache[key]", registerIndex, StringComparison.Ordinal);
 
@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCameraPublisherClampsReadbackLifecycle()
         {
-            var camera = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveCameraPublisher.cs");
+            var camera = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
 
             Check(camera.Contains("[SerializeField, Min(1)] private int _maxPendingReadbacks"),
                 "57D-1: camera publisher inspector clamps max pending readbacks to at least one");
@@ -91,8 +91,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudPublisherAppliesProgrammaticPointBudget()
         {
-            var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxglovePointCloudPublisher.cs");
-            var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloudMessageBuilder.cs");
+            var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
 
             Check(publisher.Contains("ClampFrameToPointBudget") && publisher.Contains("Math.Max(1, _maxPoints)"),
                 "57E-1: point cloud publisher applies the serialized point budget to programmatic frames");

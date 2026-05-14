@@ -120,7 +120,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagedWebSocketOrderedShutdownSource()
         {
-            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/ManagedWsBackend.cs");
+            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             var connectionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             Check(!backendSource.Contains("using (tcpClient)"),
                 "50B-1: HandleClient does not dispose TcpClient before the send loop owns shutdown");
@@ -167,8 +167,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySessionUsesVolatileRuntimeAndRecorderAccess()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveSession.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveSession.Connection.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
 
             Check(source.Contains("Volatile.Write(ref _runtime") && source.Contains("Volatile.Read(ref _runtime"),
                 "50D-1: runtime reference uses volatile publication and reads");
@@ -229,7 +229,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFoxgloveLogHubDomainReloadResetSource()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveLogHub.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             Check(source.Contains("RuntimeInitializeLoadType.SubsystemRegistration"),
                 "50H-1: FoxgloveLogHub has a subsystem registration reset hook");
             Check(Regex.IsMatch(source, @"static\s+void\s+Reset[^(\r\n]*\([^)]*\)[\s\S]*?_instance\s*=\s*null"),
@@ -238,7 +238,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRecordingControllerDoubleAttachGuard()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/RecordingController.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
             var unsubscribeIndex = source.IndexOf("parameters.OnParameterChanged -= OnParameterChanged", StringComparison.Ordinal);
             var subscribeIndex = source.IndexOf("parameters.OnParameterChanged += OnParameterChanged", StringComparison.Ordinal);
             Check(unsubscribeIndex >= 0 && subscribeIndex > unsubscribeIndex,
@@ -267,14 +267,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Throws<InvalidDataException>(() => engine.Tick(10)),
                 "50J-1: oversized chunk inner message length throws InvalidDataException");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/McapReplayEngine.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
             Check(source.Contains("len > int.MaxValue") && source.Contains("InvalidDataException"),
                 "50J-2: non-message chunk record length casts are guarded");
         }
 
         private static void VerifySceneCubeColorSetterSource()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveSceneCubePublisher.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             Check(Regex.IsMatch(source, @"if\s*\(_color\s*==\s*value\)\s*\{\s*return;\s*\}"),
                 "50K-1: SceneCubeColor returns immediately when color is unchanged");
             Check(Regex.IsMatch(source, @"_color\s*=\s*value;[\s\S]*?ApplyColorToRenderer\(value\);[\s\S]*?OnSceneCubeColorChanged\?\.Invoke\(value\);"),

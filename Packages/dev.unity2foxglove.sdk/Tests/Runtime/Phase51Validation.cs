@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(McapBinaryReader.MatchesMagic(bytes, 0),
                 "51A-2: magic matcher uses immutable internal magic bytes");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/McapWriter.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
             Check(!source.Contains("public static readonly byte[] Magic"),
                 "51A-3: McapWriter no longer exposes a public mutable static byte array");
         }
@@ -136,7 +136,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyServiceDrainUsesSingleOwnershipPass()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveServiceRegistry.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Services/FoxgloveServiceRegistry.cs");
             var drain = ExtractMethodBody(source, "DrainCompleted");
             Check(!drain.Contains("_pending.ToList()"),
                 "51B-5: DrainCompleted does not allocate LINQ snapshots while holding ownership");
@@ -181,7 +181,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAssetRegistryDoesIoOutsideLock()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveAssetRegistry.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Assets/FoxgloveAssetRegistry.cs");
             var lockBlocks = Regex.Matches(source, @"lock\s*\(_lock\)\s*\{[\s\S]*?\n\s*\}");
             var lockText = string.Join("\n", lockBlocks.Cast<Match>().Select(m => m.Value));
             Check(!lockText.Contains("File.Exists") && !lockText.Contains("Directory.Exists")
@@ -249,7 +249,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "51B-19: live MessageData publish uses data binary priority");
 
             var transportSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/IFoxgloveTransport.cs");
-            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/ManagedWsBackend.cs");
+            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             Check(transportSource.Contains("BroadcastDataBinary")
                   && Regex.IsMatch(backendSource, @"BroadcastBinary[\s\S]*FramePriority\.Control")
                   && Regex.IsMatch(backendSource, @"BroadcastDataBinary[\s\S]*FramePriority\.Data"),
@@ -258,7 +258,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyClientIdAllocationCannotWrapToZero()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/ManagedWsBackend.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             Check(source.Contains("long _nextClientId") && source.Contains("AllocateClientId")
                   && source.Contains("uint.MaxValue") && !source.Contains("(uint)Interlocked.Increment(ref _nextClientId)"),
                 "51B-21: ManagedWsBackend allocates nonzero client ids without uint wraparound");
@@ -266,30 +266,30 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayTickSupportsCallerOwnedBuffer()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/McapReplayEngine.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
             Check(source.Contains("Tick(ulong nowNs, List<McapMessage>") && source.Contains("result.Clear()"),
                 "51C-1: McapReplayEngine supports caller-owned Tick buffer reuse");
 
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/ReplayController.cs");
+            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
             Check(replaySource.Contains("_replayTickBuffer") && replaySource.Contains(".Tick(nowNs, _replayTickBuffer)"),
                 "51C-2: ReplayController reuses a replay tick message buffer");
         }
 
         private static void VerifyMcapRecorderAvoidsChunkToArrayCopy()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/McapRecorder.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
             Check(!source.Contains("_chunkBuf.ToArray()") && source.Contains("TryGetBuffer"),
                 "51C-3: McapRecorder FlushChunk avoids the raw chunk ToArray copy");
         }
 
         private static void VerifyUnityAllocationFixes()
         {
-            var cube = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveSceneCubePublisher.cs");
+            var cube = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             Check(cube.Contains("_renderer") && cube.Contains("_propertyBlock")
                   && ExtractMethodBody(cube, "ApplyColorToRenderer").Contains("_propertyBlock"),
                 "51C-4: SceneCube publisher caches renderer and MaterialPropertyBlock");
 
-            var laser = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveLaserScanPublisher.cs");
+            var laser = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveLaserScanPublisher.cs");
             Check(laser.Contains("_syntheticRanges") && laser.Contains("BuildSyntheticRanges"),
                 "51C-5: LaserScan publisher caches synthetic ranges");
 
@@ -297,7 +297,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(demo.Contains("_cachedCube") && demo.Contains("private GameObject FindCube()"),
                 "51C-6: demo setup caches cube lookup");
 
-            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveLogHub.cs");
+            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             Check(hub.Contains("ScanIntervalSeconds") && hub.Contains("RegisterSource"),
                 "51C-7: FoxRun hub has explicit registration hooks and named scan fallback interval");
         }
@@ -323,8 +323,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFileOrganizationDecisionIsRecorded()
         {
-            var sceneCubePublisher = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveSceneCubePublisher.cs");
-            var transformPublisher = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/FoxgloveTransformPublisher.cs");
+            var sceneCubePublisher = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
+            var transformPublisher = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs");
             Check(File.Exists(sceneCubePublisher) && File.Exists(sceneCubePublisher + ".meta")
                 && File.Exists(transformPublisher) && File.Exists(transformPublisher + ".meta"),
                 "51D-3: file organization decision preserves publisher file locations and Unity .meta files");
