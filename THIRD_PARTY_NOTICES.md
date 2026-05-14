@@ -4,6 +4,15 @@ This project uses the following third-party open source software.
 
 ---
 
+## Unity-bundled Mono.Security
+
+- **Provider**: Unity Editor / Unity runtime environment
+- **Usage**: The built-in local development certificate generator uses Unity's bundled `Mono.Security` assembly via reflection to create self-signed local development certificates and PKCS#12/PFX files.
+- **Distribution**: `Mono.Security.dll` is not bundled or redistributed by Unity2Foxglove. It is provided by the Unity environment in which the package runs.
+- **Note**: OpenSSL is not bundled by Unity2Foxglove. It is used only when the user explicitly selects the OpenSSL certificate generator.
+
+---
+
 ## foxglove/mcap
 
 - **URL**: https://github.com/foxglove/mcap

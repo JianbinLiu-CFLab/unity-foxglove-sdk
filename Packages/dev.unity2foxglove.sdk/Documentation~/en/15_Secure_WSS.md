@@ -36,7 +36,7 @@ UserSettings/Unity2Foxglove/Certificates/
 
 `UserSettings/` is ignored by git. Do not copy the generated PFX private-key file into tracked source folders.
 
-The Inspector generator uses Unity's built-in Mono certificate APIs by default, so normal local development does not require OpenSSL. OpenSSL is optional and is used only when you select the OpenSSL certificate generator. If you choose OpenSSL, install it, add `openssl` or `openssl.exe` to `PATH`, set `UNITY2FOXGLOVE_OPENSSL`, or choose the executable in the Inspector.
+The Inspector generator uses Unity's built-in Mono certificate APIs by default, so normal local development does not require OpenSSL. The package does not redistribute `Mono.Security.dll`; it uses the Unity-bundled assembly available in the Editor/runtime environment. OpenSSL is optional and is used only when you select the OpenSSL certificate generator. If you choose OpenSSL, install it, add `openssl` or `openssl.exe` to `PATH`, set `UNITY2FOXGLOVE_OPENSSL`, or choose the executable in the Inspector.
 
 If the shared token gate is enabled, connect with:
 

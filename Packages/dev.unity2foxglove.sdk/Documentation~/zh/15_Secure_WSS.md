@@ -51,7 +51,7 @@ UserSettings/Unity2Foxglove/Certificates/
 
 ## 4. OpenSSL 策略
 
-默认路径不需要 OpenSSL。内置生成器使用 Unity 自带的 Mono 证书 API 生成本地开发 PFX 和 Root CA。
+默认路径不需要 OpenSSL。内置生成器使用 Unity 自带的 Mono 证书 API 生成本地开发 PFX 和 Root CA。包内不再分发 `Mono.Security.dll`，只使用 Unity Editor/runtime 环境自带的 assembly。
 
 OpenSSL 只作为显式 fallback：
 
