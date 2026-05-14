@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.5.0 - 2026-05-14
+
+### Added
+
+- 200-series follow-up note for the multi-client playback-control timeout storm observed when Foxglove Desktop and Foxglove Web are connected at the same time.
+
+### Changed
+
+- Reorganized runtime and editor package folders by feature/category while preserving namespaces, public APIs, serialized fields, and Unity `.meta` GUIDs.
+- Renamed broad source roots to clearer package-facing names, including `Runtime/Components`, `Runtime/Utilities`, and `Runtime/Schemas/MessageDefinitions`.
+- Grouped generated protobuf artifacts under `Runtime/Schemas/Proto/Generated/Messages` and descriptor artifacts under `Runtime/Schemas/Proto/Generated/Descriptors`.
+- Grouped MCAP I/O, Core session/replay/recording assets, Transport WebSocket/security/clock code, Editor tooling, and component-side publishers/adapters into focused folders.
+- Synchronized package metadata, README version references, changelog, and release notes for v1.5.0.
+
+### Fixed
+
+- Reduced normal WSS client churn noise by keeping TLS/WebSocket pre-handshake disconnect diagnostics quiet by default, with opt-in logging still available for debugging.
+
+### Verified
+
+- Runtime validation suite passed.
+- Release package validation passed.
+- Quick performance baseline passed.
+
 ## 1.4.0 - 2026-05-13
 
 ### Added
