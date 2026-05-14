@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "56A-2: generated names include namespace identity for collision avoidance");
 
             var roslynGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
-            var buildTimeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxrunCodeGenerator.cs");
+            var buildTimeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
 
             Check(roslynGenerator.Contains("FoxgloveSourceEmitter.GeneratedSourceName(ns, className)"),
                 "56A-3: Roslyn generator uses shared generated source naming");

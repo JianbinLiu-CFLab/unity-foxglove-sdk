@@ -294,7 +294,7 @@ public class Phase32Validation
             "Packages",
             "dev.unity2foxglove.sdk",
             "Runtime",
-            "Unity",
+            "Components",
             "FoxgloveManager.cs");
         var managerSource = File.ReadAllText(managerSourcePath);
         Check(managerSource.Contains("_defaultPublisherEncoding = GlobalEncoding.Protobuf"),
@@ -305,7 +305,8 @@ public class Phase32Validation
             "Packages",
             "dev.unity2foxglove.sdk",
             "Runtime",
-            "Unity",
+            "Components",
+            "Publishing",
             "FoxglovePublisherBase.cs");
         var publisherBaseSource = File.ReadAllText(publisherBaseSourcePath);
         Check(publisherBaseSource.Contains("_manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf"),

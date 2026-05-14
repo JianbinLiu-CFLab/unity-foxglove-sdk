@@ -13,15 +13,16 @@
     <PackageReference Include="Google.Protobuf" Version="3.29.3" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../../Runtime/Unity/Attributes/*.cs" />
-    <Compile Include="../../Runtime/Unity/FoxglovePublisherEncoding.cs" />
+    <Compile Include="../../Runtime/Components/Attributes/*.cs" />
+    <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Core/**/*.cs" />
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
-    <Compile Include="../../Runtime/IO/*.cs" />
-    <Compile Include="../../Runtime/Schemas/*.cs" />
-    <Compile Include="../../Runtime/Schemas/Proto/*.cs" Exclude="../../Runtime/Schemas/Proto/*Publisher.cs" />
-    <Compile Include="../../Runtime/Util/*.cs" />
+    <Compile Include="../../Runtime/IO/**/*.cs" />
+    <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs" />
+    <Compile Include="../../Runtime/Utilities/*.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="PerformanceResult.cs" />
     <Compile Include="PerformanceRunner.cs" />

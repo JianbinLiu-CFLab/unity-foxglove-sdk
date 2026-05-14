@@ -233,11 +233,11 @@ Unity2Foxglove already includes validation phases that cover shared emitter beha
 | --- | --- | --- |
 | Shared emitter | `Editor/Shared/FoxgloveSourceEmitter.cs` | Single source of generation semantics |
 | Roslyn host | `Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs` | Editor source generation path |
-| Build-time host | `Editor/FoxrunCodeGenerator.cs` | Physical `.g.cs` generation path |
-| Build preprocess hook | `Editor/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
-| IL2CPP preservation | `Editor/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
-| User declaration API | `Runtime/Unity/Attributes/FoxRunAttribute.cs` | Topic/rate/schema/policy declaration surface |
-| Runtime scheduler | `Runtime/Unity/FoxgloveLogHub.cs` | Registers or discovers generated publisher interfaces without CLR reflection-based member binding |
+| Build-time host | `Editor/FoxRun/FoxrunCodeGenerator.cs` | Physical `.g.cs` generation path |
+| Build preprocess hook | `Editor/FoxRun/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
+| IL2CPP preservation | `Editor/FoxRun/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
+| User declaration API | `Runtime/Components/Attributes/FoxRunAttribute.cs` | Topic/rate/schema/policy declaration surface |
+| Runtime scheduler | `Runtime/Components/FoxRun/FoxgloveLogHub.cs` | Registers or discovers generated publisher interfaces without CLR reflection-based member binding |
 
 This implementation also generates `FoxRun_link.xml` for IL2CPP preservation. That is separate from publisher execution: it is a build-time preservation artifact, not a runtime reflection scanner.
 

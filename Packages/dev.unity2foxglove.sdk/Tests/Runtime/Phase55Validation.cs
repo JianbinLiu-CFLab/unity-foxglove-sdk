@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
                 File.Delete(tmp);
             }
 
-            var replayController = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/ReplayController.cs");
+            var replayController = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
             Check(replayController.Contains("History(fromNs, clampedTo, _panelHistoryBuffer, ScrubHistoryMaxMessagesPerRequest"),
                 "55B-4: ReplayController pushes the panel history cap into the engine query");
         }
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayAdapterUsesEnableDisableSubscriptionLifecycle()
         {
-            var adapter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveReplayObjectAdapter.cs");
+            var adapter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
             var startBody = ExtractMethodBody(adapter, "private void Start");
             var onDisableBody = ExtractMethodBody(adapter, "private void OnDisable");
             var unsubscribeBody = ExtractMethodBody(adapter, "private void UnsubscribeReplay");

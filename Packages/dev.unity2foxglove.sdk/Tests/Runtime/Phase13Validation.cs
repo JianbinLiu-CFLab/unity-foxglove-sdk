@@ -545,7 +545,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayObjectAdapterRoutesProtobufBeforeJsonParse()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveReplayObjectAdapter.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
             var switchIndex = source.IndexOf("switch (topic)", StringComparison.Ordinal);
             var parseIndex = source.IndexOf("TryParseJsonObject(payload", StringComparison.Ordinal);
 
@@ -564,7 +564,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayControllerSerializesReplayCursorAccess()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/ReplayController.cs");
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Assert(source.Contains("private readonly object _replayEngineLock", StringComparison.Ordinal),
                 "Replay controller has a dedicated replay cursor synchronization lock");
@@ -574,10 +574,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestPlaybackControlRunsOnRuntimeTick()
         {
-            var sessionSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveSession.Connection.cs");
+            var sessionSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
             var playbackHandlerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
             var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
-            var replaySource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/ReplayController.cs");
+            var replaySource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
                 && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
