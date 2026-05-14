@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Manager
-// Purpose: Custom Inspector for FoxgloveManager - adds Browse buttons
-// for file/folder path fields.
+// Purpose: Custom Inspector for FoxgloveManager workflow settings and
+// path helpers.
 
 using System.IO;
 using Unity.FoxgloveSDK.Transport;
@@ -20,15 +20,10 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(Components.FoxgloveManager))]
     public class FoxgloveManagerEditor : UnityEditor.Editor
     {
-        private static bool _serverExpanded = true;
-        private static bool _encodingExpanded = true;
-        private static bool _coordinateExpanded;
-        private static bool _assetsExpanded;
-        private static bool _playbackExpanded;
-        private static bool _recordingExpanded;
-        private static bool _replayExpanded;
-        private static bool _securityExpanded;
-        private static bool _transportExpanded;
+        private static bool _connectionSecurityExpanded = true;
+        private static bool _publishDataExpanded = true;
+        private static bool _mcapExpanded;
+        private static bool _diagnosticsExpanded;
         private readonly McapReplayPreflightDrawer _mcapReplayPreflight = new McapReplayPreflightDrawer();
         private const string LocalRootCaDistributorHost = "127.0.0.1";
         private const int LocalRootCaDistributorPort = 8766;
@@ -53,18 +48,13 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawScriptProperty();
             DrawCompactStatus();
-            DrawRecordingReplayWarning();
             EnsureSecureSettingsVisible();
 
-            DrawSection("Server", ref _serverExpanded, DrawServerSection);
-            DrawSection("Publisher Encoding", ref _encodingExpanded, DrawPublisherEncodingSection);
-            DrawSection("Coordinate System", ref _coordinateExpanded, DrawCoordinateSection);
-            DrawSection("Assets", ref _assetsExpanded, DrawAssetsSection);
-            DrawSection("Playback Control", ref _playbackExpanded, DrawPlaybackSection);
-            DrawSection("MCAP Recording", ref _recordingExpanded, DrawRecordingSection);
-            DrawSection("MCAP Replay", ref _replayExpanded, DrawReplaySection);
-            DrawSection("Security", ref _securityExpanded, DrawSecuritySection);
-            DrawSection("Transport Health", ref _transportExpanded, DrawTransportHealth);
+            DrawSection("Connection & Security", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
+            DrawSection("Publish Data", ref _publishDataExpanded, DrawPublishDataSection);
+            DrawRecordingReplayWarning();
+            DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
+            DrawSection("Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
 
             serializedObject.ApplyModifiedProperties();
         }
@@ -120,10 +110,10 @@ namespace Unity.FoxgloveSDK.Editor
 
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Copy Foxglove Web URL"))
+                    if (GUILayout.Button("Copy Web URL"))
                         EditorGUIUtility.systemCopyBuffer = foxgloveWebUrl;
 
-                    if (GUILayout.Button("Open Foxglove Web"))
+                    if (GUILayout.Button("Open Web"))
                         Application.OpenURL(foxgloveWebUrl);
                 }
             }
@@ -142,14 +132,12 @@ namespace Unity.FoxgloveSDK.Editor
         private void EnsureSecureSettingsVisible()
         {
             if (IsSecureMode() && string.IsNullOrWhiteSpace(GetString("_certificatePfxPath", "")))
-                _securityExpanded = true;
+                _connectionSecurityExpanded = true;
         }
 
         private static void DrawSection(string title, ref bool expanded, System.Action drawContents)
         {
-            EditorGUILayout.Space();
-            expanded = EditorGUILayout.Foldout(expanded, title, true, EditorStyles.foldoutHeader);
-            if (!expanded)
+            if (!FoxgloveManagerInspectorLayout.WorkflowSection(title, ref expanded))
                 return;
 
             EditorGUI.indentLevel++;
@@ -157,41 +145,49 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUI.indentLevel--;
         }
 
-        private void DrawServerSection()
+        private void DrawConnectionSecuritySection()
         {
+            FoxgloveManagerInspectorLayout.Subheader("Server");
             DrawProperty("_serverName");
             DrawProperty("_transportMode");
             DrawProperty("_host");
             DrawProperty("_port");
             DrawProperty("_startOnEnable");
             DrawProperty("_runInBackground");
+
+            FoxgloveManagerInspectorLayout.Subheader("Web Access");
+            DrawProperty("_allowHostedFoxgloveWeb");
+            DrawProperty("_allowedBrowserOrigins");
+
+            var isSecure = IsSecureMode();
+            FoxgloveManagerInspectorLayout.Subheader("Security / WSS");
+            DrawSecureWebSocketFields(isSecure);
+
+            FoxgloveManagerInspectorLayout.Subheader("Certificate Tools");
+            DrawSecureWebSocketSection(isSecure);
         }
 
-        private void DrawPublisherEncodingSection()
+        private void DrawPublishDataSection()
         {
+            FoxgloveManagerInspectorLayout.Subheader("Encoding");
             DrawProperty("_defaultPublisherEncoding");
             DrawProperty("_allowPublisherOverride");
-        }
 
-        private void DrawCoordinateSection()
-        {
+            FoxgloveManagerInspectorLayout.Subheader("Coordinates");
             DrawProperty("_coordinateMode");
-        }
 
-        private void DrawAssetsSection()
-        {
+            FoxgloveManagerInspectorLayout.Subheader("Assets");
             DrawProperty("_assetRoots");
         }
 
-        private void DrawPlaybackSection()
+        private void DrawMcapSection()
         {
+            FoxgloveManagerInspectorLayout.Subheader("Playback Control");
             DrawProperty("_enablePlaybackControl");
             DrawProperty("_playbackStartOffsetSeconds");
             DrawProperty("_playbackDurationSeconds");
-        }
 
-        private void DrawRecordingSection()
-        {
+            FoxgloveManagerInspectorLayout.Subheader("Recording");
             DrawProperty("_enableRecording");
             DrawProperty("_recordingPrefix");
             var directory = serializedObject.FindProperty("_recordingDirectory");
@@ -201,38 +197,40 @@ namespace Unity.FoxgloveSDK.Editor
                 DrawMissingProperty("_recordingDirectory");
             DrawProperty("_recordingChunkSizeKB");
             DrawProperty("_recordingCompression");
-        }
 
-        private void DrawReplaySection()
-        {
+            FoxgloveManagerInspectorLayout.Subheader("Replay");
             DrawProperty("_enableReplay");
+            DrawProperty("_replayAutoPlay");
+            DrawProperty("_disableLivePublishers");
             var replayPath = serializedObject.FindProperty("_replayFilePath");
             if (replayPath != null)
             {
-                DrawPathBrowse(replayPath, "Select MCAP File", "mcap", true, GetSmartDefault(replayPath.stringValue, true));
-                _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
+                DrawStackedPathBrowse(replayPath,
+                    "Replay File Path",
+                    "Select MCAP File",
+                    "mcap",
+                    true,
+                    GetSmartDefault(replayPath.stringValue, true));
             }
             else
+            {
                 DrawMissingProperty("_replayFilePath");
-            DrawProperty("_replayAutoPlay");
-            DrawProperty("_disableLivePublishers");
+            }
+
+            if (replayPath != null)
+            {
+                FoxgloveManagerInspectorLayout.Subheader("Indexed Reader Preflight");
+                _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
+            }
         }
 
-        private void DrawSecuritySection()
+        private void DrawDiagnosticsSection()
         {
-            DrawProperty("_allowHostedFoxgloveWeb");
-            DrawProperty("_allowedBrowserOrigins");
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Security / WSS", EditorStyles.boldLabel);
-            DrawSecureWebSocketSection();
+            DrawTransportHealth();
         }
 
-        private void DrawSecureWebSocketSection()
+        private void DrawSecureWebSocketSection(bool isSecure)
         {
-            var isSecure = IsSecureMode();
-            DrawSecureWebSocketFields(isSecure);
-
-            EditorGUILayout.Space();
             DrawCertificateGeneratorBackendControls();
 
             EditorGUILayout.Space();
@@ -566,7 +564,10 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         EditorGUIUtility.systemCopyBuffer = fingerprint ?? string.Empty;
                     }
+                }
 
+                using (new EditorGUILayout.HorizontalScope())
+                {
                     if (GUILayout.Button("Copy Redacted WSS URL"))
                     {
                         EditorGUIUtility.systemCopyBuffer = secureUrl ?? string.Empty;
@@ -615,6 +616,52 @@ namespace Unity.FoxgloveSDK.Editor
                         $"#{c.ClientId}",
                         $"queued: {c.QueuedFrames} ({c.QueuedBytes} B)  dropped: {c.DroppedDataFrames}  sent: {c.SentFrames}  idle: {c.LastActivityAgeMs} ms",
                         EditorStyles.miniLabel);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Renders a path label on one row and the value plus browse button
+        /// on the next row.
+        /// <para>On selection, converts the absolute path to a project-relative path and
+        /// applies it to the serialized property.</para>
+        /// </summary>
+        internal static void DrawStackedPathBrowse(
+            SerializedProperty prop,
+            string label,
+            string title,
+            string extension,
+            bool isFile,
+            string defaultDir)
+        {
+            NormalizeProjectRelativePath(prop);
+
+            EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                prop.stringValue = EditorGUILayout.TextField(prop.stringValue);
+                if (GUILayout.Button("...", GUILayout.Width(30)))
+                {
+                    var capturedProp = prop.Copy();
+                    var d = defaultDir;
+                    EditorApplication.delayCall += () =>
+                    {
+                        if (capturedProp.serializedObject == null || capturedProp.serializedObject.targetObject == null)
+                            return;
+
+                        string selected;
+                        if (isFile)
+                            selected = EditorUtility.OpenFilePanel(title, d, extension);
+                        else
+                            selected = EditorUtility.OpenFolderPanel(title, d, "");
+
+                        if (!string.IsNullOrEmpty(selected))
+                        {
+                            capturedProp.serializedObject.Update();
+                            capturedProp.stringValue = MakeRelative(selected);
+                            capturedProp.serializedObject.ApplyModifiedProperties();
+                        }
+                    };
                 }
             }
         }
