@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Util;
@@ -45,6 +47,9 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyMalformedMagicRejected();
             VerifyTruncatedStreamRejected();
             VerifyTrailingMagicMismatchRejected();
+            VerifyReplayLoadReportsUnfinalizedFile();
+            VerifyRecorderCloseFinalizesAfterFailureFlag();
+            VerifyRecorderOwnsFileStreamWhenRequested();
             VerifyCrcMismatchDetected();
             VerifyZeroLengthTopicHandled();
             VerifyAttachmentSafeSkip();
@@ -279,6 +284,83 @@ namespace Unity.FoxgloveSDK.Tests
             catch (InvalidDataException) { /* expected */ }
         }
 
+        static void VerifyReplayLoadReportsUnfinalizedFile()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "unity2foxglove_unfinalized_replay.mcap");
+            try
+            {
+                var bytes = new byte[64];
+                var magic = McapWriter.Magic;
+                Buffer.BlockCopy(magic, 0, bytes, 0, magic.Length);
+                File.WriteAllBytes(path, bytes);
+
+                var logger = new Phase31CaptureLogger();
+                var controller = new ReplayController(logger);
+                controller.Enable(path, playbackClock: null, recordingEnabled: false);
+
+                Check(!controller.IsEnabled, "replay load rejects unfinalized file");
+                Check(logger.LastError != null && logger.LastError.Contains(Path.GetFileName(path)),
+                    "replay load error includes file name");
+                Check(logger.LastError != null && logger.LastError.Contains("not finalized"),
+                    "replay load error identifies unfinalized MCAP file");
+            }
+            finally
+            {
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
+            }
+        }
+
+        static void VerifyRecorderCloseFinalizesAfterFailureFlag()
+        {
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
+
+            var failedField = typeof(McapRecorder).GetField("_recordingFailed", BindingFlags.Instance | BindingFlags.NonPublic);
+            Check(failedField != null, "recorder exposes internal failure flag for close robustness test");
+            failedField.SetValue(recorder, true);
+
+            recorder.Close();
+
+            var bytes = ms.ToArray();
+            Check(HasTrailingMagic(bytes), "recorder close writes trailing magic even after recording failure");
+        }
+
+        static void VerifyRecorderOwnsFileStreamWhenRequested()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "unity2foxglove_owned_recorder_stream.mcap");
+            try
+            {
+                var fileStream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                using (var recorder = new McapRecorder(fileStream, leaveOpen: false))
+                {
+                    recorder.WriteMetadata("test", "{}");
+                }
+
+                using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    // Opening with FileShare.None proves the recorder released its owned FileStream.
+                }
+
+                var bytes = File.ReadAllBytes(path);
+                Check(HasTrailingMagic(bytes), "owned recorder stream is finalized and closed for exclusive reopen");
+            }
+            finally
+            {
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
+            }
+        }
+
+        static bool HasTrailingMagic(byte[] bytes)
+        {
+            var magic = McapWriter.Magic;
+            if (bytes == null || bytes.Length < magic.Length)
+                return false;
+            for (var i = 0; i < magic.Length; i++)
+                if (bytes[bytes.Length - magic.Length + i] != magic[i])
+                    return false;
+            return true;
+        }
+
         static void VerifyCrcMismatchDetected()
         {
             var bytes = BuildChunkMcap(crcOverride: 0xDEADBEEF);
@@ -465,6 +547,18 @@ namespace Unity.FoxgloveSDK.Tests
             w.WriteMagic();
             w.Flush();
             return ms.ToArray();
+        }
+
+        private sealed class Phase31CaptureLogger : IFoxgloveLogger
+        {
+            public string LastError { get; private set; }
+
+            public void LogWarning(string message) { }
+
+            public void LogError(string message)
+            {
+                LastError = message ?? string.Empty;
+            }
         }
 
         static void Check(bool condition, string description)

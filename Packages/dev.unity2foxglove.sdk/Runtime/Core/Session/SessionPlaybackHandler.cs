@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Core
+// Module: Runtime/Core/Session
 // Purpose: Queues Foxglove playback-control requests from transport threads
 // and applies them from the runtime owner tick.
 
@@ -12,6 +12,10 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Owns playback-control request buffering so transport threads can enqueue commands
+    /// and the runtime owner can apply them from its tick loop.
+    /// </summary>
     internal sealed class SessionPlaybackHandler
     {
         internal const int MaxPendingPlaybackControls = 64;

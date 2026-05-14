@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Transport
+// Module: Runtime/Transport/WebSocket
 // Purpose: Per-client WebSocket connection state, send loop, lifecycle, and
 // transport statistics.
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Core
+// Module: Runtime/Core/Session
 // Purpose: Handles Foxglove fetchAsset requests for FoxgloveSession.
 
 using System;
@@ -11,6 +11,7 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>Handles Foxglove fetchAsset requests against runtime-registered asset roots.</summary>
     internal sealed class SessionAssetHandler
     {
         private readonly Func<IRuntimeContext> _runtimeProvider;

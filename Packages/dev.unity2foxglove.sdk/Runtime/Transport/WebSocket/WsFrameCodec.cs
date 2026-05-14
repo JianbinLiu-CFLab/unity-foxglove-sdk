@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Transport
+// Module: Runtime/Transport/WebSocket
 // Purpose: RFC 6455 WebSocket frame encoding and decoding helpers shared by
 // managed plain and secure WebSocket transports.
 

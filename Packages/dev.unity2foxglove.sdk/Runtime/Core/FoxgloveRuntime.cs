@@ -220,9 +220,11 @@ namespace Unity.FoxgloveSDK.Core
                 _replay.OnReplayMessage -= _replayForwarder;
                 _replayForwarder = null;
             }
-            _recording.DetachFromSession();
-            _session?.Dispose();
+            var session = _session;
             _session = null;
+            session?.SetRecorder(null);
+            session?.Dispose();
+            _recording.DetachFromSession();
         }
 
         // ── Channel API ──

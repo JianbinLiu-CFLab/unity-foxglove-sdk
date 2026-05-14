@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private PlaybackClock _playbackClock;
         private FoxgloveParameterStore _parameters;
+        private FoxgloveSession _session;
 
         /// <summary>Whether recording is enabled via <c>Enable()</c>.</summary>
         public bool IsEnabled => _recordingEnabled;
@@ -87,7 +88,7 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 fileStream = new FileStream(_recordingPath, FileMode.Create, FileAccess.Write);
-                recorder = new McapRecorder(fileStream, _logger, _recordingChunkSize, _recordingCompression);
+                recorder = new McapRecorder(fileStream, _logger, _recordingChunkSize, _recordingCompression, leaveOpen: false);
                 recorder.CoordinateMode = _coordinateMode;
 
                 // Defer session attachment until snapshot and event wiring succeed.
@@ -106,14 +107,17 @@ namespace Unity.FoxgloveSDK.Core
                 // All setup succeeded — transfer ownership to session
                 session.SetRecorder(recorder);
                 fileStream = null;
+                _session = session;
                 _recorder = recorder;
                 recorder = null;
             }
             catch (Exception ex)
             {
+                session.SetRecorder(null);
                 recorder?.Dispose();
                 fileStream?.Dispose();
                 _recorder = null;
+                _session = null;
                 _logger.LogError($"Failed to start MCAP recording: {ex.Message}");
             }
         }
@@ -124,10 +128,18 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DetachFromSession()
         {
-            if (_recorder != null)
+            var session = _session;
+            _session = null;
+            session?.SetRecorder(null);
+
+            var recorder = _recorder;
+            _recorder = null;
+
+            if (recorder != null)
             {
                 if (_parameters != null) _parameters.OnParameterChanged -= OnParameterChanged;
-                _recorder.Close(); _recorder.Dispose(); _recorder = null;
+                recorder.Close();
+                recorder.Dispose();
             }
         }
 

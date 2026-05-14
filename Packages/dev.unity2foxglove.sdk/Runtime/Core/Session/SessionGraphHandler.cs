@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Core
+// Module: Runtime/Core/Session
 // Purpose: Connection graph ownership and broadcasting for FoxgloveSession.
 
 using System;

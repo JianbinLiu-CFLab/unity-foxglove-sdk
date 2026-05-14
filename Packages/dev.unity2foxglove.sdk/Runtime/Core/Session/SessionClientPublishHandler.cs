@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Core
+// Module: Runtime/Core/Session
 // Purpose: Tracks client-advertised channels and routes client-published
 // binary messages for FoxgloveSession.
 
@@ -15,6 +15,10 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Owns channels advertised by Foxglove clients and routes client-published payloads
+    /// to recording, graph metadata, and the session callback.
+    /// </summary>
     internal sealed class SessionClientPublishHandler
     {
         private readonly Func<McapRecorder> _recorderProvider;

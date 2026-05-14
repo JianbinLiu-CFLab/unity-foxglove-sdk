@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Transport
+// Module: Runtime/Transport/WebSocket
 // Purpose: RFC 6455 HTTP upgrade handshake handling for managed WebSocket
 // transports, including subprotocol, token, and browser Origin checks.
 

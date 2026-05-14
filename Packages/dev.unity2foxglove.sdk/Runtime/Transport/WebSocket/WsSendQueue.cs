@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Transport
+// Module: Runtime/Transport/WebSocket
 // Purpose: Per-client WebSocket send queue with control/data priority and
 // bounded backpressure behavior.
 
@@ -11,12 +11,14 @@ using System.Threading;
 
 namespace Unity.FoxgloveSDK.Transport
 {
+    /// <summary>Priority class used to preserve control frames ahead of data frames.</summary>
     internal enum FramePriority
     {
         Control,
         Data
     }
 
+    /// <summary>Outbound WebSocket frame queued for serialized transmission.</summary>
     internal readonly struct QueuedFrame
     {
         public QueuedFrame(byte opcode, byte[] payload, FramePriority priority)
@@ -33,6 +35,7 @@ namespace Unity.FoxgloveSDK.Transport
         public int SizeBytes { get; }
     }
 
+    /// <summary>Result of attempting to enqueue a WebSocket frame under queue limits.</summary>
     internal readonly struct EnqueueResult
     {
         public EnqueueResult(
@@ -56,6 +59,10 @@ namespace Unity.FoxgloveSDK.Transport
         public bool ShouldLogDataDrop { get; }
     }
 
+    /// <summary>
+    /// Bounded per-client send queue with separate control and data lanes.
+    /// Data frames may be dropped under backpressure; control frames are preserved.
+    /// </summary>
     internal sealed class WsSendQueue
     {
         private const int SendQueueWaitMs = 100;
