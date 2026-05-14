@@ -155,6 +155,53 @@ namespace Unity.FoxgloveSDK.Core
             OnClientMessage = null;
         }
 
+        // ── Status API ──
+
+        /// <summary>
+        /// Broadcast an official Foxglove status message on the diagnostics
+        /// control plane. This is separate from <see cref="Publish(uint, byte[])"/>,
+        /// which sends telemetry data-plane channel messages.
+        /// </summary>
+        /// <param name="level">Status severity encoded with official numeric values.</param>
+        /// <param name="message">Human-readable diagnostic message. Null becomes empty text.</param>
+        /// <param name="id">Optional stable status identifier for later replacement or removal.</param>
+        public void PublishStatus(FoxgloveStatusLevel level, string message, string id = null)
+        {
+            _transport.BroadcastText(JsonConvert.SerializeObject(new StatusMessage
+            {
+                Level = level,
+                Message = message ?? string.Empty,
+                Id = string.IsNullOrEmpty(id) ? null : id
+            }));
+        }
+
+        /// <summary>
+        /// Broadcast an official Foxglove removeStatus message on the diagnostics
+        /// control plane. Empty identifiers are ignored; an empty resulting set
+        /// sends nothing.
+        /// </summary>
+        /// <param name="ids">Status identifiers to clear from Foxglove Problems.</param>
+        public void RemoveStatus(IEnumerable<string> ids)
+        {
+            if (ids == null)
+                return;
+
+            var statusIds = new List<string>();
+            foreach (var id in ids)
+            {
+                if (!string.IsNullOrEmpty(id))
+                    statusIds.Add(id);
+            }
+
+            if (statusIds.Count == 0)
+                return;
+
+            _transport.BroadcastText(JsonConvert.SerializeObject(new RemoveStatusMessage
+            {
+                StatusIds = statusIds
+            }));
+        }
+
         // ── Channel API ──
 
         /// <summary>

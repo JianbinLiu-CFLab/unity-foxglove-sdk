@@ -285,6 +285,28 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>
+        /// Publish an official Foxglove diagnostics status message to connected clients.
+        /// </summary>
+        /// <param name="level">Status severity encoded with official numeric values.</param>
+        /// <param name="message">Human-readable diagnostic message.</param>
+        /// <param name="id">Optional stable status identifier for later removal.</param>
+        public void PublishStatus(FoxgloveStatusLevel level, string message, string id = null)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            _session.PublishStatus(level, message, id);
+        }
+
+        /// <summary>
+        /// Remove one or more official Foxglove diagnostics status messages.
+        /// </summary>
+        /// <param name="ids">Status identifiers to remove.</param>
+        public void RemoveStatus(params string[] ids)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            _session.RemoveStatus(ids);
+        }
+
+        /// <summary>
         /// Drain pending service calls on the calling thread.
         /// Must be called on the Unity main thread if handlers touch Unity objects.
         /// </summary>
