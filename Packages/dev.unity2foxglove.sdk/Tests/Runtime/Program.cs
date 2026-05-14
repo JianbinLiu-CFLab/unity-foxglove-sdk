@@ -5,6 +5,7 @@
 // Purpose: Test runner entry point — discovers and executes all Phase validation tests.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -68,6 +69,16 @@ class Program
 
         if (argList.Contains("--phase67"))
             return RunPhase67Only();
+
+        if (argList.Contains("--phase68"))
+            return RunPhase68Only();
+
+        if (argList.Contains("--phase69"))
+            return RunPhase69Only();
+
+        var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
+        if (phase68SmokeIdx >= 0)
+            return RunPhase68IndexedReaderSmoke(argList, phase68SmokeIdx);
 
         if (argList.Contains("--phase13"))
             return RunPhase13Only();
@@ -262,6 +273,98 @@ class Program
         }
     }
 
+    private static int RunPhase68Only()
+    {
+        try
+        {
+            Phase68Validation.Validate();
+            Console.WriteLine("\nPhase 68 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase68IndexedReaderSmoke(List<string> argList, int optionIndex)
+    {
+        if (optionIndex + 1 >= argList.Count)
+        {
+            Console.Error.WriteLine("--phase68-indexed-reader-smoke requires an MCAP path.");
+            return 1;
+        }
+
+        try
+        {
+            var topics = CollectOptionValues(argList, "--phase68-topic");
+            var maxMessages = ReadIntOption(argList, "--phase68-max-messages", 5);
+            var minMessages = ReadIntOption(argList, "--phase68-min-messages", 1);
+
+            Phase68Validation.ValidateExternalMcapSmoke(
+                argList[optionIndex + 1],
+                topics,
+                maxMessages,
+                minMessages);
+            Console.WriteLine("\nPhase 68 indexed reader smoke passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static List<string> CollectOptionValues(List<string> argList, string option)
+    {
+        var values = new List<string>();
+        for (var i = 0; i < argList.Count; i++)
+        {
+            if (argList[i] != option)
+                continue;
+
+            if (i + 1 >= argList.Count)
+                throw new ArgumentException($"{option} requires a value.");
+
+            values.Add(argList[i + 1]);
+            i++;
+        }
+
+        return values;
+    }
+
+    private static int ReadIntOption(List<string> argList, string option, int defaultValue)
+    {
+        var idx = argList.IndexOf(option);
+        if (idx < 0)
+            return defaultValue;
+
+        if (idx + 1 >= argList.Count)
+            throw new ArgumentException($"{option} requires an integer value.");
+
+        if (!int.TryParse(argList[idx + 1], out var value))
+            throw new ArgumentException($"{option} requires an integer value.");
+
+        return value;
+    }
+
+    private static int RunPhase69Only()
+    {
+        try
+        {
+            Phase69Validation.Validate();
+            Console.WriteLine("\nPhase 69 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -366,6 +469,10 @@ class Program
             Phase65Validation.Validate();
             Console.WriteLine();
             Phase67Validation.Validate();
+            Console.WriteLine();
+            Phase68Validation.Validate();
+            Console.WriteLine();
+            Phase69Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

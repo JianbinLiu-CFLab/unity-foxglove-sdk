@@ -267,3 +267,32 @@ Basic usage:
 python Scripts/smoke/phase44_all_schemas_mcap.py
 python Scripts/smoke/phase44_all_schemas_mcap.py --output build/test_mcap/phase44_all_schemas_smoke.mcap
 ```
+
+## Smoke: Phase 68 Indexed Reader
+
+Entry script:
+
+```text
+Scripts/smoke/phase68_indexed_reader_smoke.py
+```
+
+Purpose:
+
+- Open a Unity demo recording with the Phase 68 `McapIndexedReader`.
+- By default, select the newest readable `.mcap` under `Unity2Foxglove/Recordings`.
+- Verify summary indexes, chunk indexes, latest-message query, inverted time range behavior, and required topics.
+
+Basic usage:
+
+```bash
+python Scripts/smoke/phase68_indexed_reader_smoke.py
+python Scripts/smoke/phase68_indexed_reader_smoke.py Unity2Foxglove/Recordings/manual_recording.mcap
+python Scripts/smoke/phase68_indexed_reader_smoke.py --mcap "Unity2Foxglove/Recordings/*.mcap"
+python Scripts/smoke/phase68_indexed_reader_smoke.py --topic /tf --topic /scene
+```
+
+Defaults:
+
+- Recording folder: `Unity2Foxglove/Recordings`
+- Required topics: `/tf`, `/scene`
+- Latest message sample: `5`
