@@ -575,11 +575,13 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestPlaybackControlRunsOnRuntimeTick()
         {
             var sessionSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveSession.Connection.cs");
+            var playbackHandlerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
             var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
             var replaySource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/ReplayController.cs");
 
-            Assert(sessionSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
-                && sessionSource.Contains("internal void DrainPlaybackControls()", StringComparison.Ordinal),
+            Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
+                && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
+                && sessionSource.Contains("_playback.Drain()", StringComparison.Ordinal),
                 "Playback control requests are queued by the transport thread and drained by runtime Tick");
             var drainIndex = runtimeSource.IndexOf("_session.DrainPlaybackControls()", StringComparison.Ordinal);
             var clockTickIndex = runtimeSource.IndexOf("_playbackClock.Tick()", StringComparison.Ordinal);

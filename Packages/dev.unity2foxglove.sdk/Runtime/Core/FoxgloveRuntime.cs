@@ -58,16 +58,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly RecordingController _recording;
         /// <summary>Replay lifecycle controller.</summary>
         private readonly ReplayController _replay;
+        private readonly ReplaySnapshotStateMachine _replaySnapshots;
         /// <summary>Delegate bridging replay OnReplayMessage to the runtime's own event.</summary>
         private Action<string, byte[]> _replayForwarder;
-        private readonly object _replaySnapshotLock = new();
-        private readonly object _replaySceneSnapshotLock = new();
         private readonly object _playbackControlLock = new();
-        private bool _replaySnapshotPending;
-        private ulong _replaySnapshotTimeNs;
-        private ulong _replaySnapshotReadyWallNs;
-        private bool _replaySceneSnapshotPending;
-        private ulong _replaySceneSnapshotTimeNs;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
@@ -105,6 +99,7 @@ namespace Unity.FoxgloveSDK.Core
             TryRegisterProtobufSchemas();
             _recording = new RecordingController(_logger);
             _replay = new ReplayController(_logger);
+            _replaySnapshots = new ReplaySnapshotStateMachine();
         }
 
         /// <summary>Active session; null before Start or after Stop.</summary>
@@ -218,17 +213,18 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Stop()
         {
-            ClearPendingReplaySnapshot();
-            ClearPendingReplaySceneSnapshot();
+            _replaySnapshots.Clear();
             _replay.CancelPanelHistory();
             if (_replayForwarder != null)
             {
                 _replay.OnReplayMessage -= _replayForwarder;
                 _replayForwarder = null;
             }
-            _recording.DetachFromSession();
-            _session?.Dispose();
+            var session = _session;
             _session = null;
+            session?.SetRecorder(null);
+            session?.Dispose();
+            _recording.DetachFromSession();
         }
 
         // ── Channel API ──
@@ -425,68 +421,26 @@ namespace Unity.FoxgloveSDK.Core
 
         private void QueueReplaySnapshot(ulong timeNs)
         {
-            lock (_replaySnapshotLock)
-            {
-                _replay.CancelPanelHistory();
-                _replaySnapshotTimeNs = timeNs;
-                _replaySnapshotReadyWallNs = _wallClock.NowNs + ReplayController.ScrubHistoryDebounceNs;
-                _replaySnapshotPending = true;
-            }
+            _replay.CancelPanelHistory();
+            _replaySnapshots.RequestPanelSnapshot(
+                timeNs,
+                _wallClock.NowNs + ReplayController.ScrubHistoryDebounceNs);
         }
 
         private bool TryConsumeReplaySnapshot(out ulong timeNs)
-        {
-            lock (_replaySnapshotLock)
-            {
-                timeNs = _replaySnapshotTimeNs;
-                if (!_replaySnapshotPending)
-                    return false;
-                if (_wallClock.NowNs < _replaySnapshotReadyWallNs)
-                    return false;
-                _replaySnapshotPending = false;
-                return true;
-            }
-        }
+            => _replaySnapshots.TryConsumePanelSnapshot(_wallClock.NowNs, out timeNs);
 
         private void QueueReplaySceneSnapshot(ulong timeNs)
-        {
-            lock (_replaySceneSnapshotLock)
-            {
-                _replaySceneSnapshotTimeNs = timeNs;
-                _replaySceneSnapshotPending = true;
-            }
-        }
+            => _replaySnapshots.RequestSceneSnapshot(timeNs);
 
         private bool TryConsumeReplaySceneSnapshot(out ulong timeNs)
-        {
-            lock (_replaySceneSnapshotLock)
-            {
-                timeNs = _replaySceneSnapshotTimeNs;
-                if (!_replaySceneSnapshotPending)
-                    return false;
-                _replaySceneSnapshotPending = false;
-                return true;
-            }
-        }
+            => _replaySnapshots.TryConsumeSceneSnapshot(out timeNs);
 
         private void ClearPendingReplaySnapshot()
-        {
-            lock (_replaySnapshotLock)
-            {
-                _replaySnapshotPending = false;
-                _replaySnapshotTimeNs = 0;
-                _replaySnapshotReadyWallNs = 0;
-            }
-        }
+            => _replaySnapshots.ClearPanelSnapshot();
 
         private void ClearPendingReplaySceneSnapshot()
-        {
-            lock (_replaySceneSnapshotLock)
-            {
-                _replaySceneSnapshotPending = false;
-                _replaySceneSnapshotTimeNs = 0;
-            }
-        }
+            => _replaySnapshots.ClearSceneSnapshot();
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();

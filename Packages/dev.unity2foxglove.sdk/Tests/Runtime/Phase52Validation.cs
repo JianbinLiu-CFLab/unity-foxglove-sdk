@@ -257,31 +257,22 @@ namespace Unity.FoxgloveSDK.Tests
             using var backend = new ManagedWsBackend(logger);
             using var tcpClient = new TcpClient();
             var stream = new Phase52DisposedReadStream();
-
-            var connType = typeof(ManagedWsBackend).GetNestedType("WsConnection", BindingFlags.NonPublic);
-            var constructor = connType.GetConstructor(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                types: new[] { typeof(TcpClient), typeof(Stream), typeof(int), typeof(int) },
-                modifiers: null);
-            var conn = constructor.Invoke(new object[]
-            {
+            var conn = new WsConnection(
                 tcpClient,
                 stream,
                 ManagedWebSocketOptions.DefaultMaxQueuedFrames,
-                ManagedWebSocketOptions.DefaultMaxQueuedBytes
-            });
+                ManagedWebSocketOptions.DefaultMaxQueuedBytes);
 
             try
             {
                 var receiveLoop = typeof(ManagedWsBackend).GetMethod(
                     "ReceiveLoop",
                     BindingFlags.Instance | BindingFlags.NonPublic);
-                receiveLoop.Invoke(backend, new[] { (object)1u, conn, CancellationToken.None });
+                receiveLoop.Invoke(backend, new object[] { 1u, conn, CancellationToken.None });
             }
             finally
             {
-                (conn as IDisposable)?.Dispose();
+                conn.Dispose();
                 stream.Dispose();
             }
 
@@ -435,6 +426,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestManagerSourceClosesBackendSelectionPath()
         {
             var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveManager.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxgloveManagerEditor.cs");
             var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxgloveLocalDevCertificateGenerator.cs");
             var demoSource = ReadRepoText("Unity2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs");
@@ -451,6 +443,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerSource.Contains("FoxgloveAppUrl.BuildWebSocketEndpoint(")
                   && !managerSource.Contains("url += $\"?token={_sharedToken}\""),
                 "52C-1g2: manager connection URL redaction uses encoded endpoint builder");
+            Check(!managerSource.Contains("if (!IsRunning)\r\n            {\r\n                StopCertificateDistributor();\r\n                return;\r\n            }") &&
+                  !managerSource.Contains("if (!IsRunning)\n            {\n                StopCertificateDistributor();\n                return;\n            }"),
+                "52C-1g3: StopServer still stops runtime so active recordings are finalized even if transport is already stopped");
+            var stopIndex = runtimeSource.IndexOf("public void Stop()", StringComparison.Ordinal);
+            var detachRecorderIndex = runtimeSource.IndexOf("session?.SetRecorder(null);", stopIndex, StringComparison.Ordinal);
+            var disposeSessionIndex = runtimeSource.IndexOf("session?.Dispose();", stopIndex, StringComparison.Ordinal);
+            var detachRecordingIndex = runtimeSource.IndexOf("_recording.DetachFromSession();", stopIndex, StringComparison.Ordinal);
+            Check(stopIndex >= 0 &&
+                  detachRecorderIndex > stopIndex &&
+                  disposeSessionIndex > detachRecorderIndex &&
+                  detachRecordingIndex > disposeSessionIndex,
+                "52C-1g4: runtime detaches recorder from session and stops transport before finalizing recording");
 
             var startIndex = demoSource.IndexOf("private void Start()", StringComparison.Ordinal);
             var sessionGuardIndex = demoSource.IndexOf("_manager?.Runtime?.Session == null", startIndex, StringComparison.Ordinal);
@@ -722,33 +726,10 @@ namespace Unity.FoxgloveSDK.Tests
             throw new Exception($"[FAIL] {label}");
         }
 
-        private static object ReadFrameFromBytes(byte[] frameBytes)
+        private static WsFrame ReadFrameFromBytes(byte[] frameBytes)
         {
-            using var tcpClient = new TcpClient();
             using var stream = new MemoryStream(frameBytes);
-            var connType = typeof(ManagedWsBackend).GetNestedType("WsConnection", BindingFlags.NonPublic);
-            var constructor = connType.GetConstructor(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                types: new[] { typeof(TcpClient), typeof(Stream), typeof(int), typeof(int) },
-                modifiers: null);
-            var conn = constructor.Invoke(new object[]
-            {
-                tcpClient,
-                stream,
-                ManagedWebSocketOptions.DefaultMaxQueuedFrames,
-                ManagedWebSocketOptions.DefaultMaxQueuedBytes
-            });
-
-            try
-            {
-                var readFrame = connType.GetMethod("ReadFrame", BindingFlags.Instance | BindingFlags.Public);
-                return readFrame.Invoke(conn, Array.Empty<object>());
-            }
-            finally
-            {
-                (conn as IDisposable)?.Dispose();
-            }
+            return WsFrameCodec.TryReadFrame(stream, out var frame) ? frame : null;
         }
 
         private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin)

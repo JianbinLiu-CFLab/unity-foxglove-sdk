@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<McapAttachmentIndex> _attachmentIdx = new();
         private uint _attachmentCount;
         private MemoryStream _chunkBuf = new();
+        private readonly object _lock = new object();
         private ushort _nextSid = 1, _nextCid = 1;
         private ulong _chunkSt, _chunkEt;
         private ulong _msgSt = ulong.MaxValue, _msgEt;
@@ -58,9 +59,9 @@ namespace Unity.FoxgloveSDK.IO
         /// Creates a new MCAP recorder writing to the given stream.
         /// Optional compression controls per-chunk compression (e.g. "zstd").
         /// </summary>
-        public McapRecorder(Stream stream, IFoxgloveLogger logger = null, int chunkSizeBytes = DefaultChunkSizeBytes, string compression = "")
+        public McapRecorder(Stream stream, IFoxgloveLogger logger = null, int chunkSizeBytes = DefaultChunkSizeBytes, string compression = "", bool leaveOpen = true)
         {
-            _w = new McapWriter(stream ?? throw new ArgumentNullException(nameof(stream)), leaveOpen: true);
+            _w = new McapWriter(stream ?? throw new ArgumentNullException(nameof(stream)), leaveOpen);
             _log = logger ?? new ConsoleLogger();
             _chunkSz = chunkSizeBytes;
             _compression = compression ?? "";
@@ -78,29 +79,32 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void AddChannel(uint fId, string topic, string enc, string sName, string sEnc, string sContent)
         {
-            if (_recordingFailed) return;
-            var normalizedEnc = NormalizeMessageEncoding(enc);
-            if (WouldMixTopicSignature(topic, normalizedEnc, sName, sEnc, sContent))
+            lock (_lock)
             {
-                _log.LogWarning(
-                    $"MCAP: skipping server channel for topic '{topic}' because its signature is incompatible with an existing recorded channel.");
-                return;
-            }
-            var sid = GetOrCreateSchema(sName, sEnc, sContent);
-            if (_recordingFailed) return;
-            if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
-            var mCid = _nextCid++;
-            var state = new ChannelWriteState { McapId = mCid, Topic = topic };
-            _chMap[fId] = state;
-            if (!_topicChannelWriteState.ContainsKey(topic))
-                _topicChannelWriteState[topic] = state;
+                if (_recordingFailed || _closed) return;
+                var normalizedEnc = NormalizeMessageEncoding(enc);
+                if (WouldMixTopicSignature(topic, normalizedEnc, sName, sEnc, sContent))
+                {
+                    _log.LogWarning(
+                        $"MCAP: skipping server channel for topic '{topic}' because its signature is incompatible with an existing recorded channel.");
+                    return;
+                }
+                var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                if (_recordingFailed) return;
+                if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
+                var mCid = _nextCid++;
+                var state = new ChannelWriteState { McapId = mCid, Topic = topic };
+                _chMap[fId] = state;
+                if (!_topicChannelWriteState.ContainsKey(topic))
+                    _topicChannelWriteState[topic] = state;
 
-            var meta = new Dictionary<string, string>();
-            if (!string.IsNullOrEmpty(CoordinateMode))
-                meta["coordinate_mode"] = CoordinateMode;
-            _w.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
-            _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = new Dictionary<string, string>(meta) });
-            RecordTopicSignature(topic, normalizedEnc, sName, sEnc, sContent);
+                var meta = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(CoordinateMode))
+                    meta["coordinate_mode"] = CoordinateMode;
+                _w.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
+                _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = new Dictionary<string, string>(meta) });
+                RecordTopicSignature(topic, normalizedEnc, sName, sEnc, sContent);
+            }
         }
 
         /// <summary>
@@ -110,47 +114,50 @@ namespace Unity.FoxgloveSDK.IO
         public void WriteClientMessage(uint clientId, uint chId, ulong logNs, byte[] payload, string topic,
             string enc = "json", string sName = "", string sEnc = "", string sContent = "")
         {
-            if (_recordingFailed) return;
-            var key = (clientId, chId);
-            if (_skippedClientChannels.Contains(key)) return;
-            if (!_clientChannelWriteState.TryGetValue(key, out var map))
+            lock (_lock)
             {
-                var messageEncoding = NormalizeMessageEncoding(enc);
-                if (TryReuseExistingTopicChannel(topic, messageEncoding, sName, sEnc, sContent, out map))
+                if (_recordingFailed || _closed) return;
+                var key = (clientId, chId);
+                if (_skippedClientChannels.Contains(key)) return;
+                if (!_clientChannelWriteState.TryGetValue(key, out var map))
                 {
-                    _clientChannelWriteState[key] = map;
-                }
-                else
-                {
-                    if (WouldMixTopicSignature(topic, messageEncoding, sName, sEnc, sContent))
+                    var messageEncoding = NormalizeMessageEncoding(enc);
+                    if (TryReuseExistingTopicChannel(topic, messageEncoding, sName, sEnc, sContent, out map))
                     {
-                        _skippedClientChannels.Add(key);
-                        _log.LogWarning(
-                            $"MCAP: skipping client-published topic '{topic}' because its schema signature is incompatible with an existing recorded channel.");
-                        return;
+                        _clientChannelWriteState[key] = map;
                     }
+                    else
+                    {
+                        if (WouldMixTopicSignature(topic, messageEncoding, sName, sEnc, sContent))
+                        {
+                            _skippedClientChannels.Add(key);
+                            _log.LogWarning(
+                                $"MCAP: skipping client-published topic '{topic}' because its schema signature is incompatible with an existing recorded channel.");
+                            return;
+                        }
 
-                    var sid = GetOrCreateSchema(sName, sEnc, sContent);
-                    if (_recordingFailed) return;
-                    if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
-                    var mcapId = _nextCid++;
-                    map = new ChannelWriteState { McapId = mcapId, Topic = topic };
-                    _clientChannelWriteState[key] = map;
-                    var meta = string.IsNullOrEmpty(CoordinateMode)
-                        ? new Dictionary<string, string>()
-                        : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
-                    _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
-                    _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
-                    RecordTopicSignature(topic, messageEncoding, sName, sEnc, sContent);
+                        var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                        if (_recordingFailed) return;
+                        if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
+                        var mcapId = _nextCid++;
+                        map = new ChannelWriteState { McapId = mcapId, Topic = topic };
+                        _clientChannelWriteState[key] = map;
+                        var meta = string.IsNullOrEmpty(CoordinateMode)
+                            ? new Dictionary<string, string>()
+                            : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
+                        _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
+                        _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
+                        RecordTopicSignature(topic, messageEncoding, sName, sEnc, sContent);
+                    }
                 }
+                WriteMessageToChannelWriteState(map, logNs, payload);
             }
-            WriteMessageToChannelWriteState(map, logNs, payload);
         }
 
         // Message writing
         private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
-            if (_recordingFailed) return;
+            if (_recordingFailed || _closed) return;
             var seq = map.Seq++;
             var payloadLength = payload?.Length ?? 0;
             var contentLength = 2 + 4 + 8 + 8 + payloadLength;
@@ -178,12 +185,15 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void WriteMetadata(string name, string jsonValue)
         {
-            if (_recordingFailed) return;
-            var off = (ulong)_w.Position;
-            _w.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
-            var len = (ulong)_w.Position - off;
-            _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
-            _metadataCount++;
+            lock (_lock)
+            {
+                if (_recordingFailed || _closed) return;
+                var off = (ulong)_w.Position;
+                _w.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
+                var len = (ulong)_w.Position - off;
+                _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
+                _metadataCount++;
+            }
         }
 
         /// <summary>
@@ -192,11 +202,14 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void AddAttachment(string name, string mediaType, byte[] data, ulong logTimeNs, ulong createTimeNs = 0)
         {
-            if (_recordingFailed || _closed) return;
-            FlushChunk();
-            var index = _w.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data);
-            _attachmentIdx.Add(index);
-            _attachmentCount++;
+            lock (_lock)
+            {
+                if (_recordingFailed || _closed) return;
+                FlushChunk();
+                var index = _w.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data);
+                _attachmentIdx.Add(index);
+                _attachmentCount++;
+            }
         }
 
         /// <summary>
@@ -204,8 +217,11 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void WriteMessage(uint fId, ulong logNs, byte[] payload)
         {
-            if (_recordingFailed || !_chMap.TryGetValue(fId, out var map)) return;
-            WriteMessageToChannelWriteState(map, logNs, payload);
+            lock (_lock)
+            {
+                if (_recordingFailed || _closed || !_chMap.TryGetValue(fId, out var map)) return;
+                WriteMessageToChannelWriteState(map, logNs, payload);
+            }
         }
 
         // Lifecycle
@@ -215,86 +231,97 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Close()
         {
-            if (_closed || _recordingFailed) return;
-            _closed = true;
-            FlushChunk();
-            _w.WriteDataEnd();
+            lock (_lock)
+            {
+                if (_closed) return;
+                FlushChunk();
+                _w.WriteDataEnd();
 
-            var sumStart = (ulong)_w.Position;
+                var sumStart = (ulong)_w.Position;
 
             // Build summary + summary offset in a temporary stream so we can
             // compute summary_crc before writing to the real stream.
-            using var summaryBuilder = new MemoryStream();
-            var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
+                using var summaryBuilder = new MemoryStream();
+                var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
 
             // Schema group
-            var schemaGrpStart = 0UL;
-            foreach (var s in _schemas)
-                summaryWriter.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
-            var schemaGrpLen = (ulong)summaryBuilder.Position - schemaGrpStart;
+                var schemaGrpStart = 0UL;
+                foreach (var s in _schemas)
+                    summaryWriter.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
+                var schemaGrpLen = (ulong)summaryBuilder.Position - schemaGrpStart;
 
             // Channel group
-            var channelGrpStart = (ulong)summaryBuilder.Position;
-            foreach (var c in _channels)
-                summaryWriter.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
-            var channelGrpLen = (ulong)summaryBuilder.Position - channelGrpStart;
+                var channelGrpStart = (ulong)summaryBuilder.Position;
+                foreach (var c in _channels)
+                    summaryWriter.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
+                var channelGrpLen = (ulong)summaryBuilder.Position - channelGrpStart;
 
             // Statistics
-            var msgSt = _msgCount > 0 ? _msgSt : 0;
-            var msgEt = _msgCount > 0 ? _msgEt : 0;
-            var statsGrpStart = (ulong)summaryBuilder.Position;
-            summaryWriter.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, _attachmentCount, _metadataCount, (uint)_chunkCount, msgSt, msgEt,
-                AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
-            var statsGrpLen = (ulong)summaryBuilder.Position - statsGrpStart;
+                var msgSt = _msgCount > 0 ? _msgSt : 0;
+                var msgEt = _msgCount > 0 ? _msgEt : 0;
+                var statsGrpStart = (ulong)summaryBuilder.Position;
+                summaryWriter.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, _attachmentCount, _metadataCount, (uint)_chunkCount, msgSt, msgEt,
+                    AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
+                var statsGrpLen = (ulong)summaryBuilder.Position - statsGrpStart;
 
             // ChunkIndex group
-            var chunkIdxGrpStart = (ulong)summaryBuilder.Position;
-            foreach (var ci in _chunkIdx)
-                summaryWriter.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
-            var chunkIdxGrpLen = (ulong)summaryBuilder.Position - chunkIdxGrpStart;
+                var chunkIdxGrpStart = (ulong)summaryBuilder.Position;
+                foreach (var ci in _chunkIdx)
+                    summaryWriter.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
+                var chunkIdxGrpLen = (ulong)summaryBuilder.Position - chunkIdxGrpStart;
 
             // AttachmentIndex group
-            var attIdxGrpStart = (ulong)summaryBuilder.Position;
-            foreach (var ai in _attachmentIdx)
-                summaryWriter.WriteAttachmentIndex(ai);
-            var attIdxGrpLen = (ulong)summaryBuilder.Position - attIdxGrpStart;
+                var attIdxGrpStart = (ulong)summaryBuilder.Position;
+                foreach (var ai in _attachmentIdx)
+                    summaryWriter.WriteAttachmentIndex(ai);
+                var attIdxGrpLen = (ulong)summaryBuilder.Position - attIdxGrpStart;
 
             // MetadataIndex group
-            var metaIdxGrpStart = (ulong)summaryBuilder.Position;
-            foreach (var mi in _metaIdx)
-                summaryWriter.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
-            var metaIdxGrpLen = (ulong)summaryBuilder.Position - metaIdxGrpStart;
+                var metaIdxGrpStart = (ulong)summaryBuilder.Position;
+                foreach (var mi in _metaIdx)
+                    summaryWriter.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
+                var metaIdxGrpLen = (ulong)summaryBuilder.Position - metaIdxGrpStart;
 
             // SummaryOffset per group (absolute offsets = sumStart + relative start)
-            var sumOffStart = sumStart + (ulong)summaryBuilder.Position;
-            if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeSchema, sumStart + schemaGrpStart, schemaGrpLen);
-            if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChannel, sumStart + channelGrpStart, channelGrpLen);
-            if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, sumStart + statsGrpStart, statsGrpLen);
-            if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
-            if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, sumStart + attIdxGrpStart, attIdxGrpLen);
-            if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, sumStart + metaIdxGrpStart, metaIdxGrpLen);
+                var sumOffStart = sumStart + (ulong)summaryBuilder.Position;
+                if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeSchema, sumStart + schemaGrpStart, schemaGrpLen);
+                if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChannel, sumStart + channelGrpStart, channelGrpLen);
+                if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, sumStart + statsGrpStart, statsGrpLen);
+                if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
+                if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, sumStart + attIdxGrpStart, attIdxGrpLen);
+                if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, sumStart + metaIdxGrpStart, metaIdxGrpLen);
 
-            summaryWriter.Flush();
-            var summaryData = summaryBuilder.ToArray();
+                summaryWriter.Flush();
+                var summaryData = summaryBuilder.ToArray();
 
             // Compute summary_crc per MCAP spec: CRC32 over summary_data, then
             // continue CRC32 over footer prefix (opcode, length, sumStart, sumOffStart).
-            var footerPrefix = McapWriter.BuildFooterCrcPrefix(sumStart, sumOffStart);
-            var crcInput = new byte[summaryData.Length + footerPrefix.Length];
-            Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
-            Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
-            var summaryCrc = Crc32Helper.Compute(crcInput);
+                var footerPrefix = McapWriter.BuildFooterCrcPrefix(sumStart, sumOffStart);
+                var crcInput = new byte[summaryData.Length + footerPrefix.Length];
+                Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
+                Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
+                var summaryCrc = Crc32Helper.Compute(crcInput);
 
-            _w.WriteBytes(summaryData);
-            _w.WriteFooter(sumStart, sumOffStart, summaryCrc);
-            _w.WriteMagic();
-            _w.Flush();
+                _w.WriteBytes(summaryData);
+                _w.WriteFooter(sumStart, sumOffStart, summaryCrc);
+                _w.WriteMagic();
+                _w.Flush();
+                _closed = true;
+            }
         }
 
         /// <summary>
         /// Dispose the recorder and underlying writer and buffer streams.
         /// </summary>
-        public void Dispose() { Close(); _w.Dispose(); _chunkBuf.Dispose(); }
+        public void Dispose()
+        {
+            Close();
+            lock (_lock)
+            {
+                _w.Dispose();
+                _chunkBuf.Dispose();
+            }
+        }
 
         // Helpers
         IEnumerable<ChannelWriteState> AllChannelWriteStates()

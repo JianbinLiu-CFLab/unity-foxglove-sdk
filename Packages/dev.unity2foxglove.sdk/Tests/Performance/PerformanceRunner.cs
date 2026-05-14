@@ -545,7 +545,7 @@ namespace Unity.FoxgloveSDK.Performance
             bool accepted, shouldDisc, dataDropped;
 
             // Data overflow drops oldest
-            var q = new ManagedWsBackend.WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024 * 1024);
+            var q = new WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024 * 1024);
             for (int i = 0; i < 4; i++)
                 q.Enqueue(D(1));
             var er = q.Enqueue(D(1));
@@ -553,21 +553,21 @@ namespace Unity.FoxgloveSDK.Performance
             dataDropped = er.DroppedDataFrames > 0;
 
             // Control priority over data
-            var q2 = new ManagedWsBackend.WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024 * 1024);
+            var q2 = new WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024 * 1024);
             q2.Enqueue(D(1)); q2.Enqueue(D(1)); q2.Enqueue(D(1));
             er = q2.Enqueue(C(1));
             shouldDisc = !er.ShouldDisconnect;
             q2.TryDequeue(out var first);
-            bool controlFirst = first.Priority == ManagedWsBackend.FramePriority.Control;
+            bool controlFirst = first.Priority == FramePriority.Control;
 
             // Control-only overflow disconnects
-            var q3 = new ManagedWsBackend.WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024 * 1024);
+            var q3 = new WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024 * 1024);
             q3.Enqueue(C(1)); q3.Enqueue(C(1));
             er = q3.Enqueue(C(1));
             bool ctrlDisc = !er.Accepted && er.ShouldDisconnect;
 
             // Drain after complete
-            var q4 = new ManagedWsBackend.WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024 * 1024);
+            var q4 = new WsSendQueue(maxFrames: 2, maxQueuedBytes: 1024 * 1024);
             q4.Enqueue(D(1));
             q4.Complete();
             bool completed = q4.IsCompleted;
@@ -585,10 +585,10 @@ namespace Unity.FoxgloveSDK.Performance
                 notes = passed ? "Queue enqueue/drop/control/complete paths exercised" : "Queue scenario failed"
             };
 
-            static ManagedWsBackend.QueuedFrame D(byte b) =>
-                new ManagedWsBackend.QueuedFrame(WsOpcode.Binary, new[] { b }, ManagedWsBackend.FramePriority.Data);
-            static ManagedWsBackend.QueuedFrame C(byte b) =>
-                new ManagedWsBackend.QueuedFrame(WsOpcode.Text, new[] { b }, ManagedWsBackend.FramePriority.Control);
+            static QueuedFrame D(byte b) =>
+                new QueuedFrame(WsOpcode.Binary, new[] { b }, FramePriority.Data);
+            static QueuedFrame C(byte b) =>
+                new QueuedFrame(WsOpcode.Text, new[] { b }, FramePriority.Control);
         }
     }
 }

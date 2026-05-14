@@ -520,7 +520,8 @@ namespace Unity.FoxgloveSDK.Components
             if (!IsRunning)
             {
                 StopCertificateDistributor();
-                return;
+                if (_runtime?.Session == null)
+                    return;
             }
 
             var transport = _runtime.Session?.Transport;
