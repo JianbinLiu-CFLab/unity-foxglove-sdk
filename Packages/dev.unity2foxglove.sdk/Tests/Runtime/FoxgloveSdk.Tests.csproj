@@ -16,7 +16,7 @@
   <ItemGroup>
     <Compile Include="../../Runtime/Unity/Attributes/*.cs" />
     <Compile Include="../../Runtime/Unity/FoxglovePublisherEncoding.cs" />
-    <Compile Include="../../Runtime/Core/*.cs" />
+    <Compile Include="../../Runtime/Core/**/*.cs" />
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/*.cs" />

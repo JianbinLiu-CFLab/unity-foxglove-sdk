@@ -9,7 +9,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
@@ -55,38 +54,16 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Registered service descriptors and pending call queue.</summary>
         private readonly FoxgloveServiceRegistry _services;
         private readonly SessionGraphHandler _graph;
-        private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
-        private readonly object _playbackControlsLock = new();
-        private readonly Queue<PendingPlaybackControl> _pendingPlaybackControls = new();
+        private readonly SessionPlaybackHandler _playback;
+        private readonly SessionClientPublishHandler _clientPublish;
+        private readonly SessionAssetHandler _assets;
         /// <summary>Maximum queued playback control requests awaiting the runtime owner tick.</summary>
-        internal const int MaxPendingPlaybackControls = 64;
-        /// <summary>Lock protecting <c>_clientChannels</c> concurrent access.</summary>
-        private readonly object _clientChannelsLock = new();
+        internal const int MaxPendingPlaybackControls = SessionPlaybackHandler.MaxPendingPlaybackControls;
         /// <summary>Raised when a client-published binary message is received.</summary>
         public event Action<uint, uint, string, byte[]> OnClientMessage;
 
         private McapRecorder _recorder;
         private long _lastTimeBroadcastTicks;
-
-        private readonly struct PendingPlaybackControl
-        {
-            public readonly uint ClientId;
-            public readonly byte Command;
-            public readonly float Speed;
-            public readonly bool HasSeek;
-            public readonly ulong SeekNs;
-            public readonly string RequestId;
-
-            public PendingPlaybackControl(uint clientId, byte command, float speed, bool hasSeek, ulong seekNs, string requestId)
-            {
-                ClientId = clientId;
-                Command = command;
-                Speed = speed;
-                HasSeek = hasSeek;
-                SeekNs = seekNs;
-                RequestId = requestId;
-            }
-        }
 
         /// <summary>Server name sent in serverInfo.</summary>
         public string Name { get; }
@@ -129,6 +106,18 @@ namespace Unity.FoxgloveSDK.Core
             _services = serviceRegistry ?? new FoxgloveServiceRegistry();
             _sessionId = Guid.NewGuid().ToString();
             _graph = new SessionGraphHandler(_transport, _logger, () => Volatile.Read(ref _recorder));
+            _playback = new SessionPlaybackHandler(
+                () => Volatile.Read(ref _runtime),
+                _transport,
+                _logger,
+                ClearQueuedDataForPlaybackSeek);
+            _clientPublish = new SessionClientPublishHandler(
+                () => Volatile.Read(ref _recorder),
+                _clock,
+                _logger,
+                _graph,
+                (clientId, chId, topic, payload) => OnClientMessage?.Invoke(clientId, chId, topic, payload));
+            _assets = new SessionAssetHandler(() => Volatile.Read(ref _runtime), _transport);
 
             _transport.OnClientConnected += OnClientConnected;
             _transport.OnClientDisconnected += OnClientDisconnected;
@@ -150,9 +139,9 @@ namespace Unity.FoxgloveSDK.Core
             _subscriptions.Clear();
             _paramSubs.Clear();
             _services.ClearPendingCalls();
-            lock (_clientChannelsLock)
-                _clientChannels.Clear();
             _graph.Clear();
+            _playback.Clear();
+            _clientPublish.Clear();
         }
 
         /// <summary>Stop the transport and detach all event handlers.</summary>
@@ -599,16 +588,7 @@ namespace Unity.FoxgloveSDK.Core
 
             _paramSubs.RemoveClient(clientId);
             _services.RemoveClientCalls(clientId);
-
-            lock (_clientChannelsLock)
-            {
-                var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
-                foreach (var k in toRemove)
-                {
-                    if (_clientChannels.Remove(k, out var ch))
-                        _graph.RemoveClientPublishedTopic(clientId, k.chId, ch.Topic);
-                }
-            }
+            _clientPublish.RemoveClient(clientId);
 
             _graph.RemoveClient(clientId);
             _graph.BroadcastUpdate();
