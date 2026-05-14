@@ -337,7 +337,7 @@ MonoBehaviour:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath: Recordings/foxglove_20260511_230904.mcap
+  _replayFilePath: 
   _replayAutoPlay: 0
   _disableLivePublishers: 0
   _allowHostedFoxgloveWeb: 1
