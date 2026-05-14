@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagerCachesSchemaChannelsOnlyAfterSuccessfulRegistration()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Publishing.cs");
             var registerIndex = manager.IndexOf("_runtime.RegisterSchemaChannel", StringComparison.Ordinal);
             var cacheIndex = manager.IndexOf("_channelCache[key]", registerIndex, StringComparison.Ordinal);
 

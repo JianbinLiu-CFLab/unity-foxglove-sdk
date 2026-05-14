@@ -8,6 +8,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 
 namespace Unity.FoxgloveSDK.Transport
 {
@@ -165,9 +166,12 @@ namespace Unity.FoxgloveSDK.Transport
             return true;
         }
 
+        /// <summary>
+        /// Returns true for stream exceptions produced by normal client disconnects or TLS socket abort races.
+        /// </summary>
         private static bool IsExpectedStreamShutdown(Exception ex)
         {
-            if (ex is ObjectDisposedException)
+            if (ex is ObjectDisposedException || ex is IOException || ex is SocketException)
                 return true;
 
             if (ex is AggregateException aggregate)
