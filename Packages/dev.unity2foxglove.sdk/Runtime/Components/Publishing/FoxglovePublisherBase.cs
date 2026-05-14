@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Components
         [Header("General")]
         [SerializeField] protected FoxgloveManager _manager;
         [SerializeField] protected string _topic = "";
+        [SerializeField] protected PublisherRateSource _publishRateSource = PublisherRateSource.OverrideLocal;
         [SerializeField] protected float _publishRateHz = 10f;
         [SerializeField] protected bool _publishOnEnable = true;
         [SerializeField] protected bool _warnIfManagerMissing = true;
@@ -63,6 +64,23 @@ namespace Unity.FoxgloveSDK.Components
         public PublisherEncodingOverride EncodingOverride => _encodingOverride;
 
         /// <summary>
+        /// Source used to resolve this publisher's effective publish rate.
+        /// </summary>
+        public PublisherRateSource PublishRateSource => _publishRateSource;
+
+        /// <summary>
+        /// Publisher-local publish rate used when local override is selected
+        /// or when no manager is available.
+        /// </summary>
+        public float LocalPublishRateHz => _publishRateHz;
+
+        /// <summary>
+        /// Resolved publish rate after applying manager default and local
+        /// override policy.
+        /// </summary>
+        public float EffectivePublishRateHz => ResolvePublishRateHz();
+
+        /// <summary>
         /// Manager explicitly assigned to this publisher, if any.
         /// </summary>
         public FoxgloveManager ConfiguredManager => _manager;
@@ -79,6 +97,11 @@ namespace Unity.FoxgloveSDK.Components
                 if (SupportsProtobufEncoding) return "protobuf";
                 return "none";
             }
+        }
+
+        protected virtual void Reset()
+        {
+            _publishRateSource = PublisherRateSource.UseManagerDefault;
         }
 
         protected virtual void OnEnable()
@@ -104,9 +127,10 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True if enough time has elapsed since last publish.</summary>
         protected bool ShouldPublishNow()
         {
-            if (_publishRateHz <= 0) return true;
+            var effectiveRateHz = EffectivePublishRateHz;
+            if (effectiveRateHz <= 0) return true;
 
-            var interval = 1f / _publishRateHz;
+            var interval = 1f / effectiveRateHz;
             var now = Time.unscaledTime;
             if (now - _lastPublishTime >= interval)
             {
@@ -167,6 +191,21 @@ namespace Unity.FoxgloveSDK.Components
                 _encodingOverride,
                 SupportsJsonEncoding,
                 SupportsProtobufEncoding);
+        }
+
+        private float ResolvePublishRateHz()
+        {
+            var manager = _manager;
+#if UNITY_EDITOR
+            if (manager == null && !Application.isPlaying)
+                manager = FindFirstObjectByType<FoxgloveManager>();
+#endif
+
+            return PublisherRatePolicy.Resolve(
+                _publishRateSource,
+                manager != null ? manager.DefaultPublishRateHz : _publishRateHz,
+                _publishRateHz,
+                manager != null);
         }
 
         private void WarnIfEncodingFallback(PublisherEncodingResolution resolution)
