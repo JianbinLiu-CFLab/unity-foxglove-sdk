@@ -169,6 +169,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawPublishDataSection()
         {
+            FoxgloveManagerInspectorLayout.Subheader("Rate");
+            DrawProperty("_defaultPublishRateHz");
+
             FoxgloveManagerInspectorLayout.Subheader("Encoding");
             DrawProperty("_defaultPublisherEncoding");
             DrawProperty("_allowPublisherOverride");
@@ -832,12 +835,18 @@ namespace Unity.FoxgloveSDK.Editor
         {
             serializedObject.Update();
 
+            var publishRateSource = serializedObject.FindProperty("_publishRateSource");
+            var publishRateHz = serializedObject.FindProperty("_publishRateHz");
             var encodingOverride = serializedObject.FindProperty("_encodingOverride");
             var prop = serializedObject.GetIterator();
             if (prop.NextVisible(true))
             {
                 do
                 {
+                    if (prop.name == "_publishRateSource")
+                        continue;
+                    if (prop.name == "_publishRateHz")
+                        continue;
                     if (prop.name == "_encodingOverride")
                         continue;
 
@@ -850,6 +859,19 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
+            if (publishRateSource != null)
+                EditorGUILayout.PropertyField(publishRateSource, new GUIContent("Publish Rate Source"));
+
+            var usesLocalRate = publishRateSource == null
+                || publishRateSource.enumValueIndex == (int)Components.PublisherRateSource.OverrideLocal;
+            using (new EditorGUI.DisabledScope(!usesLocalRate))
+            {
+                if (publishRateHz != null)
+                    EditorGUILayout.PropertyField(publishRateHz, new GUIContent("Publish Rate Hz"));
+            }
+
+            EditorGUILayout.Space();
             EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
             if (encodingOverride != null)
                 EditorGUILayout.PropertyField(encodingOverride, new GUIContent("Encoding Override"));
@@ -858,6 +880,12 @@ namespace Unity.FoxgloveSDK.Editor
 
             var publisher = (Components.FoxglovePublisherBase)target;
             var resolution = publisher.EncodingResolution;
+
+            EditorGUILayout.Space();
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.FloatField("Effective Publish Rate Hz", publisher.EffectivePublishRateHz);
+            }
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))

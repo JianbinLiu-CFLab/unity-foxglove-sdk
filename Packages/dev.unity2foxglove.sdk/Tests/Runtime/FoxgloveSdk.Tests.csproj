@@ -16,6 +16,7 @@
   <ItemGroup>
     <Compile Include="../../Runtime/Components/Attributes/*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
+    <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
     <Compile Include="../../Runtime/Core/**/*.cs" />
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
@@ -69,6 +70,7 @@
     <Compile Include="Phase68Validation.cs" />
     <Compile Include="Phase69Validation.cs" />
     <Compile Include="Phase70Validation.cs" />
+    <Compile Include="Phase71Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>
