@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestReplayObjectAdapterRoutesProtobufBeforeJsonParse();
             TestReplayControllerSerializesReplayCursorAccess();
             TestPlaybackControlRunsOnRuntimeTick();
-            TestPlaybackSeekBroadcastsDidSeekStateToAllClients();
+            TestPlaybackSeekTargetsDidSeekStateToRequestingClient();
             TestPausedReplaySeekFollowsOfficialPlaybackControlFlow();
             TestPausedReplaySeekAppliesSceneOnlySnapshot();
             TestActivePausedScrubDoesNotEmitPanelHistoryUntilSettled();
@@ -591,7 +591,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Replay Tick broadcasts playback time before replay message frames");
         }
 
-        static void TestPlaybackSeekBroadcastsDidSeekStateToAllClients()
+        static void TestPlaybackSeekTargetsDidSeekStateToRequestingClient()
         {
             var tmp = CreateTempMcap(2, 1_000_000UL);
             var transport = new Phase13FakeTransport();
@@ -611,10 +611,10 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(7)) == 1,
                     "Playback seek sends didSeek PlaybackState to the requesting client");
-                Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(8)) == 1,
-                    "Playback seek broadcasts didSeek PlaybackState to other connected clients");
-                Assert(transport.SentBinaryFrames(7)[0][14] == 1 && transport.SentBinaryFrames(8)[0][14] == 1,
-                    "Broadcast PlaybackState preserves didSeek=true for all clients");
+                Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(8)) == 0,
+                    "Playback seek does not leak request-correlated PlaybackState to other clients");
+                Assert(transport.SentBinaryFrames(7)[0][14] == 1,
+                    "Targeted PlaybackState preserves didSeek=true for the requesting client");
             }
             finally
             {

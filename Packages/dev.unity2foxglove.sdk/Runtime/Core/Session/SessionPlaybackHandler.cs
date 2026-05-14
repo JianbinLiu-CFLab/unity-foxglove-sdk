@@ -98,10 +98,13 @@ namespace Unity.FoxgloveSDK.Core
                     state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
                 if (FoxgloveReplayTrace.TryEvent(
                     "STATE",
-                    $"client={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
+                    $"targetClient={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
                     out var stateTrace))
                     _logger.LogWarning(stateTrace);
-                _transport.BroadcastBinary(playbackFrame);
+
+                // PlaybackState responses that carry requestId are request-correlated.
+                // Send them only to the client that issued the PlaybackControl request.
+                _transport.SendBinary(request.ClientId, playbackFrame);
             }
         }
 
