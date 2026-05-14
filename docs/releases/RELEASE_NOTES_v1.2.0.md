@@ -15,7 +15,7 @@ Unity2Foxglove v1.2.0 focuses on typed sensor publisher parity for the most comm
 
 - Existing Unity scenes keep serialized Inspector values unless changed manually.
 - Protobuf remains the preferred default for new sensor publishers, with JSON available for compatibility and inspection.
-- Ouster UDP/PCAP decoding is not included in this release; Phase 49 defines the typed publisher boundary that decoded point cloud frames can feed into.
+- Ouster UDP/PCAP decoding is not included in this release; the typed publisher boundary is ready for decoded point cloud frames to feed into.
 
 ## Verification
 

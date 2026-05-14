@@ -194,7 +194,7 @@ Automated checks include:
 
 Recent validation results:
 
-- Phase 13 replay validation passed.
+- Replay validation passed.
 - Full runtime validation passed.
 - Release package validation passed.
 - Manual Foxglove testing confirmed no warnings during paused backward scrub.
@@ -215,7 +215,7 @@ Unity2Foxglove introduces a WebSocket-controlled replay architecture for Unity s
 
 The main contribution boundary is not "Unity2Foxglove is the first replay system." It is narrower and more specific: Unity2Foxglove applies remote WebSocket playback control to an in-process Unity MCAP replay server and separates latest-at scene reproduction from replay streaming sufficiently to support stable paused backward scrubbing.
 
-The current completed claim is **scene reproduction**, not full historical panel reconstruction. Continuous range-history reconstruction is a related follow-up problem. The claim should avoid overstatements such as asserting that Foxglove's native MCAP playback has been reimplemented over WebSocket, that all large-MCAP performance cases are solved, or that this is the first system to replay a 3D scene from telemetry.
+The current completed claim is **scene reproduction**, not full historical panel reconstruction. Continuous range-history reconstruction is a related follow-up problem. Unity2Foxglove does not claim that Foxglove's native MCAP playback has been reimplemented over WebSocket, that all large-MCAP performance cases are solved, or that it is the first system to replay a 3D scene from telemetry.
 
 ## 9 Future Work
 
@@ -226,15 +226,15 @@ The current implementation includes bounded server-push history for settled paus
 - Large-MCAP scrub latency needs deeper indexing, benchmark evidence, and backpressure-aware batching.
 - Client-side caching or range-capable asset access may reduce repeated server-side scans.
 
-An alternative architecture is client-side preloading: serving the MCAP file via Foxglove's `fetchAsset` capability so the client performs its own range queries locally. A more client-native variant would expose indexed MCAP assets through `fetchAsset` or a range-capable asset service, letting Foxglove-side code perform cached range queries directly. This could reduce server-push pressure for large MCAP files and align more closely with native MCAP playback behavior, but it requires client or panel support, cache invalidation policy, asset authorization design, and agreement on how cloud-hosted or remote MCAP indexes are discovered. The bounded server-push approach was chosen for Phase 54 because it works within the existing WebSocket streaming model.
+An alternative architecture is client-side preloading: serving the MCAP file via Foxglove's `fetchAsset` capability so the client performs its own range queries locally. A more client-native variant would expose indexed MCAP assets through `fetchAsset` or a range-capable asset service, letting Foxglove-side code perform cached range queries directly. This could reduce server-push pressure for large MCAP files and align more closely with native MCAP playback behavior, but it requires client or panel support, cache invalidation policy, asset authorization design, and agreement on how cloud-hosted or remote MCAP indexes are discovered. The bounded server-push approach is used because it works within the existing WebSocket streaming model.
 
 This follow-up would extend scene reproduction into full dual-consumer replay: latest-at for Unity scene state, bounded range for Foxglove analytical panels.
 
 ## 10 Conclusion
 
-This note describes a replay architecture that separates remote timeline control, Unity scene reproduction, and Foxglove panel data delivery. The architecture uses the latest-at/range distinction — established in systems such as Rerun — as an architectural boundary between scene state and analytical panel history, applied to a remote WebSocket-controlled Unity replay loop.
+This note describes a replay architecture that separates remote timeline control, Unity scene reproduction, and Foxglove panel data delivery. The architecture uses the latest-at/range distinction, established in systems such as Rerun, as an architectural boundary between scene state and analytical panel history, applied to a remote WebSocket-controlled Unity replay loop.
 
-The current system demonstrates stable paused scrubbing without backwards-time warnings and includes bounded server-push history for settled panel updates. Full continuous Plot reconstruction, large-MCAP scrub latency, and client-side range caching remain future work. The contribution is best understood as a compositional systems contribution: mature pieces exist in neighboring systems, but their combination creates a system shape for Unity-based telemetry replay that, to the best of our knowledge, has not been documented before.
+The current system demonstrates stable paused scrubbing without backwards-time warnings and includes bounded server-push history for settled panel updates. Full continuous Plot reconstruction, large-MCAP scrub latency, and client-side range caching remain future work. The contribution is best understood as a compositional systems contribution: mature pieces exist in neighboring systems, but the reviewed public material did not identify this combination as a documented Unity-based telemetry replay architecture.
 
 ## References
 
@@ -278,6 +278,6 @@ The current system demonstrates stable paused scrubbing without backwards-time w
 
 [20] Champion3D. "Combining ROS 2 Bag Files with USD Scenes." 2025. https://www.champion3d.io/ros-2/combining-ros-2-bag-files-with-usd-scenes
 
-## Authorship and Disclosure
+## Evidence Scope
 
-This document records the design state as of 2026-05-12 for Unity2Foxglove. Git history, release notes, and dated documentation provide authorship evidence. If the work is intended for academic submission, a later version should add a more complete related-work review, precise citations, benchmark data, screenshots or videos from the Foxglove/Unity replay workflow, and a clearly versioned implementation artifact.
+This document records the replay design represented by the current Unity2Foxglove repository documentation. Future versions may add a more complete related-work review, precise citations, benchmark data, screenshots or videos from the Foxglove/Unity replay workflow, and a clearly versioned implementation artifact.
