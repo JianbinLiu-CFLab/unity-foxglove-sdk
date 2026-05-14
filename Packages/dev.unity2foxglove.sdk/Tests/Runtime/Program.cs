@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Test runner entry point 鈥?discovers and executes all Phase validation tests.
+// Purpose: Test runner entry point — discovers and executes all Phase validation tests.
 
 using System;
 using System.Collections.Generic;
@@ -73,6 +73,8 @@ class Program
         if (argList.Contains("--phase68"))
             return RunPhase68Only();
 
+        if (argList.Contains("--phase69"))
+            return RunPhase69Only();
 
         var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
         if (phase68SmokeIdx >= 0)
@@ -348,6 +350,20 @@ class Program
         return value;
     }
 
+    private static int RunPhase69Only()
+    {
+        try
+        {
+            Phase69Validation.Validate();
+            Console.WriteLine("\nPhase 69 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
 
     private static int RunPhase13Only()
     {
@@ -455,7 +471,8 @@ class Program
             Phase67Validation.Validate();
             Console.WriteLine();
             Phase68Validation.Validate();
-
+            Console.WriteLine();
+            Phase69Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;
@@ -481,7 +498,7 @@ class Program
         runtime.Start("Unity Foxglove SDK", "127.0.0.1", port);
 
         Console.WriteLine($"Server running. SessionId: {runtime.Session.SessionId}");
-        Console.WriteLine("Open Foxglove 鈫?Open connection 鈫?ws://127.0.0.1:{0}", port);
+        Console.WriteLine("Open Foxglove → Open connection → ws://127.0.0.1:{0}", port);
 
         Timer heartbeat = null;
         if (demo)
@@ -573,7 +590,7 @@ class Program
         if (demo3d)
         {
             Console.WriteLine("Demo3D: /tf and /scene visible.");
-            Console.WriteLine("  Foxglove 鈫?3D panel 鈫?select /scene 鈫?green cube at origin.");
+            Console.WriteLine("  Foxglove → 3D panel → select /scene → green cube at origin.");
         }
         Console.WriteLine("Press Ctrl+C to stop...");
 

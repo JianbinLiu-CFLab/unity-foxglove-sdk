@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _replayExpanded;
         private static bool _securityExpanded;
         private static bool _transportExpanded;
+        private readonly McapReplayPreflightDrawer _mcapReplayPreflight = new McapReplayPreflightDrawer();
         private const string LocalRootCaDistributorHost = "127.0.0.1";
         private const int LocalRootCaDistributorPort = 8766;
         private const string LocalRootCaPageUrl = "http://127.0.0.1:8766/";
@@ -207,7 +208,10 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_enableReplay");
             var replayPath = serializedObject.FindProperty("_replayFilePath");
             if (replayPath != null)
+            {
                 DrawPathBrowse(replayPath, "Select MCAP File", "mcap", true, GetSmartDefault(replayPath.stringValue, true));
+                _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
+            }
             else
                 DrawMissingProperty("_replayFilePath");
             DrawProperty("_replayAutoPlay");
