@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestWssOriginGuardRejectsDisallowedOrigin();
             TestSecureStopStartReleasesPort();
             TestReceiveLoopIgnoresSslStreamDisposalRace();
+            TestFrameCodecTreatsRemoteAbortAggregateAsCleanEnd();
             TestWebSocketFrameProtocolRejectsInvalidClientFrames();
             TestManagedBackendStopDisposesCancellationSource();
             TestHostedFoxgloveWebUrlMatchesOfficialSdk();
@@ -280,6 +281,28 @@ namespace Unity.FoxgloveSDK.Tests
                 "52B-4: receive loop ignores SSL stream disposal race during shutdown");
         }
 
+        private static void TestFrameCodecTreatsRemoteAbortAggregateAsCleanEnd()
+        {
+            using var stream = new Phase52ThrowingReadStream(
+                new AggregateException(
+                    new IOException(
+                        "Unable to write data to the transport connection.",
+                        new SocketException((int)SocketError.ConnectionAborted))));
+
+            var cleanEnd = false;
+            try
+            {
+                cleanEnd = !WsFrameCodec.TryReadFrame(stream, out var frame) && frame == null;
+            }
+            catch (AggregateException)
+            {
+                cleanEnd = false;
+            }
+
+            Check(cleanEnd,
+                "52B-4b: WSS remote abort aggregate is treated as a clean stream end");
+        }
+
         private static void TestWebSocketFrameProtocolRejectsInvalidClientFrames()
         {
             Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("hi"), masked: false, fin: true)) == null,
@@ -314,7 +337,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestManagerDefaultsAllowFoxgloveWebOrigin()
         {
             const string foxgloveWebOrigin = "https://app.foxglove.dev";
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveManager.cs");
+            var managerSource = ReadManagerSource();
 
             Check(!managerSource.Contains("FoxgloveWebAppOrigin"),
                 "52A-4: manager does not expose a single hard-coded Foxglove web origin constant");
@@ -425,7 +448,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestManagerSourceClosesBackendSelectionPath()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveManager.cs");
+            var managerSource = ReadManagerSource();
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxgloveManagerEditor.cs");
             var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxgloveLocalDevCertificateGenerator.cs");
@@ -778,6 +801,25 @@ namespace Unity.FoxgloveSDK.Tests
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         }
 
+        private static string ReadManagerSource()
+        {
+            var parts = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/FoxgloveManager.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Server.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Setup.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Publishing.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Unity/Manager/FoxgloveManager.Certificate.cs"
+            };
+            var source = new System.Text.StringBuilder();
+            foreach (var part in parts)
+            {
+                source.AppendLine(ReadRepoText(part));
+            }
+
+            return source.ToString();
+        }
+
         private static string FindRepoRoot()
         {
             var dir = Directory.GetCurrentDirectory();
@@ -851,6 +893,45 @@ namespace Unity.FoxgloveSDK.Tests
             public override int Read(byte[] buffer, int offset, int count)
             {
                 throw new AggregateException(new ObjectDisposedException("MobileAuthenticatedStream"));
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void SetLength(long value)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void Write(byte[] buffer, int offset, int count) { }
+        }
+
+        private sealed class Phase52ThrowingReadStream : Stream
+        {
+            private readonly Exception _exception;
+
+            public Phase52ThrowingReadStream(Exception exception)
+            {
+                _exception = exception;
+            }
+
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => true;
+            public override long Length => throw new NotSupportedException();
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush() { }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                throw _exception;
             }
 
             public override long Seek(long offset, SeekOrigin origin)
