@@ -518,8 +518,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(drawFieldsIndex >= 0 && generateButtonIndex > drawFieldsIndex,
                 "52C-1i1: certificate generator button remains enabled before SecureWebSocket mode is selected");
             Check(editorSource.Contains("FoxgloveAppUrl.BuildHostedWebSocketUrl")
-                  && editorSource.Contains("Copy Foxglove Web URL")
-                  && editorSource.Contains("Open Foxglove Web"),
+                  && editorSource.Contains("Copy Web URL")
+                  && editorSource.Contains("Open Web"),
                 "52C-1i2: Inspector exposes generated Foxglove Web URL actions");
             Check(editorSource.Contains("DrawProperty(\"_allowHostedFoxgloveWeb\")"),
                 "52C-1i3: Inspector exposes hosted Foxglove Web origin toggle");
