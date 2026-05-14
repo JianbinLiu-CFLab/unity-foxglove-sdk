@@ -154,6 +154,7 @@ Start with the document that matches what you are trying to do:
 | Open a ready-made project and verify Foxglove, MCAP, IL2CPP, and replay | [Demo project guide](Unity2Foxglove/README.md) |
 | Import the smallest possible UPM sample | [Basic Visualization sample](Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization/README.md) |
 | Import the full UPM sample with Parameters, Services, FoxRun, MCAP, Input System, and URP | [Full Demo Visualization sample](Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/README.md) |
+| Understand the SDK architecture and design boundaries | [Architecture patterns and design restraint](docs/architecture-patterns.md) |
 
 The documentation is intentionally split by audience:
 
