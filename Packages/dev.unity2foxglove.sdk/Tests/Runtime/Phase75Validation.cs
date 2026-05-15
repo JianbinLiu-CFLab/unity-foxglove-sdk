@@ -43,35 +43,34 @@ namespace Unity.FoxgloveSDK.Tests
             Check(modeType != null && modeType.IsEnum, "75A-1: CameraOutputMode enum exists");
             Check(Enum.GetNames(modeType).Contains("Jpeg"), "75A-2: CameraOutputMode exposes Jpeg");
             Check(Enum.GetNames(modeType).Contains("H264Ffmpeg"), "75A-3: CameraOutputMode exposes H264Ffmpeg");
-            Check(!Enum.GetNames(modeType).Contains("H265Ffmpeg"), "75A-4: Phase 75 does not expose H265Ffmpeg");
-            Check(Convert.ToInt32(Enum.Parse(modeType, "Jpeg")) == 0, "75A-5: Jpeg enum value is stable at 0");
-            Check(Convert.ToInt32(Enum.Parse(modeType, "H264Ffmpeg")) == 1, "75A-6: H264Ffmpeg enum value is stable at 1");
+            Check(Convert.ToInt32(Enum.Parse(modeType, "Jpeg")) == 0, "75A-4: Jpeg enum value is stable at 0");
+            Check(Convert.ToInt32(Enum.Parse(modeType, "H264Ffmpeg")) == 1, "75A-5: H264Ffmpeg enum value is stable at 1");
 
             var profileType = Type.GetType("Unity.FoxgloveSDK.Components.CameraVideoOutputProfile, FoxgloveSdk.Tests");
-            Check(profileType != null, "75A-7: CameraVideoOutputProfile exists as codec/profile boundary");
+            Check(profileType != null, "75A-6: CameraVideoOutputProfile exists as codec/profile boundary");
 
             var forMode = profileType.GetMethod("ForMode", BindingFlags.Public | BindingFlags.Static);
-            Check(forMode != null && forMode.ReturnType == profileType, "75A-8: profile exposes ForMode(mode)");
+            Check(forMode != null && forMode.ReturnType == profileType, "75A-7: profile exposes ForMode(mode)");
 
             var jpegProfile = forMode.Invoke(null, new[] { Enum.Parse(modeType, "Jpeg") });
             var h264Profile = forMode.Invoke(null, new[] { Enum.Parse(modeType, "H264Ffmpeg") });
 
             Check(GetStringProperty(profileType, jpegProfile, "DefaultTopic") == "/unity/camera",
-                "75A-9: JPEG default topic is /unity/camera");
+                "75A-8: JPEG default topic is /unity/camera");
             Check(GetStringProperty(profileType, h264Profile, "DefaultTopic") == "/unity/camera",
-                "75A-10: H.264 default topic matches JPEG /unity/camera");
+                "75A-9: H.264 default topic matches JPEG /unity/camera");
             Check(GetStringProperty(profileType, jpegProfile, "SchemaName") == "foxglove.CompressedImage",
-                "75A-11: JPEG schema is foxglove.CompressedImage");
+                "75A-10: JPEG schema is foxglove.CompressedImage");
             Check(GetStringProperty(profileType, h264Profile, "SchemaName") == "foxglove.CompressedVideo",
-                "75A-12: H.264 schema is foxglove.CompressedVideo");
+                "75A-11: H.264 schema is foxglove.CompressedVideo");
             Check(GetStringProperty(profileType, h264Profile, "VideoFormat") == "h264",
-                "75A-13: H.264 video format is h264");
+                "75A-12: H.264 video format is h264");
             Check(GetBoolProperty(profileType, jpegProfile, "SupportsJson")
                     && GetBoolProperty(profileType, jpegProfile, "SupportsProtobuf"),
-                "75A-14: JPEG supports JSON and protobuf");
+                "75A-13: JPEG supports JSON and protobuf");
             Check(!GetBoolProperty(profileType, h264Profile, "SupportsJson")
                     && GetBoolProperty(profileType, h264Profile, "SupportsProtobuf"),
-                "75A-15: H.264 supports protobuf only");
+                "75A-14: H.264 supports protobuf only");
         }
 
         private static void VerifyCameraPublisherSource()

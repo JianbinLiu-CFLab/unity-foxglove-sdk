@@ -3,7 +3,7 @@
 //
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Captures camera frames via AsyncGPUReadback and publishes them
-// as foxglove.CompressedImage JPEG frames or foxglove.CompressedVideo H.264 frames.
+// as foxglove.CompressedImage JPEG frames or FFmpeg-backed foxglove.CompressedVideo frames.
 
 using System;
 using Foxglove.Schemas;
@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Captures camera frames and publishes either dependency-free JPEG images
-    /// or optional FFmpeg-backed H.264 compressed video.
+    /// or optional FFmpeg-backed H.264/H.265 compressed video.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class FoxgloveCameraPublisher : FoxglovePublisherBase
@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
         [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
 
-        [Header("H.264 Video")]
+        [Header("FFmpeg Video")]
         [SerializeField] private string _ffmpegPath = "";
         [SerializeField, Min(1)] private int _videoBitrateKbps = 4000;
         [SerializeField, Min(1)] private int _videoKeyframeInterval = 30;
@@ -70,8 +70,8 @@ namespace Unity.FoxgloveSDK.Components
         private int _pendingRequests;
         private bool _destroyed;
 
-        // H.264 sidecar state
-        private FfmpegH264EncoderSidecar _videoSidecar;
+        // FFmpeg video sidecar state
+        private IFfmpegVideoEncoderSidecar _videoSidecar;
         private CameraOutputMode _videoSidecarMode = CameraOutputMode.Jpeg;
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
@@ -206,28 +206,55 @@ namespace Unity.FoxgloveSDK.Components
             var sidecar = _videoSidecar;
             if (sidecar == null || !sidecar.IsRunning)
             {
-                LogVideoEncoderUnavailable("FFmpeg encoder is not running.");
+                LogVideoEncoderUnavailable(ActiveProfile, "FFmpeg encoder is not running.");
                 return;
             }
 
             var frameBytes = req.GetData<byte>().ToArray();
             if (!sidecar.TrySubmitFrame(frameBytes))
-                LogVideoEncoderUnavailable(sidecar.LastError ?? "FFmpeg encoder refused the frame.");
+                LogVideoEncoderUnavailable(ActiveProfile, sidecar.LastError ?? "FFmpeg encoder refused the frame.");
         }
 
         private bool EnsureVideoSidecarStarted(CameraVideoOutputProfile profile)
         {
-            if (profile.Codec != CameraVideoCodec.H264)
+            if (!profile.IsVideo)
                 return false;
 
             if (_videoSidecar != null && _videoSidecar.IsRunning && _videoSidecarMode == profile.Mode)
                 return true;
 
             StopVideoSidecar();
-            _videoSidecar = new FfmpegH264EncoderSidecar();
             _videoSidecarMode = profile.Mode;
 
-            var options = new FfmpegH264EncoderOptions
+            var started = false;
+            switch (profile.Codec)
+            {
+                case CameraVideoCodec.H264:
+                    var h264 = new FfmpegH264EncoderSidecar();
+                    _videoSidecar = h264;
+                    started = h264.Start(CreateH264Options());
+                    break;
+                case CameraVideoCodec.H265:
+                    var h265 = new FfmpegH265EncoderSidecar();
+                    _videoSidecar = h265;
+                    started = h265.Start(CreateH265Options());
+                    break;
+            }
+
+            if (started)
+            {
+                _warnedVideoEncoderUnavailable = false;
+                return true;
+            }
+
+            LogVideoEncoderUnavailable(profile, _videoSidecar?.LastError ?? "Failed to start FFmpeg encoder.");
+            StopVideoSidecar();
+            return false;
+        }
+
+        private FfmpegH264EncoderOptions CreateH264Options()
+        {
+            return new FfmpegH264EncoderOptions
             {
                 FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath,
                 Width = Math.Max(1, _width),
@@ -238,16 +265,21 @@ namespace Unity.FoxgloveSDK.Components
                 MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
                 MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
             };
+        }
 
-            if (_videoSidecar.Start(options))
+        private FfmpegH265EncoderOptions CreateH265Options()
+        {
+            return new FfmpegH265EncoderOptions
             {
-                _warnedVideoEncoderUnavailable = false;
-                return true;
-            }
-
-            LogVideoEncoderUnavailable(_videoSidecar.LastError ?? "Failed to start FFmpeg encoder.");
-            StopVideoSidecar();
-            return false;
+                FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath,
+                Width = Math.Max(1, _width),
+                Height = Math.Max(1, _height),
+                FrameRate = ResolveEncoderFrameRate(),
+                BitrateKbps = Math.Max(1, _videoBitrateKbps),
+                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
+                MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
+                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
+            };
         }
 
         private void DrainEncodedAccessUnits()
@@ -259,7 +291,9 @@ namespace Unity.FoxgloveSDK.Components
             var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
             var videoFormat = profile.Codec == CameraVideoCodec.H264
                 ? CameraCompressedVideoBuilder.H264Format
-                : profile.VideoFormat;
+                : profile.Codec == CameraVideoCodec.H265
+                    ? CameraCompressedVideoBuilder.H265Format
+                    : profile.VideoFormat;
             while (sidecar.TryDequeueAccessUnit(out var accessUnit))
             {
                 var unixNs = CurrentLogTimeNs;
@@ -418,16 +452,16 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning(message);
         }
 
-        private void LogVideoEncoderUnavailable(string reason)
+        private void LogVideoEncoderUnavailable(CameraVideoOutputProfile profile, string reason)
         {
             if (_warnedVideoEncoderUnavailable)
                 return;
 
             _warnedVideoEncoderUnavailable = true;
-            Debug.LogWarning("[Foxglove] H.264 camera video disabled: " + reason);
+            Debug.LogWarning("[Foxglove] " + profile.DisplayName + " camera video disabled: " + reason);
         }
 
-        private void LogEncoderStderrIfNeeded(FfmpegH264EncoderSidecar sidecar)
+        private void LogEncoderStderrIfNeeded(IFfmpegVideoEncoderSidecar sidecar)
         {
             if (!_logEncoderStderr || sidecar == null)
                 return;

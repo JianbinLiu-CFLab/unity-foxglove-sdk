@@ -276,13 +276,13 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _outputMode: 1
+  _outputMode: 2
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 1
-  _ffmpegPath: 
+  _ffmpegPath: C:/Tools/yt-dlp/ffmpeg.exe
   _videoBitrateKbps: 4000
   _videoKeyframeInterval: 30
   _videoMaxOutputQueue: 4

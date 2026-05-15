@@ -18,7 +18,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly string[] CameraOutputModeLabels =
         {
             "JPEG",
-            "H.264 (FFmpeg)"
+            "H.264 (FFmpeg)",
+            "H.265 / HEVC (FFmpeg)"
         };
 
         private FfmpegExecutableCheckResult _ffmpegCheck =
@@ -73,8 +74,9 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(height);
 
             var mode = GetMode(outputMode);
-            if (mode == CameraOutputMode.H264Ffmpeg)
-                DrawH264Section(ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logEncoderStderr);
+            var profile = CameraVideoOutputProfile.ForMode(mode);
+            if (profile.IsVideo)
+                DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logEncoderStderr);
             else
                 DrawJpegSection(jpegQuality, maxPendingReadbacks, enableBackpressure, backpressureCooldown, maxEncodedBytes, logBackpressureSkips);
 
@@ -107,7 +109,9 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(logBackpressureSkips, new GUIContent("Log Backpressure Skips"));
         }
 
-        private void DrawH264Section(
+        private void DrawVideoSection(
+            CameraOutputMode mode,
+            string title,
             SerializedProperty ffmpegPath,
             SerializedProperty videoBitrateKbps,
             SerializedProperty videoKeyframeInterval,
@@ -116,7 +120,13 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("H.264 (FFmpeg)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            if (mode == CameraOutputMode.H265Ffmpeg)
+            {
+                EditorGUILayout.HelpBox(
+                    "H.265/HEVC playback depends on platform decoder support. If Foxglove cannot display it, validate the MCAP or stream with FFmpeg.",
+                    MessageType.Warning);
+            }
 
             DrawFfmpegPathField(ffmpegPath);
             var checkRequested = false;
