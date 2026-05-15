@@ -271,6 +271,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 0}
   _topic: 
+  _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
@@ -279,7 +280,7 @@ MonoBehaviour:
   _width: 640
   _height: 480
   _jpegQuality: 70
-  _maxPendingReadbacks: 2
+  _maxPendingReadbacks: 1
   _enableBackpressureAdaptation: 0
   _backpressureCooldownSeconds: 0.5
   _maxEncodedBytes: 0
@@ -321,6 +322,7 @@ MonoBehaviour:
   _startOnEnable: 1
   _runInBackground: 1
   _transportMode: 0
+  _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
   _coordinateMode: 1
@@ -337,7 +339,7 @@ MonoBehaviour:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath: Recordings/foxglove_20260514_192816.mcap
+  _replayFilePath: 
   _replayAutoPlay: 0
   _disableLivePublishers: 0
   _allowHostedFoxgloveWeb: 1
@@ -702,6 +704,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSceneCubePublisher
   _manager: {fileID: 0}
   _topic: 
+  _publishRateSource: 1
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
@@ -724,6 +727,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
   _manager: {fileID: 0}
   _topic: 
+  _publishRateSource: 1
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1

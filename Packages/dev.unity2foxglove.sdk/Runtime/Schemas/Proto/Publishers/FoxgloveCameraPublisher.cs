@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Components
         [Range(10, 100)]
         [SerializeField] private int _jpegQuality = 70;
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
-        [SerializeField, Min(1)] private int _maxPendingReadbacks = 2;
+        [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
 
         [Header("Backpressure")]
         [Tooltip("When enabled, transport queue pressure suppresses camera capture to reduce work.")]
@@ -151,6 +151,8 @@ namespace Unity.FoxgloveSDK.Components
                     return;
                 }
             }
+
+            if (!ShouldPreparePublishPayload()) return;
 
             _captureCam.Render();
             _pendingRequests++;

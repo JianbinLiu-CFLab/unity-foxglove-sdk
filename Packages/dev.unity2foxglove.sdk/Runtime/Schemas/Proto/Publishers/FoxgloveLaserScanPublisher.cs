@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
+            if (!ShouldPreparePublishPayload()) return;
 
             var ranges = ResolveRanges();
             var intensities = _intensities ?? Array.Empty<double>();

@@ -53,6 +53,38 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Register or reuse a channel before a publisher prepares payload data.
+        /// </summary>
+        /// <param name="topic">Topic to advertise and potentially publish to.</param>
+        /// <param name="schemaName">Schema name, or null/empty for schemaless JSON.</param>
+        /// <param name="encoding">Foxglove message encoding.</param>
+        /// <param name="channelId">Resolved channel identifier when preparation succeeds.</param>
+        /// <param name="requireDemand">When true, return false unless a subscriber or MCAP recorder needs data.</param>
+        /// <returns>True when payload preparation should continue.</returns>
+        public bool TryPrepareSchemaPublish(
+            string topic,
+            string schemaName,
+            string encoding,
+            out uint channelId,
+            bool requireDemand = true)
+        {
+            channelId = 0;
+
+            if (SuppressLivePublishersForReplay)
+                return false;
+
+            if (!IsRunning)
+                return false;
+
+            var messageEncoding = string.IsNullOrEmpty(encoding) ? JsonEncoding : encoding;
+            channelId = string.IsNullOrEmpty(schemaName)
+                ? GetOrRegisterChannel(topic, messageEncoding)
+                : GetOrRegisterSchemaChannel(topic, schemaName, messageEncoding);
+
+            return !requireDemand || _runtime.HasChannelDemand(channelId);
+        }
+
+        /// <summary>
         /// Serializes a message to JSON and publishes it on the specified topic.
         /// </summary>
         /// <param name="topic">Topic to publish to.</param>
