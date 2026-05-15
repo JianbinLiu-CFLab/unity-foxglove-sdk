@@ -2,7 +2,8 @@
   "name": "Unity.FoxgloveSDK.Editor",
   "rootNamespace": "Unity.FoxgloveSDK.Editor",
   "references": [
-    "Unity.FoxgloveSDK"
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Proto"
   ],
   "includePlatforms": [
     "Editor"

@@ -106,13 +106,20 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
+| Camera Output Mode | `JPEG` | Selects dependency-free JPEG images or optional H.264 video through FFmpeg. | Use `H.264 (FFmpeg)` when you want `foxglove.CompressedVideo` instead of JPEG frames. | Choosing H.264 without a valid FFmpeg executable. |
 | Frame Id | `unity_camera` | Frame ID associated with the image. | Set when coordinating camera pose with `/tf`. | Using a frame ID that is never published. |
 | Width | `640` | Captured image width. | Increase for sharper images. | Too high a value can hurt performance. |
 | Height | `480` | Captured image height. | Increase for sharper images. | Mismatched aspect ratio can stretch output. |
 | JPEG Quality | `70` | Compression quality. | Raise for clearer images; lower for bandwidth. | Setting `100` without checking bandwidth. |
-| Max Pending Readbacks | `2` | Limits outstanding GPU readbacks. | Increase only if frames are skipped and GPU can handle it. | Too high can increase latency and memory use. |
+| FFmpeg Path | Empty | Executable used for H.264 mode. Empty means resolve `ffmpeg` from process, user, or machine `PATH`; the `...` button fills an explicit executable path. A folder that directly contains `ffmpeg.exe` is also accepted. | Browse to a full path such as a local FFmpeg executable if Unity cannot find `ffmpeg` on `PATH`. After `Check FFmpeg` succeeds, `Reveal Folder` opens the resolved executable folder. | Expecting the SDK to scan common folders, fill machine-specific paths, or modify `PATH` automatically. |
+| Video Bitrate Kbps | `4000` | Target bitrate for H.264 mode. | Lower it for bandwidth-sensitive streams; raise it for visual clarity. | Raising bitrate without checking WebSocket and Foxglove load. |
+| Keyframe Interval | `30` | H.264 GOP/keyframe interval passed to FFmpeg. | Tune only when startup/scrubbing latency matters. | Very long intervals can make video harder to recover after dropped frames. |
+| Max Pending Readbacks | `1` | Limits outstanding GPU readbacks. | Increase only if frames are skipped and GPU can handle it. | Too high can increase latency and memory use. |
+| Max Output Queue | `4` | Bounds encoded H.264 access units waiting to be published. | Increase only if short bursts are dropped and latency is acceptable. | Large queues hide backpressure by adding delay. |
 | Topic | `/unity/camera` | Image topic. | Change when publishing multiple cameras. | Two cameras publishing to the same topic unintentionally. |
 | Publish Rate Hz | `10` | Image publish rate. | Lower for slow networks; raise carefully. | High rate plus high resolution can overload the Player. |
+
+JPEG mode publishes `foxglove.CompressedImage` on `/unity/camera` and requires no external dependency. H.264 mode publishes protobuf `foxglove.CompressedVideo` and uses the same default `/unity/camera` topic so existing Foxglove image panels do not need a topic change; the channel schema changes with the selected mode. Missing or invalid FFmpeg is reported explicitly and does not fall back to JPEG. Leave `FFmpeg Path` empty to resolve `ffmpeg` from process, user, or machine `PATH`, use the `...` button to set a full executable path, or enter a folder that directly contains `ffmpeg.exe`. H.265/HEVC is not available in this phase.
 
 ## 8. FoxgloveReplayObjectAdapter
 
