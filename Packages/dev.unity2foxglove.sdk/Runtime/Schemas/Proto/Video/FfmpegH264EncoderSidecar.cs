@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -93,12 +94,42 @@ namespace Foxglove.Schemas.Video
                 _stderrTask = Task.Run(() => RunStderrReader(_stop.Token));
                 return true;
             }
+            catch (Win32Exception ex)
+            {
+                LastError = BuildStartFailureMessage(_options?.FfmpegPath, ex.Message);
+                Stop();
+                return false;
+            }
+            catch (FileNotFoundException ex)
+            {
+                LastError = BuildStartFailureMessage(_options?.FfmpegPath, ex.Message);
+                Stop();
+                return false;
+            }
             catch (Exception ex)
             {
                 LastError = ex.Message;
                 Stop();
                 return false;
             }
+        }
+
+        private static string BuildStartFailureMessage(string ffmpegPath, string detail)
+        {
+            var configured = string.IsNullOrWhiteSpace(ffmpegPath) ? "ffmpeg" : ffmpegPath.Trim();
+            var suffix = string.IsNullOrEmpty(detail) ? "" : " Detail: " + detail;
+            if (string.Equals(configured, "ffmpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                return "FFmpeg executable was not found in the Unity process PATH. "
+                    + "Leave FFmpeg Path empty only when Unity can resolve ffmpeg; otherwise use the FFmpeg Path ... button to select ffmpeg.exe. "
+                    + "Restart Unity after changing PATH."
+                    + suffix;
+            }
+
+            return "FFmpeg executable was not found at the configured FFmpeg Path: "
+                + configured
+                + ". Use the FFmpeg Path ... button to select a valid executable."
+                + suffix;
         }
 
         /// <summary>

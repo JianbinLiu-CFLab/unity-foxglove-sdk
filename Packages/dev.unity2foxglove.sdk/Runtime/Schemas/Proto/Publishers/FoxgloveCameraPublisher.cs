@@ -3,36 +3,46 @@
 //
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Captures camera frames via AsyncGPUReadback and publishes them
-// as foxglove.CompressedImage JPEG frames in JSON or protobuf encoding.
+// as foxglove.CompressedImage JPEG frames or foxglove.CompressedVideo H.264 frames.
 
 using System;
-using UnityEngine;
-using UnityEngine.Rendering;
+using Foxglove.Schemas;
+using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Util;
-using Foxglove.Schemas;
+using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Captures camera frames via AsyncGPUReadback and publishes as foxglove.CompressedImage.
-    /// Default: 640x480, JPEG quality 70, 10 Hz.
+    /// Captures camera frames and publishes either dependency-free JPEG images
+    /// or optional FFmpeg-backed H.264 compressed video.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class FoxgloveCameraPublisher : FoxglovePublisherBase
     {
-        // Serialized fields
+        [Header("Camera Output")]
+        [SerializeField] private CameraOutputMode _outputMode = CameraOutputMode.Jpeg;
+
         /// <summary>Identifier for the Foxglove frame, e.g. <c>"unity_camera"</c>.</summary>
         [SerializeField] private string _frameId = "unity_camera";
         /// <summary>Capture resolution width in pixels.</summary>
-        [SerializeField] private int _width = 640;
+        [SerializeField, Min(1)] private int _width = 640;
         /// <summary>Capture resolution height in pixels.</summary>
-        [SerializeField] private int _height = 480;
+        [SerializeField, Min(1)] private int _height = 480;
         /// <summary>JPEG quality 10-100.</summary>
         [Range(10, 100)]
         [SerializeField] private int _jpegQuality = 70;
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
         [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
+
+        [Header("H.264 Video")]
+        [SerializeField] private string _ffmpegPath = "";
+        [SerializeField, Min(1)] private int _videoBitrateKbps = 4000;
+        [SerializeField, Min(1)] private int _videoKeyframeInterval = 30;
+        [SerializeField, Min(1)] private int _videoMaxOutputQueue = 4;
+        [SerializeField] private bool _logEncoderStderr;
 
         [Header("Backpressure")]
         [Tooltip("When enabled, transport queue pressure suppresses camera capture to reduce work.")]
@@ -46,123 +56,75 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Log a warning each time a capture is skipped by backpressure.")]
         [SerializeField] private bool _logBackpressureSkips;
 
-        protected override string SchemaName => "foxglove.CompressedImage";
-        public override bool SupportsProtobufEncoding => true;
+        private CameraVideoOutputProfile ActiveProfile => CameraVideoOutputProfile.ForMode(_outputMode);
 
-        // Internal state
-        /// <summary>Cached reference to the source Camera on this GameObject.</summary>
+        protected override string SchemaName => ActiveProfile.SchemaName;
+        public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
+        public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
+
+        // Capture state
         private Camera _sourceCam;
-        /// <summary>Hidden helper Camera rendering into <c>_captureRT</c>.</summary>
         private Camera _captureCam;
-        /// <summary>RenderTexture used as the capture target.</summary>
         private RenderTexture _captureRT;
-        /// <summary>CPU-side Texture2D for JPEG encoding.</summary>
         private Texture2D _texture2D;
-        /// <summary>Number of in-flight GPU readback requests.</summary>
         private int _pendingRequests;
-        /// <summary>True after OnDestroy starts, to suppress late callbacks.</summary>
         private bool _destroyed;
 
-        // Backpressure policy state
+        // H.264 sidecar state
+        private FfmpegH264EncoderSidecar _videoSidecar;
+        private CameraOutputMode _videoSidecarMode = CameraOutputMode.Jpeg;
+        private bool _warnedVideoEncoderUnavailable;
+        private string _lastLoggedStderr;
+
+        // JPEG backpressure state
         private long _lastDropCount;
         private double _cooldownUntilSec;
         private int _backpressureSkipLogCount;
         private bool _backpressureBaselineInitialized;
 
-        /// <summary>Defaults the topic to <c>/unity/camera</c> if not set.</summary>
+        /// <summary>Defaults the topic to the current mode default if not set.</summary>
         private void Awake()
         {
-            if (string.IsNullOrEmpty(_topic)) _topic = "/unity/camera";
+            if (string.IsNullOrEmpty(_topic))
+                _topic = ActiveProfile.DefaultTopic;
         }
 
-        /// <summary>
-        /// Creates or reuses the capture Camera, RenderTexture, and Texture2D.
-        /// Resets the destroyed flag so disable/re-enable cycles are safe.
-        /// </summary>
         protected override void OnEnable()
         {
             base.OnEnable();
             _destroyed = false;
+            _warnedVideoEncoderUnavailable = false;
+            _lastLoggedStderr = null;
             ResetBackpressureState();
             _sourceCam = GetComponent<Camera>();
-
-            if (_captureRT == null)
-            {
-                _captureRT = new RenderTexture(_width, _height, 24, RenderTextureFormat.ARGB32);
-                _captureRT.Create();
-            }
-            if (_texture2D == null)
-            {
-                _texture2D = new Texture2D(_width, _height, TextureFormat.RGB24, false);
-            }
-            if (_captureCam == null)
-            {
-                var go = new GameObject("_FoxgloveCaptureCam");
-                go.transform.SetParent(transform, false);
-                _captureCam = go.AddComponent<Camera>();
-                _captureCam.CopyFrom(_sourceCam);
-                _captureCam.targetTexture = _captureRT;
-                _captureCam.enabled = false;
-            }
+            EnsureCaptureResources();
         }
 
         /// <summary>
-        /// Renders the capture Camera and queues an AsyncGPUReadback request.
-        /// Respects publish rate, pending-readback cap, and replay state.
+        /// Schedules a camera capture only when cadence, demand, replay state,
+        /// and readback limits allow useful payload work.
         /// </summary>
         private void LateUpdate()
         {
+            var profile = ActiveProfile;
+            EnsureSidecarMatchesMode(profile);
+            DrainEncodedAccessUnits();
+
             if (_manager == null) return;
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var maxPendingReadbacks = Math.Max(1, _maxPendingReadbacks);
             if (_pendingRequests >= maxPendingReadbacks) return;
-
-            if (!_enableBackpressureAdaptation)
-            {
-                _backpressureBaselineInitialized = false;
-            }
-            else
-            {
-                var stats = _manager.GetTransportStatsSnapshot();
-                var currentDrop = stats.Supported ? stats.TotalDroppedDataFrames : _lastDropCount;
-                var now = Time.unscaledTimeAsDouble;
-                if (stats.Supported && !_backpressureBaselineInitialized)
-                {
-                    _lastDropCount = currentDrop;
-                    _cooldownUntilSec = now;
-                    _backpressureBaselineInitialized = true;
-                }
-
-                var result = CameraBackpressurePolicy.Evaluate(
-                    enabled: true,
-                    currentTimeSec: now,
-                    cooldownSec: _backpressureCooldownSeconds,
-                    previousDropCount: _lastDropCount,
-                    currentDropCount: currentDrop,
-                    currentCooldownUntilSec: _cooldownUntilSec);
-
-                _lastDropCount = result.NextDropCount;
-                _cooldownUntilSec = result.NextCooldownUntilSec;
-
-                if (!result.AllowCapture)
-                {
-                    LogBackpressureSkip("[Foxglove] Camera capture skipped by backpressure cooldown.");
-                    return;
-                }
-            }
-
+            if (!profile.IsVideo && !AllowJpegCaptureByBackpressure()) return;
             if (!ShouldPreparePublishPayload()) return;
+            if (profile.IsVideo && !EnsureVideoSidecarStarted(profile)) return;
 
+            EnsureCaptureResources();
             _captureCam.Render();
             _pendingRequests++;
             AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, OnReadbackComplete);
         }
 
-        /// <summary>
-        /// Callback from AsyncGPUReadback. Encodes the GPU data to JPEG and publishes
-        /// a <c>CompressedImageMessage</c> through the manager.
-        /// </summary>
         private void OnReadbackComplete(AsyncGPUReadbackRequest req)
         {
             _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
@@ -170,10 +132,39 @@ namespace Unity.FoxgloveSDK.Components
             if (_destroyed || !isActiveAndEnabled) return;
             if (req.hasError)
             {
-                Debug.LogWarning("[Foxglove] AsyncGPUReadback failed");
+                Debug.LogWarning("[Foxglove] Camera AsyncGPUReadback failed.");
                 return;
             }
             if (_manager == null) return;
+
+            var profile = ActiveProfile;
+            if (profile.IsVideo)
+            {
+                SubmitVideoFrame(req);
+                return;
+            }
+
+            PublishJpegFrame(req);
+        }
+
+        protected override void OnDisable()
+        {
+            base.OnDisable();
+            StopVideoSidecar();
+        }
+
+        private void OnDestroy()
+        {
+            _destroyed = true;
+            AsyncGPUReadback.WaitAllRequests();
+            StopVideoSidecar();
+            CleanupResources();
+        }
+
+        private void PublishJpegFrame(AsyncGPUReadbackRequest req)
+        {
+            if (_texture2D == null)
+                return;
 
             var data = req.GetData<byte>();
             _texture2D.LoadRawTextureData(data);
@@ -210,35 +201,205 @@ namespace Unity.FoxgloveSDK.Components
             _backpressureSkipLogCount = 0;
         }
 
-        /// <summary>
-        /// Does NOT destroy resources; disable/re-enable must be safe.
-        /// <c>LateUpdate</c> stops naturally when the component is disabled,
-        /// and in-flight readback callbacks check <c>!isActiveAndEnabled</c>
-        /// to skip publishing after component or GameObject disable.
-        /// </summary>
-        protected override void OnDisable()
+        private void SubmitVideoFrame(AsyncGPUReadbackRequest req)
         {
-            base.OnDisable();
+            var sidecar = _videoSidecar;
+            if (sidecar == null || !sidecar.IsRunning)
+            {
+                LogVideoEncoderUnavailable("FFmpeg encoder is not running.");
+                return;
+            }
+
+            var frameBytes = req.GetData<byte>().ToArray();
+            if (!sidecar.TrySubmitFrame(frameBytes))
+                LogVideoEncoderUnavailable(sidecar.LastError ?? "FFmpeg encoder refused the frame.");
         }
 
-        /// <summary>
-        /// Marks the component as destroyed, drains all pending GPU readbacks,
-        /// then releases the capture Camera, RenderTexture, and Texture2D.
-        /// </summary>
-        private void OnDestroy()
+        private bool EnsureVideoSidecarStarted(CameraVideoOutputProfile profile)
         {
-            _destroyed = true;
-            AsyncGPUReadback.WaitAllRequests();
-            CleanupResources();
+            if (profile.Codec != CameraVideoCodec.H264)
+                return false;
+
+            if (_videoSidecar != null && _videoSidecar.IsRunning && _videoSidecarMode == profile.Mode)
+                return true;
+
+            StopVideoSidecar();
+            _videoSidecar = new FfmpegH264EncoderSidecar();
+            _videoSidecarMode = profile.Mode;
+
+            var options = new FfmpegH264EncoderOptions
+            {
+                FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath,
+                Width = Math.Max(1, _width),
+                Height = Math.Max(1, _height),
+                FrameRate = ResolveEncoderFrameRate(),
+                BitrateKbps = Math.Max(1, _videoBitrateKbps),
+                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
+                MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
+                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
+            };
+
+            if (_videoSidecar.Start(options))
+            {
+                _warnedVideoEncoderUnavailable = false;
+                return true;
+            }
+
+            LogVideoEncoderUnavailable(_videoSidecar.LastError ?? "Failed to start FFmpeg encoder.");
+            StopVideoSidecar();
+            return false;
         }
 
-        /// <summary>Releases the capture Camera object, RenderTexture, and Texture2D.</summary>
+        private void DrainEncodedAccessUnits()
+        {
+            var sidecar = _videoSidecar;
+            if (sidecar == null)
+                return;
+
+            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
+            var videoFormat = profile.Codec == CameraVideoCodec.H264
+                ? CameraCompressedVideoBuilder.H264Format
+                : profile.VideoFormat;
+            while (sidecar.TryDequeueAccessUnit(out var accessUnit))
+            {
+                var unixNs = CurrentLogTimeNs;
+                var payload = CameraCompressedVideoBuilder.Serialize(
+                    unixNs,
+                    _frameId,
+                    accessUnit,
+                    videoFormat);
+                PublishProto(payload, unixNs);
+            }
+
+            LogEncoderStderrIfNeeded(sidecar);
+        }
+
+        private void StopVideoSidecar()
+        {
+            if (_videoSidecar == null)
+                return;
+
+            _videoSidecar.Dispose();
+            _videoSidecar = null;
+            _videoSidecarMode = CameraOutputMode.Jpeg;
+        }
+
+        private void EnsureSidecarMatchesMode(CameraVideoOutputProfile profile)
+        {
+            if (_videoSidecar == null)
+                return;
+
+            if (!profile.IsVideo || _videoSidecarMode != profile.Mode)
+            {
+                StopVideoSidecar();
+                _warnedVideoEncoderUnavailable = false;
+                _lastLoggedStderr = null;
+            }
+        }
+
+        private int ResolveEncoderFrameRate()
+        {
+            var rate = EffectivePublishRateHz;
+            if (rate > 0f && rate < 1000f)
+                return Mathf.Max(1, Mathf.RoundToInt(rate));
+
+            return 30;
+        }
+
+        private void EnsureCaptureResources()
+        {
+            _sourceCam = _sourceCam != null ? _sourceCam : GetComponent<Camera>();
+            var width = Math.Max(1, _width);
+            var height = Math.Max(1, _height);
+
+            if (_captureRT == null || _captureRT.width != width || _captureRT.height != height)
+            {
+                if (_captureRT != null)
+                    _captureRT.Release();
+
+                _captureRT = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
+                _captureRT.Create();
+            }
+
+            if (_texture2D == null || _texture2D.width != width || _texture2D.height != height)
+            {
+                if (_texture2D != null)
+                    Destroy(_texture2D);
+
+                _texture2D = new Texture2D(width, height, TextureFormat.RGB24, false);
+            }
+
+            if (_captureCam == null)
+            {
+                var go = new GameObject("_FoxgloveCaptureCam");
+                go.transform.SetParent(transform, false);
+                _captureCam = go.AddComponent<Camera>();
+                _captureCam.enabled = false;
+            }
+
+            _captureCam.CopyFrom(_sourceCam);
+            _captureCam.targetTexture = _captureRT;
+            _captureCam.enabled = false;
+        }
+
         private void CleanupResources()
         {
-            if (_captureCam != null) _captureCam.targetTexture = null;
-            if (_captureRT != null) { _captureRT.Release(); _captureRT = null; }
-            if (_captureCam != null) { Destroy(_captureCam.gameObject); _captureCam = null; }
-            if (_texture2D != null) { Destroy(_texture2D); _texture2D = null; }
+            if (_captureCam != null)
+                _captureCam.targetTexture = null;
+
+            if (_captureRT != null)
+            {
+                _captureRT.Release();
+                _captureRT = null;
+            }
+
+            if (_captureCam != null)
+            {
+                Destroy(_captureCam.gameObject);
+                _captureCam = null;
+            }
+
+            if (_texture2D != null)
+            {
+                Destroy(_texture2D);
+                _texture2D = null;
+            }
+        }
+
+        private bool AllowJpegCaptureByBackpressure()
+        {
+            if (!_enableBackpressureAdaptation)
+            {
+                _backpressureBaselineInitialized = false;
+                return true;
+            }
+
+            var stats = _manager.GetTransportStatsSnapshot();
+            var currentDrop = stats.Supported ? stats.TotalDroppedDataFrames : _lastDropCount;
+            var now = Time.unscaledTimeAsDouble;
+            if (stats.Supported && !_backpressureBaselineInitialized)
+            {
+                _lastDropCount = currentDrop;
+                _cooldownUntilSec = now;
+                _backpressureBaselineInitialized = true;
+            }
+
+            var result = CameraBackpressurePolicy.Evaluate(
+                enabled: true,
+                currentTimeSec: now,
+                cooldownSec: _backpressureCooldownSeconds,
+                previousDropCount: _lastDropCount,
+                currentDropCount: currentDrop,
+                currentCooldownUntilSec: _cooldownUntilSec);
+
+            _lastDropCount = result.NextDropCount;
+            _cooldownUntilSec = result.NextCooldownUntilSec;
+
+            if (result.AllowCapture)
+                return true;
+
+            LogBackpressureSkip("[Foxglove] Camera capture skipped by backpressure cooldown.");
+            return false;
         }
 
         private void ResetBackpressureState()
@@ -255,6 +416,28 @@ namespace Unity.FoxgloveSDK.Components
 
             _backpressureSkipLogCount++;
             Debug.LogWarning(message);
+        }
+
+        private void LogVideoEncoderUnavailable(string reason)
+        {
+            if (_warnedVideoEncoderUnavailable)
+                return;
+
+            _warnedVideoEncoderUnavailable = true;
+            Debug.LogWarning("[Foxglove] H.264 camera video disabled: " + reason);
+        }
+
+        private void LogEncoderStderrIfNeeded(FfmpegH264EncoderSidecar sidecar)
+        {
+            if (!_logEncoderStderr || sidecar == null)
+                return;
+
+            var line = sidecar.LastStderrLine;
+            if (string.IsNullOrEmpty(line) || line == _lastLoggedStderr)
+                return;
+
+            _lastLoggedStderr = line;
+            Debug.LogWarning("[Foxglove] FFmpeg: " + line);
         }
     }
 }

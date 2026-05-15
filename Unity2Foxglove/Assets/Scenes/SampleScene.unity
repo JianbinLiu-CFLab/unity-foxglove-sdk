@@ -132,7 +132,6 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
-  - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -265,56 +264,33 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 0}
-  _topic: 
+  _topic: /unity/camera
   _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _outputMode: 1
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 1
+  _ffmpegPath: 
+  _videoBitrateKbps: 4000
+  _videoKeyframeInterval: 30
+  _videoMaxOutputQueue: 4
+  _logEncoderStderr: 0
   _enableBackpressureAdaptation: 0
   _backpressureCooldownSeconds: 0.5
   _maxEncodedBytes: 0
   _logBackpressureSkips: 0
---- !u!114 &330585549
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6e4f5e28bb0c4931bd04757c24db7253, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCompressedVideoCameraPublisher
-  _manager: {fileID: 0}
-  _topic: /unity/camera
-  _publishRateSource: 0
-  _publishRateHz: 30
-  _publishOnEnable: 1
-  _warnIfManagerMissing: 1
-  _encodingOverride: 0
-  _frameId: unity_camera
-  _width: 640
-  _height: 480
-  _targetFps: 30
-  _bitrateKbps: 4000
-  _keyframeInterval: 30
-  _ffmpegPath: 
-  _maxPendingReadbacks: 1
-  _maxOutputQueue: 4
-  _logEncoderStderr: 0
 --- !u!1 &346350280
 GameObject:
   m_ObjectHideFlags: 0

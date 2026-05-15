@@ -36,7 +36,7 @@ namespace Foxglove.Schemas.Video
             var fps = Positive(FrameRate, 30);
             var bitrate = Positive(BitrateKbps, 4000);
             var keyframeInterval = Positive(KeyframeInterval, fps);
-            var ffmpeg = string.IsNullOrWhiteSpace(FfmpegPath) ? "ffmpeg" : FfmpegPath.Trim();
+            var ffmpeg = FfmpegExecutableResolver.ResolveExecutablePath(FfmpegPath);
             var preset = string.IsNullOrWhiteSpace(Preset) ? "ultrafast" : Preset.Trim();
 
             var args = string.Join(" ", new[]

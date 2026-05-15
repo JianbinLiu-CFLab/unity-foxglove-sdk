@@ -13,9 +13,10 @@ using UnityEngine.Rendering;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Captures camera frames as RGB24, encodes them through an external FFmpeg
-    /// sidecar, and publishes H.264 Annex B frames as <c>foxglove.CompressedVideo</c>.
+    /// Legacy standalone H.264 publisher. Prefer FoxgloveCameraPublisher with
+    /// Camera Output Mode set to H.264 (FFmpeg) for normal scenes.
     /// </summary>
+    [AddComponentMenu("")]
     [RequireComponent(typeof(Camera))]
     public class FoxgloveCompressedVideoCameraPublisher : FoxglovePublisherBase
     {

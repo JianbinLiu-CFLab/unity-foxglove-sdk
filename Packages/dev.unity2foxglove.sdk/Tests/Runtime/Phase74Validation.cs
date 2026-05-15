@@ -151,7 +151,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckContains(command, "-r 24", "74C-8: command uses configured frame rate");
             CheckContains(command, "-c:v libx264", "74C-9: command uses libx264");
             CheckContains(command, "-tune zerolatency", "74C-10: command requests zerolatency tuning");
-            CheckContains(command, "-vf vflip", "74C-11: command flips Unity readback rows for video display");
+            CheckContains(command, "-vf vflip", "74C-11: command flips Unity readback rows for Foxglove video display");
             CheckContains(command, "-bf 0", "74C-12: command disables B frames");
             CheckContains(command, "-g 24", "74C-13: command uses configured keyframe interval");
             CheckContains(command, "-b:v 1200k", "74C-14: command uses configured bitrate");
