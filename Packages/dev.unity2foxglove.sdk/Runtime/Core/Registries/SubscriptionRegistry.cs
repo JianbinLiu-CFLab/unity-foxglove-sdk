@@ -135,6 +135,27 @@ namespace Unity.FoxgloveSDK.Core
             return result;
         }
 
+        /// <summary>
+        /// Return whether any client is currently subscribed to a channel.
+        /// </summary>
+        public bool HasSubscribersForChannel(uint channelId)
+        {
+            lock (_lock)
+            {
+                // O(clients * subscriptions_per_client); acceptable for per-publisher cadence gating.
+                foreach (var subs in _clients.Values)
+                {
+                    foreach (var chId in subs.Values)
+                    {
+                        if (chId == channelId)
+                            return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
         /// <summary>Remove all state.</summary>
         public void Clear()
         {

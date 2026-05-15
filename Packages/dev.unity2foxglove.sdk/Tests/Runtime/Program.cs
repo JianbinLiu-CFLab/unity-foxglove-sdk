@@ -85,6 +85,9 @@ class Program
         if (argList.Contains("--phase72"))
             return RunPhase72Only();
 
+        if (argList.Contains("--phase73"))
+            return RunPhase73Only();
+
         var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
         if (phase68SmokeIdx >= 0)
             return RunPhase68IndexedReaderSmoke(argList, phase68SmokeIdx);
@@ -419,6 +422,21 @@ class Program
         }
     }
 
+    private static int RunPhase73Only()
+    {
+        try
+        {
+            Phase73Validation.Validate();
+            Console.WriteLine("\nPhase 73 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -533,6 +551,8 @@ class Program
             Phase71Validation.Validate();
             Console.WriteLine();
             Phase72Validation.Validate();
+            Console.WriteLine();
+            Phase73Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

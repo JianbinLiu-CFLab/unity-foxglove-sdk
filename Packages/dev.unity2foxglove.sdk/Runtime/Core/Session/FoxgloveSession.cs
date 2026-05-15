@@ -89,6 +89,20 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Attach an MCAP recorder for session recording.</summary>
         internal void SetRecorder(McapRecorder r) => Volatile.Write(ref _recorder, r);
 
+        /// <summary>
+        /// Return whether a registered channel has live subscriber or MCAP recording demand.
+        /// </summary>
+        public bool HasChannelDemand(uint channelId)
+        {
+            if (_channels.Get(channelId) == null)
+                return false;
+
+            if (_subscriptions.HasSubscribersForChannel(channelId))
+                return true;
+
+            return Volatile.Read(ref _recorder) != null;
+        }
+
         public FoxgloveSession(string name,
             IFoxgloveTransport transport,
             IFoxgloveClock clock = null,

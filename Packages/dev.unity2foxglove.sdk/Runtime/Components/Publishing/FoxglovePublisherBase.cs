@@ -142,6 +142,42 @@ namespace Unity.FoxgloveSDK.Components
             return sanitized.Replace(' ', '_');
         }
 
+        /// <summary>
+        /// Return whether this publisher should prepare payload data for its effective encoding.
+        /// </summary>
+        protected bool ShouldPreparePublishPayload()
+        {
+            var resolution = ResolvePublisherEncoding();
+            return ShouldPreparePublishPayload(resolution, resolution.Effective);
+        }
+
+        /// <summary>
+        /// Return whether this publisher should prepare payload data for an attempted encoding.
+        /// </summary>
+        protected bool ShouldPreparePublishPayload(PublisherEffectiveEncoding effectiveEncoding)
+        {
+            var resolution = ResolvePublisherEncoding();
+            return ShouldPreparePublishPayload(resolution, effectiveEncoding);
+        }
+
+        private bool ShouldPreparePublishPayload(
+            PublisherEncodingResolution resolution,
+            PublisherEffectiveEncoding attemptedEncoding)
+        {
+            if (_manager == null) return false;
+
+            WarnIfEncodingFallback(resolution);
+            if (!resolution.IsSupported) return false;
+            if (resolution.Effective != attemptedEncoding)
+            {
+                WarnEncodingMismatch(resolution, attemptedEncoding == PublisherEffectiveEncoding.Json ? "json" : "protobuf");
+                return false;
+            }
+
+            var wireEncoding = attemptedEncoding == PublisherEffectiveEncoding.Json ? "json" : "protobuf";
+            return _manager.TryPrepareSchemaPublish(_topic, SchemaName, wireEncoding, out _, requireDemand: true);
+        }
+
         /// <summary>Publish a message through the manager. Safe no-op if manager is null.</summary>
         protected void Publish(object message, ulong logTimeNs)
         {

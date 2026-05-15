@@ -106,6 +106,8 @@ namespace Unity.FoxgloveSDK.Core
         public FoxgloveSession Session => _session;
         /// <summary>Whether the session is currently running.</summary>
         public bool IsRunning => _session?.IsRunning ?? false;
+        /// <summary>Whether a registered channel has live subscriber or MCAP recording demand.</summary>
+        public bool HasChannelDemand(uint channelId) => _session?.HasChannelDemand(channelId) ?? false;
         /// <summary>Schema registry used by this runtime.</summary>
         public ISchemaRegistry Schemas => _schemaRegistry;
         /// <summary>Runtime-owned parameter store.</summary>
