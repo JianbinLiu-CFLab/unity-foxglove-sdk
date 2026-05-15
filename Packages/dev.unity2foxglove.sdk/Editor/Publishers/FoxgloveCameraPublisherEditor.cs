@@ -22,7 +22,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             "JPEG",
             "H.264 (FFmpeg)",
-            "H.265 / HEVC (FFmpeg)"
+            "H.265 / HEVC (FFmpeg)",
+            "H.264 (Windows Native, Experimental)"
         };
 
         private FfmpegExecutableCheckResult _ffmpegCheck =
@@ -124,6 +125,17 @@ namespace Unity.FoxgloveSDK.Editor
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            if (mode == CameraOutputMode.H264MediaFoundationExperimental)
+            {
+                DrawNativeH264Section(
+                    videoBitrateKbps,
+                    videoKeyframeInterval,
+                    maxPendingReadbacks,
+                    videoMaxOutputQueue,
+                    logEncoderStderr);
+                return;
+            }
+
             if (mode == CameraOutputMode.H265Ffmpeg)
             {
                 EditorGUILayout.HelpBox(
@@ -165,6 +177,27 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Stderr"));
+        }
+
+        private static void DrawNativeH264Section(
+            SerializedProperty videoBitrateKbps,
+            SerializedProperty videoKeyframeInterval,
+            SerializedProperty maxPendingReadbacks,
+            SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logEncoderStderr)
+        {
+            EditorGUILayout.HelpBox(
+                "Experimental Windows native H.264 uses Media Foundation and does not use FFmpeg. It depends on OS, GPU, and driver support; if it fails, use JPEG or H.264 (FFmpeg).",
+                MessageType.Warning);
+            EditorGUILayout.HelpBox(
+                "This mode has no external FFmpeg dependency and ignores FFmpeg Path.",
+                MessageType.Info);
+
+            EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
+            EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }
 
         private void DrawPublishRateSection()

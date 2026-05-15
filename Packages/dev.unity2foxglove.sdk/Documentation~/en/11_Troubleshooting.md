@@ -54,7 +54,7 @@ Check:
 
 For JPEG mode, use an Image panel on `/unity/camera`.
 
-For H.264/H.265 mode:
+For FFmpeg-backed H.264/H.265 mode:
 
 1. Set `Camera Output Mode` to `H.264 (FFmpeg)` or `H.265 / HEVC (FFmpeg)`.
 2. Leave `FFmpeg Path` empty to resolve `ffmpeg` from process, user, or machine `PATH`, or click `...` and browse to the exact executable. You may also enter a folder that directly contains `ffmpeg.exe`.
@@ -65,6 +65,13 @@ For H.264/H.265 mode:
 For Asset Store and commercial distribution safety, the SDK does not bundle, download, install, or modify `PATH` for FFmpeg. H.264/H.265 modes use only the executable configured in `FFmpeg Path`, or the system `PATH` when that field is empty. Many FFmpeg builds that support H.264/H.265 use GPL components such as `libx264`/`libx265`; confirm the chosen build's license is appropriate for your project before using it.
 
 If FFmpeg is missing or invalid, H.264/H.265 mode publishes nothing and does not silently fall back to JPEG. Switch back to JPEG mode for dependency-free camera output.
+
+For `H.264 (Windows Native, Experimental)`:
+
+1. Use Windows with Media Foundation support.
+2. `FFmpeg Path` is not used, and the mode has no external FFmpeg dependency.
+3. Keep width and height even; the native path converts RGB24 readbacks to NV12 before encoding.
+4. If the mode reports an encoder startup or driver error, switch to JPEG or `H.264 (FFmpeg)` and record the diagnostic line for follow-up.
 
 ## 7. Parameters Panel Is Empty
 

@@ -77,6 +77,7 @@
     <Compile Include="Phase75Validation.cs" />
     <Compile Include="Phase76Validation.cs" />
     <Compile Include="Phase77Validation.cs" />
+    <Compile Include="Phase78Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>

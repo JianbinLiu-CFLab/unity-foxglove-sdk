@@ -4,6 +4,8 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Camera output mode and profile metadata for camera publishers.
 
+using Foxglove.Schemas.Video;
+
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
@@ -13,7 +15,8 @@ namespace Unity.FoxgloveSDK.Components
     {
         Jpeg = 0,
         H264Ffmpeg = 1,
-        H265Ffmpeg = 2
+        H265Ffmpeg = 2,
+        H264MediaFoundationExperimental = 3
     }
 
     internal enum CameraVideoCodec
@@ -21,6 +24,14 @@ namespace Unity.FoxgloveSDK.Components
         None = 0,
         H264 = 1,
         H265 = 2
+    }
+
+    internal enum CameraVideoEncoderBackend
+    {
+        None = 0,
+        FfmpegH264 = 1,
+        FfmpegH265 = 2,
+        MediaFoundationH264 = 3
     }
 
     /// <summary>
@@ -32,6 +43,7 @@ namespace Unity.FoxgloveSDK.Components
         internal CameraVideoOutputProfile(
             CameraOutputMode mode,
             CameraVideoCodec codec,
+            CameraVideoEncoderBackend encoderBackend,
             string displayName,
             string defaultTopic,
             string schemaName,
@@ -41,6 +53,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             Mode = mode;
             Codec = codec;
+            EncoderBackend = encoderBackend;
             DisplayName = displayName ?? "";
             DefaultTopic = defaultTopic ?? "";
             SchemaName = schemaName ?? "";
@@ -51,6 +64,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public CameraOutputMode Mode { get; }
         internal CameraVideoCodec Codec { get; }
+        internal CameraVideoEncoderBackend EncoderBackend { get; }
         public string DisplayName { get; }
         public string DefaultTopic { get; }
         public string SchemaName { get; }
@@ -58,6 +72,22 @@ namespace Unity.FoxgloveSDK.Components
         public bool SupportsJson { get; }
         public bool SupportsProtobuf { get; }
         public bool IsVideo => Codec != CameraVideoCodec.None;
+
+        internal ICameraVideoEncoderSidecar CreateSidecar()
+        {
+            switch (EncoderBackend)
+            {
+                case CameraVideoEncoderBackend.FfmpegH264:
+                    return new FfmpegH264EncoderSidecar();
+                case CameraVideoEncoderBackend.FfmpegH265:
+                    return new FfmpegH265EncoderSidecar();
+                case CameraVideoEncoderBackend.MediaFoundationH264:
+                    return new MediaFoundationH264EncoderSidecar();
+                case CameraVideoEncoderBackend.None:
+                default:
+                    return null;
+            }
+        }
 
         public static CameraVideoOutputProfile ForMode(CameraOutputMode mode)
         {
@@ -67,6 +97,7 @@ namespace Unity.FoxgloveSDK.Components
                     return new CameraVideoOutputProfile(
                         mode,
                         CameraVideoCodec.H264,
+                        CameraVideoEncoderBackend.FfmpegH264,
                         "H.264 (FFmpeg)",
                         CameraOutputModeDefaults.H264Topic,
                         CameraOutputModeDefaults.H264Schema,
@@ -78,10 +109,23 @@ namespace Unity.FoxgloveSDK.Components
                     return new CameraVideoOutputProfile(
                         mode,
                         CameraVideoCodec.H265,
+                        CameraVideoEncoderBackend.FfmpegH265,
                         "H.265 / HEVC (FFmpeg)",
                         CameraOutputModeDefaults.H265Topic,
                         CameraOutputModeDefaults.H265Schema,
                         Foxglove.Schemas.CameraCompressedVideoBuilder.H265Format,
+                        supportsJson: false,
+                        supportsProtobuf: true);
+
+                case CameraOutputMode.H264MediaFoundationExperimental:
+                    return new CameraVideoOutputProfile(
+                        mode,
+                        CameraVideoCodec.H264,
+                        CameraVideoEncoderBackend.MediaFoundationH264,
+                        "H.264 (Windows Native, Experimental)",
+                        CameraOutputModeDefaults.H264Topic,
+                        CameraOutputModeDefaults.H264Schema,
+                        Foxglove.Schemas.CameraCompressedVideoBuilder.H264Format,
                         supportsJson: false,
                         supportsProtobuf: true);
 
@@ -90,6 +134,7 @@ namespace Unity.FoxgloveSDK.Components
                     return new CameraVideoOutputProfile(
                         CameraOutputMode.Jpeg,
                         CameraVideoCodec.None,
+                        CameraVideoEncoderBackend.None,
                         "JPEG",
                         CameraOutputModeDefaults.JpegTopic,
                         CameraOutputModeDefaults.JpegSchema,
