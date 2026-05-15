@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(FoxgloveCameraPublisher))]
     public class FoxgloveCameraPublisherEditor : UnityEditor.Editor
     {
+        private const string FfmpegRecoveryHint =
+            "Use ... to browse to an existing executable, leave FFmpeg Path empty for system PATH, or open FFmpeg Help... for manual setup and licensing notes.";
+
         private static readonly string[] CameraOutputModeLabels =
         {
             "JPEG",
@@ -131,6 +134,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawFfmpegPathField(ffmpegPath);
             var checkRequested = false;
             var revealRequested = false;
+            var helpRequested = false;
             var revealPath = GetRevealFfmpegPath(ffmpegPath.stringValue);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -151,6 +155,11 @@ namespace Unity.FoxgloveSDK.Editor
                 RevealFfmpegFolder(revealPath);
 
             DrawFfmpegStatus(ffmpegPath.stringValue);
+            helpRequested = DrawFfmpegHelpAction();
+
+            if (helpRequested)
+                FfmpegHelpWindow.ShowWindow();
+
             EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
             EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
@@ -345,14 +354,14 @@ namespace Unity.FoxgloveSDK.Editor
                     break;
                 case FfmpegExecutableStatus.Missing:
                     EditorGUILayout.HelpBox(
-                        "FFmpeg was not found at the configured path. Install FFmpeg, restart Unity after PATH changes, or browse to the executable.",
+                        "FFmpeg was not found at the configured path. " + FfmpegRecoveryHint,
                         MessageType.Warning);
                     break;
                 case FfmpegExecutableStatus.Invalid:
                     EditorGUILayout.HelpBox(
                         string.IsNullOrEmpty(_ffmpegCheck.ErrorMessage)
-                            ? "Configured FFmpeg did not return a recognizable version."
-                            : _ffmpegCheck.ErrorMessage,
+                            ? "Configured FFmpeg did not return a recognizable version. " + FfmpegRecoveryHint
+                            : _ffmpegCheck.ErrorMessage + "\n" + FfmpegRecoveryHint,
                         MessageType.Error);
                     break;
                 case FfmpegExecutableStatus.NotChecked:
@@ -360,6 +369,58 @@ namespace Unity.FoxgloveSDK.Editor
                     var label = string.IsNullOrWhiteSpace(configuredPath) ? "system PATH: ffmpeg" : configuredPath;
                     EditorGUILayout.HelpBox("Status: Not Checked (" + label + ")", MessageType.None);
                     break;
+            }
+        }
+
+        private static bool DrawFfmpegHelpAction()
+            => GUILayout.Button("FFmpeg Help...");
+
+        private sealed class FfmpegHelpWindow : EditorWindow
+        {
+            private Vector2 _scroll;
+
+            public static void ShowWindow()
+            {
+                var window = CreateInstance<FfmpegHelpWindow>();
+                window.titleContent = new GUIContent("FFmpeg Manual Setup");
+                window.minSize = new Vector2(560, 320);
+                window.ShowUtility();
+            }
+
+            private void OnGUI()
+            {
+                _scroll = EditorGUILayout.BeginScrollView(_scroll);
+
+                EditorGUILayout.LabelField("FFmpeg is required for H.264/H.265 camera video.", EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(
+                    "For Asset Store and commercial distribution safety, this SDK does not bundle, download, install, or modify PATH for FFmpeg. Video modes use only the executable configured in FFmpeg Path, or the system PATH when that field is empty.",
+                    MessageType.Info);
+
+                EditorGUILayout.HelpBox(
+                    "Many FFmpeg builds that support H.264/H.265 use GPL components such as libx264/libx265. Set up FFmpeg yourself only after confirming the chosen build's license is appropriate for your project.",
+                    MessageType.Warning);
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Manual Setup", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("1. Install an FFmpeg build that matches your project's license requirements.");
+                EditorGUILayout.LabelField("2. Leave FFmpeg Path empty to use the system PATH, or use ... to choose ffmpeg.exe.");
+                EditorGUILayout.LabelField("3. Click Check FFmpeg; the SDK checks the configured path only.");
+                EditorGUILayout.LabelField("4. Switch back to JPEG for dependency-free camera output.");
+
+                EditorGUILayout.EndScrollView();
+
+                EditorGUILayout.Space();
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Manual Download"))
+                        Application.OpenURL("https://ffmpeg.org/download.html");
+
+                    if (GUILayout.Button("Open FFmpeg Legal"))
+                        Application.OpenURL("https://www.ffmpeg.org/legal.html");
+
+                    if (GUILayout.Button("Cancel"))
+                        Close();
+                }
             }
         }
     }

@@ -54,14 +54,17 @@ Check:
 
 For JPEG mode, use an Image panel on `/unity/camera`.
 
-For H.264 mode:
+For H.264/H.265 mode:
 
-1. Set `Camera Output Mode` to `H.264 (FFmpeg)`.
+1. Set `Camera Output Mode` to `H.264 (FFmpeg)` or `H.265 / HEVC (FFmpeg)`.
 2. Leave `FFmpeg Path` empty to resolve `ffmpeg` from process, user, or machine `PATH`, or click `...` and browse to the exact executable. You may also enter a folder that directly contains `ffmpeg.exe`.
 3. Click `Check FFmpeg`; the SDK checks only configured paths and `PATH` entries, and does not scan common folders or modify `PATH`. After a successful check, `Reveal Folder` opens the resolved executable folder.
-4. Use an Image panel on `/unity/camera` unless you intentionally changed the topic. If you switched modes while Foxglove was already connected, reconnect so the panel sees the updated schema.
+4. Use `FFmpeg Help...` for manual setup notes and license guidance.
+5. Use an Image panel on `/unity/camera` unless you intentionally changed the topic. If you switched modes while Foxglove was already connected, reconnect so the panel sees the updated schema.
 
-If FFmpeg is missing or invalid, H.264 mode publishes nothing and does not silently fall back to JPEG. Switch back to JPEG mode for dependency-free camera output.
+For Asset Store and commercial distribution safety, the SDK does not bundle, download, install, or modify `PATH` for FFmpeg. H.264/H.265 modes use only the executable configured in `FFmpeg Path`, or the system `PATH` when that field is empty. Many FFmpeg builds that support H.264/H.265 use GPL components such as `libx264`/`libx265`; confirm the chosen build's license is appropriate for your project before using it.
+
+If FFmpeg is missing or invalid, H.264/H.265 mode publishes nothing and does not silently fall back to JPEG. Switch back to JPEG mode for dependency-free camera output.
 
 ## 7. Parameters Panel Is Empty
 
