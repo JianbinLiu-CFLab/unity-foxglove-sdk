@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Video
-// Purpose: External FFmpeg H.264 encoder process wrapper with bounded queues.
+// Purpose: External FFmpeg H.265/HEVC encoder process wrapper with bounded queues.
 
 using System;
 using System.Collections.Concurrent;
@@ -16,9 +16,9 @@ namespace Foxglove.Schemas.Video
 {
     /// <summary>
     /// Encodes RGB24 frames through an external FFmpeg process and exposes completed
-    /// H.264 Annex B access units through a thread-safe bounded output queue.
+    /// HEVC Annex B access units through a thread-safe bounded output queue.
     /// </summary>
-    public sealed class FfmpegH264EncoderSidecar : IFfmpegVideoEncoderSidecar
+    public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar
     {
         private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
         private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
@@ -28,8 +28,8 @@ namespace Foxglove.Schemas.Video
         private Task _stdinTask;
         private Task _stdoutTask;
         private Task _stderrTask;
-        private FfmpegH264EncoderOptions _options;
-        private H264AnnexBAccessUnitPacketizer _packetizer;
+        private FfmpegH265EncoderOptions _options;
+        private H265AnnexBAccessUnitPacketizer _packetizer;
         private int _inputCount;
         private int _outputCount;
         private long _framesSubmitted;
@@ -62,15 +62,15 @@ namespace Foxglove.Schemas.Video
         public string LastError { get; private set; }
 
         /// <summary>Starts FFmpeg if it is not already running.</summary>
-        public bool Start(FfmpegH264EncoderOptions options)
+        public bool Start(FfmpegH265EncoderOptions options)
         {
             if (IsRunning)
                 return true;
 
             Stop();
 
-            _options = options ?? new FfmpegH264EncoderOptions();
-            _packetizer = new H264AnnexBAccessUnitPacketizer();
+            _options = options ?? new FfmpegH265EncoderOptions();
+            _packetizer = new H265AnnexBAccessUnitPacketizer();
             LastError = null;
 
             try
@@ -160,7 +160,7 @@ namespace Foxglove.Schemas.Video
             return true;
         }
 
-        /// <summary>Dequeues a completed H.264 access unit, if available.</summary>
+        /// <summary>Dequeues a completed HEVC access unit, if available.</summary>
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
         {
             lock (_outputLock)

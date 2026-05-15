@@ -12,7 +12,8 @@ namespace Unity.FoxgloveSDK.Components
     public enum CameraOutputMode
     {
         Jpeg = 0,
-        H264Ffmpeg = 1
+        H264Ffmpeg = 1,
+        H265Ffmpeg = 2
     }
 
     internal enum CameraVideoCodec
@@ -73,6 +74,17 @@ namespace Unity.FoxgloveSDK.Components
                         supportsJson: false,
                         supportsProtobuf: true);
 
+                case CameraOutputMode.H265Ffmpeg:
+                    return new CameraVideoOutputProfile(
+                        mode,
+                        CameraVideoCodec.H265,
+                        "H.265 / HEVC (FFmpeg)",
+                        CameraOutputModeDefaults.H265Topic,
+                        CameraOutputModeDefaults.H265Schema,
+                        Foxglove.Schemas.CameraCompressedVideoBuilder.H265Format,
+                        supportsJson: false,
+                        supportsProtobuf: true);
+
                 case CameraOutputMode.Jpeg:
                 default:
                     return new CameraVideoOutputProfile(
@@ -95,7 +107,9 @@ namespace Unity.FoxgloveSDK.Components
     {
         public const string JpegTopic = "/unity/camera";
         public const string H264Topic = "/unity/camera";
+        public const string H265Topic = "/unity/camera";
         public const string JpegSchema = "foxglove.CompressedImage";
         public const string H264Schema = "foxglove.CompressedVideo";
+        public const string H265Schema = "foxglove.CompressedVideo";
     }
 }

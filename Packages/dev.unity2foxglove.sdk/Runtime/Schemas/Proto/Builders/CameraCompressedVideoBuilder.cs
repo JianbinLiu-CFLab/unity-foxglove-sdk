@@ -19,8 +19,11 @@ namespace Foxglove.Schemas
         /// <summary>Foxglove format label for H.264 Annex B video.</summary>
         public const string H264Format = "h264";
 
+        /// <summary>Foxglove format label for H.265/HEVC Annex B video.</summary>
+        public const string H265Format = "h265";
+
         /// <summary>
-        /// Create a protobuf CompressedVideo using a single H.264 access unit.
+        /// Create a protobuf CompressedVideo using a single video access unit.
         /// </summary>
         public static Foxglove.CompressedVideo Create(
             ulong unixNs,
