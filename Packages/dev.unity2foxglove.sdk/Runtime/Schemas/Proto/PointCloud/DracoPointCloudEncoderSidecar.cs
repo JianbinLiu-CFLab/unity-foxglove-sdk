@@ -216,6 +216,7 @@ namespace Foxglove.Schemas.PointCloud
                 }
 
                 TryKillProcess(process);
+                WaitForProcessExit(process, 200);
                 WaitForTask(_stderrTask, 200);
                 process.Dispose();
             }
@@ -256,7 +257,7 @@ namespace Foxglove.Schemas.PointCloud
         private bool FailAndStop(string error)
         {
             LastError = error;
-            TryKillProcess(_process);
+            Stop();
             return false;
         }
 
@@ -312,6 +313,19 @@ namespace Foxglove.Schemas.PointCloud
             {
                 if (process != null && !process.HasExited)
                     process.Kill();
+            }
+            catch
+            {
+                // Best-effort failure shutdown.
+            }
+        }
+
+        private static void WaitForProcessExit(Process process, int timeoutMs)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                    process.WaitForExit(Math.Max(1, timeoutMs));
             }
             catch
             {

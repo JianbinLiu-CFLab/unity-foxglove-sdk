@@ -25,7 +25,7 @@ commit, and probe output summary in the handoff or PR description.
 - Source path:
 - Build command:
 - Build output summary:
-- Helper executable path:
+- Bundled plugin path: `Packages/dev.unity2foxglove.sdk/Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll`
 
 ## Smoke Input
 
@@ -71,9 +71,9 @@ paste output from Scripts/smoke/compressed_pointcloud_mcap_inspect.py
 - Draco CompressedPointCloud.data average bytes:
 - Ratio:
 
-## Synchronous Helper Caveat
+## Synchronous Native Plugin Caveat
 
-- `DracoPointCloudEncoderSidecar.TryEncode()` is synchronous in the Unity publish path.
+- `DracoPointCloudNativeEncoder.TryEncode()` is synchronous in the Unity publish path.
 - Observed live-session symptoms:
 - Productization follow-up needed:
 

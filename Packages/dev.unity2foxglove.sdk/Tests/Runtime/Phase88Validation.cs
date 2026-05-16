@@ -118,7 +118,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("Raw Probe Output")
                   && source.Contains("Compressed Probe Output")
                   && source.Contains("MCAP Byte-Level Inspection")
-                  && source.Contains("Synchronous Helper Caveat"),
+                  && source.Contains("Synchronous Native Plugin Caveat"),
                 "88D-3: evidence template covers required Phase88 evidence headings");
             Check(source.Contains("same generated PointCloudFrame")
                   && source.Contains("parameter-equivalent"),
@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (root == null)
                 throw new InvalidOperationException("Could not find repository root.");
 
-            var forbiddenBinaryExtensions = new[] { ".dll", ".exe", ".lib", ".a", ".so", ".dylib" };
+            var forbiddenBinaryExtensions = new[] { ".exe", ".lib", ".a", ".so", ".dylib" };
             var forbiddenSourceExtensions = new[] { ".h", ".hpp", ".cc", ".cpp", ".c" };
             var checkedRoots = new[]
             {
@@ -143,12 +143,15 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(Directory.Exists)
                 .SelectMany(checkedRoot => Directory.EnumerateFiles(checkedRoot, "*", SearchOption.AllDirectories))
                 .Where(path => Path.GetFileName(path).IndexOf("draco", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Where(path => !path.EndsWith(
+                    Path.Combine("Runtime", "Plugins", "Windows", "x86_64", "Unity2FoxgloveDracoNative.dll"),
+                    StringComparison.OrdinalIgnoreCase))
                 .Where(path => forbiddenBinaryExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
                                || forbiddenSourceExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
                 .ToArray();
 
             Check(forbidden.Length == 0,
-                "88E-1: no Draco binaries or vendored native source are bundled under Packages or Unity2Foxglove/Assets");
+                "88E-1: no Draco helper executables, import libraries, or vendored native source are bundled under Packages or Unity2Foxglove/Assets");
         }
 
         private static void Check(bool condition, string name)

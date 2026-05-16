@@ -111,8 +111,12 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PrepareFrameForQoS",
                 "84D-7: PublishFrame preflights demand before voxel/QoS preparation");
 
-            Check(!source.Contains("CompressedPointCloud") && !source.Contains("Draco"),
-                "84D-8: Phase 84 keeps raw PointCloud path without Draco or CompressedPointCloud");
+            Check(source.Contains("PublishRawFrame")
+                  && source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
+                  && source.Contains("PointCloudMessageBuilder.CreateJson(frame)")
+                  && source.Contains("if (_outputMode == PointCloudOutputMode.Draco)")
+                  && source.Contains("PublishDracoFrame(frame, unixNs)"),
+                "84D-8: Phase 84 raw PointCloud path remains explicit while later Draco output is mode-gated");
         }
 
         private static void CheckOrdered(string text, string before, string after, string name)

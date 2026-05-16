@@ -127,10 +127,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && compressed.Contains("SchemaNameOverride => \"foxglove.CompressedPointCloud\"")
                   && compressed.Contains("SupportsJsonEncoding => false"),
                 "87C-2: spike publisher uses isolated topic and protobuf-only CompressedPointCloud schema");
-            Check(compressed.Contains("DracoPointCloudEncoderSidecar")
+            Check(compressed.Contains("DracoPointCloudNativeEncoder")
                   && compressed.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
                   && compressed.Contains("PublishProto"),
-                "87C-3: spike publisher encodes through Draco and publishes CompressedPointCloud protobuf");
+                "87C-3: spike publisher encodes through Draco native plugin and publishes CompressedPointCloud protobuf");
             Check(compressed.Contains("LogDracoFailure")
                   && compressed.Contains("publishes nothing")
                   && !compressed.Contains("PointCloudMessageBuilder.CreateJson")
@@ -185,11 +185,14 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(Directory.Exists)
                 .SelectMany(checkedRoot => Directory.EnumerateFiles(checkedRoot, "*", SearchOption.AllDirectories))
                 .Where(path => Path.GetFileName(path).IndexOf("draco", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Where(path => !path.EndsWith(
+                    Path.Combine("Runtime", "Plugins", "Windows", "x86_64", "Unity2FoxgloveDracoNative.dll"),
+                    StringComparison.OrdinalIgnoreCase))
                 .Where(path => forbiddenExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
                 .ToArray();
 
             Check(forbidden.Length == 0,
-                "87E-1: no Draco binaries are bundled under Packages or Unity2Foxglove/Assets");
+                "87E-1: no spike helper Draco binaries are bundled under Packages or Unity2Foxglove/Assets");
         }
 
         private static Type FindType(string fullName)

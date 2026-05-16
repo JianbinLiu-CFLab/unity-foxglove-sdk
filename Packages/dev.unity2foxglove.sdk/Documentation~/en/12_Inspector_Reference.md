@@ -131,7 +131,23 @@ For OpenH264 mode, configure both `OpenH264 Helper` and `OpenH264 DLL`, then cli
 
 For Windows Native mode, no path fields are shown. The backend uses Windows Media Foundation directly, does not use FFmpeg or OpenH264, and is intentionally labeled experimental because hardware/driver encoder behavior can vary. If native H.264 is unavailable or unstable on a machine, use `H.264 (OpenH264)` for the more predictable local helper path or `JPEG` for dependency-free output.
 
-## 8. FoxgloveReplayObjectAdapter
+## 8. FoxglovePointCloudPublisher
+
+| Field | Default | What it does | When to change it | Common mistakes |
+|---|---:|---|---|---|
+| Point Cloud Output Mode | `Raw` | Selects dependency-free `foxglove.PointCloud` output or optional Draco-compressed `foxglove.CompressedPointCloud`. | Use `Draco` on Windows after `Check Draco` reports the bundled native plugin is available. | Expecting JSON output from `foxglove.CompressedPointCloud` or expecting Draco on unsupported platforms. |
+| Frame Id | `unity_world` | Frame ID associated with generated transform points and fallback frames. | Set to match your `/tf` tree or sensor frame. | Using a frame ID that is never published. |
+| Max Points | `4096` | Caps the number of points that enter raw packing or Draco compression. | Lower it for bandwidth or CPU limits. | Raising it without checking publish/update cost. |
+| Max Packed Bytes | `0` | Raw `PointCloud.data` byte budget; `0` disables the byte budget. | Use for high-rate raw point clouds. | Assuming it is a post-compression byte limit. |
+| Sampling Mode | `UniformStride` after reset | Chooses which points survive QoS: first points, uniform stride, or voxel grid. | Use `VoxelGrid` to preserve spatial coverage. | Treating sampling as a coordinate transform. |
+
+Raw mode publishes `foxglove.PointCloud` on `/unity/point_cloud` and supports JSON or protobuf. Draco mode publishes protobuf-only `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` with format = `draco`. The Inspector changes the topic only while it is still the old default; custom topics are preserved.
+
+Draco mode is optional and uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible plugin binaries log a warning and publish nothing; the publisher does not silently fall back to raw mode. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
+
+Phase 89 uses a synchronous native encode path. Large frames can block publish/update work while they encode, so validate with `Check Draco` and keep QoS budgets realistic.
+
+## 9. FoxgloveReplayObjectAdapter
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -142,7 +158,7 @@ For Windows Native mode, no path fields are shown. The backend uses Windows Medi
 | Drive TF | Enabled | Applies replayed `/tf` transforms. | Disable if another system drives transforms. | Live scripts fighting replay updates. |
 | Drive Scene | Enabled | Applies replayed scene primitives. | Disable for TF-only replay. | Expecting scene primitives to move when disabled. |
 
-## 9. Demo-Only Scripts
+## 10. Demo-Only Scripts
 
 `FoxgloveDemoSetup` and `MouseDragCube` are demo/sample scripts. They are documented in the Full Demo sample and `Unity2Foxglove` demo documentation rather than treated as SDK core API.
 

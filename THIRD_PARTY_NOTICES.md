@@ -301,6 +301,34 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
+## Google Draco
+
+- **URL**: https://github.com/google/draco
+- **License**: Apache-2.0
+- **Bundled version**: `1.5.7-40-ga94bf7d`, commit `a94bf7dc1f7abc6ea212f8c4979e9bb4a61c4281`
+- **Usage**: The Windows native plugin `Packages/dev.unity2foxglove.sdk/Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll` statically links Google Draco to encode `foxglove.CompressedPointCloud` payloads with `format = draco`.
+- **Source distribution**: Google Draco source is not vendored into the SDK package. The native plugin was built from a local `third-party/draco` checkout and the wrapper source under `Scripts/native/draco_native/`.
+
+Google Draco is licensed under the Apache License, Version 2.0:
+
+```
+Copyright 2016 Google Inc. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+---
+
 ## Newtonsoft.Json
 
 - **URL**: https://github.com/JamesNK/Newtonsoft.Json

@@ -77,8 +77,7 @@ bool EncodePointCloud(const std::vector<float>& xyz, uint32_t point_count,
   encoder.SetSpeedOptions(kCompressionLevelSevenSpeed,
                           kCompressionLevelSevenSpeed);
 
-  const draco::Status status =
-      encoder.EncodePointCloudToBuffer(cloud, false, buffer);
+  const draco::Status status = encoder.EncodePointCloudToBuffer(cloud, buffer);
   if (!status.ok()) {
     std::cerr << "Draco POINT_CLOUD encode failed: " << status.error_msg()
               << std::endl;
