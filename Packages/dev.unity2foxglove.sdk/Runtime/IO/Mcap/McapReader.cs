@@ -248,15 +248,17 @@ namespace Unity.FoxgloveSDK.IO
             {
                 var opcode = uncompressedRecords[off++];
                 var len = McapBinaryReader.ReadU64LE(uncompressedRecords, ref off);
-                if (off + (int)len > uncompressedRecords.Length) break;
+                if (len > int.MaxValue) break;
+                var recordLength = (int)len;
+                if (recordLength < 0 || recordLength > uncompressedRecords.Length - off) break;
 
                 if (opcode == 0x05)
                 {
-                    var msg = DecodeMessage(uncompressedRecords, off, (int)len);
+                    var msg = DecodeMessage(uncompressedRecords, off, recordLength);
                     if (!filterChannelId.HasValue || msg.ChannelId == filterChannelId.Value)
                         messages.Add(msg);
                 }
-                off += (int)len;
+                off += recordLength;
             }
             return messages;
         }

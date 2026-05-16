@@ -90,9 +90,11 @@ namespace Foxglove.Schemas.Video
                 }
 
                 _stop = new CancellationTokenSource();
-                _stdinTask = Task.Run(() => RunStdinWriter(_stop.Token));
-                _stdoutTask = Task.Run(() => RunStdoutReader(_stop.Token));
-                _stderrTask = Task.Run(() => RunStderrReader(_stop.Token));
+                var process = _process;
+                var token = _stop.Token;
+                _stdinTask = Task.Run(() => RunStdinWriter(process, token));
+                _stdoutTask = Task.Run(() => RunStdoutReader(process, token));
+                _stderrTask = Task.Run(() => RunStderrReader(process, token));
                 return true;
             }
             catch (Win32Exception ex)
@@ -213,6 +215,9 @@ namespace Foxglove.Schemas.Video
                     // Ignore wait failures during best-effort shutdown.
                 }
 
+                WaitForTask(_stdinTask, 200);
+                WaitForTask(_stdoutTask, 200);
+                WaitForTask(_stderrTask, 200);
                 process.Dispose();
             }
 
@@ -230,12 +235,12 @@ namespace Foxglove.Schemas.Video
             Stop();
         }
 
-        private async Task RunStdinWriter(CancellationToken token)
+        private async Task RunStdinWriter(Process process, CancellationToken token)
         {
             try
             {
-                var stream = _process.StandardInput.BaseStream;
-                while (!token.IsCancellationRequested && IsRunning)
+                var stream = process.StandardInput.BaseStream;
+                while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
                     if (_inputFrames.TryDequeue(out var frame))
                     {
@@ -258,13 +263,13 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private async Task RunStdoutReader(CancellationToken token)
+        private async Task RunStdoutReader(Process process, CancellationToken token)
         {
             var buffer = new byte[16 * 1024];
             try
             {
-                var stream = _process.StandardOutput.BaseStream;
-                while (!token.IsCancellationRequested && IsRunning)
+                var stream = process.StandardOutput.BaseStream;
+                while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
                     var read = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
                     if (read <= 0)
@@ -288,11 +293,11 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private async Task RunStderrReader(CancellationToken token)
+        private async Task RunStderrReader(Process process, CancellationToken token)
         {
             try
             {
-                var reader = _process.StandardError;
+                var reader = process.StandardError;
                 while (!token.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync().ConfigureAwait(false);
@@ -350,6 +355,36 @@ namespace Foxglove.Schemas.Video
 
             Volatile.Write(ref _inputCount, 0);
             Volatile.Write(ref _outputCount, 0);
+        }
+
+        private static bool IsProcessRunning(Process process)
+        {
+            if (process == null)
+                return false;
+
+            try
+            {
+                return !process.HasExited;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void WaitForTask(Task task, int timeoutMs)
+        {
+            if (task == null || task.IsCompleted)
+                return;
+
+            try
+            {
+                task.Wait(timeoutMs);
+            }
+            catch
+            {
+                // Best-effort task shutdown.
+            }
         }
     }
 }

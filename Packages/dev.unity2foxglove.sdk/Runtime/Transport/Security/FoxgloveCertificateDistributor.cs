@@ -67,17 +67,18 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Stop accepting requests and release the listener port.</summary>
         public void Stop()
         {
-            _cts?.Cancel();
+            var cts = _cts;
+            _cts = null;
+            cts?.Cancel();
             try { _listener?.Stop(); } catch { }
             _listener = null;
+            cts?.Dispose();
         }
 
         /// <summary>Stop the listener and release resources.</summary>
         public void Dispose()
         {
             Stop();
-            _cts?.Dispose();
-            _cts = null;
         }
 
         /// <summary>Compute a colon-separated SHA-256 fingerprint for a file.</summary>

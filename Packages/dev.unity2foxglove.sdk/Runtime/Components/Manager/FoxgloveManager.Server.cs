@@ -179,10 +179,18 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.Stop();
             StopCertificateDistributor();
             _channelCache.Clear();
+            ClearClientEvents();
             _nextChannelId = FirstAutoChannelId;
             if (restoreLivePublishers)
             {
                 RestoreLivePublishers();
+            }
+        }
+
+        private void ClearClientEvents()
+        {
+            while (_clientEvents.TryDequeue(out _))
+            {
             }
         }
     }

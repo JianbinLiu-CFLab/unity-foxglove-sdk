@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.IO
         private ulong _msgSt = ulong.MaxValue, _msgEt;
         private ulong _msgCount, _chunkCount;
         private uint _metadataCount;
-        private bool _closed, _recordingFailed;
+        private bool _closed, _recordingFailed, _disposed;
         private readonly int _chunkSz;
 
         /// <summary>
@@ -161,6 +161,8 @@ namespace Unity.FoxgloveSDK.IO
             var seq = map.Seq++;
             var payloadLength = payload?.Length ?? 0;
             var contentLength = 2 + 4 + 8 + 8 + payloadLength;
+            var recordLength = McapWriter.RecordHeaderLength + contentLength;
+            FlushChunkBeforeLargeWriteIfNeeded(recordLength);
             var off = (ulong)_chunkBuf.Position;
             _chunkBuf.WriteByte(McapWriter.OpcodeMessage);
             McapWriter.WriteU64(_chunkBuf, (ulong)contentLength);
@@ -318,6 +320,8 @@ namespace Unity.FoxgloveSDK.IO
             Close();
             lock (_lock)
             {
+                if (_disposed) return;
+                _disposed = true;
                 _w.Dispose();
                 _chunkBuf.Dispose();
             }
@@ -365,6 +369,12 @@ namespace Unity.FoxgloveSDK.IO
             }
             _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
             _chunkCount++; _chunkSt = _chunkEt = 0;
+        }
+
+        private void FlushChunkBeforeLargeWriteIfNeeded(int nextRecordLength)
+        {
+            if (_chunkBuf.Length > 0 && _chunkBuf.Length + nextRecordLength >= _chunkSz)
+                FlushChunk();
         }
 
         /// <summary>

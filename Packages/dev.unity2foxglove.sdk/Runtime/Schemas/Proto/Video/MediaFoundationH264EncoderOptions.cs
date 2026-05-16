@@ -11,6 +11,8 @@ namespace Foxglove.Schemas.Video
     /// </summary>
     public sealed class MediaFoundationH264EncoderOptions
     {
+        public const int MaxBitrateKbps = 1_000_000;
+
         public int Width = 640;
         public int Height = 480;
         public int FrameRate = 30;
@@ -21,6 +23,7 @@ namespace Foxglove.Schemas.Video
 
         public int Rgb24FrameByteCount => Positive(Width, 640) * Positive(Height, 480) * 3;
         public int Nv12FrameByteCount => Positive(Width, 640) * Positive(Height, 480) * 3 / 2;
+        public int BitrateBitsPerSecond => (int)((long)Positive(BitrateKbps, 1) * 1000L);
         public bool HasManagedConversionCostWarning => Positive(Width, 640) * Positive(Height, 480) > 1280 * 720;
 
         /// <summary>Validates settings required by NV12 and Media Foundation.</summary>
@@ -48,6 +51,12 @@ namespace Foxglove.Schemas.Video
             if (BitrateKbps <= 0)
             {
                 error = "Media Foundation H.264 bitrate must be positive.";
+                return false;
+            }
+
+            if (BitrateKbps > MaxBitrateKbps)
+            {
+                error = "Media Foundation H.264 bitrate must be <= " + MaxBitrateKbps + " kbps.";
                 return false;
             }
 
