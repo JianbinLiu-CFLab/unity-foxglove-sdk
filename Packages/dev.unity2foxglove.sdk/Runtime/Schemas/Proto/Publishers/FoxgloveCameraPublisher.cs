@@ -44,6 +44,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _videoMaxOutputQueue = 4;
         [SerializeField] private bool _logEncoderStderr;
 
+        [Header("OpenH264 Video")]
+        [SerializeField] private string _openH264HelperPath = "";
+        [SerializeField] private string _openH264DllPath = "";
+        [SerializeField, Min(1)] private int _openH264MaxInputQueue = 2;
+
         [Header("Backpressure")]
         [Tooltip("When enabled, transport queue pressure suppresses camera capture to reduce work.")]
         [SerializeField] private bool _enableBackpressureAdaptation;
@@ -70,8 +75,8 @@ namespace Unity.FoxgloveSDK.Components
         private int _pendingRequests;
         private bool _destroyed;
 
-        // FFmpeg video sidecar state
-        private IFfmpegVideoEncoderSidecar _videoSidecar;
+        // Video sidecar state
+        private ICameraVideoEncoderSidecar _videoSidecar;
         private CameraOutputMode _videoSidecarMode = CameraOutputMode.Jpeg;
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
@@ -204,15 +209,39 @@ namespace Unity.FoxgloveSDK.Components
         private void SubmitVideoFrame(AsyncGPUReadbackRequest req)
         {
             var sidecar = _videoSidecar;
-            if (sidecar == null || !sidecar.IsRunning)
+            if (sidecar == null)
             {
-                LogVideoEncoderUnavailable(ActiveProfile, "FFmpeg encoder is not running.");
+                LogVideoEncoderUnavailable(ActiveProfile, "Video encoder is not running.");
+                return;
+            }
+
+            if (!sidecar.IsRunning)
+            {
+                LogVideoEncoderUnavailable(ActiveProfile, DescribeVideoEncoderFailure(sidecar, "Video encoder process exited."));
                 return;
             }
 
             var frameBytes = req.GetData<byte>().ToArray();
+            if (_videoSidecarMode == CameraOutputMode.H264OpenH264)
+            {
+                var i420 = new byte[Math.Max(1, _width) * Math.Max(1, _height) * 3 / 2];
+                if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(
+                        frameBytes,
+                        Math.Max(1, _width),
+                        Math.Max(1, _height),
+                        i420,
+                        flipVertical: true,
+                        out var conversionError))
+                {
+                    LogVideoEncoderUnavailable(ActiveProfile, conversionError);
+                    return;
+                }
+
+                frameBytes = i420;
+            }
+
             if (!sidecar.TrySubmitFrame(frameBytes))
-                LogVideoEncoderUnavailable(ActiveProfile, sidecar.LastError ?? "FFmpeg encoder refused the frame.");
+                LogVideoEncoderUnavailable(ActiveProfile, DescribeVideoEncoderFailure(sidecar, "Video encoder refused the frame."));
         }
 
         private bool EnsureVideoSidecarStarted(CameraVideoOutputProfile profile)
@@ -229,10 +258,15 @@ namespace Unity.FoxgloveSDK.Components
             var started = false;
             switch (profile.Codec)
             {
-                case CameraVideoCodec.H264:
+                case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264Ffmpeg:
                     var h264 = new FfmpegH264EncoderSidecar();
                     _videoSidecar = h264;
                     started = h264.Start(CreateH264Options());
+                    break;
+                case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264OpenH264:
+                    var openH264 = new OpenH264EncoderSidecar();
+                    _videoSidecar = openH264;
+                    started = openH264.Start(CreateOpenH264Options());
                     break;
                 case CameraVideoCodec.H265:
                     var h265 = new FfmpegH265EncoderSidecar();
@@ -247,7 +281,7 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
-            LogVideoEncoderUnavailable(profile, _videoSidecar?.LastError ?? "Failed to start FFmpeg encoder.");
+            LogVideoEncoderUnavailable(profile, _videoSidecar?.LastError ?? "Failed to start video encoder.");
             StopVideoSidecar();
             return false;
         }
@@ -278,6 +312,22 @@ namespace Unity.FoxgloveSDK.Components
                 BitrateKbps = Math.Max(1, _videoBitrateKbps),
                 KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
                 MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
+                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
+            };
+        }
+
+        private OpenH264EncoderOptions CreateOpenH264Options()
+        {
+            return new OpenH264EncoderOptions
+            {
+                HelperExecutablePath = _openH264HelperPath,
+                OpenH264DllPath = _openH264DllPath,
+                Width = Math.Max(1, _width),
+                Height = Math.Max(1, _height),
+                FrameRate = ResolveEncoderFrameRate(),
+                BitrateKbps = Math.Max(1, _videoBitrateKbps),
+                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
+                MaxInputQueue = Math.Max(1, _openH264MaxInputQueue),
                 MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
             };
         }
@@ -461,17 +511,34 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning("[Foxglove] " + profile.DisplayName + " camera video disabled: " + reason);
         }
 
-        private void LogEncoderStderrIfNeeded(IFfmpegVideoEncoderSidecar sidecar)
+        private static string DescribeVideoEncoderFailure(ICameraVideoEncoderSidecar sidecar, string fallback)
+        {
+            var reason = string.IsNullOrWhiteSpace(sidecar?.LastError) ? fallback : sidecar.LastError;
+            var diagnostic = sidecar?.LastDiagnosticLine;
+            if (!string.IsNullOrWhiteSpace(diagnostic)
+                && (string.IsNullOrWhiteSpace(reason)
+                    || reason.IndexOf(diagnostic, StringComparison.OrdinalIgnoreCase) < 0))
+            {
+                reason = string.IsNullOrWhiteSpace(reason)
+                    ? diagnostic
+                    : reason + " Last diagnostic: " + diagnostic;
+            }
+
+            return string.IsNullOrWhiteSpace(reason) ? fallback : reason;
+        }
+
+        private void LogEncoderStderrIfNeeded(ICameraVideoEncoderSidecar sidecar)
         {
             if (!_logEncoderStderr || sidecar == null)
                 return;
 
-            var line = sidecar.LastStderrLine;
+            var line = sidecar.LastDiagnosticLine;
             if (string.IsNullOrEmpty(line) || line == _lastLoggedStderr)
                 return;
 
             _lastLoggedStderr = line;
-            Debug.LogWarning("[Foxglove] FFmpeg: " + line);
+            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
+            Debug.LogWarning("[Foxglove] " + profile.DisplayName + ": " + line);
         }
     }
 }

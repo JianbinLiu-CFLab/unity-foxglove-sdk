@@ -59,6 +59,7 @@ namespace Foxglove.Schemas.Video
         public long AccessUnitsProduced => Interlocked.Read(ref _accessUnitsProduced);
         public long AccessUnitsDropped => Interlocked.Read(ref _accessUnitsDropped);
         public string LastStderrLine { get; private set; }
+        public string LastDiagnosticLine => LastStderrLine;
         public string LastError { get; private set; }
 
         /// <summary>Starts FFmpeg if it is not already running.</summary>

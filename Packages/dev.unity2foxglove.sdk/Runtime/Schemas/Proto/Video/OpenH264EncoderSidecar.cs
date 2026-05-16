@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Video
-// Purpose: External FFmpeg H.265/HEVC encoder process wrapper with bounded queues.
+// Purpose: External OpenH264 helper process wrapper with bounded queues.
 
 using System;
 using System.Collections.Concurrent;
@@ -15,11 +15,13 @@ using System.Threading.Tasks;
 namespace Foxglove.Schemas.Video
 {
     /// <summary>
-    /// Encodes RGB24 frames through an external FFmpeg process and exposes completed
-    /// HEVC Annex B access units through a thread-safe bounded output queue.
+    /// Encodes I420 frames through an external OpenH264 helper process and
+    /// exposes completed H.264 Annex B access units.
     /// </summary>
-    public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar
+    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar
     {
+        private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
+
         private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
         private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
         private readonly object _outputLock = new object();
@@ -28,13 +30,9 @@ namespace Foxglove.Schemas.Video
         private Task _stdinTask;
         private Task _stdoutTask;
         private Task _stderrTask;
-        private FfmpegH265EncoderOptions _options;
-        private H265AnnexBAccessUnitPacketizer _packetizer;
+        private OpenH264EncoderOptions _options;
         private int _inputCount;
         private int _outputCount;
-        private long _framesSubmitted;
-        private long _accessUnitsProduced;
-        private long _accessUnitsDropped;
 
         public bool IsRunning
         {
@@ -55,24 +53,28 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        public long FramesSubmitted => Interlocked.Read(ref _framesSubmitted);
-        public long AccessUnitsProduced => Interlocked.Read(ref _accessUnitsProduced);
-        public long AccessUnitsDropped => Interlocked.Read(ref _accessUnitsDropped);
-        public string LastStderrLine { get; private set; }
-        public string LastDiagnosticLine => LastStderrLine;
+        public int FramesSubmitted { get; private set; }
+        public int AccessUnitsReceived { get; private set; }
+        public int DroppedInputFrames { get; private set; }
+        public string LastDiagnosticLine { get; private set; }
         public string LastError { get; private set; }
 
-        /// <summary>Starts FFmpeg if it is not already running.</summary>
-        public bool Start(FfmpegH265EncoderOptions options)
+        public bool Start(OpenH264EncoderOptions options)
         {
             if (IsRunning)
                 return true;
 
             Stop();
 
-            _options = options ?? new FfmpegH265EncoderOptions();
-            _packetizer = new H265AnnexBAccessUnitPacketizer();
+            _options = options ?? new OpenH264EncoderOptions();
             LastError = null;
+            LastDiagnosticLine = null;
+
+            if (!_options.Validate(out var error))
+            {
+                LastError = error;
+                return false;
+            }
 
             try
             {
@@ -84,7 +86,7 @@ namespace Foxglove.Schemas.Video
 
                 if (!_process.Start())
                 {
-                    LastError = "FFmpeg process failed to start.";
+                    LastError = "OpenH264 helper process failed to start.";
                     Stop();
                     return false;
                 }
@@ -97,13 +99,7 @@ namespace Foxglove.Schemas.Video
             }
             catch (Win32Exception ex)
             {
-                LastError = BuildStartFailureMessage(_options?.FfmpegPath, ex.Message);
-                Stop();
-                return false;
-            }
-            catch (FileNotFoundException ex)
-            {
-                LastError = BuildStartFailureMessage(_options?.FfmpegPath, ex.Message);
+                LastError = "OpenH264 helper executable could not be started: " + ex.Message;
                 Stop();
                 return false;
             }
@@ -115,53 +111,33 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static string BuildStartFailureMessage(string ffmpegPath, string detail)
+        public bool TrySubmitFrame(byte[] frame)
         {
-            var configured = string.IsNullOrWhiteSpace(ffmpegPath) ? "ffmpeg" : ffmpegPath.Trim();
-            var suffix = string.IsNullOrEmpty(detail) ? "" : " Detail: " + detail;
-            if (string.Equals(configured, "ffmpeg", StringComparison.OrdinalIgnoreCase))
-            {
-                return "FFmpeg executable was not found in the Unity process PATH. "
-                    + "Leave FFmpeg Path empty only when Unity can resolve ffmpeg; otherwise use the FFmpeg Path ... button to select ffmpeg.exe. "
-                    + "Restart Unity after changing PATH."
-                    + suffix;
-            }
-
-            return "FFmpeg executable was not found at the configured FFmpeg Path: "
-                + configured
-                + ". Use the FFmpeg Path ... button to select a valid executable."
-                + suffix;
-        }
-
-        /// <summary>
-        /// Submits a raw RGB24 frame without blocking the caller on FFmpeg I/O.
-        /// Old input frames are dropped if the queue is already full.
-        /// </summary>
-        public bool TrySubmitFrame(byte[] rgb24Frame)
-        {
-            if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsRunning)
+            if (frame == null || frame.Length == 0 || !IsRunning)
                 return false;
 
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
-            if (expectedBytes > 0 && rgb24Frame.Length != expectedBytes)
+            if (expectedBytes > 0 && frame.Length != expectedBytes)
             {
-                LastError = "RGB24 frame byte count does not match encoder dimensions.";
+                LastError = "I420 frame byte count does not match OpenH264 encoder dimensions.";
                 return false;
             }
 
             var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
             while (Volatile.Read(ref _inputCount) >= capacity && _inputFrames.TryDequeue(out _))
+            {
                 Interlocked.Decrement(ref _inputCount);
+                DroppedInputFrames++;
+            }
 
-            var copy = new byte[rgb24Frame.Length];
-            Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
+            var copy = new byte[frame.Length];
+            Buffer.BlockCopy(frame, 0, copy, 0, frame.Length);
             _inputFrames.Enqueue(copy);
             Interlocked.Increment(ref _inputCount);
-            Interlocked.Increment(ref _framesSubmitted);
+            FramesSubmitted++;
             return true;
         }
 
-        /// <summary>Dequeues a completed HEVC access unit, if available.</summary>
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
         {
             lock (_outputLock)
@@ -174,7 +150,6 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        /// <summary>Stops FFmpeg and clears pending live queues.</summary>
         public void Stop()
         {
             var stop = _stop;
@@ -191,7 +166,6 @@ namespace Foxglove.Schemas.Video
                 }
                 catch
                 {
-                    // Best-effort shutdown.
                 }
 
                 try
@@ -201,7 +175,6 @@ namespace Foxglove.Schemas.Video
                 }
                 catch
                 {
-                    // Process may already have exited.
                 }
 
                 try
@@ -210,7 +183,6 @@ namespace Foxglove.Schemas.Video
                 }
                 catch
                 {
-                    // Ignore wait failures during best-effort shutdown.
                 }
 
                 process.Dispose();
@@ -260,24 +232,33 @@ namespace Foxglove.Schemas.Video
 
         private async Task RunStdoutReader(CancellationToken token)
         {
-            var buffer = new byte[16 * 1024];
             try
             {
                 var stream = _process.StandardOutput.BaseStream;
-                while (!token.IsCancellationRequested && IsRunning)
+                while (!token.IsCancellationRequested)
                 {
-                    var read = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
-                    if (read <= 0)
+                    var readLength = await ReadLittleEndianLength(stream, token).ConfigureAwait(false);
+                    if (!readLength.Success)
                         break;
 
-                    var chunk = new byte[read];
-                    Buffer.BlockCopy(buffer, 0, chunk, 0, read);
-                    _packetizer.Append(chunk);
-                    DrainPacketizer();
-                }
+                    var length = readLength.Length;
+                    if (length == 0 || length > MaxAccessUnitBytes)
+                    {
+                        LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
+                        Stop();
+                        return;
+                    }
 
-                if (_packetizer != null && _packetizer.Flush(out var finalUnit))
-                    EnqueueAccessUnit(finalUnit);
+                    var payload = new byte[length];
+                    if (!await ReadExact(stream, payload, token).ConfigureAwait(false))
+                    {
+                        LastError = "OpenH264 helper stdout ended mid access unit.";
+                        Stop();
+                        return;
+                    }
+
+                    EnqueueAccessUnit(payload);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -299,57 +280,76 @@ namespace Foxglove.Schemas.Video
                     if (line == null)
                         break;
 
-                    LastStderrLine = line;
+                    LastDiagnosticLine = line;
                 }
             }
             catch (Exception ex)
             {
-                if (!token.IsCancellationRequested)
+                if (!(ex is ObjectDisposedException))
                     LastError = ex.Message;
             }
         }
 
-        private void DrainPacketizer()
-        {
-            while (_packetizer.TryDequeueAccessUnit(out var accessUnit))
-                EnqueueAccessUnit(accessUnit);
-        }
-
         private void EnqueueAccessUnit(byte[] accessUnit)
         {
-            if (accessUnit == null || accessUnit.Length == 0)
-                return;
-
+            var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
             lock (_outputLock)
             {
-                var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
                 while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
-                {
                     Interlocked.Decrement(ref _outputCount);
-                    Interlocked.Increment(ref _accessUnitsDropped);
-                }
 
                 _outputAccessUnits.Enqueue(accessUnit);
                 Interlocked.Increment(ref _outputCount);
-                Interlocked.Increment(ref _accessUnitsProduced);
+                AccessUnitsReceived++;
             }
+        }
+
+        private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, CancellationToken token)
+        {
+            var header = new byte[4];
+            if (!await ReadExact(stream, header, token).ConfigureAwait(false))
+                return new LengthReadResult(false, 0);
+
+            var length = header[0]
+                | (header[1] << 8)
+                | (header[2] << 16)
+                | (header[3] << 24);
+            return new LengthReadResult(true, length);
+        }
+
+        private static async Task<bool> ReadExact(Stream stream, byte[] buffer, CancellationToken token)
+        {
+            var offset = 0;
+            while (offset < buffer.Length)
+            {
+                var read = await stream.ReadAsync(buffer, offset, buffer.Length - offset, token).ConfigureAwait(false);
+                if (read == 0)
+                    return false;
+
+                offset += read;
+            }
+
+            return true;
         }
 
         private void DrainQueues()
         {
-            while (_inputFrames.TryDequeue(out _))
+            while (_inputFrames.TryDequeue(out _)) { }
+            while (_outputAccessUnits.TryDequeue(out _)) { }
+            Interlocked.Exchange(ref _inputCount, 0);
+            Interlocked.Exchange(ref _outputCount, 0);
+        }
+
+        private readonly struct LengthReadResult
+        {
+            public LengthReadResult(bool success, int length)
             {
+                Success = success;
+                Length = length;
             }
 
-            lock (_outputLock)
-            {
-                while (_outputAccessUnits.TryDequeue(out _))
-                {
-                }
-            }
-
-            Volatile.Write(ref _inputCount, 0);
-            Volatile.Write(ref _outputCount, 0);
+            public bool Success { get; }
+            public int Length { get; }
         }
     }
 }
