@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.6.0 - 2026-05-16
+
+### Added
+
+- MCAP indexed reader surface with summary, metadata, attachment, chunk, message, and CRC validation paths exposed for replay preflight and smoke testing.
+- Camera output modes for `foxglove.CompressedVideo`, including H.264 via FFmpeg, H.265/HEVC via FFmpeg, H.264 via Cisco OpenH264 runtime installation, and an experimental Windows Media Foundation H.264 backend.
+- Subscription-aware heavy-topic demand gating so expensive camera, scene, laser, transform, and point-cloud payload work runs only when a subscriber or MCAP recorder needs it.
+- Global default publisher rate policy and fixed-rate next-due scheduling to keep live publish cadence stable under variable Unity frame rates.
+- First-layer high-throughput point-cloud QoS with point-count budget, packed-byte budget, first-point sampling, uniform-stride sampling, voxel-grid LOD, and a protocol-level point-cloud smoke probe.
+- Demo point-cloud smoke source for visible 1000-point Foxglove 3D panel validation.
+
+### Changed
+
+- Reorganized the manager Inspector into workflow-oriented sections and added focused Inspector surfaces for MCAP replay preflight, camera output selection, and point-cloud QoS.
+- Clarified FFmpeg setup as manual guidance rather than automatic installation, while keeping OpenH264 runtime installation explicit and pinned.
+- Synchronized package metadata, README version references, changelog, and release notes for v1.6.0.
+
+### Fixed
+
+- Improved live publish cadence so configured rates no longer collapse because of frame-to-frame remainder loss.
+- Reduced unnecessary heavy-topic work when Foxglove panels are not subscribed, improving camera and point-cloud runtime behavior.
+
+### Verified
+
+- Runtime validation suite passed.
+- Release package validation passed.
+- Manual Foxglove smoke validation covered H.264/H.265/OpenH264 camera video and point-cloud QoS visualization.
+
 ## 1.5.0 - 2026-05-14
 
 ### Added
