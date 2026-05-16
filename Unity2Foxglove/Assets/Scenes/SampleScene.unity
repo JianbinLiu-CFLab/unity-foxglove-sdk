@@ -632,6 +632,91 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &908391461
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 908391463}
+  - component: {fileID: 908391462}
+  - component: {fileID: 908391464}
+  m_Layer: 0
+  m_Name: PointCloud_QoS_Smoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &908391462
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 908391461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30efba2d25ad48cfb9769811e4e56e63, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher
+  _manager: {fileID: 0}
+  _topic: 
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 0
+  _frameId: unity_world
+  _pointSources: []
+  _includeInactiveChildren: 0
+  _useChildrenWhenSourcesEmpty: 1
+  _maxPoints: 4096
+  _maxPackedBytes: 0
+  _samplingMode: 1
+  _voxelSizeMeters: 0.1
+  _logQosDrops: 0
+  _includeSyntheticIntensity: 0
+--- !u!4 &908391463
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 908391461}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &908391464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 908391461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3954bd01bbd432fa86691c319e4eef3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PointCloudSmokeSource
+  _publisher: {fileID: 908391462}
+  _pointCount: 1000
+  _frameId: unity_world
+  _columns: 50
+  _spacingMeters: 0.08
+  _waveHeightMeters: 0.35
+  _animate: 1
+  _animationSpeed: 1
+  _includeIntensity: 0
+  _publishContinuously: 1
+  _sourceHz: 10
 --- !u!1 &1529818993
 GameObject:
   m_ObjectHideFlags: 0
@@ -912,3 +997,4 @@ SceneRoots:
   - {fileID: 1529818994}
   - {fileID: 534487834}
   - {fileID: 2020679429}
+  - {fileID: 908391463}

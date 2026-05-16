@@ -8,6 +8,7 @@ using System;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Util;
 using UVector3 = UnityEngine.Vector3;
 
 namespace Unity.FoxgloveSDK.Components
@@ -24,10 +25,15 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _includeInactiveChildren;
         [SerializeField] private bool _useChildrenWhenSourcesEmpty = true;
         [SerializeField, Min(1)] private int _maxPoints = 4096;
+        [SerializeField, Min(0)] private int _maxPackedBytes;
+        [SerializeField] private PointCloudSamplingMode _samplingMode = PointCloudSamplingMode.FirstPoints;
+        [SerializeField, Min(0f)] private float _voxelSizeMeters = 0.1f;
+        [SerializeField] private bool _logQosDrops;
         [SerializeField] private bool _includeSyntheticIntensity;
 
         private PointCloudFrame _pendingFrame;
         private bool _warnedPointCloudBudget;
+        private bool _warnedPendingDrop;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.PointCloudSchemaName;
         public override bool SupportsProtobufEncoding => true;
@@ -37,11 +43,24 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrEmpty(_topic)) _topic = "/unity/point_cloud";
         }
 
+        protected override void Reset()
+        {
+            base.Reset();
+            _samplingMode = PointCloudSamplingMode.UniformStride;
+        }
+
         /// <summary>
-        /// Queue a decoded frame for the next publish tick.
+        /// Queue a decoded frame for the next publish tick. This is a
+        /// last-value-wins buffer: a new frame replaces stale pending data.
         /// </summary>
         public void SetFrame(PointCloudFrame frame)
         {
+            if (_pendingFrame != null && frame != null && _logQosDrops && !_warnedPendingDrop)
+            {
+                Debug.LogWarning("[Foxglove] PointCloud pending frame replaced; stale pending frame dropped.");
+                _warnedPendingDrop = true;
+            }
+
             _pendingFrame = frame;
         }
 
@@ -52,8 +71,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             ResolveManager();
             if (_manager == null || frame == null) return;
+            if (!ShouldPreparePublishPayload()) return;
 
-            var prepared = ClampFrameToPointBudget(frame, logTimeNs);
+            var prepared = PrepareFrameForQoS(frame, logTimeNs);
+            if (prepared == null || prepared.Points.Count == 0) return;
             PublishPreparedFrame(prepared, logTimeNs);
         }
 
@@ -66,8 +87,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPreparePublishPayload()) return;
 
             var unixNs = CurrentLogTimeNs;
-            var frame = _pendingFrame != null ? ClampFrameToPointBudget(_pendingFrame, unixNs) : CreateFrameFromTransforms(unixNs);
+            var frame = _pendingFrame != null ? PrepareFrameForQoS(_pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
             _pendingFrame = null;
+            _warnedPendingDrop = false;
             if (frame == null || frame.Points.Count == 0) return;
 
             PublishPreparedFrame(frame, unixNs);
@@ -85,10 +107,28 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private PointCloudFrame ClampFrameToPointBudget(PointCloudFrame frame, ulong unixNs)
+        private PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
         {
-            var maxPoints = Math.Max(1, _maxPoints);
-            if (frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && frame.Points.Count <= maxPoints)
+            if (frame == null)
+                return null;
+
+            var stride = PointCloudQoS.ComputePackedStride(frame);
+            var pointBudget = PointCloudQoS.ComputeEffectivePointBudget(
+                frame.Points.Count,
+                _maxPoints,
+                Math.Max(0, _maxPackedBytes),
+                stride);
+
+            if (pointBudget <= 0)
+            {
+                WarnPointCloudReduced(frame.Points.Count, pointBudget);
+                return null;
+            }
+
+            var useVoxelGrid = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters > 0f;
+            var forceUniformFallback = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters <= 0f;
+
+            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && frame.Points.Count <= pointBudget)
             {
                 _warnedPointCloudBudget = false;
                 return frame;
@@ -100,25 +140,57 @@ namespace Unity.FoxgloveSDK.Components
                 FrameId = string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId
             };
 
-            var count = Math.Min(frame.Points.Count, maxPoints);
-            for (var i = 0; i < count; i++)
-                copy.Points.Add(frame.Points[i]);
-
-            if (frame.Points.Count > maxPoints)
+            if (useVoxelGrid)
             {
-                if (!_warnedPointCloudBudget)
+                var voxelIndices = PointCloudQoS.BuildVoxelSampleIndices(frame, _voxelSizeMeters);
+                if (voxelIndices.Length <= pointBudget)
                 {
-                    Debug.LogWarning(
-                        $"[Foxglove] PointCloud frame truncated from {frame.Points.Count} to {maxPoints} points.");
-                    _warnedPointCloudBudget = true;
+                    foreach (var index in voxelIndices)
+                        copy.Points.Add(frame.Points[index]);
+                }
+                else
+                {
+                    var indices = PointCloudQoS.BuildUniformSampleIndices(voxelIndices.Length, pointBudget);
+                    foreach (var index in indices)
+                        copy.Points.Add(frame.Points[voxelIndices[index]]);
                 }
             }
+            else if (frame.Points.Count <= pointBudget && !forceUniformFallback)
+            {
+                for (var i = 0; i < frame.Points.Count; i++)
+                    copy.Points.Add(frame.Points[i]);
+            }
+            else if (_samplingMode == PointCloudSamplingMode.FirstPoints)
+            {
+                var count = Math.Min(frame.Points.Count, pointBudget);
+                for (var i = 0; i < count; i++)
+                    copy.Points.Add(frame.Points[i]);
+            }
+            else
+            {
+                var indices = PointCloudQoS.BuildUniformSampleIndices(frame.Points.Count, pointBudget);
+                foreach (var index in indices)
+                    copy.Points.Add(frame.Points[index]);
+            }
+
+            if (frame.Points.Count > pointBudget)
+                WarnPointCloudReduced(frame.Points.Count, pointBudget);
             else
             {
                 _warnedPointCloudBudget = false;
             }
 
             return copy;
+        }
+
+        private void WarnPointCloudReduced(int originalPoints, int outputPoints)
+        {
+            if (!_logQosDrops) return;
+            if (_warnedPointCloudBudget) return;
+
+            Debug.LogWarning(
+                $"[Foxglove] PointCloud frame reduced from {originalPoints} to {Math.Max(0, outputPoints)} points.");
+            _warnedPointCloudBudget = true;
         }
 
         private PointCloudFrame CreateFrameFromTransforms(ulong unixNs)
