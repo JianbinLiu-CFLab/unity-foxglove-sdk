@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _maxPoints = 4096;
         [SerializeField, Min(0)] private int _maxPackedBytes;
         [SerializeField] private PointCloudSamplingMode _samplingMode = PointCloudSamplingMode.FirstPoints;
+        [SerializeField, Min(0f)] private float _voxelSizeMeters = 0.1f;
         [SerializeField] private bool _logQosDrops;
         [SerializeField] private bool _includeSyntheticIntensity;
 
@@ -124,7 +125,10 @@ namespace Unity.FoxgloveSDK.Components
                 return null;
             }
 
-            if (frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && frame.Points.Count <= pointBudget)
+            var useVoxelGrid = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters > 0f;
+            var forceUniformFallback = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters <= 0f;
+
+            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && frame.Points.Count <= pointBudget)
             {
                 _warnedPointCloudBudget = false;
                 return frame;
@@ -136,7 +140,27 @@ namespace Unity.FoxgloveSDK.Components
                 FrameId = string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId
             };
 
-            if (frame.Points.Count <= pointBudget || _samplingMode == PointCloudSamplingMode.FirstPoints)
+            if (useVoxelGrid)
+            {
+                var voxelIndices = PointCloudQoS.BuildVoxelSampleIndices(frame, _voxelSizeMeters);
+                if (voxelIndices.Length <= pointBudget)
+                {
+                    foreach (var index in voxelIndices)
+                        copy.Points.Add(frame.Points[index]);
+                }
+                else
+                {
+                    var indices = PointCloudQoS.BuildUniformSampleIndices(voxelIndices.Length, pointBudget);
+                    foreach (var index in indices)
+                        copy.Points.Add(frame.Points[voxelIndices[index]]);
+                }
+            }
+            else if (frame.Points.Count <= pointBudget && !forceUniformFallback)
+            {
+                for (var i = 0; i < frame.Points.Count; i++)
+                    copy.Points.Add(frame.Points[i]);
+            }
+            else if (_samplingMode == PointCloudSamplingMode.FirstPoints)
             {
                 var count = Math.Min(frame.Points.Count, pointBudget);
                 for (var i = 0; i < count; i++)

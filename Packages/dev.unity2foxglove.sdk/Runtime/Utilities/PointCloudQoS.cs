@@ -6,6 +6,7 @@
 // and deterministic LOD sampling.
 
 using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Util
@@ -19,7 +20,9 @@ namespace Unity.FoxgloveSDK.Util
         /// <summary>Keep the first N points, preserving the historical clamp behavior.</summary>
         FirstPoints = 0,
         /// <summary>Keep a deterministic spread across the whole frame.</summary>
-        UniformStride = 1
+        UniformStride = 1,
+        /// <summary>Keep the first source point encountered in each voxel cell.</summary>
+        VoxelGrid = 2
     }
 
     /// <summary>
@@ -129,6 +132,79 @@ namespace Unity.FoxgloveSDK.Util
             }
 
             return indices;
+        }
+
+        /// <summary>
+        /// Builds deterministic sample indices for first-point voxel representatives.
+        /// </summary>
+        public static int[] BuildVoxelSampleIndices(PointCloudFrame frame, float voxelSizeMeters)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            if (frame.Points.Count == 0)
+                return Array.Empty<int>();
+
+            if (voxelSizeMeters <= 0f)
+                return BuildUniformSampleIndices(frame.Points.Count, frame.Points.Count);
+
+            var seen = new HashSet<VoxelKey>();
+            var indices = new List<int>();
+            for (var i = 0; i < frame.Points.Count; i++)
+            {
+                var point = frame.Points[i];
+                if (point == null)
+                {
+                    indices.Add(i);
+                    continue;
+                }
+
+                var key = VoxelKey.From(point, voxelSizeMeters);
+                if (seen.Add(key))
+                    indices.Add(i);
+            }
+
+            return indices.ToArray();
+        }
+
+        private readonly struct VoxelKey : IEquatable<VoxelKey>
+        {
+            private readonly long _x;
+            private readonly long _y;
+            private readonly long _z;
+
+            private VoxelKey(long x, long y, long z)
+            {
+                _x = x;
+                _y = y;
+                _z = z;
+            }
+
+            public static VoxelKey From(PointCloudPoint point, float voxelSizeMeters)
+            {
+                return new VoxelKey(
+                    (long)Math.Floor(point.X / voxelSizeMeters),
+                    (long)Math.Floor(point.Y / voxelSizeMeters),
+                    (long)Math.Floor(point.Z / voxelSizeMeters));
+            }
+
+            public bool Equals(VoxelKey other)
+                => _x == other._x && _y == other._y && _z == other._z;
+
+            public override bool Equals(object obj)
+                => obj is VoxelKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = 17;
+                    hash = hash * 31 + _x.GetHashCode();
+                    hash = hash * 31 + _y.GetHashCode();
+                    hash = hash * 31 + _z.GetHashCode();
+                    return hash;
+                }
+            }
         }
     }
 }
