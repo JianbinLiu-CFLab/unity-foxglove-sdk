@@ -25,7 +25,8 @@ namespace Unity.FoxgloveSDK.Editor
             "JPEG",
             "H.264 (FFmpeg)",
             "H.265 / HEVC (FFmpeg)",
-            "H.264 (OpenH264)"
+            "H.264 (OpenH264)",
+            "H.264 (Windows Native, Experimental)"
         };
 
         private FfmpegExecutableCheckResult _ffmpegCheck =
@@ -97,6 +98,16 @@ namespace Unity.FoxgloveSDK.Editor
                     videoKeyframeInterval,
                     maxPendingReadbacks,
                     openH264MaxInputQueue,
+                    videoMaxOutputQueue,
+                    logEncoderStderr);
+            }
+            else if (mode == CameraOutputMode.H264MediaFoundationExperimental)
+            {
+                DrawNativeH264Section(
+                    profile.DisplayName,
+                    videoBitrateKbps,
+                    videoKeyframeInterval,
+                    maxPendingReadbacks,
                     videoMaxOutputQueue,
                     logEncoderStderr);
             }
@@ -280,6 +291,30 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(openH264MaxInputQueue, new GUIContent("Max Input Queue"));
+            EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
+        }
+
+        private static void DrawNativeH264Section(
+            string title,
+            SerializedProperty videoBitrateKbps,
+            SerializedProperty videoKeyframeInterval,
+            SerializedProperty maxPendingReadbacks,
+            SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logEncoderStderr)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Experimental Windows-only H.264 path using Media Foundation. It does not use FFmpeg, OpenH264, or external binaries.",
+                MessageType.Warning);
+            EditorGUILayout.HelpBox(
+                "This backend depends on Windows encoder availability and driver behavior. Prefer OpenH264 for predictable cross-platform behavior.",
+                MessageType.Info);
+
+            EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
+            EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }

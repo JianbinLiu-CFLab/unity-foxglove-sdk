@@ -70,11 +70,20 @@ For H.264 OpenH264 mode:
 
 1. Set `Camera Output Mode` to `H.264 (OpenH264)`.
 2. Use `...` next to `OpenH264 Helper` to choose the helper executable.
-3. Use `...` next to `OpenH264 DLL`, or click `Install OpenH264...` to download the pinned Cisco DLL into a per-user cache and fill the DLL field.
+3. Use `...` next to `OpenH264 DLL`, or click `Install OpenH264 Runtime...` to download the pinned Cisco DLL, build the local helper executable, and fill both fields.
 4. Click `Check OpenH264`; the check validates both paths and performs a tiny encode smoke test.
 5. Use an Image panel on `/unity/camera` unless you intentionally changed the topic. If you switched modes while Foxglove was already connected, reconnect so the panel sees the updated schema.
 
-The SDK does not bundle OpenH264 binaries. `Install OpenH264...` does not modify `PATH`, write into the Unity project, or install the helper executable. If video mode is missing or invalid, switch back to JPEG mode for dependency-free camera output.
+The SDK does not bundle OpenH264 binaries. `Install OpenH264 Runtime...` does not modify `PATH` or write into the Unity project. It installs into a per-user cache and updates only the selected camera component's helper/DLL paths. If video mode is missing or invalid, switch back to JPEG mode for dependency-free camera output.
+
+For H.264 Windows Native mode:
+
+1. Set `Camera Output Mode` to `H.264 (Windows Native, Experimental)`.
+2. Use an Image panel on `/unity/camera` unless you intentionally changed the topic.
+3. Reconnect Foxglove after switching modes so the panel sees the updated `foxglove.CompressedVideo` schema.
+4. If Unity logs that the native encoder is unavailable, use `H.264 (OpenH264)` or `JPEG` instead.
+
+Windows Native mode uses Windows Media Foundation and does not use FFmpeg, OpenH264, or external binaries. It is Windows-only and experimental because encoder availability, driver behavior, and low-latency support vary by machine.
 
 ## 7. Parameters Panel Is Empty
 

@@ -241,7 +241,12 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (!sidecar.TrySubmitFrame(frameBytes))
+            {
                 LogVideoEncoderUnavailable(ActiveProfile, DescribeVideoEncoderFailure(sidecar, "Video encoder refused the frame."));
+                return;
+            }
+
+            DrainEncodedAccessUnits();
         }
 
         private bool EnsureVideoSidecarStarted(CameraVideoOutputProfile profile)
@@ -267,6 +272,11 @@ namespace Unity.FoxgloveSDK.Components
                     var openH264 = new OpenH264EncoderSidecar();
                     _videoSidecar = openH264;
                     started = openH264.Start(CreateOpenH264Options());
+                    break;
+                case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264MediaFoundationExperimental:
+                    var nativeH264 = new MediaFoundationH264EncoderSidecar();
+                    _videoSidecar = nativeH264;
+                    started = nativeH264.Start(CreateMediaFoundationH264Options());
                     break;
                 case CameraVideoCodec.H265:
                     var h265 = new FfmpegH265EncoderSidecar();
@@ -328,6 +338,20 @@ namespace Unity.FoxgloveSDK.Components
                 BitrateKbps = Math.Max(1, _videoBitrateKbps),
                 KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
                 MaxInputQueue = Math.Max(1, _openH264MaxInputQueue),
+                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
+            };
+        }
+
+        private MediaFoundationH264EncoderOptions CreateMediaFoundationH264Options()
+        {
+            return new MediaFoundationH264EncoderOptions
+            {
+                Width = Math.Max(1, _width),
+                Height = Math.Max(1, _height),
+                FrameRate = ResolveEncoderFrameRate(),
+                BitrateKbps = Math.Max(1, _videoBitrateKbps),
+                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
+                MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
                 MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
             };
         }
