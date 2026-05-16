@@ -270,7 +270,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 0}
-  _topic: 
+  _topic: /unity/camera
   _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1

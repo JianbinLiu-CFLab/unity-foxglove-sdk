@@ -14,7 +14,8 @@ namespace Unity.FoxgloveSDK.Components
         Jpeg = 0,
         H264Ffmpeg = 1,
         H265Ffmpeg = 2,
-        H264OpenH264 = 3
+        H264OpenH264 = 3,
+        H264MediaFoundationExperimental = 4
     }
 
     internal enum CameraVideoCodec
@@ -91,6 +92,17 @@ namespace Unity.FoxgloveSDK.Components
                         mode,
                         CameraVideoCodec.H264,
                         "H.264 (OpenH264)",
+                        CameraOutputModeDefaults.H264Topic,
+                        CameraOutputModeDefaults.H264Schema,
+                        Foxglove.Schemas.CameraCompressedVideoBuilder.H264Format,
+                        supportsJson: false,
+                        supportsProtobuf: true);
+
+                case CameraOutputMode.H264MediaFoundationExperimental:
+                    return new CameraVideoOutputProfile(
+                        mode,
+                        CameraVideoCodec.H264,
+                        "H.264 (Windows Native, Experimental)",
                         CameraOutputModeDefaults.H264Topic,
                         CameraOutputModeDefaults.H264Schema,
                         Foxglove.Schemas.CameraCompressedVideoBuilder.H264Format,

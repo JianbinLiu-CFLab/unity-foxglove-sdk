@@ -106,16 +106,16 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
-| Camera Output Mode | `JPEG` | Selects dependency-free JPEG images or optional H.264/H.265 video. | Use `H.264 (FFmpeg)`/`H.265 / HEVC (FFmpeg)` when you manage FFmpeg yourself, or `H.264 (OpenH264)` when you prefer Cisco OpenH264 plus the local helper executable. | Choosing a video mode without configuring its required helper/executable. |
+| Camera Output Mode | `JPEG` | Selects dependency-free JPEG images or optional H.264/H.265 video. | Use `H.264 (FFmpeg)`/`H.265 / HEVC (FFmpeg)` when you manage FFmpeg yourself, `H.264 (OpenH264)` when you prefer Cisco OpenH264 plus the local helper executable, or `H.264 (Windows Native, Experimental)` for a Windows-only Media Foundation path with no external binary. | Choosing an optional video mode without checking its platform and encoder requirements. |
 | Frame Id | `unity_camera` | Frame ID associated with the image. | Set when coordinating camera pose with `/tf`. | Using a frame ID that is never published. |
 | Width | `640` | Captured image width. | Increase for sharper images. | Too high a value can hurt performance. |
 | Height | `480` | Captured image height. | Increase for sharper images. | Mismatched aspect ratio can stretch output. |
 | JPEG Quality | `70` | Compression quality. | Raise for clearer images; lower for bandwidth. | Setting `100` without checking bandwidth. |
 | FFmpeg Path | Empty | Executable used for H.264/H.265 modes. Empty means resolve `ffmpeg` from process, user, or machine `PATH`; the `...` button fills an explicit executable path. A folder that directly contains `ffmpeg.exe` is also accepted. | Browse to a full path such as a local FFmpeg executable if Unity cannot find `ffmpeg` on `PATH`. After `Check FFmpeg` succeeds, `Reveal Folder` opens the resolved executable folder. Use `FFmpeg Help...` for manual setup and license guidance. | Expecting the SDK to scan common folders, fill machine-specific paths, modify `PATH`, or download FFmpeg automatically. |
 | OpenH264 Helper | Empty | Helper executable used by `H.264 (OpenH264)` to bridge Unity I420 frames to Cisco OpenH264. | Use `...` to choose the helper executable you built or obtained for your platform. | Expecting the SDK package to include this executable. |
-| OpenH264 DLL | Empty | Cisco OpenH264 dynamic library used by the helper. | Use `...` to choose an existing DLL, or `Install OpenH264...` to download the pinned Cisco binary into a per-user cache and fill this field. | Expecting install to change `PATH`, write project files, or install the helper executable. |
+| OpenH264 DLL | Empty | Cisco OpenH264 dynamic library used by the helper. | Use `...` to choose an existing DLL, or `Install OpenH264 Runtime...` to download the pinned Cisco binary, build the helper executable, and fill both OpenH264 fields. | Expecting install to change `PATH`, write project files, or bundle binaries into the SDK package. |
 | Video Bitrate Kbps | `4000` | Target bitrate for H.264/H.265 modes. | Lower it for bandwidth-sensitive streams; raise it for visual clarity. | Raising bitrate without checking WebSocket and Foxglove load. |
-| Keyframe Interval | `30` | H.264/H.265 GOP/keyframe interval passed to FFmpeg. | Tune only when startup/scrubbing latency matters. | Very long intervals can make video harder to recover after dropped frames. |
+| Keyframe Interval | `30` | H.264/H.265 GOP/keyframe interval passed to the selected encoder. | Tune only when startup/scrubbing latency matters. | Very long intervals can make video harder to recover after dropped frames. |
 | Max Pending Readbacks | `1` | Limits outstanding GPU readbacks. | Increase only if frames are skipped and GPU can handle it. | Too high can increase latency and memory use. |
 | Max Output Queue | `4` | Bounds encoded video access units waiting to be published. | Increase only if short bursts are dropped and latency is acceptable. | Large queues hide backpressure by adding delay. |
 | Topic | `/unity/camera` | Image topic. | Change when publishing multiple cameras. | Two cameras publishing to the same topic unintentionally. |
@@ -127,7 +127,9 @@ For FFmpeg modes, leave `FFmpeg Path` empty to resolve `ffmpeg` from process, us
 
 `FFmpeg Help...` is always visible for H.264/H.265 modes. It explains the manual setup path and links to the FFmpeg download and legal pages. For Asset Store and commercial distribution safety, the SDK does not bundle, download, install, or modify `PATH` for FFmpeg. Many FFmpeg builds that support H.264/H.265 use GPL components such as `libx264`/`libx265`; users should choose and install an FFmpeg build only after confirming its license is appropriate for their project.
 
-For OpenH264 mode, configure both `OpenH264 Helper` and `OpenH264 DLL`, then click `Check OpenH264`. `Install OpenH264...` downloads only the pinned Cisco OpenH264 DLL into a per-user cache and updates the selected camera component after validation; it does not install the helper executable, modify `PATH`, write into the Unity project, or bundle OpenH264 into the SDK package.
+For OpenH264 mode, configure both `OpenH264 Helper` and `OpenH264 DLL`, then click `Check OpenH264`. `Install OpenH264 Runtime...` downloads the pinned Cisco OpenH264 DLL, builds the local helper executable from SDK-shipped source/header files, stores both in a per-user cache, and updates the selected camera component after validation; it does not modify `PATH`, write into the Unity project, or bundle OpenH264 binaries into the SDK package.
+
+For Windows Native mode, no path fields are shown. The backend uses Windows Media Foundation directly, does not use FFmpeg or OpenH264, and is intentionally labeled experimental because hardware/driver encoder behavior can vary. If native H.264 is unavailable or unstable on a machine, use `H.264 (OpenH264)` for the more predictable local helper path or `JPEG` for dependency-free output.
 
 ## 8. FoxgloveReplayObjectAdapter
 
