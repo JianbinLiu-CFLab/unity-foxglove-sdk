@@ -258,7 +258,7 @@ namespace Unity.FoxgloveSDK.Tests
             var pointSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var pointUpdate = Slice(pointSource, "private void Update()", "private void PublishPreparedFrame");
             CheckOrdered(pointUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-8: point cloud preflights after cadence");
-            CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "ClampFrameToPointBudget", "73G-9: point cloud preflights before frame clamp/copy");
+            CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "73G-9: point cloud preflights before frame QoS copy");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "CreateFrameFromTransforms", "73G-10: point cloud preflights before child transform scan");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "_pendingFrame = null", "73G-11: point cloud preflights before pending frame consumption");
         }
