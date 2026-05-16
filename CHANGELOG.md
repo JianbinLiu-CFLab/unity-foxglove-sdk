@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.7.0 - 2026-05-17
+
+### Added
+
+- Optional Draco output mode for `FoxglovePointCloudPublisher`, publishing `foxglove.CompressedPointCloud` protobuf payloads on `/unity/point_cloud_draco`.
+- Bundled Windows native Draco plugin `Unity2FoxgloveDracoNative.dll` for in-process XYZ point-cloud compression.
+- Runtime P/Invoke wrapper and Inspector `Check Draco` validation for the bundled native plugin.
+- Compressed point-cloud smoke probes, MCAP inspection tooling, and Phase 87-89 validation coverage.
+
+### Changed
+
+- Raw `foxglove.PointCloud` remains the default path, while Draco is available as an opt-in point-cloud output mode.
+- The hidden Phase 87 compressed point-cloud spike publisher now uses the bundled native plugin path instead of requiring a helper executable.
+- Documentation, troubleshooting, Inspector reference, evidence templates, and third-party notices now describe the bundled Draco DLL flow.
+
+### Verified
+
+- Runtime validation suite passed.
+- Phase 87, Phase 88, and Phase 89 targeted validation passed.
+- Release package validation passed.
+- Manual Foxglove validation confirmed Inspector Draco availability, `/unity/point_cloud_draco` schema, and 3D point-cloud rendering.
+
 ## 1.6.0 - 2026-05-16
 
 ### Added
