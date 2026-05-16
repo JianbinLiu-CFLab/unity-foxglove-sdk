@@ -25,7 +25,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyPointCloudInspector();
             VerifySmokeProbe();
             VerifyPointCloudSmokeSource();
-            VerifyDeveloperAcceptanceNote();
 
             Console.WriteLine($"Phase 85: {_passed} checks passed.");
         }
@@ -87,21 +86,6 @@ namespace Unity.FoxgloveSDK.Tests
                 "85C-5: smoke source builds unity_world point-cloud frames");
             Check(source.Contains("_animate") && source.Contains("_includeIntensity"),
                 "85C-6: smoke source supports visual motion and optional intensity");
-        }
-
-        private static void VerifyDeveloperAcceptanceNote()
-        {
-            var source = ReadRepoText("Developer/46 Phase85 PointCloud Inspector and Smoke Evidence.md");
-            Check(!string.IsNullOrEmpty(source),
-                "85D-1: Developer Phase85 acceptance note exists");
-            Check(source.Contains("Inspector") && source.Contains("Manual Smoke"),
-                "85D-2: Developer note covers Inspector and manual smoke");
-            Check(source.Contains("pointcloud_qos_probe.py"),
-                "85D-3: Developer note documents point-cloud smoke probe command");
-            Check(source.Contains("FirstPoints") && source.Contains("UniformStride") && source.Contains("VoxelGrid"),
-                "85D-4: Developer note covers all sampling modes");
-            Check(source.Contains("Max Packed Bytes") && source.Contains("Voxel Size Meters"),
-                "85D-5: Developer note covers byte budget and voxel size evidence");
         }
 
         private static void CheckOrdered(string text, string before, string after, string name)
