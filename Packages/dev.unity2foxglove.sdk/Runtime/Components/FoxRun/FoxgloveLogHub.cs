@@ -87,6 +87,9 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<IFoxgloveLogSource, FixedRatePublishState[]> _timers = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
         private readonly List<IFoxgloveLogSource> _stale = new();
+        private readonly List<IFoxgloveLogSource> _pendingAdds = new();
+        private readonly List<IFoxgloveLogSource> _pendingRemoves = new();
+        private bool _iteratingTimers;
         /// <summary>Countdown until the next Scan for new sources.</summary>
         private float _scanTimer;
         /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
@@ -105,7 +108,7 @@ namespace Unity.FoxgloveSDK.Components
         public static void UnregisterSource(IFoxgloveLogSource source)
         {
             if (_instance != null && source != null)
-                _instance._timers.Remove(source);
+                _instance.RemoveSource(source);
         }
 
         /// <summary>
@@ -193,37 +196,47 @@ namespace Unity.FoxgloveSDK.Components
 
             var nowNs = _mgr.NowNs;
             var nowSec = Time.realtimeSinceStartupAsDouble;
+            ApplyPendingTimerMutations();
             _stale.Clear();
-            foreach (var kv in _timers)
+            _iteratingTimers = true;
+            try
             {
-                if (kv.Key is MonoBehaviour mb && mb == null) { _stale.Add(kv.Key); continue; }
-                if (kv.Key is MonoBehaviour mb2 && !mb2.isActiveAndEnabled) continue;
-                var t = kv.Value;
-                var policySource = kv.Key as IFoxgloveLogPolicySource;
-                for (int i = 0; i < t.Length; i++)
+                foreach (var kv in _timers)
                 {
-                    var info = kv.Key.FoxgloveLog_GetTopic(i);
-                    if (info.PublishMode == FoxRunPublishMode.OnTrigger)
-                        continue;
-
-                    var rateHz = info.RateHz > 0 ? info.RateHz : 1f;
-                    if (FixedRatePublishScheduler.ShouldPublish(
-                            nowSec,
-                            rateHz,
-                            ref t[i],
-                            nonPositivePublishesEveryFrame: false))
+                    if (kv.Key is MonoBehaviour mb && mb == null) { _stale.Add(kv.Key); continue; }
+                    if (kv.Key is MonoBehaviour mb2 && !mb2.isActiveAndEnabled) continue;
+                    var t = kv.Value;
+                    var policySource = kv.Key as IFoxgloveLogPolicySource;
+                    for (int i = 0; i < t.Length; i++)
                     {
-                        bool shouldPublish = policySource == null
-                            || policySource.FoxgloveLog_ShouldPublish(i, nowSec);
-                        if (shouldPublish)
+                        var info = kv.Key.FoxgloveLog_GetTopic(i);
+                        if (info.PublishMode == FoxRunPublishMode.OnTrigger)
+                            continue;
+
+                        var rateHz = info.RateHz > 0 ? info.RateHz : 1f;
+                        if (FixedRatePublishScheduler.ShouldPublish(
+                                nowSec,
+                                rateHz,
+                                ref t[i],
+                                nonPositivePublishesEveryFrame: false))
                         {
-                            kv.Key.FoxgloveLog_Publish(i, _mgr, nowNs);
-                            policySource?.FoxgloveLog_MarkPublished(i, nowSec);
+                            bool shouldPublish = policySource == null
+                                || policySource.FoxgloveLog_ShouldPublish(i, nowSec);
+                            if (shouldPublish)
+                            {
+                                kv.Key.FoxgloveLog_Publish(i, _mgr, nowNs);
+                                policySource?.FoxgloveLog_MarkPublished(i, nowSec);
+                            }
                         }
                     }
                 }
             }
-            foreach (var s in _stale) _timers.Remove(s);
+            finally
+            {
+                _iteratingTimers = false;
+            }
+            foreach (var s in _stale) RemoveSource(s);
+            ApplyPendingTimerMutations();
         }
 
         /// <summary>
@@ -243,11 +256,54 @@ namespace Unity.FoxgloveSDK.Components
 
         private void AddSource(IFoxgloveLogSource source)
         {
+            if (_iteratingTimers)
+            {
+                if (!_pendingAdds.Contains(source))
+                    _pendingAdds.Add(source);
+                return;
+            }
+
+            AddSourceNow(source);
+        }
+
+        private void AddSourceNow(IFoxgloveLogSource source)
+        {
             if (source == null || _timers.ContainsKey(source))
                 return;
             var count = source.FoxgloveLog_TopicCount;
             if (count > 0)
                 _timers[source] = new FixedRatePublishState[count];
+        }
+
+        private void RemoveSource(IFoxgloveLogSource source)
+        {
+            if (source == null)
+                return;
+            if (_iteratingTimers)
+            {
+                if (!_pendingRemoves.Contains(source))
+                    _pendingRemoves.Add(source);
+                return;
+            }
+
+            _timers.Remove(source);
+        }
+
+        private void ApplyPendingTimerMutations()
+        {
+            if (_pendingRemoves.Count > 0)
+            {
+                foreach (var source in _pendingRemoves)
+                    _timers.Remove(source);
+                _pendingRemoves.Clear();
+            }
+
+            if (_pendingAdds.Count > 0)
+            {
+                foreach (var source in _pendingAdds)
+                    AddSourceNow(source);
+                _pendingAdds.Clear();
+            }
         }
 
         private bool TriggerSource(IFoxgloveLogSource source, int topicIndex)

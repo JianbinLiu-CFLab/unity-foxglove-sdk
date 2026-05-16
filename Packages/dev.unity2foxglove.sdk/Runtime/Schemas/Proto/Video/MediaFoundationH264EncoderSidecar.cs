@@ -241,7 +241,7 @@ namespace Foxglove.Schemas.Video
                 return;
             }
 
-            var bitrate = checked((uint)Math.Max(1, options.BitrateKbps) * 1000u);
+            var bitrate = (uint)options.BitrateBitsPerSecond;
             SetCodecBool(codecApi, MfGuids.CODECAPI_AVLowLatencyMode, true, "AVLowLatencyMode");
             SetCodecBool(codecApi, MfGuids.CODECAPI_AVEncCommonLowLatency, true, "AVEncCommonLowLatency");
             SetCodecBool(codecApi, MfGuids.CODECAPI_AVEncCommonRealTime, true, "AVEncCommonRealTime");
@@ -312,7 +312,7 @@ namespace Foxglove.Schemas.Video
 
             SetGuid(mediaType, MfGuids.MF_MT_MAJOR_TYPE, MfGuids.MFMediaType_Video);
             SetGuid(mediaType, MfGuids.MF_MT_SUBTYPE, MfGuids.MFVideoFormat_H264);
-            SetUInt32(mediaType, MfGuids.MF_MT_AVG_BITRATE, checked((int)Math.Max(1, options.BitrateKbps) * 1000));
+            SetUInt32(mediaType, MfGuids.MF_MT_AVG_BITRATE, options.BitrateBitsPerSecond);
             SetUInt32(mediaType, MfGuids.MF_MT_INTERLACE_MODE, MfVideoInterlaceProgressive);
             SetUInt32(mediaType, MfGuids.MF_MT_MPEG2_PROFILE, H264BaselineProfile);
             SetFrameSize(mediaType, options.Width, options.Height);

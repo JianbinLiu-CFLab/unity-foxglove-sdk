@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         private readonly Stream _stream;
         private readonly bool _leaveOpen;
+        private bool _disposed;
 
         /// <summary>Current byte position in the underlying stream.</summary>
         public long Position => _stream.Position;
@@ -155,9 +156,23 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Write raw bytes directly to the underlying stream without MCAP opcode/length framing.</summary>
         public void WriteBytes(byte[] data) { if (data != null && data.Length > 0) _stream.Write(data, 0, data.Length); }
         /// <summary>Flush the underlying stream.</summary>
-        public void Flush() => _stream.Flush();
+        public void Flush()
+        {
+            if (_disposed)
+                return;
+            _stream.Flush();
+        }
         /// <summary>Flush and, unless <c>leaveOpen</c> was set, dispose the underlying stream.</summary>
-        public void Dispose() { Flush(); if (!_leaveOpen) _stream.Dispose(); }
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _stream.Flush();
+            if (!_leaveOpen)
+                _stream.Dispose();
+        }
 
         // Static helpers used by recorder, reader, and tests.
 

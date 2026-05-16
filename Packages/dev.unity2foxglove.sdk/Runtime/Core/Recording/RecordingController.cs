@@ -9,6 +9,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
@@ -76,7 +77,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void AttachToSession(PlaybackClock clock, FoxgloveParameterStore parameters, FoxgloveSession session)
         {
-            if (_recorder != null)
+            if (Volatile.Read(ref _recorder) != null)
                 DetachFromSession();
 
             _playbackClock = clock;
@@ -108,7 +109,7 @@ namespace Unity.FoxgloveSDK.Core
                 session.SetRecorder(recorder);
                 fileStream = null;
                 _session = session;
-                _recorder = recorder;
+                Volatile.Write(ref _recorder, recorder);
                 recorder = null;
             }
             catch (Exception ex)
@@ -116,7 +117,7 @@ namespace Unity.FoxgloveSDK.Core
                 session.SetRecorder(null);
                 recorder?.Dispose();
                 fileStream?.Dispose();
-                _recorder = null;
+                Volatile.Write(ref _recorder, null);
                 _session = null;
                 _logger.LogError($"Failed to start MCAP recording: {ex.Message}");
             }
@@ -132,8 +133,7 @@ namespace Unity.FoxgloveSDK.Core
             _session = null;
             session?.SetRecorder(null);
 
-            var recorder = _recorder;
-            _recorder = null;
+            var recorder = Interlocked.Exchange(ref _recorder, null);
 
             if (recorder != null)
             {
@@ -146,12 +146,13 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Callback invoked when a registered parameter changes; writes a metadata entry.</summary>
         private void OnParameterChanged(string name, JToken value, string type)
         {
-            if (_recorder != null)
-            {
-                var timestamp = _playbackClock.NowNs;
-                var entry = JsonConvert.SerializeObject(new { name, type, value, timestamp });
-                _recorder.WriteMetadata("foxglove.parameters", entry);
-            }
+            var recorder = Volatile.Read(ref _recorder);
+            if (recorder == null)
+                return;
+
+            var timestamp = _playbackClock.NowNs;
+            var entry = JsonConvert.SerializeObject(new { name, type, value, timestamp });
+            recorder.WriteMetadata("foxglove.parameters", entry);
         }
 
         /// <summary>Detach and dispose all resources.</summary>

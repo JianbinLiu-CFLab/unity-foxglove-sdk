@@ -23,6 +23,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<string, AssetRoot> _roots = new();
         /// <summary>Lock guarding root map modifications and queries.</summary>
         private readonly object _lock = new();
+        private static StringComparison FileSystemPathComparison =>
+            Path.DirectorySeparatorChar == '\\'
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
 
         /// <summary>True if at least one asset root is registered.</summary>
         public bool HasRoots { get { lock (_lock) return _roots.Count > 0; } }
@@ -74,7 +78,10 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 relative = relative.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                 var resolved = Path.GetFullPath(Path.Combine(root.LocalRoot, relative));
-                if (!resolved.StartsWith(root.LocalRoot + Path.DirectorySeparatorChar) && resolved != root.LocalRoot)
+                var normalizedRoot = root.LocalRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var comparison = FileSystemPathComparison;
+                var rootPrefix = normalizedRoot + Path.DirectorySeparatorChar;
+                if (!resolved.StartsWith(rootPrefix, comparison) && !string.Equals(resolved, normalizedRoot, comparison))
                 { error = $"Path traversal denied: {uri}"; return false; }
                 if (Directory.Exists(resolved))
                 { error = $"Path is a directory: {uri}"; return false; }
