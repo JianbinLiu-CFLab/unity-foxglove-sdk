@@ -54,7 +54,7 @@ Check:
 
 For JPEG mode, use an Image panel on `/unity/camera`.
 
-For H.264/H.265 mode:
+For H.264/H.265 FFmpeg mode:
 
 1. Set `Camera Output Mode` to `H.264 (FFmpeg)` or `H.265 / HEVC (FFmpeg)`.
 2. Leave `FFmpeg Path` empty to resolve `ffmpeg` from process, user, or machine `PATH`, or click `...` and browse to the exact executable. You may also enter a folder that directly contains `ffmpeg.exe`.
@@ -64,7 +64,17 @@ For H.264/H.265 mode:
 
 For Asset Store and commercial distribution safety, the SDK does not bundle, download, install, or modify `PATH` for FFmpeg. H.264/H.265 modes use only the executable configured in `FFmpeg Path`, or the system `PATH` when that field is empty. Many FFmpeg builds that support H.264/H.265 use GPL components such as `libx264`/`libx265`; confirm the chosen build's license is appropriate for your project before using it.
 
-If FFmpeg is missing or invalid, H.264/H.265 mode publishes nothing and does not silently fall back to JPEG. Switch back to JPEG mode for dependency-free camera output.
+If FFmpeg is missing or invalid, FFmpeg video mode publishes nothing and does not silently fall back to JPEG.
+
+For H.264 OpenH264 mode:
+
+1. Set `Camera Output Mode` to `H.264 (OpenH264)`.
+2. Use `...` next to `OpenH264 Helper` to choose the helper executable.
+3. Use `...` next to `OpenH264 DLL`, or click `Install OpenH264...` to download the pinned Cisco DLL into a per-user cache and fill the DLL field.
+4. Click `Check OpenH264`; the check validates both paths and performs a tiny encode smoke test.
+5. Use an Image panel on `/unity/camera` unless you intentionally changed the topic. If you switched modes while Foxglove was already connected, reconnect so the panel sees the updated schema.
+
+The SDK does not bundle OpenH264 binaries. `Install OpenH264...` does not modify `PATH`, write into the Unity project, or install the helper executable. If video mode is missing or invalid, switch back to JPEG mode for dependency-free camera output.
 
 ## 7. Parameters Panel Is Empty
 

@@ -4,6 +4,7 @@
 // Module: Editor/Publishers
 // Purpose: Dedicated Inspector for the unified camera publisher.
 
+using System;
 using System.IO;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
@@ -17,16 +18,20 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const string FfmpegRecoveryHint =
             "Use ... to browse to an existing executable, leave FFmpeg Path empty for system PATH, or open FFmpeg Help... for manual setup and licensing notes.";
+        private const string OpenH264Attribution = "OpenH264 Video Codec provided by Cisco Systems, Inc.";
 
         private static readonly string[] CameraOutputModeLabels =
         {
             "JPEG",
             "H.264 (FFmpeg)",
-            "H.265 / HEVC (FFmpeg)"
+            "H.265 / HEVC (FFmpeg)",
+            "H.264 (OpenH264)"
         };
 
         private FfmpegExecutableCheckResult _ffmpegCheck =
             new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
+        private OpenH264ExecutableCheckResult _openH264Check =
+            new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
 
         public override void OnInspectorGUI()
         {
@@ -43,6 +48,9 @@ namespace Unity.FoxgloveSDK.Editor
             var jpegQuality = serializedObject.FindProperty("_jpegQuality");
             var maxPendingReadbacks = serializedObject.FindProperty("_maxPendingReadbacks");
             var ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
+            var openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
+            var openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
+            var openH264MaxInputQueue = serializedObject.FindProperty("_openH264MaxInputQueue");
             var videoBitrateKbps = serializedObject.FindProperty("_videoBitrateKbps");
             var videoKeyframeInterval = serializedObject.FindProperty("_videoKeyframeInterval");
             var videoMaxOutputQueue = serializedObject.FindProperty("_videoMaxOutputQueue");
@@ -66,6 +74,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var newMode = GetMode(outputMode);
                 ApplyTopicForModeChange(topic, oldMode, newMode);
                 _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
+                _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
             }
 
             EditorGUILayout.PropertyField(manager);
@@ -78,10 +87,27 @@ namespace Unity.FoxgloveSDK.Editor
 
             var mode = GetMode(outputMode);
             var profile = CameraVideoOutputProfile.ForMode(mode);
-            if (profile.IsVideo)
+            if (mode == CameraOutputMode.H264OpenH264)
+            {
+                DrawOpenH264VideoSection(
+                    profile.DisplayName,
+                    openH264HelperPath,
+                    openH264DllPath,
+                    videoBitrateKbps,
+                    videoKeyframeInterval,
+                    maxPendingReadbacks,
+                    openH264MaxInputQueue,
+                    videoMaxOutputQueue,
+                    logEncoderStderr);
+            }
+            else if (profile.IsVideo)
+            {
                 DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logEncoderStderr);
+            }
             else
+            {
                 DrawJpegSection(jpegQuality, maxPendingReadbacks, enableBackpressure, backpressureCooldown, maxEncodedBytes, logBackpressureSkips);
+            }
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
@@ -165,6 +191,97 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Stderr"));
+        }
+
+        private void DrawOpenH264VideoSection(
+            string title,
+            SerializedProperty openH264HelperPath,
+            SerializedProperty openH264DllPath,
+            SerializedProperty videoBitrateKbps,
+            SerializedProperty videoKeyframeInterval,
+            SerializedProperty maxPendingReadbacks,
+            SerializedProperty openH264MaxInputQueue,
+            SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logEncoderStderr)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "OpenH264 mode uses the local OpenH264 helper executable plus Cisco's official OpenH264 DLL. The SDK does not bundle either binary.",
+                MessageType.Info);
+
+            DrawOpenH264PathField(
+                "OpenH264 Helper",
+                openH264HelperPath,
+                "Select OpenH264 Helper Executable",
+                Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "",
+                () => _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", ""));
+
+            DrawOpenH264PathField(
+                "OpenH264 DLL",
+                openH264DllPath,
+                "Select OpenH264 DLL",
+                Application.platform == RuntimePlatform.WindowsEditor ? "dll" : "",
+                () => _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", ""));
+
+            var checkRequested = false;
+            var revealRequested = false;
+            var installRequested = false;
+            var licenseRequested = false;
+            var revealPath = GetRevealOpenH264Path(openH264DllPath.stringValue, openH264HelperPath.stringValue);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Install OpenH264 Runtime..."))
+                    installRequested = true;
+
+                if (GUILayout.Button("Check OpenH264"))
+                    checkRequested = true;
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(!CanRevealFolder(revealPath)))
+                {
+                    if (GUILayout.Button("Reveal Folder"))
+                        revealRequested = true;
+                }
+
+                if (GUILayout.Button("Open License"))
+                    licenseRequested = true;
+            }
+
+            if (checkRequested)
+                _openH264Check = OpenH264ExecutableCheck.Check(openH264HelperPath.stringValue, openH264DllPath.stringValue, 3000);
+
+            if (revealRequested)
+                RevealFolder(revealPath);
+
+            if (installRequested)
+            {
+                OpenH264InstallWindow.ShowWindow((installedHelperPath, installedDllPath) =>
+                {
+                    serializedObject.Update();
+                    openH264HelperPath.stringValue = installedHelperPath;
+                    openH264DllPath.stringValue = installedDllPath;
+                    serializedObject.ApplyModifiedProperties();
+                    _openH264Check = OpenH264ExecutableCheck.Check(installedHelperPath, installedDllPath, 3000);
+                    Repaint();
+                });
+            }
+
+            if (licenseRequested)
+                Application.OpenURL(OpenH264OfficialBinaryManifest.BinaryLicenseUrl);
+
+            DrawOpenH264Status(openH264HelperPath.stringValue, openH264DllPath.stringValue);
+            EditorGUILayout.HelpBox(OpenH264Attribution, MessageType.None);
+
+            EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
+            EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(openH264MaxInputQueue, new GUIContent("Max Input Queue"));
+            EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }
 
         private void DrawPublishRateSection()
@@ -296,6 +413,44 @@ namespace Unity.FoxgloveSDK.Editor
                 ffmpegPath.stringValue = selected;
         }
 
+        private static void DrawOpenH264PathField(
+            string label,
+            SerializedProperty property,
+            string dialogTitle,
+            string extension,
+            Action onChanged)
+        {
+            EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUI.BeginChangeCheck();
+                var nextPath = EditorGUILayout.TextField(property.stringValue);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    property.stringValue = nextPath;
+                    onChanged?.Invoke();
+                }
+
+                if (GUILayout.Button("...", GUILayout.Width(30)))
+                {
+                    BrowseOpenH264Path(property, dialogTitle, extension);
+                    onChanged?.Invoke();
+                }
+            }
+        }
+
+        private static void BrowseOpenH264Path(SerializedProperty property, string dialogTitle, string extension)
+        {
+            var current = property.stringValue;
+            var defaultDir = "";
+            if (!string.IsNullOrWhiteSpace(current) && Path.IsPathRooted(current))
+                defaultDir = File.Exists(current) ? Path.GetDirectoryName(current) : Path.GetDirectoryName(current);
+
+            var selected = EditorUtility.OpenFilePanel(dialogTitle, defaultDir ?? "", extension);
+            if (!string.IsNullOrEmpty(selected))
+                property.stringValue = selected;
+        }
+
         private static bool CanRevealFfmpegFolder(string configuredPath)
             => !string.IsNullOrEmpty(GetFfmpegFolderPath(configuredPath));
 
@@ -342,6 +497,55 @@ namespace Unity.FoxgloveSDK.Editor
             return configuredPath;
         }
 
+        private static bool CanRevealFolder(string configuredPath)
+            => !string.IsNullOrEmpty(GetFolderPath(configuredPath));
+
+        private static void RevealFolder(string configuredPath)
+        {
+            var dir = GetFolderPath(configuredPath);
+            if (string.IsNullOrEmpty(dir))
+                return;
+
+            EditorUtility.OpenWithDefaultApp(dir);
+        }
+
+        private static string GetFolderPath(string configuredPath)
+        {
+            if (string.IsNullOrWhiteSpace(configuredPath) || !Path.IsPathRooted(configuredPath))
+                return "";
+
+            try
+            {
+                if (File.Exists(configuredPath))
+                    return Path.GetDirectoryName(configuredPath) ?? "";
+
+                if (Directory.Exists(configuredPath))
+                    return configuredPath;
+
+                var dir = Path.GetDirectoryName(configuredPath);
+                return !string.IsNullOrEmpty(dir) && Directory.Exists(dir) ? dir : "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private string GetRevealOpenH264Path(string dllPath, string helperPath)
+        {
+            if (!string.IsNullOrWhiteSpace(_openH264Check.DllPath)
+                && Path.IsPathRooted(_openH264Check.DllPath)
+                && File.Exists(_openH264Check.DllPath))
+            {
+                return _openH264Check.DllPath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dllPath))
+                return dllPath;
+
+            return helperPath;
+        }
+
         private void DrawFfmpegStatus(string configuredPath)
         {
             switch (_ffmpegCheck.Status)
@@ -374,6 +578,140 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool DrawFfmpegHelpAction()
             => GUILayout.Button("FFmpeg Help...");
+
+        private void DrawOpenH264Status(string helperPath, string dllPath)
+        {
+            switch (_openH264Check.Status)
+            {
+                case OpenH264ExecutableStatus.Found:
+                    var foundMessage = "Found: OpenH264 helper and DLL validated.";
+                    if (!string.IsNullOrEmpty(_openH264Check.HelperPath))
+                        foundMessage += "\nHelper: " + _openH264Check.HelperPath;
+                    if (!string.IsNullOrEmpty(_openH264Check.DllPath))
+                        foundMessage += "\nDLL: " + _openH264Check.DllPath;
+                    EditorGUILayout.HelpBox(foundMessage, MessageType.Info);
+                    break;
+                case OpenH264ExecutableStatus.Missing:
+                    EditorGUILayout.HelpBox(
+                        string.IsNullOrEmpty(_openH264Check.ErrorMessage)
+                            ? "OpenH264 helper or DLL was not found. Choose both paths manually or use Install OpenH264 Runtime... to install the local helper and official Cisco DLL."
+                            : _openH264Check.ErrorMessage,
+                        MessageType.Warning);
+                    break;
+                case OpenH264ExecutableStatus.Invalid:
+                    EditorGUILayout.HelpBox(
+                        string.IsNullOrEmpty(_openH264Check.ErrorMessage)
+                            ? "OpenH264 validation failed."
+                            : _openH264Check.ErrorMessage,
+                        MessageType.Error);
+                    break;
+                case OpenH264ExecutableStatus.NotChecked:
+                default:
+                    var helperLabel = string.IsNullOrWhiteSpace(helperPath) ? "not configured" : helperPath;
+                    var dllLabel = string.IsNullOrWhiteSpace(dllPath) ? "not configured" : dllPath;
+                    EditorGUILayout.HelpBox("Status: Not Checked\nHelper: " + helperLabel + "\nDLL: " + dllLabel, MessageType.None);
+                    break;
+            }
+        }
+
+        private sealed class OpenH264InstallWindow : EditorWindow
+        {
+            private Action<string, string> _onInstalled;
+            private Vector2 _scroll;
+            private string _installRoot;
+            private string _statusMessage;
+            private MessageType _statusType;
+
+            public static void ShowWindow(Action<string, string> onInstalled)
+            {
+                var window = CreateInstance<OpenH264InstallWindow>();
+                window.titleContent = new GUIContent("Install OpenH264 Runtime");
+                window.minSize = new Vector2(640, 360);
+                window._onInstalled = onInstalled;
+                window._installRoot = OpenH264InstallLocation.GetPreferredInstallRoot();
+                window.ShowUtility();
+            }
+
+            private void OnGUI()
+            {
+                _scroll = EditorGUILayout.BeginScrollView(_scroll);
+
+                EditorGUILayout.LabelField("OpenH264 runtime is required for H.264 (OpenH264) camera video.", EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(
+                    "The SDK can download Cisco's official pinned OpenH264 DLL and build the local helper executable from SDK-shipped source and OpenH264 headers. It will not modify PATH, write to project folders, or require admin rights. After validation, only this camera component's OpenH264 helper and DLL paths are updated.",
+                    MessageType.Info);
+                EditorGUILayout.HelpBox(
+                    "Cisco's DLL is downloaded by this machine as an explicit user action. The helper executable is built locally and does not bundle OpenH264 codec code.",
+                    MessageType.Warning);
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Source", OpenH264OfficialBinaryManifest.DownloadUrl);
+                EditorGUILayout.LabelField("Release", OpenH264OfficialBinaryManifest.Version);
+                EditorGUILayout.LabelField("Approximate Size", OpenH264OfficialBinaryManifest.ApproximateSizeLabel);
+                EditorGUILayout.HelpBox(
+                    OpenH264OfficialBinaryManifest.Attribution + "\nConfirm Cisco's binary license is appropriate for your project before installing.",
+                    MessageType.Warning);
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Install Location", EditorStyles.boldLabel);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    _installRoot = EditorGUILayout.TextField(_installRoot);
+                    if (GUILayout.Button("Change...", GUILayout.Width(120)))
+                    {
+                        var selected = EditorUtility.OpenFolderPanel("Select OpenH264 Install Location", _installRoot, "");
+                        if (!string.IsNullOrEmpty(selected))
+                            _installRoot = selected;
+                    }
+                }
+
+                EditorGUILayout.LabelField("Runtime Directory", OpenH264InstallLocation.GetVersionedDirectory(_installRoot));
+                EditorGUILayout.LabelField("Helper Target", OpenH264InstallLocation.GetFinalHelperPath(_installRoot));
+                EditorGUILayout.LabelField("DLL Target", OpenH264InstallLocation.GetFinalDllPath(_installRoot));
+
+                if (!string.IsNullOrEmpty(_statusMessage))
+                    EditorGUILayout.HelpBox(_statusMessage, _statusType);
+
+                EditorGUILayout.EndScrollView();
+
+                EditorGUILayout.Space();
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Manual Download"))
+                        Application.OpenURL(OpenH264OfficialBinaryManifest.ReleasePageUrl);
+
+                    if (GUILayout.Button("Install OpenH264 Runtime"))
+                        Install();
+
+                    if (GUILayout.Button("Cancel"))
+                        Close();
+                }
+            }
+
+            private void Install()
+            {
+                if (!OpenH264InstallLocation.IsAllowedInstallRoot(_installRoot, out var reason))
+                {
+                    _statusMessage = reason;
+                    _statusType = MessageType.Error;
+                    return;
+                }
+
+                var result = OpenH264OfficialBinaryInstaller.Install(_installRoot);
+                if (result.Success)
+                {
+                    OpenH264InstallLocation.SavePreferredInstallRoot(_installRoot);
+                    _onInstalled?.Invoke(result.HelperPath, result.DllPath);
+                    _statusMessage = "Installed OpenH264 runtime:\nHelper: " + result.HelperPath + "\nDLL: " + result.DllPath;
+                    _statusType = MessageType.Info;
+                    Close();
+                    return;
+                }
+
+                _statusMessage = result.ErrorMessage;
+                _statusType = MessageType.Error;
+            }
+        }
 
         private sealed class FfmpegHelpWindow : EditorWindow
         {

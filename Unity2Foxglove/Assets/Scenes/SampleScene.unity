@@ -270,7 +270,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 0}
-  _topic: /unity/camera
+  _topic: 
   _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1
@@ -287,6 +287,9 @@ MonoBehaviour:
   _videoKeyframeInterval: 30
   _videoMaxOutputQueue: 4
   _logEncoderStderr: 0
+  _openH264HelperPath: 
+  _openH264DllPath: 
+  _openH264MaxInputQueue: 2
   _enableBackpressureAdaptation: 0
   _backpressureCooldownSeconds: 0.5
   _maxEncodedBytes: 0

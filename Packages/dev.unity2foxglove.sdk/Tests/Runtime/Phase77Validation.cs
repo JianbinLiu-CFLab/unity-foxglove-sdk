@@ -50,8 +50,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "77D-3: help action is always visible in FFmpeg video modes");
             Check(!source.Contains("FfmpegInstaller") && !source.Contains("FfmpegInstallManifest") && !source.Contains("DownloadFfmpeg"),
                 "77D-4: camera editor does not call automatic installer workflow");
-            Check(!source.Contains("GUILayout.Button(\"Install FFmpeg\")") && !source.Contains("Install Location") && !source.Contains("Final Target"),
-                "77D-5: help window has no one-click install controls");
+            Check(!source.Contains("GUILayout.Button(\"Install FFmpeg\")")
+                  && !source.Contains("FfmpegInstallLocation")
+                  && !source.Contains("Download FFmpeg"),
+                "77D-5: FFmpeg help window has no one-click FFmpeg install controls");
             Check(source.Contains("does not bundle, download, install, or modify PATH"),
                 "77D-6: help window explains why the SDK does not auto-install FFmpeg");
             Check(source.Contains("GPL") && source.Contains("libx264") && source.Contains("libx265"),

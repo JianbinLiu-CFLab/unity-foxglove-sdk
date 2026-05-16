@@ -146,7 +146,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         var height = PositiveDimension(_height);
         var rgb = request.GetData<byte>().ToArray();
         var i420 = new byte[width * height * 3 / 2];
-        if (!TryConvertRgb24ToI420(rgb, width, height, i420, out var error))
+        if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb, width, height, i420, flipVertical: true, out var error))
         {
             LogConversionFailure(error);
             return;

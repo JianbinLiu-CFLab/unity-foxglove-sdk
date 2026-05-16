@@ -45,8 +45,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "80A-2: SDK package.json has no OpenH264 or WebRTC dependency");
 
             var cameraOutputMode = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
-            Check(!ContainsAny(cameraOutputMode, "OpenH264", "H264OpenH264"),
-                "80A-3: production CameraOutputMode does not include OpenH264");
+            var phase81PromotionExists = File.Exists(Path.Combine(
+                FindRepoRoot() ?? "",
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Tests",
+                "Runtime",
+                "Phase81Validation.cs"));
+            Check(phase81PromotionExists || !ContainsAny(cameraOutputMode, "OpenH264", "H264OpenH264"),
+                "80A-3: production CameraOutputMode excludes OpenH264 until Phase 81 promotion");
 
             Check(!HasCommittedOpenH264BinaryArtifacts(),
                 "80A-4: no OpenH264 binary artifacts are committed under package/assets paths");

@@ -16,15 +16,16 @@ The repository already ignores `third-party/`, so OpenH264 source and build outp
 
 OpenH264's documented Windows source build path may require MSVC Build Tools or Visual Studio C++ workload, Cygwin `make`, and NASM. If those tools are missing, record Phase 80 as `BLOCKED` with the exact missing tool.
 
-After OpenH264 is built from source, compile `openh264_probe_encoder.cpp` against the local headers and library. The exact library output path can vary by OpenH264 build route, so adjust include and library paths to the local build.
+For Phase 81 and newer, the helper dynamically loads Cisco's OpenH264 library on Windows through `--openh264-dll <path>`. The helper still needs OpenH264 headers at compile time, but it no longer needs to link against `openh264.lib` on Windows.
+
+After OpenH264 source is available, compile `openh264_probe_encoder.cpp` against the local headers. The exact include path can vary by OpenH264 build route, so adjust it to the local checkout.
 
 Example shape:
 
 ```powershell
 cl /EHsc /std:c++17 `
-  /I third-party\openh264\codec\api\svc `
+  /I third-party\openh264\codec\api\wels `
   Scripts\native\openh264_probe\openh264_probe_encoder.cpp `
-  /link /LIBPATH:third-party\openh264 openh264.lib `
   /OUT:third-party\openh264_probe_encoder.exe
 ```
 
@@ -50,10 +51,11 @@ The probe topic is isolated at `/unity/camera/openh264_probe` so it does not col
 1. Open the `Unity2Foxglove` SampleScene.
 2. Add `Foxglove > Experimental > OpenH264 Source Probe Publisher`.
 3. Set the helper executable path to a locally built helper under an ignored workspace such as `third-party/`.
-4. Enter Play Mode and connect Foxglove.
-5. Open `/unity/camera/openh264_probe` in an Image panel.
-6. Record 10-20 seconds of MCAP and reopen it directly in Foxglove.
-7. Confirm existing JPEG and FFmpeg camera modes are unchanged.
+4. Set the OpenH264 DLL path to a Cisco official binary or a locally built compatible OpenH264 library.
+5. Enter Play Mode and connect Foxglove.
+6. Open `/unity/camera/openh264_probe` in an Image panel.
+7. Record 10-20 seconds of MCAP and reopen it directly in Foxglove.
+8. Confirm existing JPEG and FFmpeg camera modes are unchanged.
 
 ## Result States
 
