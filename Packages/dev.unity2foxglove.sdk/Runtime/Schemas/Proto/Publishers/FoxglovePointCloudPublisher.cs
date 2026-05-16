@@ -6,6 +6,7 @@
 
 using System;
 using Foxglove.Schemas;
+using Foxglove.Schemas.PointCloud;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Util;
@@ -19,6 +20,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
+        [Header("Point Cloud Output")]
+        [SerializeField] private PointCloudOutputMode _outputMode = PointCloudOutputMode.Raw;
+
         [Header("Point Cloud")]
         [SerializeField] private string _frameId = "unity_world";
         [SerializeField] private Transform[] _pointSources;
@@ -34,13 +38,18 @@ namespace Unity.FoxgloveSDK.Components
         private PointCloudFrame _pendingFrame;
         private bool _warnedPointCloudBudget;
         private bool _warnedPendingDrop;
+        private bool _warnedDracoFailure;
 
-        protected override string SchemaName => FoxgloveSchemaDefinitions.PointCloudSchemaName;
-        public override bool SupportsProtobufEncoding => true;
+        private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
+        protected override string SchemaName => SchemaNameOverride;
+        protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
+        protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
+        public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
+        public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
 
-        private void Awake()
+        protected virtual void Awake()
         {
-            if (string.IsNullOrEmpty(_topic)) _topic = "/unity/point_cloud";
+            if (string.IsNullOrEmpty(_topic)) _topic = DefaultTopic;
         }
 
         protected override void Reset()
@@ -78,7 +87,7 @@ namespace Unity.FoxgloveSDK.Components
             PublishPreparedFrame(prepared, logTimeNs);
         }
 
-        private void Update()
+        protected virtual void Update()
         {
             if (_manager == null) return;
             if (!_publishOnEnable) return;
@@ -95,7 +104,18 @@ namespace Unity.FoxgloveSDK.Components
             PublishPreparedFrame(frame, unixNs);
         }
 
-        private void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
+        protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
+        {
+            if (_outputMode == PointCloudOutputMode.Draco)
+            {
+                PublishDracoFrame(frame, unixNs);
+                return;
+            }
+
+            PublishRawFrame(frame, unixNs);
+        }
+
+        private void PublishRawFrame(PointCloudFrame frame, ulong unixNs)
         {
             if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
@@ -107,7 +127,32 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
+        private void PublishDracoFrame(PointCloudFrame frame, ulong unixNs)
+        {
+            if (frame == null || frame.Points.Count == 0)
+                return;
+
+            if (!DracoPointCloudNativeEncoder.TryEncode(frame, out var dracoPayload, out var encodeError))
+            {
+                LogDracoFailure((string.IsNullOrWhiteSpace(encodeError) ? "Native Draco encode failed." : encodeError) + " Draco mode publishes nothing.");
+                return;
+            }
+
+            _warnedDracoFailure = false;
+            var payload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
+            PublishProto(payload, unixNs);
+        }
+
+        private void LogDracoFailure(string message)
+        {
+            if (_warnedDracoFailure)
+                return;
+
+            _warnedDracoFailure = true;
+            Debug.LogWarning("[Foxglove] Draco point-cloud mode disabled: " + message);
+        }
+
+        protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
         {
             if (frame == null)
                 return null;

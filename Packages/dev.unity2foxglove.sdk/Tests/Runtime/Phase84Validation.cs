@@ -97,22 +97,26 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("BuildVoxelSampleIndices"),
                 "84D-3: point cloud publisher delegates voxel sampling to PointCloudQoS");
 
-            var prepare = Slice(source, "private PointCloudFrame PrepareFrameForQoS", "private void WarnPointCloudReduced");
+            var prepare = Slice(source, "protected virtual PointCloudFrame PrepareFrameForQoS", "private void WarnPointCloudReduced");
             CheckOrdered(prepare, "PointCloudSamplingMode.VoxelGrid", "BuildVoxelSampleIndices",
                 "84D-4: PrepareFrameForQoS checks VoxelGrid before voxel sampling");
             CheckOrdered(prepare, "BuildVoxelSampleIndices", "BuildUniformSampleIndices",
                 "84D-5: voxel output can still fall back to uniform budget reduction");
 
-            var update = Slice(source, "private void Update()", "private void PublishPreparedFrame");
+            var update = Slice(source, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "PrepareFrameForQoS",
                 "84D-6: Update preflights demand before voxel/QoS preparation");
 
-            var publishFrame = Slice(source, "public void PublishFrame", "private void Update()");
+            var publishFrame = Slice(source, "public void PublishFrame", "protected virtual void Update()");
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PrepareFrameForQoS",
                 "84D-7: PublishFrame preflights demand before voxel/QoS preparation");
 
-            Check(!source.Contains("CompressedPointCloud") && !source.Contains("Draco"),
-                "84D-8: Phase 84 keeps raw PointCloud path without Draco or CompressedPointCloud");
+            Check(source.Contains("PublishRawFrame")
+                  && source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
+                  && source.Contains("PointCloudMessageBuilder.CreateJson(frame)")
+                  && source.Contains("if (_outputMode == PointCloudOutputMode.Draco)")
+                  && source.Contains("PublishDracoFrame(frame, unixNs)"),
+                "84D-8: Phase 84 raw PointCloud path remains explicit while later Draco output is mode-gated");
         }
 
         private static void CheckOrdered(string text, string before, string after, string name)

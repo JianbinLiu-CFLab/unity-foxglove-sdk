@@ -8,7 +8,7 @@ Phase 49 adds dedicated Unity components for:
 - `foxglove.LaserScan`
 - `foxglove.CameraCalibration`
 
-Each component supports JSON and protobuf. Protobuf is preferred for high-rate sensor streams because binary arrays are sent as protobuf bytes or repeated numeric fields instead of JSON text.
+Each raw typed sensor component supports JSON and protobuf. Protobuf is preferred for high-rate sensor streams because binary arrays are sent as protobuf bytes or repeated numeric fields instead of JSON text.
 
 ## 2. Encoding Behavior
 
@@ -18,16 +18,31 @@ The components follow the same publisher encoding policy as the rest of the pack
 - If `FoxgloveManager` uses `Json`, they advertise JSON schemas and publish JSON payloads.
 - If per-publisher overrides are enabled, each component can override the manager default.
 
-This means you can switch sensor publishing between JSON and protobuf from the Inspector without changing scene scripts.
+This means you can switch raw sensor publishing between JSON and protobuf from the Inspector without changing scene scripts. Optional compressed modes may be protobuf-only when their Foxglove schema requires binary payloads.
 
 ## 3. Point Cloud Publisher
 
-Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side `foxglove.PointCloud` topic.
+Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side point-cloud topic.
 
-Default topic:
+`Point Cloud Output Mode` selects the wire schema:
+
+| Mode | Default topic | Schema | Encoding | Dependency |
+|---|---|---|---|---|
+| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` | JSON or protobuf | none |
+| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` | protobuf only | bundled Windows native plugin |
+
+Raw mode is the default and dependency-free path.
+
+Raw default topic:
 
 ```text
 /unity/point_cloud
+```
+
+Draco default topic:
+
+```text
+/unity/point_cloud_draco
 ```
 
 The component can build a simple point cloud from assigned transforms or from child transforms. This is useful for quick visualization smoke tests.
@@ -53,6 +68,10 @@ frame.Points.Add(new PointCloudPoint
 
 pointCloudPublisher.SetFrame(frame);
 ```
+
+In Draco mode, the same sampled `PointCloudFrame` is encoded by the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. The publisher emits `foxglove.CompressedPointCloud` with format = `draco`. If the native plugin is missing or incompatible, Draco mode logs a warning and publishes nothing until the plugin is restored or the component is switched back to raw mode.
+
+Phase 89 keeps native Draco encode synchronous in the Unity publish/update path. Large frames can block publishing while they encode. Use QoS budgets, test with `Check Draco`, and keep raw mode available for dependency-free or unsupported-platform point clouds.
 
 ### 3.1 Field Layout
 

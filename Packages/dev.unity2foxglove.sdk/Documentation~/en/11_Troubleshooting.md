@@ -41,6 +41,17 @@ Check:
 - `/scene` is visible if you expect cube primitives.
 - Coordinate mode matches your expectation.
 
+For point clouds:
+
+- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud`.
+- Draco `Point Cloud Output Mode` publishes protobuf-only `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` with format = `draco`.
+- If you switched output modes while Foxglove was already connected, reconnect so the 3D panel sees the updated topic and schema.
+- If Draco mode is selected, click `Check Draco` in the Inspector and fix any native plugin warning before expecting points to appear.
+
+Draco mode uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible native plugin binaries mean Draco mode logs a warning and publishes nothing. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
+
+Phase 89 uses a synchronous native Draco encode path. Large frames can block publish/update work while they encode; lower point budgets or return to raw mode while diagnosing.
+
 ## 6. Camera Image Is Blank
 
 Check:
