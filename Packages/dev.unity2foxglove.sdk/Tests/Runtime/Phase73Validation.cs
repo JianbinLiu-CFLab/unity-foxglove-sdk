@@ -256,7 +256,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(sceneUpdate, "ShouldPreparePublishPayload()", "CreateMessage()", "73G-7: scene cube preflights before JSON scene construction");
 
             var pointSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var pointUpdate = Slice(pointSource, "private void Update()", "private void PublishPreparedFrame");
+            var pointUpdate = Slice(pointSource, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(pointUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-8: point cloud preflights after cadence");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "73G-9: point cloud preflights before frame QoS copy");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "CreateFrameFromTransforms", "73G-10: point cloud preflights before child transform scan");

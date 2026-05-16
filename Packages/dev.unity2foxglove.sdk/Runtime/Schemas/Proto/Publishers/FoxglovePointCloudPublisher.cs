@@ -35,12 +35,14 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedPointCloudBudget;
         private bool _warnedPendingDrop;
 
-        protected override string SchemaName => FoxgloveSchemaDefinitions.PointCloudSchemaName;
+        protected override string SchemaName => SchemaNameOverride;
+        protected virtual string SchemaNameOverride => FoxgloveSchemaDefinitions.PointCloudSchemaName;
+        protected virtual string DefaultTopic => "/unity/point_cloud";
         public override bool SupportsProtobufEncoding => true;
 
-        private void Awake()
+        protected virtual void Awake()
         {
-            if (string.IsNullOrEmpty(_topic)) _topic = "/unity/point_cloud";
+            if (string.IsNullOrEmpty(_topic)) _topic = DefaultTopic;
         }
 
         protected override void Reset()
@@ -78,7 +80,7 @@ namespace Unity.FoxgloveSDK.Components
             PublishPreparedFrame(prepared, logTimeNs);
         }
 
-        private void Update()
+        protected virtual void Update()
         {
             if (_manager == null) return;
             if (!_publishOnEnable) return;
@@ -95,7 +97,7 @@ namespace Unity.FoxgloveSDK.Components
             PublishPreparedFrame(frame, unixNs);
         }
 
-        private void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
+        protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
         {
             if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
@@ -107,7 +109,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
+        protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
         {
             if (frame == null)
                 return null;

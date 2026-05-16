@@ -101,12 +101,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("PointCloudSamplingMode"),
                 "83D-5: point cloud publisher uses explicit sampling mode");
 
-            var update = Slice(source, "private void Update()", "private void PublishPreparedFrame");
+            var update = Slice(source, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "83D-6: Update preflights demand before QoS copy");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "CreateFrameFromTransforms", "83D-7: Update preflights demand before transform scan");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "_pendingFrame = null", "83D-8: Update preflights demand before pending-frame consumption");
 
-            var publishFrame = Slice(source, "public void PublishFrame", "private void Update()");
+            var publishFrame = Slice(source, "public void PublishFrame", "protected virtual void Update()");
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "83D-9: PublishFrame preflights demand before QoS copy");
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PublishPreparedFrame", "83D-10: PublishFrame preflights demand before publish");
             Check(publishFrame.Contains("frame == null") && publishFrame.Contains("_manager == null"),

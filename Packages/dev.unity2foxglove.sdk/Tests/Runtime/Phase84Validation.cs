@@ -97,17 +97,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("BuildVoxelSampleIndices"),
                 "84D-3: point cloud publisher delegates voxel sampling to PointCloudQoS");
 
-            var prepare = Slice(source, "private PointCloudFrame PrepareFrameForQoS", "private void WarnPointCloudReduced");
+            var prepare = Slice(source, "protected virtual PointCloudFrame PrepareFrameForQoS", "private void WarnPointCloudReduced");
             CheckOrdered(prepare, "PointCloudSamplingMode.VoxelGrid", "BuildVoxelSampleIndices",
                 "84D-4: PrepareFrameForQoS checks VoxelGrid before voxel sampling");
             CheckOrdered(prepare, "BuildVoxelSampleIndices", "BuildUniformSampleIndices",
                 "84D-5: voxel output can still fall back to uniform budget reduction");
 
-            var update = Slice(source, "private void Update()", "private void PublishPreparedFrame");
+            var update = Slice(source, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "PrepareFrameForQoS",
                 "84D-6: Update preflights demand before voxel/QoS preparation");
 
-            var publishFrame = Slice(source, "public void PublishFrame", "private void Update()");
+            var publishFrame = Slice(source, "public void PublishFrame", "protected virtual void Update()");
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PrepareFrameForQoS",
                 "84D-7: PublishFrame preflights demand before voxel/QoS preparation");
 
