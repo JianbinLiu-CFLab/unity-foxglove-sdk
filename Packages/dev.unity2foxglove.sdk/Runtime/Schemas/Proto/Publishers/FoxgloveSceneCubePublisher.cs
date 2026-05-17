@@ -106,7 +106,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                if (!string.IsNullOrEmpty(_frameId)) return _frameId;
+                if (!string.IsNullOrEmpty(_frameId))
+                    return SanitizeFrameId(_frameId, gameObject.name);
                 if (_transformPublisher != null)
                 {
                     var child = _transformPublisher.ResolvedChildFrameId;

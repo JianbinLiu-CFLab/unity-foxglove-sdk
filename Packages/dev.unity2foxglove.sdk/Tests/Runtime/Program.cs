@@ -151,6 +151,45 @@ class Program
         if (argList.Contains("--phase95"))
             return RunPhase95Only();
 
+        if (argList.Contains("--phase96"))
+            return RunPhase96Only();
+
+        if (argList.Contains("--phase97"))
+            return RunPhase97Only();
+
+        if (argList.Contains("--phase97-health"))
+            return RunPhase97Health(argList);
+
+        if (argList.Contains("--phase98"))
+            return RunPhase98Only();
+
+        var phase98SampleSendAllIdx = argList.IndexOf("--phase98-sample-send-all");
+        if (phase98SampleSendAllIdx >= 0)
+        {
+            if (phase98SampleSendAllIdx + 2 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase98-sample-send-all requires host and port.");
+                return 1;
+            }
+
+            if (!int.TryParse(argList[phase98SampleSendAllIdx + 2], out var port))
+            {
+                Console.Error.WriteLine("--phase98-sample-send-all port must be an integer.");
+                return 1;
+            }
+
+            return RunPhase98SampleSendAll(argList[phase98SampleSendAllIdx + 1], port);
+        }
+
+        if (argList.Contains("--phase98-live"))
+            return RunPhase98Live(argList);
+
+        if (argList.Contains("--phase99"))
+            return RunPhase99Only();
+
+        if (argList.Contains("--phase99-live"))
+            return RunPhase99Live(argList);
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -489,6 +528,18 @@ class Program
             throw new ArgumentException($"{option} requires an integer value.");
 
         return value;
+    }
+
+    private static string ReadStringOption(List<string> argList, string option, string defaultValue)
+    {
+        var idx = argList.IndexOf(option);
+        if (idx < 0)
+            return defaultValue;
+
+        if (idx + 1 >= argList.Count)
+            throw new ArgumentException($"{option} requires a value.");
+
+        return argList[idx + 1];
     }
 
     private static int RunPhase69Only()
@@ -954,6 +1005,176 @@ class Program
         }
     }
 
+    private static int RunPhase96Only()
+    {
+        try
+        {
+            Phase96Validation.Validate();
+            Console.WriteLine("\nPhase 96 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase97Only()
+    {
+        try
+        {
+            Phase97Validation.Validate();
+            Console.WriteLine("\nPhase 97 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase97Health(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase97-health requires --json <path>.");
+                return 1;
+            }
+
+            var liveMode = argList.Contains("--phase97-live")
+                || string.Equals(
+                    Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_PHASE97_LIVE"),
+                    "1",
+                    StringComparison.Ordinal);
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var report = Phase97Validation.GenerateHealthReport(jsonPath, liveMode, ros2Path, host, port);
+
+            Console.WriteLine($"Phase 97 health report written: {jsonPath}");
+            Console.WriteLine($"Summary: {report.Summary}");
+            if (liveMode && report.Summary != Unity.FoxgloveSDK.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
+                return 1;
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase98Only()
+    {
+        try
+        {
+            Phase98Validation.Validate();
+            Console.WriteLine("\nPhase 98 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase98SampleSendAll(string host, int port)
+    {
+        try
+        {
+            var summary = Phase98Validation.SendAllSchemaSamples(host, port);
+            Console.WriteLine($"[phase98] sent frames={summary.SentFrames} totalWireBytes={summary.TotalWireBytes}");
+            Console.WriteLine($"[phase98] firstSchema={summary.FirstSchema}");
+            Console.WriteLine($"[phase98] lastSchema={summary.LastSchema}");
+            Console.WriteLine("[phase98] PASS all-schema sample sender");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase98Live(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase98-live requires --json <path>.");
+                return 1;
+            }
+
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var evidence = Phase98Validation.GenerateLiveEvidence(jsonPath, host, port, ros2Path);
+
+            Console.WriteLine($"Phase 98 live evidence written: {jsonPath}");
+            Console.WriteLine($"Health: {evidence.HealthSummary}");
+            Console.WriteLine($"Product topics: {evidence.ProductTopics?.Length ?? 0}");
+            Console.WriteLine($"All-schema frames: {evidence.AllSchema?.SentFrames ?? 0}");
+            return string.Equals(evidence.HealthSummary, "Ready", StringComparison.Ordinal) ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase99Only()
+    {
+        try
+        {
+            Phase99Validation.Validate();
+            Console.WriteLine("\nPhase 99 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase99Live(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase99-live requires --json <path>.");
+                return 1;
+            }
+
+            var evidenceDir = ReadStringOption(argList, "--evidence-dir", "");
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var report = Phase99Validation.GenerateLiveReport(jsonPath, evidenceDir, host, port, ros2Path);
+
+            Console.WriteLine($"Phase 99 release gate report written: {jsonPath}");
+            Console.WriteLine($"Verdict: {report.Verdict}");
+            Console.WriteLine($"Evidence items: {report.Evidence?.Count ?? 0}");
+            return report.Verdict == Phase99Verdict.Blocked ? 1 : 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -1110,6 +1331,14 @@ class Program
             Phase94Validation.Validate();
             Console.WriteLine();
             Phase95Validation.Validate();
+            Console.WriteLine();
+            Phase96Validation.Validate();
+            Console.WriteLine();
+            Phase97Validation.Validate();
+            Console.WriteLine();
+            Phase98Validation.Validate();
+            Console.WriteLine();
+            Phase99Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

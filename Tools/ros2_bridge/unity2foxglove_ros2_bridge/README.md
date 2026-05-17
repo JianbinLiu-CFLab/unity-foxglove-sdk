@@ -1,15 +1,17 @@
 # Unity2Foxglove ROS 2 Bridge Sidecar
 
-This is the experimental ROS 2 sidecar used by the Phase 94 bridge spike and the Phase 95 Unity-side ROS2 Bridge productization path. It listens on loopback TCP, receives `U2R2` bridge frames from Unity2Foxglove, and republishes their CDR payload bytes through `rclcpp::GenericPublisher`.
+This is the experimental ROS 2 sidecar used by the Phase 94 bridge spike and the Phase 95/96 Unity-side ROS2 Bridge productization path. It listens on loopback TCP, receives `U2R2` bridge frames from Unity2Foxglove, and republishes their CDR payload bytes through `rclcpp::GenericPublisher`.
 
 It remains intentionally narrow:
 
 - localhost only;
-- no QoS UI;
+- QoS is preset-driven from Unity2Foxglove (`Reliable Default`, `Sensor Data`, `Transient Local`, or `Custom` reliability/durability/depth);
 - no automatic ROS 2 install;
 - no Windows-native ROS 2 support;
 - Phase 94 Gate B validates only `/unity/tf`, `/unity/laser_scan`, and `/unity/point_cloud`;
-- Phase 95 adds Unity Inspector controls and background queue status, but the sidecar transport and ROS 2 environment are still manual.
+- Phase 95 adds Unity Inspector controls and background queue status, Phase 96 adds bridge topic namespace/override and QoS metadata, Phase 97 adds a lightweight `U2R2` `health_ping` / `health_pong` check, and Phase 98 adds a guided sample plus launch kit. The sidecar transport and ROS 2 environment are still manual.
+
+ROS 2 publisher QoS is fixed when the sidecar creates a topic publisher. If you change QoS for an existing topic, restart this sidecar or use a different effective bridge topic.
 
 Normal Unity2Foxglove Foxglove WebSocket use does not require ROS.
 
@@ -48,6 +50,14 @@ Default mode forwards the Phase 91/93 CDR encapsulation header unchanged:
 ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 --port 8767 --payload-format cdr-with-encapsulation
 ```
 
+Equivalent launch-file path for the package sample:
+
+```bash
+ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py host:=127.0.0.1 port:=8767 payload_format:=cdr-with-encapsulation
+```
+
+The launch file is installed by this package after `colcon build`.
+
 If `ros2 topic echo` sees the topics but cannot decode plausible values, retry the diagnostic body-only mode:
 
 ```bash
@@ -55,6 +65,10 @@ ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 
 ```
 
 Record which mode works for your ROS 2 distro and RMW implementation.
+
+## Health Check
+
+Unity2Foxglove can send a zero-payload `U2R2` `health_ping` to confirm that the process listening on the bridge port is this sidecar and speaks the expected protocol. The sidecar replies with `health_pong` and does not create or mutate ROS 2 publishers for health frames. Normal publish frames still require a non-empty CDR payload.
 
 ## Send Smoke Messages
 
@@ -87,3 +101,47 @@ ros2 topic hz /unity/point_cloud
 ```
 
 Gate B passes when the three topics appear with the expected `foxglove_msgs` types and echo/hz output is plausible.
+
+## ROS2 Bridge Sample Launch Kit
+
+The Phase 98 sample uses the `/unity2foxglove` bridge namespace and expects these product topics:
+
+```text
+/unity2foxglove/tf
+/unity2foxglove/scene
+/unity2foxglove/camera
+/unity2foxglove/camera_calibration
+/unity2foxglove/laser_scan
+/unity2foxglove/point_cloud
+/unity2foxglove/point_cloud_draco
+```
+
+Use the helper script to print preflight results and the exact launch command:
+
+```bash
+./scripts/run_bridge_sample.sh
+./scripts/run_bridge_sample.sh --run
+```
+
+Run the helper scripts from this package folder after sourcing the ROS2 workspace; `ros2 run` is not required for the helpers.
+
+PowerShell equivalent:
+
+```powershell
+.\scripts\run_bridge_sample.ps1
+.\scripts\run_bridge_sample.ps1 -Run
+```
+
+The scripts check `ros2`, `foxglove_msgs`, the six required product sample schemas, and the optional Draco schema. They do not install packages, edit shell profiles, or mutate PATH.
+
+Useful ROS2 checks for the sample:
+
+```bash
+ros2 topic list | grep unity2foxglove
+ros2 topic info /unity2foxglove/tf --verbose
+ros2 topic echo --once /unity2foxglove/tf
+ros2 topic echo --once /unity2foxglove/laser_scan
+ros2 topic echo --once /unity2foxglove/point_cloud
+ros2 topic hz /unity2foxglove/tf
+ros2 bag record /unity2foxglove/tf /unity2foxglove/laser_scan /unity2foxglove/point_cloud
+```

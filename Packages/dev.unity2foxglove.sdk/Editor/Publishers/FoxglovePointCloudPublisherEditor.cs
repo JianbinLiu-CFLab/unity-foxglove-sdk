@@ -198,11 +198,14 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawRos2BridgeSection()
         {
             var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
+            var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
             if (bridgeOutput != null)
                 PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOutput, "Bridge Output");
+            if (bridgeTopicOverride != null)
+                EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
             EditorGUILayout.HelpBox(
                 "Raw and Draco point clouds can mirror their ROS2 CDR payloads to the optional local bridge after the same QoS sampling step.",
                 MessageType.Info);
@@ -226,6 +229,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
                 PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
+                EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
+                EditorGUILayout.TextField("Effective Bridge QoS", publisher.EffectiveRos2BridgeQos.DisplaySummary);
             }
 
             if (publisher.ConfiguredManager != null

@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             var samplesDir = Path.Combine(pkgDir, "Samples~");
             var basicDir = Path.Combine(samplesDir, "BasicVisualization");
             var fullDir = Path.Combine(samplesDir, "FullDemoVisualization");
+            var ros2Dir = Path.Combine(samplesDir, "Ros2BridgeSample");
             var configsDir = Path.Combine(repoRoot, "Unity2Foxglove", "Configs");
 
             // ── 17A: package.json samples declaration ──
@@ -39,20 +40,23 @@ namespace Unity.FoxgloveSDK.Tests
             var pkg = JObject.Parse(pkgJson);
             Assert(pkg["samples"] != null, "package.json.samples exists");
             var samples = pkg["samples"] as JArray;
-            Assert(samples != null && samples.Count == 2, "package.json.samples has 2 entries");
+            Assert(samples != null && samples.Count == 3, "package.json.samples has 3 entries");
 
             bool hasBasic = false;
             bool hasFull = false;
+            bool hasRos2Bridge = false;
             foreach (var s in samples)
             {
                 var name = (string)s["displayName"];
                 var path = (string)s["path"];
                 if (name == "Basic Visualization") hasBasic = true;
                 if (name == "Full Demo Visualization") hasFull = true;
+                if (name == "ROS2 Bridge Sample") hasRos2Bridge = true;
                 Assert(Directory.Exists(Path.Combine(pkgDir, path)), $"Sample path exists: {path}");
             }
             Assert(hasBasic, "Basic Visualization sample declared");
             Assert(hasFull, "Full Demo Visualization sample declared");
+            Assert(hasRos2Bridge, "ROS2 Bridge Sample declared");
 
             // ── package core dependencies ──
             var deps = pkg["dependencies"] as JObject;
@@ -109,9 +113,21 @@ namespace Unity.FoxgloveSDK.Tests
             var sampleSyncSource = File.ReadAllText(Path.Combine(repoRoot, "Scripts", "samples", "sync_full_demo.py"));
             Assert(sampleSyncSource.Contains("\"  _recordingDirectory:\""), "FullDemo sample sync scrubs recording directory");
 
+            // ── 17D: ROS2 Bridge Sample ──
+            Assert(Directory.Exists(ros2Dir), "Ros2BridgeSample/ exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "README.md")), "Ros2BridgeSample README exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Scenes", "Ros2BridgeSample.unity")), "Ros2BridgeSample scene exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Scenes", "Ros2BridgeSample.unity.meta")), "Ros2BridgeSample scene meta exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "FoxgloveRos2BridgeLayout.json")), "Ros2BridgeSample layout exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "FoxgloveRos2BridgeLayout.json.meta")), "Ros2BridgeSample layout meta exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleController.cs")), "Ros2BridgeSample controller exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleController.cs.meta")), "Ros2BridgeSample controller meta exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleLaserScan.cs")), "Ros2BridgeSample laser script exists");
+            Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSamplePointCloud.cs")), "Ros2BridgeSample point cloud script exists");
+
             // ── Forbidden items in samples ──
             var forbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
-            foreach (var sampleDir in new[] { basicDir, fullDir })
+            foreach (var sampleDir in new[] { basicDir, fullDir, ros2Dir })
             {
                 foreach (var f in forbidden)
                 {
@@ -130,7 +146,7 @@ namespace Unity.FoxgloveSDK.Tests
             // ── No absolute paths in samples ──
             // .unity, .asset, and .inputactions are text YAML/JSON — these are
             // exactly where serialized local paths appear, so they MUST be scanned.
-            var sampleDirs = new[] { basicDir, fullDir };
+            var sampleDirs = new[] { basicDir, fullDir, ros2Dir };
             var windowsAbsPath = repoRoot.Replace('/', '\\');
             var unixAbsPath = repoRoot.Replace('\\', '/');
             foreach (var dir in sampleDirs)

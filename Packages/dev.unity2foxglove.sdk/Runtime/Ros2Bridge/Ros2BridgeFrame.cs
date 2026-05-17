@@ -15,6 +15,18 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public const string CdrEncoding = "cdr";
 
         public Ros2BridgeFrame(string topic, string schemaName, string encoding, ulong logTimeNs, ulong sequence, byte[] payload)
+            : this(topic, schemaName, encoding, logTimeNs, sequence, payload, null)
+        {
+        }
+
+        public Ros2BridgeFrame(
+            string topic,
+            string schemaName,
+            string encoding,
+            ulong logTimeNs,
+            ulong sequence,
+            byte[] payload,
+            Ros2BridgeQosProfile? qos)
         {
             if (string.IsNullOrWhiteSpace(topic) || !topic.StartsWith("/", StringComparison.Ordinal))
                 throw new ArgumentException("ROS 2 bridge topic must be non-empty and start with '/'.", nameof(topic));
@@ -33,6 +45,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             LogTimeNs = logTimeNs;
             Sequence = sequence;
             Payload = (byte[])payload.Clone();
+            Qos = qos;
+            ProfileName = qos.HasValue ? qos.Value.PresetName : null;
         }
 
         public string Topic { get; }
@@ -41,5 +55,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public ulong LogTimeNs { get; }
         public ulong Sequence { get; }
         public byte[] Payload { get; }
+        public string ProfileName { get; }
+        public Ros2BridgeQosProfile? Qos { get; }
     }
 }

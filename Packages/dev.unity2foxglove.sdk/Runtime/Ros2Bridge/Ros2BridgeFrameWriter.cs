@@ -32,6 +32,18 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 LogTimeNs = frame.LogTimeNs,
                 Sequence = frame.Sequence
             };
+            if (frame.Qos.HasValue)
+            {
+                var qos = frame.Qos.Value;
+                header.ProfileName = frame.ProfileName;
+                header.Qos = new FrameQos
+                {
+                    Reliability = qos.ReliabilityWireValue,
+                    Durability = qos.DurabilityWireValue,
+                    Depth = qos.Depth
+                };
+            }
+
             var headerJson = JsonConvert.SerializeObject(header, Formatting.None);
             var headerBytes = Encoding.UTF8.GetBytes(headerJson);
             if (headerBytes.Length > MaxHeaderBytes)
@@ -81,6 +93,24 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             [JsonProperty("sequence", Order = 5)]
             public ulong Sequence { get; set; }
+
+            [JsonProperty("profileName", Order = 6, NullValueHandling = NullValueHandling.Ignore)]
+            public string ProfileName { get; set; }
+
+            [JsonProperty("qos", Order = 7, NullValueHandling = NullValueHandling.Ignore)]
+            public FrameQos Qos { get; set; }
+        }
+
+        private sealed class FrameQos
+        {
+            [JsonProperty("reliability", Order = 1)]
+            public string Reliability { get; set; }
+
+            [JsonProperty("durability", Order = 2)]
+            public string Durability { get; set; }
+
+            [JsonProperty("depth", Order = 3)]
+            public int Depth { get; set; }
         }
     }
 }

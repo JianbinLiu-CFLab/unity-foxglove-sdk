@@ -27,7 +27,7 @@ EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 
 # Expected number of package samples declared in package.json.
-EXPECTED_SAMPLE_COUNT = 2
+EXPECTED_SAMPLE_COUNT = 3
 
 # Maximum problem count printed for long offender lists.
 MAX_REPORTED_OFFENDERS = 12
@@ -163,6 +163,7 @@ def check_package_identity(results: list[CheckResult], data: dict) -> None:
     expected_samples = {
         "Basic Visualization": "Samples~/BasicVisualization",
         "Full Demo Visualization": "Samples~/FullDemoVisualization",
+        "ROS2 Bridge Sample": "Samples~/Ros2BridgeSample",
     }
     for display_name, sample_path in expected_samples.items():
         match = next((s for s in samples if s.get("displayName") == display_name), None)

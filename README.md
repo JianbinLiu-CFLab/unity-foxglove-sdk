@@ -48,7 +48,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
-Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path.
+Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path. Bridge topic namespaces, per-publisher bridge topic overrides, and simple ROS 2 QoS presets affect only this mirror path.
 
 ## 1.2 Who This Is For
 
@@ -203,7 +203,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - Real-time data streaming (transform, scene entities, camera images)
 - Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON, Protobuf, or ROS2 mode
 - ROS2 output for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers using official Foxglove `ros2msg` schemas with CDR payloads
-- Optional ROS2 Bridge mirror output, disabled by default, for the validated publisher set through a localhost sidecar bridge
+- Optional ROS2 Bridge mirror output, disabled by default, for the validated publisher set through a localhost sidecar bridge, with bridge-only topic namespace/override and QoS presets
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
 - MCAP replay for transform/scene snapshot reconstruction, paused scrub scene updates, and bounded panel-history replay after seek debounce
@@ -219,7 +219,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - **Production authentication / authorization** - the shared token is a lightweight local/LAN gate, not OAuth, mTLS, users, roles, or permissions
 - **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
-- **Production ROS 2 bridge UX** - the current ROS 2 sidecar bridge is experimental, localhost-only, and has no Inspector health panel, QoS UI, installer, or remote-host support
+- **Production ROS 2 bridge distribution** - the current ROS 2 sidecar bridge is experimental, localhost-only, manual to build/run, and has no installer or remote-host support
 
 ### Security
 

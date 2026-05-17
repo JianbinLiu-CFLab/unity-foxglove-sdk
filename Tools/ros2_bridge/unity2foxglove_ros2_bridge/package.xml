@@ -11,6 +11,8 @@
   <depend>rclcpp</depend>
   <depend>foxglove_msgs</depend>
   <depend>nlohmann_json</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
