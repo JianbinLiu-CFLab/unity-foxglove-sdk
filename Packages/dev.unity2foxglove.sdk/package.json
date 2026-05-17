@@ -22,6 +22,11 @@
       "displayName": "Full Demo Visualization",
       "description": "Full demo scene mirroring the repository demo project, including Parameters, Services, FoxRun, MCAP, and playback workflows.",
       "path": "Samples~/FullDemoVisualization"
+    },
+    {
+      "displayName": "ROS2 Bridge Sample",
+      "description": "Guided Unity-to-ROS2 bridge sample with sidecar launch kit, health preflight, and Foxglove layout.",
+      "path": "Samples~/Ros2BridgeSample"
     }
   ]
 }

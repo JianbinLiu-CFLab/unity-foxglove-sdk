@@ -1,0 +1,141 @@
+{
+  "configById": {
+    "3D!ros2": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 14,
+        "phi": 68,
+        "thetaOffset": 45,
+        "targetOffset": [0, 0, 0],
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "fixedFrame": "unity_world",
+      "scene": {},
+      "transforms": {},
+      "topics": {
+        "/unity2foxglove/scene": { "visible": true },
+        "/unity2foxglove/point_cloud": { "visible": true },
+        "/unity2foxglove/point_cloud_draco": { "visible": true }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "drawBehind": false,
+          "instanceId": "90e663d7-152e-45a7-b758-53e1f50fcfd3",
+          "layerId": "foxglove.Grid",
+          "size": 10,
+          "divisions": 10,
+          "lineWidth": 1,
+          "color": "#248eff",
+          "position": [0, 0, 0],
+          "rotation": [0, 0, 0]
+        }
+      },
+      "publish": {},
+      "synchronize": false,
+      "imageMode": {}
+    },
+    "RawMessages!tf": {
+      "defaultExpanded": false,
+      "topicPath": "/unity2foxglove/tf"
+    },
+    "RawMessages!scan": {
+      "defaultExpanded": false,
+      "topicPath": "/unity2foxglove/laser_scan"
+    },
+    "RawMessages!pointcloud": {
+      "defaultExpanded": false,
+      "topicPath": "/unity2foxglove/point_cloud"
+    },
+    "Image!camera": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [0, 0, 0],
+        "targetOffset": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "thetaOffset": 60,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {},
+      "synchronize": false,
+      "imageMode": {
+        "imageTopic": "/unity2foxglove/camera"
+      }
+    },
+    "Plot!tf": {
+      "paths": [
+        { "value": "/unity2foxglove/tf.translation.x", "enabled": true },
+        { "value": "/unity2foxglove/tf.translation.y", "enabled": true },
+        { "value": "/unity2foxglove/tf.translation.z", "enabled": true }
+      ],
+      "minYValue": "",
+      "maxYValue": "",
+      "showLegend": true
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "direction": "row",
+    "first": "3D!ros2",
+    "second": {
+      "direction": "column",
+      "first": "Image!camera",
+      "second": {
+        "direction": "column",
+        "first": "RawMessages!tf",
+        "second": "Plot!tf",
+        "splitPercentage": 50
+      },
+      "splitPercentage": 45
+    },
+    "splitPercentage": 58
+  },
+  "savedProps": {
+    "topics": [
+      {
+        "topic": "/unity2foxglove/tf",
+        "schemaName": "foxglove_msgs/msg/FrameTransform"
+      },
+      {
+        "topic": "/unity2foxglove/scene",
+        "schemaName": "foxglove_msgs/msg/SceneUpdate"
+      },
+      {
+        "topic": "/unity2foxglove/camera",
+        "schemaName": "foxglove_msgs/msg/CompressedImage"
+      },
+      {
+        "topic": "/unity2foxglove/camera_calibration",
+        "schemaName": "foxglove_msgs/msg/CameraCalibration"
+      },
+      {
+        "topic": "/unity2foxglove/laser_scan",
+        "schemaName": "foxglove_msgs/msg/LaserScan"
+      },
+      {
+        "topic": "/unity2foxglove/point_cloud",
+        "schemaName": "foxglove_msgs/msg/PointCloud"
+      },
+      {
+        "topic": "/unity2foxglove/point_cloud_draco",
+        "schemaName": "foxglove_msgs/msg/CompressedPointCloud"
+      }
+    ]
+  }
+}
