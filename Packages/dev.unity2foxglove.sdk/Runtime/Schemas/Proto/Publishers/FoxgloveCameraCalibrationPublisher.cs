@@ -46,12 +46,15 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            if (!ShouldPrepareAnyPublishPayload()) return;
 
             var unixNs = CurrentLogTimeNs;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
             var calibration = BuildCalibration(unixNs);
+            byte[] ros2Payload = null;
 
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 var payload = CameraCalibrationMessageBuilder.SerializeProtobuf(
                     unixNs,
@@ -65,9 +68,9 @@ namespace Unity.FoxgloveSDK.Components
                     calibration.P);
                 PublishProto(payload, unixNs);
             }
-            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                var payload = Ros2CdrCameraCalibrationBuilder.Serialize(
+                ros2Payload = Ros2CdrCameraCalibrationBuilder.Serialize(
                     unixNs,
                     calibration.FrameId,
                     calibration.Width,
@@ -77,11 +80,26 @@ namespace Unity.FoxgloveSDK.Components
                     calibration.K,
                     calibration.R,
                     calibration.P);
-                PublishRos2(payload, unixNs);
+                PublishRos2(ros2Payload, unixNs);
             }
-            else
+            else if (publishWebSocket)
             {
                 Publish(calibration, unixNs);
+            }
+
+            if (publishBridge)
+            {
+                ros2Payload ??= Ros2CdrCameraCalibrationBuilder.Serialize(
+                    unixNs,
+                    calibration.FrameId,
+                    calibration.Width,
+                    calibration.Height,
+                    calibration.DistortionModel,
+                    calibration.D,
+                    calibration.K,
+                    calibration.R,
+                    calibration.P);
+                PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 

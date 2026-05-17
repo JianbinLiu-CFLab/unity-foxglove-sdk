@@ -48,7 +48,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
-Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. An experimental ROS 2 sidecar bridge is available under `Tools/ros2_bridge` for developers who explicitly want a localhost ROS 2 graph spike; it is optional and not part of the default Unity workflow.
+Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path.
 
 ## 1.2 Who This Is For
 
@@ -203,7 +203,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - Real-time data streaming (transform, scene entities, camera images)
 - Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON, Protobuf, or ROS2 mode
 - ROS2 output for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers using official Foxglove `ros2msg` schemas with CDR payloads
-- Optional experimental localhost ROS 2 sidecar bridge spike for three representative topics (`/unity/tf`, `/unity/laser_scan`, `/unity/point_cloud`)
+- Optional ROS2 Bridge mirror output, disabled by default, for the validated publisher set through a localhost sidecar bridge
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
 - MCAP replay for transform/scene snapshot reconstruction, paused scrub scene updates, and bounded panel-history replay after seek debounce

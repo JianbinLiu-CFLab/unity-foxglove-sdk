@@ -101,28 +101,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             WriteVector3(writer, value);
         }
 
-        /// <summary>Write geometry_msgs/Point from the generated protobuf Point3 type.</summary>
-        public static void WritePoint(Ros2CdrWriter writer, global::Foxglove.Point3 value)
-        {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-
-            writer.WriteFloat64(value?.X ?? 0.0);
-            writer.WriteFloat64(value?.Y ?? 0.0);
-            writer.WriteFloat64(value?.Z ?? 0.0);
-        }
-
-        /// <summary>Write geometry_msgs/Vector3 from the generated protobuf Vector3 type.</summary>
-        public static void WriteVector3(Ros2CdrWriter writer, global::Foxglove.Vector3 value)
-        {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-
-            writer.WriteFloat64(value?.X ?? 0.0);
-            writer.WriteFloat64(value?.Y ?? 0.0);
-            writer.WriteFloat64(value?.Z ?? 0.0);
-        }
-
         /// <summary>Write geometry_msgs/Vector3.</summary>
         public static void WriteVector3(Ros2CdrWriter writer, FoxgloveVector3 value)
         {
@@ -146,18 +124,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             writer.WriteFloat64(value?.W ?? 1.0);
         }
 
-        /// <summary>Write geometry_msgs/Quaternion from the generated protobuf Quaternion type.</summary>
-        public static void WriteQuaternion(Ros2CdrWriter writer, global::Foxglove.Quaternion value)
-        {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-
-            writer.WriteFloat64(value?.X ?? 0.0);
-            writer.WriteFloat64(value?.Y ?? 0.0);
-            writer.WriteFloat64(value?.Z ?? 0.0);
-            writer.WriteFloat64(value?.W ?? 1.0);
-        }
-
         /// <summary>Write geometry_msgs/Pose, defaulting to identity pose.</summary>
         public static void WritePose(Ros2CdrWriter writer, FoxglovePose value)
         {
@@ -165,16 +131,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 throw new ArgumentNullException(nameof(writer));
 
             WritePoint(writer, value?.Position);
-            WriteQuaternion(writer, value?.Orientation);
-        }
-
-        /// <summary>Write geometry_msgs/Pose from the generated protobuf Pose type.</summary>
-        public static void WritePose(Ros2CdrWriter writer, global::Foxglove.Pose value)
-        {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
-
-            WriteVector3(writer, value?.Position);
             WriteQuaternion(writer, value?.Orientation);
         }
 

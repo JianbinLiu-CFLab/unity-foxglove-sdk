@@ -48,7 +48,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            if (!ShouldPrepareAnyPublishPayload()) return;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
 
             var ranges = ResolveRanges();
             var intensities = _intensities ?? Array.Empty<double>();
@@ -65,21 +67,28 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = CurrentLogTimeNs;
             var startRad = _startAngleDegrees * Math.PI / 180.0;
             var endRad = _endAngleDegrees * Math.PI / 180.0;
+            byte[] ros2Payload = null;
 
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 var payload = LaserScanMessageBuilder.SerializeProtobuf(unixNs, _frameId, startRad, endRad, ranges, intensities);
                 PublishProto(payload, unixNs);
             }
-            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                var payload = Ros2CdrLaserScanBuilder.Serialize(unixNs, _frameId, startRad, endRad, ranges, intensities);
-                PublishRos2(payload, unixNs);
+                ros2Payload = Ros2CdrLaserScanBuilder.Serialize(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                PublishRos2(ros2Payload, unixNs);
             }
-            else
+            else if (publishWebSocket)
             {
                 var message = LaserScanMessageBuilder.CreateJson(unixNs, _frameId, startRad, endRad, ranges, intensities);
                 Publish(message, unixNs);
+            }
+
+            if (publishBridge)
+            {
+                ros2Payload ??= Ros2CdrLaserScanBuilder.Serialize(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 

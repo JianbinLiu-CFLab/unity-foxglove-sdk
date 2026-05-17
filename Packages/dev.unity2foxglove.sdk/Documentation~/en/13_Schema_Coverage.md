@@ -40,6 +40,8 @@ Phase 93 adds low-level full ROS 2 CDR payload parity for all 41 root ROS 2 `.ms
 
 Phase 94 adds an experimental localhost ROS 2 bridge spike. It proves that three representative schemas (`FrameTransform`, `LaserScan`, and `PointCloud`) can leave Unity2Foxglove as Phase 93 CDR payloads, enter a C++ `rclcpp::GenericPublisher` sidecar, and appear in a real ROS 2 graph. This bridge is optional, localhost-only, and intentionally separate from the normal Foxglove WebSocket path.
 
+Phase 95 productizes the Unity-side ROS2 Bridge mirror path for the seven validated publisher workflows. The bridge is still optional, disabled by default, and localhost sidecar based; it adds Manager and publisher Inspector controls, a bounded background send queue, and simple queued/sent/dropped/failed status without changing normal WebSocket publishing.
+
 The SDK also provides a productized `ROS2` publisher option for the validated Unity publisher workflows listed below. This is still a Foxglove WebSocket and MCAP path, not a ROS 2 node, DDS transport, or rosbag2 writer.
 
 ## 4. Generic Parity vs Dedicated Components

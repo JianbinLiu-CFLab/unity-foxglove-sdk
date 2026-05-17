@@ -85,7 +85,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             ResolveManager();
             if (_manager == null || frame == null) return;
-            if (!ShouldPreparePublishPayload()) return;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge) return;
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs);
             if (prepared == null || prepared.Points.Count == 0) return;
@@ -98,7 +100,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge) return;
 
             var unixNs = CurrentLogTimeNs;
             var frame = _pendingFrame != null ? PrepareFrameForQoS(_pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
@@ -122,17 +126,28 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishRawFrame(PointCloudFrame frame, ulong unixNs)
         {
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            byte[] ros2Payload = null;
+
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 PublishProto(PointCloudMessageBuilder.SerializeProtobuf(frame), unixNs);
             }
-            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                PublishRos2(Ros2CdrPointCloudBuilder.Serialize(frame), unixNs);
+                ros2Payload = Ros2CdrPointCloudBuilder.Serialize(frame);
+                PublishRos2(ros2Payload, unixNs);
             }
-            else
+            else if (publishWebSocket)
             {
                 Publish(PointCloudMessageBuilder.CreateJson(frame), unixNs);
+            }
+
+            if (publishBridge)
+            {
+                ros2Payload ??= Ros2CdrPointCloudBuilder.Serialize(frame);
+                PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 
@@ -148,14 +163,25 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _warnedDracoFailure = false;
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            byte[] ros2Payload = null;
+
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                PublishRos2(Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload), unixNs);
+                ros2Payload = Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
+                PublishRos2(ros2Payload, unixNs);
             }
-            else
+            else if (publishWebSocket)
             {
                 var payload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
                 PublishProto(payload, unixNs);
+            }
+
+            if (publishBridge)
+            {
+                ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
+                PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 
