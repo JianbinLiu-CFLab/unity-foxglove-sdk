@@ -93,6 +93,7 @@
     <Compile Include="Ros2CdrTestReader.cs" />
     <Compile Include="Phase91Validation.cs" />
     <Compile Include="Phase92Validation.cs" />
+    <Compile Include="Phase93Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>

@@ -122,6 +122,15 @@ namespace Unity.FoxgloveSDK.Tests
             return values;
         }
 
+        public uint[] ReadUInt32Sequence()
+        {
+            var length = checked((int)ReadUInt32());
+            var values = new uint[length];
+            for (var i = 0; i < values.Length; i++)
+                values[i] = ReadUInt32();
+            return values;
+        }
+
         public double[] ReadFloat64Fixed(int length)
         {
             var values = new double[length];

@@ -112,6 +112,15 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 WriteFloat64(values[i]);
         }
 
+        /// <summary>Write a uint32 sequence.</summary>
+        public void WriteUInt32Sequence(IReadOnlyList<uint> values)
+        {
+            values ??= Array.Empty<uint>();
+            WriteUInt32(checked((uint)values.Count));
+            for (var i = 0; i < values.Count; i++)
+                WriteUInt32(values[i]);
+        }
+
         /// <summary>Write a fixed-size float64 array.</summary>
         public void WriteFloat64Fixed(IReadOnlyList<double> values, int expectedLength, string fieldName)
         {
