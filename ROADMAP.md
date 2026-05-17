@@ -39,6 +39,18 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 - Added package metadata, samples, license files, release notes, third-party notices, and CI checks.
 - Hardened IL2CPP behavior, package paths, WebSocket parsing, MCAP bounds checks, and sample import workflows.
 
+### 1.7 High-Throughput Point Clouds
+
+- Added point-cloud QoS controls for point-count, packed-byte, stride, and voxel-grid sampling.
+- Added optional Draco compressed point-cloud output with a bundled Windows native plugin.
+- Kept raw `foxglove.PointCloud` as the default path while allowing `foxglove.CompressedPointCloud(draco)` as an opt-in mode.
+
+### 1.8 Optional ROS2 Bridge
+
+- Added an optional localhost ROS2 bridge mirror path for selected Unity publishers.
+- Added ROS2 message schema catalog support, CDR payload generation, bridge topic namespace controls, per-publisher topic overrides, simple QoS presets, and bridge health diagnostics.
+- Added a ROS2 bridge sample scene, Foxglove layout, launch file, WSL-friendly scripts, and manual validation notes for Unity, Foxglove, WSL Ubuntu, and ROS2 Jazzy.
+
 ## 2. Candidate Future Work
 
 ### 2.1 Documentation and Onboarding
@@ -72,11 +84,19 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 - Improve `[FoxRun]` diagnostics and generated-source visibility.
 - Keep reducing setup friction for users who only want "press Play and connect Foxglove."
 
+### 2.6 ROS2 and Data-Exchange Exploration
+
+- The current ROS2 bridge is optional, disabled by default, and sidecar-based. It is intended for local ROS2 graph integration without changing the default Foxglove WebSocket or MCAP workflows.
+- The project is evaluating, but not committing to, a future native ROS2 backend where Unity can participate directly as a ROS2 node without the sidecar forwarding process.
+- The project is also considering a broader data-exchange runtime model where Unity, Foxglove, MCAP, and ROS2 can act as configurable inputs and outputs. Possible future directions include ROS2 subscriptions into Unity, MCAP replay fanout to ROS2, and route policies that send the same topic stream to Foxglove, MCAP, ROS2, or Unity scene adapters.
+- RViz2-oriented standard ROS2 message mirrors, such as `sensor_msgs`, `tf2_msgs`, and `visualization_msgs`, are being considered separately from the existing `foxglove_msgs` bridge path.
+
 ## 3. Long-Term Ideas
 
 - Evaluate whether parts of the project should become standalone C# Foxglove protocol or MCAP libraries.
 - Keep the managed C# backend as the default path, with native backend exploration only if performance or platform needs justify it.
 - Explore higher-level logging APIs that feel closer to modern visual-debugging workflows while still using Foxglove and MCAP standards underneath.
+- Explore native ROS2 integration only if it can remain optional, well-isolated, and compatible with normal Unity package usage without ROS installed.
 
 ## 4. Development Notes
 

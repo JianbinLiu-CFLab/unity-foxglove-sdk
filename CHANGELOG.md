@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.8.0 - 2026-05-17
+
+### Added
+
+- Optional ROS2 bridge output path that mirrors selected Unity publisher CDR payloads to a localhost ROS2 sidecar.
+- ROS2 message schema catalog, minimal CDR writers, and publisher integration for transform, scene cube, camera, camera calibration, laser scan, raw point cloud, and Draco point cloud payloads.
+- ROS2 bridge topic namespace controls, per-publisher bridge topic overrides, simple QoS presets, queue/drop/failure counters, and Inspector health diagnostics.
+- ROS2 bridge sample scene, Foxglove layout, launch file, WSL-friendly run scripts, and package documentation for manual validation.
+- Release evidence checks covering package docs, bridge sample assets, sidecar launch behavior, layout topic wiring, and ROS2 bridge acceptance artifacts.
+
+### Changed
+
+- ROS2 bridge health checks now keep Windows-local `ros2` CLI setup separate from a valid WSL sidecar workflow.
+- The ROS2 bridge sample layout uses direct Foxglove WebSocket topics, while ROS2 sidecar topics keep their `/unity2foxglove` namespace.
+- Scene cube frame ids are sanitized consistently so transform and scene entity frames align in Foxglove 3D.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.8.0.
+
+### Verified
+
+- Runtime validation suite passed.
+- Targeted ROS2 bridge validation passed.
+- Release package validation passed.
+- Manual validation covered Unity Play Mode, Foxglove WebSocket panels, WSL Ubuntu 24.04, ROS2 Jazzy, sidecar launch, ROS2 topic list/info/echo, topic rate checks, QoS inspection, camera, laser scan, point cloud, scene cube, and Foxglove 3D rendering.
+
 ## 1.7.0 - 2026-05-17
 
 ### Added
