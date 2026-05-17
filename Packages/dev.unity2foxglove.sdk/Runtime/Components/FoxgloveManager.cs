@@ -75,6 +75,12 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _ros2BridgeAutoConnect = true;
         [SerializeField] private bool _defaultRos2BridgeOutputEnabled;
         [SerializeField] private bool _allowPublisherRos2BridgeOverride = true;
+        [Tooltip("Optional ROS2 Bridge namespace prefix, for example /robot1. WebSocket topics are unchanged.")]
+        [SerializeField] private string _ros2BridgeNamespace = "";
+        [SerializeField] private Ros2BridgeQosPreset _ros2BridgeQosPreset = Ros2BridgeQosPreset.ReliableDefault;
+        [SerializeField] private Ros2BridgeReliability _ros2BridgeCustomReliability = Ros2BridgeReliability.Reliable;
+        [SerializeField] private Ros2BridgeDurability _ros2BridgeCustomDurability = Ros2BridgeDurability.Volatile;
+        [SerializeField, Min(1)] private int _ros2BridgeCustomDepth = 10;
         [SerializeField, Min(1)] private int _ros2BridgeQueueCapacity = 1024;
         [SerializeField, Min(1)] private int _ros2BridgeReconnectIntervalMs = 1000;
         [SerializeField, Min(1)] private int _ros2BridgeSendTimeoutMs = 1000;
@@ -217,6 +223,38 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Whether individual publishers can override the manager ROS2 Bridge output default.</summary>
         public bool AllowPublisherRos2BridgeOverride => _allowPublisherRos2BridgeOverride;
+
+        /// <summary>Optional manager-level namespace applied only to ROS2 Bridge output topics.</summary>
+        public string Ros2BridgeNamespace
+        {
+            get
+            {
+                return Ros2BridgeTopicProfile.TryNormalizeRos2BridgeNamespace(_ros2BridgeNamespace, out var normalized, out _)
+                    ? normalized
+                    : string.Empty;
+            }
+        }
+
+        /// <summary>Manager-level ROS2 Bridge QoS preset.</summary>
+        public Ros2BridgeQosPreset Ros2BridgeQosPreset => _ros2BridgeQosPreset;
+
+        /// <summary>Resolve the active ROS2 Bridge QoS profile.</summary>
+        public Ros2BridgeQosProfile ResolveRos2BridgeQos()
+            => Ros2BridgeQosProfile.Resolve(
+                _ros2BridgeQosPreset,
+                _ros2BridgeCustomReliability,
+                _ros2BridgeCustomDurability,
+                _ros2BridgeCustomDepth);
+
+        /// <summary>Resolve an effective ROS2 Bridge topic without mutating the publisher's WebSocket topic.</summary>
+        public bool TryResolveRos2BridgeTopic(string publisherTopic, string overrideTopic, out string effectiveTopic, out string error)
+            => Ros2BridgeTopicProfile.TryResolveRos2BridgeTopic(_ros2BridgeNamespace, publisherTopic, overrideTopic, out effectiveTopic, out error);
+
+        /// <summary>Resolve an effective ROS2 Bridge topic, or an empty string when the profile is invalid.</summary>
+        public string ResolveRos2BridgeTopic(string publisherTopic, string overrideTopic)
+            => TryResolveRos2BridgeTopic(publisherTopic, overrideTopic, out var effectiveTopic, out _)
+                ? effectiveTopic
+                : string.Empty;
 
         /// <summary>
         /// True when replay is active and live publisher output should be suppressed to avoid duplicate topic advertisements.

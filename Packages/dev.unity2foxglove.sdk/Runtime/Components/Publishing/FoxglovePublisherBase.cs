@@ -34,6 +34,8 @@ namespace Unity.FoxgloveSDK.Components
         [Header("ROS2 Bridge")]
         [Tooltip("Mirror this publisher's ROS2 CDR payload to the optional local ROS2 Bridge sidecar.")]
         [SerializeField] protected Ros2BridgeOutputOverride _ros2BridgeOutput = Ros2BridgeOutputOverride.UseManager;
+        [Tooltip("Optional absolute ROS2 Bridge topic. Leave empty to use manager namespace plus this publisher topic.")]
+        [SerializeField] protected string _ros2BridgeTopicOverride = "";
 
         private FixedRatePublishState _publishRateState;
         private bool _warnedManagerMissing;
@@ -99,6 +101,32 @@ namespace Unity.FoxgloveSDK.Components
         /// Full ROS2 Bridge output resolution used by Inspector UI and publish helpers.
         /// </summary>
         public Ros2BridgeOutputResolution BridgeOutputResolution => ResolveRos2BridgeOutput();
+
+        /// <summary>Publisher-local ROS2 Bridge topic override.</summary>
+        public string Ros2BridgeTopicOverride => _ros2BridgeTopicOverride;
+
+        /// <summary>Resolved ROS2 Bridge topic after manager namespace and publisher override are applied.</summary>
+        public string EffectiveRos2BridgeTopic
+        {
+            get
+            {
+                if (_manager != null && _manager.TryResolveRos2BridgeTopic(_topic, _ros2BridgeTopicOverride, out var effectiveTopic, out _))
+                    return effectiveTopic;
+
+                return Ros2BridgeTopicProfile.TryResolveRos2BridgeTopic(
+                    string.Empty,
+                    _topic,
+                    _ros2BridgeTopicOverride,
+                    out effectiveTopic,
+                    out _)
+                    ? effectiveTopic
+                    : "";
+            }
+        }
+
+        /// <summary>Resolved ROS2 Bridge QoS profile.</summary>
+        public Ros2BridgeQosProfile EffectiveRos2BridgeQos =>
+            _manager != null ? _manager.ResolveRos2BridgeQos() : Ros2BridgeQosProfile.ReliableDefault;
 
         /// <summary>
         /// Source used to resolve this publisher's effective publish rate.
@@ -246,7 +274,7 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (!_manager.TryPrepareRos2BridgePublish(_topic, Ros2BridgeSchemaName, out var reason))
+            if (!_manager.TryPrepareRos2BridgePublish(_topic, _ros2BridgeTopicOverride, Ros2BridgeSchemaName, out _, out _, out var reason))
             {
                 if (!string.IsNullOrWhiteSpace(reason))
                     WarnRos2BridgeSkipped("prepare:" + reason, reason);
@@ -336,7 +364,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _manager.PublishRos2BridgeCdr(_topic, Ros2BridgeSchemaName, payload, logTimeNs);
+            _manager.PublishRos2BridgeCdr(_topic, _ros2BridgeTopicOverride, Ros2BridgeSchemaName, payload, logTimeNs);
         }
 
         private PublisherEncodingResolution ResolvePublisherEncoding()

@@ -6,6 +6,7 @@
 // path helpers.
 
 using System.IO;
+using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 using UnityEditor;
@@ -22,6 +23,7 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private static bool _connectionSecurityExpanded = true;
         private static bool _publishDataExpanded = true;
+        private static bool _ros2BridgeExpanded;
         private static bool _mcapExpanded;
         private static bool _diagnosticsExpanded;
         private readonly McapReplayPreflightDrawer _mcapReplayPreflight = new McapReplayPreflightDrawer();
@@ -52,6 +54,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawSection("Connection & Security", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
             DrawSection("Publish Data", ref _publishDataExpanded, DrawPublishDataSection);
+            DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
             DrawSection("Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
@@ -175,9 +178,6 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Encoding");
             DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Default Publisher Encoding");
             DrawProperty("_allowPublisherOverride");
-
-            FoxgloveManagerInspectorLayout.Subheader("ROS2 Bridge");
-            DrawRos2BridgeSection();
 
             FoxgloveManagerInspectorLayout.Subheader("Coordinates");
             DrawProperty("_coordinateMode");
@@ -370,6 +370,18 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.PropertyField(prop, true);
+        }
+
+        private void DrawProperty(string propertyName, string label)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop == null)
+            {
+                DrawMissingProperty(propertyName);
+                return;
+            }
+
+            EditorGUILayout.PropertyField(prop, new GUIContent(label), true);
         }
 
         private void DrawGlobalEncodingProperty(string propertyName, string label)
@@ -640,23 +652,44 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawRos2BridgeSection()
         {
-            DrawProperty("_ros2BridgeEnabled");
-            DrawProperty("_ros2BridgeHost");
-            DrawProperty("_ros2BridgePort");
-            DrawProperty("_ros2BridgeAutoConnect");
-            DrawProperty("_defaultRos2BridgeOutputEnabled");
-            DrawProperty("_allowPublisherRos2BridgeOverride");
-            DrawProperty("_ros2BridgeQueueCapacity");
-            DrawProperty("_ros2BridgeReconnectIntervalMs");
-            DrawProperty("_ros2BridgeSendTimeoutMs");
+            DrawProperty("_ros2BridgeEnabled", "Enabled");
+            DrawProperty("_ros2BridgeHost", "Host");
+            DrawProperty("_ros2BridgePort", "Port");
+            DrawProperty("_ros2BridgeAutoConnect", "Auto Connect");
+            DrawProperty("_defaultRos2BridgeOutputEnabled", "Default Output");
+            DrawProperty("_allowPublisherRos2BridgeOverride", "Allow Publisher Override");
+            DrawProperty("_ros2BridgeNamespace", "Bridge Namespace");
+
+            var qosPreset = serializedObject.FindProperty("_ros2BridgeQosPreset");
+            PublisherEncodingEditorLabels.DrawRos2BridgeQosPreset(qosPreset, "QoS Preset");
+            var custom = qosPreset != null && qosPreset.enumValueIndex == (int)Ros2BridgeQosPreset.Custom;
+            if (custom)
+            {
+                FoxgloveManagerInspectorLayout.Subheader("Advanced QoS");
+                DrawProperty("_ros2BridgeCustomReliability", "Reliability");
+                DrawProperty("_ros2BridgeCustomDurability", "Durability");
+                DrawProperty("_ros2BridgeCustomDepth", "Depth");
+            }
+
+            DrawProperty("_ros2BridgeQueueCapacity", "Queue Capacity");
+            DrawProperty("_ros2BridgeReconnectIntervalMs", "Reconnect Interval Ms");
+            DrawProperty("_ros2BridgeSendTimeoutMs", "Send Timeout Ms");
 
             EditorGUILayout.HelpBox(
                 "ROS2 Bridge is optional, disabled by default, and mirrors supported publisher payloads to a local bridge sidecar. Use loopback hosts only.",
+                MessageType.Info);
+            EditorGUILayout.HelpBox(
+                "Changing QoS for an existing bridge topic requires restarting the sidecar or using a new bridge topic.",
                 MessageType.Info);
 
             var manager = (Components.FoxgloveManager)target;
             if (manager == null)
                 return;
+
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.TextField("Effective QoS", manager.ResolveRos2BridgeQos().DisplaySummary);
+            }
 
             var stats = manager.GetRos2BridgeStatsSnapshot();
             using (new EditorGUI.DisabledScope(true))
@@ -888,6 +921,7 @@ namespace Unity.FoxgloveSDK.Editor
             var publishRateHz = serializedObject.FindProperty("_publishRateHz");
             var encodingOverride = serializedObject.FindProperty("_encodingOverride");
             var bridgeOverride = serializedObject.FindProperty("_ros2BridgeOutput");
+            var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
             var prop = serializedObject.GetIterator();
             if (prop.NextVisible(true))
             {
@@ -900,6 +934,8 @@ namespace Unity.FoxgloveSDK.Editor
                     if (prop.name == "_encodingOverride")
                         continue;
                     if (prop.name == "_ros2BridgeOutput")
+                        continue;
+                    if (prop.name == "_ros2BridgeTopicOverride")
                         continue;
 
                     using (new EditorGUI.DisabledScope(prop.propertyPath == "m_Script"))
@@ -932,6 +968,8 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
             if (bridgeOverride != null)
                 PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOverride, "Bridge Output");
+            if (bridgeTopicOverride != null)
+                EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
 
             serializedObject.ApplyModifiedProperties();
 
@@ -951,6 +989,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
                 PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
+                EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
+                EditorGUILayout.TextField("Effective Bridge QoS", publisher.EffectiveRos2BridgeQos.DisplaySummary);
             }
 
             if (publisher.ConfiguredManager != null

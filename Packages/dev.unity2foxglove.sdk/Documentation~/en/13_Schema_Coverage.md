@@ -42,6 +42,8 @@ Phase 94 adds an experimental localhost ROS 2 bridge spike. It proves that three
 
 Phase 95 productizes the Unity-side ROS2 Bridge mirror path for the seven validated publisher workflows. The bridge is still optional, disabled by default, and localhost sidecar based; it adds Manager and publisher Inspector controls, a bounded background send queue, and simple queued/sent/dropped/failed status without changing normal WebSocket publishing.
 
+Phase 96 adds bridge-only topic profiles and ROS 2 QoS presets. The Manager can apply a bridge namespace such as `/robot1`, publishers can set an absolute bridge topic override such as `/lidar/front`, and the `U2R2` header carries preset QoS metadata for the sidecar's `rclcpp::GenericPublisher`. These settings affect only the optional ROS2 Bridge mirror path; WebSocket topics, MCAP records, replay topics, and point-cloud sampling QoS are unchanged.
+
 The SDK also provides a productized `ROS2` publisher option for the validated Unity publisher workflows listed below. This is still a Foxglove WebSocket and MCAP path, not a ROS 2 node, DDS transport, or rosbag2 writer.
 
 ## 4. Generic Parity vs Dedicated Components

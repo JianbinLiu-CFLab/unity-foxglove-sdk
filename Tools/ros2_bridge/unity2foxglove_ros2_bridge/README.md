@@ -1,15 +1,17 @@
 # Unity2Foxglove ROS 2 Bridge Sidecar
 
-This is the experimental ROS 2 sidecar used by the Phase 94 bridge spike and the Phase 95 Unity-side ROS2 Bridge productization path. It listens on loopback TCP, receives `U2R2` bridge frames from Unity2Foxglove, and republishes their CDR payload bytes through `rclcpp::GenericPublisher`.
+This is the experimental ROS 2 sidecar used by the Phase 94 bridge spike and the Phase 95/96 Unity-side ROS2 Bridge productization path. It listens on loopback TCP, receives `U2R2` bridge frames from Unity2Foxglove, and republishes their CDR payload bytes through `rclcpp::GenericPublisher`.
 
 It remains intentionally narrow:
 
 - localhost only;
-- no QoS UI;
+- QoS is preset-driven from Unity2Foxglove (`Reliable Default`, `Sensor Data`, `Transient Local`, or `Custom` reliability/durability/depth);
 - no automatic ROS 2 install;
 - no Windows-native ROS 2 support;
 - Phase 94 Gate B validates only `/unity/tf`, `/unity/laser_scan`, and `/unity/point_cloud`;
-- Phase 95 adds Unity Inspector controls and background queue status, but the sidecar transport and ROS 2 environment are still manual.
+- Phase 95 adds Unity Inspector controls and background queue status, while Phase 96 adds bridge topic namespace/override and QoS metadata. The sidecar transport and ROS 2 environment are still manual.
+
+ROS 2 publisher QoS is fixed when the sidecar creates a topic publisher. If you change QoS for an existing topic, restart this sidecar or use a different effective bridge topic.
 
 Normal Unity2Foxglove Foxglove WebSocket use does not require ROS.
 

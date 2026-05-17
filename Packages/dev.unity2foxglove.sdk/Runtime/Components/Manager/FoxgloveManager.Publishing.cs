@@ -184,7 +184,28 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="reason">Human-readable skip reason when false.</param>
         /// <returns>True when payload preparation should continue.</returns>
         public bool TryPrepareRos2BridgePublish(string topic, string schemaName, out string reason)
+            => TryPrepareRos2BridgePublish(topic, string.Empty, schemaName, out _, out _, out reason);
+
+        /// <summary>
+        /// Return whether a publisher should prepare a ROS2 Bridge payload and resolve bridge-only topic/QoS metadata.
+        /// </summary>
+        /// <param name="topic">Publisher WebSocket topic name.</param>
+        /// <param name="topicOverride">Optional absolute ROS 2 bridge topic override.</param>
+        /// <param name="schemaName">ROS 2 interface schema name.</param>
+        /// <param name="effectiveTopic">Resolved ROS 2 bridge topic.</param>
+        /// <param name="qos">Resolved ROS 2 bridge QoS profile.</param>
+        /// <param name="reason">Human-readable skip reason when false.</param>
+        /// <returns>True when payload preparation should continue.</returns>
+        public bool TryPrepareRos2BridgePublish(
+            string topic,
+            string topicOverride,
+            string schemaName,
+            out string effectiveTopic,
+            out Ros2BridgeQosProfile qos,
+            out string reason)
         {
+            effectiveTopic = string.Empty;
+            qos = ResolveRos2BridgeQos();
             reason = string.Empty;
 
             if (SuppressLivePublishersForReplay)
@@ -207,9 +228,8 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(topic) || !topic.StartsWith("/", System.StringComparison.Ordinal))
+            if (!TryResolveRos2BridgeTopic(topic, topicOverride, out effectiveTopic, out reason))
             {
-                reason = "ROS2 Bridge topic must start with '/'.";
                 return false;
             }
 
@@ -335,8 +355,19 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
         /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishRos2BridgeCdr(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+            => PublishRos2BridgeCdr(topic, string.Empty, schemaName, payload, logTimeNs);
+
+        /// <summary>
+        /// Mirrors an already serialized ROS 2 CDR payload to the optional ROS2 Bridge sidecar.
+        /// </summary>
+        /// <param name="topic">Publisher WebSocket topic name.</param>
+        /// <param name="topicOverride">Optional absolute ROS 2 bridge topic override.</param>
+        /// <param name="schemaName">ROS 2 interface schema name.</param>
+        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishRos2BridgeCdr(string topic, string topicOverride, string schemaName, byte[] payload, ulong logTimeNs)
         {
-            if (!TryPrepareRos2BridgePublish(topic, schemaName, out var reason))
+            if (!TryPrepareRos2BridgePublish(topic, topicOverride, schemaName, out var effectiveTopic, out var qos, out var reason))
             {
                 if (!string.IsNullOrWhiteSpace(reason))
                     Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
@@ -346,12 +377,13 @@ namespace Unity.FoxgloveSDK.Components
             Ros2CdrPayloadValidator.Validate(payload);
 
             var frame = new Ros2BridgeFrame(
-                topic,
+                effectiveTopic,
                 schemaName,
                 CdrEncoding,
                 logTimeNs,
                 ++_ros2BridgeSequence,
-                payload);
+                payload,
+                qos);
 
             if (!_ros2BridgeRuntime.TryEnqueue(frame, out var enqueueReason))
                 Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + enqueueReason);

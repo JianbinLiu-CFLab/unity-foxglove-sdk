@@ -51,6 +51,10 @@ struct BridgeFrame
   std::string topic;
   std::string schema_name;
   std::string encoding;
+  std::string profile_name = "Reliable Default";
+  std::string reliability = "reliable";
+  std::string durability = "volatile";
+  int depth = 10;
   uint64_t log_time_ns = 0;
   uint64_t sequence = 0;
   std::vector<uint8_t> payload;
@@ -74,6 +78,29 @@ bool has_prefix(const std::string & value, const std::string & prefix)
 {
   return value.size() >= prefix.size() &&
     std::equal(prefix.begin(), prefix.end(), value.begin());
+}
+
+std::string qos_signature(const BridgeFrame & frame)
+{
+  return frame.schema_name + "\n" + frame.reliability + "\n" + frame.durability + "\n" +
+         std::to_string(frame.depth);
+}
+
+rclcpp::QoS make_qos(const BridgeFrame & frame)
+{
+  auto qos = rclcpp::QoS(rclcpp::KeepLast(static_cast<size_t>(frame.depth)));
+  if (frame.reliability == "best_effort") {
+    qos.best_effort();
+  } else {
+    qos.reliable();
+  }
+
+  if (frame.durability == "transient_local") {
+    qos.transient_local();
+  } else {
+    qos.durability_volatile();
+  }
+  return qos;
 }
 
 std::string resolve_loopback_ipv4(const std::string & host)
@@ -269,6 +296,15 @@ BridgeFrame read_frame(int fd)
     frame.encoding = header.at("encoding").get<std::string>();
     frame.log_time_ns = header.at("logTimeNs").get<uint64_t>();
     frame.sequence = header.at("sequence").get<uint64_t>();
+    if (header.contains("profileName") && !header["profileName"].is_null()) {
+      frame.profile_name = header.at("profileName").get<std::string>();
+    }
+    if (header.contains("qos") && !header["qos"].is_null()) {
+      const auto & qos = header.at("qos");
+      frame.reliability = qos.at("reliability").get<std::string>();
+      frame.durability = qos.at("durability").get<std::string>();
+      frame.depth = qos.at("depth").get<int>();
+    }
   } catch (const std::exception & ex) {
     throw std::runtime_error(std::string("reject frame: missing or invalid JSON field: ") + ex.what());
   }
@@ -282,6 +318,15 @@ BridgeFrame read_frame(int fd)
   }
   if (frame.encoding != "cdr") {
     throw std::runtime_error("reject frame: encoding must be cdr");
+  }
+  if (frame.reliability != "reliable" && frame.reliability != "best_effort") {
+    throw std::runtime_error("reject frame: qos.reliability must be reliable or best_effort");
+  }
+  if (frame.durability != "volatile" && frame.durability != "transient_local") {
+    throw std::runtime_error("reject frame: qos.durability must be volatile or transient_local");
+  }
+  if (frame.depth < 1) {
+    throw std::runtime_error("reject frame: qos.depth must be >= 1");
   }
   return frame;
 }
@@ -310,23 +355,27 @@ public:
 
   void publish(const BridgeFrame & frame)
   {
-    auto topic_schema = topic_schema_.find(frame.topic);
-    if (topic_schema != topic_schema_.end() && topic_schema->second != frame.schema_name) {
-      throw std::runtime_error("reject frame: topic reused with different schemaName");
+    const auto signature = qos_signature(frame);
+    auto topic_signature = topic_signature_.find(frame.topic);
+    if (topic_signature != topic_signature_.end() && topic_signature->second != signature) {
+      throw std::runtime_error("reject frame: topic reused with different schemaName or QoS");
     }
-    topic_schema_[frame.topic] = frame.schema_name;
+    topic_signature_[frame.topic] = signature;
 
-    const std::string key = frame.topic + "\n" + frame.schema_name;
+    const std::string key = frame.topic + "\n" + signature;
     auto publisher = publishers_[key];
     if (!publisher) {
-      auto qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
+      auto qos = make_qos(frame);
       publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
       publishers_[key] = publisher;
       RCLCPP_INFO(
         node_->get_logger(),
-        "[unity2foxglove_ros2_bridge] publisher %s %s",
+        "[unity2foxglove_ros2_bridge] publisher %s %s reliability=%s durability=%s depth=%d",
         frame.topic.c_str(),
-        frame.schema_name.c_str());
+        frame.schema_name.c_str(),
+        frame.reliability.c_str(),
+        frame.durability.c_str(),
+        frame.depth);
     }
 
     const auto payload = payload_for_publish(frame, payload_format_);
@@ -352,7 +401,7 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
-  std::unordered_map<std::string, std::string> topic_schema_;
+  std::unordered_map<std::string, std::string> topic_signature_;
   std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers_;
   std::unordered_map<std::string, size_t> counts_;
 };

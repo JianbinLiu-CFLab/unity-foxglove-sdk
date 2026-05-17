@@ -348,10 +348,13 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawRos2BridgeSection()
         {
             var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
+            var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
             PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOutput, "Bridge Output");
+            if (bridgeTopicOverride != null)
+                EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
             EditorGUILayout.HelpBox(
                 "JPEG mode can mirror the same ROS2 CDR image payload to the optional local bridge. Video modes keep using WebSocket output only.",
                 MessageType.Info);
@@ -375,6 +378,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
                 PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
+                EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
+                EditorGUILayout.TextField("Effective Bridge QoS", publisher.EffectiveRos2BridgeQos.DisplaySummary);
             }
 
             if (publisher.ConfiguredManager != null

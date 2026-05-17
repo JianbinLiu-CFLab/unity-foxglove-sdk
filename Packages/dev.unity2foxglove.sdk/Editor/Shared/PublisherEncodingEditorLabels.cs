@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly string[] GlobalEncodingLabels = { "JSON", "Protobuf", "ROS2" };
         private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "ROS2" };
         private static readonly string[] BridgeOverrideLabels = { "Use Manager", "Disabled", "Enabled" };
+        private static readonly string[] BridgeQosPresetLabels = { "Reliable Default", "Sensor Data", "Transient Local", "Custom" };
 
         public static void DrawGlobalEncoding(SerializedProperty property, string label)
         {
@@ -52,6 +53,15 @@ namespace Unity.FoxgloveSDK.Editor
         public static void DrawEffectiveRos2BridgeOutput(Ros2BridgeEffectiveOutput output, string label)
         {
             EditorGUILayout.TextField(label, Ros2BridgeOutputPolicy.ToDisplayLabel(output));
+        }
+
+        public static void DrawRos2BridgeQosPreset(SerializedProperty property, string label)
+        {
+            if (property == null)
+                return;
+
+            var current = ClampIndex(property.enumValueIndex, BridgeQosPresetLabels.Length);
+            property.enumValueIndex = EditorGUILayout.Popup(label, current, BridgeQosPresetLabels);
         }
 
         private static int ClampIndex(int index, int count)
