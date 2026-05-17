@@ -202,7 +202,7 @@ namespace Foxglove.Schemas.Video
             _stderrTask = null;
             _stop?.Dispose();
             _stop = null;
-            DrainQueues();
+            DrainInputQueue();
         }
 
         public void Dispose()
@@ -340,12 +340,10 @@ namespace Foxglove.Schemas.Video
             return true;
         }
 
-        private void DrainQueues()
+        private void DrainInputQueue()
         {
             while (_inputFrames.TryDequeue(out _)) { }
-            while (_outputAccessUnits.TryDequeue(out _)) { }
             Interlocked.Exchange(ref _inputCount, 0);
-            Interlocked.Exchange(ref _outputCount, 0);
         }
 
         private static bool IsProcessRunning(Process process)

@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyBridgePolicy();
             VerifyRuntimeQueueAndStats();
             VerifyRuntimeReconnect();
+            VerifyRuntimeStopDisposesLateConnectedSink();
             VerifyPublisherWrapperUsesRuntime();
             VerifySourceIntegration();
             VerifyDocumentationAndEvidenceBoundary();
@@ -130,6 +131,40 @@ namespace Unity.FoxgloveSDK.Tests
 
             runtime.Stop();
             Check(factory.DisconnectCalls > 0, "95C-4: runtime disconnects sink on Stop");
+        }
+
+        private static void VerifyRuntimeStopDisposesLateConnectedSink()
+        {
+            var factory = new BlockingConnectSinkFactory();
+            using var runtime = new Ros2BridgeRuntime(
+                "127.0.0.1",
+                8767,
+                queueCapacity: 4,
+                reconnectIntervalMs: 10,
+                sendTimeoutMs: 100,
+                sinkFactory: factory.Create);
+
+            runtime.Start(enabled: true, autoConnect: true);
+            Check(factory.ConnectStarted.Wait(3000), "95C2-1: stop race test reaches blocked connect");
+
+            Exception stopException = null;
+            var stopThread = new Thread(() =>
+            {
+                try
+                {
+                    runtime.Stop();
+                }
+                catch (Exception ex)
+                {
+                    stopException = ex;
+                }
+            });
+            stopThread.Start();
+            Thread.Sleep(50);
+            factory.ReleaseConnect.Set();
+
+            Check(stopThread.Join(3000) && stopException == null, "95C2-2: Stop returns after late connect completes");
+            Check(factory.DisposeCalls > 0, "95C2-3: Stop disposes sink connected during shutdown race");
         }
 
         private static void VerifyPublisherWrapperUsesRuntime()
@@ -349,6 +384,51 @@ namespace Unity.FoxgloveSDK.Tests
                 }
 
                 public void Dispose() => Disconnect();
+            }
+        }
+
+        private sealed class BlockingConnectSinkFactory
+        {
+            private readonly object _gate = new object();
+            public readonly ManualResetEventSlim ConnectStarted = new ManualResetEventSlim(false);
+            public readonly ManualResetEventSlim ReleaseConnect = new ManualResetEventSlim(false);
+            public int DisposeCalls;
+
+            public IRos2BridgeSink Create()
+            {
+                return new BlockingSink(this);
+            }
+
+            private sealed class BlockingSink : IRos2BridgeSink
+            {
+                private readonly BlockingConnectSinkFactory _owner;
+                public BlockingSink(BlockingConnectSinkFactory owner) => _owner = owner;
+                public bool IsConnected { get; private set; }
+
+                public void Connect(string host, int port, int timeoutMs)
+                {
+                    _owner.ConnectStarted.Set();
+                    _owner.ReleaseConnect.Wait(3000);
+                    IsConnected = true;
+                }
+
+                public void Send(Ros2BridgeFrame frame, int timeoutMs)
+                {
+                }
+
+                public void Disconnect()
+                {
+                    IsConnected = false;
+                }
+
+                public void Dispose()
+                {
+                    Disconnect();
+                    lock (_owner._gate)
+                    {
+                        _owner.DisposeCalls++;
+                    }
+                }
             }
         }
     }

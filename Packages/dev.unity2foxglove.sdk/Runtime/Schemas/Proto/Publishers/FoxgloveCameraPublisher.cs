@@ -79,6 +79,8 @@ namespace Unity.FoxgloveSDK.Components
         private Texture2D _texture2D;
         private int _pendingRequests;
         private bool _destroyed;
+        private int _captureGeneration;
+        private bool _cleanupWhenReadbacksDrain;
 
         // Video sidecar state
         private ICameraVideoEncoderSidecar _videoSidecar;
@@ -103,6 +105,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             base.OnEnable();
             _destroyed = false;
+            _cleanupWhenReadbacksDrain = false;
+            _captureGeneration++;
             _warnedVideoEncoderUnavailable = false;
             _lastLoggedStderr = null;
             ResetBackpressureState();
@@ -133,15 +137,16 @@ namespace Unity.FoxgloveSDK.Components
 
             EnsureCaptureResources();
             _captureCam.Render();
+            var generation = _captureGeneration;
             _pendingRequests++;
-            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, OnReadbackComplete);
+            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation));
         }
 
-        private void OnReadbackComplete(AsyncGPUReadbackRequest req)
+        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation)
         {
-            _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
+            CompletePendingReadback();
 
-            if (_destroyed || !isActiveAndEnabled) return;
+            if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration) return;
             if (req.hasError)
             {
                 Debug.LogWarning("[Foxglove] Camera AsyncGPUReadback failed.");
@@ -162,15 +167,31 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnDisable()
         {
             base.OnDisable();
+            _captureGeneration++;
+            _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
+            if (_pendingRequests == 0)
+                CleanupResources();
         }
 
         private void OnDestroy()
         {
             _destroyed = true;
+            _captureGeneration++;
             AsyncGPUReadback.WaitAllRequests();
             StopVideoSidecar();
+            _cleanupWhenReadbacksDrain = false;
             CleanupResources();
+        }
+
+        private void CompletePendingReadback()
+        {
+            _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
+            if (_pendingRequests == 0 && _cleanupWhenReadbacksDrain)
+            {
+                _cleanupWhenReadbacksDrain = false;
+                CleanupResources();
+            }
         }
 
         private void PublishJpegFrame(AsyncGPUReadbackRequest req)
@@ -412,7 +433,9 @@ namespace Unity.FoxgloveSDK.Components
             if (_videoSidecar == null)
                 return;
 
+            DrainEncodedAccessUnits();
             _videoSidecar.Dispose();
+            DrainEncodedAccessUnits();
             _videoSidecar = null;
             _videoSidecarMode = CameraOutputMode.Jpeg;
         }

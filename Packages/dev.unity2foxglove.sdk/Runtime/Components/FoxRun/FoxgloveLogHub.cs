@@ -94,6 +94,8 @@ namespace Unity.FoxgloveSDK.Components
         private float _scanTimer;
         /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
         private float _mgrSearchCooldown;
+        /// <summary>Cooldown between fallback FoxgloveManager search attempts.</summary>
+        private const float ManagerSearchIntervalSeconds = 3f;
         /// <summary>Fallback scene scan interval used when generated sources did not self-register.</summary>
         private const float ScanIntervalSeconds = 2f;
 
@@ -179,7 +181,7 @@ namespace Unity.FoxgloveSDK.Components
                 _mgrSearchCooldown -= Time.deltaTime;
                 if (_mgrSearchCooldown <= 0f)
                 {
-                    _mgrSearchCooldown = 3f;
+                    _mgrSearchCooldown = ManagerSearchIntervalSeconds;
                     _mgr = FindFirstObjectByType<FoxgloveManager>();
                 }
                 if (_mgr == null) return;

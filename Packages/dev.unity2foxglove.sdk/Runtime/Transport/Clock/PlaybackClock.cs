@@ -43,6 +43,8 @@ namespace Unity.FoxgloveSDK.Transport
         private float _speed = 1f;
         /// <summary>Wall-clock timestamp of the last Tick call, used for elapsed-time calculation.</summary>
         private DateTime? _lastTickWallTime;
+        private const double PlaybackWallJumpThresholdSeconds = 30d;
+        private const double MaxPlaybackWallDeltaSeconds = 0.25d;
 
         /// <summary>Create a playback clock backed by the given inner clock (defaults to SystemClock).</summary>
         public PlaybackClock(IFoxgloveClock inner = null)
@@ -88,7 +90,10 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (_lastTickWallTime.HasValue)
             {
-                var elapsedTicks = (nowUtc - _lastTickWallTime.Value).Ticks;
+                var elapsed = nowUtc - _lastTickWallTime.Value;
+                var elapsedTicks = elapsed.TotalSeconds > PlaybackWallJumpThresholdSeconds
+                    ? TimeSpan.FromSeconds(MaxPlaybackWallDeltaSeconds).Ticks
+                    : elapsed.Ticks;
                 if (elapsedTicks > 0)
                 {
                     var advanceNs = elapsedTicks * 100d * (double)_speed;

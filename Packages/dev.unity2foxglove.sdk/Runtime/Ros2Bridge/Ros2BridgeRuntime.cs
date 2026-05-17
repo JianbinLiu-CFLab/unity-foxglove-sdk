@@ -150,7 +150,6 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public void Stop()
         {
             Thread worker;
-            IRos2BridgeSink sink;
             lock (_gate)
             {
                 _enabled = false;
@@ -161,7 +160,6 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     _queue.Clear();
                 }
                 worker = _worker;
-                sink = _sink;
             }
 
             _signal.Set();
@@ -173,31 +171,18 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 }
             }
 
-            try
-            {
-                sink?.Disconnect();
-            }
-            catch
-            {
-                // Stop is best-effort; background errors are reflected in stats where possible.
-            }
-            try
-            {
-                sink?.Dispose();
-            }
-            catch
-            {
-                // Dispose is best-effort during shutdown.
-            }
-
+            IRos2BridgeSink remainingSink;
             lock (_gate)
             {
+                remainingSink = _sink;
                 _worker = null;
                 _sink = null;
                 _connected = false;
                 _connecting = false;
                 _lastDisconnectedUnixMs = NowUnixMs();
             }
+
+            CloseSink(remainingSink);
         }
 
         public void Connect(string host, int port, int timeoutMs)
@@ -227,32 +212,43 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         {
             while (true)
             {
-                if (ShouldStop())
-                    return;
-
-                if (!EnsureConnected())
-                {
-                    _signal.Wait(_reconnectIntervalMs);
-                    _signal.Reset();
-                    continue;
-                }
-
-                var frame = DequeueFrame();
-                if (frame == null)
-                {
-                    _signal.Wait(50);
-                    _signal.Reset();
-                    continue;
-                }
-
                 try
                 {
-                    _sink.Send(frame, _sendTimeoutMs);
-                    lock (_gate)
+                    if (ShouldStop())
+                        return;
+
+                    if (!EnsureConnected())
                     {
-                        _sentFrames++;
-                        _lastError = string.Empty;
+                        _signal.Wait(_reconnectIntervalMs);
+                        _signal.Reset();
+                        continue;
                     }
+
+                    var frame = DequeueFrame();
+                    if (frame == null)
+                    {
+                        _signal.Wait(50);
+                        _signal.Reset();
+                        continue;
+                    }
+
+                    try
+                    {
+                        _sink.Send(frame, _sendTimeoutMs);
+                        lock (_gate)
+                        {
+                            _sentFrames++;
+                            _lastError = string.Empty;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MarkFailure(ex.Message, disconnect: true);
+                    }
+                }
+                catch (ObjectDisposedException) when (ShouldStop())
+                {
+                    return;
                 }
                 catch (Exception ex)
                 {
@@ -270,23 +266,42 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 _connecting = true;
             }
 
+            IRos2BridgeSink sink = null;
             try
             {
-                var sink = _sinkFactory();
+                sink = _sinkFactory();
                 sink.Connect(_host, _port, _sendTimeoutMs);
+                IRos2BridgeSink previousSink = null;
                 lock (_gate)
                 {
-                    _sink?.Dispose();
-                    _sink = sink;
-                    _connected = true;
-                    _connecting = false;
-                    _lastConnectedUnixMs = NowUnixMs();
-                    _lastError = string.Empty;
+                    if (_stopRequested || !_enabled)
+                    {
+                        _connected = false;
+                        _connecting = false;
+                        _lastDisconnectedUnixMs = NowUnixMs();
+                    }
+                    else
+                    {
+                        previousSink = _sink;
+                        _sink = sink;
+                        sink = null;
+                        _connected = true;
+                        _connecting = false;
+                        _lastConnectedUnixMs = NowUnixMs();
+                        _lastError = string.Empty;
+                    }
                 }
-                return true;
+
+                CloseSink(previousSink);
+                if (sink == null)
+                    return true;
+
+                CloseSink(sink);
+                return false;
             }
             catch (Exception ex)
             {
+                CloseSink(sink);
                 MarkFailure(ex.Message, disconnect: true);
                 return false;
             }
@@ -325,6 +340,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 }
             }
 
+            CloseSink(sink);
+        }
+
+        private static void CloseSink(IRos2BridgeSink sink)
+        {
             if (sink == null)
                 return;
 
@@ -334,7 +354,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
             catch
             {
-                // Connection is already considered failed.
+                // Shutdown is best-effort; state has already been updated.
             }
             try
             {
@@ -342,7 +362,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
             catch
             {
-                // Connection is already considered failed.
+                // Shutdown is best-effort; state has already been updated.
             }
         }
 
