@@ -267,6 +267,22 @@ namespace Unity.FoxgloveSDK.Core
             _session.Publish(channelId, payload, logTimeNs);
         }
 
+        /// <summary>Publish a validated ROS 2 CDR payload. Timestamp is taken from the clock.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
+            _session.PublishRos2Cdr(channelId, payload);
+        }
+
+        /// <summary>Publish a validated ROS 2 CDR payload with an explicit nanosecond timestamp.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
+            _session.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
         /// <summary>Register a schema channel on the session with the given encoding (default "json").</summary>
         public void RegisterSchemaChannel(
             uint channelId,

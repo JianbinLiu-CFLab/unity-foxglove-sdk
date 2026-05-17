@@ -17,6 +17,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -378,6 +379,16 @@ namespace Unity.FoxgloveSDK.Core
                     _transport.SendBinary(clientId, frame);
                 }
             }
+        }
+
+        /// <summary>Publish a validated ROS 2 CDR payload using the current clock time.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload) => PublishRos2Cdr(channelId, payload, _clock.NowNs);
+
+        /// <summary>Publish a validated ROS 2 CDR payload with an explicit log timestamp.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            Ros2CdrPayloadValidator.Validate(payload);
+            Publish(channelId, payload, logTimeNs);
         }
 
         /// <summary>

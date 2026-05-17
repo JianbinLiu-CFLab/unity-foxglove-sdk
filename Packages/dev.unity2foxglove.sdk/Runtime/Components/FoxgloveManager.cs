@@ -128,8 +128,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
         public event System.Action<string, byte[]> OnReplayMessage;
 
-        private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding), uint> _channelCache
-            = new System.Collections.Generic.Dictionary<(string, string, string), uint>();
+        private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
+            = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
 
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;

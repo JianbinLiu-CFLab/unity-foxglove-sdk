@@ -56,8 +56,9 @@ For custom ROS 2 `.msg` channels:
 
 - ROS 2 schema channels use `schemaEncoding = ros2msg` and message encoding `cdr`.
 - The SDK registers the official Foxglove ROS 2 `.msg` schema catalog and can advertise or record those channel/schema records.
-- The SDK does not currently serialize CDR payload bytes for user messages. If a `ros2msg` topic advertises correctly but Foxglove cannot decode data, verify that the published payload is valid ROS 2 CDR for that exact schema.
-- If you need dependency-free working payloads today, use the existing JSON or protobuf publisher paths.
+- Minimal ROS 2 CDR smoke builders exist for seven Foxglove schemas, but there is no Inspector-level ROS 2 CDR publisher output mode.
+- If a `ros2msg` topic advertises correctly but Foxglove cannot decode data, verify that the payload starts with `00 01 00 00` and is valid XCDR1 little-endian data for that exact schema.
+- If you need dependency-free working publisher components today, use the existing JSON or protobuf publisher paths.
 
 ## 6. Camera Image Is Blank
 

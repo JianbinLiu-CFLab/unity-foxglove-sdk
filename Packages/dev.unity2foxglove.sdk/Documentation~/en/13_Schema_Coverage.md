@@ -26,7 +26,17 @@ The bundled catalog is generated from the local `third-party/foxglove-sdk/schema
 
 The runtime can advertise ROS 2 schema channels with `messageEncoding = cdr` and `schemaEncoding = ros2msg`, and MCAP records preserve the same schema/channel metadata.
 
-This is schema parity only. The SDK does not yet include a CDR payload writer or ROS 2 CDR publisher output mode. Use existing JSON or protobuf publishers for working payloads unless your own integration supplies valid CDR bytes for the registered schema channel.
+The SDK includes a minimal XCDR1 little-endian writer for smoke payloads under `Runtime/Schemas/Ros2Msg/Cdr`. Payloads include the ROS 2 serialized-payload encapsulation header `00 01 00 00`. The validated smoke builders cover:
+
+- `foxglove_msgs/msg/FrameTransform`
+- `foxglove_msgs/msg/CompressedImage`
+- `foxglove_msgs/msg/CameraCalibration`
+- `foxglove_msgs/msg/LaserScan`
+- `foxglove_msgs/msg/PointCloud`
+- `foxglove_msgs/msg/CompressedPointCloud`
+- `foxglove_msgs/msg/SceneUpdate`
+
+This is still not a dedicated Unity ROS 2 publisher UX. The SDK does not add a ROS 2 node, DDS transport, or Inspector output mode for CDR publishers. Use existing JSON/protobuf publishers for product workflows unless your integration explicitly publishes validated CDR bytes for the registered ROS 2 `.msg` schema channel.
 
 ## 4. Generic Parity vs Dedicated Components
 
@@ -50,7 +60,7 @@ Publisher Encoding defaults to Protobuf for new `FoxgloveManager` components. Pu
 
 For `foxglove.CompressedImage`, the JSON path stores JPEG data as base64 text because JSON has no binary field. The protobuf path stores the same JPEG payload as raw bytes in the official `bytes data` field, so it is the preferred path for camera streaming.
 
-ROS 2 `.msg` catalog entries do not imply dedicated Unity CDR publisher components. Dedicated ROS 2 CDR output modes should be added only after payload serialization is implemented and validated.
+ROS 2 `.msg` catalog entries and smoke builders do not imply dedicated Unity CDR publisher components. Dedicated ROS 2 CDR output modes should be added only after a user-facing publisher workflow is designed and validated.
 
 ## 5. Smoke MCAP
 
@@ -67,6 +77,20 @@ build/test_mcap/phase44_all_schemas_smoke.mcap
 ```
 
 Open that file in Foxglove Desktop and check the Problems panel. The smoke file is intended to validate protobuf schema parsing and MCAP metadata, not perfect panel rendering for every schema.
+
+To generate a ROS 2 `.msg` + CDR smoke MCAP:
+
+```bash
+python Scripts/smoke/ros2_cdr_mcap_inspect.py
+```
+
+The script writes:
+
+```text
+build/test_mcap/phase91_ros2_cdr_smoke.mcap
+```
+
+This fixture validates ROS 2 schema/channel metadata plus CDR payload framing for the seven smoke builders listed above.
 
 ## 6. Follow-Up Typed Publisher Candidates
 

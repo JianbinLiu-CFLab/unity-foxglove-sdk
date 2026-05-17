@@ -136,6 +136,21 @@ class Program
         if (argList.Contains("--phase90"))
             return RunPhase90Only();
 
+        if (argList.Contains("--phase91"))
+            return RunPhase91Only();
+
+        var phase91McapIdx = argList.IndexOf("--phase91-ros2-cdr-mcap");
+        if (phase91McapIdx >= 0)
+        {
+            if (phase91McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase91-ros2-cdr-mcap requires an output path.");
+                return 1;
+            }
+
+            return RunPhase91Ros2CdrMcap(argList[phase91McapIdx + 1]);
+        }
+
         var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
         if (phase68SmokeIdx >= 0)
             return RunPhase68IndexedReaderSmoke(argList, phase68SmokeIdx);
@@ -725,6 +740,36 @@ class Program
         }
     }
 
+    private static int RunPhase91Only()
+    {
+        try
+        {
+            Phase91Validation.Validate();
+            Console.WriteLine("\nPhase 91 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase91Ros2CdrMcap(string outputPath)
+    {
+        try
+        {
+            Phase91Validation.GenerateRos2CdrMcap(outputPath);
+            Console.WriteLine($"Phase 91 ROS2 CDR MCAP written: {outputPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -871,6 +916,8 @@ class Program
             Phase89Validation.Validate();
             Console.WriteLine();
             Phase90Validation.Validate();
+            Console.WriteLine();
+            Phase91Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

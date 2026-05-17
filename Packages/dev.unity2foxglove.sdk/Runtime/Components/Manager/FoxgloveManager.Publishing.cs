@@ -21,6 +21,16 @@ namespace Unity.FoxgloveSDK.Components
         private const string ProtobufEncoding = "protobuf";
 
         /// <summary>
+        /// Foxglove message encoding label for ROS 2 CDR payloads.
+        /// </summary>
+        private const string CdrEncoding = "cdr";
+
+        /// <summary>
+        /// Foxglove schema encoding label for ROS 2 .msg schemas.
+        /// </summary>
+        private const string Ros2MsgSchemaEncoding = "ros2msg";
+
+        /// <summary>
         /// Empty schema name used for schemaless manual JSON channels.
         /// </summary>
         private const string EmptySchemaName = "";
@@ -39,7 +49,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic, schema, and encoding.</returns>
         public uint GetOrRegisterSchemaChannel(string topic, string schemaName, string encoding = JsonEncoding)
         {
-            var key = (topic, schemaName, encoding);
+            var key = (topic, schemaName, encoding, "");
             if (_channelCache.TryGetValue(key, out var id))
             {
                 return id;
@@ -47,6 +57,27 @@ namespace Unity.FoxgloveSDK.Components
 
             id = (uint)_nextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
+            _nextChannelId++;
+            _channelCache[key] = id;
+            return id;
+        }
+
+        /// <summary>
+        /// Gets or registers a ROS 2 .msg schema-bound CDR channel.
+        /// </summary>
+        /// <param name="topic">Topic name, for example "/tf".</param>
+        /// <param name="schemaName">ROS 2 interface name, for example "foxglove_msgs/msg/FrameTransform".</param>
+        /// <returns>The channel identifier associated with the topic, schema, cdr, and ros2msg.</returns>
+        public uint GetOrRegisterRos2MsgSchemaChannel(string topic, string schemaName)
+        {
+            var key = (topic, schemaName, CdrEncoding, Ros2MsgSchemaEncoding);
+            if (_channelCache.TryGetValue(key, out var id))
+            {
+                return id;
+            }
+
+            id = (uint)_nextChannelId;
+            _runtime.RegisterRos2MsgSchemaChannel(id, topic, schemaName);
             _nextChannelId++;
             _channelCache[key] = id;
             return id;
@@ -145,6 +176,35 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Publishes a ROS 2 CDR payload on a ROS 2 .msg schema channel.
+        /// </summary>
+        /// <param name="topic">Topic to publish to.</param>
+        /// <param name="schemaName">ROS 2 interface schema name advertised to Foxglove.</param>
+        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishRos2Cdr(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+        {
+            if (SuppressLivePublishersForReplay)
+            {
+                return;
+            }
+
+            if (!IsRunning)
+            {
+                if (!_warnedNotRunning)
+                {
+                    Debug.LogWarning("[Foxglove] PublishRos2Cdr called but server is not running.");
+                    _warnedNotRunning = true;
+                }
+
+                return;
+            }
+
+            var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
+            _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
+        /// <summary>
         /// Gets or registers a schemaless channel for manual publish calls.
         /// </summary>
         /// <param name="topic">Topic to publish to.</param>
@@ -152,7 +212,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic and encoding.</returns>
         private uint GetOrRegisterChannel(string topic, string encoding)
         {
-            var key = (topic, EmptySchemaName, encoding);
+            var key = (topic, EmptySchemaName, encoding, "");
             if (_channelCache.TryGetValue(key, out var id))
             {
                 return id;
