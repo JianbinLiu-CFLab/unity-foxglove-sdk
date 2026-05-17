@@ -52,6 +52,13 @@ Draco mode uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll
 
 Phase 89 uses a synchronous native Draco encode path. Large frames can block publish/update work while they encode; lower point budgets or return to raw mode while diagnosing.
 
+For custom ROS 2 `.msg` channels:
+
+- ROS 2 schema channels use `schemaEncoding = ros2msg` and message encoding `cdr`.
+- The SDK registers the official Foxglove ROS 2 `.msg` schema catalog and can advertise or record those channel/schema records.
+- The SDK does not currently serialize CDR payload bytes for user messages. If a `ros2msg` topic advertises correctly but Foxglove cannot decode data, verify that the published payload is valid ROS 2 CDR for that exact schema.
+- If you need dependency-free working payloads today, use the existing JSON or protobuf publisher paths.
+
 ## 6. Camera Image Is Blank
 
 Check:
