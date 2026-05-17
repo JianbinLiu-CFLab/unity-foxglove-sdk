@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>unity2foxglove_ros2_bridge</name>
+  <version>0.1.0</version>
+  <description>Experimental localhost Unity2Foxglove to ROS 2 serialized-message bridge.</description>
+  <maintainer email="JianbinLiu-CFLab@users.noreply.github.com">Jianbin Liu</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>foxglove_msgs</depend>
+  <depend>nlohmann_json</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

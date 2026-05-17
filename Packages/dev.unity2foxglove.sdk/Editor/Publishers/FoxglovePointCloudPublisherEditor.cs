@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
+            DrawRos2BridgeSection();
 
             serializedObject.ApplyModifiedProperties();
 
@@ -194,10 +195,24 @@ namespace Unity.FoxgloveSDK.Editor
                 PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
         }
 
+        private void DrawRos2BridgeSection()
+        {
+            var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
+            if (bridgeOutput != null)
+                PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOutput, "Bridge Output");
+            EditorGUILayout.HelpBox(
+                "Raw and Draco point clouds can mirror their ROS2 CDR payloads to the optional local bridge after the same QoS sampling step.",
+                MessageType.Info);
+        }
+
         private void DrawResolvedSummaries()
         {
             var publisher = (FoxglovePublisherBase)target;
             var resolution = publisher.EncodingResolution;
+            var bridgeResolution = publisher.BridgeOutputResolution;
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))
@@ -210,6 +225,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
+                PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
             }
 
             if (publisher.ConfiguredManager != null
@@ -230,6 +246,13 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.HelpBox(
                     $"Requested {resolution.RequestedLabel}, but this publisher will emit {resolution.EffectiveLabel}.",
+                    MessageType.Warning);
+            }
+
+            if (bridgeResolution.FellBack)
+            {
+                EditorGUILayout.HelpBox(
+                    "Requested ROS2 Bridge output, but this point-cloud mode cannot mirror a ROS2 payload.",
                     MessageType.Warning);
             }
         }

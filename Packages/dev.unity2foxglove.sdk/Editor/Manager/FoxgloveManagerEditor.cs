@@ -176,6 +176,9 @@ namespace Unity.FoxgloveSDK.Editor
             DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Default Publisher Encoding");
             DrawProperty("_allowPublisherOverride");
 
+            FoxgloveManagerInspectorLayout.Subheader("ROS2 Bridge");
+            DrawRos2BridgeSection();
+
             FoxgloveManagerInspectorLayout.Subheader("Coordinates");
             DrawProperty("_coordinateMode");
 
@@ -635,6 +638,40 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private void DrawRos2BridgeSection()
+        {
+            DrawProperty("_ros2BridgeEnabled");
+            DrawProperty("_ros2BridgeHost");
+            DrawProperty("_ros2BridgePort");
+            DrawProperty("_ros2BridgeAutoConnect");
+            DrawProperty("_defaultRos2BridgeOutputEnabled");
+            DrawProperty("_allowPublisherRos2BridgeOverride");
+            DrawProperty("_ros2BridgeQueueCapacity");
+            DrawProperty("_ros2BridgeReconnectIntervalMs");
+            DrawProperty("_ros2BridgeSendTimeoutMs");
+
+            EditorGUILayout.HelpBox(
+                "ROS2 Bridge is optional, disabled by default, and mirrors supported publisher payloads to a local bridge sidecar. Use loopback hosts only.",
+                MessageType.Info);
+
+            var manager = (Components.FoxgloveManager)target;
+            if (manager == null)
+                return;
+
+            var stats = manager.GetRos2BridgeStatsSnapshot();
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.Toggle("Enabled", stats.Enabled);
+                EditorGUILayout.Toggle("Connected", stats.Connected);
+                EditorGUILayout.Toggle("Connecting", stats.Connecting);
+                EditorGUILayout.IntField("Queued Frames", stats.QueuedFrames);
+                EditorGUILayout.LongField("Sent Frames", stats.SentFrames);
+                EditorGUILayout.LongField("Dropped Frames", stats.DroppedFrames);
+                EditorGUILayout.LongField("Failed Frames", stats.FailedFrames);
+                EditorGUILayout.TextField("Last Error", stats.LastError);
+            }
+        }
+
         /// <summary>
         /// Renders a path label on one row and the value plus browse button
         /// on the next row.
@@ -850,6 +887,7 @@ namespace Unity.FoxgloveSDK.Editor
             var publishRateSource = serializedObject.FindProperty("_publishRateSource");
             var publishRateHz = serializedObject.FindProperty("_publishRateHz");
             var encodingOverride = serializedObject.FindProperty("_encodingOverride");
+            var bridgeOverride = serializedObject.FindProperty("_ros2BridgeOutput");
             var prop = serializedObject.GetIterator();
             if (prop.NextVisible(true))
             {
@@ -860,6 +898,8 @@ namespace Unity.FoxgloveSDK.Editor
                     if (prop.name == "_publishRateHz")
                         continue;
                     if (prop.name == "_encodingOverride")
+                        continue;
+                    if (prop.name == "_ros2BridgeOutput")
                         continue;
 
                     using (new EditorGUI.DisabledScope(prop.propertyPath == "m_Script"))
@@ -888,10 +928,16 @@ namespace Unity.FoxgloveSDK.Editor
             if (encodingOverride != null)
                 PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
 
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
+            if (bridgeOverride != null)
+                PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOverride, "Bridge Output");
+
             serializedObject.ApplyModifiedProperties();
 
             var publisher = (Components.FoxglovePublisherBase)target;
             var resolution = publisher.EncodingResolution;
+            var bridgeResolution = publisher.BridgeOutputResolution;
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))
@@ -904,6 +950,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
+                PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
             }
 
             if (publisher.ConfiguredManager != null
@@ -924,6 +971,13 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.HelpBox(
                     $"Requested {resolution.RequestedLabel}, but this publisher will emit {resolution.EffectiveLabel}.",
+                    MessageType.Warning);
+            }
+
+            if (bridgeResolution.FellBack)
+            {
+                EditorGUILayout.HelpBox(
+                    "Requested ROS2 Bridge output, but this publisher cannot mirror a ROS2 payload.",
                     MessageType.Warning);
             }
         }

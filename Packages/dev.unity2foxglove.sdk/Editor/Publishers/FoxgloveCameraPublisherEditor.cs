@@ -122,6 +122,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
+            DrawRos2BridgeSection();
 
             serializedObject.ApplyModifiedProperties();
 
@@ -344,10 +345,23 @@ namespace Unity.FoxgloveSDK.Editor
             PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
         }
 
+        private void DrawRos2BridgeSection()
+        {
+            var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
+            PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOutput, "Bridge Output");
+            EditorGUILayout.HelpBox(
+                "JPEG mode can mirror the same ROS2 CDR image payload to the optional local bridge. Video modes keep using WebSocket output only.",
+                MessageType.Info);
+        }
+
         private void DrawResolvedSummaries()
         {
             var publisher = (FoxgloveCameraPublisher)target;
             var resolution = publisher.EncodingResolution;
+            var bridgeResolution = publisher.BridgeOutputResolution;
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))
@@ -360,6 +374,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
                 PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
+                PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
             }
 
             if (publisher.ConfiguredManager != null
@@ -380,6 +395,13 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.HelpBox(
                     $"Requested {resolution.RequestedLabel}, but this publisher will emit {resolution.EffectiveLabel}.",
+                    MessageType.Warning);
+            }
+
+            if (bridgeResolution.FellBack)
+            {
+                EditorGUILayout.HelpBox(
+                    "Requested ROS2 Bridge output, but this camera mode cannot mirror a ROS2 payload.",
                     MessageType.Warning);
             }
         }

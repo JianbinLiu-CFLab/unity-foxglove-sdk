@@ -44,6 +44,23 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             writer.WriteUInt32(nsec);
         }
 
+        /// <summary>Write builtin_interfaces/Time from a generated protobuf timestamp.</summary>
+        public static void WriteTime(Ros2CdrWriter writer, global::Google.Protobuf.WellKnownTypes.Timestamp value)
+        {
+            if (writer == null)
+                throw new ArgumentNullException(nameof(writer));
+
+            var sec = value?.Seconds ?? 0L;
+            var nsec = value?.Nanos ?? 0;
+            if (sec < int.MinValue || sec > int.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(value), "ROS 2 Time seconds must fit in int32.");
+            if (nsec < 0 || nsec > 999_999_999)
+                throw new ArgumentOutOfRangeException(nameof(value), "ROS 2 Time nanoseconds must be less than 1e9.");
+
+            writer.WriteInt32((int)sec);
+            writer.WriteUInt32((uint)nsec);
+        }
+
         /// <summary>Write builtin_interfaces/Duration.</summary>
         public static void WriteDuration(Ros2CdrWriter writer, FoxgloveDuration value)
         {
@@ -59,6 +76,23 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
             writer.WriteInt32((int)sec);
             writer.WriteUInt32(nsec);
+        }
+
+        /// <summary>Write builtin_interfaces/Duration from a generated protobuf duration.</summary>
+        public static void WriteDuration(Ros2CdrWriter writer, global::Google.Protobuf.WellKnownTypes.Duration value)
+        {
+            if (writer == null)
+                throw new ArgumentNullException(nameof(writer));
+
+            var sec = value?.Seconds ?? 0L;
+            var nsec = value?.Nanos ?? 0;
+            if (sec < int.MinValue || sec > int.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(value), "ROS 2 Duration seconds must fit in int32.");
+            if (nsec < 0 || nsec > 999_999_999)
+                throw new ArgumentOutOfRangeException(nameof(value), "ROS 2 Duration nanoseconds must be less than 1e9.");
+
+            writer.WriteInt32((int)sec);
+            writer.WriteUInt32((uint)nsec);
         }
 
         /// <summary>Write geometry_msgs/Point.</summary>
@@ -103,7 +137,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Write an identity geometry_msgs/Pose.</summary>
         public static void WriteIdentityPose(Ros2CdrWriter writer)
         {
-            WritePose(writer, null);
+            WritePose(writer, (FoxglovePose)null);
         }
 
         /// <summary>Write foxglove_msgs/Color.</summary>

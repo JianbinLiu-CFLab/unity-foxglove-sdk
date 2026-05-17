@@ -126,7 +126,9 @@ namespace Unity.FoxgloveSDK.Components
             var maxPendingReadbacks = Math.Max(1, _maxPendingReadbacks);
             if (_pendingRequests >= maxPendingReadbacks) return;
             if (!profile.IsVideo && !AllowJpegCaptureByBackpressure()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge) return;
             if (profile.IsVideo && !EnsureVideoSidecarStarted(profile)) return;
 
             EnsureCaptureResources();
@@ -191,32 +193,42 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var unixNs = CurrentLogTimeNs;
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            byte[] ros2Payload = null;
+
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 var payload = CameraCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
                 PublishProto(payload, unixNs);
                 _backpressureSkipLogCount = 0;
-                return;
             }
-
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                var payload = Ros2CdrCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
-                PublishRos2(payload, unixNs);
+                ros2Payload = Ros2CdrCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
+                PublishRos2(ros2Payload, unixNs);
                 _backpressureSkipLogCount = 0;
-                return;
+            }
+            else if (publishWebSocket)
+            {
+                var msg = new CompressedImageMessage
+                {
+                    Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
+                    FrameId = _frameId,
+                    Data = Convert.ToBase64String(jpeg),
+                    Format = "jpeg"
+                };
+
+                Publish(msg, unixNs);
+                _backpressureSkipLogCount = 0;
             }
 
-            var msg = new CompressedImageMessage
+            if (publishBridge)
             {
-                Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
-                FrameId = _frameId,
-                Data = Convert.ToBase64String(jpeg),
-                Format = "jpeg"
-            };
-
-            Publish(msg, unixNs);
-            _backpressureSkipLogCount = 0;
+                ros2Payload ??= Ros2CdrCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
+                PublishRos2Bridge(ros2Payload, unixNs);
+                _backpressureSkipLogCount = 0;
+            }
         }
 
         private void SubmitVideoFrame(AsyncGPUReadbackRequest req)

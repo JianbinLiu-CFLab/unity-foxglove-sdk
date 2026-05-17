@@ -36,6 +36,12 @@ The SDK includes a minimal XCDR1 little-endian writer for smoke payloads under `
 - `foxglove_msgs/msg/CompressedPointCloud`
 - `foxglove_msgs/msg/SceneUpdate`
 
+Phase 93 adds low-level full ROS 2 CDR payload parity for all 41 root ROS 2 `.msg` schemas in the bundled snapshot. The generated `Ros2CdrSerializerRegistry` can create deterministic smoke samples and serialize each generated protobuf CLR message type to XCDR1 bytes for schema, WebSocket, MCAP, and replay validation. This is a low-level validation surface for custom integrations and regression tests; it does not turn every schema into a polished Unity Inspector component.
+
+Phase 94 adds an experimental localhost ROS 2 bridge spike. It proves that three representative schemas (`FrameTransform`, `LaserScan`, and `PointCloud`) can leave Unity2Foxglove as Phase 93 CDR payloads, enter a C++ `rclcpp::GenericPublisher` sidecar, and appear in a real ROS 2 graph. This bridge is optional, localhost-only, and intentionally separate from the normal Foxglove WebSocket path.
+
+Phase 95 productizes the Unity-side ROS2 Bridge mirror path for the seven validated publisher workflows. The bridge is still optional, disabled by default, and localhost sidecar based; it adds Manager and publisher Inspector controls, a bounded background send queue, and simple queued/sent/dropped/failed status without changing normal WebSocket publishing.
+
 The SDK also provides a productized `ROS2` publisher option for the validated Unity publisher workflows listed below. This is still a Foxglove WebSocket and MCAP path, not a ROS 2 node, DDS transport, or rosbag2 writer.
 
 ## 4. Generic Parity vs Dedicated Components
@@ -85,13 +91,19 @@ To generate a ROS 2 `.msg` + CDR smoke MCAP:
 python Scripts/smoke/ros2_cdr_mcap_inspect.py
 ```
 
-The script writes:
+The script writes and strictly inspects:
 
 ```text
-build/test_mcap/phase91_ros2_cdr_smoke.mcap
+build/test_mcap/phase93_ros2_full_schema.mcap
 ```
 
-This fixture validates ROS 2 schema/channel metadata plus CDR payload framing for the seven smoke builders listed above.
+This fixture validates all 41 ROS 2 `.msg` schema records, 41 `messageEncoding = cdr` channels, and one CDR-framed payload for every generated schema. To inspect an existing MCAP instead of generating the default fixture, pass its path as the positional argument:
+
+```bash
+python Scripts/smoke/ros2_cdr_mcap_inspect.py build/test_mcap/phase93_ros2_full_schema.mcap
+```
+
+The seven smoke builders listed above remain the source-compatible hand-written builder set used by the productized publisher paths.
 
 To generate the productized ROS2 publisher smoke MCAP:
 

@@ -122,23 +122,32 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            if (!ShouldPrepareAnyPublishPayload()) return;
 
             var unixNs = CurrentLogTimeNs;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var message = CreateMessage(unixNs);
+            if (message == null) return;
+            byte[] ros2Payload = null;
 
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 PublishProtobufSceneUpdate(unixNs);
             }
-            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                PublishRos2SceneUpdate(unixNs);
+                if (TryBuildRos2SceneUpdate(message, out ros2Payload))
+                    PublishRos2(ros2Payload, unixNs);
             }
-            else
+            else if (publishWebSocket)
             {
-                var message = CreateMessage(unixNs);
-                if (message == null) return;
                 Publish(message, unixNs);
+            }
+
+            if (publishBridge && TryBuildRos2SceneUpdate(message, out var bridgePayload))
+            {
+                PublishRos2Bridge(ros2Payload ?? bridgePayload, unixNs);
             }
         }
 
@@ -177,14 +186,22 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishRos2SceneUpdate(ulong unixNs)
         {
+            if (TryBuildRos2SceneUpdate(CreateMessage(unixNs), out var payload))
+                PublishRos2(payload, unixNs);
+        }
+
+        private bool TryBuildRos2SceneUpdate(SceneUpdateMessage message, out byte[] payload)
+        {
+            payload = null;
             try
             {
-                var payload = Ros2CdrSceneUpdateBuilder.Serialize(CreateMessage(unixNs));
-                PublishRos2(payload, unixNs);
+                payload = Ros2CdrSceneUpdateBuilder.Serialize(message);
+                return true;
             }
             catch (System.NotSupportedException ex)
             {
                 Debug.LogWarning("[Foxglove] SceneUpdate ROS2 publish skipped: " + ex.Message);
+                return false;
             }
         }
 

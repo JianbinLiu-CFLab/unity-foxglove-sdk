@@ -142,6 +142,33 @@ class Program
         if (argList.Contains("--phase92"))
             return RunPhase92Only();
 
+        if (argList.Contains("--phase93"))
+            return RunPhase93Only();
+
+        if (argList.Contains("--phase94"))
+            return RunPhase94Only();
+
+        if (argList.Contains("--phase95"))
+            return RunPhase95Only();
+
+        var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
+        if (phase94BridgeSendIdx >= 0)
+        {
+            if (phase94BridgeSendIdx + 2 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase94-bridge-send requires host and port.");
+                return 1;
+            }
+
+            if (!int.TryParse(argList[phase94BridgeSendIdx + 2], out var port))
+            {
+                Console.Error.WriteLine("--phase94-bridge-send port must be an integer.");
+                return 1;
+            }
+
+            return RunPhase94BridgeSend(argList[phase94BridgeSendIdx + 1], port);
+        }
+
         var phase91McapIdx = argList.IndexOf("--phase91-ros2-cdr-mcap");
         if (phase91McapIdx >= 0)
         {
@@ -164,6 +191,30 @@ class Program
             }
 
             return RunPhase92Ros2ProductMcap(argList[phase92McapIdx + 1]);
+        }
+
+        var phase93McapIdx = argList.IndexOf("--phase93-ros2-full-mcap");
+        if (phase93McapIdx >= 0)
+        {
+            if (phase93McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase93-ros2-full-mcap requires an output path.");
+                return 1;
+            }
+
+            return RunPhase93Ros2FullMcap(argList[phase93McapIdx + 1]);
+        }
+
+        var phase93InspectIdx = argList.IndexOf("--phase93-inspect-mcap");
+        if (phase93InspectIdx >= 0)
+        {
+            if (phase93InspectIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase93-inspect-mcap requires an input path.");
+                return 1;
+            }
+
+            return RunPhase93InspectMcap(argList[phase93InspectIdx + 1]);
         }
 
         var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
@@ -815,6 +866,94 @@ class Program
         }
     }
 
+    private static int RunPhase93Only()
+    {
+        try
+        {
+            Phase93Validation.Validate();
+            Console.WriteLine("\nPhase 93 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase93Ros2FullMcap(string outputPath)
+    {
+        try
+        {
+            Phase93Validation.GenerateRos2FullSchemaMcap(outputPath);
+            Console.WriteLine($"Phase 93 ROS2 full-schema MCAP written: {outputPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase93InspectMcap(string inputPath)
+    {
+        try
+        {
+            Phase93Validation.InspectRos2FullSchemaMcap(inputPath);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase94Only()
+    {
+        try
+        {
+            Phase94Validation.Validate();
+            Console.WriteLine("\nPhase 94 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase94BridgeSend(string host, int port)
+    {
+        try
+        {
+            Phase94Validation.RunBridgeSendSmoke(host, port);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase95Only()
+    {
+        try
+        {
+            Phase95Validation.Validate();
+            Console.WriteLine("\nPhase 95 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -965,6 +1104,12 @@ class Program
             Phase91Validation.Validate();
             Console.WriteLine();
             Phase92Validation.Validate();
+            Console.WriteLine();
+            Phase93Validation.Validate();
+            Console.WriteLine();
+            Phase94Validation.Validate();
+            Console.WriteLine();
+            Phase95Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

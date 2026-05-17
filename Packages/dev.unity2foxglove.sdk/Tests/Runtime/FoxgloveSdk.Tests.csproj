@@ -21,11 +21,13 @@
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
+    <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
     <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/Ros2Msg/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs" />
+    <Compile Include="../../Runtime/Schemas/Proto/Ros2Bridge/Ros2BridgePublisher.cs" />
     <Compile Include="../../Runtime/Utilities/*.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SkeletonValidation.cs" />
@@ -93,6 +95,9 @@
     <Compile Include="Ros2CdrTestReader.cs" />
     <Compile Include="Phase91Validation.cs" />
     <Compile Include="Phase92Validation.cs" />
+    <Compile Include="Phase93Validation.cs" />
+    <Compile Include="Phase94Validation.cs" />
+    <Compile Include="Phase95Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>

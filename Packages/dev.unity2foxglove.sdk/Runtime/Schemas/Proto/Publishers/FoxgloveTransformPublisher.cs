@@ -42,23 +42,33 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            if (!ShouldPrepareAnyPublishPayload()) return;
 
             var unixNs = CurrentLogTimeNs;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            var message = CreateMessage(unixNs);
+            if (message == null) return;
+            byte[] ros2Payload = null;
 
-            if (EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 PublishProtobufTransform(unixNs);
             }
-            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                PublishRos2Transform(unixNs);
+                ros2Payload = Ros2CdrFrameTransformBuilder.Serialize(message);
+                PublishRos2(ros2Payload, unixNs);
             }
-            else
+            else if (publishWebSocket)
             {
-                var message = CreateMessage(unixNs);
-                if (message == null) return;
                 Publish(message, unixNs);
+            }
+
+            if (publishBridge)
+            {
+                ros2Payload ??= Ros2CdrFrameTransformBuilder.Serialize(message);
+                PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 

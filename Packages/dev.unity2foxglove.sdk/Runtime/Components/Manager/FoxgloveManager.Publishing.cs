@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
+using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
 
@@ -149,6 +150,85 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Returns the latest ROS2 Bridge runtime stats for Inspector and diagnostics.
+        /// </summary>
+        public Ros2BridgeStatsSnapshot GetRos2BridgeStatsSnapshot()
+        {
+            if (_ros2BridgeRuntime != null)
+                return _ros2BridgeRuntime.GetStatsSnapshot();
+
+            if (!string.IsNullOrEmpty(_ros2BridgeSetupError))
+            {
+                return new Ros2BridgeStatsSnapshot(
+                    enabled: false,
+                    connected: false,
+                    connecting: false,
+                    queuedFrames: 0,
+                    sentFrames: 0,
+                    droppedFrames: 0,
+                    failedFrames: 0,
+                    lastError: _ros2BridgeSetupError,
+                    lastConnectedUnixMs: 0,
+                    lastDisconnectedUnixMs: 0);
+            }
+
+            return Ros2BridgeStatsSnapshot.Disabled;
+        }
+
+        /// <summary>
+        /// Return whether a publisher should prepare a ROS2 Bridge payload.
+        /// This path is independent of the Foxglove WebSocket server and subscriber demand.
+        /// </summary>
+        /// <param name="topic">ROS 2 topic name.</param>
+        /// <param name="schemaName">ROS 2 interface schema name.</param>
+        /// <param name="reason">Human-readable skip reason when false.</param>
+        /// <returns>True when payload preparation should continue.</returns>
+        public bool TryPrepareRos2BridgePublish(string topic, string schemaName, out string reason)
+        {
+            reason = string.Empty;
+
+            if (SuppressLivePublishersForReplay)
+            {
+                reason = "Replay is suppressing live publishers.";
+                return false;
+            }
+
+            if (!_ros2BridgeEnabled)
+            {
+                reason = "ROS2 Bridge is disabled.";
+                return false;
+            }
+
+            if (_ros2BridgeRuntime == null)
+            {
+                reason = string.IsNullOrEmpty(_ros2BridgeSetupError)
+                    ? "ROS2 Bridge runtime is unavailable."
+                    : _ros2BridgeSetupError;
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(topic) || !topic.StartsWith("/", System.StringComparison.Ordinal))
+            {
+                reason = "ROS2 Bridge topic must start with '/'.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(schemaName))
+            {
+                reason = "ROS2 Bridge schema name is required.";
+                return false;
+            }
+
+            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
+            {
+                reason = $"Unknown ROS2 Bridge schema '{schemaName}'.";
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Serializes a message to JSON and publishes it on the specified topic.
         /// </summary>
         /// <param name="topic">Topic to publish to.</param>
@@ -245,6 +325,36 @@ namespace Unity.FoxgloveSDK.Components
 
             var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
+        /// <summary>
+        /// Mirrors an already serialized ROS 2 CDR payload to the optional ROS2 Bridge sidecar.
+        /// </summary>
+        /// <param name="topic">ROS 2 topic name.</param>
+        /// <param name="schemaName">ROS 2 interface schema name.</param>
+        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishRos2BridgeCdr(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+        {
+            if (!TryPrepareRos2BridgePublish(topic, schemaName, out var reason))
+            {
+                if (!string.IsNullOrWhiteSpace(reason))
+                    Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
+                return;
+            }
+
+            Ros2CdrPayloadValidator.Validate(payload);
+
+            var frame = new Ros2BridgeFrame(
+                topic,
+                schemaName,
+                CdrEncoding,
+                logTimeNs,
+                ++_ros2BridgeSequence,
+                payload);
+
+            if (!_ros2BridgeRuntime.TryEnqueue(frame, out var enqueueReason))
+                Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + enqueueReason);
         }
 
         /// <summary>
