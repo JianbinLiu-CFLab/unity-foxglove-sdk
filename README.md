@@ -48,6 +48,8 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
+Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. An experimental ROS 2 sidecar bridge is available under `Tools/ros2_bridge` for developers who explicitly want a localhost ROS 2 graph spike; it is optional and not part of the default Unity workflow.
+
 ## 1.2 Who This Is For
 
 Unity2Foxglove is for Unity developers who want runtime data to be visible outside the Game view without building a custom debug UI or running a separate bridge process.
@@ -201,6 +203,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - Real-time data streaming (transform, scene entities, camera images)
 - Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON, Protobuf, or ROS2 mode
 - ROS2 output for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers using official Foxglove `ros2msg` schemas with CDR payloads
+- Optional experimental localhost ROS 2 sidecar bridge spike for three representative topics (`/unity/tf`, `/unity/laser_scan`, `/unity/point_cloud`)
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
 - MCAP replay for transform/scene snapshot reconstruction, paused scrub scene updates, and bounded panel-history replay after seek debounce
@@ -216,6 +219,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - **Production authentication / authorization** - the shared token is a lightweight local/LAN gate, not OAuth, mTLS, users, roles, or permissions
 - **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
+- **Production ROS 2 bridge UX** - the current ROS 2 sidecar bridge is experimental, localhost-only, and has no Inspector health panel, QoS UI, installer, or remote-host support
 
 ### Security
 

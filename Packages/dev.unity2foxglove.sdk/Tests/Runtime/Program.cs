@@ -145,6 +145,27 @@ class Program
         if (argList.Contains("--phase93"))
             return RunPhase93Only();
 
+        if (argList.Contains("--phase94"))
+            return RunPhase94Only();
+
+        var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
+        if (phase94BridgeSendIdx >= 0)
+        {
+            if (phase94BridgeSendIdx + 2 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase94-bridge-send requires host and port.");
+                return 1;
+            }
+
+            if (!int.TryParse(argList[phase94BridgeSendIdx + 2], out var port))
+            {
+                Console.Error.WriteLine("--phase94-bridge-send port must be an integer.");
+                return 1;
+            }
+
+            return RunPhase94BridgeSend(argList[phase94BridgeSendIdx + 1], port);
+        }
+
         var phase91McapIdx = argList.IndexOf("--phase91-ros2-cdr-mcap");
         if (phase91McapIdx >= 0)
         {
@@ -886,6 +907,35 @@ class Program
         }
     }
 
+    private static int RunPhase94Only()
+    {
+        try
+        {
+            Phase94Validation.Validate();
+            Console.WriteLine("\nPhase 94 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase94BridgeSend(string host, int port)
+    {
+        try
+        {
+            Phase94Validation.RunBridgeSendSmoke(host, port);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -1038,6 +1088,8 @@ class Program
             Phase92Validation.Validate();
             Console.WriteLine();
             Phase93Validation.Validate();
+            Console.WriteLine();
+            Phase94Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

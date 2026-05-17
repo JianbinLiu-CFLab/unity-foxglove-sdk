@@ -38,6 +38,8 @@ The SDK includes a minimal XCDR1 little-endian writer for smoke payloads under `
 
 Phase 93 adds low-level full ROS 2 CDR payload parity for all 41 root ROS 2 `.msg` schemas in the bundled snapshot. The generated `Ros2CdrSerializerRegistry` can create deterministic smoke samples and serialize each generated protobuf CLR message type to XCDR1 bytes for schema, WebSocket, MCAP, and replay validation. This is a low-level validation surface for custom integrations and regression tests; it does not turn every schema into a polished Unity Inspector component.
 
+Phase 94 adds an experimental localhost ROS 2 bridge spike. It proves that three representative schemas (`FrameTransform`, `LaserScan`, and `PointCloud`) can leave Unity2Foxglove as Phase 93 CDR payloads, enter a C++ `rclcpp::GenericPublisher` sidecar, and appear in a real ROS 2 graph. This bridge is optional, localhost-only, and intentionally separate from the normal Foxglove WebSocket path.
+
 The SDK also provides a productized `ROS2` publisher option for the validated Unity publisher workflows listed below. This is still a Foxglove WebSocket and MCAP path, not a ROS 2 node, DDS transport, or rosbag2 writer.
 
 ## 4. Generic Parity vs Dedicated Components

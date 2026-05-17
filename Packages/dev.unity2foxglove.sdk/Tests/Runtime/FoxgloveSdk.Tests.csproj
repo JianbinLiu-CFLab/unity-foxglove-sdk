@@ -21,6 +21,7 @@
     <Compile Include="../../Runtime/Protocol/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
+    <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
     <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
@@ -94,6 +95,7 @@
     <Compile Include="Phase91Validation.cs" />
     <Compile Include="Phase92Validation.cs" />
     <Compile Include="Phase93Validation.cs" />
+    <Compile Include="Phase94Validation.cs" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>
