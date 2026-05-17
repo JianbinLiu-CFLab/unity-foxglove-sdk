@@ -170,6 +170,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var failures = checks.Where(c => c.Status == Ros2BridgeHealthStatus.Fail).ToArray();
             if (failures.Length == 0)
             {
+                if (HasReadySidecar(checks) && checks.All(IsReadyWithOptionalCliDiagnostics))
+                    return Ros2BridgeHealthSummary.Ready;
+
                 return checks.Any(c => c.Status == Ros2BridgeHealthStatus.Warning || IsBlockingSkipped(c))
                     ? Ros2BridgeHealthSummary.NeedsSetup
                     : Ros2BridgeHealthSummary.Ready;
@@ -191,5 +194,22 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private static bool IsBlockingSkipped(Ros2BridgeHealthCheckResult check)
             => check.Status == Ros2BridgeHealthStatus.Skipped
                && !string.Equals(check.Id, "sidecar.self_report", StringComparison.Ordinal);
+
+        private static bool HasReadySidecar(IReadOnlyList<Ros2BridgeHealthCheckResult> checks)
+            => checks.Any(c => string.Equals(c.Id, "sidecar.ping", StringComparison.Ordinal)
+                               && c.Status == Ros2BridgeHealthStatus.Pass);
+
+        private static bool IsReadyWithOptionalCliDiagnostics(Ros2BridgeHealthCheckResult check)
+        {
+            if (check.Status == Ros2BridgeHealthStatus.Pass)
+                return true;
+            if (string.Equals(check.Id, "sidecar.self_report", StringComparison.Ordinal))
+                return true;
+
+            return check.Status != Ros2BridgeHealthStatus.Fail
+                   && (check.Id.StartsWith("ros2.", StringComparison.Ordinal)
+                       || check.Id.StartsWith("foxglove_msgs.", StringComparison.Ordinal)
+                       || check.Id.StartsWith("interfaces.", StringComparison.Ordinal));
+        }
     }
 }

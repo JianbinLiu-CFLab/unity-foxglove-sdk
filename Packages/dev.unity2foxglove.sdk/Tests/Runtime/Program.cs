@@ -184,6 +184,12 @@ class Program
         if (argList.Contains("--phase98-live"))
             return RunPhase98Live(argList);
 
+        if (argList.Contains("--phase99"))
+            return RunPhase99Only();
+
+        if (argList.Contains("--phase99-live"))
+            return RunPhase99Live(argList);
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1125,6 +1131,50 @@ class Program
         }
     }
 
+    private static int RunPhase99Only()
+    {
+        try
+        {
+            Phase99Validation.Validate();
+            Console.WriteLine("\nPhase 99 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase99Live(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase99-live requires --json <path>.");
+                return 1;
+            }
+
+            var evidenceDir = ReadStringOption(argList, "--evidence-dir", "");
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var report = Phase99Validation.GenerateLiveReport(jsonPath, evidenceDir, host, port, ros2Path);
+
+            Console.WriteLine($"Phase 99 release gate report written: {jsonPath}");
+            Console.WriteLine($"Verdict: {report.Verdict}");
+            Console.WriteLine($"Evidence items: {report.Evidence?.Count ?? 0}");
+            return report.Verdict == Phase99Verdict.Blocked ? 1 : 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -1287,6 +1337,8 @@ class Program
             Phase97Validation.Validate();
             Console.WriteLine();
             Phase98Validation.Validate();
+            Console.WriteLine();
+            Phase99Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

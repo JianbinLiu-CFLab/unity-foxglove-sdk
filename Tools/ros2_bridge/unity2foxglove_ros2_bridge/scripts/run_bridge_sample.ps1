@@ -35,7 +35,7 @@ foreach ($schema in $schemas) {
 }
 
 Write-Host "Preflight passed for sample schemas."
-Write-Host "For full 41-interface validation, run the Unity Manager ROS2 Bridge Health check."
+Write-Host "For optional 41-interface diagnostics, run the Unity Manager ROS2 Bridge Health check."
 Write-Host ""
 Write-Host "Launch command:"
 Write-Host "ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py host:=$HostName port:=$Port payload_format:=$PayloadFormat"

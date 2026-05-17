@@ -25,17 +25,11 @@ Optional topic:
 
 The Draco topic is skipped when the bundled native Draco plugin is unavailable.
 
-## 2. Preflight
+## 2. Optional Preflight
 
-In Unity:
+The sample can be accepted without pressing a health button. The primary acceptance signal is live ROS2 topic output plus Unity bridge status: `Connected`, increasing `Sent Frames`, and zero dropped/failed frames.
 
-1. Select the `Foxglove` object in `Ros2BridgeSample.unity`.
-2. Open the Manager Inspector.
-3. Run **ROS2 Bridge Health**.
-
-The health check verifies the ROS2 CLI, `foxglove_msgs`, bundled interfaces, and the local sidecar health ping when live mode is available.
-
-This preflight uses the Phase 97 ROS2 Bridge health diagnostics; if it is not Ready, fix that result before judging the sample scene.
+The optional Manager Inspector **ROS2 Bridge Health** check can help diagnose ROS2 CLI, `foxglove_msgs`, bundled interfaces, or local sidecar health ping issues when topics do not appear. It is a troubleshooting aid, not a required publish step.
 
 In a ROS2 shell:
 
@@ -85,7 +79,8 @@ ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 
 1. Import **ROS2 Bridge Sample** from Package Manager.
 2. Open `Scenes/Ros2BridgeSample.unity`.
 3. Press Play.
-4. Keep the sidecar terminal open.
+4. Select the `Foxglove` object and confirm the ROS2 Bridge status shows `Connected`, increasing `Sent Frames`, and zero dropped/failed frames.
+5. Keep the sidecar terminal open.
 
 The sample Manager uses bridge namespace `/unity2foxglove`, so publisher topics such as `/tf` become ROS2 Bridge topics such as `/unity2foxglove/tf`.
 
@@ -115,14 +110,14 @@ Open Foxglove and import:
 FoxgloveRos2BridgeLayout.json
 ```
 
-The layout references `/unity2foxglove/...` topics and is intended for the ROS2 Bridge sample path.
+The layout references the direct Unity WebSocket topics (`/tf`, `/scene`, `/camera`, `/laser_scan`, `/point_cloud`) and Foxglove schema names. The `/unity2foxglove` namespace is only used by the ROS2 sidecar topics inspected with `ros2 topic ...`.
 
 ## 8. Troubleshooting
 
 | Symptom | Action |
 | --- | --- |
 | Sidecar does not start | Source the ROS2 workspace and run `ros2 pkg prefix unity2foxglove_ros2_bridge`. |
-| Health check says ROS2 CLI missing | Choose the `ros2` executable in the Manager Inspector or run Unity from a shell with ROS2 on PATH. |
+| Health check says ROS2 CLI missing | Choose a Windows `ros2` executable only when you want Inspector CLI checks. A WSL sidecar can still be valid when the sidecar is connected and ROS2 topics echo in WSL. |
 | Health check says sidecar is not running | Start the sidecar on `127.0.0.1:8767` and retry. |
 | Topics appear but values decode incorrectly | Restart with `payload_format:=cdr-with-encapsulation`; record the result for your ROS2 distro and RMW. |
 | Draco topic does not appear | Use raw `/unity2foxglove/point_cloud`; Draco is optional. |

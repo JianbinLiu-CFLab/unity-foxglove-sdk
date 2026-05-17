@@ -28,11 +28,13 @@ If you only want to run the ready-made demo project, start with `Unity2Foxglove/
 - [13_Schema_Coverage](en/13_Schema_Coverage.md): official protobuf schema coverage, generic parity, and typed publisher UX boundaries.
 - [14_Typed_Sensor_Publishers](en/14_Typed_Sensor_Publishers.md): PointCloud, LaserScan, and CameraCalibration publishers.
 - [15_Secure_WSS](en/15_Secure_WSS.md): optional Unity-native WSS/TLS setup, root CA distribution, and token-gate limitations.
+- [16_ROS2_Bridge_Sample](en/16_ROS2_Bridge_Sample.md): optional Unity-to-ROS2 bridge sample, sidecar launch kit, and verification workflow.
 
 ## Related Entry Points
 
 - Package root: `Packages/dev.unity2foxglove.sdk`
 - Basic sample: `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization`
 - Full demo sample: `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization`
+- ROS2 Bridge sample: `Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample`
 - Standalone demo project: `Unity2Foxglove`
 - Repository build scripts: `Scripts`

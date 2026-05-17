@@ -38,6 +38,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static readonly ProductTopic OptionalDracoTopic =
             new ProductTopic("/unity2foxglove/point_cloud_draco", "foxglove_msgs/msg/CompressedPointCloud");
 
+        private static readonly ProductTopic[] LayoutTopics =
+        {
+            new ProductTopic("/tf", "foxglove.FrameTransform"),
+            new ProductTopic("/scene", "foxglove.SceneUpdate"),
+            new ProductTopic("/camera", "foxglove.CompressedImage"),
+            new ProductTopic("/camera_calibration", "foxglove.CameraCalibration"),
+            new ProductTopic("/laser_scan", "foxglove.LaserScan"),
+            new ProductTopic("/point_cloud", "foxglove.PointCloud"),
+            new ProductTopic("/point_cloud_draco", "foxglove.CompressedPointCloud")
+        };
+
         private static int _passed;
 
         public static void Validate()
@@ -171,6 +182,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(File.Exists(RepoPath(relativePath)), "98A-4: sample meta file exists " + relativePath);
 
             var scene = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity");
+            var sceneCubePublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             Check(scene.Contains("_ros2BridgeEnabled: 1")
                   && scene.Contains("_ros2BridgeNamespace: /unity2foxglove")
                   && scene.Contains("_defaultRos2BridgeOutputEnabled: 1"),
@@ -178,6 +190,10 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var topic in RequiredProductTopics.Concat(new[] { OptionalDracoTopic }))
                 Check(scene.Contains(topic.Topic.Replace(NamespacePrefix, string.Empty)),
                     "98A-6: sample scene contains publisher topic " + topic.Topic);
+            Check(scene.Contains("_frameId: Moving Cube")
+                  && scene.Contains("_childFrameId: Moving Cube")
+                  && sceneCubePublisher.Contains("return SanitizeFrameId(_frameId, gameObject.name);"),
+                "98A-8: sample scene cube frame resolves to the transform child frame id");
 
             var scripts = SampleScriptSources();
             var forbidden = new[]
@@ -202,14 +218,16 @@ namespace Unity.FoxgloveSDK.Tests
             var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/16_ROS2_Bridge_Sample.md");
             var samplesDoc = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/03_Samples_and_Demo_Project.md");
 
-            Check(sampleReadme.Contains("ROS2 Bridge Health") && docs.Contains("Phase 97") && docs.Contains("ros2 launch"),
-                "98B-1: docs point users through health preflight and sidecar launch");
+            Check(sampleReadme.Contains("optional Manager Inspector **ROS2 Bridge Health**")
+                  && docs.Contains("not a required publish step")
+                  && docs.Contains("ros2 launch"),
+                "98B-1: docs document optional health diagnostics and sidecar launch");
             Check(samplesDoc.Contains("ROS2 Bridge Sample")
                   && (samplesDoc.Contains("three importable samples") || samplesDoc.Contains("three prepared samples")),
                 "98B-2: sample overview documents third sample");
-            Check(sampleReadme.Contains("foxglove_msgs/msg/FrameTransform")
-                  && sampleReadme.Contains("not protobuf schema names"),
-                "98B-3: sample README distinguishes ROS2 schema names from protobuf names");
+            Check(sampleReadme.Contains("direct Unity topics such as `/tf`")
+                  && sampleReadme.Contains("mirrors it to ROS2 as `/unity2foxglove/tf`"),
+                "98B-3: sample README distinguishes direct Foxglove topics from ROS2 bridge topics");
             Check(docs.Contains("RViz2-native") && docs.Contains("outside this sample"),
                 "98B-4: docs defer native RViz2 message compatibility");
 
@@ -223,14 +241,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             var layoutText = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json");
             Check(JToken.Parse(layoutText) != null, "98B-6: Foxglove layout is valid JSON");
-            foreach (var topic in RequiredProductTopics.Concat(new[] { OptionalDracoTopic }))
+            foreach (var topic in LayoutTopics)
             {
                 Check(layoutText.Contains(topic.Topic) && layoutText.Contains(topic.SchemaName),
-                    "98B-7: layout references ROS2 sample topic and schema " + topic.Topic);
+                    "98B-7: layout references direct Foxglove sample topic and schema " + topic.Topic);
             }
 
-            Check(!layoutText.Contains("foxglove.FrameTransform") && !layoutText.Contains("foxglove.PointCloud"),
-                "98B-8: layout avoids protobuf schema names for bridge topics");
+            Check(!layoutText.Contains("/unity2foxglove/")
+                  && !layoutText.Contains("foxglove_msgs/msg/"),
+                "98B-8: layout avoids ROS2 bridge namespace and ros2msg schema names");
         }
 
         private static void VerifyLaunchKit()
@@ -251,14 +270,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && packageXml.Contains("<exec_depend>launch_ros</exec_depend>"),
                 "98C-3: package.xml declares launch runtime dependencies");
 
+            var sidecar = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
+            Check(sidecar.Contains("init_and_remove_ros_arguments") && sidecar.Contains("parse_args(non_ros_args)"),
+                "98C-4: sidecar accepts ROS launch-injected --ros-args");
+
             var bash = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.sh");
             var ps1 = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.ps1");
             foreach (var schema in RequiredProductTopics.Select(t => t.SchemaName).Concat(new[] { OptionalDracoTopic.SchemaName }))
             {
                 Check(bash.Contains("ros2 interface show") && bash.Contains(schema),
-                    "98C-4: bash preflight checks " + schema);
+                    "98C-5: bash preflight checks " + schema);
                 Check(ps1.Contains("ros2 interface show") && ps1.Contains(schema),
-                    "98C-5: PowerShell preflight checks " + schema);
+                    "98C-6: PowerShell preflight checks " + schema);
             }
 
             foreach (var script in new[] { bash, ps1 })
@@ -266,7 +289,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(!script.Contains("apt install") && !script.Contains("sudo ")
                       && !script.Contains("setx ") && !script.Contains(">> ~/.")
                       && !script.Contains("PATH="),
-                    "98C-6: launch helper does not install packages or mutate shell profile");
+                    "98C-7: launch helper does not install packages or mutate shell profile");
             }
 
             var readme = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");
@@ -274,7 +297,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && readme.Contains("ros2 topic list")
                   && readme.Contains("ros2 topic echo")
                   && readme.Contains("ros2 bag record"),
-                "98C-7: sidecar README documents launch and topic verification commands");
+                "98C-8: sidecar README documents launch and topic verification commands");
         }
 
         private static void VerifyAllSchemaFrameGeneration()

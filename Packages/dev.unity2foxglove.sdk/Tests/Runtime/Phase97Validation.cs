@@ -89,6 +89,16 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Result("config", Ros2BridgeHealthStatus.Fail)
             }) == Ros2BridgeHealthSummary.Failed, "97A-12: configuration failure maps to Failed");
+            Check(Ros2BridgeHealthReport.ClassifySummary(new[]
+            {
+                Result("config", Ros2BridgeHealthStatus.Pass),
+                Result("ros2.cli", Ros2BridgeHealthStatus.Warning),
+                Result("ros2.distro", Ros2BridgeHealthStatus.Skipped),
+                Result("foxglove_msgs.package", Ros2BridgeHealthStatus.Skipped),
+                Result("interfaces.catalog", Ros2BridgeHealthStatus.Skipped),
+                Result("sidecar.self_report", Ros2BridgeHealthStatus.Skipped),
+                Result("sidecar.ping", Ros2BridgeHealthStatus.Pass)
+            }) == Ros2BridgeHealthSummary.Ready, "97A-13: sidecar-ready WSL CLI warning maps to Ready");
         }
 
         private static void VerifyOfflineHealthReport()
@@ -138,12 +148,21 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(noRos2.Checks.Single(c => c.Id == "foxglove_msgs.package").Status == Ros2BridgeHealthStatus.Skipped,
                     "97C-5: missing ros2 skips dependent package check");
 
+                var wslSidecarReady = new Ros2BridgeHealthRunner(
+                    new LaunchFailureCommandRunner(),
+                    new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
+                    FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
+                Check(wslSidecarReady.Summary == Ros2BridgeHealthSummary.Ready,
+                    "97C-6: sidecar-ready report tolerates missing Windows ros2 CLI");
+                Check(wslSidecarReady.Checks.Single(c => c.Id == "ros2.cli").Status == Ros2BridgeHealthStatus.Warning,
+                    "97C-7: missing Windows ros2 CLI is a warning when command launch fails");
+
                 var sidecarDown = new Ros2BridgeHealthRunner(
                     new RecordingCommandRunner(successByDefault: true),
                     new FakeProbe(false),
                     FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
                 Check(sidecarDown.Summary == Ros2BridgeHealthSummary.SidecarNotRunning,
-                    "97C-6: sidecar-only failure maps to SidecarNotRunning");
+                    "97C-8: sidecar-only failure maps to SidecarNotRunning");
             }
             finally
             {
@@ -210,8 +229,14 @@ namespace Unity.FoxgloveSDK.Tests
             var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
             var prefs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
-            Check(managerEditor.Contains("Ros2BridgeHealthDrawer") && managerEditor.Contains("_ros2BridgeHealthDrawer.Draw"),
-                "97F-1: Manager Diagnostics includes ROS2 Bridge health drawer");
+            var bridgeStart = managerEditor.IndexOf("private void DrawRos2BridgeSection()", StringComparison.Ordinal);
+            var diagnosticsStart = managerEditor.IndexOf("private void DrawDiagnosticsSection()", StringComparison.Ordinal);
+            var healthDraw = managerEditor.IndexOf("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal);
+            Check(bridgeStart >= 0
+                  && diagnosticsStart >= 0
+                  && healthDraw > bridgeStart
+                  && !(healthDraw > diagnosticsStart && healthDraw < bridgeStart),
+                "97F-1: Manager ROS2 Bridge section owns ROS2 Bridge health drawer");
             Check(drawer.Contains("ROS2 Bridge Health") && drawer.Contains("Check ROS2 Bridge"),
                 "97F-2: Inspector exposes one-click health check");
             Check(drawer.Contains("Task.Run") && drawer.Contains("Progress = progress"),
@@ -283,14 +308,17 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static bool SourceMethodContains(string source, string methodName, string needle)
+            => SourceMethod(source, methodName).Contains(needle);
+
+        private static string SourceMethod(string source, string methodName)
         {
             var start = source.IndexOf(methodName, StringComparison.Ordinal);
             if (start < 0)
-                return false;
+                return string.Empty;
             var next = source.IndexOf("\n}", start, StringComparison.Ordinal);
             if (next < 0)
                 next = source.Length;
-            return source.Substring(start, next - start).Contains(needle);
+            return source.Substring(start, next - start);
         }
 
         private sealed class RecordingCommandRunner : IRos2BridgeCommandRunner
@@ -317,6 +345,12 @@ namespace Unity.FoxgloveSDK.Tests
                         : "ros2 help";
                 return new Ros2BridgeCommandResult(0, stdout, "", false, "", 1);
             }
+        }
+
+        private sealed class LaunchFailureCommandRunner : IRos2BridgeCommandRunner
+        {
+            public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
+                => new Ros2BridgeCommandResult(-1, "", "", false, "file not found", 1);
         }
 
         private sealed class FakeProbe : IRos2BridgeHealthProbe

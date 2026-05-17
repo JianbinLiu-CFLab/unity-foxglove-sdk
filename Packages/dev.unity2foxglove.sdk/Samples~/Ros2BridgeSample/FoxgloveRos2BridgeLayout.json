@@ -18,9 +18,9 @@
       "scene": {},
       "transforms": {},
       "topics": {
-        "/unity2foxglove/scene": { "visible": true },
-        "/unity2foxglove/point_cloud": { "visible": true },
-        "/unity2foxglove/point_cloud_draco": { "visible": true }
+        "/scene": { "visible": true },
+        "/point_cloud": { "visible": true },
+        "/point_cloud_draco": { "visible": true }
       },
       "layers": {
         "grid": {
@@ -42,15 +42,15 @@
     },
     "RawMessages!tf": {
       "defaultExpanded": false,
-      "topicPath": "/unity2foxglove/tf"
+      "topicPath": "/tf"
     },
     "RawMessages!scan": {
       "defaultExpanded": false,
-      "topicPath": "/unity2foxglove/laser_scan"
+      "topicPath": "/laser_scan"
     },
     "RawMessages!pointcloud": {
       "defaultExpanded": false,
-      "topicPath": "/unity2foxglove/point_cloud"
+      "topicPath": "/point_cloud"
     },
     "Image!camera": {
       "cameraState": {
@@ -73,14 +73,14 @@
       "publish": {},
       "synchronize": false,
       "imageMode": {
-        "imageTopic": "/unity2foxglove/camera"
+        "imageTopic": "/camera"
       }
     },
     "Plot!tf": {
       "paths": [
-        { "value": "/unity2foxglove/tf.translation.x", "enabled": true },
-        { "value": "/unity2foxglove/tf.translation.y", "enabled": true },
-        { "value": "/unity2foxglove/tf.translation.z", "enabled": true }
+        { "value": "/tf.translation.x", "enabled": true },
+        { "value": "/tf.translation.y", "enabled": true },
+        { "value": "/tf.translation.z", "enabled": true }
       ],
       "minYValue": "",
       "maxYValue": "",
@@ -109,32 +109,32 @@
   "savedProps": {
     "topics": [
       {
-        "topic": "/unity2foxglove/tf",
-        "schemaName": "foxglove_msgs/msg/FrameTransform"
+        "topic": "/tf",
+        "schemaName": "foxglove.FrameTransform"
       },
       {
-        "topic": "/unity2foxglove/scene",
-        "schemaName": "foxglove_msgs/msg/SceneUpdate"
+        "topic": "/scene",
+        "schemaName": "foxglove.SceneUpdate"
       },
       {
-        "topic": "/unity2foxglove/camera",
-        "schemaName": "foxglove_msgs/msg/CompressedImage"
+        "topic": "/camera",
+        "schemaName": "foxglove.CompressedImage"
       },
       {
-        "topic": "/unity2foxglove/camera_calibration",
-        "schemaName": "foxglove_msgs/msg/CameraCalibration"
+        "topic": "/camera_calibration",
+        "schemaName": "foxglove.CameraCalibration"
       },
       {
-        "topic": "/unity2foxglove/laser_scan",
-        "schemaName": "foxglove_msgs/msg/LaserScan"
+        "topic": "/laser_scan",
+        "schemaName": "foxglove.LaserScan"
       },
       {
-        "topic": "/unity2foxglove/point_cloud",
-        "schemaName": "foxglove_msgs/msg/PointCloud"
+        "topic": "/point_cloud",
+        "schemaName": "foxglove.PointCloud"
       },
       {
-        "topic": "/unity2foxglove/point_cloud_draco",
-        "schemaName": "foxglove_msgs/msg/CompressedPointCloud"
+        "topic": "/point_cloud_draco",
+        "schemaName": "foxglove.CompressedPointCloud"
       }
     ]
   }

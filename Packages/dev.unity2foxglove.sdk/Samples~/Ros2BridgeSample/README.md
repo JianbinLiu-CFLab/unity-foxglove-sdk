@@ -5,15 +5,15 @@ This sample demonstrates the optional Unity2Foxglove ROS2 Bridge path. Unity pub
 ## Run
 
 1. Import **ROS2 Bridge Sample** from Package Manager.
-2. In Unity, select the `Foxglove` object and run **ROS2 Bridge Health** in the Manager Inspector.
-3. In a ROS2 shell, build and source the sidecar workspace.
-4. Start the sidecar:
+2. In a ROS2 shell, build and source the sidecar workspace.
+3. Start the sidecar:
 
 ```bash
 ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py host:=127.0.0.1 port:=8767 payload_format:=cdr-with-encapsulation
 ```
 
-5. Open `Scenes/Ros2BridgeSample.unity` and press Play.
+4. Open `Scenes/Ros2BridgeSample.unity` and press Play.
+5. In Unity, select the `Foxglove` object and confirm the ROS2 Bridge status shows `Connected`, increasing `Sent Frames`, and zero dropped/failed frames.
 6. Verify topics:
 
 ```bash
@@ -43,7 +43,9 @@ The Draco topic only publishes when the bundled native Draco plugin is available
 
 ## Foxglove Layout
 
-Import `FoxgloveRos2BridgeLayout.json` in Foxglove when viewing the bridge topics. The layout is written for ROS2 Bridge topics and ROS2 schema names such as `foxglove_msgs/msg/FrameTransform`, not protobuf schema names such as `foxglove.FrameTransform`.
+Import `FoxgloveRos2BridgeLayout.json` in Foxglove when viewing the Unity WebSocket connection. The layout uses the direct Unity topics such as `/tf`, `/camera`, and `/point_cloud`, with Foxglove schema names such as `foxglove.FrameTransform`.
+
+The ROS2 Bridge namespace `/unity2foxglove` only applies to ROS2 sidecar topics. For example, Unity publishes `/tf` to Foxglove and mirrors it to ROS2 as `/unity2foxglove/tf`.
 
 RViz2-native `sensor_msgs`, `tf2_msgs`, and `visualization_msgs` compatibility is outside this sample.
 
@@ -51,7 +53,7 @@ RViz2-native `sensor_msgs`, `tf2_msgs`, and `visualization_msgs` compatibility i
 
 | Symptom | First check |
 | --- | --- |
-| No ROS2 topics appear | Run the Manager Inspector **ROS2 Bridge Health** check and confirm the sidecar is listening on `127.0.0.1:8767`. |
+| No ROS2 topics appear | Confirm the sidecar is listening on `127.0.0.1:8767`. The optional Manager Inspector **ROS2 Bridge Health** check can help diagnose ROS2 CLI or sidecar setup. |
 | Topics appear but `echo` cannot decode | Restart the sidecar with `payload_format:=cdr-with-encapsulation`, then retry. |
 | Draco topic missing | Run **Check Draco** in the point-cloud Inspector; raw point cloud should still publish. |
-| Wrong topic names | Confirm the Manager bridge namespace is `/unity2foxglove` and publishers do not use absolute bridge overrides. |
+| Wrong Foxglove layout paths | Confirm the Foxglove layout uses direct topics such as `/tf`; the `/unity2foxglove` prefix is only for ROS2 sidecar topics. |

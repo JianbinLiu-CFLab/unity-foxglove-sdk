@@ -156,17 +156,17 @@ PayloadFormat parse_payload_format(const std::string & value)
   throw std::runtime_error("unsupported --payload-format: " + value);
 }
 
-Options parse_args(int argc, char ** argv)
+Options parse_args(const std::vector<std::string> & args)
 {
   Options options;
-  for (int i = 1; i < argc; ++i) {
-    const std::string arg = argv[i];
-    if (arg == "--host" && i + 1 < argc) {
-      options.host = argv[++i];
-    } else if (arg == "--port" && i + 1 < argc) {
-      options.port = std::stoi(argv[++i]);
-    } else if (arg == "--payload-format" && i + 1 < argc) {
-      options.payload_format = parse_payload_format(argv[++i]);
+  for (size_t i = 1; i < args.size(); ++i) {
+    const std::string & arg = args[i];
+    if (arg == "--host" && i + 1 < args.size()) {
+      options.host = args[++i];
+    } else if (arg == "--port" && i + 1 < args.size()) {
+      options.port = std::stoi(args[++i]);
+    } else if (arg == "--payload-format" && i + 1 < args.size()) {
+      options.payload_format = parse_payload_format(args[++i]);
     } else {
       throw std::runtime_error(
               "usage: unity2foxglove_ros2_bridge --host 127.0.0.1 --port 8767 "
@@ -559,11 +559,11 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
+  auto non_ros_args = rclcpp::init_and_remove_ros_arguments(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("unity2foxglove_ros2_bridge");
 
   try {
-    const auto options = parse_args(argc, argv);
+    const auto options = parse_args(non_ros_args);
     const int listen_fd = create_listen_socket(options.host, options.port);
     BridgeNode bridge(node, options.payload_format);
 

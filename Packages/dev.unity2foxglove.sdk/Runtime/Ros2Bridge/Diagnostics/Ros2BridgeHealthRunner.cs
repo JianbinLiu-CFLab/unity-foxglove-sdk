@@ -60,15 +60,22 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
 
             var executable = options.EffectiveRos2Executable;
-            var cli = RunRos2Command(Ros2CliId, "ROS2 CLI", executable, "--help", options.CommandTimeoutMs);
+            var cli = RunRos2Command(
+                Ros2CliId,
+                "ROS2 CLI",
+                executable,
+                "--help",
+                options.CommandTimeoutMs,
+                failRemediation: "Configure a Windows ros2 executable only if you want Inspector CLI checks; WSL sidecars can still be valid.",
+                warnOnLaunchFailure: true);
             checks.Add(cli);
 
             var ros2Available = cli.Status == Ros2BridgeHealthStatus.Pass;
             if (!ros2Available)
             {
-                checks.Add(Skipped(Ros2DistroId, "ROS2 Distro", "Skipped because ros2 was not available."));
-                checks.Add(Skipped(FoxgloveMsgsId, "foxglove_msgs", "Skipped because ros2 was not available."));
-                checks.Add(Skipped(InterfacesId, "ROS2 Interfaces", "Skipped because ros2 was not available."));
+                checks.Add(Skipped(Ros2DistroId, "ROS2 Distro", "Skipped because the local ros2 CLI was not available."));
+                checks.Add(Skipped(FoxgloveMsgsId, "foxglove_msgs", "Skipped because the local ros2 CLI was not available."));
+                checks.Add(Skipped(InterfacesId, "ROS2 Interfaces", "Skipped because the local ros2 CLI was not available."));
             }
             else
             {
@@ -230,7 +237,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             int timeoutMs,
             string passMessage = "",
             string failRemediation = "Source ROS2 setup or configure the ros2 executable path.",
-            string failCommand = "ros2 --help")
+            string failCommand = "ros2 --help",
+            bool warnOnLaunchFailure = false)
         {
             var result = _commandRunner.Run(executable, arguments, timeoutMs);
             if (result.Succeeded)
@@ -243,10 +251,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     durationMs: result.DurationMs);
             }
 
+            var status = warnOnLaunchFailure && IsLaunchFailure(result)
+                ? Ros2BridgeHealthStatus.Warning
+                : Ros2BridgeHealthStatus.Fail;
             return new Ros2BridgeHealthCheckResult(
                 id,
                 title,
-                Ros2BridgeHealthStatus.Fail,
+                status,
                 CompactFailure(result),
                 failRemediation,
                 failCommand,
@@ -277,6 +288,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private static Ros2BridgeHealthCheckResult Skipped(string id, string title, string message)
             => new Ros2BridgeHealthCheckResult(id, title, Ros2BridgeHealthStatus.Skipped, message);
+
+        private static bool IsLaunchFailure(Ros2BridgeCommandResult result)
+            => result != null
+               && !result.TimedOut
+               && result.ExitCode == -1
+               && !string.IsNullOrWhiteSpace(result.Error);
 
         private static string CompactFailure(Ros2BridgeCommandResult result)
         {

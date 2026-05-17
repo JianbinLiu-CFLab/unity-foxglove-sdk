@@ -19,7 +19,7 @@ Use **Basic Visualization** for the smallest first check. Use **Full Demo Visual
 | -------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | First connection smoke test                  | Basic Visualization       | Smallest scene; verifies `/tf`, `/scene`, `/unity/camera`, and the simple Foxglove layout.                         |
 | Full feature tour                            | Full Demo Visualization   | Includes publishers, Parameters, Services, FoxRun, camera streaming, MCAP workflows, and the full Foxglove layout. |
-| Unity-to-ROS2 bridge smoke test              | ROS2 Bridge Sample        | Uses the optional local sidecar, ROS2 Bridge health preflight, `/unity2foxglove/...` topics, and ROS2 schema names. |
+| Unity-to-ROS2 bridge smoke test              | ROS2 Bridge Sample        | Uses the optional local sidecar, ROS2 Bridge health preflight, direct Foxglove WebSocket topics, `/unity2foxglove/...` ROS2 topics, and ROS2 schema names. |
 | SDK development, acceptance, or IL2CPP validation | `Unity2Foxglove/` project | Uses the same project structure as maintainer acceptance and build scripts.                                        |
 
 Start with **Basic Visualization** if you only want to know whether the package works. Use **Full Demo Visualization** when you want to explore the Foxglove WebSocket workflow. Use **ROS2 Bridge Sample** after ROS2 and the sidecar are available.
@@ -149,7 +149,7 @@ ROS2 Bridge Sample is the importable sample for the optional sidecar path. It do
 - `/unity2foxglove/point_cloud` appears with schema `foxglove_msgs/msg/PointCloud`.
 - `/unity2foxglove/point_cloud_draco` appears only when the native Draco plugin is available.
 
-The ROS2 Bridge layout is written for ROS2 schema names such as `foxglove_msgs/msg/FrameTransform`, not protobuf schema names such as `foxglove.FrameTransform`. RViz2-native `sensor_msgs`, `tf2_msgs`, and `visualization_msgs` compatibility is deferred to the native ROS2 visualization work.
+The ROS2 Bridge Foxglove layout is written for direct WebSocket topics such as `/tf`, `/camera`, and `/point_cloud`, with Foxglove schema names such as `foxglove.FrameTransform`. The ROS2 sidecar separately publishes `/unity2foxglove/...` topics with ROS2 schema names such as `foxglove_msgs/msg/FrameTransform`. RViz2-native `sensor_msgs`, `tf2_msgs`, and `visualization_msgs` compatibility is deferred to the native ROS2 visualization work.
 
 ## 6. Repository Demo Project
 

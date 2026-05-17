@@ -59,7 +59,7 @@ for schema in "${schemas[@]}"; do
 done
 
 echo "Preflight passed for sample schemas."
-echo "For full 41-interface validation, run the Unity Manager ROS2 Bridge Health check."
+echo "For optional 41-interface diagnostics, run the Unity Manager ROS2 Bridge Health check."
 echo
 echo "Launch command:"
 echo "ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py host:=$HOST port:=$PORT payload_format:=$PAYLOAD_FORMAT"

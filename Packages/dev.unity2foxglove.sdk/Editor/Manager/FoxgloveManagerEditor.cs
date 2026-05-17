@@ -233,7 +233,6 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawDiagnosticsSection()
         {
-            _ros2BridgeHealthDrawer.Draw(serializedObject);
             DrawTransportHealth();
         }
 
@@ -705,6 +704,9 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.LongField("Failed Frames", stats.FailedFrames);
                 EditorGUILayout.TextField("Last Error", stats.LastError);
             }
+
+            EditorGUILayout.Space();
+            _ros2BridgeHealthDrawer.Draw(serializedObject);
         }
 
         /// <summary>
