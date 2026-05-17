@@ -154,6 +154,12 @@ class Program
         if (argList.Contains("--phase96"))
             return RunPhase96Only();
 
+        if (argList.Contains("--phase97"))
+            return RunPhase97Only();
+
+        if (argList.Contains("--phase97-health"))
+            return RunPhase97Health(argList);
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -492,6 +498,18 @@ class Program
             throw new ArgumentException($"{option} requires an integer value.");
 
         return value;
+    }
+
+    private static string ReadStringOption(List<string> argList, string option, string defaultValue)
+    {
+        var idx = argList.IndexOf(option);
+        if (idx < 0)
+            return defaultValue;
+
+        if (idx + 1 >= argList.Count)
+            throw new ArgumentException($"{option} requires a value.");
+
+        return argList[idx + 1];
     }
 
     private static int RunPhase69Only()
@@ -972,6 +990,55 @@ class Program
         }
     }
 
+    private static int RunPhase97Only()
+    {
+        try
+        {
+            Phase97Validation.Validate();
+            Console.WriteLine("\nPhase 97 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase97Health(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase97-health requires --json <path>.");
+                return 1;
+            }
+
+            var liveMode = argList.Contains("--phase97-live")
+                || string.Equals(
+                    Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_PHASE97_LIVE"),
+                    "1",
+                    StringComparison.Ordinal);
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var report = Phase97Validation.GenerateHealthReport(jsonPath, liveMode, ros2Path, host, port);
+
+            Console.WriteLine($"Phase 97 health report written: {jsonPath}");
+            Console.WriteLine($"Summary: {report.Summary}");
+            if (liveMode && report.Summary != Unity.FoxgloveSDK.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
+                return 1;
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -1130,6 +1197,8 @@ class Program
             Phase95Validation.Validate();
             Console.WriteLine();
             Phase96Validation.Validate();
+            Console.WriteLine();
+            Phase97Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

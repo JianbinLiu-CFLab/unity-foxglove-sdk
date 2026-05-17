@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _mcapExpanded;
         private static bool _diagnosticsExpanded;
         private readonly McapReplayPreflightDrawer _mcapReplayPreflight = new McapReplayPreflightDrawer();
+        private readonly Ros2BridgeHealthDrawer _ros2BridgeHealthDrawer = new Ros2BridgeHealthDrawer();
         private const string LocalRootCaDistributorHost = "127.0.0.1";
         private const int LocalRootCaDistributorPort = 8766;
         private const string LocalRootCaPageUrl = "http://127.0.0.1:8766/";
@@ -232,6 +233,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawDiagnosticsSection()
         {
+            _ros2BridgeHealthDrawer.Draw(serializedObject);
             DrawTransportHealth();
         }
 

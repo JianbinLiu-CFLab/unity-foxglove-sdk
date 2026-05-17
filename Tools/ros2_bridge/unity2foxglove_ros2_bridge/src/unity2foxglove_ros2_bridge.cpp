@@ -32,6 +32,9 @@ constexpr uint16_t kFlags = 0;
 constexpr uint32_t kMaxHeaderBytes = 64U * 1024U;
 constexpr uint32_t kMaxPayloadBytes = 64U * 1024U * 1024U;
 constexpr uint8_t kCdrLittleEndianHeader[4] = {0x00, 0x01, 0x00, 0x00};
+constexpr int kHealthProtocolVersion = 1;
+constexpr const char * kSidecarName = "unity2foxglove_ros2_bridge";
+constexpr const char * kSidecarVersion = "0.1.0";
 
 enum class PayloadFormat
 {
@@ -60,6 +63,12 @@ struct BridgeFrame
   std::vector<uint8_t> payload;
 };
 
+struct RawFrame
+{
+  nlohmann::json header;
+  std::vector<uint8_t> payload;
+};
+
 uint16_t read_u16_le(const uint8_t * data)
 {
   return static_cast<uint16_t>(data[0]) |
@@ -72,6 +81,20 @@ uint32_t read_u32_le(const uint8_t * data)
     (static_cast<uint32_t>(data[1]) << 8) |
     (static_cast<uint32_t>(data[2]) << 16) |
     (static_cast<uint32_t>(data[3]) << 24);
+}
+
+void write_u16_le(std::vector<uint8_t> & bytes, uint16_t value)
+{
+  bytes.push_back(static_cast<uint8_t>(value & 0xff));
+  bytes.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+}
+
+void write_u32_le(std::vector<uint8_t> & bytes, uint32_t value)
+{
+  bytes.push_back(static_cast<uint8_t>(value & 0xff));
+  bytes.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+  bytes.push_back(static_cast<uint8_t>((value >> 16) & 0xff));
+  bytes.push_back(static_cast<uint8_t>((value >> 24) & 0xff));
 }
 
 bool has_prefix(const std::string & value, const std::string & prefix)
@@ -247,7 +270,47 @@ bool read_exact(int fd, std::vector<uint8_t> & buffer, size_t count)
   return true;
 }
 
-BridgeFrame read_frame(int fd)
+void write_all(int fd, const std::vector<uint8_t> & bytes)
+{
+  size_t offset = 0;
+  while (offset < bytes.size()) {
+    const ssize_t sent = ::send(fd, bytes.data() + offset, bytes.size() - offset, 0);
+    if (sent <= 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      throw std::runtime_error("socket write failed");
+    }
+    offset += static_cast<size_t>(sent);
+  }
+}
+
+void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<uint8_t> & payload)
+{
+  const auto header_text = header.dump();
+  if (header_text.empty() || header_text.size() > kMaxHeaderBytes) {
+    throw std::runtime_error("health response JSON header length is invalid");
+  }
+  if (payload.size() > kMaxPayloadBytes) {
+    throw std::runtime_error("health response payload length is invalid");
+  }
+
+  std::vector<uint8_t> frame;
+  frame.reserve(16 + header_text.size() + payload.size());
+  frame.push_back('U');
+  frame.push_back('2');
+  frame.push_back('R');
+  frame.push_back('2');
+  write_u16_le(frame, kVersion);
+  write_u16_le(frame, kFlags);
+  write_u32_le(frame, static_cast<uint32_t>(header_text.size()));
+  write_u32_le(frame, static_cast<uint32_t>(payload.size()));
+  frame.insert(frame.end(), header_text.begin(), header_text.end());
+  frame.insert(frame.end(), payload.begin(), payload.end());
+  write_all(fd, frame);
+}
+
+RawFrame read_raw_frame(int fd)
 {
   std::vector<uint8_t> fixed_header;
   if (!read_exact(fd, fixed_header, 16)) {
@@ -269,7 +332,7 @@ BridgeFrame read_frame(int fd)
   if (header_length == 0 || header_length > kMaxHeaderBytes) {
     throw std::runtime_error("reject frame: invalid JSON header length");
   }
-  if (payload_length == 0 || payload_length > kMaxPayloadBytes) {
+  if (payload_length > kMaxPayloadBytes) {
     throw std::runtime_error("reject frame: invalid payload length");
   }
 
@@ -278,7 +341,7 @@ BridgeFrame read_frame(int fd)
     throw std::runtime_error("unexpected EOF while reading JSON header");
   }
   std::vector<uint8_t> payload;
-  if (!read_exact(fd, payload, payload_length)) {
+  if (payload_length > 0 && !read_exact(fd, payload, payload_length)) {
     throw std::runtime_error("unexpected EOF while reading payload");
   }
 
@@ -289,18 +352,34 @@ BridgeFrame read_frame(int fd)
     throw std::runtime_error(std::string("reject frame: invalid JSON header: ") + ex.what());
   }
 
+  RawFrame raw;
+  raw.header = std::move(header);
+  raw.payload = std::move(payload);
+  return raw;
+}
+
+BridgeFrame parse_publish_frame(const RawFrame & raw)
+{
+  const auto op = raw.header.value("op", "publish");
+  if (op != "publish") {
+    throw std::runtime_error("reject frame: unsupported op '" + op + "'");
+  }
+  if (raw.payload.empty()) {
+    throw std::runtime_error("reject frame: invalid payload length");
+  }
+
   BridgeFrame frame;
   try {
-    frame.topic = header.at("topic").get<std::string>();
-    frame.schema_name = header.at("schemaName").get<std::string>();
-    frame.encoding = header.at("encoding").get<std::string>();
-    frame.log_time_ns = header.at("logTimeNs").get<uint64_t>();
-    frame.sequence = header.at("sequence").get<uint64_t>();
-    if (header.contains("profileName") && !header["profileName"].is_null()) {
-      frame.profile_name = header.at("profileName").get<std::string>();
+    frame.topic = raw.header.at("topic").get<std::string>();
+    frame.schema_name = raw.header.at("schemaName").get<std::string>();
+    frame.encoding = raw.header.at("encoding").get<std::string>();
+    frame.log_time_ns = raw.header.at("logTimeNs").get<uint64_t>();
+    frame.sequence = raw.header.at("sequence").get<uint64_t>();
+    if (raw.header.contains("profileName") && !raw.header["profileName"].is_null()) {
+      frame.profile_name = raw.header.at("profileName").get<std::string>();
     }
-    if (header.contains("qos") && !header["qos"].is_null()) {
-      const auto & qos = header.at("qos");
+    if (raw.header.contains("qos") && !raw.header["qos"].is_null()) {
+      const auto & qos = raw.header.at("qos");
       frame.reliability = qos.at("reliability").get<std::string>();
       frame.durability = qos.at("durability").get<std::string>();
       frame.depth = qos.at("depth").get<int>();
@@ -308,7 +387,7 @@ BridgeFrame read_frame(int fd)
   } catch (const std::exception & ex) {
     throw std::runtime_error(std::string("reject frame: missing or invalid JSON field: ") + ex.what());
   }
-  frame.payload = std::move(payload);
+  frame.payload = raw.payload;
 
   if (frame.topic.empty() || frame.topic[0] != '/') {
     throw std::runtime_error("reject frame: topic must start with /");
@@ -329,6 +408,53 @@ BridgeFrame read_frame(int fd)
     throw std::runtime_error("reject frame: qos.depth must be >= 1");
   }
   return frame;
+}
+
+void write_health_pong_ok(int fd, const std::string & request_id)
+{
+  nlohmann::json response = {
+    {"op", "health_pong"},
+    {"requestId", request_id},
+    {"protocolVersion", kHealthProtocolVersion},
+    {"status", "ok"},
+    {"sidecarName", kSidecarName},
+    {"sidecarVersion", kSidecarVersion}
+  };
+  write_u2r2_frame(fd, response, {});
+}
+
+void write_health_pong_error(
+  int fd,
+  const std::string & request_id,
+  const std::string & error_code,
+  const std::string & message)
+{
+  nlohmann::json response = {
+    {"op", "health_pong"},
+    {"requestId", request_id},
+    {"protocolVersion", kHealthProtocolVersion},
+    {"status", "error"},
+    {"errorCode", error_code},
+    {"message", message}
+  };
+  write_u2r2_frame(fd, response, {});
+}
+
+void handle_health_ping(int fd, const RawFrame & raw)
+{
+  const auto request_id = raw.header.value("requestId", std::string());
+  if (request_id.empty()) {
+    write_health_pong_error(fd, request_id, "malformed_request", "health_ping requires requestId");
+    return;
+  }
+
+  const auto protocol_version = raw.header.value("protocolVersion", -1);
+  if (protocol_version != kHealthProtocolVersion) {
+    write_health_pong_error(fd, request_id, "unsupported_protocol", "Unsupported health protocol version");
+    return;
+  }
+
+  write_health_pong_ok(fd, request_id);
 }
 
 std::vector<uint8_t> payload_for_publish(const BridgeFrame & frame, PayloadFormat format)
@@ -410,8 +536,14 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
 {
   while (rclcpp::ok()) {
     try {
-      const auto frame = read_frame(client_fd);
-      bridge.publish(frame);
+      const auto raw = read_raw_frame(client_fd);
+      const auto op = raw.header.value("op", "publish");
+      if (op == "health_ping") {
+        handle_health_ping(client_fd, raw);
+      } else {
+        const auto frame = parse_publish_frame(raw);
+        bridge.publish(frame);
+      }
       rclcpp::spin_some(node);
     } catch (const std::runtime_error & ex) {
       const std::string message = ex.what();

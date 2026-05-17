@@ -9,7 +9,7 @@ It remains intentionally narrow:
 - no automatic ROS 2 install;
 - no Windows-native ROS 2 support;
 - Phase 94 Gate B validates only `/unity/tf`, `/unity/laser_scan`, and `/unity/point_cloud`;
-- Phase 95 adds Unity Inspector controls and background queue status, while Phase 96 adds bridge topic namespace/override and QoS metadata. The sidecar transport and ROS 2 environment are still manual.
+- Phase 95 adds Unity Inspector controls and background queue status, Phase 96 adds bridge topic namespace/override and QoS metadata, and Phase 97 adds a lightweight `U2R2` `health_ping` / `health_pong` check. The sidecar transport and ROS 2 environment are still manual.
 
 ROS 2 publisher QoS is fixed when the sidecar creates a topic publisher. If you change QoS for an existing topic, restart this sidecar or use a different effective bridge topic.
 
@@ -57,6 +57,10 @@ ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 
 ```
 
 Record which mode works for your ROS 2 distro and RMW implementation.
+
+## Health Check
+
+Unity2Foxglove can send a zero-payload `U2R2` `health_ping` to confirm that the process listening on the bridge port is this sidecar and speaks the expected protocol. The sidecar replies with `health_pong` and does not create or mutate ROS 2 publishers for health frames. Normal publish frames still require a non-empty CDR payload.
 
 ## Send Smoke Messages
 
