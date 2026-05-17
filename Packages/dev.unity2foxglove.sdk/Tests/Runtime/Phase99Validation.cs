@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.Tests
                 false,
                 "Open RViz2 if the environment has a realistic foxglove_msgs path",
                 "",
-                "Native RViz2 compatibility is deferred to Phase 100."));
+                "Native RViz2 compatibility is deferred to Phase 120."));
 
             var report = CreateReport(items, host, port, liveMode: true);
             WriteReport(fullJsonPath, report);

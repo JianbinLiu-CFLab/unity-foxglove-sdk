@@ -158,11 +158,6 @@ namespace Foxglove.Schemas.Video
             }
 
             _options = null;
-            while (_outputAccessUnits.TryDequeue(out _))
-            {
-            }
-
-            Volatile.Write(ref _outputCount, 0);
             _nextSampleTime = 0;
             _sampleDuration = 0;
 

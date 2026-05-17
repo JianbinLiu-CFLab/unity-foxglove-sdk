@@ -97,12 +97,6 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private void PublishRos2Transform(ulong unixNs)
-        {
-            var payload = Ros2CdrFrameTransformBuilder.Serialize(CreateMessage(unixNs));
-            PublishRos2(payload, unixNs);
-        }
-
         private void PublishProtobufTransform(ulong unixNs)
         {
             UVector3 pos = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand

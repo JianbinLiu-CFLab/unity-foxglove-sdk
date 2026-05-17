@@ -227,7 +227,7 @@ namespace Foxglove.Schemas.Video
             _stderrTask = null;
             _stop?.Dispose();
             _stop = null;
-            DrainQueues();
+            DrainInputQueue();
         }
 
         public void Dispose()
@@ -340,21 +340,13 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void DrainQueues()
+        private void DrainInputQueue()
         {
             while (_inputFrames.TryDequeue(out _))
             {
             }
 
-            lock (_outputLock)
-            {
-                while (_outputAccessUnits.TryDequeue(out _))
-                {
-                }
-            }
-
             Volatile.Write(ref _inputCount, 0);
-            Volatile.Write(ref _outputCount, 0);
         }
 
         private static bool IsProcessRunning(Process process)

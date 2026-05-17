@@ -40,6 +40,9 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedPointCloudBudget;
         private bool _warnedPendingDrop;
         private bool _warnedDracoFailure;
+        private bool _hasPreparedPublishDemand;
+        private bool _preparedPublishWebSocket;
+        private bool _preparedPublishBridge;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -91,7 +94,15 @@ namespace Unity.FoxgloveSDK.Components
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs);
             if (prepared == null || prepared.Points.Count == 0) return;
-            PublishPreparedFrame(prepared, logTimeNs);
+            SetPreparedPublishDemand(publishWebSocket, publishBridge);
+            try
+            {
+                PublishPreparedFrame(prepared, logTimeNs);
+            }
+            finally
+            {
+                ClearPreparedPublishDemand();
+            }
         }
 
         protected virtual void Update()
@@ -110,7 +121,15 @@ namespace Unity.FoxgloveSDK.Components
             _warnedPendingDrop = false;
             if (frame == null || frame.Points.Count == 0) return;
 
-            PublishPreparedFrame(frame, unixNs);
+            SetPreparedPublishDemand(publishWebSocket, publishBridge);
+            try
+            {
+                PublishPreparedFrame(frame, unixNs);
+            }
+            finally
+            {
+                ClearPreparedPublishDemand();
+            }
         }
 
         protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
@@ -126,8 +145,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishRawFrame(PointCloudFrame frame, ulong unixNs)
         {
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
+            {
+                publishWebSocket = ShouldPreparePublishPayload();
+                publishBridge = ShouldPrepareRos2BridgePayload();
+            }
             byte[] ros2Payload = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
@@ -163,8 +185,11 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _warnedDracoFailure = false;
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
+            {
+                publishWebSocket = ShouldPreparePublishPayload();
+                publishBridge = ShouldPrepareRos2BridgePayload();
+            }
             byte[] ros2Payload = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
@@ -183,6 +208,27 @@ namespace Unity.FoxgloveSDK.Components
                 ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
                 PublishRos2Bridge(ros2Payload, unixNs);
             }
+        }
+
+        private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
+        {
+            _preparedPublishWebSocket = publishWebSocket;
+            _preparedPublishBridge = publishBridge;
+            _hasPreparedPublishDemand = true;
+        }
+
+        private void ClearPreparedPublishDemand()
+        {
+            _hasPreparedPublishDemand = false;
+            _preparedPublishWebSocket = false;
+            _preparedPublishBridge = false;
+        }
+
+        private bool TryGetPreparedPublishDemand(out bool publishWebSocket, out bool publishBridge)
+        {
+            publishWebSocket = _preparedPublishWebSocket;
+            publishBridge = _preparedPublishBridge;
+            return _hasPreparedPublishDemand;
         }
 
         private void LogDracoFailure(string message)
