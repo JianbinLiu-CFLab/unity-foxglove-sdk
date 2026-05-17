@@ -141,7 +141,7 @@ For Windows Native mode, no path fields are shown. The backend uses Windows Medi
 | Max Packed Bytes | `0` | Raw `PointCloud.data` byte budget; `0` disables the byte budget. | Use for high-rate raw point clouds. | Assuming it is a post-compression byte limit. |
 | Sampling Mode | `UniformStride` after reset | Chooses which points survive QoS: first points, uniform stride, or voxel grid. | Use `VoxelGrid` to preserve spatial coverage. | Treating sampling as a coordinate transform. |
 
-Raw mode publishes `foxglove.PointCloud` on `/unity/point_cloud` and supports JSON or protobuf. Draco mode publishes protobuf-only `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` with format = `draco`. The Inspector changes the topic only while it is still the old default; custom topics are preserved.
+Raw mode publishes `foxglove.PointCloud` on `/unity/point_cloud` and supports JSON, Protobuf, or ROS2. Draco mode publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode, or `foxglove_msgs/msg/CompressedPointCloud` with CDR payloads in ROS2 mode. Both Draco paths use format = `draco`. The Inspector changes the topic only while it is still the old default; custom topics are preserved.
 
 Draco mode is optional and uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible plugin binaries log a warning and publish nothing; the publisher does not silently fall back to raw mode. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
 

@@ -17,6 +17,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -44,6 +45,8 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Whether protobuf encoding support is enabled for channel registration.</summary>
         private bool _protobufEnabled;
+        /// <summary>Whether CDR encoding support is enabled for channel registration.</summary>
+        private bool _cdrEnabled;
 
         // Session holds references via interface
         /// <summary>Runtime context for playback, assets, and lifecycle control.</summary>
@@ -256,16 +259,32 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>
         /// Register a schema-based channel for advertisement and MCAP recording.
-        /// Supports both JSON ("jsonschema") and protobuf ("protobuf") encoding.
+        /// Supports JSON ("jsonschema"), protobuf ("protobuf"), and explicit
+        /// schema-encoding channels such as ROS 2 .msg ("ros2msg" + "cdr").
         /// </summary>
         /// <param name="channelId">Foxglove channel ID.</param>
         /// <param name="topic">Topic name (e.g. "/tf").</param>
-        /// <param name="encoding">Message encoding: "json" or "protobuf".</param>
+        /// <param name="encoding">Message encoding: "json", "protobuf", or "cdr".</param>
         /// <param name="schemaName">Schema name (e.g. "foxglove.FrameTransform").</param>
-        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName, string encoding = "json")
+        /// <param name="schemaEncoding">Optional explicit schema encoding (e.g. "ros2msg").</param>
+        public void RegisterSchemaChannel(
+            uint channelId,
+            string topic,
+            string schemaName,
+            string encoding = "json",
+            string schemaEncoding = null)
         {
             var messageEncoding = string.IsNullOrEmpty(encoding) ? "json" : encoding;
-            var expectedSchemaEncoding = ExpectedSchemaEncodingForMessageEncoding(messageEncoding);
+            if (string.Equals(messageEncoding, "cdr", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrEmpty(schemaEncoding))
+            {
+                throw new InvalidOperationException(
+                    "CDR schema channels require an explicit schemaEncoding, such as 'ros2msg'.");
+            }
+
+            var expectedSchemaEncoding = string.IsNullOrEmpty(schemaEncoding)
+                ? ExpectedSchemaEncodingForMessageEncoding(messageEncoding)
+                : schemaEncoding;
 
             var found = false;
             SchemaEntry entry;
@@ -277,13 +296,13 @@ namespace Unity.FoxgloveSDK.Core
             if (!found && !_schemaRegistry.TryGetSchema(schemaName, out entry))
                 throw new InvalidOperationException($"Schema not found: '{schemaName}'.");
 
-            var schemaEncoding = entry.Encoding;
+            var resolvedSchemaEncoding = entry.Encoding;
             var schema = entry.Content;
             if (expectedSchemaEncoding != null
-                && !string.Equals(schemaEncoding, expectedSchemaEncoding, StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(resolvedSchemaEncoding, expectedSchemaEncoding, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    $"Schema '{schemaName}' has schema encoding '{schemaEncoding}', " +
+                    $"Schema '{schemaName}' has schema encoding '{resolvedSchemaEncoding}', " +
                     $"but message encoding '{messageEncoding}' requires '{expectedSchemaEncoding}'.");
             }
 
@@ -293,7 +312,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 Id = channelId, Topic = topic,
                 Encoding = messageEncoding, SchemaName = entry.Name,
-                SchemaEncoding = schemaEncoding, Schema = schema
+                SchemaEncoding = resolvedSchemaEncoding, Schema = schema
             });
         }
 
@@ -313,6 +332,16 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterProtobufSchemaChannel(uint channelId, string topic, string schemaName)
         {
             RegisterSchemaChannel(channelId, topic, schemaName, "protobuf");
+        }
+
+        /// <summary>
+        /// Register a ROS 2 .msg schema channel with CDR message encoding.
+        /// Phase 90 only advertises schemas/channels; payload correctness
+        /// requires a CDR writer in a later phase.
+        /// </summary>
+        public void RegisterRos2MsgSchemaChannel(uint channelId, string topic, string schemaName)
+        {
+            RegisterSchemaChannel(channelId, topic, schemaName, "cdr", "ros2msg");
         }
 
         // ── Publish ──
@@ -350,6 +379,16 @@ namespace Unity.FoxgloveSDK.Core
                     _transport.SendBinary(clientId, frame);
                 }
             }
+        }
+
+        /// <summary>Publish a validated ROS 2 CDR payload using the current clock time.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload) => PublishRos2Cdr(channelId, payload, _clock.NowNs);
+
+        /// <summary>Publish a validated ROS 2 CDR payload with an explicit log timestamp.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            Ros2CdrPayloadValidator.Validate(payload);
+            Publish(channelId, payload, logTimeNs);
         }
 
         /// <summary>
@@ -530,6 +569,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Whether protobuf encoding support is enabled.</summary>
         public bool IsProtobufEnabled => _protobufEnabled;
 
+        /// <summary>Enable CDR encoding support, updating supportedEncodings to include "cdr".</summary>
+        public void EnableCdr() => _cdrEnabled = true;
+
+        /// <summary>Whether CDR encoding support is enabled.</summary>
+        public bool IsCdrEnabled => _cdrEnabled;
+
         /// <summary>Force a test log message for diagnostic verification.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
 
@@ -548,6 +593,12 @@ namespace Unity.FoxgloveSDK.Core
 
         private ServerInfo CreateServerInfo()
         {
+            var supportedEncodings = new List<string> { "json" };
+            if (_protobufEnabled)
+                supportedEncodings.Add("protobuf");
+            if (_cdrEnabled)
+                supportedEncodings.Add("cdr");
+
             var info = new ServerInfo
             {
                 Name = Name,
@@ -560,9 +611,7 @@ namespace Unity.FoxgloveSDK.Core
                     Capability.ConnectionGraph,
                     Capability.ClientPublish
                 },
-                SupportedEncodings = _protobufEnabled
-                    ? new List<string> { "json", "protobuf" }
-                    : new List<string> { "json" },
+                SupportedEncodings = supportedEncodings,
                 SessionId = SessionId
             };
 

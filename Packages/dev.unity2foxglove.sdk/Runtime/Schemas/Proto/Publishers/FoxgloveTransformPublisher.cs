@@ -9,6 +9,7 @@ using Google.Protobuf;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UVector3 = UnityEngine.Vector3;
 using UQuaternion = UnityEngine.Quaternion;
 
@@ -24,6 +25,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _childFrameId = "";
 
         public override bool SupportsProtobufEncoding => true;
+        public override bool SupportsRos2Encoding => true;
+        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.FrameTransform;
 
         private void Awake()
         {
@@ -47,17 +50,23 @@ namespace Unity.FoxgloveSDK.Components
             {
                 PublishProtobufTransform(unixNs);
             }
+            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                PublishRos2Transform(unixNs);
+            }
             else
             {
-                var message = CreateMessage();
+                var message = CreateMessage(unixNs);
                 if (message == null) return;
                 Publish(message, unixNs);
             }
         }
 
         protected override FrameTransformMessage CreateMessage()
+            => CreateMessage(CurrentLogTimeNs);
+
+        private FrameTransformMessage CreateMessage(ulong unixNs)
         {
-            var unixNs = CurrentLogTimeNs;
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
 
             UVector3 pos = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
@@ -76,6 +85,12 @@ namespace Unity.FoxgloveSDK.Components
                 Translation = new FoxgloveVector3 { X = pos.x, Y = pos.y, Z = pos.z },
                 Rotation = new FoxgloveQuaternion { X = rot.x, Y = rot.y, Z = rot.z, W = rot.w }
             };
+        }
+
+        private void PublishRos2Transform(ulong unixNs)
+        {
+            var payload = Ros2CdrFrameTransformBuilder.Serialize(CreateMessage(unixNs));
+            PublishRos2(payload, unixNs);
         }
 
         private void PublishProtobufTransform(ulong unixNs)

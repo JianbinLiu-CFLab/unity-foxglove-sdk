@@ -12,8 +12,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public enum GlobalEncoding
     {
-        Json,
-        Protobuf
+        Json = 0,
+        Protobuf = 1,
+        Ros2 = 2
     }
 
     /// <summary>
@@ -21,9 +22,10 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public enum PublisherEncodingOverride
     {
-        UseManager,
-        Json,
-        Protobuf
+        UseManager = 0,
+        Json = 1,
+        Protobuf = 2,
+        Ros2 = 3
     }
 
     /// <summary>
@@ -31,9 +33,10 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public enum PublisherEffectiveEncoding
     {
-        Json,
-        Protobuf,
-        Unsupported
+        Json = 0,
+        Protobuf = 1,
+        Unsupported = 2,
+        Ros2 = 3
     }
 
     /// <summary>
@@ -58,8 +61,8 @@ namespace Unity.FoxgloveSDK.Components
         public PublisherEffectiveEncoding Effective { get; }
         public bool FellBack { get; }
         public bool IsSupported => Effective != PublisherEffectiveEncoding.Unsupported;
-        public string RequestedLabel => PublisherEncodingPolicy.ToProtocolEncoding(Requested);
-        public string EffectiveLabel => PublisherEncodingPolicy.ToProtocolEncoding(Effective);
+        public string RequestedLabel => PublisherEncodingPolicy.ToDisplayEncoding(Requested);
+        public string EffectiveLabel => PublisherEncodingPolicy.ToDisplayEncoding(Effective);
     }
 
     /// <summary>
@@ -78,18 +81,45 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEncodingOverride publisherOverride,
             bool supportsJson,
             bool supportsProtobuf)
+            => Resolve(managerDefault, allowPublisherOverride, publisherOverride, supportsJson, supportsProtobuf, supportsRos2: false);
+
+        /// <summary>
+        /// Resolves the effective wire encoding from manager defaults, publisher
+        /// overrides, and the publisher's supported serialization formats.
+        /// </summary>
+        public static PublisherEncodingResolution Resolve(
+            GlobalEncoding managerDefault,
+            bool allowPublisherOverride,
+            PublisherEncodingOverride publisherOverride,
+            bool supportsJson,
+            bool supportsProtobuf,
+            bool supportsRos2)
         {
             var requested = ResolveRequested(managerDefault, allowPublisherOverride, publisherOverride);
-            if (Supports(requested, supportsJson, supportsProtobuf))
+            if (Supports(requested, supportsJson, supportsProtobuf, supportsRos2))
                 return new PublisherEncodingResolution(requested, requested, fellBack: false);
 
-            var fallback = supportsJson
-                ? PublisherEffectiveEncoding.Json
-                : supportsProtobuf
-                    ? PublisherEffectiveEncoding.Protobuf
-                    : PublisherEffectiveEncoding.Unsupported;
+            var fallback = FirstSupported(supportsJson, supportsProtobuf, supportsRos2);
 
             return new PublisherEncodingResolution(requested, fallback, fellBack: true);
+        }
+
+        /// <summary>
+        /// Converts a resolved encoding value to the user-facing product label.
+        /// </summary>
+        public static string ToDisplayEncoding(PublisherEffectiveEncoding encoding)
+        {
+            switch (encoding)
+            {
+                case PublisherEffectiveEncoding.Json:
+                    return "JSON";
+                case PublisherEffectiveEncoding.Protobuf:
+                    return "Protobuf";
+                case PublisherEffectiveEncoding.Ros2:
+                    return "ROS2";
+                default:
+                    return "unsupported";
+            }
         }
 
         /// <summary>
@@ -103,6 +133,26 @@ namespace Unity.FoxgloveSDK.Components
                     return "json";
                 case PublisherEffectiveEncoding.Protobuf:
                     return "protobuf";
+                case PublisherEffectiveEncoding.Ros2:
+                    return "cdr";
+                default:
+                    return "unsupported";
+            }
+        }
+
+        /// <summary>
+        /// Converts a resolved encoding value to the Foxglove schemaEncoding label.
+        /// </summary>
+        public static string ToSchemaEncoding(PublisherEffectiveEncoding encoding)
+        {
+            switch (encoding)
+            {
+                case PublisherEffectiveEncoding.Json:
+                    return "jsonschema";
+                case PublisherEffectiveEncoding.Protobuf:
+                    return "protobuf";
+                case PublisherEffectiveEncoding.Ros2:
+                    return "ros2msg";
                 default:
                     return "unsupported";
             }
@@ -119,21 +169,50 @@ namespace Unity.FoxgloveSDK.Components
                     return PublisherEffectiveEncoding.Json;
                 if (publisherOverride == PublisherEncodingOverride.Protobuf)
                     return PublisherEffectiveEncoding.Protobuf;
+                if (publisherOverride == PublisherEncodingOverride.Ros2)
+                    return PublisherEffectiveEncoding.Ros2;
             }
 
-            return managerDefault == GlobalEncoding.Protobuf
-                ? PublisherEffectiveEncoding.Protobuf
-                : PublisherEffectiveEncoding.Json;
+            switch (managerDefault)
+            {
+                case GlobalEncoding.Protobuf:
+                    return PublisherEffectiveEncoding.Protobuf;
+                case GlobalEncoding.Ros2:
+                    return PublisherEffectiveEncoding.Ros2;
+                case GlobalEncoding.Json:
+                default:
+                    return PublisherEffectiveEncoding.Json;
+            }
         }
 
         private static bool Supports(
             PublisherEffectiveEncoding requested,
             bool supportsJson,
-            bool supportsProtobuf)
+            bool supportsProtobuf,
+            bool supportsRos2)
         {
-            return requested == PublisherEffectiveEncoding.Json
-                ? supportsJson
-                : requested == PublisherEffectiveEncoding.Protobuf && supportsProtobuf;
+            switch (requested)
+            {
+                case PublisherEffectiveEncoding.Json:
+                    return supportsJson;
+                case PublisherEffectiveEncoding.Protobuf:
+                    return supportsProtobuf;
+                case PublisherEffectiveEncoding.Ros2:
+                    return supportsRos2;
+                default:
+                    return false;
+            }
+        }
+
+        private static PublisherEffectiveEncoding FirstSupported(
+            bool supportsJson,
+            bool supportsProtobuf,
+            bool supportsRos2)
+        {
+            if (supportsProtobuf) return PublisherEffectiveEncoding.Protobuf;
+            if (supportsJson) return PublisherEffectiveEncoding.Json;
+            if (supportsRos2) return PublisherEffectiveEncoding.Ros2;
+            return PublisherEffectiveEncoding.Unsupported;
         }
     }
 }

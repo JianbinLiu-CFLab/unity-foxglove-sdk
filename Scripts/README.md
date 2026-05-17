@@ -10,6 +10,7 @@ Scripts/
   performance/  Benchmark and performance baselines
   release/      Version bump and package release checks
   samples/      Sample-content synchronization
+  schema/       Generated runtime schema catalog helpers
   smoke/        Manual smoke fixtures and protocol clients
 ```
 
@@ -156,6 +157,26 @@ Basic usage:
 
 ```bash
 python Scripts/release/validate_package.py
+```
+
+## Schema: ROS 2 .msg Catalog
+
+Entry script:
+
+```text
+Scripts/schema/generate_ros2_msg_schema_catalog.py
+```
+
+Purpose:
+
+- Read the local official Foxglove ROS 2 `.msg` snapshot from `third-party/foxglove-sdk/schemas/ros2`.
+- Generate the package runtime catalog at `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs`.
+- Embed merged `.msg` schema text with deterministic source counts and SHA-256 provenance.
+
+Basic usage:
+
+```bash
+python Scripts/schema/generate_ros2_msg_schema_catalog.py
 ```
 
 ## Smoke: Phase 34 Attachment MCAP

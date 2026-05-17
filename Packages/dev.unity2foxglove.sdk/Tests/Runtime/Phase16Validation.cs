@@ -83,6 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Scripts/release/bump_version.py",
                 "Scripts/release/validate_package.py",
                 "Scripts/samples/sync_full_demo.py",
+                "Scripts/schema/generate_ros2_msg_schema_catalog.py",
                 "Scripts/smoke/phase34_attachment_mcap.py",
                 "Scripts/smoke/phase44_all_schemas_mcap.py",
                 "Scripts/smoke/phase40_slow_camera_client.py",

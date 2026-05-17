@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -19,6 +20,16 @@ namespace Unity.FoxgloveSDK.Components
         /// Foxglove message encoding label for protobuf payloads.
         /// </summary>
         private const string ProtobufEncoding = "protobuf";
+
+        /// <summary>
+        /// Foxglove message encoding label for ROS 2 CDR payloads.
+        /// </summary>
+        private const string CdrEncoding = "cdr";
+
+        /// <summary>
+        /// Foxglove schema encoding label for ROS 2 .msg schemas.
+        /// </summary>
+        private const string Ros2MsgSchemaEncoding = "ros2msg";
 
         /// <summary>
         /// Empty schema name used for schemaless manual JSON channels.
@@ -39,7 +50,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic, schema, and encoding.</returns>
         public uint GetOrRegisterSchemaChannel(string topic, string schemaName, string encoding = JsonEncoding)
         {
-            var key = (topic, schemaName, encoding);
+            var key = (topic, schemaName, encoding, "");
             if (_channelCache.TryGetValue(key, out var id))
             {
                 return id;
@@ -47,6 +58,33 @@ namespace Unity.FoxgloveSDK.Components
 
             id = (uint)_nextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
+            _nextChannelId++;
+            _channelCache[key] = id;
+            return id;
+        }
+
+        /// <summary>
+        /// Gets or registers a ROS 2 .msg schema-bound CDR channel.
+        /// </summary>
+        /// <param name="topic">Topic name, for example "/tf".</param>
+        /// <param name="schemaName">ROS 2 interface name, for example "foxglove_msgs/msg/FrameTransform".</param>
+        /// <returns>The channel identifier associated with the topic, schema, cdr, and ros2msg.</returns>
+        public uint GetOrRegisterRos2MsgSchemaChannel(string topic, string schemaName)
+        {
+            if (string.IsNullOrWhiteSpace(schemaName))
+                throw new System.InvalidOperationException("ROS2 schema channels require a schema name.");
+
+            var key = (topic, schemaName, CdrEncoding, Ros2MsgSchemaEncoding);
+            if (_channelCache.TryGetValue(key, out var id))
+            {
+                return id;
+            }
+
+            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
+                throw new System.InvalidOperationException($"Unknown ROS2 schema '{schemaName}'.");
+
+            id = (uint)_nextChannelId;
+            _runtime.RegisterRos2MsgSchemaChannel(id, topic, schemaName);
             _nextChannelId++;
             _channelCache[key] = id;
             return id;
@@ -81,6 +119,32 @@ namespace Unity.FoxgloveSDK.Components
                 ? GetOrRegisterChannel(topic, messageEncoding)
                 : GetOrRegisterSchemaChannel(topic, schemaName, messageEncoding);
 
+            return !requireDemand || _runtime.HasChannelDemand(channelId);
+        }
+
+        /// <summary>
+        /// Register or reuse a ROS 2 CDR channel before a publisher prepares payload data.
+        /// </summary>
+        /// <param name="topic">Topic to advertise and potentially publish to.</param>
+        /// <param name="schemaName">ROS 2 interface schema name.</param>
+        /// <param name="channelId">Resolved channel identifier when preparation succeeds.</param>
+        /// <param name="requireDemand">When true, return false unless a subscriber or MCAP recorder needs data.</param>
+        /// <returns>True when payload preparation should continue.</returns>
+        public bool TryPrepareRos2Publish(
+            string topic,
+            string schemaName,
+            out uint channelId,
+            bool requireDemand = true)
+        {
+            channelId = 0;
+
+            if (SuppressLivePublishersForReplay)
+                return false;
+
+            if (!IsRunning)
+                return false;
+
+            channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             return !requireDemand || _runtime.HasChannelDemand(channelId);
         }
 
@@ -145,6 +209,45 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Publishes a ROS 2 CDR payload on a ROS 2 .msg schema channel.
+        /// </summary>
+        /// <param name="topic">Topic to publish to.</param>
+        /// <param name="schemaName">ROS 2 interface schema name advertised to Foxglove.</param>
+        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishRos2Cdr(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+            => PublishRos2(topic, schemaName, payload, logTimeNs);
+
+        /// <summary>
+        /// Publishes a ROS 2 payload on a ROS 2 .msg schema channel using the user-facing ROS2 product path.
+        /// </summary>
+        /// <param name="topic">Topic to publish to.</param>
+        /// <param name="schemaName">ROS 2 interface schema name advertised to Foxglove.</param>
+        /// <param name="payload">Serialized CDR payload, including little-endian encapsulation header.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishRos2(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+        {
+            if (SuppressLivePublishersForReplay)
+            {
+                return;
+            }
+
+            if (!IsRunning)
+            {
+                if (!_warnedNotRunning)
+                {
+                    Debug.LogWarning("[Foxglove] PublishRos2 called but server is not running.");
+                    _warnedNotRunning = true;
+                }
+
+                return;
+            }
+
+            var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
+            _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
+        /// <summary>
         /// Gets or registers a schemaless channel for manual publish calls.
         /// </summary>
         /// <param name="topic">Topic to publish to.</param>
@@ -152,7 +255,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic and encoding.</returns>
         private uint GetOrRegisterChannel(string topic, string encoding)
         {
-            var key = (topic, EmptySchemaName, encoding);
+            var key = (topic, EmptySchemaName, encoding, "");
             if (_channelCache.TryGetValue(key, out var id))
             {
                 return id;

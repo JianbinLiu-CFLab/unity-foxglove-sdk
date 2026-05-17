@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.Editor
             else
             {
                 EditorGUILayout.HelpBox(
-                    "Draco mode publishes foxglove.CompressedPointCloud with format = \"draco\". It is protobuf-only and uses the bundled Windows native plugin.",
+                    "Draco mode publishes foxglove.CompressedPointCloud with format = \"draco\". It supports Protobuf and ROS2 using the bundled Windows native plugin.",
                     MessageType.Info);
             }
         }
@@ -191,7 +191,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
             if (encodingOverride != null)
-                EditorGUILayout.PropertyField(encodingOverride, new GUIContent("Encoding Override"));
+                PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
         }
 
         private void DrawResolvedSummaries()
@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
-                EditorGUILayout.EnumPopup("Effective Encoding", resolution.Effective);
+                PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
             }
 
             if (publisher.ConfiguredManager != null

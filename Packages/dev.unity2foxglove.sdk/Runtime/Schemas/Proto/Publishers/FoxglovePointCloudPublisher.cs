@@ -9,6 +9,7 @@ using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UVector3 = UnityEngine.Vector3;
 
@@ -46,6 +47,10 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
+        public override bool SupportsRos2Encoding => true;
+        protected override string Ros2SchemaName => _outputMode == PointCloudOutputMode.Draco
+            ? Ros2PublisherSchemaNames.CompressedPointCloud
+            : Ros2PublisherSchemaNames.PointCloud;
 
         protected virtual void Awake()
         {
@@ -121,6 +126,10 @@ namespace Unity.FoxgloveSDK.Components
             {
                 PublishProto(PointCloudMessageBuilder.SerializeProtobuf(frame), unixNs);
             }
+            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                PublishRos2(Ros2CdrPointCloudBuilder.Serialize(frame), unixNs);
+            }
             else
             {
                 Publish(PointCloudMessageBuilder.CreateJson(frame), unixNs);
@@ -139,8 +148,15 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _warnedDracoFailure = false;
-            var payload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
-            PublishProto(payload, unixNs);
+            if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                PublishRos2(Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload), unixNs);
+            }
+            else
+            {
+                var payload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
+                PublishProto(payload, unixNs);
+            }
         }
 
         private void LogDracoFailure(string message)

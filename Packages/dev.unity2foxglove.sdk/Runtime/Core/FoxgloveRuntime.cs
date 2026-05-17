@@ -15,6 +15,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using static Unity.FoxgloveSDK.Transport.TransportStatsSnapshot;
 
 namespace Unity.FoxgloveSDK.Core
@@ -44,6 +45,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
+        private bool _ros2MsgSchemasRegistered;
 
         // Runtime-owned definitions survive Stop/Start cycles so
         // parameters and services are re-advertised on restart.
@@ -97,6 +99,7 @@ namespace Unity.FoxgloveSDK.Core
             _logger = logger ?? new ConsoleLogger();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
+            TryRegisterRos2MsgSchemas();
             _recording = new RecordingController(_logger);
             _replay = new ReplayController(_logger);
             _replaySnapshots = new ReplaySnapshotStateMachine();
@@ -169,7 +172,7 @@ namespace Unity.FoxgloveSDK.Core
         /// message forwarding. Protobuf encoding is enabled automatically
         /// when the proto assembly is available.
         /// </summary>
-        public void Start(string name, string host = "127.0.0.1", int port = 8765)
+        public void Start(string name, string host = "127.0.0.1", int port = 8765, bool enableCdrClientPublish = true)
         {
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
@@ -181,6 +184,8 @@ namespace Unity.FoxgloveSDK.Core
                 session.SetRuntimeContext(this);
                 if (_protobufSchemasRegistered)
                     session.EnableProtobuf();
+                if (enableCdrClientPublish && _ros2MsgSchemasRegistered)
+                    session.EnableCdr();
                 _recording.AttachToSession(_playbackClock, _parameters, session);
                 session.Start(host, port);
 
@@ -262,12 +267,39 @@ namespace Unity.FoxgloveSDK.Core
             _session.Publish(channelId, payload, logTimeNs);
         }
 
-        /// <summary>Register a schema channel on the session with the given encoding (default "json").</summary>
-        public void RegisterSchemaChannel(uint channelId, string topic, string schemaName, string encoding = "json")
+        /// <summary>Publish a validated ROS 2 CDR payload. Timestamp is taken from the clock.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
             if (ReplayEnabled) return;
-            _session.RegisterSchemaChannel(channelId, topic, schemaName, encoding);
+            _session.PublishRos2Cdr(channelId, payload);
+        }
+
+        /// <summary>Publish a validated ROS 2 CDR payload with an explicit nanosecond timestamp.</summary>
+        public void PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
+            _session.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
+        /// <summary>Register a schema channel on the session with the given encoding (default "json").</summary>
+        public void RegisterSchemaChannel(
+            uint channelId,
+            string topic,
+            string schemaName,
+            string encoding = "json",
+            string schemaEncoding = null)
+        {
+            if (_session == null) throw new InvalidOperationException("Session not started.");
+            if (ReplayEnabled) return;
+            _session.RegisterSchemaChannel(channelId, topic, schemaName, encoding, schemaEncoding);
+        }
+
+        /// <summary>Register a ROS 2 .msg schema channel with CDR message encoding.</summary>
+        public void RegisterRos2MsgSchemaChannel(uint channelId, string topic, string schemaName)
+        {
+            RegisterSchemaChannel(channelId, topic, schemaName, "cdr", "ros2msg");
         }
 
         /// <summary>Serialize and publish a JSON message. Timestamp is taken from the clock.</summary>
@@ -552,6 +584,25 @@ namespace Unity.FoxgloveSDK.Core
                 // Protobuf support is optional. Keep startup non-fatal, but emit
                 // one diagnostic so real schema-registration failures are visible.
                 _logger.LogWarning($"Optional protobuf schema registration failed; continuing without protobuf support: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Register bundled ROS 2 .msg schemas. If registration succeeds,
+        /// sessions advertise CDR support for explicit ros2msg channels.
+        /// </summary>
+        private void TryRegisterRos2MsgSchemas()
+        {
+            try
+            {
+                Ros2MsgSchemasSetup.RegisterSchemas(_schemaRegistry);
+                _ros2MsgSchemasRegistered = true;
+            }
+            catch (Exception ex)
+            {
+                // ROS 2 .msg schema support is optional. Keep startup non-fatal,
+                // but emit one diagnostic so real registration failures are visible.
+                _logger.LogWarning($"Optional ROS 2 .msg schema registration failed; continuing without CDR support: {ex.Message}");
             }
         }
     }

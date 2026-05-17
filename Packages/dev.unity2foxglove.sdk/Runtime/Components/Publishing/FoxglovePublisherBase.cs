@@ -49,6 +49,16 @@ namespace Unity.FoxgloveSDK.Components
         public virtual bool SupportsProtobufEncoding => false;
 
         /// <summary>
+        /// True when this publisher can serialize ROS 2 CDR payload bytes.
+        /// </summary>
+        public virtual bool SupportsRos2Encoding => false;
+
+        /// <summary>
+        /// ROS 2 .msg schema name used when <see cref="SupportsRos2Encoding"/> is true.
+        /// </summary>
+        protected virtual string Ros2SchemaName => "";
+
+        /// <summary>
         /// Resolved effective encoding for this publisher.
         /// Reads global default, override permission, publisher override, and capabilities.
         /// </summary>
@@ -93,9 +103,11 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                if (SupportsJsonEncoding && SupportsProtobufEncoding) return "json, protobuf";
-                if (SupportsJsonEncoding) return "json";
-                if (SupportsProtobufEncoding) return "protobuf";
+                var labels = new System.Collections.Generic.List<string>(3);
+                if (SupportsJsonEncoding) labels.Add("JSON");
+                if (SupportsProtobufEncoding) labels.Add("Protobuf");
+                if (SupportsRos2Encoding) labels.Add("ROS2");
+                if (labels.Count != 0) return string.Join(", ", labels);
                 return "none";
             }
         }
@@ -170,11 +182,22 @@ namespace Unity.FoxgloveSDK.Components
             if (!resolution.IsSupported) return false;
             if (resolution.Effective != attemptedEncoding)
             {
-                WarnEncodingMismatch(resolution, attemptedEncoding == PublisherEffectiveEncoding.Json ? "json" : "protobuf");
+                WarnEncodingMismatch(resolution, PublisherEncodingPolicy.ToDisplayEncoding(attemptedEncoding));
                 return false;
             }
 
-            var wireEncoding = attemptedEncoding == PublisherEffectiveEncoding.Json ? "json" : "protobuf";
+            if (attemptedEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                if (string.IsNullOrWhiteSpace(Ros2SchemaName))
+                {
+                    WarnEncodingMismatch(resolution, "ROS2");
+                    return false;
+                }
+
+                return _manager.TryPrepareRos2Publish(_topic, Ros2SchemaName, out _, requireDemand: true);
+            }
+
+            var wireEncoding = PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding);
             return _manager.TryPrepareSchemaPublish(_topic, SchemaName, wireEncoding, out _, requireDemand: true);
         }
 
@@ -188,7 +211,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!resolution.IsSupported) return;
             if (resolution.Effective != PublisherEffectiveEncoding.Json)
             {
-                WarnEncodingMismatch(resolution, "json");
+                WarnEncodingMismatch(resolution, "JSON");
                 return;
             }
 
@@ -205,11 +228,34 @@ namespace Unity.FoxgloveSDK.Components
             if (!resolution.IsSupported) return;
             if (resolution.Effective != PublisherEffectiveEncoding.Protobuf)
             {
-                WarnEncodingMismatch(resolution, "protobuf");
+                WarnEncodingMismatch(resolution, "Protobuf");
                 return;
             }
 
             _manager.PublishProto(_topic, SchemaName, payload, logTimeNs);
+        }
+
+        /// <summary>Publish ROS 2 CDR bytes through the manager. Safe no-op if manager is null.</summary>
+        protected void PublishRos2(byte[] payload, ulong logTimeNs)
+        {
+            if (_manager == null) return;
+
+            var resolution = ResolvePublisherEncoding();
+            WarnIfEncodingFallback(resolution);
+            if (!resolution.IsSupported) return;
+            if (resolution.Effective != PublisherEffectiveEncoding.Ros2)
+            {
+                WarnEncodingMismatch(resolution, "ROS2");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Ros2SchemaName))
+            {
+                WarnEncodingMismatch(resolution, "ROS2");
+                return;
+            }
+
+            _manager.PublishRos2(_topic, Ros2SchemaName, payload, logTimeNs);
         }
 
         private PublisherEncodingResolution ResolvePublisherEncoding()
@@ -221,7 +267,8 @@ namespace Unity.FoxgloveSDK.Components
                 allowPublisherOverride,
                 _encodingOverride,
                 SupportsJsonEncoding,
-                SupportsProtobufEncoding);
+                SupportsProtobufEncoding,
+                SupportsRos2Encoding);
         }
 
         private float ResolvePublishRateHz()
@@ -249,7 +296,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (resolution.Effective == PublisherEffectiveEncoding.Unsupported)
             {
-                Debug.LogWarning($"[Foxglove] {GetType().Name} does not support json or protobuf; dropping messages.");
+                Debug.LogWarning($"[Foxglove] {GetType().Name} does not support JSON, Protobuf, or ROS2; dropping messages.");
                 return;
             }
 
