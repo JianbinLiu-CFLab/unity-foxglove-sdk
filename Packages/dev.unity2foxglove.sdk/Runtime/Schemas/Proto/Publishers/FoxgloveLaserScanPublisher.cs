@@ -8,6 +8,7 @@ using System;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -33,6 +34,8 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.LaserScanSchemaName;
         public override bool SupportsProtobufEncoding => true;
+        public override bool SupportsRos2Encoding => true;
+        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.LaserScan;
 
         private void Awake()
         {
@@ -67,6 +70,11 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var payload = LaserScanMessageBuilder.SerializeProtobuf(unixNs, _frameId, startRad, endRad, ranges, intensities);
                 PublishProto(payload, unixNs);
+            }
+            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                var payload = Ros2CdrLaserScanBuilder.Serialize(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                PublishRos2(payload, unixNs);
             }
             else
             {

@@ -29,6 +29,8 @@ namespace Unity.FoxgloveSDK.Components
         protected override string DefaultTopic => "/unity/point_cloud_draco";
         public override bool SupportsJsonEncoding => false;
         public override bool SupportsProtobufEncoding => true;
+        public override bool SupportsRos2Encoding => false;
+        protected override string Ros2SchemaName => "";
 
         protected override void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
         {

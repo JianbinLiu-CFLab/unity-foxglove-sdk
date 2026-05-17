@@ -173,7 +173,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_defaultPublishRateHz");
 
             FoxgloveManagerInspectorLayout.Subheader("Encoding");
-            DrawProperty("_defaultPublisherEncoding");
+            DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Default Publisher Encoding");
             DrawProperty("_allowPublisherOverride");
 
             FoxgloveManagerInspectorLayout.Subheader("Coordinates");
@@ -367,6 +367,18 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.PropertyField(prop, true);
+        }
+
+        private void DrawGlobalEncodingProperty(string propertyName, string label)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop == null)
+            {
+                DrawMissingProperty(propertyName);
+                return;
+            }
+
+            PublisherEncodingEditorLabels.DrawGlobalEncoding(prop, label);
         }
 
         private static void DrawMissingProperty(string propertyName)
@@ -874,7 +886,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
             if (encodingOverride != null)
-                EditorGUILayout.PropertyField(encodingOverride, new GUIContent("Encoding Override"));
+                PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
 
             serializedObject.ApplyModifiedProperties();
 
@@ -891,7 +903,7 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
-                EditorGUILayout.EnumPopup("Effective Encoding", resolution.Effective);
+                PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
             }
 
             if (publisher.ConfiguredManager != null

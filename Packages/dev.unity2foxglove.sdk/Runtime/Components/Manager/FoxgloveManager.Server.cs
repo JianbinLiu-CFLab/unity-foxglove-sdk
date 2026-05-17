@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 StartCertificateDistributorIfNeeded();
-                _runtime.Start(_serverName, _host, _port);
+                _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
             }
             catch
             {

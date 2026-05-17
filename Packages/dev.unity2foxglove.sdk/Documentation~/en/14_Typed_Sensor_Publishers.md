@@ -8,7 +8,7 @@ Phase 49 adds dedicated Unity components for:
 - `foxglove.LaserScan`
 - `foxglove.CameraCalibration`
 
-Each raw typed sensor component supports JSON and protobuf. Protobuf is preferred for high-rate sensor streams because binary arrays are sent as protobuf bytes or repeated numeric fields instead of JSON text.
+Each raw typed sensor component supports JSON, Protobuf, and ROS2. Protobuf is preferred for dependency-free high-rate sensor streams because binary arrays are sent as protobuf bytes or repeated numeric fields instead of JSON text. ROS2 uses official Foxglove `ros2msg` schemas with CDR payloads for workflows that need ROS 2-compatible schema metadata in Foxglove or MCAP.
 
 ## 2. Encoding Behavior
 
@@ -16,9 +16,10 @@ The components follow the same publisher encoding policy as the rest of the pack
 
 - If `FoxgloveManager` uses `Protobuf`, these publishers advertise protobuf schemas and publish protobuf payloads.
 - If `FoxgloveManager` uses `Json`, they advertise JSON schemas and publish JSON payloads.
+- If `FoxgloveManager` uses `ROS2`, productized publishers advertise `ros2msg` schemas and publish CDR payloads.
 - If per-publisher overrides are enabled, each component can override the manager default.
 
-This means you can switch raw sensor publishing between JSON and protobuf from the Inspector without changing scene scripts. Optional compressed modes may be protobuf-only when their Foxglove schema requires binary payloads.
+This means you can switch raw sensor publishing between JSON, Protobuf, and ROS2 from the Inspector without changing scene scripts. Optional compressed modes may exclude JSON when their Foxglove schema requires binary payloads.
 
 ## 3. Point Cloud Publisher
 
@@ -28,8 +29,8 @@ Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side poi
 
 | Mode | Default topic | Schema | Encoding | Dependency |
 |---|---|---|---|---|
-| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` | JSON or protobuf | none |
-| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` | protobuf only | bundled Windows native plugin |
+| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` or `foxglove_msgs/msg/PointCloud` | JSON, Protobuf, or ROS2 | none |
+| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` or `foxglove_msgs/msg/CompressedPointCloud` | Protobuf or ROS2 | bundled Windows native plugin |
 
 Raw mode is the default and dependency-free path.
 

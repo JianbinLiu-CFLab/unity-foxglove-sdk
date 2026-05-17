@@ -9,6 +9,7 @@ using System;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -66,6 +67,10 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => ActiveProfile.SchemaName;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
+        public override bool SupportsRos2Encoding => ActiveProfile.Mode == CameraOutputMode.Jpeg;
+        protected override string Ros2SchemaName => ActiveProfile.Mode == CameraOutputMode.Jpeg
+            ? Ros2PublisherSchemaNames.CompressedImage
+            : "";
 
         // Capture state
         private Camera _sourceCam;
@@ -190,6 +195,14 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var payload = CameraCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
                 PublishProto(payload, unixNs);
+                _backpressureSkipLogCount = 0;
+                return;
+            }
+
+            if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                var payload = Ros2CdrCompressedImageBuilder.Serialize(unixNs, _frameId, jpeg, "jpeg");
+                PublishRos2(payload, unixNs);
                 _backpressureSkipLogCount = 0;
                 return;
             }

@@ -341,7 +341,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(encodingOverride, new GUIContent("Encoding Override"));
+            PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
         }
 
         private void DrawResolvedSummaries()
@@ -359,7 +359,7 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
-                EditorGUILayout.EnumPopup("Effective Encoding", resolution.Effective);
+                PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
             }
 
             if (publisher.ConfiguredManager != null

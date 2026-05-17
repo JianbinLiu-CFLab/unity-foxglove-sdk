@@ -43,8 +43,8 @@ Check:
 
 For point clouds:
 
-- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud`.
-- Draco `Point Cloud Output Mode` publishes protobuf-only `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` with format = `draco`.
+- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud` in JSON, Protobuf, or ROS2 mode.
+- Draco `Point Cloud Output Mode` publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode, or `foxglove_msgs/msg/CompressedPointCloud` with CDR payloads in ROS2 mode. Both use format = `draco`.
 - If you switched output modes while Foxglove was already connected, reconnect so the 3D panel sees the updated topic and schema.
 - If Draco mode is selected, click `Check Draco` in the Inspector and fix any native plugin warning before expecting points to appear.
 
@@ -52,13 +52,14 @@ Draco mode uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll
 
 Phase 89 uses a synchronous native Draco encode path. Large frames can block publish/update work while they encode; lower point budgets or return to raw mode while diagnosing.
 
-For custom ROS 2 `.msg` channels:
+For ROS2 output:
 
 - ROS 2 schema channels use `schemaEncoding = ros2msg` and message encoding `cdr`.
 - The SDK registers the official Foxglove ROS 2 `.msg` schema catalog and can advertise or record those channel/schema records.
-- Minimal ROS 2 CDR smoke builders exist for seven Foxglove schemas, but there is no Inspector-level ROS 2 CDR publisher output mode.
+- The Inspector `ROS2` encoding option is productized for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers.
+- H.264/H.265 camera modes and publishers outside that list fall back to their best supported encoding instead of producing invalid ROS2 topics.
 - If a `ros2msg` topic advertises correctly but Foxglove cannot decode data, verify that the payload starts with `00 01 00 00` and is valid XCDR1 little-endian data for that exact schema.
-- If you need dependency-free working publisher components today, use the existing JSON or protobuf publisher paths.
+- If you need dependency-free working publisher components on unsupported platforms, use the existing JSON or Protobuf publisher paths.
 
 ## 6. Camera Image Is Blank
 

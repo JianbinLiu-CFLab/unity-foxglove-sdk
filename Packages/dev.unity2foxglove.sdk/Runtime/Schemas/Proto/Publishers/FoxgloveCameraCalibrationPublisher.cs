@@ -8,6 +8,7 @@ using System;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -31,6 +32,8 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
         public override bool SupportsProtobufEncoding => true;
+        public override bool SupportsRos2Encoding => true;
+        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.CameraCalibration;
 
         private void Awake()
         {
@@ -61,6 +64,20 @@ namespace Unity.FoxgloveSDK.Components
                     calibration.R,
                     calibration.P);
                 PublishProto(payload, unixNs);
+            }
+            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                var payload = Ros2CdrCameraCalibrationBuilder.Serialize(
+                    unixNs,
+                    calibration.FrameId,
+                    calibration.Width,
+                    calibration.Height,
+                    calibration.DistortionModel,
+                    calibration.D,
+                    calibration.K,
+                    calibration.R,
+                    calibration.P);
+                PublishRos2(payload, unixNs);
             }
             else
             {

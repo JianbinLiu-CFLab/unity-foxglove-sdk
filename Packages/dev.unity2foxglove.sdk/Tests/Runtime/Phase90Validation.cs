@@ -213,11 +213,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!catalog.Contains("HasDedicatedUnityPublisher"),
                 "90G-3: ROS2 catalog does not imply dedicated ROS2 CDR publisher support");
 
-            var pointCloudPublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var cameraPublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
-            Check(!pointCloudPublisher.Contains("Ros2") && !pointCloudPublisher.Contains("Cdr")
-                  && !cameraPublisher.Contains("Ros2") && !cameraPublisher.Contains("Cdr"),
-                "90G-4: Phase90 does not change camera or point-cloud publisher output modes");
+            Check(componentText.Contains("PublisherEffectiveEncoding.Ros2")
+                  && !componentText.Contains("PublisherEffectiveEncoding.Cdr"),
+                "90G-4: publisher output mode uses product ROS2 labeling instead of CDR internals");
         }
 
         private static void Check(bool condition, string name)

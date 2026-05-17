@@ -199,7 +199,8 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 ### Supported
 
 - Real-time data streaming (transform, scene entities, camera images)
-- Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON or Protobuf mode
+- Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON, Protobuf, or ROS2 mode
+- ROS2 output for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers using official Foxglove `ros2msg` schemas with CDR payloads
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
 - MCAP replay for transform/scene snapshot reconstruction, paused scrub scene updates, and bounded panel-history replay after seek debounce

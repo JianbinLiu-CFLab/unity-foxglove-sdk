@@ -139,6 +139,9 @@ class Program
         if (argList.Contains("--phase91"))
             return RunPhase91Only();
 
+        if (argList.Contains("--phase92"))
+            return RunPhase92Only();
+
         var phase91McapIdx = argList.IndexOf("--phase91-ros2-cdr-mcap");
         if (phase91McapIdx >= 0)
         {
@@ -149,6 +152,18 @@ class Program
             }
 
             return RunPhase91Ros2CdrMcap(argList[phase91McapIdx + 1]);
+        }
+
+        var phase92McapIdx = argList.IndexOf("--phase92-ros2-product-mcap");
+        if (phase92McapIdx >= 0)
+        {
+            if (phase92McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase92-ros2-product-mcap requires an output path.");
+                return 1;
+            }
+
+            return RunPhase92Ros2ProductMcap(argList[phase92McapIdx + 1]);
         }
 
         var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
@@ -770,6 +785,36 @@ class Program
         }
     }
 
+    private static int RunPhase92Only()
+    {
+        try
+        {
+            Phase92Validation.Validate();
+            Console.WriteLine("\nPhase 92 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase92Ros2ProductMcap(string outputPath)
+    {
+        try
+        {
+            Phase92Validation.GenerateRos2ProductMcap(outputPath);
+            Console.WriteLine($"Phase 92 ROS2 product MCAP written: {outputPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -918,6 +963,8 @@ class Program
             Phase90Validation.Validate();
             Console.WriteLine();
             Phase91Validation.Validate();
+            Console.WriteLine();
+            Phase92Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;

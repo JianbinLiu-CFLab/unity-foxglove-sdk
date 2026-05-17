@@ -436,8 +436,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!componentText.Contains("PublisherEffectiveEncoding.Cdr") && !componentText.Contains("GlobalEncoding.Cdr"),
                 "91G-1: Phase91 does not add publisher or global CDR output modes");
-            Check(!publisherText.Contains("Ros2Cdr") && !publisherText.Contains("PublishRos2Cdr"),
-                "91G-2: Phase91 does not wire ROS2 CDR into camera or point-cloud publishers");
+            Check(!publisherText.Contains("PublishRos2Cdr"),
+                "91G-2: product publishers do not call the low-level ROS2 CDR helper directly");
             Check(managerPublishing.Contains("GetOrRegisterRos2MsgSchemaChannel")
                   && !managerPublishing.Contains("GetOrRegisterSchemaChannel(topic, schemaName, CdrEncoding)"),
                 "91G-3: manager uses a dedicated ros2msg CDR channel helper");

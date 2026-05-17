@@ -203,7 +203,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "73E-4: preflight preserves fallback warnings");
             Check(helper.Contains("WarnEncodingMismatch"),
                 "73E-5: preflight preserves mismatch warnings");
-            Check(helper.Contains("\"json\"") && helper.Contains("\"protobuf\""),
+            Check(helper.Contains("PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding)")
+                  && helper.Contains("PublisherEffectiveEncoding.Ros2")
+                  && helper.Contains("TryPrepareRos2Publish"),
                 "73E-6: preflight maps publisher encoding to wire encoding strings");
             Check(helper.Contains("TryPrepareSchemaPublish"),
                 "73E-7: preflight delegates registration and demand to manager");
@@ -226,7 +228,7 @@ namespace Unity.FoxgloveSDK.Tests
             var transformUpdate = Slice(transformSource, "protected override void Update()", "protected override FrameTransformMessage CreateMessage()");
             CheckOrdered(transformUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73F-6: transform publisher preflights after cadence");
             CheckOrdered(transformUpdate, "ShouldPreparePublishPayload()", "PublishProtobufTransform", "73F-7: transform publisher preflights before protobuf transform creation");
-            CheckOrdered(transformUpdate, "ShouldPreparePublishPayload()", "CreateMessage()", "73F-8: transform publisher preflights before JSON transform creation");
+            CheckOrdered(transformUpdate, "ShouldPreparePublishPayload()", "CreateMessage(unixNs)", "73F-8: transform publisher preflights before JSON transform creation");
 
             var calibrationSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraCalibrationPublisher.cs");
             var calibrationUpdate = Slice(calibrationSource, "private void Update()", "private CameraCalibrationMessage BuildCalibration");
@@ -253,7 +255,7 @@ namespace Unity.FoxgloveSDK.Tests
             var sceneUpdate = Slice(sceneSource, "protected override void Update()", "protected override SceneUpdateMessage CreateMessage()");
             CheckOrdered(sceneUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-5: scene cube preflights after cadence");
             CheckOrdered(sceneUpdate, "ShouldPreparePublishPayload()", "PublishProtobufSceneUpdate", "73G-6: scene cube preflights before protobuf scene construction");
-            CheckOrdered(sceneUpdate, "ShouldPreparePublishPayload()", "CreateMessage()", "73G-7: scene cube preflights before JSON scene construction");
+            CheckOrdered(sceneUpdate, "ShouldPreparePublishPayload()", "CreateMessage(unixNs)", "73G-7: scene cube preflights before JSON scene construction");
 
             var pointSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var pointUpdate = Slice(pointSource, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");

@@ -10,6 +10,7 @@ using Google.Protobuf;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Google.Protobuf.WellKnownTypes;
 using UVector3 = UnityEngine.Vector3;
 using UColor = UnityEngine.Color;
@@ -30,6 +31,8 @@ namespace Unity.FoxgloveSDK.Components
         private UnityEngine.MaterialPropertyBlock _propertyBlock;
 
         public override bool SupportsProtobufEncoding => true;
+        public override bool SupportsRos2Encoding => true;
+        protected override string Ros2SchemaName => Ros2PublisherSchemaNames.SceneUpdate;
 
         public UColor SceneCubeColor
         {
@@ -127,15 +130,22 @@ namespace Unity.FoxgloveSDK.Components
             {
                 PublishProtobufSceneUpdate(unixNs);
             }
+            else if (EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                PublishRos2SceneUpdate(unixNs);
+            }
             else
             {
-                var message = CreateMessage();
+                var message = CreateMessage(unixNs);
                 if (message == null) return;
                 Publish(message, unixNs);
             }
         }
 
         protected override SceneUpdateMessage CreateMessage()
+            => CreateMessage(CurrentLogTimeNs);
+
+        private SceneUpdateMessage CreateMessage(ulong unixNs)
         {
             return new SceneUpdateMessage
             {
@@ -145,7 +155,7 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         Id = ResolvedEntityId,
                         FrameId = ResolvedFrameId,
-                        Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(CurrentLogTimeNs),
+                        Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
                         Lifetime = new FoxgloveDuration(),
                         Cubes = new List<CubePrimitive>
                         {
@@ -163,6 +173,19 @@ namespace Unity.FoxgloveSDK.Components
                     }
                 }
             };
+        }
+
+        private void PublishRos2SceneUpdate(ulong unixNs)
+        {
+            try
+            {
+                var payload = Ros2CdrSceneUpdateBuilder.Serialize(CreateMessage(unixNs));
+                PublishRos2(payload, unixNs);
+            }
+            catch (System.NotSupportedException ex)
+            {
+                Debug.LogWarning("[Foxglove] SceneUpdate ROS2 publish skipped: " + ex.Message);
+            }
         }
 
         private void PublishProtobufSceneUpdate(ulong unixNs)

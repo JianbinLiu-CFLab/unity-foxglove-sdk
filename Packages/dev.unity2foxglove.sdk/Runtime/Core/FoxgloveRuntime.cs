@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Core
         /// message forwarding. Protobuf encoding is enabled automatically
         /// when the proto assembly is available.
         /// </summary>
-        public void Start(string name, string host = "127.0.0.1", int port = 8765)
+        public void Start(string name, string host = "127.0.0.1", int port = 8765, bool enableCdrClientPublish = true)
         {
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
@@ -184,7 +184,7 @@ namespace Unity.FoxgloveSDK.Core
                 session.SetRuntimeContext(this);
                 if (_protobufSchemasRegistered)
                     session.EnableProtobuf();
-                if (_ros2MsgSchemasRegistered)
+                if (enableCdrClientPublish && _ros2MsgSchemasRegistered)
                     session.EnableCdr();
                 _recording.AttachToSession(_playbackClock, _parameters, session);
                 session.Start(host, port);
