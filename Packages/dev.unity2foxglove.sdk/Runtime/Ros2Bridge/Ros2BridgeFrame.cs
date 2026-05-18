@@ -12,6 +12,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     /// <summary>One serialized ROS 2 bridge frame before TCP encoding.</summary>
     public sealed class Ros2BridgeFrame
     {
+        /// <summary>Message encoding label used for ROS2 CDR payloads in U2R2 frames.</summary>
         public const string CdrEncoding = "cdr";
 
         public Ros2BridgeFrame(string topic, string schemaName, string encoding, ulong logTimeNs, ulong sequence, byte[] payload)

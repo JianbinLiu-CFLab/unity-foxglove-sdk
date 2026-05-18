@@ -27,6 +27,8 @@
 
 namespace
 {
+// U2R2 wire limits shared with the Unity frame writer. Keep these constants
+// in sync before changing the binary frame envelope.
 constexpr uint16_t kVersion = 1;
 constexpr uint16_t kFlags = 0;
 constexpr uint32_t kMaxHeaderBytes = 64U * 1024U;

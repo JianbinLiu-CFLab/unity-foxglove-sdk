@@ -11,6 +11,7 @@ using Newtonsoft.Json;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
+    /// <summary>Progress event for the Inspector while ROS2 Bridge diagnostics run.</summary>
     public sealed class Ros2BridgeHealthProgress
     {
         public Ros2BridgeHealthProgress(string currentCheckId, string message, int completed, int total)
@@ -27,6 +28,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public int Total { get; }
     }
 
+    /// <summary>One diagnostic check result in a ROS2 Bridge health report.</summary>
     public sealed class Ros2BridgeHealthCheckResult
     {
         public Ros2BridgeHealthCheckResult(
@@ -69,6 +71,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public long DurationMs { get; }
     }
 
+    /// <summary>Environment fields captured with a health report for reproducible setup diagnostics.</summary>
     public sealed class Ros2BridgeHealthEnvironmentSnapshot
     {
         public Ros2BridgeHealthEnvironmentSnapshot(
@@ -111,8 +114,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public string Ros2Executable { get; }
     }
 
+    /// <summary>Serializable ROS2 Bridge diagnostic report for offline and live health checks.</summary>
     public sealed class Ros2BridgeHealthReport
     {
+        /// <summary>JSON schema version for the ROS2 Bridge health report payload.</summary>
         public const int CurrentSchemaVersion = 1;
 
         public Ros2BridgeHealthReport(

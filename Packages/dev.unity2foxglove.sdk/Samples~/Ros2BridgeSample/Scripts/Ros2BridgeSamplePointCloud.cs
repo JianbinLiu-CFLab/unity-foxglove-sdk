@@ -6,6 +6,7 @@
 
 using UnityEngine;
 
+/// <summary>Creates animated sample point transforms consumed by FoxglovePointCloudPublisher.</summary>
 public sealed class Ros2BridgeSamplePointCloud : MonoBehaviour
 {
     [SerializeField, Min(8)] private int _pointCount = 96;

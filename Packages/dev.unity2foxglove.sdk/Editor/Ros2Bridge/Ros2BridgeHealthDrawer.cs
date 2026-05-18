@@ -12,6 +12,7 @@ using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>Inspector UI for running ROS2 Bridge health checks and showing setup guidance.</summary>
     internal sealed class Ros2BridgeHealthDrawer
     {
         private readonly object _gate = new object();

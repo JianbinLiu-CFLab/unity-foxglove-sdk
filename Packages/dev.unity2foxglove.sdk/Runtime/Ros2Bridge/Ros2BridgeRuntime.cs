@@ -10,7 +10,7 @@ using System.Threading;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
-    /// <summary>Manager-owned background sender for ROS2 Bridge frames.</summary>
+    /// <summary>Manager-owned background sender with bounded queueing and reconnect lifecycle for ROS2 Bridge frames.</summary>
     public sealed class Ros2BridgeRuntime : IRos2BridgeSink
     {
         private readonly string _host;

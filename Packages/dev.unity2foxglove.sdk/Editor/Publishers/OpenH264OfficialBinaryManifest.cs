@@ -6,6 +6,7 @@
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>Pinned Cisco OpenH264 binary metadata used by the explicit installer UI.</summary>
     public static class OpenH264OfficialBinaryManifest
     {
         public const string Version = "v2.6.0";
@@ -14,6 +15,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const string HelperFileName = "openh264_probe_encoder.exe";
         public const string HelperSourceRelativePath = "Editor/Native/OpenH264/openh264_probe_encoder.cpp";
         public const string HeaderIncludeRelativePath = "Editor/Native/OpenH264/v2.6.0/include/wels";
+        /// <summary>Official Cisco binary URL for the pinned OpenH264 artifact.</summary>
         public const string DownloadUrl = "https://ciscobinary.openh264.org/openh264-2.6.0-win64.dll.bz2";
         public const string ReleasePageUrl = "https://github.com/cisco/openh264/releases/tag/v2.6.0";
         public const string BinaryLicenseUrl = "https://www.openh264.org/BINARY_LICENSE.txt";

@@ -12,6 +12,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
+    /// <summary>Parsed U2R2 health response returned by the ROS2 Bridge sidecar.</summary>
     public sealed class Ros2BridgeHealthPong
     {
         public Ros2BridgeHealthPong(
@@ -41,8 +42,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public string Message { get; }
     }
 
+    /// <summary>Encodes and decodes zero-payload U2R2 health ping/pong frames.</summary>
     public static class Ros2BridgeU2R2HealthCodec
     {
+        /// <summary>Application-level health protocol version inside the U2R2 frame header.</summary>
         public const int ProtocolVersion = 1;
         private const ushort EnvelopeVersion = 1;
 

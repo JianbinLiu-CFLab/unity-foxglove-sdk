@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Preflight and optionally launch the ROS2 Bridge sample from bash.
 
 set -euo pipefail
 

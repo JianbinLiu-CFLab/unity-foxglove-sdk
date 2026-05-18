@@ -10,11 +10,13 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
+    /// <summary>Runs ROS2 CLI commands for health diagnostics without coupling callers to Process.</summary>
     public interface IRos2BridgeCommandRunner
     {
         Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs);
     }
 
+    /// <summary>Result of one ROS2 CLI command, including timeout and launch-error state.</summary>
     public sealed class Ros2BridgeCommandResult
     {
         public Ros2BridgeCommandResult(
@@ -49,6 +51,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     : $"Command exited with code {ExitCode}.";
     }
 
+    /// <summary>Process-based command runner used by the Inspector health check.</summary>
     public sealed class ProcessRos2BridgeCommandRunner : IRos2BridgeCommandRunner
     {
         public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)

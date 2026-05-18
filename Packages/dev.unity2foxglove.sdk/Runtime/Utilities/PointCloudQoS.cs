@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Util
     /// </summary>
     public static class PointCloudQoS
     {
+        /// <summary>XYZ float32 packed field width in bytes.</summary>
         public const int XyzPackedStrideBytes = 12;
         public const int Float32Bytes = 4;
         public const int Uint16Bytes = 2;

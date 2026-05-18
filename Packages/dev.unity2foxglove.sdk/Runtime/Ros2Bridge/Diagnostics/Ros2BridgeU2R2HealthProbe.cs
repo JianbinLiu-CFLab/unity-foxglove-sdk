@@ -11,6 +11,7 @@ using System.Net.Sockets;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
+    /// <summary>Loopback U2R2 health probe used by the ROS2 Bridge Inspector diagnostics.</summary>
     public sealed class Ros2BridgeU2R2HealthProbe : IRos2BridgeHealthProbe
     {
         public Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs)
