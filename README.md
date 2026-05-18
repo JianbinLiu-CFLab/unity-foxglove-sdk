@@ -50,6 +50,8 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 
 Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path. Bridge topic namespaces, per-publisher bridge topic overrides, and simple ROS 2 QoS presets affect only this mirror path.
 
+The project is also evaluating **RobotecAI ROS2 For Unity** as an optional standalone ROS2-node path for users who want Unity to publish and subscribe directly in a ROS2 graph without installing ROS2 on the Windows Unity machine. That evaluation is experimental, not bundled in the SDK package, and respects the upstream Apache-2.0 license and attribution boundary.
+
 ## 1.2 Who This Is For
 
 Unity2Foxglove is for Unity developers who want runtime data to be visible outside the Game view without building a custom debug UI or running a separate bridge process.

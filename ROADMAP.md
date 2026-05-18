@@ -87,7 +87,8 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 ### 2.6 ROS2 and Data-Exchange Exploration
 
 - The current ROS2 bridge is optional, disabled by default, and sidecar-based. It is intended for local ROS2 graph integration without changing the default Foxglove WebSocket or MCAP workflows.
-- The project is evaluating, but not committing to, a future native ROS2 backend where Unity can participate directly as a ROS2 node without the sidecar forwarding process. The first investigation target is a Windows Unity Editor native serialized publisher backend that reuses existing ROS2 CDR payloads.
+- The project is evaluating RobotecAI ROS2 For Unity as an optional standalone path where Unity can participate directly as a ROS2 node without installing ROS2 on the Windows Unity machine. This supersedes the embedded rclcpp spike route as the preferred product investigation because the normal SDK package must remain ROS-free by default.
+- The first interop gate is Windows Unity against Ubuntu 24.04 / ROS2 Jazzy, with ROS2 Humble as a fallback because the upstream ROS2 For Unity 1.3.0 standalone Windows asset is Humble-based. ROS2 For Unity is Apache-2.0 licensed and must remain clearly attributed if any future adapter or bundled artifact is added.
 - The project is also considering a broader data-exchange runtime model where Unity, Foxglove, MCAP, and ROS2 can act as configurable inputs and outputs. Possible future directions include ROS2 subscriptions into Unity, MCAP replay fanout to ROS2, and route policies that send the same topic stream to Foxglove, MCAP, ROS2, or Unity scene adapters.
 - RViz2-oriented standard ROS2 message mirrors, such as `sensor_msgs`, `tf2_msgs`, and `visualization_msgs`, are being considered separately from the existing `foxglove_msgs` bridge path.
 
