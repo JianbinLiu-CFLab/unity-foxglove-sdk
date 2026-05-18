@@ -12,6 +12,7 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
+    /// <summary>Runs ordered offline/live diagnostics for the ROS2 Bridge sidecar workflow.</summary>
     public sealed class Ros2BridgeHealthRunner
     {
         private const string ConfigId = "config";

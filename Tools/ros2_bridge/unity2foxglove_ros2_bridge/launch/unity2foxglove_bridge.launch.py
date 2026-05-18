@@ -1,5 +1,7 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Launch the local Unity2Foxglove ROS2 Bridge sidecar for manual sample smoke tests.
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo

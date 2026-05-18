@@ -695,6 +695,7 @@ namespace Foxglove.Schemas.Video
             }
         }
 
+        // Media Foundation and CodecAPI GUIDs used by the Windows H.264 transform setup.
         private static class MfGuids
         {
             public static readonly Guid CLSID_CMSH264EncoderMFT = new Guid("6CA50344-051A-4DED-9779-A43305165E35");

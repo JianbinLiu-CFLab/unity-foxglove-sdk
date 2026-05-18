@@ -49,6 +49,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Bytes included after summary data when calculating MCAP summary_crc.</summary>
         internal const int FooterCrcPrefixLength = 1 + 8 + 8 + 8;
 
+        // MCAP record opcodes from the MCAP record type table.
         internal const byte OpcodeHeader = 0x01;
         internal const byte OpcodeFooter = 0x02;
         internal const byte OpcodeSchema = 0x03;

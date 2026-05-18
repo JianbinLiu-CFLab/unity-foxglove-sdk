@@ -6,7 +6,7 @@
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
-    /// <summary>Product-level bridge QoS presets.</summary>
+    /// <summary>Product-level ROS2 Bridge QoS presets shown in the Inspector.</summary>
     public enum Ros2BridgeQosPreset
     {
         ReliableDefault = 0,

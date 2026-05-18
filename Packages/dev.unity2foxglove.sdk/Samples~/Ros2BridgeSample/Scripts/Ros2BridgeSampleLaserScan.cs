@@ -6,6 +6,7 @@
 
 using UnityEngine;
 
+/// <summary>Animates the sample laser scan frame so ROS2 echo/RViz-style checks see changing data.</summary>
 public sealed class Ros2BridgeSampleLaserScan : MonoBehaviour
 {
     [SerializeField] private float _yawDegreesPerSecond = 20f;

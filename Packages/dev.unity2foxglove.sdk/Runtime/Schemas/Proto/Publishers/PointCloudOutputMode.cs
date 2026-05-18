@@ -74,7 +74,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public static class PointCloudOutputModeDefaults
     {
+        /// <summary>Default topic for raw point-cloud output.</summary>
         public const string RawTopic = "/unity/point_cloud";
+        /// <summary>Default topic for Draco-compressed point-cloud output.</summary>
         public const string DracoTopic = "/unity/point_cloud_draco";
         public const string RawSchema = "foxglove.PointCloud";
         public const string DracoSchema = "foxglove.CompressedPointCloud";

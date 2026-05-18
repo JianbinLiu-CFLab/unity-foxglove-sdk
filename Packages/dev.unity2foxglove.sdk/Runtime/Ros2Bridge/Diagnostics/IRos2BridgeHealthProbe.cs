@@ -6,11 +6,13 @@
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
+    /// <summary>Probes the ROS2 Bridge sidecar health endpoint over the U2R2 loopback connection.</summary>
     public interface IRos2BridgeHealthProbe
     {
         Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs);
     }
 
+    /// <summary>Sidecar health ping result returned to the bridge health report.</summary>
     public sealed class Ros2BridgeProbeResult
     {
         public Ros2BridgeProbeResult(

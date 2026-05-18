@@ -129,8 +129,11 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public static class CameraOutputModeDefaults
     {
+        /// <summary>Default topic for JPEG camera output.</summary>
         public const string JpegTopic = "/unity/camera";
+        /// <summary>Default topic for H.264 camera output.</summary>
         public const string H264Topic = "/unity/camera";
+        /// <summary>Default topic for H.265 camera output.</summary>
         public const string H265Topic = "/unity/camera";
         public const string JpegSchema = "foxglove.CompressedImage";
         public const string H264Schema = "foxglove.CompressedVideo";

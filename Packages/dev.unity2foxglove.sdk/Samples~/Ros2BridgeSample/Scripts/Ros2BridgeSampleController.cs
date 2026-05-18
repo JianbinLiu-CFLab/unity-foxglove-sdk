@@ -7,6 +7,7 @@
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
+/// <summary>Drives visible motion and status text for the ROS2 Bridge sample scene.</summary>
 public sealed class Ros2BridgeSampleController : MonoBehaviour
 {
     [SerializeField] private FoxgloveManager _manager;

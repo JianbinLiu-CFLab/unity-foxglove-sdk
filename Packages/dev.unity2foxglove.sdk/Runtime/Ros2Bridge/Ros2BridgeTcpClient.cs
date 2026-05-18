@@ -10,7 +10,7 @@ using System.Net.Sockets;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
-    /// <summary>Sends U2R2 bridge frames to a localhost ROS 2 sidecar.</summary>
+    /// <summary>Sends U2R2 bridge frames to a loopback-only ROS 2 sidecar.</summary>
     public sealed class Ros2BridgeTcpClient : IRos2BridgeSink
     {
         private TcpClient _client;

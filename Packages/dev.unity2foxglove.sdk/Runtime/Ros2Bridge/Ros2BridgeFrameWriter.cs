@@ -14,7 +14,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     /// <summary>Encodes <see cref="Ros2BridgeFrame"/> values to the Phase 94 U2R2 wire frame.</summary>
     public static class Ros2BridgeFrameWriter
     {
+        /// <summary>Maximum JSON header size in bytes for one U2R2 frame.</summary>
         public const int MaxHeaderBytes = 64 * 1024;
+        /// <summary>Maximum CDR payload size in bytes for one U2R2 frame.</summary>
         public const int MaxPayloadBytes = 64 * 1024 * 1024;
 
         public static byte[] Write(Ros2BridgeFrame frame)

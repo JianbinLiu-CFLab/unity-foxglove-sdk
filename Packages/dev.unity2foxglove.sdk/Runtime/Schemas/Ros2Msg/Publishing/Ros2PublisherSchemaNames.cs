@@ -11,6 +11,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     /// </summary>
     public static class Ros2PublisherSchemaNames
     {
+        /// <summary>Official foxglove_msgs schema name for transform publisher output.</summary>
         public const string FrameTransform = "foxglove_msgs/msg/FrameTransform";
         public const string SceneUpdate = "foxglove_msgs/msg/SceneUpdate";
         public const string CompressedImage = "foxglove_msgs/msg/CompressedImage";

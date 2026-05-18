@@ -8,6 +8,7 @@ using UnityEditor;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>Persists the optional ros2 executable path selected for bridge health diagnostics.</summary>
     internal static class Ros2BridgeEditorPrefs
     {
         private const string Ros2ExecutablePathKey = "Unity2Foxglove.Ros2Bridge.Ros2ExecutablePath";
