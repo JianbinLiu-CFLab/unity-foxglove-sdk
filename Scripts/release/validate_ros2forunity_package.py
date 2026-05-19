@@ -41,6 +41,22 @@ FORBIDDEN_RUNTIME_NAMES = {
     "metadata_ros2_for_unity.xml",
 }
 
+ALLOWED_RUNTIME_SUFFIXES = {
+    ".cs",
+    ".asmdef",
+}
+
+FORBIDDEN_RUNTIME_TOKENS = (
+    "using ROS2;",
+    "namespace ROS2",
+    "ROS2UnityComponent",
+    "ROS2Node",
+    "IPublisher<",
+    "ISubscription<",
+    "std_msgs",
+    "ros2cs",
+)
+
 
 @dataclass
 class CheckResult:
@@ -200,9 +216,42 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no runtime binaries found",
     )
 
-    forbidden_dirs = [PACKAGE / "Runtime", PACKAGE / "Editor", PACKAGE / "Samples~"]
+    forbidden_dirs = [PACKAGE / "Editor", PACKAGE / "Samples~"]
     existing = [rel(path) for path in forbidden_dirs if path.exists()]
-    add(results, "optional package has no adapter directories", not existing, "; ".join(existing) if existing else "no adapter directories")
+    add(results, "optional package has no editor/sample adapter directories", not existing, "; ".join(existing) if existing else "no editor/sample directories")
+
+
+def check_runtime_source_boundary(results: list[CheckResult]) -> None:
+    """Allow facade-only Runtime source while rejecting upstream ROS2/R2FU dependencies."""
+    runtime = PACKAGE / "Runtime"
+    if not runtime.exists():
+        add(results, "optional Runtime absent or facade-only", True, "Runtime absent")
+        return
+
+    invalid_files: list[str] = []
+    token_hits: list[str] = []
+    for path in iter_files(runtime):
+        if path.suffix.lower() not in ALLOWED_RUNTIME_SUFFIXES:
+            invalid_files.append(rel(path))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for token in FORBIDDEN_RUNTIME_TOKENS:
+            if token in text:
+                token_hits.append(f"{rel(path)} contains {token}")
+                break
+
+    add(
+        results,
+        "optional Runtime contains only facade source",
+        not invalid_files,
+        "; ".join(invalid_files[:MAX_REPORTED_OFFENDERS]) if invalid_files else "all Runtime files are source/asmdef",
+    )
+    add(
+        results,
+        "optional Runtime has no upstream ROS2/R2FU API references",
+        not token_hits,
+        "; ".join(token_hits[:MAX_REPORTED_OFFENDERS]) if token_hits else "no forbidden Runtime tokens",
+    )
 
 
 def check_core_boundary(results: list[CheckResult]) -> None:
@@ -234,6 +283,7 @@ def main() -> int:
     check_manifest(results)
     check_text_boundaries(results)
     check_no_runtime_artifacts(results)
+    check_runtime_source_boundary(results)
     check_core_boundary(results)
 
     print_results(results)

@@ -4,6 +4,8 @@ This package is the optional ROS2 For Unity boundary for Unity2Foxglove.
 
 Phase 107 contains only package metadata, documentation, attribution, and compliance records. ROS2 For Unity runtime binaries are not bundled here yet, and this package does not include a future adapter implementation in this phase.
 
+Phase 108 facade is an API boundary only. The package is not end-user ready for ROS2 publishing yet, and the R2FU-backed implementation starts later behind an explicit integration gate.
+
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
 ```text
@@ -48,6 +50,7 @@ See `THIRD_PARTY_NOTICES.md` and `Compliance/ros2-for-unity-adoption-manifest.js
 
 Later phases may add:
 
+- a real R2FU-backed context behind the facade;
 - a guarded adapter facade over ROS2 For Unity;
 - a runtime bundle inventory;
 - per-platform runtime validation;

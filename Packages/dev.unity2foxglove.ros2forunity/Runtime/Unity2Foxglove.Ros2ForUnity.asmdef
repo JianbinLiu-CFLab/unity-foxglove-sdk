@@ -1,0 +1,13 @@
+{
+  "name": "Unity2Foxglove.Ros2ForUnity",
+  "rootNamespace": "Unity2Foxglove.Ros2ForUnity",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [
+    "WebGL"
+  ],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "defineConstraints": []
+}

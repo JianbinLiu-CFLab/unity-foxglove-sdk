@@ -66,10 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var required in requiredFiles)
                 Check(RepoFileExists(required), "107-A7: required optional package file exists: " + required);
 
-            Check(!RepoDirectoryExists(OptionalPackage + "/Runtime")
-                  && !RepoDirectoryExists(OptionalPackage + "/Editor")
+            Check(!RepoDirectoryExists(OptionalPackage + "/Editor")
                   && !RepoDirectoryExists(OptionalPackage + "/Samples~"),
-                "107-A8: Phase107 optional package contains no runtime/editor/sample adapter surface");
+                "107-A8: optional package contains no editor/sample adapter surface");
+            VerifyOptionalRuntimeBoundary();
         }
 
         private static void VerifyAdoptionManifest()
@@ -217,6 +217,54 @@ namespace Unity.FoxgloveSDK.Tests
             Check(optionalRuntimeFiles.Count == 0,
                 "107-F2: optional package working tree contains no runtime binaries while bundleStatus is not_bundled"
                 + (optionalRuntimeFiles.Count == 0 ? string.Empty : " (" + string.Join(", ", optionalRuntimeFiles) + ")"));
+        }
+
+        private static void VerifyOptionalRuntimeBoundary()
+        {
+            var runtimeRoot = Path.Combine(RepoRoot(), OptionalPackage.Replace('/', Path.DirectorySeparatorChar), "Runtime");
+            if (!Directory.Exists(runtimeRoot))
+            {
+                Check(true, "107-A9: optional package Runtime is absent or facade-only");
+                return;
+            }
+
+            var offenders = Directory.GetFiles(runtimeRoot, "*.*", SearchOption.AllDirectories)
+                .Where(path => !IsAllowedRuntimeSource(path)
+                               || ContainsForbiddenRuntimeToken(path))
+                .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
+                .ToList();
+
+            Check(offenders.Count == 0,
+                "107-A9: optional package Runtime contains only facade source and no upstream ROS2/R2FU API references"
+                + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
+        }
+
+        private static bool IsAllowedRuntimeSource(string path)
+        {
+            var extension = Path.GetExtension(path);
+            return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                   || extension.Equals(".asmdef", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ContainsForbiddenRuntimeToken(string path)
+        {
+            if (!HasTextExtension(path))
+                return false;
+
+            var text = File.ReadAllText(path);
+            var forbidden = new[]
+            {
+                "using ROS2;",
+                "namespace ROS2",
+                "ROS2UnityComponent",
+                "ROS2Node",
+                "IPublisher<",
+                "ISubscription<",
+                "std_msgs",
+                "ros2cs"
+            };
+
+            return forbidden.Any(token => text.Contains(token, StringComparison.Ordinal));
         }
 
         private static bool IsForbiddenR2fuArtifact(string path)
