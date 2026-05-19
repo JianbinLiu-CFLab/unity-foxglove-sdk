@@ -6,6 +6,8 @@ Phase 107 contains only package metadata, documentation, attribution, and compli
 
 Phase 108 facade is an API boundary only. The package is not end-user ready for ROS2 publishing yet, and the R2FU-backed implementation starts later behind an explicit integration gate.
 
+Phase 109 adds a demo-project manual smoke adapter for one bidirectional `std_msgs/msg/String` topic pair. The adapter lives under the Unity demo project's `ManualAcceptance` scripts and is not bundled as production package runtime code.
+
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
 ```text
