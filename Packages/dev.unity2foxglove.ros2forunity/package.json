@@ -1,0 +1,18 @@
+{
+  "name": "dev.unity2foxglove.ros2forunity",
+  "version": "0.1.0-preview.1",
+  "displayName": "Unity2Foxglove ROS2 For Unity",
+  "license": "Apache-2.0",
+  "description": "Optional ROS2 For Unity integration package for Unity2Foxglove. Phase 107 contains package and compliance boundaries only; runtime binaries and adapters are added in later phases.",
+  "unity": "6000.0",
+  "dependencies": {},
+  "keywords": [
+    "unity2foxglove",
+    "ros2",
+    "ros2-for-unity",
+    "robotics"
+  ],
+  "author": {
+    "name": "Unity2Foxglove"
+  }
+}
