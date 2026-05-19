@@ -31,6 +31,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void OnEnable()
     {
+        Application.runInBackground = true;
         _nextPublishTime = 0f;
         _publishCount = 0;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
