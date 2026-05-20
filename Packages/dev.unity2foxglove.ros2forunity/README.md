@@ -2,13 +2,9 @@
 
 This package is the optional ROS2 For Unity boundary for Unity2Foxglove.
 
-Phase 107 contains package metadata, documentation, attribution, and compliance records. ROS2 For Unity runtime binaries are not bundled here.
+It provides facade/API boundaries, documentation, attribution records, and a source-only `ROS2 For Unity External Adapter` sample. ROS2 For Unity runtime binaries are not bundled here.
 
-Phase 108 facade is an API boundary only. The package is not end-user ready for ROS2 publishing yet, and the R2FU-backed implementation starts later behind an explicit integration gate.
-
-Phase 109 adds a demo-project manual smoke adapter for one bidirectional `std_msgs/msg/String` topic pair. The adapter lives under the Unity demo project's `ManualAcceptance` scripts and is not bundled as production package runtime code.
-
-Phase 110 productizes that smoke path as the `ROS2 For Unity External Adapter` importable sample. Users still import external ROS2 For Unity under `Assets/Ros2ForUnity`; this package only ships source code that connects the Unity2Foxglove ROS2 facade to that external ROS2 For Unity runtime.
+The current product direction is Jazzy-first for Windows x64 runtime work. A future runtime package such as `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` should own the R2FU Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
@@ -25,14 +21,28 @@ This optional package is reserved for users who later want Unity to participate 
 ```text
 bundleStatus: not_bundled
 adapterStatus: external_assets_sample
-runtimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
+recommendedRuntimeCandidate: Ros2ForUnity_Jazzy_standalone_windows10.zip
+plannedRuntimePackage: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
+legacyRuntimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
 ```
 
-Phase 106 proved that the R2FU standalone route can exchange simple `std_msgs/msg/String` topics with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment.
+The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment.
 
-Phase 106B showed that WSL2 NAT remains a problematic DDS discovery topology for this Humble standalone asset. Future remote Linux acceptance should use a real LAN, VPN, physical Linux host, or bridged Ubuntu VM rather than WSL2 NAT.
+The old Humble standalone asset remains historical/fallback evidence, but it is not the recommended new-user runtime line after the Jazzy rebuild and retest.
 
-Phase 110 uses Windows ROS2 Jazzy as the local live acceptance peer. WSL2 NAT is not a GREEN gate for the external adapter sample.
+WSL2 NAT remains a problematic DDS discovery topology and is not a GREEN gate for the external adapter sample or future runtime package. Future remote Linux acceptance should use a real LAN, VPN, physical Linux host, or bridged Ubuntu VM rather than WSL2 NAT.
+
+R2FU Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual publish/subscribe data flow as the current acceptance signal.
+
+## Package Composition
+
+| Install set | Expected behavior |
+|---|---|
+| `dev.unity2foxglove.sdk` | Fully usable by itself for normal Foxglove WebSocket, MCAP, Replay, and FoxRun workflows. |
+| `dev.unity2foxglove.ros2forunity` | Installs and compiles by itself. Reports missing runtime gracefully. |
+| `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Planned runtime package. Installs runtime files and exposes metadata/diagnostics by itself. |
+| Adapter + runtime | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. |
+| SDK + adapter + runtime | Full combined Unity2Foxglove workflow. |
 
 ## External Adapter Sample
 
@@ -79,9 +89,10 @@ See `THIRD_PARTY_NOTICES.md` and `Compliance/ros2-for-unity-adoption-manifest.js
 
 Later phases may add:
 
+- a `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package prototype;
 - a runtime bundle inventory;
 - per-platform runtime validation;
 - explicit DDS network-profile troubleshooting;
 - real LAN or bridged Linux acceptance evidence.
 
-Any future binary bundling must update the adoption manifest and add a complete transitive inventory before distribution.
+Any future binary bundling must update the adoption manifest and add a complete transitive inventory, third-party notices, license inventory, checksums, and fresh Unity project acceptance before distribution.

@@ -82,30 +82,47 @@ namespace Unity.FoxgloveSDK.Tests
             Check((string)manifest["upstreamLicense"] == "Apache-2.0"
                   && (string)manifest["upstreamLicenseFile"] == "Upstream/LICENSE.AL2",
                 "107-B3: manifest records upstream license and copied license path");
-            Check((string)manifest["adoptedVersion"] == "1.3.0",
-                "107-B4: manifest records adopted R2FU version");
-            Check((string)manifest["releaseAsset"] == "Ros2ForUnity_humble_standalone_windows11.zip"
-                  && ((string)manifest["releaseAssetUrl"]).Contains("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.Ordinal),
-                "107-B5: manifest records Humble standalone release asset");
-            Check((string)manifest["releaseAssetSha256"] == "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
-                "107-B6: manifest records Phase106 release asset SHA256");
-            Check(((string)manifest["phase106Evidence"]).Contains("GREEN_WINDOWS_ROS2", StringComparison.Ordinal)
-                  && ((string)manifest["phase106Evidence"]).Contains("BLOCKED_WSL_ROS2_DISCOVERY", StringComparison.Ordinal),
-                "107-B7: manifest records Phase106/106B verdicts");
+            Check((int?)manifest["schemaVersion"] == 2,
+                "107-B4: manifest records schema version 2");
+
+            var currentRuntime = (JObject)manifest["currentRecommendedRuntime"]!;
+            Check((string)currentRuntime["packageName"] == "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+                  && (string)currentRuntime["rosDistro"] == "jazzy"
+                  && (string)currentRuntime["supportLevel"] == "Recommended"
+                  && (string)currentRuntime["distributionLevel"] == "BundleCandidate",
+                "107-B5: manifest records Jazzy runtime package candidate");
+            Check((string)currentRuntime["artifact"] == "Ros2ForUnity_Jazzy_standalone_windows10.zip"
+                  && (string)currentRuntime["artifactSha256"] == "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+                "107-B6: manifest records Jazzy runtime artifact identity");
+
+            var legacyRuntime = (JObject)manifest["legacyRuntime"]!;
+            Check((string)legacyRuntime["releaseAsset"] == "Ros2ForUnity_humble_standalone_windows11.zip"
+                  && ((string)legacyRuntime["releaseAssetUrl"]!).Contains("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.Ordinal)
+                  && (string)legacyRuntime["supportLevel"] == "LegacySupported"
+                  && (string)legacyRuntime["distributionLevel"] == "ExternalOnly",
+                "107-B7: manifest keeps Humble as legacy external evidence");
+            Check(((string)legacyRuntime["evidence"]!).Contains("GREEN_WINDOWS_ROS2", StringComparison.Ordinal)
+                  && ((string)legacyRuntime["evidence"]!).Contains("BLOCKED_WSL_ROS2_DISCOVERY", StringComparison.Ordinal),
+                "107-B8: manifest records Phase106/106B legacy verdicts");
             Check(((string)manifest["upstreamSupportStatus"]).Contains("AWSIM/Autoware", StringComparison.Ordinal)
                   && ((string)manifest["upstreamSupportStatus"]).Contains("general community", StringComparison.Ordinal),
-                "107-B8: manifest preserves upstream support caveat");
+                "107-B9: manifest preserves upstream support caveat");
             var distributionPolicy = (string)manifest["distributionPolicy"];
             Check((string)manifest["bundleStatus"] == "not_bundled"
-                  && (distributionPolicy == "optional_package_boundary_prepared_no_runtime_binaries"
-                      || distributionPolicy == "external_ros2_for_unity_runtime_user_import_required"),
-                "107-B9: manifest records not-bundled distribution policy");
+                  && distributionPolicy == "runtime_artifacts_live_in_separate_runtime_packages"
+                  && (string)manifest["distributionModel"] == "one_repo_multi_package_runtime_artifacts",
+                "107-B10: manifest records not-bundled multi-package distribution policy");
             Check((string)manifest["knownRuntimeRmw"] == "rmw_fastrtps_cpp"
-                  && (string)manifest["knownRuntimeRosDistro"] == "humble"
-                  && ((string)manifest["jazzyInteropStatus"]).Contains("Windows ROS2 Jazzy", StringComparison.Ordinal),
-                "107-B10: manifest records runtime and Jazzy smoke evidence");
+                  && (string)manifest["knownRuntimeRosDistro"] == "jazzy"
+                  && (string)manifest["activeRuntimePolicy"] == "one_runtime_package_per_project",
+                "107-B11: manifest records Jazzy runtime and one-runtime policy");
+            Check(manifest["packageComposition"] is JObject composition
+                  && composition["adapterAlone"] != null
+                  && composition["runtimeAlone"] != null
+                  && composition["adapterPlusRuntime"] != null,
+                "107-B12: manifest records standalone and combined package composition");
             Check(manifest["modifications"] is JArray modifications && modifications.Count == 0,
-                "107-B11: manifest records no Phase107 upstream modifications");
+                "107-B13: manifest records no upstream modifications");
         }
 
         private static void VerifyCorePackageBoundary()
@@ -166,10 +183,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && combined.Contains("real LAN", StringComparison.Ordinal)
                   && combined.Contains("bridged", StringComparison.OrdinalIgnoreCase),
                 "107-D3: docs state WSL2 NAT is not the remote Linux acceptance gate");
-            Check(roadmap.Contains("optional package boundary", StringComparison.Ordinal)
-                  && roadmap.Contains("R2FU facade", StringComparison.Ordinal)
+            Check(roadmap.Contains("one-repo, multi-package", StringComparison.Ordinal)
+                  && roadmap.Contains("R2FU adapter/runtime package line", StringComparison.Ordinal)
                   && roadmap.Contains("170-series", StringComparison.Ordinal),
-                "107-D4: roadmap marks R2FU optional package as ROS2 mainline and defers old ROS2 plans");
+                "107-D4: roadmap marks R2FU optional packages as ROS2 mainline and defers old ROS2 plans");
             Check(optionalReadme.Contains("runtime binaries are not bundled", StringComparison.OrdinalIgnoreCase)
                   && (optionalReadme.Contains("future adapter", StringComparison.OrdinalIgnoreCase)
                       || optionalReadme.Contains("external adapter", StringComparison.OrdinalIgnoreCase)),
@@ -274,6 +291,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
+                   || path.EndsWith("Ros2ForUnity_Jazzy_standalone_windows10.zip", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
         }

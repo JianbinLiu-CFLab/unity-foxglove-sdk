@@ -201,11 +201,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && adapterStatus.GetString() == "external_assets_sample",
                 "110-G2: manifest records external asset sample adapter status");
             Check(root.TryGetProperty("distributionPolicy", out var distributionPolicy)
-                  && distributionPolicy.GetString() == "external_ros2_for_unity_runtime_user_import_required",
-                "110-G3: manifest records user-import-required distribution policy");
-            Check(root.TryGetProperty("phase110Evidence", out var phase110Evidence)
-                  && phase110Evidence.GetString() == "pending",
-                "110-G4: manifest records pending Phase110 live evidence");
+                  && distributionPolicy.GetString() == "runtime_artifacts_live_in_separate_runtime_packages",
+                "110-G3: manifest records runtime-package distribution policy");
+            Check(root.TryGetProperty("currentRecommendedRuntime", out var currentRuntime)
+                  && currentRuntime.TryGetProperty("packageName", out var packageName)
+                  && packageName.GetString() == "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+                  && currentRuntime.TryGetProperty("rosDistro", out var rosDistro)
+                  && rosDistro.GetString() == "jazzy"
+                  && currentRuntime.TryGetProperty("distributionLevel", out var distributionLevel)
+                  && distributionLevel.GetString() == "BundleCandidate",
+                "110-G4: manifest records Jazzy runtime package candidate");
+            Check(root.TryGetProperty("packageComposition", out var composition)
+                  && composition.TryGetProperty("adapterAlone", out _)
+                  && composition.TryGetProperty("runtimeAlone", out _)
+                  && composition.TryGetProperty("adapterPlusRuntime", out _),
+                "110-G5: manifest records standalone and combined package composition");
         }
 
         private static void VerifyDocs()
@@ -374,6 +384,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
+                   || path.EndsWith("Ros2ForUnity_Jazzy_standalone_windows10.zip", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
         }

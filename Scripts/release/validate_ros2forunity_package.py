@@ -176,30 +176,64 @@ def check_manifest(results: list[CheckResult]) -> None:
         return
 
     expected = {
+        "schemaVersion": 2,
         "upstreamName": "RobotecAI ROS2 For Unity",
         "upstreamRepository": "https://github.com/RobotecAI/ros2-for-unity",
         "upstreamLicense": "Apache-2.0",
         "upstreamLicenseFile": "Upstream/LICENSE.AL2",
-        "adoptedVersion": "1.3.0",
-        "releaseAsset": "Ros2ForUnity_humble_standalone_windows11.zip",
-        "releaseAssetSha256": "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
         "bundleStatus": "not_bundled",
         "adapterStatus": "external_assets_sample",
-        "distributionPolicy": "external_ros2_for_unity_runtime_user_import_required",
-        "phase110Evidence": "pending",
+        "distributionModel": "one_repo_multi_package_runtime_artifacts",
+        "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
+        "activeRuntimePolicy": "one_runtime_package_per_project",
         "knownRuntimeRmw": "rmw_fastrtps_cpp",
-        "knownRuntimeRosDistro": "humble",
+        "knownRuntimeRosDistro": "jazzy",
     }
     for key, value in expected.items():
         add(results, f"manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
-    release_url = str(data.get("releaseAssetUrl", ""))
-    add(results, "manifest release asset URL", "Ros2ForUnity_humble_standalone_windows11.zip" in release_url, release_url)
-
-    evidence = str(data.get("phase106Evidence", ""))
+    current = data.get("currentRecommendedRuntime", {})
     add(
         results,
-        "manifest Phase106 evidence",
+        "manifest current runtime object",
+        isinstance(current, dict),
+        f"currentRecommendedRuntime={current!r}",
+    )
+    if isinstance(current, dict):
+        current_expected = {
+            "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+            "runtimeId": "r2fu-jazzy-win64",
+            "rosDistro": "jazzy",
+            "platform": "win64",
+            "supportLevel": "Recommended",
+            "distributionLevel": "BundleCandidate",
+            "artifact": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
+            "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+        }
+        for key, value in current_expected.items():
+            add(
+                results,
+                f"manifest current runtime {key}",
+                current.get(key) == value,
+                f"expected {value!r}, got {current.get(key)!r}",
+            )
+        caveats = " ".join(str(item) for item in current.get("knownCaveats", []))
+        add(
+            results,
+            "manifest current runtime caveats",
+            "WSL2 NAT" in caveats and "graph snapshots" in caveats,
+            caveats,
+        )
+
+    legacy = data.get("legacyRuntime", {})
+    add(results, "manifest legacy runtime object", isinstance(legacy, dict), f"legacyRuntime={legacy!r}")
+    release_url = str(legacy.get("releaseAssetUrl", "")) if isinstance(legacy, dict) else ""
+    add(results, "manifest legacy release asset URL", "Ros2ForUnity_humble_standalone_windows11.zip" in release_url, release_url)
+
+    evidence = str(legacy.get("evidence", "")) if isinstance(legacy, dict) else ""
+    add(
+        results,
+        "manifest legacy evidence",
         "GREEN_WINDOWS_ROS2" in evidence and "BLOCKED_WSL_ROS2_DISCOVERY" in evidence,
         evidence,
     )
@@ -212,8 +246,26 @@ def check_manifest(results: list[CheckResult]) -> None:
         support,
     )
 
-    jazzy = str(data.get("jazzyInteropStatus", ""))
-    add(results, "manifest Jazzy smoke status", "Windows ROS2 Jazzy" in jazzy, jazzy)
+    packages = data.get("plannedRuntimePackages", [])
+    add(
+        results,
+        "manifest planned runtime packages",
+        isinstance(packages, list)
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.humble.win64" in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64" in packages,
+        f"plannedRuntimePackages={packages!r}",
+    )
+    composition = data.get("packageComposition", {})
+    add(
+        results,
+        "manifest package composition",
+        isinstance(composition, dict)
+        and "adapterAlone" in composition
+        and "runtimeAlone" in composition
+        and "adapterPlusRuntime" in composition,
+        f"packageComposition={composition!r}",
+    )
     add(results, "manifest modifications empty", data.get("modifications") == [], f"modifications={data.get('modifications')!r}")
 
 
