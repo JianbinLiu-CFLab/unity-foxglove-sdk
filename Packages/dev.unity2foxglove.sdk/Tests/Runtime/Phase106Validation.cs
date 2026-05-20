@@ -111,13 +111,19 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyTrackedAssetBoundary()
         {
             var tracked = GitLsFiles();
+            const string runtimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/";
             Check(!tracked.Any(path => path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)),
                 "106D-1: extracted ROS2 For Unity assets are not tracked");
-            Check(!tracked.Any(path => path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
-                                       || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
-                                       || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
-                                       || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase)),
-                "106D-2: ROS2 For Unity binaries/packages/metadata are not tracked");
+            var disallowedArtifacts = tracked
+                .Where(path => !path.StartsWith(runtimePackage, StringComparison.Ordinal))
+                .Where(path => path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
+                               || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
+                               || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
+                               || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            Check(disallowedArtifacts.Count == 0,
+                "106D-2: ROS2 For Unity artifacts are tracked only inside the explicit runtime package"
+                + (disallowedArtifacts.Count == 0 ? string.Empty : " (" + string.Join(", ", disallowedArtifacts) + ")"));
         }
 
         private static void VerifyDocsBoundary()

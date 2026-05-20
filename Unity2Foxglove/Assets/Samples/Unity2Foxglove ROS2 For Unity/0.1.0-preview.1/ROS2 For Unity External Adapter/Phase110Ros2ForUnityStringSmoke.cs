@@ -2,24 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Ros2ForUnity.Sample
-// Purpose: Phase110 ROS2 For Unity bidirectional string topic smoke component.
+// Purpose: ROS2 For Unity bidirectional string topic smoke component.
 
 using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
+using UnityEngine.Serialization;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using System.Collections.Generic;
 using ROS2;
 #endif
 
 [DisallowMultipleComponent]
-[AddComponentMenu("Foxglove/ROS2 For Unity/Phase110 String Smoke")]
+[AddComponentMenu("Foxglove/ROS2 For Unity/String Smoke")]
 public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 {
     private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
     private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
-    private const string NodeName = "unity2foxglove_phase110";
+    private const string NodeName = "unity2foxglove_ros2forunity_string_smoke";
+    private const string LogPrefix = "[Ros2ForUnityStringSmoke] ";
 
     [SerializeField, Min(0.1f)] private float _publishIntervalSeconds = 1f;
-    [SerializeField] private bool _useDirectR2fu;
+    [SerializeField, FormerlySerializedAs("_useDirectR2fu"), InspectorName("Use Direct Runtime")]
+    private bool _useDirectRuntime;
     [SerializeField] private string _nodeName = NodeName;
     [SerializeField] private string _outTopic = OutTopic;
     [SerializeField] private string _inTopic = InTopic;
@@ -44,23 +48,27 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private ROS2Node _directRos2Node;
     private IPublisher<std_msgs.msg.String> _directPublisher;
     private ISubscription<std_msgs.msg.String> _directSubscription;
+    private readonly object _directReceiveGate = new object();
+    private readonly Queue<string> _directReceived = new Queue<string>();
     private bool _directInitializationFailed;
 #endif
 
     private void OnEnable()
     {
         Application.runInBackground = true;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         _nextPublishTime = 0f;
         _publishedCount = 0;
         _receivedCount = 0;
+        _loggedFirstPublish = false;
+#endif
         _lastReceived = string.Empty;
         _lastError = string.Empty;
-        _loggedFirstPublish = false;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        if (_useDirectR2fu)
+        if (_useDirectRuntime)
         {
-            _statusMessage = "Phase110 direct ROS2 For Unity diagnostic mode.";
+            _statusMessage = "Direct ROS2 For Unity diagnostic mode.";
         }
         else
         {
@@ -75,12 +83,13 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private void Update()
     {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        if (_useDirectR2fu)
+        if (_useDirectRuntime)
         {
             if (!TryEnsureDirectReady())
                 return;
 
             EnsureDirectEndpoints();
+            DrainDirectReceived();
             PublishDirectIfDue();
             return;
         }
@@ -130,13 +139,13 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void WarnMissingDefine()
     {
-        _lastError = "Import ROS2 For Unity and add UNITY2FOXGLOVE_ROS2_FOR_UNITY before running Phase110.";
+        _lastError = "Import ROS2 For Unity and add UNITY2FOXGLOVE_ROS2_FOR_UNITY before running this sample.";
         _statusMessage = _lastError;
         if (_warnedMissingDefine)
             return;
 
         _warnedMissingDefine = true;
-        Debug.LogWarning("[Phase110Ros2ForUnityStringSmoke] " + _statusMessage);
+        Debug.LogWarning(LogPrefix + _statusMessage);
     }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -160,14 +169,14 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
                 return false;
             }
 
-            _statusMessage = "Phase110 direct ROS2 For Unity mode is ready.";
+            _statusMessage = "Direct ROS2 For Unity mode is ready.";
             _lastError = string.Empty;
             return true;
         }
         catch (System.Exception ex)
         {
             _directInitializationFailed = true;
-            _lastError = "Phase110 direct ROS2 For Unity initialization failed: " + ex.Message;
+            _lastError = "Direct ROS2 For Unity initialization failed: " + ex.Message;
             _statusMessage = _lastError;
             return false;
         }
@@ -177,7 +186,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     {
         if (!_enablePublisher && !_enableSubscription)
         {
-            _statusMessage = "Phase110 direct endpoints are disabled.";
+            _statusMessage = "Direct endpoints are disabled.";
             return;
         }
 
@@ -199,10 +208,10 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             _directSubscription =
                 _directRos2Node.CreateSubscription<std_msgs.msg.String>(
                     NormalizeTopic(_inTopic, InTopic),
-                    OnStringReceived);
+                    QueueDirectStringReceived);
         }
 
-        _statusMessage = "Phase110 direct ROS2 For Unity endpoints ready.";
+        _statusMessage = "Direct ROS2 For Unity endpoints ready.";
         _lastError = string.Empty;
     }
 
@@ -218,7 +227,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         _nextPublishTime = now + _publishIntervalSeconds;
         var message = new std_msgs.msg.String
         {
-            Data = "phase110 unity tick " + (_publishedCount + 1)
+            Data = "unity2foxglove string tick " + (_publishedCount + 1)
         };
 
         try
@@ -227,18 +236,18 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         }
         catch (System.Exception ex)
         {
-            _lastError = "Phase110 direct ROS2 For Unity publish failed: " + ex.Message;
+            _lastError = "Direct ROS2 For Unity publish failed: " + ex.Message;
             _statusMessage = _lastError;
             return;
         }
 
         _publishedCount++;
-        _statusMessage = "Published " + _publishedCount + " Phase110 string message(s).";
+        _statusMessage = "Published " + _publishedCount + " string message(s).";
         _lastError = string.Empty;
         if (!_loggedFirstPublish)
         {
             _loggedFirstPublish = true;
-            Debug.Log("[Phase110Ros2ForUnityStringSmoke] first publish: " + message.Data);
+            Debug.Log(LogPrefix + "first publish: " + message.Data);
         }
     }
 
@@ -280,13 +289,37 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         _directSubscription = null;
         _directPublisher = null;
         _directRos2Node = null;
+        lock (_directReceiveGate)
+            _directReceived.Clear();
+    }
+
+    private void QueueDirectStringReceived(std_msgs.msg.String message)
+    {
+        lock (_directReceiveGate)
+            _directReceived.Enqueue(message.Data);
+    }
+
+    private void DrainDirectReceived()
+    {
+        while (true)
+        {
+            string data;
+            lock (_directReceiveGate)
+            {
+                if (_directReceived.Count == 0)
+                    return;
+                data = _directReceived.Dequeue();
+            }
+
+            RecordReceived(data);
+        }
     }
 
     private void EnsureEndpoints()
     {
         if (!_enablePublisher && !_enableSubscription)
         {
-            _statusMessage = "Phase110 endpoints are disabled.";
+            _statusMessage = "ROS2 For Unity endpoints are disabled.";
             return;
         }
 
@@ -304,7 +337,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
                 NormalizeTopic(_inTopic, InTopic),
                 OnStringReceived);
 
-        _statusMessage = "Phase110 ROS2 For Unity string smoke ready.";
+        _statusMessage = "ROS2 For Unity string smoke ready.";
         _lastError = string.Empty;
     }
 
@@ -323,7 +356,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         _nextPublishTime = now + _publishIntervalSeconds;
         var message = new std_msgs.msg.String
         {
-            Data = "phase110 unity tick " + (_publishedCount + 1)
+            Data = "unity2foxglove string tick " + (_publishedCount + 1)
         };
 
         if (!_publisher.TryPublish(message, out var error))
@@ -334,22 +367,27 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         }
 
         _publishedCount++;
-        _statusMessage = "Published " + _publishedCount + " Phase110 string message(s).";
+        _statusMessage = "Published " + _publishedCount + " string message(s).";
         _lastError = string.Empty;
         if (!_loggedFirstPublish)
         {
             _loggedFirstPublish = true;
-            Debug.Log("[Phase110Ros2ForUnityStringSmoke] first publish: " + message.Data);
+            Debug.Log(LogPrefix + "first publish: " + message.Data);
         }
     }
 
     private void OnStringReceived(std_msgs.msg.String message)
     {
+        RecordReceived(message.Data);
+    }
+
+    private void RecordReceived(string data)
+    {
         _receivedCount++;
-        _lastReceived = message.Data;
-        _statusMessage = "Received " + _receivedCount + " Phase110 string message(s).";
+        _lastReceived = data;
+        _statusMessage = "Received " + _receivedCount + " string message(s).";
         _lastError = string.Empty;
-        Debug.Log("[Phase110Ros2ForUnityStringSmoke] received: " + message.Data);
+        Debug.Log(LogPrefix + "received: " + data);
     }
 
     private static string NormalizeTopic(string value, string fallback)

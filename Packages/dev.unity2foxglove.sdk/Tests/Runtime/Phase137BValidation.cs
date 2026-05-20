@@ -131,6 +131,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("spdlog.dll", StringComparison.Ordinal)
                   && script.Contains("fmt.dll", StringComparison.Ordinal),
                 "137B-B14: orchestrator closes Jazzy pixi runtime DLL dependencies for rcl.dll loading");
+            Check(script.Contains("kill_process_tree_windows", StringComparison.Ordinal)
+                  && script.Contains("taskkill", StringComparison.Ordinal)
+                  && script.Contains("timed_out", StringComparison.Ordinal)
+                  && script.Contains("exit_code = 124 if timed_out", StringComparison.Ordinal),
+                "137B-B15: orchestrator kills Windows process trees and reports timeout as 124");
+            Check(script.Contains("is_contaminating_python_path", StringComparison.Ordinal)
+                  && script.Contains("miniconda", StringComparison.Ordinal)
+                  && script.Contains("python311", StringComparison.Ordinal)
+                  && script.Contains("probe.unlink()", StringComparison.Ordinal),
+                "137B-B16: orchestrator filters Python contamination broadly and cleans CL probe files");
         }
 
         private static void VerifyEvidenceNoteIfPresent()
@@ -216,6 +226,10 @@ namespace Unity.FoxgloveSDK.Tests
                 || normalized.StartsWith("third-party/ros2-for-unity/build/", StringComparison.Ordinal)
                 || normalized.StartsWith("third-party/ros2-for-unity/log/", StringComparison.Ordinal))
                 return true;
+            if (normalized.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal))
+                return normalized.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                       || normalized.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
+                       || normalized.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
             if (normalized.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase))
                 return true;
             var fileName = Path.GetFileName(normalized);

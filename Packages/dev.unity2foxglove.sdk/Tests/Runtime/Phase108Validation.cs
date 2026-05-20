@@ -138,8 +138,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(offenders.Count == 0,
                 "108-C3: optional Runtime has no upstream ROS2/R2FU API references"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
-            Check(!RepoDirectoryExists(OptionalPackage + "/Editor"),
-                "108-C4: optional package still has no Editor adapter surface");
+            var editorFiles = RepoDirectoryExists(OptionalPackage + "/Editor")
+                ? Directory.GetFiles(
+                        Path.Combine(RepoRoot(), OptionalPackage, "Editor"),
+                        "*.*",
+                        SearchOption.AllDirectories)
+                    .Where(HasTextExtension)
+                    .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
+                    .ToList()
+                : new List<string>();
+            Check(editorFiles.Count == 1
+                  && editorFiles[0] == OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
+                "108-C4: optional package Editor surface is limited to runtime define management");
         }
 
         private static void VerifyValidationWiring()
@@ -167,9 +177,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDocsBoundary()
         {
             var readme = ReadRepoText(OptionalPackage + "/README.md");
-            Check(readme.Contains("Phase 108 facade is an API boundary only", StringComparison.Ordinal)
+            Check(readme.Contains("The facade is an API boundary only", StringComparison.Ordinal)
                   && readme.Contains("not end-user ready for ROS2 publishing", StringComparison.OrdinalIgnoreCase)
-                  && readme.Contains("R2FU-backed implementation starts later", StringComparison.Ordinal),
+                  && readme.Contains("backing implementation", StringComparison.Ordinal),
                 "108-E1: optional package README documents facade-only status");
         }
 
@@ -221,6 +231,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {
+            if (path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/", StringComparison.Ordinal))
+                return false;
+
             return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)

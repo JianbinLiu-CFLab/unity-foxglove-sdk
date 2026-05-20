@@ -1,20 +1,68 @@
 {
+  "schemaVersion": 2,
   "upstreamName": "RobotecAI ROS2 For Unity",
   "upstreamRepository": "https://github.com/RobotecAI/ros2-for-unity",
   "upstreamLicense": "Apache-2.0",
   "upstreamLicenseFile": "Upstream/LICENSE.AL2",
-  "adoptedVersion": "1.3.0",
-  "releaseAsset": "Ros2ForUnity_humble_standalone_windows11.zip",
-  "releaseAssetUrl": "https://github.com/RobotecAI/ros2-for-unity/releases/download/1.3.0/Ros2ForUnity_humble_standalone_windows11.zip",
-  "releaseAssetSha256": "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
-  "phase106Evidence": "GREEN_WINDOWS_ROS2 / Phase106B GREEN_RTPS_LOCATOR / GREEN_WSL_TO_UNITY_SEDP / BLOCKED_UNITY_TO_WSL_SEDP / BLOCKED_WSL_ROS2_DISCOVERY",
   "upstreamSupportStatus": "officially supported for AWSIM/Autoware users; Robotec states it cannot support and maintain the project for the general community",
   "bundleStatus": "not_bundled",
   "adapterStatus": "external_assets_sample",
-  "distributionPolicy": "external_ros2_for_unity_runtime_user_import_required",
-  "phase110Evidence": "pending",
+  "distributionModel": "one_repo_multi_package_release_artifacts",
+  "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
+  "activeRuntimePolicy": "one_runtime_package_per_project",
   "knownRuntimeRmw": "rmw_fastrtps_cpp",
-  "knownRuntimeRosDistro": "humble",
-  "jazzyInteropStatus": "simple std_msgs/msg/String smoke passed on Windows ROS2 Jazzy",
+  "knownRuntimeRosDistro": "jazzy",
+  "currentRecommendedRuntime": {
+    "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+    "runtimeId": "r2fu-jazzy-win64",
+    "rosDistro": "jazzy",
+    "platform": "win64",
+    "supportLevel": "Recommended",
+    "distributionLevel": "BundleCandidate",
+    "artifact": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
+    "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+    "artifactSize": 16858288,
+    "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
+    "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
+    "inventoryFileCount": 1045,
+    "criticalRuntimeFiles": [
+      "rcl.dll",
+      "yaml.dll",
+      "spdlog.dll",
+      "fmt.dll"
+    ],
+    "sourceBasis": "Local Jazzy rebuild from R2FU/ros2cs sources with Windows ROS2 Jazzy dependency closure",
+    "evidence": [
+      "Local Jazzy runtime rebuild evidence",
+      "Unity Editor plus Windows ROS2 Jazzy bidirectional string topic smoke",
+      "WSL2 NAT diagnostic packet-capture notes"
+    ],
+    "knownCaveats": [
+      "Runtime artifact is local and not bundled in this adapter package.",
+      "WSL2 NAT is diagnostic-only, not a GREEN gate.",
+      "ros2 topic list graph snapshots can be intermittent; bidirectional data path is the current gate."
+    ]
+  },
+  "legacyRuntime": {
+    "releaseAsset": "Ros2ForUnity_humble_standalone_windows11.zip",
+    "releaseAssetUrl": "https://github.com/RobotecAI/ros2-for-unity/releases/download/1.3.0/Ros2ForUnity_humble_standalone_windows11.zip",
+    "releaseAssetSha256": "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
+    "rosDistro": "humble",
+    "supportLevel": "LegacySupported",
+    "distributionLevel": "ExternalOnly",
+    "evidence": "WINDOWS_ROS2_GREEN / RTPS_LOCATOR_GREEN / WSL_TO_UNITY_SEDP_GREEN / UNITY_TO_WSL_SEDP_BLOCKED / WSL_ROS2_DISCOVERY_BLOCKED"
+  },
+  "plannedRuntimePackages": [
+    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+    "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+    "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64"
+  ],
+  "packageComposition": {
+    "sdkAlone": "fully usable for normal Foxglove, MCAP, Replay, and FoxRun workflows",
+    "adapterAlone": "compiles and reports missing runtime gracefully",
+    "runtimeAlone": "imports runtime files and exposes metadata/diagnostics",
+    "adapterPlusRuntime": "enables Unity-as-ROS2-node publish/subscribe",
+    "sdkPlusAdapterPlusRuntime": "enables the full combined Unity2Foxglove workflow"
+  },
   "modifications": []
 }

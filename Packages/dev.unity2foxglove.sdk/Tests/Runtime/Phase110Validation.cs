@@ -17,13 +17,16 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
+        private const string RuntimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OptionalRuntime = OptionalPackage + "/Runtime";
         private const string SampleName = "ROS2 For Unity External Adapter";
         private const string SamplePath = OptionalPackage + "/Samples~/ROS2 For Unity External Adapter";
         private const string FactoryPath = SamplePath + "/Phase110Ros2ForUnityContextFactory.cs";
         private const string ContextPath = SamplePath + "/Phase110Ros2ForUnityContext.cs";
         private const string SmokePath = SamplePath + "/Phase110Ros2ForUnityStringSmoke.cs";
+        private const string DefineInstallerPath = OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string SampleReadmePath = SamplePath + "/README.md";
+        private const string RuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
         private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
 
@@ -92,13 +95,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && path.GetString() == "Samples~/ROS2 For Unity External Adapter",
                 "110-B3: optional package sample entry points at the external adapter sample");
             Check(value.TryGetProperty("description", out var description)
-                  && (description.GetString() ?? string.Empty).Contains("externally imported ROS2 For Unity", StringComparison.Ordinal),
-                "110-B4: optional package sample description names the external R2FU import boundary");
+                  && (description.GetString() ?? string.Empty).Contains("ROS2 For Unity runtime package or external runtime", StringComparison.Ordinal),
+                "110-B4: optional package sample description names the runtime package or external R2FU boundary");
         }
 
         private static void VerifySampleFiles()
         {
-            foreach (var path in new[] { SampleReadmePath, FactoryPath, ContextPath, SmokePath })
+            foreach (var path in new[] { SampleReadmePath, FactoryPath, ContextPath, SmokePath, DefineInstallerPath })
                 Check(RepoFileExists(path), "110-C1: sample file exists: " + path);
         }
 
@@ -117,28 +120,36 @@ namespace Unity.FoxgloveSDK.Tests
                   && AllR2fuReferencesAreGuarded(smoke),
                 "110-D2: sample R2FU references stay inside compile guard");
             Check(context.Contains("typeof(T) == typeof(std_msgs.msg.String)", StringComparison.Ordinal)
-                  && context.Contains("Unsupported Phase110 ROS2 message type", StringComparison.Ordinal),
+                  && context.Contains("Unsupported ROS2 message type", StringComparison.Ordinal),
                 "110-D3: sample adapter supports only std_msgs/msg/String");
             Check(combined.Contains("GetComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && combined.Contains("AddComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && combined.Contains(".Ok()", StringComparison.Ordinal),
                 "110-D4: sample adapter gets or adds ROS2UnityComponent and waits for Ok()");
-            Check(smoke.Contains("NodeName = \"unity2foxglove_phase110\"", StringComparison.Ordinal)
+            Check(smoke.Contains("NodeName = \"unity2foxglove_ros2forunity_string_smoke\"", StringComparison.Ordinal)
                   && smoke.Contains("CreateNode(NormalizeTopic(_nodeName, NodeName))", StringComparison.Ordinal)
                   && context.Contains("_ros2Unity.CreateNode(normalizedName)", StringComparison.Ordinal),
-                "110-D5: sample adapter defaults to the Phase110 node name and passes node names through");
+                "110-D5: sample adapter defaults to the string-smoke node name and passes node names through");
             Check(!combined.Contains("SpinOnce", StringComparison.Ordinal)
                   && !combined.Contains("QualityOfServiceProfile", StringComparison.Ordinal),
                 "110-D6: sample adapter does not manually spin or construct QoS");
             Check(combined.Contains("Queue<", StringComparison.Ordinal)
                   && combined.Contains("DrainPendingCallbacks", StringComparison.Ordinal),
                 "110-D7: sample adapter queues subscription callbacks for Unity main-thread drain");
+            Check(context.Contains("MaxPendingCallbacks", StringComparison.Ordinal)
+                  && context.Contains("_droppedCallbacks", StringComparison.Ordinal)
+                  && context.Contains("while (_pending.Count >= MaxPendingCallbacks)", StringComparison.Ordinal),
+                "110-D7a: sample adapter bounds pending subscription callbacks and tracks drops");
+            Check(context.Contains("_ownsRos2UnityComponent", StringComparison.Ordinal)
+                  && context.Contains("UnityEngine.Object.Destroy(_ros2Unity)", StringComparison.Ordinal),
+                "110-D7b: sample adapter destroys only the ROS2UnityComponent it auto-created");
             Check(smoke.Contains(OutTopic, StringComparison.Ordinal)
                   && smoke.Contains(InTopic, StringComparison.Ordinal),
-                "110-D8: sample smoke uses stable Phase110 topics");
-            Check(smoke.Contains("phase110 unity tick", StringComparison.Ordinal),
-                "110-D9: sample smoke publishes deterministic Phase110 tick payloads");
-            Check(smoke.Contains("[Phase110Ros2ForUnityStringSmoke] received:", StringComparison.Ordinal),
+                "110-D8: sample smoke uses stable string-smoke topics");
+            Check(smoke.Contains("unity2foxglove string tick", StringComparison.Ordinal),
+                "110-D9: sample smoke publishes deterministic string-smoke tick payloads");
+            Check(smoke.Contains("LogPrefix = \"[Ros2ForUnityStringSmoke] \"", StringComparison.Ordinal)
+                  && smoke.Contains("\"received: \"", StringComparison.Ordinal),
                 "110-D10: sample smoke logs received strings with the expected prefix");
             Check(smoke.Contains("_publishedCount", StringComparison.Ordinal)
                   && smoke.Contains("_receivedCount", StringComparison.Ordinal)
@@ -146,6 +157,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && smoke.Contains("_lastError", StringComparison.Ordinal)
                   && smoke.Contains("_statusMessage", StringComparison.Ordinal),
                 "110-D11: sample smoke exposes status, counters, last received, and last error fields");
+            Check(smoke.Contains("InspectorName(\"Use Direct Runtime\")", StringComparison.Ordinal)
+                  && smoke.Contains("QueueDirectStringReceived", StringComparison.Ordinal)
+                  && smoke.Contains("DrainDirectReceived", StringComparison.Ordinal)
+                  && smoke.Contains("RecordReceived", StringComparison.Ordinal),
+                "110-D11a: direct runtime mode uses product-facing label and drains callbacks on Update");
+
+            var defineInstaller = ReadRepoText(DefineInstallerPath);
+            Check(defineInstaller.Contains(RuntimePackageName, StringComparison.Ordinal)
+                  && defineInstaller.Contains(Define, StringComparison.Ordinal)
+                  && defineInstaller.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal)
+                  && defineInstaller.Contains("ReconcileCompileSymbol", StringComparison.Ordinal)
+                  && defineInstaller.Contains("RemoveAll", StringComparison.Ordinal)
+                  && defineInstaller.Contains("Regex.IsMatch", StringComparison.Ordinal)
+                  && !defineInstaller.Contains("using ROS2;", StringComparison.Ordinal)
+                  && !defineInstaller.Contains("ROS2UnityComponent", StringComparison.Ordinal),
+                "110-D12: adapter reconciles the R2FU compile symbol when the runtime package is installed or removed");
         }
 
         private static void VerifyFacadeBoundary()
@@ -201,11 +228,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && adapterStatus.GetString() == "external_assets_sample",
                 "110-G2: manifest records external asset sample adapter status");
             Check(root.TryGetProperty("distributionPolicy", out var distributionPolicy)
-                  && distributionPolicy.GetString() == "external_ros2_for_unity_runtime_user_import_required",
-                "110-G3: manifest records user-import-required distribution policy");
-            Check(root.TryGetProperty("phase110Evidence", out var phase110Evidence)
-                  && phase110Evidence.GetString() == "pending",
-                "110-G4: manifest records pending Phase110 live evidence");
+                  && distributionPolicy.GetString() == "runtime_artifacts_live_in_separate_runtime_packages",
+                "110-G3: manifest records runtime-package distribution policy");
+            Check(root.TryGetProperty("currentRecommendedRuntime", out var currentRuntime)
+                  && currentRuntime.TryGetProperty("packageName", out var packageName)
+                  && packageName.GetString() == "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+                  && currentRuntime.TryGetProperty("rosDistro", out var rosDistro)
+                  && rosDistro.GetString() == "jazzy"
+                  && currentRuntime.TryGetProperty("distributionLevel", out var distributionLevel)
+                  && distributionLevel.GetString() == "BundleCandidate",
+                "110-G4: manifest records Jazzy runtime package candidate");
+            Check(root.TryGetProperty("packageComposition", out var composition)
+                  && composition.TryGetProperty("adapterAlone", out _)
+                  && composition.TryGetProperty("runtimeAlone", out _)
+                  && composition.TryGetProperty("adapterPlusRuntime", out _),
+                "110-G5: manifest records standalone and combined package composition");
         }
 
         private static void VerifyDocs()
@@ -218,23 +255,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && readme.Contains("ROS2 For Unity External Adapter", StringComparison.Ordinal)
                   && readme.Contains("not_bundled", StringComparison.Ordinal),
                 "110-H1: optional README documents external-R2FU productization status");
-            Check(sampleReadme.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
-                  && sampleReadme.Contains("Assets/Ros2ForUnity", StringComparison.Ordinal)
+            Check(sampleReadme.Contains(RuntimePackageName, StringComparison.Ordinal)
+                  && sampleReadme.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sampleReadme.Contains("Windows ROS2 Jazzy", StringComparison.Ordinal)
-                  && sampleReadme.Contains("ros2 topic echo --once " + OutTopic, StringComparison.Ordinal)
-                  && sampleReadme.Contains("ros2 topic pub --once " + InTopic, StringComparison.Ordinal),
+                  && sampleReadme.Contains("topic echo --once " + OutTopic, StringComparison.Ordinal)
+                  && sampleReadme.Contains("topic pub --once " + InTopic, StringComparison.Ordinal),
                 "110-H2: sample README gives concrete setup and live smoke commands");
             Check(combined.Contains("WSL2 NAT", StringComparison.Ordinal)
                   && combined.Contains("not a GREEN gate", StringComparison.Ordinal),
-                "110-H3: docs keep WSL2 NAT out of the Phase110 GREEN gate");
-            Check(combined.Contains("171+", StringComparison.Ordinal)
-                  && combined.Contains("standard ROS2 visualization", StringComparison.OrdinalIgnoreCase),
-                "110-H4: docs defer standard ROS2 visualization mapping to later phases");
+                "110-H3: docs keep WSL2 NAT out of the GREEN gate");
+            Check(combined.Contains("standard ROS2 visualization", StringComparison.OrdinalIgnoreCase)
+                  && combined.Contains("external R2FU path is stable", StringComparison.Ordinal),
+                "110-H4: docs defer standard ROS2 visualization mapping");
         }
 
         private static void VerifyTrackedAssetBoundary()
         {
             var forbiddenTracked = GitLsFiles()
+                .Where(path => !IsAllowedRuntimePackageFile(path))
                 .Where(path => path.Contains("/Assets/Ros2ForUnity/", StringComparison.Ordinal)
                                || path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)
                                || IsForbiddenR2fuArtifact(path)
@@ -242,7 +280,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToList();
 
             Check(forbiddenTracked.Count == 0,
-                "110-I1: tracked files contain no R2FU assets, packages, metadata, or optional runtime binaries"
+                "110-I1: tracked files contain no R2FU assets, raw artifacts, or adapter runtime binaries outside runtime packages"
                 + (forbiddenTracked.Count == 0 ? string.Empty : " (" + string.Join(", ", forbiddenTracked) + ")"));
         }
 
@@ -374,6 +412,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
+                   || path.EndsWith("Ros2ForUnity_Jazzy_standalone_windows10.zip", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
         }
@@ -391,6 +430,16 @@ namespace Unity.FoxgloveSDK.Tests
                    || extension.Equals(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAllowedRuntimePackageFile(string path)
+        {
+            if (!path.StartsWith(RuntimePackage + "/", StringComparison.Ordinal))
+                return false;
+
+            return !path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                   && !path.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
+                   && !path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyList<string> GitLsFiles()

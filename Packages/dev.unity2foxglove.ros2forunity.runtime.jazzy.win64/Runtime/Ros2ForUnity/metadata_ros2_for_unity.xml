@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<ros2_for_unity>
+   <ros2>jazzy</ros2>
+   <version>
+      <sha>0e84e2b10db5e5cd7bf36d55c4987f422f1ece98</sha>
+      <desc>1.3.0-9-g0e84e2b</desc>
+      <date>2025-11-24 09:11:50 +0100</date>
+   </version>
+</ros2_for_unity>

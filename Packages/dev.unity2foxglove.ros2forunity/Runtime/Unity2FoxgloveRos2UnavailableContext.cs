@@ -11,7 +11,7 @@ namespace Unity2Foxglove.Ros2ForUnity
     public sealed class Unity2FoxgloveRos2UnavailableContext : IUnity2FoxgloveRos2Context
     {
         private const string UnavailableMessage =
-            "ROS2 For Unity runtime is not bundled or active in Phase 108; the facade is an API boundary only.";
+            "ROS2 For Unity runtime is not bundled or active; the facade is an API boundary only.";
 
         public static Unity2FoxgloveRos2UnavailableContext Instance { get; } =
             new Unity2FoxgloveRos2UnavailableContext();

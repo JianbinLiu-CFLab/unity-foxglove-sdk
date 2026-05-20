@@ -1,0 +1,18 @@
+{
+  "name": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+  "version": "0.1.0-preview.1",
+  "displayName": "Unity2Foxglove ROS2 For Unity Runtime - Jazzy Win64",
+  "license": "Apache-2.0",
+  "unity": "6000.0",
+  "description": "Optional Jazzy Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",
+  "keywords": [
+    "unity2foxglove",
+    "ros2",
+    "ros2-for-unity",
+    "jazzy",
+    "win64"
+  ],
+  "author": {
+    "name": "Unity2Foxglove"
+  }
+}

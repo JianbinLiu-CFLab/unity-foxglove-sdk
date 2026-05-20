@@ -1,5 +1,5 @@
 
-This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go next. It is intentionally higher level than the private phase plans: the goal is to give users and contributors useful context without exposing day-to-day development notes.
+This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go next. It is intentionally higher level than the private development notes: the goal is to give users and contributors useful context without exposing day-to-day implementation history.
 
 ## 1. Completed in v1.0.0
 
@@ -67,32 +67,33 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 ### 2.3 Protocol Coverage
 
-- Protobuf schema catalog and protobuf publishing are implemented (Phase 32).
+- Protobuf schema catalog and protobuf publishing are implemented.
 - Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
 - Optional Unity-native `wss://` support, the local development certificate generator, Root CA distributor, hosted-browser Origin allowance, and shared token gate are implemented in v1.4.0. Future work should focus on clearer remote-access guidance and production deployment boundaries; local demos continue to default to `ws://127.0.0.1`.
 
 ### 2.4 MCAP and Replay
 
-- MCAP Attachment/AttachmentIndex and summary CRC are implemented (Phase 34).
-- MCAP writer hot-path allocation was reduced (Phase 37).
+- MCAP Attachment/AttachmentIndex and summary CRC are implemented.
+- MCAP writer hot-path allocation was reduced.
 - Add more replay adapters for Unity scene objects and custom user data.
 - Consider extracting reusable C# MCAP pieces if they become useful outside Unity.
 
 ### 2.5 Developer Experience
 
-- Transport health/observability Inspector section is implemented (Phase 36).
+- Transport health/observability Inspector section is implemented.
 - Improve `[FoxRun]` diagnostics and generated-source visibility.
 - Keep reducing setup friction for users who only want "press Play and connect Foxglove."
 
 ### 2.6 ROS2 and Data-Exchange Exploration
 
 - The current ROS2 bridge is optional, disabled by default, and sidecar-based. It is intended for local ROS2 graph integration without changing the default Foxglove WebSocket or MCAP workflows.
-- RobotecAI ROS2 For Unity is the preferred ROS2 product mainline after Phase 106 because it supports the goal that Unity users should not install ROS2 locally on the Windows Unity machine. This supersedes the embedded rclcpp spike route as historical evidence rather than the product path.
-- The repository now keeps a separate optional package boundary at `Packages/dev.unity2foxglove.ros2forunity`. That package records attribution, Apache-2.0 license boundaries, Phase 106 runtime evidence, and binary policy while the core SDK package stays ROS-free.
-- The current optional package boundary does not bundle R2FU runtime binaries or adapters. Later R2FU facade work should happen through this boundary, not inside `Packages/dev.unity2foxglove.sdk`.
-- Phase 106 GREEN evidence is Windows Unity/R2FU Humble standalone exchanging simple topics with Windows ROS2 Jazzy. Phase 106B records WSL2 NAT as a problematic DDS topology: WSL sent unicast SEDP toward Unity/R2FU, but Unity/R2FU SEDP back to WSL was not observed, so WSL ROS2 Jazzy did not merge the endpoints into the ROS2 graph.
-- Future remote Linux ROS2 acceptance should use a real LAN, VPN, physical Linux host, or bridged Ubuntu VM. WSL2 NAT is useful diagnostic territory, not the primary ROS2 acceptance gate.
-- Standard-message, RViz2, rosbag2, MarkerArray, PointCloud2, and MCAP fanout plans are deferred into the 170-series until the R2FU facade exists. Those plans should be rewritten on top of the optional R2FU package/facade instead of extending the old sidecar or embedded native spike routes.
+- RobotecAI ROS2 For Unity is the preferred ROS2 product mainline because it supports the goal that Unity users should not install ROS2 locally on the Windows Unity machine. This supersedes the embedded rclcpp spike route as historical evidence rather than the product path.
+- The repository uses a one-repo, multi-package model: `dev.unity2foxglove.sdk` remains the ROS-free core package; `dev.unity2foxglove.ros2forunity` owns facade, adapter samples, docs, and diagnostics; future `dev.unity2foxglove.ros2forunity.runtime.<distro>.<platform>` packages own distro/platform-specific runtime artifacts.
+- Packages must work independently and compose cleanly: the core SDK works by itself, the ROS2 For Unity adapter package compiles and reports a missing runtime gracefully, a runtime package exposes metadata/diagnostics by itself, and adapter plus runtime enables Unity-as-ROS2-node publish/subscribe.
+- The current R2FU direction is Jazzy-first for Windows x64. A rebuilt Jazzy standalone runtime has passed Unity + Windows ROS2 Jazzy bidirectional `std_msgs/msg/String` data-path smoke without reproducing the old Humble runtime crash. Humble remains legacy/fallback evidence, not the recommended new-user runtime line.
+- Runtime binary artifacts are release/package artifacts, not core SDK dependencies. The planned first runtime package is `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`; it must include runtime inventory, checksums, third-party notices, license inventory, and fresh-project acceptance before it can be treated as bundled-ready.
+- WSL2 NAT remains diagnostic territory, not a GREEN gate. R2FU Jazzy graph snapshots can also be intermittent; the current support gate is bidirectional data-path success through Windows ROS2 Jazzy. Future remote Linux ROS2 acceptance should use a real LAN, VPN, physical Linux host, or bridged Ubuntu VM.
+- Standard-message, RViz2, rosbag2, MarkerArray, PointCloud2, and MCAP fanout plans are deferred into the 170-series until the R2FU adapter/runtime package line is stable. Those plans should build on the optional R2FU package and runtime packages instead of extending the old sidecar or embedded native spike routes.
 
 ## 3. Long-Term Ideas
 
@@ -103,4 +104,4 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 ## 4. Development Notes
 
-Detailed phase plans are kept as private development notes. If you need implementation history, design context, or phase-by-phase details, please contact the author.
+Detailed planning notes are kept private. If you need implementation history or design context, please contact the author.

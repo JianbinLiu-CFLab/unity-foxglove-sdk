@@ -27,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
 CORE_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 MANIFEST = PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json"
+RUNTIME_INVENTORY = PACKAGE / "Compliance" / "r2fu-jazzy-win64-runtime-inventory.json"
+RUNTIME_NOTICES = PACKAGE / "Compliance" / "r2fu-jazzy-win64-runtime-notices.md"
 SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
 
 RUNTIME_BINARY_SUFFIXES = {
@@ -51,6 +53,11 @@ ALLOWED_RUNTIME_SUFFIXES = {
 ALLOWED_SAMPLE_SUFFIXES = {
     ".cs",
     ".md",
+    ".meta",
+}
+
+ALLOWED_EDITOR_SUFFIXES = {
+    ".cs",
     ".meta",
 }
 
@@ -146,8 +153,8 @@ def check_package_metadata(results: list[CheckResult]) -> None:
         description = str(sample.get("description", ""))
         add(
             results,
-            "sample description names external R2FU",
-            "externally imported ROS2 For Unity" in description,
+            "sample description names runtime package or external R2FU",
+            "ROS2 For Unity runtime package or external runtime" in description,
             description,
         )
 
@@ -160,6 +167,8 @@ def check_required_files(results: list[CheckResult]) -> None:
         PACKAGE / "THIRD_PARTY_NOTICES.md",
         PACKAGE / "Upstream" / "LICENSE.AL2",
         MANIFEST,
+        RUNTIME_INVENTORY,
+        RUNTIME_NOTICES,
     ]
     for path in required:
         add(results, f"required file: {path.name}", path.exists(), rel(path))
@@ -176,31 +185,77 @@ def check_manifest(results: list[CheckResult]) -> None:
         return
 
     expected = {
+        "schemaVersion": 2,
         "upstreamName": "RobotecAI ROS2 For Unity",
         "upstreamRepository": "https://github.com/RobotecAI/ros2-for-unity",
         "upstreamLicense": "Apache-2.0",
         "upstreamLicenseFile": "Upstream/LICENSE.AL2",
-        "adoptedVersion": "1.3.0",
-        "releaseAsset": "Ros2ForUnity_humble_standalone_windows11.zip",
-        "releaseAssetSha256": "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
         "bundleStatus": "not_bundled",
         "adapterStatus": "external_assets_sample",
-        "distributionPolicy": "external_ros2_for_unity_runtime_user_import_required",
-        "phase110Evidence": "pending",
+        "distributionModel": "one_repo_multi_package_release_artifacts",
+        "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
+        "activeRuntimePolicy": "one_runtime_package_per_project",
         "knownRuntimeRmw": "rmw_fastrtps_cpp",
-        "knownRuntimeRosDistro": "humble",
+        "knownRuntimeRosDistro": "jazzy",
     }
     for key, value in expected.items():
         add(results, f"manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
-    release_url = str(data.get("releaseAssetUrl", ""))
-    add(results, "manifest release asset URL", "Ros2ForUnity_humble_standalone_windows11.zip" in release_url, release_url)
-
-    evidence = str(data.get("phase106Evidence", ""))
+    current = data.get("currentRecommendedRuntime", {})
     add(
         results,
-        "manifest Phase106 evidence",
-        "GREEN_WINDOWS_ROS2" in evidence and "BLOCKED_WSL_ROS2_DISCOVERY" in evidence,
+        "manifest current runtime object",
+        isinstance(current, dict),
+        f"currentRecommendedRuntime={current!r}",
+    )
+    if isinstance(current, dict):
+        current_expected = {
+            "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+            "runtimeId": "r2fu-jazzy-win64",
+            "rosDistro": "jazzy",
+            "platform": "win64",
+            "supportLevel": "Recommended",
+            "distributionLevel": "BundleCandidate",
+            "artifact": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
+            "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+            "artifactSize": 16858288,
+            "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
+            "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
+            "inventoryFileCount": 1045,
+        }
+        for key, value in current_expected.items():
+            add(
+                results,
+                f"manifest current runtime {key}",
+                current.get(key) == value,
+                f"expected {value!r}, got {current.get(key)!r}",
+            )
+        caveats = " ".join(str(item) for item in current.get("knownCaveats", []))
+        add(
+            results,
+            "manifest current runtime caveats",
+            "WSL2 NAT" in caveats and "graph snapshots" in caveats,
+            caveats,
+        )
+        critical_files = current.get("criticalRuntimeFiles", [])
+        add(
+            results,
+            "manifest current runtime critical files",
+            isinstance(critical_files, list)
+            and {"rcl.dll", "yaml.dll", "spdlog.dll", "fmt.dll"}.issubset(set(critical_files)),
+            f"criticalRuntimeFiles={critical_files!r}",
+        )
+
+    legacy = data.get("legacyRuntime", {})
+    add(results, "manifest legacy runtime object", isinstance(legacy, dict), f"legacyRuntime={legacy!r}")
+    release_url = str(legacy.get("releaseAssetUrl", "")) if isinstance(legacy, dict) else ""
+    add(results, "manifest legacy release asset URL", "Ros2ForUnity_humble_standalone_windows11.zip" in release_url, release_url)
+
+    evidence = str(legacy.get("evidence", "")) if isinstance(legacy, dict) else ""
+    add(
+        results,
+        "manifest legacy evidence",
+        "WINDOWS_ROS2_GREEN" in evidence and "WSL_ROS2_DISCOVERY_BLOCKED" in evidence,
         evidence,
     )
 
@@ -212,8 +267,26 @@ def check_manifest(results: list[CheckResult]) -> None:
         support,
     )
 
-    jazzy = str(data.get("jazzyInteropStatus", ""))
-    add(results, "manifest Jazzy smoke status", "Windows ROS2 Jazzy" in jazzy, jazzy)
+    packages = data.get("plannedRuntimePackages", [])
+    add(
+        results,
+        "manifest planned runtime packages",
+        isinstance(packages, list)
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.humble.win64" in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64" in packages,
+        f"plannedRuntimePackages={packages!r}",
+    )
+    composition = data.get("packageComposition", {})
+    add(
+        results,
+        "manifest package composition",
+        isinstance(composition, dict)
+        and "adapterAlone" in composition
+        and "runtimeAlone" in composition
+        and "adapterPlusRuntime" in composition,
+        f"packageComposition={composition!r}",
+    )
     add(results, "manifest modifications empty", data.get("modifications") == [], f"modifications={data.get('modifications')!r}")
 
 
@@ -225,16 +298,121 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists()
         else ""
     )
-    combined = readme + "\n" + notices
+    sample_readme = (
+        (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (SAMPLE / "README.md").exists()
+        else ""
+    )
+    runtime_notices = RUNTIME_NOTICES.read_text(encoding="utf-8", errors="replace") if RUNTIME_NOTICES.exists() else ""
+    runtime_inventory = RUNTIME_INVENTORY.read_text(encoding="utf-8", errors="replace") if RUNTIME_INVENTORY.exists() else ""
+    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says WSL2 is not GREEN gate", "wsl2 nat" in readme.lower() and "not a green gate" in readme.lower(), rel(PACKAGE / "README.md"))
-    add(results, "README defers standard visualization", "171+" in readme and "standard ros2 visualization" in readme.lower(), rel(PACKAGE / "README.md"))
+    add(
+        results,
+        "README defers standard visualization",
+        "standard ros2 visualization" in readme.lower(),
+        rel(PACKAGE / "README.md"),
+    )
     add(results, "notices attribute R2FU", "RobotecAI ROS2 For Unity" in notices and "Apache-2.0" in notices, rel(PACKAGE / "THIRD_PARTY_NOTICES.md"))
     add(results, "notices attribute ros2cs", "ros2cs" in notices, rel(PACKAGE / "THIRD_PARTY_NOTICES.md"))
     add(results, "notices preserve support caveat", "AWSIM/Autoware" in combined and "general community" in combined, "support caveat")
     add(results, "notices require future inventory", "complete transitive inventory" in combined, "future binary bundling boundary")
+    add(
+        results,
+        "runtime notices name artifact candidate",
+        "Ros2ForUnity_Jazzy_standalone_windows10.zip" in runtime_notices
+        and "candidate input" in runtime_notices,
+        rel(RUNTIME_NOTICES),
+    )
+    add(
+        results,
+        "runtime notices document critical DLL closure",
+        "rcl.dll" in runtime_notices
+        and "yaml.dll" in runtime_notices
+        and "spdlog.dll" in runtime_notices
+        and "fmt.dll" in runtime_notices
+        and "UnsatisfiedLinkError" in runtime_notices,
+        rel(RUNTIME_NOTICES),
+    )
+    forbidden_public_tokens = ["Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108", "phase", "Phase"]
+    hits = [token for token in forbidden_public_tokens if token in combined]
+    manifest_text = (PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json").read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
+    hits.extend(token for token in forbidden_public_tokens if token in manifest_text)
+    add(results, "public R2FU docs avoid internal phase names", not hits, ", ".join(hits) if hits else "no phase tokens")
+
+
+def check_runtime_inventory(results: list[CheckResult]) -> None:
+    """Validate the generated Jazzy runtime artifact inventory."""
+    if not RUNTIME_INVENTORY.exists():
+        add(results, "runtime inventory exists", False, rel(RUNTIME_INVENTORY))
+        return
+
+    data = load_json(RUNTIME_INVENTORY, results, "runtime inventory parses")
+    if not data:
+        return
+
+    expected = {
+        "schemaVersion": 1,
+        "runtimeId": "r2fu-jazzy-win64",
+        "artifactName": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
+        "artifactSize": 16858288,
+        "sha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+        "rosDistro": "jazzy",
+        "rmw": "rmw_fastrtps_cpp",
+        "platform": "win64",
+        "buildType": "standalone",
+        "redistributionStatus": "candidate_not_published",
+        "fileCount": 1045,
+    }
+    for key, value in expected.items():
+        add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    counts = data.get("categoryCounts", {})
+    add(
+        results,
+        "runtime inventory category counts",
+        isinstance(counts, dict)
+        and counts.get("native_libraries", 0) > 900
+        and counts.get("managed_assemblies", 0) >= 2
+        and counts.get("generated_message_assemblies", 0) >= 40,
+        f"categoryCounts={counts!r}",
+    )
+    critical = data.get("knownCriticalFiles", [])
+    critical_map = {
+        item.get("name"): item for item in critical if isinstance(item, dict)
+    } if isinstance(critical, list) else {}
+    add(
+        results,
+        "runtime inventory critical DLLs present",
+        all(critical_map.get(name, {}).get("present") for name in ("rcl.dll", "yaml.dll", "spdlog.dll", "fmt.dll")),
+        f"knownCriticalFiles={critical!r}",
+    )
+    components = data.get("detectedComponents", [])
+    component_text = json.dumps(components)
+    add(
+        results,
+        "runtime inventory component families",
+        "ros2cs" in component_text
+        and "Fast DDS" in component_text
+        and "RMW FastRTPS" in component_text
+        and "Pixi runtime closure DLLs" in component_text,
+        component_text[:MAX_REPORTED_OFFENDERS * 80],
+    )
+    files = data.get("files", [])
+    add(
+        results,
+        "runtime inventory file entries",
+        isinstance(files, list)
+        and len(files) == data.get("fileCount")
+        and all(isinstance(item, dict) and "path" in item and "sha256" in item for item in files[:20]),
+        f"files={len(files) if isinstance(files, list) else type(files).__name__}",
+    )
 
 
 def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
@@ -251,9 +429,25 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no runtime binaries found",
     )
 
-    forbidden_dirs = [PACKAGE / "Editor"]
-    existing = [rel(path) for path in forbidden_dirs if path.exists()]
-    add(results, "optional package has no editor adapter directory", not existing, "; ".join(existing) if existing else "no editor directory")
+    editor = PACKAGE / "Editor"
+    invalid_editor_files = [
+        rel(path)
+        for path in iter_files(editor)
+        if path.suffix.lower() not in ALLOWED_EDITOR_SUFFIXES
+    ] if editor.exists() else []
+    installer = editor / "Ros2ForUnityRuntimeDefineInstaller.cs"
+    installer_text = installer.read_text(encoding="utf-8", errors="replace") if installer.exists() else ""
+    add(
+        results,
+        "optional package editor surface only enables runtime compile symbol",
+        not invalid_editor_files
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in installer_text
+        and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in installer_text
+        and "NamedBuildTarget.Standalone" in installer_text
+        and "using ROS2;" not in installer_text
+        and "ROS2UnityComponent" not in installer_text,
+        "; ".join(invalid_editor_files[:MAX_REPORTED_OFFENDERS]) if invalid_editor_files else rel(installer),
+    )
 
 
 def check_sample_source_boundary(results: list[CheckResult]) -> None:
@@ -278,8 +472,9 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
     readme = (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace") if (SAMPLE / "README.md").exists() else ""
     add(
         results,
-        "sample README documents external import",
-        "Assets/Ros2ForUnity" in readme and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in readme,
+        "sample README documents runtime package activation",
+        "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in readme
+        and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in readme,
         rel(SAMPLE / "README.md"),
     )
     add(
@@ -351,6 +546,7 @@ def main() -> int:
     check_package_metadata(results)
     check_required_files(results)
     check_manifest(results)
+    check_runtime_inventory(results)
     check_text_boundaries(results)
     check_no_runtime_artifacts(results)
     check_sample_source_boundary(results)

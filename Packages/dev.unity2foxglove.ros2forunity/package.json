@@ -3,13 +3,13 @@
   "version": "0.1.0-preview.1",
   "displayName": "Unity2Foxglove ROS2 For Unity",
   "license": "Apache-2.0",
-  "description": "Optional ROS2 For Unity integration package for Unity2Foxglove. Phase 107 contains package and compliance boundaries only; runtime binaries and adapters are added in later phases.",
+  "description": "Optional ROS2 For Unity adapter package for Unity2Foxglove. Provides facade, source-only adapter sample, docs, and diagnostics while runtime binaries live in separate runtime packages and release artifacts.",
   "unity": "6000.0",
   "dependencies": {},
   "samples": [
     {
       "displayName": "ROS2 For Unity External Adapter",
-      "description": "Imports a source-only adapter sample that connects the Unity2Foxglove ROS2 facade to an externally imported ROS2 For Unity runtime.",
+      "description": "Imports a source-only adapter sample that connects the Unity2Foxglove ROS2 facade to a ROS2 For Unity runtime package or external runtime.",
       "path": "Samples~/ROS2 For Unity External Adapter"
     }
   ],

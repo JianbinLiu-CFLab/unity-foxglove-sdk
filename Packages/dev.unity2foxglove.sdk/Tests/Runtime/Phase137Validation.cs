@@ -153,6 +153,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool IsForbiddenTrackedArtifact(string path)
         {
             var normalized = path.Replace('\\', '/');
+            var inRuntimePackage = normalized.StartsWith(
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/",
+                StringComparison.Ordinal);
             if (normalized.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal))
                 return true;
             if (normalized.StartsWith("third-party/ros2-for-unity/install/", StringComparison.Ordinal)
@@ -165,6 +168,8 @@ namespace Unity.FoxgloveSDK.Tests
             if (fileName.StartsWith("Ros2ForUnity", StringComparison.OrdinalIgnoreCase)
                 && fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 return true;
+            if (inRuntimePackage)
+                return false;
             if (IsForbiddenNativeRuntimeName(fileName))
                 return true;
             return fileName == "metadata_ros2cs.xml"

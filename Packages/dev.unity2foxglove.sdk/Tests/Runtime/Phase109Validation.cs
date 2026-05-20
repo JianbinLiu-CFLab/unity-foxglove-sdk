@@ -174,11 +174,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDocsBoundary()
         {
             var readme = ReadRepoText(OptionalPackage + "/README.md");
-            Check(readme.Contains("Phase 109", StringComparison.Ordinal)
-                  && readme.Contains("manual", StringComparison.OrdinalIgnoreCase)
+            Check(readme.Contains("External Adapter Sample", StringComparison.Ordinal)
                   && readme.Contains("std_msgs/msg/String", StringComparison.Ordinal)
-                  && readme.Contains("not bundled", StringComparison.OrdinalIgnoreCase),
-                "109-G1: optional package README documents Phase109 manual string smoke boundary");
+                  && readme.Contains("not bundled", StringComparison.OrdinalIgnoreCase)
+                  && readme.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal),
+                "109-G1: optional package README documents the external adapter string smoke boundary");
         }
 
         private static void VerifyTrackedAssetBoundary()
@@ -305,6 +305,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {
+            if (path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/", StringComparison.Ordinal))
+                return false;
+
             return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)

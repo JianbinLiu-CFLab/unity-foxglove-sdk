@@ -115,6 +115,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     reason = "ROS2 Bridge is disabled.";
                     return false;
                 }
+                if (!_autoConnect)
+                {
+                    reason = "ROS2 Bridge auto-connect is disabled; connect before sending frames.";
+                    return false;
+                }
 
                 if (_queue.Count >= _queueCapacity)
                 {
@@ -150,6 +155,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public void Stop()
         {
             Thread worker;
+            IRos2BridgeSink sinkToClose;
             lock (_gate)
             {
                 _enabled = false;
@@ -160,10 +166,17 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     _queue.Clear();
                 }
                 worker = _worker;
+                sinkToClose = _sink;
+                _sink = null;
+                _connected = false;
+                _connecting = false;
+                _lastDisconnectedUnixMs = NowUnixMs();
             }
 
+            CloseSink(sinkToClose);
             _signal.Set();
-            if (worker != null && worker.IsAlive && !worker.Join(500))
+            var joinTimeoutMs = Math.Max(1000, _sendTimeoutMs + 250);
+            if (worker != null && worker.IsAlive && !worker.Join(joinTimeoutMs))
             {
                 lock (_gate)
                 {
@@ -171,18 +184,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 }
             }
 
-            IRos2BridgeSink remainingSink;
             lock (_gate)
             {
-                remainingSink = _sink;
-                _worker = null;
-                _sink = null;
-                _connected = false;
-                _connecting = false;
-                _lastDisconnectedUnixMs = NowUnixMs();
+                if (_worker == worker && (worker == null || !worker.IsAlive))
+                    _worker = null;
             }
-
-            CloseSink(remainingSink);
         }
 
         public void Connect(string host, int port, int timeoutMs)
@@ -232,9 +238,23 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                         continue;
                     }
 
+                    IRos2BridgeSink sink;
+                    lock (_gate)
+                    {
+                        if (_stopRequested || !_enabled)
+                            return;
+                        sink = _sink;
+                    }
+
+                    if (sink == null)
+                    {
+                        MarkFailure("ROS2 Bridge sink is not connected.", disconnect: true, countFrameFailure: false);
+                        continue;
+                    }
+
                     try
                     {
-                        _sink.Send(frame, _sendTimeoutMs);
+                        sink.Send(frame, _sendTimeoutMs);
                         lock (_gate)
                         {
                             _sentFrames++;
@@ -302,7 +322,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             catch (Exception ex)
             {
                 CloseSink(sink);
-                MarkFailure(ex.Message, disconnect: true);
+                MarkFailure(ex.Message, disconnect: true, countFrameFailure: false);
                 return false;
             }
         }
@@ -323,12 +343,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 return _stopRequested;
         }
 
-        private void MarkFailure(string message, bool disconnect)
+        private void MarkFailure(string message, bool disconnect, bool countFrameFailure = true)
         {
             IRos2BridgeSink sink = null;
             lock (_gate)
             {
-                _failedFrames++;
+                if (countFrameFailure)
+                    _failedFrames++;
                 _lastError = string.IsNullOrWhiteSpace(message) ? "ROS2 Bridge send failed." : message;
                 _connecting = false;
                 if (disconnect)
