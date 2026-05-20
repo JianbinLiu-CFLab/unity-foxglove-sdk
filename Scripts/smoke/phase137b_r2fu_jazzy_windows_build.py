@@ -53,6 +53,7 @@ class Phase137BError(RuntimeError):
     """Build orchestration failure with a stable verdict label."""
 
     def __init__(self, verdict: str, message: str) -> None:
+        """Create an error carrying the stable build verdict."""
         super().__init__(message)
         self.verdict = verdict
 
@@ -140,6 +141,7 @@ def remove_known_subdir(path: pathlib.Path, allowed_parent: pathlib.Path) -> Non
         raise Phase137BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Refusing unsafe delete: {resolved}")
     if resolved.exists():
         def make_writable(function, item, _exc_info):
+            """Make a readonly build artifact writable before retrying removal."""
             os.chmod(item, stat.S_IWRITE)
             function(item)
 
