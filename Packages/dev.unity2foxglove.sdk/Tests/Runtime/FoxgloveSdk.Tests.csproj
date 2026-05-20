@@ -104,6 +104,15 @@
     <Compile Include="Phase99Validation.cs" />
     <Compile Include="Phase100Validation.cs" />
     <Compile Include="Phase105Validation.cs" />
+    <Compile Include="Phase106Validation.cs" />
+    <Compile Include="Phase136Validation.cs" />
+    <Compile Include="Phase137Validation.cs" />
+    <Compile Include="Phase137BValidation.cs" />
+    <Compile Include="Phase107Validation.cs" />
+    <Compile Include="Phase108Validation.cs" />
+    <Compile Include="Phase109Validation.cs" />
+    <Compile Include="Phase110Validation.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
   </ItemGroup>

@@ -48,7 +48,9 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
-Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path. Bridge topic namespaces, per-publisher bridge topic overrides, and simple ROS 2 QoS presets affect only this mirror path.
+Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. In plain terms: no ROS2 install is required for the core SDK path. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path. Bridge topic namespaces, per-publisher bridge topic overrides, and simple ROS 2 QoS presets affect only this mirror path.
+
+The project is also evaluating **RobotecAI ROS2 For Unity** as an optional standalone ROS2-node path for users who want Unity to publish and subscribe directly in a ROS2 graph without installing ROS2 on the Windows Unity machine. That evaluation is experimental, not bundled in the SDK package, and respects the upstream Apache-2.0 license and attribution boundary.
 
 ## 1.2 Who This Is For
 
@@ -94,11 +96,14 @@ No external processes. No ROS installation. No platform lock-in. Just attach a `
 
 ![Unity2Foxglove project layout](Pictures/Unity2Foxglove-Project-Layout.svg)
 
-- Use `Packages/dev.unity2foxglove.sdk` when you want to install the SDK into your own Unity project.
-- Use `Unity2Foxglove` when you want a ready-to-open demo project for Foxglove panels, MCAP recording, replay, IL2CPP, and manual acceptance.
+- Use `Packages/dev.unity2foxglove.sdk` when you want to install the core SDK into your own Unity project. This is the normal ROS-free package for Foxglove WebSocket streaming, MCAP recording, replay, FoxRun, and publisher components.
+- Use `Packages/dev.unity2foxglove.ros2forunity` only as the optional ROS2 For Unity package boundary. Phase 107 includes metadata, attribution, and compliance records only; it does not bundle ROS2 For Unity runtime binaries or an adapter yet.
+- Use the `Unity2Foxglove` demo project when you want a ready-to-open workspace for Foxglove panels, MCAP recording, replay, IL2CPP, manual acceptance, and future combined package experiments.
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization` for the minimal publisher setup (no extra dependencies).
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization` for the complete demo experience (requires Input System + URP).
 - Use `Scripts/build_tools/unity_il2cpp.py` together with `Unity2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
+
+The Unity2Foxglove demo project is the place for manual acceptance and combined-package experiments; the reusable UPM packages stay under `Packages/`.
 
 ---
 
@@ -108,7 +113,7 @@ SDK core targets Unity 6000.0 LTSC or later (compatible with 6000.0.74f1 LTSC). 
 
 ### 2.1 Use as Unity Package (recommended)
 
-For adding the SDK to your own Unity project.
+For adding the core SDK to your own Unity project.
 
 1. Clone this repository.
 2. Unity menu: `Window > Package Manager > + > Add package from disk...`
@@ -121,6 +126,14 @@ https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk.git?path=/Packages/dev.un
 ```
 
 If this repository is moved or forked, replace the owner/repository part of the URL and keep the `?path=/Packages/dev.unity2foxglove.sdk` suffix.
+
+The future ROS2 For Unity integration boundary is a separate optional package:
+
+```text
+Packages/dev.unity2foxglove.ros2forunity
+```
+
+Do not install it for normal Foxglove WebSocket streaming, MCAP recording, or replay. It is not end-user ready in Phase 107 because runtime binaries and adapter code are not bundled yet.
 
 ### 2.2 Open the Demo Project
 
@@ -206,6 +219,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - FoxRun attribute-based zero-code publishing via generated code, including fixed-rate, change-driven, interval, and explicit `OnTrigger` topics
 - Optional Unity-native WSS/TLS transport, local dev certificate generation, root CA distribution helper, and lightweight shared query-token gate
 - IL2CPP build support with automatic link.xml generation
+- Optional ROS2 For Unity package boundary for future Unity-as-ROS2-node workflows. The boundary keeps R2FU attribution, source, release evidence, and binary policy separate from the core SDK; it does not bundle the runtime yet.
 
 ### Not Supported
 
@@ -214,6 +228,8 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
 - **Production ROS 2 bridge distribution** - the current ROS 2 sidecar bridge is experimental, localhost-only, manual to build/run, and has no installer or remote-host support
+- **WSL2 NAT as ROS2 acceptance topology** - Phase 106B showed WSL2 NAT can block DDS endpoint discovery for the R2FU Humble standalone asset. Use Windows ROS2 for local smoke, or a real LAN, VPN, physical Linux host, or bridged Ubuntu VM for remote Linux acceptance.
+- **ROS2 For Unity runtime distribution** - the optional package currently records the boundary only. Runtime binaries, adapters, transitive dependency inventory, and end-user installation flow are future work.
 
 ### Security
 

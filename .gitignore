@@ -1,5 +1,7 @@
 # Local agent/tooling state
 .claude/
+SESSION_RECOVERY.local.md
+SESSION_RECOVERY.local
 
 # Local reference checkout, not part of this Unity package repo
 foxglove-sdk/
@@ -43,6 +45,10 @@ Unity2Foxglove/Assets/Scripts/Generated/*
 Unity2Foxglove/Assets/Scripts/Generated.meta
 !Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs
 !Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs.meta
+
+# Local optional ROS2 For Unity asset import for Phase106 manual acceptance.
+Unity2Foxglove/Assets/Ros2ForUnity/
+Unity2Foxglove/Assets/Ros2ForUnity.meta
 
 # developer plans
 Plan/

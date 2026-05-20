@@ -196,6 +196,30 @@ class Program
         if (argList.Contains("--phase105"))
             return RunPhase105Only();
 
+        if (argList.Contains("--phase106"))
+            return RunPhase106Only();
+
+        if (argList.Contains("--phase136"))
+            return RunPhase136Only();
+
+        if (argList.Contains("--phase137"))
+            return RunPhase137Only();
+
+        if (argList.Contains("--phase137b"))
+            return RunPhase137BOnly();
+
+        if (argList.Contains("--phase107"))
+            return RunPhase107Only();
+
+        if (argList.Contains("--phase108"))
+            return RunPhase108Only();
+
+        if (argList.Contains("--phase109"))
+            return RunPhase109Only();
+
+        if (argList.Contains("--phase110"))
+            return RunPhase110Only();
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1211,6 +1235,126 @@ class Program
         }
     }
 
+    private static int RunPhase106Only()
+    {
+        try
+        {
+            Phase106Validation.Validate();
+            Console.WriteLine("\nPhase 106 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase136Only()
+    {
+        try
+        {
+            Phase136Validation.Validate();
+            Console.WriteLine("\nPhase 136 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase137Only()
+    {
+        try
+        {
+            Phase137Validation.Validate();
+            Console.WriteLine("\nPhase 137 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase137BOnly()
+    {
+        try
+        {
+            Phase137BValidation.Validate();
+            Console.WriteLine("\nPhase 137B checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase107Only()
+    {
+        try
+        {
+            Phase107Validation.Validate();
+            Console.WriteLine("\nPhase 107 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase108Only()
+    {
+        try
+        {
+            Phase108Validation.Validate();
+            Console.WriteLine("\nPhase 108 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase109Only()
+    {
+        try
+        {
+            Phase109Validation.Validate();
+            Console.WriteLine("\nPhase 109 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase110Only()
+    {
+        try
+        {
+            Phase110Validation.Validate();
+            Console.WriteLine("\nPhase 110 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -1379,6 +1523,22 @@ class Program
             Phase100Validation.Validate();
             Console.WriteLine();
             Phase105Validation.Validate();
+            Console.WriteLine();
+            Phase106Validation.Validate();
+            Console.WriteLine();
+            Phase136Validation.Validate();
+            Console.WriteLine();
+            Phase137Validation.Validate();
+            Console.WriteLine();
+            Phase137BValidation.Validate();
+            Console.WriteLine();
+            Phase107Validation.Validate();
+            Console.WriteLine();
+            Phase108Validation.Validate();
+            Console.WriteLine();
+            Phase109Validation.Validate();
+            Console.WriteLine();
+            Phase110Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;
