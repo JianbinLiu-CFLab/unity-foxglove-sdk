@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
+        private const string RuntimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OptionalRuntime = OptionalPackage + "/Runtime";
         private const string SampleName = "ROS2 For Unity External Adapter";
         private const string SamplePath = OptionalPackage + "/Samples~/ROS2 For Unity External Adapter";
@@ -246,6 +247,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyTrackedAssetBoundary()
         {
             var forbiddenTracked = GitLsFiles()
+                .Where(path => !IsAllowedRuntimePackageFile(path))
                 .Where(path => path.Contains("/Assets/Ros2ForUnity/", StringComparison.Ordinal)
                                || path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)
                                || IsForbiddenR2fuArtifact(path)
@@ -253,7 +255,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToList();
 
             Check(forbiddenTracked.Count == 0,
-                "110-I1: tracked files contain no R2FU assets, packages, metadata, or optional runtime binaries"
+                "110-I1: tracked files contain no R2FU assets, raw artifacts, or adapter runtime binaries outside runtime packages"
                 + (forbiddenTracked.Count == 0 ? string.Empty : " (" + string.Join(", ", forbiddenTracked) + ")"));
         }
 
@@ -403,6 +405,16 @@ namespace Unity.FoxgloveSDK.Tests
                    || extension.Equals(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAllowedRuntimePackageFile(string path)
+        {
+            if (!path.StartsWith(RuntimePackage + "/", StringComparison.Ordinal))
+                return false;
+
+            return !path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                   && !path.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
+                   && !path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyList<string> GitLsFiles()

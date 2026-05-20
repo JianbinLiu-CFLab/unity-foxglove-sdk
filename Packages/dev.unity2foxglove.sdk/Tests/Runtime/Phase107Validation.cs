@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase107Validation
     {
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
+        private const string RuntimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string CorePackageJson = "Packages/dev.unity2foxglove.sdk/package.json";
         private const string Manifest = OptionalPackage + "/Compliance/ros2-for-unity-adoption-manifest.json";
         private const string OptionalPackageValidator = "Scripts/release/validate_ros2forunity_package.py";
@@ -216,13 +217,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var tracked = GitLsFiles();
             var forbiddenTracked = tracked
+                .Where(path => !IsAllowedRuntimePackageFile(path))
                 .Where(path => path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)
                                || IsForbiddenR2fuArtifact(path)
                                || IsOptionalPackageRuntimeBinary(path))
                 .ToList();
 
             Check(forbiddenTracked.Count == 0,
-                "107-F1: tracked files contain no R2FU imported assets, packages, metadata, or optional runtime binaries"
+                "107-F1: tracked files contain no R2FU imported assets, raw artifacts, or adapter runtime binaries outside runtime packages"
                 + (forbiddenTracked.Count == 0 ? string.Empty : " (" + string.Join(", ", forbiddenTracked) + ")"));
 
             var optionalRoot = Path.Combine(RepoRoot(), OptionalPackage.Replace('/', Path.DirectorySeparatorChar));
@@ -309,6 +311,16 @@ namespace Unity.FoxgloveSDK.Tests
                    || extension.Equals(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAllowedRuntimePackageFile(string path)
+        {
+            if (!path.StartsWith(RuntimePackage + "/", StringComparison.Ordinal))
+                return false;
+
+            return !path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                   && !path.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
+                   && !path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
         }
 
         private static JObject LoadJsonObject(string relativePath)

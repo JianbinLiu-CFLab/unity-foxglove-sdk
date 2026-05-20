@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "r2fu-jazzy-win64",
+  "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+  "packageVersion": "0.1.0-preview.1",
+  "rosDistro": "jazzy",
+  "platform": "win64",
+  "unityPlatform": "Windows",
+  "architecture": "x86_64",
+  "buildType": "standalone",
+  "rmwImplementation": "rmw_fastrtps_cpp",
+  "artifactName": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
+  "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+  "artifactSize": 16858288,
+  "inventoryFile": "RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json",
+  "inventoryFileCount": 1045,
+  "runtimeRoot": "Runtime/Ros2ForUnity",
+  "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
+  "sourceBasis": "Local Jazzy rebuild from RobotecAI ROS2 For Unity and ros2cs sources with Windows ROS2 Jazzy dependency closure",
+  "supportLevel": "Recommended",
+  "distributionLevel": "Prototype",
+  "activeRuntimePolicy": "one_runtime_package_per_project",
+  "criticalRuntimeFiles": [
+    "rcl.dll",
+    "yaml.dll",
+    "spdlog.dll",
+    "fmt.dll"
+  ],
+  "packagePathPatch": {
+    "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
+    "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
+    "keepsAssetFolderFallback": true
+  },
+  "freshProjectAcceptance": "deferred_to_install_acceptance"
+}
