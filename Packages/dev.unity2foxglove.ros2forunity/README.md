@@ -6,7 +6,7 @@ It provides facade/API boundaries, documentation, attribution records, and a sou
 
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 
-The current product direction is Jazzy-first for Windows x64 runtime work. A future runtime package such as `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` should own the R2FU Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
+The current product direction is Jazzy-first for Windows x64 runtime work. The `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package owns the R2FU Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
@@ -44,7 +44,7 @@ R2FU Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual 
 |---|---|
 | `dev.unity2foxglove.sdk` | Fully usable by itself for normal Foxglove WebSocket, MCAP, Replay, and FoxRun workflows. |
 | `dev.unity2foxglove.ros2forunity` | Installs and compiles by itself. Reports missing runtime gracefully. |
-| `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Planned runtime package. Installs runtime files and exposes metadata/diagnostics by itself. |
+| `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Installs runtime files and exposes metadata/diagnostics by itself. |
 | Adapter + runtime | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. |
 | SDK + adapter + runtime | Full combined Unity2Foxglove workflow. |
 
@@ -61,17 +61,20 @@ Runtime packages are expected to be package/release artifacts. They should carry
 
 ## External Adapter Sample
 
-Import `ROS2 For Unity External Adapter` from Package Manager after importing external ROS2 For Unity into:
+Install the adapter package and the Jazzy Win64 runtime package:
 
 ```text
-Assets/Ros2ForUnity
+dev.unity2foxglove.ros2forunity
+dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 ```
 
-Then enable:
+The adapter package automatically enables the Standalone build-target symbol when it detects the Jazzy Win64 runtime package:
 
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
 ```
+
+For an external, non-package ROS2 For Unity import, add that symbol manually.
 
 The sample exposes one bidirectional `std_msgs/msg/String` smoke pair:
 

@@ -142,6 +142,7 @@ def check_required_files(results: list[CheckResult]) -> None:
         PLUGIN_ROOT / "metadata_ros2cs.xml",
         RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs",
         RUNTIME_ROOT / "Scripts" / "ROS2UnityComponent.cs",
+        RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef",
         RUNTIME_ROOT / "Plugins" / "ros2cs_core.dll",
         RUNTIME_ROOT / "Plugins" / "ros2cs_common.dll",
         RUNTIME_ROOT / "Plugins" / "std_msgs_assembly.dll",
@@ -282,6 +283,9 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     required = [
         "Unity2Foxglove package path support",
         PACKAGE_NAME,
+        "PackageInfo.FindForAssetPath",
+        "resolvedPath",
+        "unity2FoxgloveRuntimePackageAssetPath",
         'Path.Combine(',
         '"Packages"',
         '"Runtime"',

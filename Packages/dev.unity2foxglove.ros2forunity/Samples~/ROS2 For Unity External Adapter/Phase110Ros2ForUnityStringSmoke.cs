@@ -6,6 +6,7 @@
 
 using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
+using UnityEngine.Serialization;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using ROS2;
 #endif
@@ -20,7 +21,8 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private const string LogPrefix = "[Ros2ForUnityStringSmoke] ";
 
     [SerializeField, Min(0.1f)] private float _publishIntervalSeconds = 1f;
-    [SerializeField] private bool _useDirectR2fu;
+    [SerializeField, FormerlySerializedAs("_useDirectR2fu"), InspectorName("Use Direct Runtime")]
+    private bool _useDirectRuntime;
     [SerializeField] private string _nodeName = NodeName;
     [SerializeField] private string _outTopic = OutTopic;
     [SerializeField] private string _inTopic = InTopic;
@@ -51,15 +53,17 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private void OnEnable()
     {
         Application.runInBackground = true;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         _nextPublishTime = 0f;
         _publishedCount = 0;
         _receivedCount = 0;
+        _loggedFirstPublish = false;
+#endif
         _lastReceived = string.Empty;
         _lastError = string.Empty;
-        _loggedFirstPublish = false;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        if (_useDirectR2fu)
+        if (_useDirectRuntime)
         {
             _statusMessage = "Direct ROS2 For Unity diagnostic mode.";
         }
@@ -76,7 +80,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private void Update()
     {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        if (_useDirectR2fu)
+        if (_useDirectRuntime)
         {
             if (!TryEnsureDirectReady())
                 return;

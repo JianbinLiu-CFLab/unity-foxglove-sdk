@@ -29,6 +29,9 @@ internal class ROS2ForUnity
 {
     private static bool isInitialized = false;
     private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";
+    private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
+    private const string unity2FoxgloveRuntimePackageAssetPath =
+        "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
     private XmlDocument ros2csMetadata = new XmlDocument();
     private XmlDocument ros2ForUnityMetadata = new XmlDocument();
 
@@ -95,12 +98,26 @@ internal class ROS2ForUnity
                 return assetPath;
             }
 
+            // Unity2Foxglove package path support for local packages installed with
+            // Package Manager's "Add package from disk..." flow.
+            UnityEditor.PackageManager.PackageInfo runtimePackage =
+                UnityEditor.PackageManager.PackageInfo.FindForAssetPath(unity2FoxgloveRuntimePackageAssetPath);
+            if (runtimePackage != null && !string.IsNullOrEmpty(runtimePackage.resolvedPath)) {
+                string resolvedPackagePath = Path.Combine(
+                    runtimePackage.resolvedPath,
+                    "Runtime",
+                    ros2ForUnityAssetFolderName);
+                if (Directory.Exists(resolvedPackagePath)) {
+                    return resolvedPackagePath;
+                }
+            }
+
             DirectoryInfo dataDirectory = Directory.GetParent(appDataPath);
             if (dataDirectory != null) {
                 string packagePath = Path.Combine(
                     dataDirectory.FullName,
                     "Packages",
-                    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                    unity2FoxgloveRuntimePackageName,
                     "Runtime",
                     ros2ForUnityAssetFolderName);
                 if (Directory.Exists(packagePath)) {

@@ -24,7 +24,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string FactoryPath = SamplePath + "/Phase110Ros2ForUnityContextFactory.cs";
         private const string ContextPath = SamplePath + "/Phase110Ros2ForUnityContext.cs";
         private const string SmokePath = SamplePath + "/Phase110Ros2ForUnityStringSmoke.cs";
+        private const string DefineInstallerPath = OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string SampleReadmePath = SamplePath + "/README.md";
+        private const string RuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
         private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
 
@@ -93,13 +95,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && path.GetString() == "Samples~/ROS2 For Unity External Adapter",
                 "110-B3: optional package sample entry points at the external adapter sample");
             Check(value.TryGetProperty("description", out var description)
-                  && (description.GetString() ?? string.Empty).Contains("externally imported ROS2 For Unity", StringComparison.Ordinal),
-                "110-B4: optional package sample description names the external R2FU import boundary");
+                  && (description.GetString() ?? string.Empty).Contains("ROS2 For Unity runtime package or external runtime", StringComparison.Ordinal),
+                "110-B4: optional package sample description names the runtime package or external R2FU boundary");
         }
 
         private static void VerifySampleFiles()
         {
-            foreach (var path in new[] { SampleReadmePath, FactoryPath, ContextPath, SmokePath })
+            foreach (var path in new[] { SampleReadmePath, FactoryPath, ContextPath, SmokePath, DefineInstallerPath })
                 Check(RepoFileExists(path), "110-C1: sample file exists: " + path);
         }
 
@@ -148,6 +150,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && smoke.Contains("_lastError", StringComparison.Ordinal)
                   && smoke.Contains("_statusMessage", StringComparison.Ordinal),
                 "110-D11: sample smoke exposes status, counters, last received, and last error fields");
+
+            var defineInstaller = ReadRepoText(DefineInstallerPath);
+            Check(defineInstaller.Contains(RuntimePackageName, StringComparison.Ordinal)
+                  && defineInstaller.Contains(Define, StringComparison.Ordinal)
+                  && defineInstaller.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal)
+                  && !defineInstaller.Contains("using ROS2;", StringComparison.Ordinal)
+                  && !defineInstaller.Contains("ROS2UnityComponent", StringComparison.Ordinal),
+                "110-D12: adapter auto-enables the R2FU compile symbol when the runtime package is installed");
         }
 
         private static void VerifyFacadeBoundary()
@@ -230,11 +240,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && readme.Contains("ROS2 For Unity External Adapter", StringComparison.Ordinal)
                   && readme.Contains("not_bundled", StringComparison.Ordinal),
                 "110-H1: optional README documents external-R2FU productization status");
-            Check(sampleReadme.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
-                  && sampleReadme.Contains("Assets/Ros2ForUnity", StringComparison.Ordinal)
+            Check(sampleReadme.Contains(RuntimePackageName, StringComparison.Ordinal)
+                  && sampleReadme.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sampleReadme.Contains("Windows ROS2 Jazzy", StringComparison.Ordinal)
-                  && sampleReadme.Contains("ros2 topic echo --once " + OutTopic, StringComparison.Ordinal)
-                  && sampleReadme.Contains("ros2 topic pub --once " + InTopic, StringComparison.Ordinal),
+                  && sampleReadme.Contains("topic echo --once " + OutTopic, StringComparison.Ordinal)
+                  && sampleReadme.Contains("topic pub --once " + InTopic, StringComparison.Ordinal),
                 "110-H2: sample README gives concrete setup and live smoke commands");
             Check(combined.Contains("WSL2 NAT", StringComparison.Ordinal)
                   && combined.Contains("not a GREEN gate", StringComparison.Ordinal),

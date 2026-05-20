@@ -56,6 +56,11 @@ ALLOWED_SAMPLE_SUFFIXES = {
     ".meta",
 }
 
+ALLOWED_EDITOR_SUFFIXES = {
+    ".cs",
+    ".meta",
+}
+
 FORBIDDEN_RUNTIME_TOKENS = (
     "using ROS2;",
     "namespace ROS2",
@@ -148,8 +153,8 @@ def check_package_metadata(results: list[CheckResult]) -> None:
         description = str(sample.get("description", ""))
         add(
             results,
-            "sample description names external R2FU",
-            "externally imported ROS2 For Unity" in description,
+            "sample description names runtime package or external R2FU",
+            "ROS2 For Unity runtime package or external runtime" in description,
             description,
         )
 
@@ -424,9 +429,25 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no runtime binaries found",
     )
 
-    forbidden_dirs = [PACKAGE / "Editor"]
-    existing = [rel(path) for path in forbidden_dirs if path.exists()]
-    add(results, "optional package has no editor adapter directory", not existing, "; ".join(existing) if existing else "no editor directory")
+    editor = PACKAGE / "Editor"
+    invalid_editor_files = [
+        rel(path)
+        for path in iter_files(editor)
+        if path.suffix.lower() not in ALLOWED_EDITOR_SUFFIXES
+    ] if editor.exists() else []
+    installer = editor / "Ros2ForUnityRuntimeDefineInstaller.cs"
+    installer_text = installer.read_text(encoding="utf-8", errors="replace") if installer.exists() else ""
+    add(
+        results,
+        "optional package editor surface only enables runtime compile symbol",
+        not invalid_editor_files
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in installer_text
+        and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in installer_text
+        and "NamedBuildTarget.Standalone" in installer_text
+        and "using ROS2;" not in installer_text
+        and "ROS2UnityComponent" not in installer_text,
+        "; ".join(invalid_editor_files[:MAX_REPORTED_OFFENDERS]) if invalid_editor_files else rel(installer),
+    )
 
 
 def check_sample_source_boundary(results: list[CheckResult]) -> None:
@@ -451,8 +472,9 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
     readme = (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace") if (SAMPLE / "README.md").exists() else ""
     add(
         results,
-        "sample README documents external import",
-        "Assets/Ros2ForUnity" in readme and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in readme,
+        "sample README documents runtime package activation",
+        "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in readme
+        and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in readme,
         rel(SAMPLE / "README.md"),
     )
     add(

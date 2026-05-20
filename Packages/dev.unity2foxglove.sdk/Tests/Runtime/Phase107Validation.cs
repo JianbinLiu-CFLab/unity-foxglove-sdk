@@ -67,9 +67,40 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var required in requiredFiles)
                 Check(RepoFileExists(required), "107-A7: required optional package file exists: " + required);
 
-            Check(!RepoDirectoryExists(OptionalPackage + "/Editor"),
-                "107-A8: optional package contains no editor adapter surface");
+            VerifyOptionalEditorBoundary();
             VerifyOptionalRuntimeBoundary();
+        }
+
+        private static void VerifyOptionalEditorBoundary()
+        {
+            var editorRoot = Path.Combine(RepoRoot(), OptionalPackage.Replace('/', Path.DirectorySeparatorChar), "Editor");
+            if (!Directory.Exists(editorRoot))
+            {
+                Check(true, "107-A8: optional package Editor surface is absent or package-activation-only");
+                return;
+            }
+
+            var invalidFiles = Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories)
+                .Where(path => !HasTextExtension(path)
+                               && !Path.GetExtension(path).Equals(".meta", StringComparison.OrdinalIgnoreCase))
+                .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
+                .ToList();
+            var tokenHits = Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories)
+                .Where(HasTextExtension)
+                .SelectMany(path => OptionalEditorForbiddenTokens()
+                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
+                    .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token))
+                .ToList();
+            var installer = Path.Combine(editorRoot, "Ros2ForUnityRuntimeDefineInstaller.cs");
+            var installerText = File.Exists(installer) ? File.ReadAllText(installer) : string.Empty;
+
+            Check(invalidFiles.Count == 0
+                  && tokenHits.Count == 0
+                  && installerText.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
+                  && installerText.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && installerText.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal),
+                "107-A8: optional package Editor surface only auto-enables the runtime compile symbol"
+                + (invalidFiles.Count == 0 && tokenHits.Count == 0 ? string.Empty : " (" + string.Join(", ", invalidFiles.Concat(tokenHits)) + ")"));
         }
 
         private static void VerifyAdoptionManifest()
@@ -274,7 +305,12 @@ namespace Unity.FoxgloveSDK.Tests
                 return false;
 
             var text = File.ReadAllText(path);
-            var forbidden = new[]
+            return OptionalEditorForbiddenTokens().Any(token => text.Contains(token, StringComparison.Ordinal));
+        }
+
+        private static IReadOnlyList<string> OptionalEditorForbiddenTokens()
+        {
+            return new[]
             {
                 "using ROS2;",
                 "namespace ROS2",
@@ -285,8 +321,6 @@ namespace Unity.FoxgloveSDK.Tests
                 "std_msgs",
                 "ros2cs"
             };
-
-            return forbidden.Any(token => text.Contains(token, StringComparison.Ordinal));
         }
 
         private static bool IsForbiddenR2fuArtifact(string path)

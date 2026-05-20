@@ -15,7 +15,7 @@ using ROS2;
 public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 {
     private const string UnavailableMessage =
-        "ROS2 For Unity sample adapter is unavailable. Import ROS2 For Unity and define UNITY2FOXGLOVE_ROS2_FOR_UNITY.";
+        "ROS2 For Unity sample adapter is unavailable. Install a ROS2 For Unity runtime package or add UNITY2FOXGLOVE_ROS2_FOR_UNITY for an external runtime.";
 
     private readonly GameObject _host;
     private readonly List<IPhase110DrainableNode> _nodes = new List<IPhase110DrainableNode>();
