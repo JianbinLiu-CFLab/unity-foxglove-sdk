@@ -1,4 +1,5 @@
 // Copyright 2019-2022 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +22,7 @@ namespace ROS2
 /// <summary>
 /// A ros2 clock class that for interfacing between a time source (unity or ros2 system time) and ros2cs messages, structs. 
 /// </summary>
-public class ROS2Clock
+public class ROS2Clock : IDisposable
 {
     private ITimeSource _timeSource;
 
@@ -58,6 +59,13 @@ public class ROS2Clock
         uint nanoseconds;
         _timeSource.GetTime(out seconds, out nanoseconds);
         message.UpdateHeaderTime(seconds, nanoseconds);
+    }
+
+    public void Dispose()
+    {
+        // U2F-LOCAL-PATCH: dispose native ROS2 time sources deterministically.
+        (_timeSource as IDisposable)?.Dispose();
+        _timeSource = null;
     }
 }
 

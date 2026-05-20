@@ -136,6 +136,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(combined.Contains("Queue<", StringComparison.Ordinal)
                   && combined.Contains("DrainPendingCallbacks", StringComparison.Ordinal),
                 "110-D7: sample adapter queues subscription callbacks for Unity main-thread drain");
+            Check(context.Contains("MaxPendingCallbacks", StringComparison.Ordinal)
+                  && context.Contains("_droppedCallbacks", StringComparison.Ordinal)
+                  && context.Contains("while (_pending.Count >= MaxPendingCallbacks)", StringComparison.Ordinal),
+                "110-D7a: sample adapter bounds pending subscription callbacks and tracks drops");
+            Check(context.Contains("_ownsRos2UnityComponent", StringComparison.Ordinal)
+                  && context.Contains("UnityEngine.Object.Destroy(_ros2Unity)", StringComparison.Ordinal),
+                "110-D7b: sample adapter destroys only the ROS2UnityComponent it auto-created");
             Check(smoke.Contains(OutTopic, StringComparison.Ordinal)
                   && smoke.Contains(InTopic, StringComparison.Ordinal),
                 "110-D8: sample smoke uses stable string-smoke topics");
@@ -150,14 +157,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && smoke.Contains("_lastError", StringComparison.Ordinal)
                   && smoke.Contains("_statusMessage", StringComparison.Ordinal),
                 "110-D11: sample smoke exposes status, counters, last received, and last error fields");
+            Check(smoke.Contains("InspectorName(\"Use Direct Runtime\")", StringComparison.Ordinal)
+                  && smoke.Contains("QueueDirectStringReceived", StringComparison.Ordinal)
+                  && smoke.Contains("DrainDirectReceived", StringComparison.Ordinal)
+                  && smoke.Contains("RecordReceived", StringComparison.Ordinal),
+                "110-D11a: direct runtime mode uses product-facing label and drains callbacks on Update");
 
             var defineInstaller = ReadRepoText(DefineInstallerPath);
             Check(defineInstaller.Contains(RuntimePackageName, StringComparison.Ordinal)
                   && defineInstaller.Contains(Define, StringComparison.Ordinal)
                   && defineInstaller.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal)
+                  && defineInstaller.Contains("ReconcileCompileSymbol", StringComparison.Ordinal)
+                  && defineInstaller.Contains("RemoveAll", StringComparison.Ordinal)
+                  && defineInstaller.Contains("Regex.IsMatch", StringComparison.Ordinal)
                   && !defineInstaller.Contains("using ROS2;", StringComparison.Ordinal)
                   && !defineInstaller.Contains("ROS2UnityComponent", StringComparison.Ordinal),
-                "110-D12: adapter auto-enables the R2FU compile symbol when the runtime package is installed");
+                "110-D12: adapter reconciles the R2FU compile symbol when the runtime package is installed or removed");
         }
 
         private static void VerifyFacadeBoundary()

@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sys
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +48,16 @@ DEFAULT_PACKAGE = ROOT / "Packages" / PACKAGE_NAME
 UPSTREAM_LICENSE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Upstream" / "LICENSE.AL2"
 
 UNITY_PACKAGE_PATH_PATCH_MARKER = "Unity2Foxglove package path support"
+LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
+MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."
+LEAKY_UPSTREAM_EXAMPLES = (
+    "ROS2TalkerExample.cs",
+    "ROS2ListenerExample.cs",
+    "ROS2ClientExample.cs",
+    "ROS2ServiceExample.cs",
+    "ROS2PerformanceTest.cs",
+    "PostInstall.cs",
+)
 UPSTREAM_PATH_BLOCK = """    public static string GetRos2ForUnityPath()
     {
         char separator = Path.DirectorySeparatorChar;
@@ -71,12 +83,28 @@ PACKAGE_PATH_BLOCK = """    public static string GetRos2ForUnityPath()
                 return assetPath;
             }
 
+            // Unity2Foxglove package path support for local packages installed with
+            // Package Manager's "Add package from disk..." flow.
+#if UNITY_EDITOR
+            UnityEditor.PackageManager.PackageInfo runtimePackage =
+                UnityEditor.PackageManager.PackageInfo.FindForAssetPath(unity2FoxgloveRuntimePackageAssetPath);
+            if (runtimePackage != null && !string.IsNullOrEmpty(runtimePackage.resolvedPath)) {
+                string resolvedPackagePath = Path.Combine(
+                    runtimePackage.resolvedPath,
+                    "Runtime",
+                    ros2ForUnityAssetFolderName);
+                if (Directory.Exists(resolvedPackagePath)) {
+                    return resolvedPackagePath;
+                }
+            }
+#endif
+
             DirectoryInfo dataDirectory = Directory.GetParent(appDataPath);
             if (dataDirectory != null) {
                 string packagePath = Path.Combine(
                     dataDirectory.FullName,
                     "Packages",
-                    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                    unity2FoxgloveRuntimePackageName,
                     "Runtime",
                     ros2ForUnityAssetFolderName);
                 if (Directory.Exists(packagePath)) {
@@ -89,6 +117,11 @@ PACKAGE_PATH_BLOCK = """    public static string GetRos2ForUnityPath()
         }
         return pluginPath; 
     }
+"""
+
+PACKAGE_CONSTANTS_BLOCK = """    private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
+    private const string unity2FoxgloveRuntimePackageAssetPath =
+        "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
 """
 
 
@@ -160,19 +193,141 @@ def reset_package_dir(package: Path) -> None:
     if package.name != PACKAGE_NAME or package.parent != expected_parent:
         raise ValueError(f"Refusing to reset unexpected package path: {package}")
     if package.exists():
-        shutil.rmtree(package)
+        last_error: Exception | None = None
+        for _ in range(5):
+            try:
+                shutil.rmtree(windows_long_path(package), onerror=make_writable)
+                break
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.25)
+        else:
+            remove_tree_manually(package)
+            if package.exists():
+                raise last_error if last_error is not None else OSError(f"Could not remove {package}")
     package.mkdir(parents=True)
+
+
+def make_writable(function, path: str, exc_info) -> None:
+    """Clear a read-only bit and retry a failed removal operation."""
+
+    os.chmod(path, os.stat(path).st_mode | 0o200)
+    function(path)
+
+
+def windows_long_path(path: Path) -> str:
+    """Return a Windows extended-length path for deletion-heavy filesystem work."""
+
+    resolved = str(path.resolve())
+    if os.name != "nt" or resolved.startswith("\\\\?\\"):
+        return resolved
+    return "\\\\?\\" + resolved
+
+
+def path_exists(path: Path) -> bool:
+    """Return whether a path exists, including long Windows paths."""
+    return os.path.exists(windows_long_path(path))
+
+
+def remove_tree_manually(root: Path) -> None:
+    """Fallback removal for sync folders where rmtree can leave late-arriving files."""
+
+    if not root.exists():
+        return
+    for _ in range(5):
+        for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            try:
+                raw_path = windows_long_path(path)
+                os.chmod(raw_path, os.stat(raw_path).st_mode | 0o200)
+                if path.is_dir():
+                    os.rmdir(raw_path)
+                else:
+                    os.unlink(raw_path)
+            except (FileNotFoundError, OSError):
+                continue
+        try:
+            os.rmdir(windows_long_path(root))
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            time.sleep(0.25)
 
 
 def write_text(path: Path, content: str) -> None:
     """Write UTF-8 text with a trailing newline."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content.rstrip() + "\n", encoding="utf-8")
+    Path(windows_long_path(path.parent)).mkdir(parents=True, exist_ok=True)
+    with open(windows_long_path(path), "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(content.rstrip() + "\n")
 
 
 def write_json(path: Path, data: dict[str, object]) -> None:
     """Write JSON with stable formatting."""
     write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def runtime_asmdef() -> dict[str, object]:
+    """Return the runtime assembly definition used by the packaged R2FU copy."""
+    return {
+        "name": "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64",
+        "rootNamespace": "",
+        "references": [],
+        "includePlatforms": [],
+        "excludePlatforms": [],
+        "allowUnsafeCode": False,
+        "overrideReferences": False,
+        "precompiledReferences": [],
+        "autoReferenced": True,
+        "defineConstraints": [],
+        "versionDefines": [],
+        "noEngineReferences": False,
+    }
+
+
+def collect_local_patch_overlays(package: Path) -> dict[str, str]:
+    """Capture committed local patches before regenerating from the upstream artifact."""
+    scripts = package / "Runtime" / "Ros2ForUnity" / "Scripts"
+    if not scripts.exists():
+        return {}
+
+    overlays: dict[str, str] = {}
+    for path in scripts.rglob("*.cs"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if LOCAL_PATCH_MARKER in text or MODIFICATIONS_COPYRIGHT in text:
+            overlays[path.relative_to(package).as_posix()] = text
+    return overlays
+
+
+def collect_meta_overlays(package: Path) -> dict[str, bytes]:
+    """Capture existing Unity metadata so regeneration does not churn GUIDs."""
+    if not package.exists():
+        return {}
+
+    overlays: dict[str, bytes] = {}
+    for path in package.rglob("*.meta"):
+        with open(windows_long_path(path), "rb") as stream:
+            overlays[path.relative_to(package).as_posix()] = stream.read()
+    return overlays
+
+
+def apply_local_patch_overlays(package: Path, overlays: dict[str, str]) -> None:
+    """Replay local lifecycle/time/package-path patches onto the regenerated runtime."""
+    for relative, text in overlays.items():
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_text(target, text)
+
+
+def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
+    """Replay metadata only when the corresponding generated asset still exists."""
+    for relative, data in overlays.items():
+        asset_relative = relative.removesuffix(".meta")
+        if not path_exists(package / asset_relative):
+            continue
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(windows_long_path(target), "wb") as stream:
+            stream.write(data)
 
 
 def deterministic_guid(relative_path: str) -> str:
@@ -220,7 +375,7 @@ def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
 def ensure_generated_meta(package: Path, target: Path, is_dir: bool) -> None:
     """Create a deterministic .meta file when the artifact did not provide one."""
     meta = target.with_name(target.name + ".meta")
-    if meta.exists():
+    if path_exists(meta):
         return
     relative = target.relative_to(package).as_posix()
     write_text(meta, generated_meta_text(target, relative, is_dir))
@@ -228,22 +383,11 @@ def ensure_generated_meta(package: Path, target: Path, is_dir: bool) -> None:
 
 def write_generated_metas(package: Path) -> None:
     """Generate metadata for package-owned files and directories lacking upstream metadata."""
-    package_owned_dirs = [
-        package / "RuntimeSupport",
-        package / "Runtime",
-        package / "Runtime" / "Ros2ForUnity",
-    ]
-    package_owned_files = [
-        package / "package.json",
-        package / "README.md",
-        package / "LICENSE",
-        package / "THIRD_PARTY_NOTICES.md",
-        package / "RuntimeSupport" / "runtime-manifest.json",
-        package / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json",
-    ]
-    for directory in package_owned_dirs:
+    for directory in sorted((path for path in package.rglob("*") if path.is_dir()), key=lambda item: item.as_posix()):
         ensure_generated_meta(package, directory, is_dir=True)
-    for path in package_owned_files:
+    for path in sorted((path for path in package.rglob("*") if path.is_file()), key=lambda item: item.as_posix()):
+        if path.name.endswith(".meta") or path.name == ".gitkeep":
+            continue
         ensure_generated_meta(package, path, is_dir=False)
 
 
@@ -433,6 +577,17 @@ def extract_runtime(paths: BuildPaths) -> None:
                 shutil.copyfileobj(source, destination)
 
 
+def prune_non_contract_examples(package: Path) -> None:
+    """Remove upstream examples whose lifecycle is not part of this runtime package contract."""
+    scripts = package / "Runtime" / "Ros2ForUnity" / "Scripts"
+    for name in LEAKY_UPSTREAM_EXAMPLES:
+        for path in (scripts / name, scripts / (name + ".meta")):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def patch_ros2_for_unity(package: Path) -> None:
     """Patch ROS2ForUnity.cs so the runtime can live inside a Unity package."""
     source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
@@ -441,6 +596,11 @@ def patch_ros2_for_unity(package: Path) -> None:
         return
     if UPSTREAM_PATH_BLOCK not in text:
         raise ValueError("Could not find upstream GetRos2ForUnityPath block to patch.")
+    if "unity2FoxgloveRuntimePackageName" not in text:
+        text = text.replace(
+            '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n',
+            '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n' + PACKAGE_CONSTANTS_BLOCK,
+        )
     source.write_text(text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK), encoding="utf-8")
 
 
@@ -452,15 +612,24 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object]) -> None
     write_text(paths.package / "THIRD_PARTY_NOTICES.md", notices_text(inventory))
     write_json(paths.package / "RuntimeSupport" / "runtime-manifest.json", runtime_manifest())
     shutil.copyfile(paths.inventory, paths.package / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json")
+    write_json(
+        paths.package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef",
+        runtime_asmdef(),
+    )
 
 
 def build_package(paths: BuildPaths) -> None:
     """Build the runtime package from the runtime artifact."""
     inventory = require_inputs(paths)
+    overlays = collect_local_patch_overlays(paths.package)
+    meta_overlays = collect_meta_overlays(paths.package)
     reset_package_dir(paths.package)
     extract_runtime(paths)
+    prune_non_contract_examples(paths.package)
     patch_ros2_for_unity(paths.package)
+    apply_local_patch_overlays(paths.package, overlays)
     write_package_files(paths, inventory)
+    apply_meta_overlays(paths.package, meta_overlays)
     write_generated_metas(paths.package)
 
 

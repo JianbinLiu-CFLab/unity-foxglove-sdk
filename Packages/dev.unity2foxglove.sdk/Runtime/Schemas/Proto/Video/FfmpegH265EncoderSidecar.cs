@@ -68,7 +68,7 @@ namespace Foxglove.Schemas.Video
             if (IsRunning)
                 return true;
 
-            Stop();
+            Stop(clearOutputQueue: true);
 
             _options = options ?? new FfmpegH265EncoderOptions();
             _packetizer = new H265AnnexBAccessUnitPacketizer();
@@ -179,6 +179,11 @@ namespace Foxglove.Schemas.Video
         /// <summary>Stops FFmpeg and clears pending live queues.</summary>
         public void Stop()
         {
+            Stop(clearOutputQueue: true);
+        }
+
+        private void Stop(bool clearOutputQueue)
+        {
             var stop = _stop;
             if (stop != null && !stop.IsCancellationRequested)
                 stop.Cancel();
@@ -228,11 +233,13 @@ namespace Foxglove.Schemas.Video
             _stop?.Dispose();
             _stop = null;
             DrainInputQueue();
+            if (clearOutputQueue)
+                DrainOutputQueue();
         }
 
         public void Dispose()
         {
-            Stop();
+            Stop(clearOutputQueue: false);
         }
 
         private async Task RunStdinWriter(Process process, CancellationToken token)
@@ -347,6 +354,18 @@ namespace Foxglove.Schemas.Video
             }
 
             Volatile.Write(ref _inputCount, 0);
+        }
+
+        private void DrainOutputQueue()
+        {
+            lock (_outputLock)
+            {
+                while (_outputAccessUnits.TryDequeue(out _))
+                {
+                }
+
+                Volatile.Write(ref _outputCount, 0);
+            }
         }
 
         private static bool IsProcessRunning(Process process)

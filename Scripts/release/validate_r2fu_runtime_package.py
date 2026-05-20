@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,29 @@ CRITICAL_DLLS = (
     "yaml.dll",
     "spdlog.dll",
     "fmt.dll",
+)
+
+MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."
+LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
+LEAKY_UPSTREAM_EXAMPLES = (
+    "ROS2TalkerExample.cs",
+    "ROS2ListenerExample.cs",
+    "ROS2ClientExample.cs",
+    "ROS2ServiceExample.cs",
+    "ROS2PerformanceTest.cs",
+    "PostInstall.cs",
+)
+PATCHED_VENDOR_FILES = (
+    "ROS2ForUnity.cs",
+    "ROS2Node.cs",
+    "ROS2UnityComponent.cs",
+    "ROS2UnityCore.cs",
+    "Sensor.cs",
+    "Time/DotnetTimeSource.cs",
+    "Time/ROS2Clock.cs",
+    "Time/ROS2ScalableTimeSource.cs",
+    "Time/ROS2TimeSource.cs",
+    "Time/TimeUtils.cs",
 )
 
 PUBLIC_DOCS = (
@@ -275,6 +299,10 @@ def check_runtime_files(results: list[CheckResult]) -> None:
     ]
     add(results, "runtime plugin payload limited to Windows", not unexpected_platforms, ", ".join(unexpected_platforms[:8]))
 
+    scripts = RUNTIME_ROOT / "Scripts"
+    leaky_examples = [name for name in LEAKY_UPSTREAM_EXAMPLES if (scripts / name).exists()]
+    add(results, "leaky upstream examples pruned", not leaky_examples, ", ".join(leaky_examples))
+
 
 def check_package_path_patch(results: list[CheckResult]) -> None:
     """Validate the ROS2ForUnity.cs package path patch."""
@@ -294,6 +322,90 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     ]
     for token in required:
         add(results, f"ROS2ForUnity.cs contains {token}", token in text, token)
+    add(
+        results,
+        "UnityEditor using guarded",
+        re.search(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", text) is not None
+        and re.sub(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", "", text).find("using UnityEditor;") < 0,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "PackageManager lookup guarded",
+        "#if UNITY_EDITOR" in text
+        and "UnityEditor.PackageManager.PackageInfo.FindForAssetPath" in text
+        and text.index("#if UNITY_EDITOR") < text.index("UnityEditor.PackageManager.PackageInfo.FindForAssetPath"),
+        "ROS2ForUnity.cs",
+    )
+
+
+def check_runtime_asmdef(results: list[CheckResult]) -> None:
+    """Validate the runtime assembly definition is safe for Editor and Player."""
+    path = RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef"
+    data = load_json(path, results, "runtime asmdef parses")
+    add(results, "runtime asmdef name", data.get("name") == "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64", f"name={data.get('name')!r}")
+    add(results, "runtime asmdef not Editor-only", data.get("includePlatforms") == [], f"includePlatforms={data.get('includePlatforms')!r}")
+    add(results, "runtime asmdef auto-referenced", data.get("autoReferenced") is True, f"autoReferenced={data.get('autoReferenced')!r}")
+
+
+def check_runtime_source_patches(results: list[CheckResult]) -> None:
+    """Validate local lifecycle, time-source, and attribution patches on vendored R2FU sources."""
+    scripts = RUNTIME_ROOT / "Scripts"
+    for relative in PATCHED_VENDOR_FILES:
+        path = scripts / relative
+        text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        add(results, f"patched vendored file exists: {relative}", path.exists(), rel(path))
+        add(results, f"patched vendored attribution: {relative}", MODIFICATIONS_COPYRIGHT in text, relative)
+
+    node = (scripts / "ROS2Node.cs").read_text(encoding="utf-8", errors="replace")
+    add(results, "ROS2Node implements IDisposable", "class ROS2Node : IDisposable" in node and "public void Dispose()" in node, "ROS2Node.cs")
+    add(results, "ROS2Node avoids finalizer native cleanup", "~ROS2Node" not in node, "ROS2Node.cs")
+    add(results, "ROS2Node removed UnityEditor using", "using UnityEditor;" not in node, "ROS2Node.cs")
+
+    component = (scripts / "ROS2UnityComponent.cs").read_text(encoding="utf-8", errors="replace")
+    for token in ("private volatile bool quitting", "private Thread spinThread", "OnDestroy()", "OnApplicationQuit()", "threadToJoin.Join(1000)", "node.Dispose()"):
+        add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
+    add(results, "ROS2UnityComponent does not shutdown on ordinary disable", "OnDisable()" not in component, "ROS2UnityComponent.cs")
+
+    core = (scripts / "ROS2UnityCore.cs").read_text(encoding="utf-8", errors="replace")
+    for token in ("IDisposable", "private volatile bool quitting", "private Thread spinThread", "public void Dispose()", "threadToJoin.Join(1000)"):
+        add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)
+
+    runtime = (scripts / "ROS2ForUnity.cs").read_text(encoding="utf-8", errors="replace")
+    for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"):
+        add(results, f"ROS2ForUnity lifecycle token: {token}", token in runtime, token)
+    add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
+
+    dotnet_time = (scripts / "Time" / "DotnetTimeSource.cs").read_text(encoding="utf-8", errors="replace")
+    add(results, "DotnetTimeSource divides by Stopwatch.Frequency", "Stopwatch.Frequency" in dotnet_time and "/ Stopwatch.Frequency" in dotnet_time, "DotnetTimeSource.cs")
+
+    time_utils = (scripts / "Time" / "TimeUtils.cs").read_text(encoding="utf-8", errors="replace")
+    add(results, "TimeUtils normalizes negative nanoseconds", "Math.Floor(secondsIn)" in time_utils and "normalizedNanoseconds < 0" in time_utils, "TimeUtils.cs")
+    add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
+
+    sensor = (scripts / "Sensor.cs").read_text(encoding="utf-8", errors="replace")
+    add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
+    add(results, "Sensor checks readings before dereference", "if (readings != null)" in sensor and sensor.index("if (readings != null)") < sensor.index("readings.SetHeaderFrame"), "Sensor.cs")
+    add(results, "Sensor unregisters executable action", "UnregisterExecutable" in sensor and "DisposeRosParticipants" in sensor, "Sensor.cs")
+
+
+def check_generator_alignment(results: list[CheckResult]) -> None:
+    """Validate the generator knows about the lifecycle-patched package shape."""
+    generator = (ROOT / "Scripts" / "release" / "build_r2fu_runtime_package.py").read_text(encoding="utf-8", errors="replace")
+    required = (
+        "collect_local_patch_overlays",
+        "apply_local_patch_overlays",
+        "collect_meta_overlays",
+        "apply_meta_overlays",
+        "LEAKY_UPSTREAM_EXAMPLES",
+        "runtime_asmdef",
+        "make_writable",
+        "windows_long_path",
+        "PackageInfo.FindForAssetPath",
+        "UNITY_EDITOR",
+    )
+    for token in required:
+        add(results, f"runtime package generator token: {token}", token in generator, token)
 
 
 def check_public_docs(results: list[CheckResult]) -> None:
@@ -347,6 +459,9 @@ def run_checks() -> list[CheckResult]:
     check_inventory(results)
     check_runtime_files(results)
     check_package_path_patch(results)
+    check_runtime_asmdef(results)
+    check_runtime_source_patches(results)
+    check_generator_alignment(results)
     check_public_docs(results)
     check_package_boundaries(results)
     return results

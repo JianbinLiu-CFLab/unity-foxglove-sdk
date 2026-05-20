@@ -1,4 +1,5 @@
 // Copyright 2022 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,7 +56,7 @@ public class DotnetTimeSource : ITimeSource
         lock(mutex) // Threading
         {
             double endTimestamp = Stopwatch.GetTimestamp();
-            var durationInSeconds = endTimestamp - stopwatchStartTimeStamp;
+            var durationInSeconds = (endTimestamp - stopwatchStartTimeStamp) / Stopwatch.Frequency;
             double timeOffset = 0;
             if (durationInSeconds >= maxUnsyncedSeconds)
             {   // acquire DateTime to sync
@@ -72,4 +73,3 @@ public class DotnetTimeSource : ITimeSource
 }
 
 }  // namespace ROS2
-

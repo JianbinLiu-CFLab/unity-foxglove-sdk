@@ -58,7 +58,7 @@ namespace Foxglove.Schemas.Video
         /// <summary>Starts the Windows native H.264 encoder if available.</summary>
         public bool Start(MediaFoundationH264EncoderOptions options)
         {
-            Stop();
+            Stop(clearOutputQueue: true);
             _options = options ?? new MediaFoundationH264EncoderOptions();
             LastError = null;
             LastDiagnosticLine = null;
@@ -87,7 +87,7 @@ namespace Foxglove.Schemas.Video
             {
                 LastError = DescribeException(ex);
                 LastDiagnosticLine = LastError;
-                Stop();
+                Stop(clearOutputQueue: true);
                 return false;
             }
         }
@@ -134,10 +134,10 @@ namespace Foxglove.Schemas.Video
 
         public void Dispose()
         {
-            Stop();
+            Stop(clearOutputQueue: false);
         }
 
-        private void Stop()
+        private void Stop(bool clearOutputQueue)
         {
             IsRunning = false;
             if (_transform != null)
@@ -172,6 +172,15 @@ namespace Foxglove.Schemas.Video
                 NativeMethods.CoUninitialize();
                 _comInitialized = false;
             }
+
+            if (clearOutputQueue)
+                DrainOutputQueue();
+        }
+
+        private void DrainOutputQueue()
+        {
+            while (_outputAccessUnits.TryDequeue(out _)) { }
+            Interlocked.Exchange(ref _outputCount, 0);
         }
 
         private void InitializeMediaFoundation()

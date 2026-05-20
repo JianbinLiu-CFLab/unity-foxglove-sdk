@@ -1,4 +1,5 @@
 // Copyright 2019-2021 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +16,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEditor;
 
 namespace ROS2
 {
@@ -25,7 +25,7 @@ namespace ROS2
 /// but will also be removed properly with Ros2cs Shutdown, which ROS2 for Unity performs on application quit
 /// The node should be constructed through ROS2UnityComponent class, which also handles spinning
 /// </summary>
-public class ROS2Node
+public class ROS2Node : IDisposable
 {
     internal INode node;
     public ROS2Clock clock;
@@ -37,11 +37,6 @@ public class ROS2Node
         name = unityROS2NodeName;
         node = Ros2cs.CreateNode(name);
         clock = new ROS2Clock();
-    }
-
-    ~ROS2Node()
-    {
-        Ros2cs.RemoveNode(node);
     }
 
     private static void ThrowIfUninitialized(string callContext)
@@ -145,6 +140,29 @@ public class ROS2Node
     {
         ThrowIfUninitialized(callContext: "remove client");
         return node.RemoveClient(client);
+    }
+
+    public void Dispose()
+    {
+        // U2F-LOCAL-PATCH: release native node/clock deterministically on Unity teardown.
+        clock?.Dispose();
+        clock = null;
+
+        if (node == null)
+            return;
+
+        try
+        {
+            if (Ros2cs.Ok())
+                Ros2cs.RemoveNode(node);
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            node = null;
+        }
     }
 }
 

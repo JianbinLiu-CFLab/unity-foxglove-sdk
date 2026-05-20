@@ -8,6 +8,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEngine;
@@ -22,14 +23,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         static Ros2ForUnityRuntimeDefineInstaller()
         {
-            EditorApplication.delayCall += EnsureCompileSymbol;
+            EditorApplication.delayCall += ReconcileCompileSymbol;
         }
 
-        private static void EnsureCompileSymbol()
+        private static void ReconcileCompileSymbol()
         {
-            if (!IsRuntimePackageInstalled())
-                return;
-
+            var runtimeInstalled = IsRuntimePackageInstalled();
             var target = NamedBuildTarget.Standalone;
             var symbols = PlayerSettings.GetScriptingDefineSymbols(target);
             var parts = symbols
@@ -38,12 +37,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 .Where(value => value.Length > 0)
                 .ToList();
 
-            if (parts.Contains(CompileSymbol, StringComparer.Ordinal))
+            var hasSymbol = parts.Contains(CompileSymbol, StringComparer.Ordinal);
+            if (runtimeInstalled && hasSymbol)
+                return;
+            if (!runtimeInstalled && !hasSymbol)
                 return;
 
-            parts.Add(CompileSymbol);
+            if (runtimeInstalled)
+                parts.Add(CompileSymbol);
+            else
+                parts.RemoveAll(value => string.Equals(value, CompileSymbol, StringComparison.Ordinal));
+
             PlayerSettings.SetScriptingDefineSymbols(target, string.Join(";", parts));
-            Debug.Log("Unity2Foxglove enabled " + CompileSymbol + " because " + RuntimePackageName + " is installed.");
+            Debug.Log(runtimeInstalled
+                ? "Unity2Foxglove enabled " + CompileSymbol + " because " + RuntimePackageName + " is installed."
+                : "Unity2Foxglove removed " + CompileSymbol + " because " + RuntimePackageName + " is not installed.");
         }
 
         private static bool IsRuntimePackageInstalled()
@@ -53,7 +61,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return false;
 
             var manifest = File.ReadAllText(manifestPath);
-            return manifest.Contains("\"" + RuntimePackageName + "\"", StringComparison.Ordinal);
+            var dependencyPattern = "\"" + Regex.Escape(RuntimePackageName) + "\"\\s*:";
+            return Regex.IsMatch(manifest, dependencyPattern);
         }
     }
 }

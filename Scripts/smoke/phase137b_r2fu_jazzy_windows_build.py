@@ -164,6 +164,7 @@ def run_command(
     with log_file.open("a", encoding="utf-8", errors="replace") as log:
         log.write(header)
 
+    timed_out = False
     try:
         process = subprocess.Popen(
             command,
@@ -192,16 +193,21 @@ def run_command(
                         log.flush()
                     break
                 if deadline is not None and time.monotonic() > deadline:
-                    process.kill()
+                    timed_out = True
+                    kill_process_tree_windows(process.pid)
                     try:
                         process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
-                        pass
+                        process.kill()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            pass
                     output_parts.append("\nCOMMAND_TIMEOUT\n")
                     log.write("\nCOMMAND_TIMEOUT\n")
                     log.flush()
                     break
-        exit_code = process.returncode if process.returncode is not None else 124
+        exit_code = 124 if timed_out else (process.returncode if process.returncode is not None else 124)
         output = "".join(output_parts)
     except FileNotFoundError as exc:
         exit_code = 127
@@ -213,6 +219,19 @@ def run_command(
     if check and exit_code != 0:
         raise Phase137BError(classify_output(output), f"Command failed: {' '.join(command)}")
     return result
+
+
+def kill_process_tree_windows(pid: int) -> None:
+    """Terminate a Windows process tree without letting build children outlive timeout."""
+
+    if os.name != "nt":
+        return
+    subprocess.run(
+        ["taskkill", "/T", "/F", "/PID", str(pid)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
 
 
 def classify_output(output: str) -> str:
@@ -236,7 +255,7 @@ def classify_output(output: str) -> str:
         return "BLOCKED_VSDEV_ENV"
     if "winerror 2" in lower or "system cannot find the file" in lower or "system kann die angegebene datei nicht finden" in lower:
         return "BLOCKED_VSDEV_ENV"
-    if "vctargetspath" in lower or "fileloadexception" in lower or "msbuild" in lower and "invalid" in lower:
+    if "vctargetspath" in lower or "fileloadexception" in lower or ("msbuild" in lower and "invalid" in lower):
         return "BLOCKED_MSBUILD_QUERY"
     if "d8037" in lower or "cannot create temporary il file" in lower:
         return "BLOCKED_CL_TEMP_IL"
@@ -365,10 +384,7 @@ def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: p
     filtered_existing = [
         entry
         for entry in existing_path.split(os.pathsep)
-        if entry
-        and "anaconda" not in entry.lower()
-        and "python313" not in entry.lower()
-        and "python312" not in entry.lower()
+        if entry and not is_contaminating_python_path(entry)
     ]
     merged_path = os.pathsep.join([str(path) for path in path_entries] + filtered_existing)
     cleaned.pop("Path", None)
@@ -384,6 +400,29 @@ def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: p
     cleaned.pop("ROS_LOCALHOST_ONLY", None)
     cleaned.pop("ROS_DISCOVERY_SERVER", None)
     return cleaned
+
+
+def is_contaminating_python_path(entry: str) -> bool:
+    """Return true for PATH entries likely to override the selected ROS2 pixi Python."""
+
+    lower = entry.lower()
+    blocked = (
+        "anaconda",
+        "miniconda",
+        "conda",
+        "mambaforge",
+        "miniforge",
+        "python27",
+        "python36",
+        "python37",
+        "python38",
+        "python39",
+        "python310",
+        "python311",
+        "python312",
+        "python313",
+    )
+    return any(token in lower for token in blocked)
 
 
 def capture_ros2_environment(ros2_root: pathlib.Path, env: dict[str, str], log_file: pathlib.Path) -> dict[str, str]:
@@ -452,14 +491,21 @@ def verify_cl_compile(temp_root: pathlib.Path, env: dict[str, str], log_file: pa
     cl_path = shutil.which("cl", path=env.get("Path") or env.get("PATH"))
     if not cl_path:
         raise Phase137BError("BLOCKED_VSDEV_ENV", "cl.exe was not found in the imported VS environment")
-    result = run_command(
-        [cl_path, "/nologo", "/c", str(source), f"/Fo{obj}"],
-        cwd=temp_root,
-        env=env,
-        log_file=log_file,
-    )
-    if result.exit_code != 0:
-        raise Phase137BError(classify_output(result.output), "cl.exe tiny compile failed")
+    try:
+        result = run_command(
+            [cl_path, "/nologo", "/c", str(source), f"/Fo{obj}"],
+            cwd=temp_root,
+            env=env,
+            log_file=log_file,
+        )
+        if result.exit_code != 0:
+            raise Phase137BError(classify_output(result.output), "cl.exe tiny compile failed")
+    finally:
+        for probe in (source, obj):
+            try:
+                probe.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def resolve_cmake_generator(requested: str, env: dict[str, str], log_file: pathlib.Path) -> str:

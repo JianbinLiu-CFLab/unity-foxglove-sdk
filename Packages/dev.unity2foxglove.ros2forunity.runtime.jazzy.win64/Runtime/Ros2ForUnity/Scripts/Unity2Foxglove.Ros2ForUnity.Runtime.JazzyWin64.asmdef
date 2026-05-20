@@ -3,11 +3,10 @@
   "rootNamespace": "",
   "references": [],
   "includePlatforms": [],
-  "excludePlatforms": [
-    "WebGL"
-  ],
+  "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": false,
+  "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
   "versionDefines": [],

@@ -67,7 +67,7 @@ namespace Foxglove.Schemas.Video
             if (IsRunning)
                 return true;
 
-            Stop();
+            Stop(clearOutputQueue: true);
 
             _options = options ?? new OpenH264EncoderOptions();
             LastError = null;
@@ -157,6 +157,11 @@ namespace Foxglove.Schemas.Video
 
         public void Stop()
         {
+            Stop(clearOutputQueue: true);
+        }
+
+        private void Stop(bool clearOutputQueue)
+        {
             var stop = _stop;
             if (stop != null && !stop.IsCancellationRequested)
                 stop.Cancel();
@@ -203,11 +208,13 @@ namespace Foxglove.Schemas.Video
             _stop?.Dispose();
             _stop = null;
             DrainInputQueue();
+            if (clearOutputQueue)
+                DrainOutputQueue();
         }
 
         public void Dispose()
         {
-            Stop();
+            Stop(clearOutputQueue: false);
         }
 
         private async Task RunStdinWriter(Process process, CancellationToken token)
@@ -344,6 +351,15 @@ namespace Foxglove.Schemas.Video
         {
             while (_inputFrames.TryDequeue(out _)) { }
             Interlocked.Exchange(ref _inputCount, 0);
+        }
+
+        private void DrainOutputQueue()
+        {
+            lock (_outputLock)
+            {
+                while (_outputAccessUnits.TryDequeue(out _)) { }
+                Interlocked.Exchange(ref _outputCount, 0);
+            }
         }
 
         private static bool IsProcessRunning(Process process)

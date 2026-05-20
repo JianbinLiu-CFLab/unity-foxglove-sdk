@@ -8,6 +8,7 @@ using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
 using UnityEngine.Serialization;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using System.Collections.Generic;
 using ROS2;
 #endif
 
@@ -47,6 +48,8 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private ROS2Node _directRos2Node;
     private IPublisher<std_msgs.msg.String> _directPublisher;
     private ISubscription<std_msgs.msg.String> _directSubscription;
+    private readonly object _directReceiveGate = new object();
+    private readonly Queue<string> _directReceived = new Queue<string>();
     private bool _directInitializationFailed;
 #endif
 
@@ -86,6 +89,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
                 return;
 
             EnsureDirectEndpoints();
+            DrainDirectReceived();
             PublishDirectIfDue();
             return;
         }
@@ -204,7 +208,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             _directSubscription =
                 _directRos2Node.CreateSubscription<std_msgs.msg.String>(
                     NormalizeTopic(_inTopic, InTopic),
-                    OnStringReceived);
+                    QueueDirectStringReceived);
         }
 
         _statusMessage = "Direct ROS2 For Unity endpoints ready.";
@@ -285,6 +289,30 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         _directSubscription = null;
         _directPublisher = null;
         _directRos2Node = null;
+        lock (_directReceiveGate)
+            _directReceived.Clear();
+    }
+
+    private void QueueDirectStringReceived(std_msgs.msg.String message)
+    {
+        lock (_directReceiveGate)
+            _directReceived.Enqueue(message.Data);
+    }
+
+    private void DrainDirectReceived()
+    {
+        while (true)
+        {
+            string data;
+            lock (_directReceiveGate)
+            {
+                if (_directReceived.Count == 0)
+                    return;
+                data = _directReceived.Dequeue();
+            }
+
+            RecordReceived(data);
+        }
     }
 
     private void EnsureEndpoints()
@@ -350,11 +378,16 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnStringReceived(std_msgs.msg.String message)
     {
+        RecordReceived(message.Data);
+    }
+
+    private void RecordReceived(string data)
+    {
         _receivedCount++;
-        _lastReceived = message.Data;
+        _lastReceived = data;
         _statusMessage = "Received " + _receivedCount + " string message(s).";
         _lastError = string.Empty;
-        Debug.Log(LogPrefix + "received: " + message.Data);
+        Debug.Log(LogPrefix + "received: " + data);
     }
 
     private static string NormalizeTopic(string value, string fallback)

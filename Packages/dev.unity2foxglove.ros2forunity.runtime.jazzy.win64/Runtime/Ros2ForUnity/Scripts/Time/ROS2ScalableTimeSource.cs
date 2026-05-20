@@ -1,4 +1,5 @@
 // Copyright 2022 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using System.Threading;
 using UnityEngine;
 
@@ -21,7 +23,7 @@ namespace ROS2
 /// <summary>
 /// ros2 time source (system time by default).
 /// </summary>
-public class ROS2ScalableTimeSource : ITimeSource
+public class ROS2ScalableTimeSource : ITimeSource, IDisposable
 {
   private Thread mainThread;
   private double lastReadingSecs;
@@ -80,11 +82,13 @@ public class ROS2ScalableTimeSource : ITimeSource
     }
   }
 
-  ~ROS2ScalableTimeSource()
+  public void Dispose()
   {
+    // U2F-LOCAL-PATCH: avoid native cleanup from the finalizer thread.
     if (clock != null)
     {
       clock.Dispose();
+      clock = null;
     }
   }
 }

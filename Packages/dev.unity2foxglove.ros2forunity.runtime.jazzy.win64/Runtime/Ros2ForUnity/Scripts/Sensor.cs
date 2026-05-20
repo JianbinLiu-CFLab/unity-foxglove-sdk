@@ -1,4 +1,5 @@
 // Copyright 2019-2021 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,7 +83,6 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     protected double desiredFrameTime = 0.0;
     private const double minimumFrequency = 0.001;
     private Publisher<T> publisher;
-    private Subscription<rosgraph_msgs.msg.Clock> clockSubscriber;
     private ROS2UnityComponent ros2UnityComponent;
     private ROS2Node ros2Node;
     private string ownerAgentName;
@@ -153,14 +153,14 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         if (!HasNewData())
             return;
 
-        if (publisher != null & publishing)
+        if (publisher != null && publishing)
         {
             if (ros2UnityComponent.Ok())
             {
                 readings = AcquireValue();
-                readings.SetHeaderFrame(frameName());
                 if (readings != null)
                 {
+                    readings.SetHeaderFrame(frameName());
                     MessageWithHeader readingsHeader = readings as MessageWithHeader;
                     ros2Node.clock.UpdateROSTimestamp(ref readingsHeader);
                     publisher.Publish(readings);
@@ -189,6 +189,38 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         publishing = true;
         CalculateFrameTime();
         lastTimestamp = DateTime.UtcNow.Ticks / 1E7;
+    }
+
+    void OnDisable()
+    {
+        DisposeRosParticipants();
+    }
+
+    void OnDestroy()
+    {
+        DisposeRosParticipants();
+    }
+
+    private void DisposeRosParticipants()
+    {
+        // U2F-LOCAL-PATCH: unregister executor actions and release native endpoints deterministically.
+        if (ros2UnityComponent != null)
+            ros2UnityComponent.UnregisterExecutable(ExecutorThreadSensorPublishAction);
+
+        if (ros2Node != null && publisher != null)
+        {
+            try
+            {
+                ros2Node.RemovePublisher<T>(publisher);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        publisher = null;
+        ros2UnityComponent = null;
+        ros2Node = null;
     }
 
     /// <summary>

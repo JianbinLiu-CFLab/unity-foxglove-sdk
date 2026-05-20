@@ -1,4 +1,5 @@
 // Copyright 2019-2021 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +17,9 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using System.Xml;
 
 namespace ROS2
@@ -27,13 +30,22 @@ namespace ROS2
 /// </summary>
 internal class ROS2ForUnity
 {
+    private static readonly object lifecycleGate = new object();
     private static bool isInitialized = false;
+    private static int ownerCount = 0;
     private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";
     private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
     private const string unity2FoxgloveRuntimePackageAssetPath =
         "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
     private XmlDocument ros2csMetadata = new XmlDocument();
     private XmlDocument ros2ForUnityMetadata = new XmlDocument();
+    private bool ownsLifecycle;
+#if UNITY_EDITOR
+    private bool editorCallbacksRegistered;
+#endif
+#if ENABLE_MONO
+    private ConsoleCancelEventHandler ctrlCHandler;
+#endif
 
     public enum Platform
     {
@@ -100,6 +112,7 @@ internal class ROS2ForUnity
 
             // Unity2Foxglove package path support for local packages installed with
             // Package Manager's "Add package from disk..." flow.
+#if UNITY_EDITOR
             UnityEditor.PackageManager.PackageInfo runtimePackage =
                 UnityEditor.PackageManager.PackageInfo.FindForAssetPath(unity2FoxgloveRuntimePackageAssetPath);
             if (runtimePackage != null && !string.IsNullOrEmpty(runtimePackage.resolvedPath)) {
@@ -111,6 +124,7 @@ internal class ROS2ForUnity
                     return resolvedPackagePath;
                 }
             }
+#endif
 
             DirectoryInfo dataDirectory = Directory.GetParent(appDataPath);
             if (dataDirectory != null) {
@@ -276,10 +290,30 @@ internal class ROS2ForUnity
     {
 #if ENABLE_MONO
         // Il2CPP build does not support Console.CancelKeyPress currently
-        Console.CancelKeyPress += (sender, eventArgs) => {
+        ctrlCHandler = (sender, eventArgs) => {
             eventArgs.Cancel = true;
             DestroyROS2ForUnity();
         };
+        Console.CancelKeyPress += ctrlCHandler;
+#endif
+    }
+
+    private void UnregisterCallbacks()
+    {
+#if ENABLE_MONO
+        if (ctrlCHandler != null)
+        {
+            Console.CancelKeyPress -= ctrlCHandler;
+            ctrlCHandler = null;
+        }
+#endif
+#if UNITY_EDITOR
+        if (editorCallbacksRegistered)
+        {
+            EditorApplication.playModeStateChanged -= this.EditorPlayStateChanged;
+            EditorApplication.quitting -= this.DestroyROS2ForUnity;
+            editorCallbacksRegistered = false;
+        }
 #endif
     }
 
@@ -342,20 +376,44 @@ internal class ROS2ForUnity
             }
         }
 
-        // Initialize
-        ConnectLoggers();
-        Ros2cs.Init();
+        // U2F-LOCAL-PATCH: coordinate multiple Unity components and avoid
+        // finalizer-thread ROS shutdown.
+        var initializedThisInstance = false;
+        lock (lifecycleGate)
+        {
+            ownerCount++;
+            ownsLifecycle = true;
+            if (!isInitialized)
+            {
+                try
+                {
+                    ConnectLoggers();
+                    Ros2cs.Init();
+                    isInitialized = true;
+                    initializedThisInstance = true;
+                }
+                catch
+                {
+                    ownerCount = Math.Max(0, ownerCount - 1);
+                    ownsLifecycle = false;
+                    throw;
+                }
+            }
+        }
+
         RegisterCtrlCHandler();
 
-        string rmwImpl = Ros2cs.GetRMWImplementation();
+        string rmwImpl = initializedThisInstance || Ros2cs.Ok()
+            ? Ros2cs.GetRMWImplementation()
+            : "unknown";
 
         Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
         EditorApplication.playModeStateChanged += this.EditorPlayStateChanged;
         EditorApplication.quitting += this.DestroyROS2ForUnity;
+        editorCallbacksRegistered = true;
 #endif
-        isInitialized = true;
     }
 
     private static void ThrowIfUninitialized(string callContext)
@@ -381,17 +439,26 @@ internal class ROS2ForUnity
 
     internal void DestroyROS2ForUnity()
     {
-        if (isInitialized)
+        UnregisterCallbacks();
+
+        var shouldShutdown = false;
+        lock (lifecycleGate)
+        {
+            if (!ownsLifecycle)
+                return;
+
+            ownsLifecycle = false;
+            ownerCount = Math.Max(0, ownerCount - 1);
+            shouldShutdown = ownerCount == 0 && isInitialized;
+            if (shouldShutdown)
+                isInitialized = false;
+        }
+
+        if (shouldShutdown)
         {
             Debug.Log("Shutting down Ros2 For Unity");
             Ros2cs.Shutdown();
-            isInitialized = false;
         }
-    }
-
-    ~ROS2ForUnity()
-    {
-        DestroyROS2ForUnity();
     }
 
 #if UNITY_EDITOR

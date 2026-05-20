@@ -23,6 +23,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
     private string _statusMessage = UnavailableMessage;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+    private bool _ownsRos2UnityComponent;
     private ROS2UnityComponent _ros2Unity;
     private bool _initializationFailed;
 #endif
@@ -70,7 +71,10 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             {
                 _ros2Unity = _host.GetComponent<ROS2UnityComponent>();
                 if (_ros2Unity == null)
+                {
                     _ros2Unity = _host.AddComponent<ROS2UnityComponent>();
+                    _ownsRos2UnityComponent = true;
+                }
             }
 
             if (!_ros2Unity.Ok())
@@ -142,6 +146,12 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         for (var i = 0; i < _nodes.Count; i++)
             _nodes[i].Dispose();
         _nodes.Clear();
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        if (_ownsRos2UnityComponent && _ros2Unity != null)
+            UnityEngine.Object.Destroy(_ros2Unity);
+        _ros2Unity = null;
+        _ownsRos2UnityComponent = false;
+#endif
         _statusMessage = "ROS2 For Unity context is disposed.";
     }
 
@@ -385,11 +395,14 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         IUnity2FoxgloveRos2Subscription,
         IPhase110DrainableSubscription
     {
+        private const int MaxPendingCallbacks = 32;
+
         private readonly object _gate = new object();
         private readonly Queue<std_msgs.msg.String> _pending = new Queue<std_msgs.msg.String>();
         private readonly Action<std_msgs.msg.String> _callback;
         private readonly ROS2Node _ros2Node;
         private ISubscription<std_msgs.msg.String> _subscription;
+        private int _droppedCallbacks;
         private bool _disposed;
 
         public StringSubscription(
@@ -404,6 +417,15 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public string Topic { get; }
 
+        public int DroppedCallbacks
+        {
+            get
+            {
+                lock (_gate)
+                    return _droppedCallbacks;
+            }
+        }
+
         public void Attach(ISubscription<std_msgs.msg.String> subscription)
         {
             _subscription = subscription;
@@ -411,11 +433,19 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Enqueue(std_msgs.msg.String message)
         {
-            if (_disposed)
-                return;
-
             lock (_gate)
+            {
+                if (_disposed)
+                    return;
+
+                while (_pending.Count >= MaxPendingCallbacks)
+                {
+                    _pending.Dequeue();
+                    _droppedCallbacks++;
+                }
+
                 _pending.Enqueue(message);
+            }
         }
 
         public void Drain()
@@ -436,10 +466,15 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Dispose()
         {
-            if (_disposed)
-                return;
+            lock (_gate)
+            {
+                if (_disposed)
+                    return;
 
-            _disposed = true;
+                _disposed = true;
+                _pending.Clear();
+            }
+
             var subscription = _subscription;
             _subscription = null;
             if (subscription != null)
@@ -452,9 +487,6 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 {
                 }
             }
-
-            lock (_gate)
-                _pending.Clear();
         }
     }
 #endif

@@ -1,4 +1,5 @@
 // Copyright 2019-2022 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,13 +30,14 @@ namespace ROS2
     /// anyway with more than one since the underlying library can handle multiple init and shutdown calls,
     /// and does node name uniqueness check independently.
     /// </summary>
-    public class ROS2UnityCore
+    public class ROS2UnityCore : IDisposable
     {
         private ROS2ForUnity ros2forUnity;
         private List<ROS2Node> nodes;
         private List<INode> ros2csNodes; // For performance in spinning
         private List<Action> executableActions;
-        private bool quitting = false;
+        private volatile bool quitting = false;
+        private Thread spinThread;
         private int interval = 2;  // Spinning / executor interval in ms
         private object mutex = new object();
         private double spinTimeout = 0.0001;
@@ -44,6 +46,8 @@ namespace ROS2
         {
             lock (mutex)
             {
+                if (quitting || ros2forUnity == null)
+                    return false;
                 return (nodes != null && ros2forUnity.Ok());
             }
         }
@@ -57,8 +61,12 @@ namespace ROS2
                 ros2csNodes = new List<INode>();
                 executableActions = new List<Action>();
 
-                Thread publishThread = new Thread(() => Tick());
-                publishThread.Start();
+                spinThread = new Thread(() => Tick())
+                {
+                    IsBackground = true,
+                    Name = "ROS2 For Unity core spin"
+                };
+                spinThread.Start();
             }
         }
 
@@ -85,7 +93,8 @@ namespace ROS2
             lock (mutex)
             {
                 ros2csNodes.Remove(node.node);
-                nodes.Remove(node); //Node will be later deleted if unused, by GC
+                nodes.Remove(node);
+                node.Dispose();
             }
         }
 
@@ -123,7 +132,14 @@ namespace ROS2
                     {
                         foreach (Action action in executableActions)
                         {
-                            action();
+                            try
+                            {
+                                action();
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.LogWarning("[ROS2UnityCore] executable action failed: " + ex.Message);
+                            }
                         }
                         Ros2cs.SpinOnce(ros2csNodes, spinTimeout);
                     }
@@ -134,8 +150,46 @@ namespace ROS2
 
         public void DestroyNow()
         {
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            Thread threadToJoin;
+            List<ROS2Node> nodesToDispose;
+            ROS2ForUnity ros2ToDestroy;
+            lock (mutex)
+            {
+                if (quitting)
+                    return;
+                quitting = true;
+                threadToJoin = spinThread;
+                spinThread = null;
+                nodesToDispose = nodes != null ? new List<ROS2Node>(nodes) : new List<ROS2Node>();
+                nodes?.Clear();
+                ros2csNodes?.Clear();
+                executableActions?.Clear();
+                ros2ToDestroy = ros2forUnity;
+                ros2forUnity = null;
+            }
+
+            if (threadToJoin != null
+                && threadToJoin.IsAlive
+                && Thread.CurrentThread != threadToJoin
+                && !threadToJoin.Join(1000))
+            {
+                Debug.LogWarning("[ROS2UnityCore] spin thread did not stop within 1s.");
+            }
+
+            foreach (var node in nodesToDispose)
+                node.Dispose();
+
+            ros2ToDestroy?.DestroyROS2ForUnity();
+        }
+
+        ~ROS2UnityCore()
+        {
             quitting = true;
-            ros2forUnity.DestroyROS2ForUnity();
         }
     }
 

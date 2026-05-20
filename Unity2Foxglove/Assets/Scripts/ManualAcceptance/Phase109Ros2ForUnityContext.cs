@@ -23,6 +23,7 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
     private string _statusMessage = UnavailableMessage;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+    private bool _ownsRos2UnityComponent;
     private ROS2UnityComponent _ros2Unity;
     private bool _initializationFailed;
 #endif
@@ -70,7 +71,10 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             {
                 _ros2Unity = _host.GetComponent<ROS2UnityComponent>();
                 if (_ros2Unity == null)
+                {
                     _ros2Unity = _host.AddComponent<ROS2UnityComponent>();
+                    _ownsRos2UnityComponent = true;
+                }
             }
 
             if (!_ros2Unity.Ok())
@@ -142,6 +146,12 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         for (var i = 0; i < _nodes.Count; i++)
             _nodes[i].Dispose();
         _nodes.Clear();
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        if (_ownsRos2UnityComponent && _ros2Unity != null)
+            UnityEngine.Object.Destroy(_ros2Unity);
+        _ros2Unity = null;
+        _ownsRos2UnityComponent = false;
+#endif
         _statusMessage = "Phase109 ROS2 For Unity context is disposed.";
     }
 
@@ -246,7 +256,7 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 {
                     IPublisher<std_msgs.msg.String> publisher =
                         _ros2Node.CreatePublisher<std_msgs.msg.String>(NormalizeTopic(topic));
-                    var wrapper = new StringPublisher(NormalizeTopic(topic), publisher);
+                    var wrapper = new StringPublisher(_ros2Node, NormalizeTopic(topic), publisher);
                     return (IUnity2FoxgloveRos2Publisher<T>)(object)wrapper;
                 }
                 catch (Exception ex)
@@ -269,7 +279,7 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 try
                 {
                     var typedCallback = (Action<std_msgs.msg.String>)(object)callback;
-                    var wrapper = new StringSubscription(NormalizeTopic(topic), typedCallback);
+                    var wrapper = new StringSubscription(_ros2Node, NormalizeTopic(topic), typedCallback);
                     ISubscription<std_msgs.msg.String> subscription =
                         _ros2Node.CreateSubscription<std_msgs.msg.String>(
                             NormalizeTopic(topic),
@@ -321,11 +331,16 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
     private sealed class StringPublisher : IUnity2FoxgloveRos2Publisher<std_msgs.msg.String>
     {
+        private readonly ROS2Node _ros2Node;
         private readonly IPublisher<std_msgs.msg.String> _publisher;
         private bool _disposed;
 
-        public StringPublisher(string topic, IPublisher<std_msgs.msg.String> publisher)
+        public StringPublisher(
+            ROS2Node ros2Node,
+            string topic,
+            IPublisher<std_msgs.msg.String> publisher)
         {
+            _ros2Node = ros2Node;
             Topic = topic;
             _publisher = publisher;
         }
@@ -355,7 +370,17 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Dispose()
         {
+            if (_disposed)
+                return;
+
             _disposed = true;
+            try
+            {
+                _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 
@@ -363,19 +388,36 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         IUnity2FoxgloveRos2Subscription,
         IPhase109DrainableSubscription
     {
+        private const int MaxPendingCallbacks = 32;
+
         private readonly object _gate = new object();
         private readonly Queue<std_msgs.msg.String> _pending = new Queue<std_msgs.msg.String>();
         private readonly Action<std_msgs.msg.String> _callback;
+        private readonly ROS2Node _ros2Node;
         private ISubscription<std_msgs.msg.String> _subscription;
+        private int _droppedCallbacks;
         private bool _disposed;
 
-        public StringSubscription(string topic, Action<std_msgs.msg.String> callback)
+        public StringSubscription(
+            ROS2Node ros2Node,
+            string topic,
+            Action<std_msgs.msg.String> callback)
         {
+            _ros2Node = ros2Node;
             Topic = topic;
             _callback = callback;
         }
 
         public string Topic { get; }
+
+        public int DroppedCallbacks
+        {
+            get
+            {
+                lock (_gate)
+                    return _droppedCallbacks;
+            }
+        }
 
         public void Attach(ISubscription<std_msgs.msg.String> subscription)
         {
@@ -384,11 +426,19 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Enqueue(std_msgs.msg.String message)
         {
-            if (_disposed)
-                return;
-
             lock (_gate)
+            {
+                if (_disposed)
+                    return;
+
+                while (_pending.Count >= MaxPendingCallbacks)
+                {
+                    _pending.Dequeue();
+                    _droppedCallbacks++;
+                }
+
                 _pending.Enqueue(message);
+            }
         }
 
         public void Drain()
@@ -409,10 +459,27 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Dispose()
         {
-            _disposed = true;
-            _subscription = null;
             lock (_gate)
+            {
+                if (_disposed)
+                    return;
+
+                _disposed = true;
                 _pending.Clear();
+            }
+
+            var subscription = _subscription;
+            _subscription = null;
+            if (subscription != null)
+            {
+                try
+                {
+                    _ros2Node.RemoveSubscription<std_msgs.msg.String>(subscription);
+                }
+                catch (Exception)
+                {
+                }
+            }
         }
     }
 #endif

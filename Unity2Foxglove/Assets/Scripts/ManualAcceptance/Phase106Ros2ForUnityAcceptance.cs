@@ -26,6 +26,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
     private ROS2Node _ros2Node;
     private IPublisher<std_msgs.msg.String> _publisher;
     private ISubscription<std_msgs.msg.String> _subscriber;
+    private bool _ownsRos2UnityComponent;
     private bool _initializationFailed;
 #endif
 
@@ -59,6 +60,20 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
         _publishIntervalSeconds = Mathf.Max(0.1f, _publishIntervalSeconds);
     }
 
+    private void OnDisable()
+    {
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        DisposeRos2Endpoints();
+#endif
+    }
+
+    private void OnDestroy()
+    {
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        DisposeRos2Endpoints();
+#endif
+    }
+
     private void WarnMissingDefine()
     {
         if (_warnedMissingDefine)
@@ -75,6 +90,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
         if (ros2Unity == null)
         {
             ros2Unity = gameObject.AddComponent<ROS2UnityComponent>();
+            _ownsRos2UnityComponent = true;
         }
 
         _ros2Unity = ros2Unity;
@@ -144,6 +160,53 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
     private void OnRos2StringReceived(std_msgs.msg.String message)
     {
         Debug.Log("[Phase106Ros2ForUnityAcceptance] received: " + message.Data);
+    }
+
+    private void DisposeRos2Endpoints()
+    {
+        if (_ros2Node != null && _subscriber != null)
+        {
+            try
+            {
+                _ros2Node.RemoveSubscription<std_msgs.msg.String>(_subscriber);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        if (_ros2Node != null && _publisher != null)
+        {
+            try
+            {
+                _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        if (_ros2Unity != null && _ros2Node != null)
+        {
+            try
+            {
+                _ros2Unity.RemoveNode(_ros2Node);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        _subscriber = null;
+        _publisher = null;
+        _ros2Node = null;
+
+        if (_ownsRos2UnityComponent && _ros2Unity != null)
+            Destroy(_ros2Unity);
+
+        _ros2Unity = null;
+        _ownsRos2UnityComponent = false;
+        _initializationFailed = false;
     }
 #endif
 }
