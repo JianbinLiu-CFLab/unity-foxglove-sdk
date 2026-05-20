@@ -6,6 +6,13 @@
   "description": "Optional ROS2 For Unity integration package for Unity2Foxglove. Phase 107 contains package and compliance boundaries only; runtime binaries and adapters are added in later phases.",
   "unity": "6000.0",
   "dependencies": {},
+  "samples": [
+    {
+      "displayName": "ROS2 For Unity External Adapter",
+      "description": "Imports a source-only adapter sample that connects the Unity2Foxglove ROS2 facade to an externally imported ROS2 For Unity runtime.",
+      "path": "Samples~/ROS2 For Unity External Adapter"
+    }
+  ],
   "keywords": [
     "unity2foxglove",
     "ros2",

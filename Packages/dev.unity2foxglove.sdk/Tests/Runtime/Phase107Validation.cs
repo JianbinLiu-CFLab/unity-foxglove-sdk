@@ -66,9 +66,8 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var required in requiredFiles)
                 Check(RepoFileExists(required), "107-A7: required optional package file exists: " + required);
 
-            Check(!RepoDirectoryExists(OptionalPackage + "/Editor")
-                  && !RepoDirectoryExists(OptionalPackage + "/Samples~"),
-                "107-A8: optional package contains no editor/sample adapter surface");
+            Check(!RepoDirectoryExists(OptionalPackage + "/Editor"),
+                "107-A8: optional package contains no editor adapter surface");
             VerifyOptionalRuntimeBoundary();
         }
 
@@ -96,8 +95,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(((string)manifest["upstreamSupportStatus"]).Contains("AWSIM/Autoware", StringComparison.Ordinal)
                   && ((string)manifest["upstreamSupportStatus"]).Contains("general community", StringComparison.Ordinal),
                 "107-B8: manifest preserves upstream support caveat");
+            var distributionPolicy = (string)manifest["distributionPolicy"];
             Check((string)manifest["bundleStatus"] == "not_bundled"
-                  && (string)manifest["distributionPolicy"] == "optional_package_boundary_prepared_no_runtime_binaries",
+                  && (distributionPolicy == "optional_package_boundary_prepared_no_runtime_binaries"
+                      || distributionPolicy == "external_ros2_for_unity_runtime_user_import_required"),
                 "107-B9: manifest records not-bundled distribution policy");
             Check((string)manifest["knownRuntimeRmw"] == "rmw_fastrtps_cpp"
                   && (string)manifest["knownRuntimeRosDistro"] == "humble"
@@ -170,8 +171,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && roadmap.Contains("170-series", StringComparison.Ordinal),
                 "107-D4: roadmap marks R2FU optional package as ROS2 mainline and defers old ROS2 plans");
             Check(optionalReadme.Contains("runtime binaries are not bundled", StringComparison.OrdinalIgnoreCase)
-                  && optionalReadme.Contains("future adapter", StringComparison.OrdinalIgnoreCase),
-                "107-D5: optional package README does not claim runtime readiness");
+                  && (optionalReadme.Contains("future adapter", StringComparison.OrdinalIgnoreCase)
+                      || optionalReadme.Contains("external adapter", StringComparison.OrdinalIgnoreCase)),
+                "107-D5: optional package README preserves runtime non-bundling boundary");
             Check(notices.Contains("RobotecAI ROS2 For Unity", StringComparison.Ordinal)
                   && notices.Contains("ros2cs", StringComparison.Ordinal)
                   && notices.Contains("not bundle", StringComparison.OrdinalIgnoreCase)
@@ -243,7 +245,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var extension = Path.GetExtension(path);
             return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase)
-                   || extension.Equals(".asmdef", StringComparison.OrdinalIgnoreCase);
+                   || extension.Equals(".asmdef", StringComparison.OrdinalIgnoreCase)
+                   || extension.Equals(".meta", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ContainsForbiddenRuntimeToken(string path)

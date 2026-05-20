@@ -200,6 +200,12 @@
       },
       "url": "https://packages.unity.com"
     },
+    "dev.unity2foxglove.ros2forunity": {
+      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
     "dev.unity2foxglove.sdk": {
       "version": "file:../../Packages/dev.unity2foxglove.sdk",
       "depth": 0,

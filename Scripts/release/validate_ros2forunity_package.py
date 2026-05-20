@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
 CORE_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 MANIFEST = PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json"
+SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
 
 RUNTIME_BINARY_SUFFIXES = {
     ".dll",
@@ -44,6 +45,13 @@ FORBIDDEN_RUNTIME_NAMES = {
 ALLOWED_RUNTIME_SUFFIXES = {
     ".cs",
     ".asmdef",
+    ".meta",
+}
+
+ALLOWED_SAMPLE_SUFFIXES = {
+    ".cs",
+    ".md",
+    ".meta",
 }
 
 FORBIDDEN_RUNTIME_TOKENS = (
@@ -118,7 +126,30 @@ def check_package_metadata(results: list[CheckResult]) -> None:
 
     dependencies = data.get("dependencies")
     add(results, "package has no dependencies", dependencies == {}, f"dependencies={dependencies!r}")
-    add(results, "package has no samples", "samples" not in data, "samples key absent")
+
+    samples = data.get("samples")
+    add(results, "package has one external adapter sample", isinstance(samples, list) and len(samples) == 1, f"samples={samples!r}")
+    if isinstance(samples, list) and samples:
+        sample = samples[0]
+        add(
+            results,
+            "sample displayName",
+            sample.get("displayName") == "ROS2 For Unity External Adapter",
+            f"displayName={sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "sample path",
+            sample.get("path") == "Samples~/ROS2 For Unity External Adapter",
+            f"path={sample.get('path')!r}",
+        )
+        description = str(sample.get("description", ""))
+        add(
+            results,
+            "sample description names external R2FU",
+            "externally imported ROS2 For Unity" in description,
+            description,
+        )
 
 
 def check_required_files(results: list[CheckResult]) -> None:
@@ -153,7 +184,9 @@ def check_manifest(results: list[CheckResult]) -> None:
         "releaseAsset": "Ros2ForUnity_humble_standalone_windows11.zip",
         "releaseAssetSha256": "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
         "bundleStatus": "not_bundled",
-        "distributionPolicy": "optional_package_boundary_prepared_no_runtime_binaries",
+        "adapterStatus": "external_assets_sample",
+        "distributionPolicy": "external_ros2_for_unity_runtime_user_import_required",
+        "phase110Evidence": "pending",
         "knownRuntimeRmw": "rmw_fastrtps_cpp",
         "knownRuntimeRosDistro": "humble",
     }
@@ -195,7 +228,9 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
     combined = readme + "\n" + notices
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
-    add(results, "README says future adapter", "future adapter" in readme.lower(), rel(PACKAGE / "README.md"))
+    add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
+    add(results, "README says WSL2 is not GREEN gate", "wsl2 nat" in readme.lower() and "not a green gate" in readme.lower(), rel(PACKAGE / "README.md"))
+    add(results, "README defers standard visualization", "171+" in readme and "standard ros2 visualization" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "notices attribute R2FU", "RobotecAI ROS2 For Unity" in notices and "Apache-2.0" in notices, rel(PACKAGE / "THIRD_PARTY_NOTICES.md"))
     add(results, "notices attribute ros2cs", "ros2cs" in notices, rel(PACKAGE / "THIRD_PARTY_NOTICES.md"))
     add(results, "notices preserve support caveat", "AWSIM/Autoware" in combined and "general community" in combined, "support caveat")
@@ -216,9 +251,44 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no runtime binaries found",
     )
 
-    forbidden_dirs = [PACKAGE / "Editor", PACKAGE / "Samples~"]
+    forbidden_dirs = [PACKAGE / "Editor"]
     existing = [rel(path) for path in forbidden_dirs if path.exists()]
-    add(results, "optional package has no editor/sample adapter directories", not existing, "; ".join(existing) if existing else "no editor/sample directories")
+    add(results, "optional package has no editor adapter directory", not existing, "; ".join(existing) if existing else "no editor directory")
+
+
+def check_sample_source_boundary(results: list[CheckResult]) -> None:
+    """Validate the external adapter sample is source-only and names the stable smoke boundary."""
+    required = [
+        SAMPLE / "README.md",
+        SAMPLE / "Phase110Ros2ForUnityContextFactory.cs",
+        SAMPLE / "Phase110Ros2ForUnityContext.cs",
+        SAMPLE / "Phase110Ros2ForUnityStringSmoke.cs",
+    ]
+    for path in required:
+        add(results, f"sample file: {path.name}", path.exists(), rel(path))
+
+    invalid_files = [rel(path) for path in iter_files(SAMPLE) if path.suffix.lower() not in ALLOWED_SAMPLE_SUFFIXES]
+    add(
+        results,
+        "sample contains only source/docs/meta files",
+        not invalid_files,
+        "; ".join(invalid_files[:MAX_REPORTED_OFFENDERS]) if invalid_files else "source-only sample",
+    )
+
+    readme = (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace") if (SAMPLE / "README.md").exists() else ""
+    add(
+        results,
+        "sample README documents external import",
+        "Assets/Ros2ForUnity" in readme and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in readme,
+        rel(SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "sample README documents live topics",
+        "/unity2foxglove/ros2forunity/string/out" in readme
+        and "/unity2foxglove/ros2forunity/string/in" in readme,
+        rel(SAMPLE / "README.md"),
+    )
 
 
 def check_runtime_source_boundary(results: list[CheckResult]) -> None:
@@ -244,7 +314,7 @@ def check_runtime_source_boundary(results: list[CheckResult]) -> None:
         results,
         "optional Runtime contains only facade source",
         not invalid_files,
-        "; ".join(invalid_files[:MAX_REPORTED_OFFENDERS]) if invalid_files else "all Runtime files are source/asmdef",
+        "; ".join(invalid_files[:MAX_REPORTED_OFFENDERS]) if invalid_files else "all Runtime files are source/asmdef/meta",
     )
     add(
         results,
@@ -283,6 +353,7 @@ def main() -> int:
     check_manifest(results)
     check_text_boundaries(results)
     check_no_runtime_artifacts(results)
+    check_sample_source_boundary(results)
     check_runtime_source_boundary(results)
     check_core_boundary(results)
 

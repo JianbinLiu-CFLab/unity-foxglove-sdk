@@ -138,9 +138,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(offenders.Count == 0,
                 "108-C3: optional Runtime has no upstream ROS2/R2FU API references"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
-            Check(!RepoDirectoryExists(OptionalPackage + "/Editor")
-                  && !RepoDirectoryExists(OptionalPackage + "/Samples~"),
-                "108-C4: optional package still has no Editor or Samples adapter surface");
+            Check(!RepoDirectoryExists(OptionalPackage + "/Editor"),
+                "108-C4: optional package still has no Editor adapter surface");
         }
 
         private static void VerifyValidationWiring()
