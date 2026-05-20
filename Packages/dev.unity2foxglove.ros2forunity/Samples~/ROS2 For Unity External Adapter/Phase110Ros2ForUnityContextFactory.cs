@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Ros2ForUnity.Sample
-// Purpose: Creates the Phase110 external ROS2 For Unity facade context for imported samples.
+// Purpose: Creates the external ROS2 For Unity facade context for imported samples.
 
 using UnityEngine;
 

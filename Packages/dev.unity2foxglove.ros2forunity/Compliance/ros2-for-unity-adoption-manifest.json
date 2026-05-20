@@ -7,7 +7,7 @@
   "upstreamSupportStatus": "officially supported for AWSIM/Autoware users; Robotec states it cannot support and maintain the project for the general community",
   "bundleStatus": "not_bundled",
   "adapterStatus": "external_assets_sample",
-  "distributionModel": "one_repo_multi_package_runtime_artifacts",
+  "distributionModel": "one_repo_multi_package_release_artifacts",
   "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
   "activeRuntimePolicy": "one_runtime_package_per_project",
   "knownRuntimeRmw": "rmw_fastrtps_cpp",
@@ -21,11 +21,11 @@
     "distributionLevel": "BundleCandidate",
     "artifact": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
     "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
-    "sourceBasis": "Phase 137B local Jazzy rebuild from R2FU/ros2cs sources with Windows ROS2 Jazzy dependency closure",
+    "sourceBasis": "Local Jazzy rebuild from R2FU/ros2cs sources with Windows ROS2 Jazzy dependency closure",
     "evidence": [
-      "Developer/87 Phase137B R2FU Jazzy Windows Build Toolchain Closure Evidence.md",
-      "Developer/88 Phase137B Jazzy R2FU Windows Build Pitfalls And Validation.md",
-      "Developer/72 Phase106110 Joint Unity Windows ROS2 Acceptance Crash Evidence.md"
+      "Local Jazzy runtime rebuild evidence",
+      "Unity Editor plus Windows ROS2 Jazzy bidirectional string topic smoke",
+      "WSL2 NAT diagnostic packet-capture notes"
     ],
     "knownCaveats": [
       "Runtime artifact is local and not bundled in this adapter package.",
@@ -40,7 +40,7 @@
     "rosDistro": "humble",
     "supportLevel": "LegacySupported",
     "distributionLevel": "ExternalOnly",
-    "evidence": "GREEN_WINDOWS_ROS2 / Phase106B GREEN_RTPS_LOCATOR / GREEN_WSL_TO_UNITY_SEDP / BLOCKED_UNITY_TO_WSL_SEDP / BLOCKED_WSL_ROS2_DISCOVERY"
+    "evidence": "WINDOWS_ROS2_GREEN / RTPS_LOCATOR_GREEN / WSL_TO_UNITY_SEDP_GREEN / UNITY_TO_WSL_SEDP_BLOCKED / WSL_ROS2_DISCOVERY_BLOCKED"
   },
   "plannedRuntimePackages": [
     "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",

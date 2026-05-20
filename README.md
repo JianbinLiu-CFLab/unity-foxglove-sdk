@@ -204,7 +204,7 @@ Release and compliance documents:
 - [v1.8.0 release notes](docs/releases/RELEASE_NOTES_v1.8.0.md)
 - [Release notes archive](docs/releases/)
 
-Development planning notes are not shipped with the repository. If you need the phase plans or implementation history, please contact the author.
+Development planning notes are not shipped with the repository. If you need implementation history or design context, please contact the author.
 
 ### 4.1 Citation / Research Positioning
 
@@ -252,7 +252,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 ### Security
 
-- **CSWSH Origin Guard** (Phase 28): browser-origin WebSocket connections are rejected by default. An Inspector-configurable allowlist enables specific origins. `file://` origins (Electron/Foxglove Desktop) are always permitted.
+- **CSWSH Origin Guard**: browser-origin WebSocket connections are rejected by default. An Inspector-configurable allowlist enables specific origins. `file://` origins (Electron/Foxglove Desktop) are always permitted.
 - **SecureWebSocket mode**: optional `wss://` support loads a PFX certificate and private key in Unity. The root CA distributor is only a bootstrap helper; verify the SHA-256 fingerprint before trusting a CA.
 - **Shared token gate**: optional `?token=...` matching can reject missing or wrong tokens before WebSocket upgrade. Prefer using it with WSS; do not treat it as strong identity.
 - **Default bind**: `127.0.0.1:8765`. Do not expose this port on untrusted networks.

@@ -183,7 +183,7 @@ def check_manifest(results: list[CheckResult]) -> None:
         "upstreamLicenseFile": "Upstream/LICENSE.AL2",
         "bundleStatus": "not_bundled",
         "adapterStatus": "external_assets_sample",
-        "distributionModel": "one_repo_multi_package_runtime_artifacts",
+        "distributionModel": "one_repo_multi_package_release_artifacts",
         "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
         "activeRuntimePolicy": "one_runtime_package_per_project",
         "knownRuntimeRmw": "rmw_fastrtps_cpp",
@@ -234,7 +234,7 @@ def check_manifest(results: list[CheckResult]) -> None:
     add(
         results,
         "manifest legacy evidence",
-        "GREEN_WINDOWS_ROS2" in evidence and "BLOCKED_WSL_ROS2_DISCOVERY" in evidence,
+        "WINDOWS_ROS2_GREEN" in evidence and "WSL_ROS2_DISCOVERY_BLOCKED" in evidence,
         evidence,
     )
 
@@ -277,16 +277,34 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists()
         else ""
     )
-    combined = readme + "\n" + notices
+    sample_readme = (
+        (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (SAMPLE / "README.md").exists()
+        else ""
+    )
+    combined = readme + "\n" + notices + "\n" + sample_readme
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says WSL2 is not GREEN gate", "wsl2 nat" in readme.lower() and "not a green gate" in readme.lower(), rel(PACKAGE / "README.md"))
-    add(results, "README defers standard visualization", "171+" in readme and "standard ros2 visualization" in readme.lower(), rel(PACKAGE / "README.md"))
+    add(
+        results,
+        "README defers standard visualization",
+        "standard ros2 visualization" in readme.lower(),
+        rel(PACKAGE / "README.md"),
+    )
     add(results, "notices attribute R2FU", "RobotecAI ROS2 For Unity" in notices and "Apache-2.0" in notices, rel(PACKAGE / "THIRD_PARTY_NOTICES.md"))
     add(results, "notices attribute ros2cs", "ros2cs" in notices, rel(PACKAGE / "THIRD_PARTY_NOTICES.md"))
     add(results, "notices preserve support caveat", "AWSIM/Autoware" in combined and "general community" in combined, "support caveat")
     add(results, "notices require future inventory", "complete transitive inventory" in combined, "future binary bundling boundary")
+    forbidden_public_tokens = ["Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108", "phase", "Phase"]
+    hits = [token for token in forbidden_public_tokens if token in combined]
+    manifest_text = (PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json").read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
+    hits.extend(token for token in forbidden_public_tokens if token in manifest_text)
+    add(results, "public R2FU docs avoid internal phase names", not hits, ", ".join(hits) if hits else "no phase tokens")
 
 
 def check_no_runtime_artifacts(results: list[CheckResult]) -> None:

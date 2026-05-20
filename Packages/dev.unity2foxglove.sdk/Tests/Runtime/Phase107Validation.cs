@@ -101,16 +101,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && (string)legacyRuntime["supportLevel"] == "LegacySupported"
                   && (string)legacyRuntime["distributionLevel"] == "ExternalOnly",
                 "107-B7: manifest keeps Humble as legacy external evidence");
-            Check(((string)legacyRuntime["evidence"]!).Contains("GREEN_WINDOWS_ROS2", StringComparison.Ordinal)
-                  && ((string)legacyRuntime["evidence"]!).Contains("BLOCKED_WSL_ROS2_DISCOVERY", StringComparison.Ordinal),
-                "107-B8: manifest records Phase106/106B legacy verdicts");
+            Check(((string)legacyRuntime["evidence"]!).Contains("WINDOWS_ROS2_GREEN", StringComparison.Ordinal)
+                  && ((string)legacyRuntime["evidence"]!).Contains("WSL_ROS2_DISCOVERY_BLOCKED", StringComparison.Ordinal),
+                "107-B8: manifest records legacy ROS2 For Unity verdicts");
             Check(((string)manifest["upstreamSupportStatus"]).Contains("AWSIM/Autoware", StringComparison.Ordinal)
                   && ((string)manifest["upstreamSupportStatus"]).Contains("general community", StringComparison.Ordinal),
                 "107-B9: manifest preserves upstream support caveat");
             var distributionPolicy = (string)manifest["distributionPolicy"];
             Check((string)manifest["bundleStatus"] == "not_bundled"
                   && distributionPolicy == "runtime_artifacts_live_in_separate_runtime_packages"
-                  && (string)manifest["distributionModel"] == "one_repo_multi_package_runtime_artifacts",
+                  && (string)manifest["distributionModel"] == "one_repo_multi_package_release_artifacts",
                 "107-B10: manifest records not-bundled multi-package distribution policy");
             Check((string)manifest["knownRuntimeRmw"] == "rmw_fastrtps_cpp"
                   && (string)manifest["knownRuntimeRosDistro"] == "jazzy"

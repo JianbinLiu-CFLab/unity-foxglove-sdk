@@ -167,9 +167,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDocsBoundary()
         {
             var readme = ReadRepoText(OptionalPackage + "/README.md");
-            Check(readme.Contains("Phase 108 facade is an API boundary only", StringComparison.Ordinal)
+            Check(readme.Contains("The facade is an API boundary only", StringComparison.Ordinal)
                   && readme.Contains("not end-user ready for ROS2 publishing", StringComparison.OrdinalIgnoreCase)
-                  && readme.Contains("R2FU-backed implementation starts later", StringComparison.Ordinal),
+                  && readme.Contains("backing implementation", StringComparison.Ordinal),
                 "108-E1: optional package README documents facade-only status");
         }
 

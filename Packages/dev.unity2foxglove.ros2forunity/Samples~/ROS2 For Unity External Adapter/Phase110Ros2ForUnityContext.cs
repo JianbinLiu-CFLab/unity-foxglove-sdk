@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Ros2ForUnity.Sample
-// Purpose: Implements the Phase110 external ROS2 For Unity backed facade for string smoke tests.
+// Purpose: Implements the external ROS2 For Unity backed facade for string smoke tests.
 
 using System;
 using System.Collections.Generic;
@@ -15,7 +15,7 @@ using ROS2;
 public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 {
     private const string UnavailableMessage =
-        "Phase110 ROS2 For Unity sample adapter is unavailable. Import ROS2 For Unity and define UNITY2FOXGLOVE_ROS2_FOR_UNITY.";
+        "ROS2 For Unity sample adapter is unavailable. Import ROS2 For Unity and define UNITY2FOXGLOVE_ROS2_FOR_UNITY.";
 
     private readonly GameObject _host;
     private readonly List<IPhase110DrainableNode> _nodes = new List<IPhase110DrainableNode>();
@@ -50,7 +50,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
     {
         if (_disposed)
         {
-            _statusMessage = "Phase110 ROS2 For Unity context is disposed.";
+            _statusMessage = "ROS2 For Unity context is disposed.";
             return false;
         }
 
@@ -60,7 +60,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         if (_host == null)
         {
-            _statusMessage = "Phase110 ROS2 For Unity context has no Unity host GameObject.";
+            _statusMessage = "ROS2 For Unity context has no Unity host GameObject.";
             return false;
         }
 
@@ -79,7 +79,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 return false;
             }
 
-            _statusMessage = "ROS2 For Unity is ready for Phase110 string smoke.";
+            _statusMessage = "ROS2 For Unity is ready for string smoke.";
             return true;
         }
         catch (Exception ex)
@@ -97,7 +97,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
     public IUnity2FoxgloveRos2Node CreateNode(string nodeName)
     {
         if (_disposed)
-            return new UnavailableNode(NormalizeName(nodeName), "Phase110 ROS2 For Unity context is disposed.");
+            return new UnavailableNode(NormalizeName(nodeName), "ROS2 For Unity context is disposed.");
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         if (!TryEnsureReady() || _ros2Unity == null)
@@ -142,12 +142,12 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         for (var i = 0; i < _nodes.Count; i++)
             _nodes[i].Dispose();
         _nodes.Clear();
-        _statusMessage = "Phase110 ROS2 For Unity context is disposed.";
+        _statusMessage = "ROS2 For Unity context is disposed.";
     }
 
     private static string NormalizeName(string value)
     {
-        return string.IsNullOrWhiteSpace(value) ? "unity2foxglove_phase110" : value;
+        return string.IsNullOrWhiteSpace(value) ? "unity2foxglove_ros2forunity_string_smoke" : value;
     }
 
     private static string NormalizeTopic(string value)
@@ -260,13 +260,13 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 {
                     return new UnavailablePublisher<T>(
                         NormalizeTopic(topic),
-                        "Phase110 ROS2 For Unity publisher creation failed: " + ex.Message);
+                        "ROS2 For Unity publisher creation failed: " + ex.Message);
                 }
             }
 
             return new UnavailablePublisher<T>(
                 NormalizeTopic(topic),
-                "Unsupported Phase110 ROS2 message type. Only std_msgs/msg/String is implemented.");
+                "Unsupported ROS2 message type. Only std_msgs/msg/String is implemented.");
         }
 
         public IUnity2FoxgloveRos2Subscription CreateSubscription<T>(string topic, Action<T> callback)
@@ -287,7 +287,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning("[Phase110Ros2ForUnityContext] subscription creation failed: " + ex.Message);
+                    Debug.LogWarning("[Ros2ForUnityContext] subscription creation failed: " + ex.Message);
                     return new UnavailableSubscription(NormalizeTopic(topic));
                 }
             }
@@ -348,7 +348,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         {
             if (_disposed)
             {
-                error = "Phase110 ROS2 For Unity publisher is disposed.";
+                error = "ROS2 For Unity publisher is disposed.";
                 return false;
             }
 
@@ -360,7 +360,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             }
             catch (Exception ex)
             {
-                error = "Phase110 ROS2 For Unity publish failed: " + ex.Message;
+                error = "ROS2 For Unity publish failed: " + ex.Message;
                 return false;
             }
         }

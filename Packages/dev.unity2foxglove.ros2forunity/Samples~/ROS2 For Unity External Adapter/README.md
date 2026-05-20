@@ -19,7 +19,7 @@ UNITY2FOXGLOVE_ROS2_FOR_UNITY
 1. Install the `dev.unity2foxglove.ros2forunity` package.
 2. Import the external ROS2 For Unity standalone runtime into `Assets/Ros2ForUnity`.
 3. Import this package sample: `ROS2 For Unity External Adapter`.
-4. Add `Phase110Ros2ForUnityStringSmoke` to a scene object.
+4. Add the ROS2 For Unity string smoke component to a scene object.
 5. Enter Play Mode.
 
 The component creates a ROS2 For Unity backed context, publishes one `std_msgs/msg/String` each second, and subscribes to one inbound string topic.
@@ -49,23 +49,23 @@ ros2 topic echo --once /unity2foxglove/ros2forunity/string/out std_msgs/msg/Stri
 Expected:
 
 ```text
-data: phase110 unity tick <counter>
+data: unity2foxglove string tick <counter>
 ```
 
 Publish to Unity:
 
 ```powershell
-ros2 topic pub --once /unity2foxglove/ros2forunity/string/in std_msgs/msg/String "{data: 'hello phase110'}"
+ros2 topic pub --once /unity2foxglove/ros2forunity/string/in std_msgs/msg/String "{data: 'hello Unity2Foxglove'}"
 ```
 
 Expected Unity Console log:
 
 ```text
-[Phase110Ros2ForUnityStringSmoke] received: hello phase110
+[Ros2ForUnityStringSmoke] received: hello Unity2Foxglove
 ```
 
 ## Scope
 
 This is a productization gate for one bidirectional `std_msgs/msg/String` topic pair. It is not a generic ROS2 message bridge.
 
-Standard ROS2 visualization mapping, PointCloud2, MarkerArray, TF, clock, RViz2 acceptance, MCAP fanout, and rosbag2 work start in deferred 171+ phases after this external R2FU path is green.
+Standard ROS2 visualization mapping, PointCloud2, MarkerArray, TF, clock, RViz2 acceptance, MCAP fanout, and rosbag2 work start after this external R2FU path is stable.

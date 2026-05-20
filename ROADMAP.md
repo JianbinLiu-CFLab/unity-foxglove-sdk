@@ -1,5 +1,5 @@
 
-This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go next. It is intentionally higher level than the private phase plans: the goal is to give users and contributors useful context without exposing day-to-day development notes.
+This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go next. It is intentionally higher level than the private development notes: the goal is to give users and contributors useful context without exposing day-to-day implementation history.
 
 ## 1. Completed in v1.0.0
 
@@ -67,20 +67,20 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 ### 2.3 Protocol Coverage
 
-- Protobuf schema catalog and protobuf publishing are implemented (Phase 32).
+- Protobuf schema catalog and protobuf publishing are implemented.
 - Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
 - Optional Unity-native `wss://` support, the local development certificate generator, Root CA distributor, hosted-browser Origin allowance, and shared token gate are implemented in v1.4.0. Future work should focus on clearer remote-access guidance and production deployment boundaries; local demos continue to default to `ws://127.0.0.1`.
 
 ### 2.4 MCAP and Replay
 
-- MCAP Attachment/AttachmentIndex and summary CRC are implemented (Phase 34).
-- MCAP writer hot-path allocation was reduced (Phase 37).
+- MCAP Attachment/AttachmentIndex and summary CRC are implemented.
+- MCAP writer hot-path allocation was reduced.
 - Add more replay adapters for Unity scene objects and custom user data.
 - Consider extracting reusable C# MCAP pieces if they become useful outside Unity.
 
 ### 2.5 Developer Experience
 
-- Transport health/observability Inspector section is implemented (Phase 36).
+- Transport health/observability Inspector section is implemented.
 - Improve `[FoxRun]` diagnostics and generated-source visibility.
 - Keep reducing setup friction for users who only want "press Play and connect Foxglove."
 
@@ -104,4 +104,4 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 
 ## 4. Development Notes
 
-Detailed phase plans are kept as private development notes. If you need implementation history, design context, or phase-by-phase details, please contact the author.
+Detailed planning notes are kept private. If you need implementation history or design context, please contact the author.

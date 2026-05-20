@@ -3,7 +3,7 @@
   "version": "0.1.0-preview.1",
   "displayName": "Unity2Foxglove ROS2 For Unity",
   "license": "Apache-2.0",
-  "description": "Optional ROS2 For Unity adapter package for Unity2Foxglove. Provides facade, source-only adapter sample, docs, and diagnostics while runtime binaries live in separate runtime packages.",
+  "description": "Optional ROS2 For Unity adapter package for Unity2Foxglove. Provides facade, source-only adapter sample, docs, and diagnostics while runtime binaries live in separate runtime packages and release artifacts.",
   "unity": "6000.0",
   "dependencies": {},
   "samples": [

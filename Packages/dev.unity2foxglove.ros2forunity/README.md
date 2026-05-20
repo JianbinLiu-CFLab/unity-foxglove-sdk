@@ -4,6 +4,8 @@ This package is the optional ROS2 For Unity boundary for Unity2Foxglove.
 
 It provides facade/API boundaries, documentation, attribution records, and a source-only `ROS2 For Unity External Adapter` sample. ROS2 For Unity runtime binaries are not bundled here.
 
+The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
+
 The current product direction is Jazzy-first for Windows x64 runtime work. A future runtime package such as `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` should own the R2FU Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
@@ -44,6 +46,17 @@ R2FU Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual 
 | Adapter + runtime | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. |
 | SDK + adapter + runtime | Full combined Unity2Foxglove workflow. |
 
+Dependency direction is intentionally one-way:
+
+```text
+dev.unity2foxglove.sdk does not depend on ROS2 For Unity packages.
+dev.unity2foxglove.ros2forunity can compile without runtime packages.
+dev.unity2foxglove.ros2forunity.runtime.* packages must not force the core SDK to load ROS2.
+Only one runtime package should be active in a Unity project unless a future conflict resolver exists.
+```
+
+Runtime packages are expected to be package/release artifacts. They should carry their own manifest, checksum, file inventory, third-party notices, and license inventory.
+
 ## External Adapter Sample
 
 Import `ROS2 For Unity External Adapter` from Package Manager after importing external ROS2 For Unity into:
@@ -65,7 +78,7 @@ The sample exposes one bidirectional `std_msgs/msg/String` smoke pair:
 /unity2foxglove/ros2forunity/string/in
 ```
 
-Standard ROS2 visualization mapping starts in deferred 171+ phases after the external adapter sample reaches live GREEN.
+Standard ROS2 visualization mapping starts after the external adapter sample and runtime package path are stable.
 
 ## Attribution Boundary
 
@@ -87,7 +100,7 @@ See `THIRD_PARTY_NOTICES.md` and `Compliance/ros2-for-unity-adoption-manifest.js
 
 ## Future Work
 
-Later phases may add:
+Future work may add:
 
 - a `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package prototype;
 - a runtime bundle inventory;

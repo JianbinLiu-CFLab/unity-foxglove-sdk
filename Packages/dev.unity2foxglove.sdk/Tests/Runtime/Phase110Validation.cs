@@ -117,16 +117,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && AllR2fuReferencesAreGuarded(smoke),
                 "110-D2: sample R2FU references stay inside compile guard");
             Check(context.Contains("typeof(T) == typeof(std_msgs.msg.String)", StringComparison.Ordinal)
-                  && context.Contains("Unsupported Phase110 ROS2 message type", StringComparison.Ordinal),
+                  && context.Contains("Unsupported ROS2 message type", StringComparison.Ordinal),
                 "110-D3: sample adapter supports only std_msgs/msg/String");
             Check(combined.Contains("GetComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && combined.Contains("AddComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && combined.Contains(".Ok()", StringComparison.Ordinal),
                 "110-D4: sample adapter gets or adds ROS2UnityComponent and waits for Ok()");
-            Check(smoke.Contains("NodeName = \"unity2foxglove_phase110\"", StringComparison.Ordinal)
+            Check(smoke.Contains("NodeName = \"unity2foxglove_ros2forunity_string_smoke\"", StringComparison.Ordinal)
                   && smoke.Contains("CreateNode(NormalizeTopic(_nodeName, NodeName))", StringComparison.Ordinal)
                   && context.Contains("_ros2Unity.CreateNode(normalizedName)", StringComparison.Ordinal),
-                "110-D5: sample adapter defaults to the Phase110 node name and passes node names through");
+                "110-D5: sample adapter defaults to the string-smoke node name and passes node names through");
             Check(!combined.Contains("SpinOnce", StringComparison.Ordinal)
                   && !combined.Contains("QualityOfServiceProfile", StringComparison.Ordinal),
                 "110-D6: sample adapter does not manually spin or construct QoS");
@@ -135,10 +135,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-D7: sample adapter queues subscription callbacks for Unity main-thread drain");
             Check(smoke.Contains(OutTopic, StringComparison.Ordinal)
                   && smoke.Contains(InTopic, StringComparison.Ordinal),
-                "110-D8: sample smoke uses stable Phase110 topics");
-            Check(smoke.Contains("phase110 unity tick", StringComparison.Ordinal),
-                "110-D9: sample smoke publishes deterministic Phase110 tick payloads");
-            Check(smoke.Contains("[Phase110Ros2ForUnityStringSmoke] received:", StringComparison.Ordinal),
+                "110-D8: sample smoke uses stable string-smoke topics");
+            Check(smoke.Contains("unity2foxglove string tick", StringComparison.Ordinal),
+                "110-D9: sample smoke publishes deterministic string-smoke tick payloads");
+            Check(smoke.Contains("LogPrefix = \"[Ros2ForUnityStringSmoke] \"", StringComparison.Ordinal)
+                  && smoke.Contains("\"received: \"", StringComparison.Ordinal),
                 "110-D10: sample smoke logs received strings with the expected prefix");
             Check(smoke.Contains("_publishedCount", StringComparison.Ordinal)
                   && smoke.Contains("_receivedCount", StringComparison.Ordinal)
@@ -236,10 +237,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-H2: sample README gives concrete setup and live smoke commands");
             Check(combined.Contains("WSL2 NAT", StringComparison.Ordinal)
                   && combined.Contains("not a GREEN gate", StringComparison.Ordinal),
-                "110-H3: docs keep WSL2 NAT out of the Phase110 GREEN gate");
-            Check(combined.Contains("171+", StringComparison.Ordinal)
-                  && combined.Contains("standard ROS2 visualization", StringComparison.OrdinalIgnoreCase),
-                "110-H4: docs defer standard ROS2 visualization mapping to later phases");
+                "110-H3: docs keep WSL2 NAT out of the GREEN gate");
+            Check(combined.Contains("standard ROS2 visualization", StringComparison.OrdinalIgnoreCase)
+                  && combined.Contains("external R2FU path is stable", StringComparison.Ordinal),
+                "110-H4: docs defer standard ROS2 visualization mapping");
         }
 
         private static void VerifyTrackedAssetBoundary()
