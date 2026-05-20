@@ -21,6 +21,16 @@
     "distributionLevel": "BundleCandidate",
     "artifact": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
     "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+    "artifactSize": 16858288,
+    "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
+    "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
+    "inventoryFileCount": 1045,
+    "criticalRuntimeFiles": [
+      "rcl.dll",
+      "yaml.dll",
+      "spdlog.dll",
+      "fmt.dll"
+    ],
     "sourceBasis": "Local Jazzy rebuild from R2FU/ros2cs sources with Windows ROS2 Jazzy dependency closure",
     "evidence": [
       "Local Jazzy runtime rebuild evidence",

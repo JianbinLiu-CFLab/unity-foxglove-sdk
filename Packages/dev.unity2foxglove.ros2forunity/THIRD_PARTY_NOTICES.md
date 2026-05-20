@@ -12,6 +12,8 @@ This package does not bundle the ROS2 For Unity runtime asset, generated message
 - **Copied license**: `Upstream/LICENSE.AL2`
 - **Historical upstream release evidence**: `Ros2ForUnity_humble_standalone_windows11.zip`, version `1.3.0`
 - **Current runtime package candidate**: `Ros2ForUnity_Jazzy_standalone_windows10.zip`, produced by the local Jazzy rebuild path
+- **Runtime artifact inventory**: `Compliance/r2fu-jazzy-win64-runtime-inventory.json`
+- **Runtime artifact notices**: `Compliance/r2fu-jazzy-win64-runtime-notices.md`
 - **Bundle status**: not bundled
 
 RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware users and that the Robotec team cannot support and maintain the project for the general community. Unity2Foxglove must preserve that caveat and must not imply upstream community support for Unity2Foxglove-specific integration or redistributed bundles.

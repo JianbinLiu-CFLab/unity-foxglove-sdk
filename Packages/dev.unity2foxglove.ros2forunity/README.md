@@ -30,6 +30,8 @@ legacyRuntimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
 
 The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment.
 
+The current local artifact candidate has a generated file inventory at `Compliance/r2fu-jazzy-win64-runtime-inventory.json` and artifact-specific notices at `Compliance/r2fu-jazzy-win64-runtime-notices.md`. These records document the zip checksum, file count, critical runtime DLLs, and redistribution caveats without bundling the zip in this adapter package.
+
 The old Humble standalone asset remains historical/fallback evidence, but it is not the recommended new-user runtime line after the Jazzy rebuild and retest.
 
 WSL2 NAT remains a problematic DDS discovery topology and is not a GREEN gate for the external adapter sample or future runtime package. Future remote Linux acceptance should use a real LAN, VPN, physical Linux host, or bridged Ubuntu VM rather than WSL2 NAT.
