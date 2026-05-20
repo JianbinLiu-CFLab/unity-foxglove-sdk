@@ -32,6 +32,7 @@ R2FU_BRANCH = "feature/jazzy-support"
 ROS2CS_REPO_URL = "https://github.com/RobotecAI/ros2cs.git"
 ROS2CS_BRANCH = "feature/jazzy-support"
 CHECKOUT_DIR_NAME = "r2u"
+JAZZY_PIXI_RUNTIME_DLLS = ("yaml.dll", "spdlog.dll", "fmt.dll")
 
 VERDICTS = (
     "BUILD_ORCHESTRATOR_GREEN",
@@ -593,7 +594,33 @@ def has_complete_asset(checkout: pathlib.Path) -> bool:
     metadata = asset / "metadata_ros2cs.xml"
     plugins = asset / "Plugins" / "Windows" / "x86_64"
     native_libraries = list(plugins.glob("*.dll")) if plugins.exists() else []
-    return asset.exists() and metadata.exists() and plugins.exists() and bool(native_libraries)
+    required_runtime = all((plugins / name).exists() for name in JAZZY_PIXI_RUNTIME_DLLS)
+    return asset.exists() and metadata.exists() and plugins.exists() and bool(native_libraries) and required_runtime
+
+
+def copy_jazzy_pixi_runtime_closure(
+    asset: pathlib.Path,
+    ros2_root: pathlib.Path,
+    log_file: pathlib.Path,
+) -> None:
+    """Copy pixi runtime DLLs missed by upstream standalone deployment."""
+
+    pixi_bin = ros2_root / ".pixi" / "envs" / "default" / "Library" / "bin"
+    plugin_dir = asset / "Plugins" / "Windows" / "x86_64"
+    ensure_dir(plugin_dir)
+
+    copied: list[str] = []
+    for name in JAZZY_PIXI_RUNTIME_DLLS:
+        source = pixi_bin / name
+        if not source.exists():
+            raise Phase137BError("BLOCKED_NATIVE_DEPENDENCY", f"Missing Jazzy pixi runtime DLL: {source}")
+        shutil.copy2(source, plugin_dir / name)
+        copied.append(name)
+
+    with log_file.open("a", encoding="utf-8", errors="replace") as log:
+        log.write("\n# copied Jazzy pixi runtime closure DLLs\n")
+        for name in copied:
+            log.write(f"# runtime={name}\n")
 
 
 def deploy_asset_from_successful_colcon(
@@ -633,6 +660,8 @@ def deploy_asset_from_successful_colcon(
         ensure_dir(asset / "Plugins" / "Windows" / "x86_64")
         shutil.copy2(metadata_file, asset / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml")
         shutil.copy2(metadata_file, asset / "Plugins" / "metadata_ros2cs.xml")
+
+    copy_jazzy_pixi_runtime_closure(asset, ros2_root, log_file)
 
     return "BUILD_ORCHESTRATOR_GREEN" if has_complete_asset(checkout) else "BLOCKED_R2FU_BUILD_SCRIPT"
 
@@ -716,6 +745,10 @@ def run_upstream_build(
         if verdict == "BLOCKED_PYTHON_SELECTION":
             return run_direct_colcon_build(checkout, env, log_file, ros2_root, generator)
         return verdict
+
+    asset = checkout / "install" / "asset" / "Ros2ForUnity"
+    if asset.exists():
+        copy_jazzy_pixi_runtime_closure(asset, ros2_root, log_file)
 
     if has_complete_asset(checkout):
         return "BUILD_ORCHESTRATOR_GREEN"

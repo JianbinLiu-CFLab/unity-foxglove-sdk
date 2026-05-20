@@ -125,6 +125,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.IndexOf("modulenotfounderror", StringComparison.Ordinal)
                      < script.IndexOf("system cannot find the file", StringComparison.Ordinal),
                 "137B-B13: orchestrator classifies Python contamination before generic missing-file failures");
+            Check(script.Contains("JAZZY_PIXI_RUNTIME_DLLS", StringComparison.Ordinal)
+                  && script.Contains("copy_jazzy_pixi_runtime_closure", StringComparison.Ordinal)
+                  && script.Contains("yaml.dll", StringComparison.Ordinal)
+                  && script.Contains("spdlog.dll", StringComparison.Ordinal)
+                  && script.Contains("fmt.dll", StringComparison.Ordinal),
+                "137B-B14: orchestrator closes Jazzy pixi runtime DLL dependencies for rcl.dll loading");
         }
 
         private static void VerifyEvidenceNoteIfPresent()
