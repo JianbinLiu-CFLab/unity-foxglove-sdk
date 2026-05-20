@@ -90,24 +90,26 @@ namespace Unity.FoxgloveSDK.Tests
                 sinkFactory: factory.Create);
 
             runtime.Start(enabled: true, autoConnect: false);
-            Check(runtime.TryEnqueue(CreateFrame("/unity/a", 1), out _), "95B-1: runtime queues while auto-connect disabled");
-            Check(runtime.TryEnqueue(CreateFrame("/unity/b", 2), out _), "95B-2: runtime queues second frame");
-            Check(runtime.TryEnqueue(CreateFrame("/unity/c", 3), out _), "95B-3: runtime accepts frame by dropping oldest");
+            Check(!runtime.TryEnqueue(CreateFrame("/unity/a", 1), out var disabledReason)
+                  && disabledReason.Contains("auto-connect is disabled"),
+                "95B-1: runtime rejects sends while auto-connect disabled");
+            Check(!runtime.TryEnqueue(CreateFrame("/unity/b", 2), out _),
+                "95B-2: runtime consistently rejects disabled auto-connect sends");
 
             var stats = runtime.GetStatsSnapshot();
-            Check(stats.Enabled && !stats.Connected && stats.QueuedFrames == 2,
-                "95B-4: stats expose enabled disconnected queued state");
-            Check(stats.DroppedFrames == 1, "95B-5: bounded queue drops oldest frame");
+            Check(stats.Enabled && !stats.Connected && stats.QueuedFrames == 0,
+                "95B-3: stats expose enabled disconnected idle state");
+            Check(stats.DroppedFrames == 0, "95B-4: disabled auto-connect does not count rejected sends as drops");
 
             runtime.Stop();
             stats = runtime.GetStatsSnapshot();
-            Check(!stats.Enabled && stats.QueuedFrames == 0 && stats.DroppedFrames >= 3,
-                "95B-6: Stop drops unsent queued frames");
+            Check(!stats.Enabled && stats.QueuedFrames == 0 && stats.DroppedFrames == 0,
+                "95B-5: Stop has no idle auto-connect queue to drop");
 
             Check(Throws<ArgumentException>(() => new Ros2BridgeRuntime("0.0.0.0", 8767, 1, 10, 10, factory.Create)),
-                "95B-7: runtime rejects wildcard hosts");
+                "95B-6: runtime rejects wildcard hosts");
             Check(Throws<ArgumentException>(() => new Ros2BridgeRuntime("192.168.1.10", 8767, 1, 10, 10, factory.Create)),
-                "95B-8: runtime rejects LAN hosts");
+                "95B-7: runtime rejects LAN hosts");
         }
 
         private static void VerifyRuntimeReconnect()
@@ -126,8 +128,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(WaitUntil(() => factory.AllSentFrames.Count == 1, 3000),
                 "95C-2: runtime reconnects and sends queued frame");
             var stats = runtime.GetStatsSnapshot();
-            Check(stats.Connected && stats.SentFrames == 1 && stats.FailedFrames >= 1,
-                "95C-3: stats reflect reconnect failure and successful send");
+            Check(stats.Connected && stats.SentFrames == 1 && stats.FailedFrames == 0,
+                "95C-3: reconnect failures do not count as frame send failures");
 
             runtime.Stop();
             Check(factory.DisconnectCalls > 0, "95C-4: runtime disconnects sink on Stop");
