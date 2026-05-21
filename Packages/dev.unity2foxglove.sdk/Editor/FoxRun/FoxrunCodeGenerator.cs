@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Editor
     public static class FoxrunCodeGenerator
     {
         const string OutputDir = "Assets/Scripts/Generated/";
+        private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         /// <summary>
         /// Collect the types that GenerateSourceFiles would process, without writing files.
@@ -87,7 +88,71 @@ namespace Unity.FoxgloveSDK.Editor
         public static List<string> GenerateSourceFiles()
         {
             var result = new List<string>();
+            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            var byClass = scan.ByClass;
+
+            if (byClass.Count > 0)
+            {
+                Directory.CreateDirectory(Path.Combine(Application.dataPath, "Scripts/Generated"));
+
+                foreach (var kv in byClass)
+                {
+                    var source = EmitSourceFile(kv.Value.ToArray());
+                    var fileName = FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
+                    var absolutePath = Path.Combine(Application.dataPath, "Scripts/Generated", fileName);
+                    var sourceBytes = Utf8NoBom.GetBytes(source);
+
+                    bool shouldWrite = true;
+                    if (File.Exists(absolutePath))
+                    {
+                        var existing = File.ReadAllBytes(absolutePath);
+                        if (existing.SequenceEqual(sourceBytes))
+                            shouldWrite = false;
+                    }
+
+                    if (shouldWrite)
+                    {
+                        File.WriteAllBytes(absolutePath, sourceBytes);
+                        Debug.Log($"[FoxrunCodeGenerator] Generated {fileName}");
+                    }
+
+                    result.Add(fileName);
+                }
+            }
+
+            WriteManifestFiles(scan.ManifestMembers);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Refresh only the canonical FoxRun manifest artifacts under
+        /// Assets/Generated/FoxRun. This is used by Editor Play Mode so local
+        /// contract evidence is current without writing physical Player fallback
+        /// source files.
+        /// </summary>
+        public static FoxRunCanonicalManifest GenerateManifestFilesOnly()
+        {
+            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            return WriteManifestFiles(scan.ManifestMembers);
+        }
+
+        public static IReadOnlyList<FoxRunManifestMember> CollectManifestMembers()
+        {
+            return ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: false).ManifestMembers;
+        }
+
+        private static FoxRunCanonicalManifest WriteManifestFiles(IReadOnlyList<FoxRunManifestMember> members)
+        {
+            return FoxrunManifestWriter.WriteManifestFiles(
+                Path.Combine(Application.dataPath, "Generated/FoxRun"),
+                members);
+        }
+
+        private static FoxRunScanResult ScanFoxRunMembers(bool ignoreReflectionTypeLoadExceptions)
+        {
             var byClass = new Dictionary<(string Ns, string ClassName), List<MemberData>>();
+            var manifestMembers = new List<FoxRunManifestMember>();
 
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -107,44 +172,20 @@ namespace Unity.FoxgloveSDK.Editor
                         if (!byClass.TryGetValue(key, out var list))
                             byClass[key] = list = new List<MemberData>();
                         list.AddRange(members);
+                        manifestMembers.AddRange(members.Select(member => member.ToManifestMember()));
                     }
                 }
                 catch (ReflectionTypeLoadException)
                 {
+                    if (!ignoreReflectionTypeLoadExceptions)
+                        throw;
                     // Source fallback generation is best-effort because the Roslyn
                     // path already reports authoring errors in the Editor. The
                     // link.xml scan is fail-fast and catches preservation risk.
                 }
             }
 
-            if (byClass.Count == 0) return result;
-
-            Directory.CreateDirectory(Path.Combine(Application.dataPath, "Scripts/Generated"));
-
-            foreach (var kv in byClass)
-            {
-                var source = EmitSourceFile(kv.Value.ToArray());
-                var fileName = FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
-                var absolutePath = Path.Combine(Application.dataPath, "Scripts/Generated", fileName);
-
-                bool shouldWrite = true;
-                if (File.Exists(absolutePath))
-                {
-                    var existing = File.ReadAllText(absolutePath);
-                    if (existing == source)
-                        shouldWrite = false;
-                }
-
-                if (shouldWrite)
-                {
-                    File.WriteAllText(absolutePath, source, Encoding.UTF8);
-                    Debug.Log($"[FoxrunCodeGenerator] Generated {fileName}");
-                }
-
-                result.Add(fileName);
-            }
-
-            return result;
+            return new FoxRunScanResult(byClass, manifestMembers);
         }
 
         /// <summary>
@@ -183,7 +224,7 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var a in attrs)
                 {
                     result.Add(new MemberData(
-                        fi.Name, fi.FieldType, ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
+                        fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds));
                 }
             }
@@ -193,7 +234,7 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var a in attrs)
                 {
                     result.Add(new MemberData(
-                        pi.Name, pi.PropertyType, ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
+                        pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds));
                 }
             }
@@ -237,8 +278,16 @@ namespace Unity.FoxgloveSDK.Editor
         {
             /// <summary>Field or property name.</summary>
             public readonly string MemberName;
+            /// <summary>Field or property kind.</summary>
+            public readonly string MemberKind;
             /// <summary>Field or property type as full-qualified string.</summary>
             public readonly string RawTypeName;
+            /// <summary>Whether the source CLR type is a value type.</summary>
+            public readonly bool IsValueType;
+            /// <summary>Whether the source CLR type is a supported array/list shape.</summary>
+            public readonly bool IsArray;
+            /// <summary>Element type for supported array/list source CLR types.</summary>
+            public readonly string ElementTypeName;
             /// <summary>Topic string from the attribute.</summary>
             public readonly string Topic;
             /// <summary>Optional schema name.</summary>
@@ -260,11 +309,15 @@ namespace Unity.FoxgloveSDK.Editor
             /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
             /// namespace/class context.
             /// </summary>
-            public MemberData(string name, Type type, string ns, string cn, string topic, float rate, string schema,
+            public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
                 int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f)
             {
                 MemberName = name;
+                MemberKind = memberKind;
                 RawTypeName = type.FullName ?? type.Name;
+                IsValueType = type.IsValueType;
+                IsArray = TryGetArrayElementType(type, out var elementType);
+                ElementTypeName = elementType == null ? "" : elementType.FullName ?? elementType.Name;
                 Ns = ns;
                 ClassName = cn;
                 Topic = topic;
@@ -283,7 +336,11 @@ namespace Unity.FoxgloveSDK.Editor
                 int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f)
             {
                 MemberName = name;
+                MemberKind = "field";
                 RawTypeName = rawType;
+                IsValueType = false;
+                IsArray = false;
+                ElementTypeName = "";
                 Topic = topic;
                 RateHz = rate;
                 SchemaName = schema;
@@ -293,6 +350,61 @@ namespace Unity.FoxgloveSDK.Editor
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
             }
+
+            public FoxRunManifestMember ToManifestMember()
+            {
+                return new FoxRunManifestMember(
+                    Ns,
+                    ClassName,
+                    MemberName,
+                    MemberKind,
+                    RawTypeName,
+                    IsValueType,
+                    IsArray,
+                    ElementTypeName,
+                    Topic,
+                    RateHz,
+                    SchemaName,
+                    PublishMode,
+                    ChangeEpsilon,
+                    ForceIntervalSeconds);
+            }
+        }
+
+        private sealed class FoxRunScanResult
+        {
+            public readonly Dictionary<(string Ns, string ClassName), List<MemberData>> ByClass;
+            public readonly List<FoxRunManifestMember> ManifestMembers;
+
+            public FoxRunScanResult(
+                Dictionary<(string Ns, string ClassName), List<MemberData>> byClass,
+                List<FoxRunManifestMember> manifestMembers)
+            {
+                ByClass = byClass;
+                ManifestMembers = manifestMembers;
+            }
+        }
+
+        private static bool TryGetArrayElementType(Type type, out Type elementType)
+        {
+            if (type.IsArray && type.GetArrayRank() == 1)
+            {
+                elementType = type.GetElementType();
+                return elementType != null;
+            }
+
+            if (type.IsGenericType)
+            {
+                var definition = type.GetGenericTypeDefinition();
+                if (definition == typeof(List<>) || definition == typeof(IReadOnlyList<>))
+                {
+                    elementType = type.GetGenericArguments()[0];
+                    return true;
+                }
+            }
+
+            elementType = null;
+            return false;
         }
     }
 }

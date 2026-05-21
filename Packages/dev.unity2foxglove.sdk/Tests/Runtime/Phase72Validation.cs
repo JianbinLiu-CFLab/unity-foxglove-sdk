@@ -134,14 +134,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "72C-3: FoxRun cadence keeps its existing realtime basis");
             Check(!update.Contains("var dt = Time.deltaTime") && !update.Contains("t[i] -= dt"),
                 "72C-4: FoxRun no longer uses frame countdown timers for publish cadence");
-            Check(!update.Contains("t[i] = info.RateHz > 0 ? 1f / info.RateHz : 1f"),
+            var oldCountdownFallback = "t[i] = info.RateHz > 0 ? 1f / " + "info.RateHz : 1f";
+            Check(!update.Contains(oldCountdownFallback),
                 "72C-5: FoxRun no longer resets countdown timers from elapsed frames");
-            Check(update.Contains("var rateHz = info.RateHz > 0 ? info.RateHz : 1f"),
-                "72C-6: FoxRun keeps the existing non-positive fallback to 1 Hz");
+            Check(update.Contains("var rateHz = info.RateHz"),
+                "72C-6: FoxRun passes raw non-positive rates through so they disable scheduled publish");
             Check(update.Contains("FixedRatePublishScheduler.ShouldPublish"),
                 "72C-7: FoxRun routes cadence through the shared scheduler");
             Check(update.Contains("nonPositivePublishesEveryFrame: false"),
-                "72C-8: FoxRun keeps explicit non-positive rates from becoming every-frame publishers");
+                "72C-8: FoxRun keeps explicit non-positive rates disabled instead of every-frame publishers");
             Check(addSource.Contains("new FixedRatePublishState[count]"),
                 "72C-9: FoxRun AddSource initializes scheduler state arrays");
             Check(!triggerSource.Contains("_timers"),

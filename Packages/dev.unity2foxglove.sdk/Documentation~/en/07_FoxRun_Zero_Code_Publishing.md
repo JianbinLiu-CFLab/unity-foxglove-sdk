@@ -71,7 +71,7 @@ The first argument is the Foxglove topic path. Options are named C# attribute pr
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
 | `Topic` | Required | Topic name published to Foxglove. | Change for each debug value you want to expose. | Forgetting the leading `/`. |
-| `RateHz` | `10` | Maximum publish frequency for that member. | Lower noisy debug values; raise smooth plots carefully. | Setting very high rates for many JSON values. |
+| `RateHz` | `10` | Maximum publish frequency for that member; `0` or less disables scheduled publishing. | Lower noisy debug values, temporarily disable a debug topic, or raise smooth plots carefully. | Setting very high rates for many JSON values. |
 | `SchemaName` | Empty | Optional explicit schema name. | Use when you need a stable named schema. | Adding a schema name without checking the viewer expects it. |
 | `PublishMode` | `FixedRate` | Controls when generated code publishes. | Use `OnChange`, `OnChangeOrInterval`, or `OnTrigger` for non-fixed-rate telemetry. | Expecting `OnTrigger` to publish without calling the generated trigger method. |
 | `ChangeEpsilon` | `0` | Numeric tolerance for change-driven modes. | Suppress tiny float jitter. | Expecting it to affect `FixedRate` or `OnTrigger`. |
@@ -159,7 +159,17 @@ When the IL2CPP build starts, you should see logs like:
 
 You normally do not need to manage these files. The build preprocess step writes them only when content changes.
 
-## 10. Troubleshooting
+## 10. Canonical Manifest Governance
+
+During build-time FoxRun generation, the SDK also writes a canonical manifest under `Assets/Generated/FoxRun/`. Entering Editor Play Mode refreshes the same manifest artifacts before play starts, without writing physical `_FoxRun.g.cs` fallback files. This manifest is a governance and evidence artifact for the resolved `[FoxRun]` telemetry contract. The manifest artifact itself does not change runtime publishing behavior.
+
+Phase 112 also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of `0` or less disable scheduled publishing for that topic. This keeps the runtime behavior aligned with the canonical policy value recorded as `0`.
+
+The canonical manifest and its SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
+
+Phase 112 covers FoxRun automatic telemetry only. Later phases may use these hashes in generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.
+
+## 11. Troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -170,7 +180,7 @@ You normally do not need to manage these files. The build preprocess step writes
 | Generated trigger method returns `false` | Confirm the Foxglove manager is running and live publishers are not suppressed by replay mode. |
 | Build loops or recompiles too often | Generated fallback files should only be written when content changes. |
 
-## 11. Where to Learn More
+## 12. Where to Learn More
 
 - Use [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for build verification.
 - Use [10_Architecture](10_Architecture.md) for generator and fallback internals.

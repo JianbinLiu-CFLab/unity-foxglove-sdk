@@ -157,7 +157,7 @@ ISG 在 IL2CPP 编译时不生效，因此在 Player 构建前，`FoxrunBuildPre
 
 - 每个 topic 有自己的冷却时间：`cooldown = 1f / RateHz`
 - 当冷却计时器归零时才触发一次发布，然后重置
-- `RateHz` 小于或等于 0 时使用 1 秒冷却，不会退化成每帧发布
+- `RateHz` 小于或等于 0 时不进行定时发布，可用于临时关闭调试 topic
 - 多次标注同一 topic 的不同字段取最大的 `RateHz` 值
 
 ## 诊断
@@ -182,3 +182,12 @@ ISG 会报告以下诊断：
 | 非 Editor 模式无 topic | IL2CPP 未生成 .g.cs | 检查 `FoxrunBuildPreprocess` 构建日志 |
 | 数值不更新 | Update 未赋值 | 确保在 `Update`/`FixedUpdate` 中更新字段值 |
 | Schema not found | SchemaName 拼写错误 | 检查 schema 名称，参考 `DefaultSchemaRegistry` |
+## Phase 112 canonical manifest governance
+
+FoxRun build-time generation also writes a canonical manifest under `Assets/Generated/FoxRun/`. Entering Editor Play Mode refreshes the same manifest artifacts before play starts, without writing physical `_FoxRun.g.cs` fallback files. This manifest is a governance and evidence artifact for the resolved `[FoxRun]` telemetry contract. The manifest artifact itself does not change runtime publishing behavior.
+
+Phase 112 also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of `0` or less disable scheduled publishing for that topic. This keeps the runtime behavior aligned with the canonical policy value recorded as `0`.
+
+The canonical manifest and SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
+
+Phase 112 covers FoxRun automatic telemetry only. Later phases may use these hashes in generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.

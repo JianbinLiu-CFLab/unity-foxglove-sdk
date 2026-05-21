@@ -223,6 +223,9 @@ class Program
         if (argList.Contains("--phase111f"))
             return RunPhase111FOnly();
 
+        if (argList.Contains("--phase112"))
+            return RunPhase112Only();
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1373,6 +1376,21 @@ class Program
         }
     }
 
+    private static int RunPhase112Only()
+    {
+        try
+        {
+            Phase112Validation.Validate();
+            Console.WriteLine("\nPhase 112 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
     private static int RunPhase13Only()
     {
         try
@@ -1559,6 +1577,8 @@ class Program
             Phase110Validation.Validate();
             Console.WriteLine();
             Phase111FValidation.Validate();
+            Console.WriteLine();
+            Phase112Validation.Validate();
 
             Console.WriteLine("\nAll checks passed.");
             return 0;
