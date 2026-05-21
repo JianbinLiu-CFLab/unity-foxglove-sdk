@@ -229,6 +229,8 @@ Unity2Foxglove already includes validation suites that cover shared emitter beha
 
 Phase 112 adds a FoxRun canonical manifest governance layer to that evidence chain. The manifest is derived from deterministic JSON and its fingerprints ignore generated timestamps, comments, file paths, Unity `Library/` contents, and other machine-local state. Editor Play Mode refreshes the same manifest artifacts before play starts, while leaving physical `_FoxRun.g.cs` fallback generation to the Player build path. This makes the descriptor useful as release evidence without turning transient workstation details into semantic drift.
 
+A later debug overlay path stays outside that descriptor. It publishes explicit `/debug/...` schemaless JSON topics as non-contract diagnostics. Those messages are not included in `foxrun.manifest.json` or its fingerprints and are not replay guard keys, even if MCAP records them as ordinary JSON frames for visual inspection.
+
 ## 9 Implementation Evidence
 
 | Evidence | Location | Meaning |

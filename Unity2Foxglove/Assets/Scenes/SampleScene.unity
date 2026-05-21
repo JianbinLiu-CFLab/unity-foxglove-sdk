@@ -276,6 +276,8 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
   _outputMode: 0
   _frameId: unity_camera
   _width: 640
@@ -334,6 +336,20 @@ MonoBehaviour:
   _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
+  _ros2BridgeEnabled: 0
+  _ros2BridgeHost: 127.0.0.1
+  _ros2BridgePort: 8767
+  _ros2BridgeAutoConnect: 1
+  _defaultRos2BridgeOutputEnabled: 0
+  _allowPublisherRos2BridgeOverride: 1
+  _ros2BridgeNamespace: 
+  _ros2BridgeQosPreset: 0
+  _ros2BridgeCustomReliability: 0
+  _ros2BridgeCustomDurability: 0
+  _ros2BridgeCustomDepth: 10
+  _ros2BridgeQueueCapacity: 1024
+  _ros2BridgeReconnectIntervalMs: 1000
+  _ros2BridgeSendTimeoutMs: 1000
   _coordinateMode: 1
   _assetRoots:
   - uriPrefix: asset://demo/
@@ -669,6 +685,9 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
+  _outputMode: 0
   _frameId: unity_world
   _pointSources: []
   _includeInactiveChildren: 0
@@ -717,6 +736,65 @@ MonoBehaviour:
   _includeIntensity: 0
   _publishContinuously: 1
   _sourceHz: 10
+--- !u!1 &1134407402
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1134407404}
+  - component: {fileID: 1134407403}
+  m_Layer: 0
+  m_Name: DebugOverlaySmoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1134407403
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1134407402}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7aa8e0d2c19f48b0aaf3f4ee033fe112, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDebugOverlaySmoke
+  _manager: {fileID: 0}
+  _autoFindManager: 1
+  _topic: /debug/overlay_smoke
+  _source: FoxgloveDebugOverlaySmoke
+  _label: manual unity smoke
+  _publishIntervalSeconds: 0.5
+  _disableNormalPublish: 0
+  _invalidTopicShouldNotPublish: 0
+  _binaryValueShouldNotPublish: 0
+  _publishedCount: 0
+  _validOverlayStreamBlocked: 0
+  _lastPublishAccepted: 0
+  _lastInvalidTopicAccepted: 0
+  _lastBinaryProbeAccepted: 0
+  _lastStatus: Not started.
+--- !u!4 &1134407404
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1134407402}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1529818993
 GameObject:
   m_ObjectHideFlags: 0
@@ -803,6 +881,8 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
   _entityId: 
   _frameId: 
   _size: {x: 1, y: 1, z: 1}
@@ -826,6 +906,8 @@ MonoBehaviour:
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
   _parentFrameId: unity_world
   _childFrameId: 
 --- !u!65 &2004464834
@@ -998,3 +1080,4 @@ SceneRoots:
   - {fileID: 534487834}
   - {fileID: 2020679429}
   - {fileID: 908391463}
+  - {fileID: 1134407404}

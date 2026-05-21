@@ -169,7 +169,11 @@ The canonical manifest and its SHA-256 fingerprints are computed from determinis
 
 Phase 112 covers FoxRun automatic telemetry only. Later phases may use these hashes in generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.
 
-## 11. Troubleshooting
+## 11. Debug Overlay Topics
+
+For temporary diagnostics that should stay outside the FoxRun contract, publish explicit `/debug/...` schemaless JSON through the debug overlay helper. Debug overlay messages are non-contract data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or the canonical manifest fingerprints, and they are not replay guard keys. MCAP recording may still capture them as ordinary JSON frames, but replay schema mismatch checks should ignore them.
+
+## 12. Troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -180,7 +184,7 @@ Phase 112 covers FoxRun automatic telemetry only. Later phases may use these has
 | Generated trigger method returns `false` | Confirm the Foxglove manager is running and live publishers are not suppressed by replay mode. |
 | Build loops or recompiles too often | Generated fallback files should only be written when content changes. |
 
-## 12. Where to Learn More
+## 13. Where to Learn More
 
 - Use [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for build verification.
 - Use [10_Architecture](10_Architecture.md) for generator and fallback internals.

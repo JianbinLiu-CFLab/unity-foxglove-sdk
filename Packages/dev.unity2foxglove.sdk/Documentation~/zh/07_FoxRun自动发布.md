@@ -191,3 +191,7 @@ Phase 112 also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of
 The canonical manifest and SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
 
 Phase 112 covers FoxRun automatic telemetry only. Later phases may use these hashes in generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.
+
+## Phase 112B debug overlay topics
+
+`debug overlay` 是显式 `/debug/...` schemaless JSON 旁路，用于临时诊断而不是扩展 FoxRun 合同。Debug overlay messages are `non-contract` data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or canonical manifest fingerprints, and they are not replay guard keys. MCAP 可以把它们录成普通 JSON 帧，但 replay schema mismatch checks 应忽略这些旁路调试消息。
