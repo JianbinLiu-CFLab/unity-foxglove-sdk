@@ -215,7 +215,7 @@ namespace Unity.FoxgloveSDK.Components
                         if (info.PublishMode == FoxRunPublishMode.OnTrigger)
                             continue;
 
-                        var rateHz = info.RateHz > 0 ? info.RateHz : 1f;
+                        var rateHz = info.RateHz;
                         if (FixedRatePublishScheduler.ShouldPublish(
                                 nowSec,
                                 rateHz,

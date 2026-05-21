@@ -136,9 +136,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "71E-2: source generator still reads explicit FoxRun RateHz");
             Check(emitterSource.Contains("fields.Max(m => m.RateHz)") || emitterSource.Contains("m.RateHz"),
                 "71E-3: shared emitter still emits FoxRun topic RateHz metadata");
-            Check(hubSource.Contains("info.RateHz > 0 ? 1f / info.RateHz : 1f")
-                    || hubSource.Contains("info.RateHz > 0 ? info.RateHz : 1f"),
-                "71E-4: FoxgloveLogHub still throttles FoxRun from topic RateHz");
+            Check(hubSource.Contains("var rateHz = info.RateHz")
+                    && hubSource.Contains("nonPositivePublishesEveryFrame: false"),
+                "71E-4: FoxgloveLogHub passes non-positive FoxRun RateHz through as disabled scheduled publish");
         }
 
         private static void VerifyPolicyResolve(

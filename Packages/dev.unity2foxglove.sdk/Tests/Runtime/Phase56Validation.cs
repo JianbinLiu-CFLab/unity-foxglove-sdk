@@ -80,6 +80,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!doc.Contains("RateHz = 0"),
                 "56C-1: Chinese FoxRun docs no longer claim RateHz = 0 publishes every frame");
+            Check(doc.Contains("不进行定时发布") || doc.Contains("disable scheduled publish"),
+                "56C-1a: Chinese FoxRun docs explain non-positive RateHz disables scheduled publish");
             Check(doc.Contains("PublishMode") && doc.Contains("OnTrigger") && doc.Contains("ChangeEpsilon")
                 && doc.Contains("ForceIntervalSeconds") && doc.Contains("FOXRUN005"),
                 "56C-2: Chinese FoxRun docs cover current publish policy and FOXRUN005 behavior");

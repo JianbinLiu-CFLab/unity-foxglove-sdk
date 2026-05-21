@@ -36,21 +36,15 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
     {
         switch (topicIndex)
         {
-            case 0: mgr.PublishJson("/debug/position", "", new { pos = new { x = _pos.x, y = _pos.y, z = _pos.z } }, nowNs); break;
-            case 1: mgr.PublishJson("/debug/health", "", new { health = _health }, nowNs); break;
-            case 2: mgr.PublishJson("/debug/position2", "", new { position = new { x = position.x, y = position.y, z = position.z } }, nowNs); break;
+            case 0: mgr.PublishJson("/debug/position", "", new { pos = new { x = this._pos.x, y = this._pos.y, z = this._pos.z } }, nowNs); break;
+            case 1: mgr.PublishJson("/debug/health", "", new { health = this._health }, nowNs); break;
+            case 2: mgr.PublishJson("/debug/position2", "", new { position = new { x = this.position.x, y = this.position.y, z = this.position.z } }, nowNs); break;
         }
     }
 
-    private bool __hasLast_0;
-    private double __lastPublishSec_0;
-    private Vector3 __last_0_0;
-    private bool __hasLast_1;
-    private double __lastPublishSec_1;
-    private float __last_1_0;
     private bool __hasLast_2;
     private double __lastPublishSec_2;
-    private Vector3 __last_2_0;
+    private UnityEngine.Vector3 __last_2_0;
 
     private static bool __foxrun_float_changed(float current, float last, float epsilon)
     {
@@ -83,16 +77,6 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
     {
         switch (topicIndex)
         {
-            case 0:
-                __last_0_0 = this._pos;
-                __hasLast_0 = true;
-                __lastPublishSec_0 = nowSec;
-                break;
-            case 1:
-                __last_1_0 = this._health;
-                __hasLast_1 = true;
-                __lastPublishSec_1 = nowSec;
-                break;
             case 2:
                 __last_2_0 = this.position;
                 __hasLast_2 = true;
