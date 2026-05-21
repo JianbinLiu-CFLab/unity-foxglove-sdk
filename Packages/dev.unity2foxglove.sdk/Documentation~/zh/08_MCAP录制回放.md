@@ -165,3 +165,19 @@ Unity replay 会在 MCAP 文件 load 完成后、正式 playback 前读取这条
 - **Chunk Size**：较小的 chunk 值提供更细粒度的索引，但增加文件开销。默认 1024KB（1MB）适合大多数场景。
 - **压缩**：Lz4 适合实时录制（低 CPU 开销），Zstd 适合存档（更高压缩率但稍慢）。
 - **大文件**：MCAP 支持随机访问，不需要一次性加载整个文件到内存。
+
+## Schema Evidence identity modes
+
+FoxgloveManager 的 MCAP Record & Replay 区域包含 **Schema Evidence** 设置。`Off` 会跳过 schema identity 检查，适合演示和早期调试；`Warn` 会报告 mismatch 但继续 replay 或 recording；`Strict` 会在 FoxRun `globalManifestHash` mismatch 时阻断 replay，并要求 recording evidence 完整。
+
+默认 current evidence root 是 `Assets/Generated`，里面有 `FoxRun/` 和 `Unity2Foxglove/` 两组文件。启用 recording 且 identity mode 为 `Warn` 或 `Strict` 时，SDK 会在 `.mcap` 旁边写入配对的 `.schema` 文件夹：
+
+```text
+Recordings/session_20260521_135001.mcap
+Recordings/session_20260521_135001.schema/
+  schema-evidence.json
+  FoxRun/
+  Unity2Foxglove/
+```
+
+这样用户可以通过时间戳和文件夹名确认 MCAP 与 Schema Evidence 的配对关系。

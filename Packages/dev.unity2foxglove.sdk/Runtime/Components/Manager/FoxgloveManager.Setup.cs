@@ -5,6 +5,7 @@
 // Purpose: Configures runtime services that are derived from FoxgloveManager inspector state.
 
 using System.IO;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 
@@ -116,11 +117,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Configures MCAP recording, including output directory, file name, compression, and coordinate mode.
         /// </summary>
-        private void SetupRecording()
+        private bool SetupRecording()
         {
             if (!_enableRecording)
             {
-                return;
+                return true;
             }
 
             var dir = string.IsNullOrEmpty(_recordingDirectory)
@@ -129,6 +130,30 @@ namespace Unity.FoxgloveSDK.Components
             Directory.CreateDirectory(dir);
             var timestamp = System.DateTime.Now.ToString(RecordingTimestampFormat);
             var path = Path.Combine(dir, $"{_recordingPrefix}_{timestamp}.mcap");
+            var identityMode = EffectiveSchemaIdentityMode;
+            if (identityMode != SchemaIdentityMode.Off)
+            {
+                var evidenceRoot = string.IsNullOrWhiteSpace(_schemaEvidenceRoot)
+                    ? Path.Combine(ProjectRoot, "Assets", "Generated")
+                    : ResolveProjectPath(_schemaEvidenceRoot);
+                var sidecarResult = SchemaEvidenceSidecarWriter.WriteSidecar(
+                    path,
+                    evidenceRoot,
+                    identityMode,
+                    requireComplete: identityMode == SchemaIdentityMode.Strict);
+
+                foreach (var warning in sidecarResult.Warnings)
+                {
+                    Debug.LogWarning("[Foxglove] Schema evidence: " + warning);
+                }
+
+                if (!sidecarResult.Success)
+                {
+                    Debug.LogError("[Foxglove] Recording startup aborted because complete schema evidence is required in Strict mode.");
+                    return false;
+                }
+            }
+
             var comp = _recordingCompression switch
             {
                 McapCompressionMode.Lz4 => Lz4CompressionName,
@@ -137,6 +162,7 @@ namespace Unity.FoxgloveSDK.Components
             };
             var coord = _coordinateMode == CoordinateMode.RightHand ? RightHandCoordinateModeName : LeftHandCoordinateModeName;
             _runtime.EnableRecording(path, _recordingChunkSizeKB * RecordingBytesPerKilobyte, comp, coord);
+            return true;
         }
 
         /// <summary>
@@ -156,7 +182,8 @@ namespace Unity.FoxgloveSDK.Components
 
             var coord = _coordinateMode == CoordinateMode.RightHand ? RightHandCoordinateModeName : LeftHandCoordinateModeName;
             _runtime.SetRecordingCoordinateMode(coord);
-            _runtime.EnableReplay(ResolveProjectPath(_replayFilePath));
+            var identityMode = EffectiveSchemaIdentityMode;
+            _runtime.EnableReplay(ResolveProjectPath(_replayFilePath), identityMode);
             if (!_runtime.ReplayEnabled)
             {
                 if (_runtime.ReplayStartBlockedBySchemaMismatch)
@@ -167,6 +194,13 @@ namespace Unity.FoxgloveSDK.Components
 
                 RestoreLivePublishers();
                 return true;
+            }
+
+            if (identityMode == SchemaIdentityMode.Warn
+                && _runtime.ReplayStartHadSchemaMismatch
+                && !_disableLivePublishers)
+            {
+                Debug.LogWarning("[Foxglove] FoxRun schema mismatch detected in Warn mode while live publishers are enabled; Foxglove may show mixed replay/live data.");
             }
 
             if (_replayAutoPlay)

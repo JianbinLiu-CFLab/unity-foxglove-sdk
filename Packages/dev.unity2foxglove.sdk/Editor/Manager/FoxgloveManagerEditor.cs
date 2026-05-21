@@ -6,6 +6,7 @@
 // path helpers.
 
 using System.IO;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
@@ -194,6 +195,8 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_playbackStartOffsetSeconds");
             DrawProperty("_playbackDurationSeconds");
 
+            DrawSchemaEvidenceSection();
+
             FoxgloveManagerInspectorLayout.Subheader("Recording");
             DrawProperty("_enableRecording");
             DrawProperty("_recordingPrefix");
@@ -229,6 +232,100 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxgloveManagerInspectorLayout.Subheader("Indexed Reader Preflight");
                 _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
             }
+        }
+
+        private void DrawSchemaEvidenceSection()
+        {
+            FoxgloveManagerInspectorLayout.Subheader("Schema Evidence");
+
+            var source = serializedObject.FindProperty("_identityModeSource");
+            var overrideMode = serializedObject.FindProperty("_identityModeOverride");
+            var projectMode = serializedObject.FindProperty("_projectSettingsIdentityMode");
+            var evidenceRoot = serializedObject.FindProperty("_schemaEvidenceRoot");
+
+            if (source == null || overrideMode == null || projectMode == null || evidenceRoot == null)
+            {
+                DrawMissingProperty("_identityModeSource / _identityModeOverride / _projectSettingsIdentityMode / _schemaEvidenceRoot");
+                return;
+            }
+
+            projectMode.enumValueIndex = (int)Unity2FoxgloveSchemaEvidenceSettings.DefaultIdentityMode;
+            evidenceRoot.stringValue = Unity2FoxgloveSchemaEvidencePaths.CurrentEvidenceRootProjectRelative;
+
+            EditorGUILayout.PropertyField(source, new GUIContent("Identity Mode Source"));
+            if (source.enumValueIndex == (int)SchemaIdentityModeSource.Override)
+            {
+                EditorGUILayout.PropertyField(overrideMode, new GUIContent("Identity Mode"));
+            }
+            else
+            {
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.PropertyField(projectMode, new GUIContent("Identity Mode"));
+            }
+
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.TextField("Current Evidence Root", evidenceRoot.stringValue);
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Apply Project Defaults"))
+                {
+                    source.enumValueIndex = (int)SchemaIdentityModeSource.ProjectSettings;
+                    projectMode.enumValueIndex = (int)Unity2FoxgloveSchemaEvidenceSettings.DefaultIdentityMode;
+                    evidenceRoot.stringValue = Unity2FoxgloveSchemaEvidencePaths.CurrentEvidenceRootProjectRelative;
+                }
+
+                if (GUILayout.Button("Generate Evidence Now"))
+                    GenerateSchemaEvidenceNow();
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Open Current Evidence"))
+                {
+                    Directory.CreateDirectory(Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
+                    EditorUtility.RevealInFinder(Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
+                }
+
+                if (GUILayout.Button("Copy Hash"))
+                    CopyCurrentSchemaEvidenceHash();
+            }
+        }
+
+        private static void GenerateSchemaEvidenceNow()
+        {
+            try
+            {
+                var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts();
+                EditorGUIUtility.systemCopyBuffer = aggregate.SdkSchemaManifestHash;
+                AssetDatabase.Refresh();
+                Debug.Log("[Foxglove] Generated schema evidence. SDK hash copied to clipboard: " + aggregate.SdkSchemaManifestHash);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("[Foxglove] Failed to generate schema evidence:\n" + ex);
+            }
+        }
+
+        private static void CopyCurrentSchemaEvidenceHash()
+        {
+            var aggregateHash = Path.Combine(
+                Unity2FoxgloveSchemaEvidencePaths.ResolveUnity2FoxgloveOutputDirectory(),
+                "unity2foxglove.schema-manifest.hash");
+            var foxRunHash = Path.Combine(
+                Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
+                "foxrun.manifest.hash");
+
+            if (File.Exists(aggregateHash))
+            {
+                EditorGUIUtility.systemCopyBuffer = File.ReadAllText(aggregateHash).Trim();
+                return;
+            }
+
+            if (File.Exists(foxRunHash))
+                EditorGUIUtility.systemCopyBuffer = File.ReadAllText(foxRunHash).Trim();
         }
 
         private void DrawDiagnosticsSection()

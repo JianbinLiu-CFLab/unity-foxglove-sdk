@@ -237,6 +237,8 @@ The MCAP schema metadata path is deliberately narrow: `unity2foxglove.foxrun.sch
 
 The SDK schema manifest aggregate broadens release evidence without broadening replay governance. It records the FoxRun evidence summary, bundled protobuf registry, bundled ROS2 `.msg` registry, and SDK typed publisher catalog under `Assets/Generated/Unity2Foxglove/`. Its aggregate hash is useful for audit and coverage review, while replay remains governed only by the FoxRun `globalManifestHash` stored in MCAP metadata.
 
+Schema Evidence identity policy makes that governance adjustable for different project stages. `Off` keeps demos and early debugging low-friction, `Warn` surfaces mismatches while allowing replay and live work to continue, and `Strict` treats the FoxRun identity as an acceptance gate. When MCAP recording runs with identity enabled, Unity2Foxglove writes a sibling `.schema` directory next to the `.mcap` and copies both the `FoxRun/` contract evidence and the broader `Unity2Foxglove/` aggregate evidence, giving each recording a portable audit bundle without changing the replay guard key.
+
 ## 9 Implementation Evidence
 
 | Evidence | Location | Meaning |

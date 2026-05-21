@@ -31,7 +31,11 @@ namespace Unity.FoxgloveSDK.Components
             EnsureRuntimeCreated();
             RegisterAssetRoots();
             SetupPlaybackControl();
-            SetupRecording();
+            if (!SetupRecording())
+            {
+                return;
+            }
+
             if (!SetupReplay())
             {
                 return;

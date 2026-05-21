@@ -12,12 +12,10 @@ namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
     /// Generates deterministic SDK schema manifest aggregate artifacts under
-    /// <c>Assets/Generated/Unity2Foxglove</c>.
+    /// the configured schema evidence root.
     /// </summary>
     public static class Unity2FoxgloveSchemaManifestGenerator
     {
-        private const string OutputSubdirectory = "Generated/Unity2Foxglove";
-
         /// <summary>
         /// Refreshes FoxRun manifest/schema-info artifacts first, then writes
         /// the SDK aggregate manifest. This method is safe for Editor batch
@@ -47,7 +45,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string GetOutputDirectory()
         {
-            return Path.Combine(Application.dataPath, OutputSubdirectory);
+            return Unity2FoxgloveSchemaEvidencePaths.ResolveUnity2FoxgloveOutputDirectory();
         }
     }
 }

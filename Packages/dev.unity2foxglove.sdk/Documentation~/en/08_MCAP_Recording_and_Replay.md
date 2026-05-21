@@ -85,7 +85,27 @@ Unity replay reads this metadata after the MCAP file is loaded and before playba
 
 The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` is separate release evidence. It records the FoxRun summary, protobuf registry, ROS2 `.msg` registry, and typed publisher catalog, but Unity replay does not use its aggregate hash, protobuf hash, or ROS2 hash as replay guard keys. Replay compatibility remains governed only by the FoxRun `globalManifestHash` recorded in MCAP metadata.
 
-## 10. Common Mistakes
+## 10. Schema Evidence Identity Modes
+
+The **Schema Evidence** controls in `FoxgloveManager > MCAP Record & Replay` decide how strongly Unity uses the current evidence snapshot:
+
+- `Off`: skip schema identity checks. This is the lightest default for demos and early debugging.
+- `Warn`: report mismatches, but continue recording or replay. If live publishers stay enabled during replay, Foxglove may show mixed replay/live data.
+- `Strict`: require complete evidence for recording sidecars and block replay when the recorded FoxRun `globalManifestHash` does not match the current one.
+
+The current evidence root defaults to `Assets/Generated`. It contains `FoxRun/` and `Unity2Foxglove/` groups. When recording is enabled and identity mode is `Warn` or `Strict`, Unity writes a sidecar next to the MCAP:
+
+```text
+Recordings/session_20260521_135001.mcap
+Recordings/session_20260521_135001.schema/
+  schema-evidence.json
+  FoxRun/
+  Unity2Foxglove/
+```
+
+Use the timestamp and folder name to keep the `.mcap` and `.schema` evidence bundle paired.
+
+## 11. Common Mistakes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|

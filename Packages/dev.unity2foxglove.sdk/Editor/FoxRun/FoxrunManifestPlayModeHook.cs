@@ -34,8 +34,7 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 var schemaInfoPath = Path.Combine(
-                    Application.dataPath,
-                    "Generated/FoxRun",
+                    Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
                     FoxRunSchemaInfoWriter.SchemaInfoFileName);
                 var previousSchemaInfo = ReadExistingText(schemaInfoPath);
                 var manifest = FoxrunCodeGenerator.GenerateManifestFilesOnly();
