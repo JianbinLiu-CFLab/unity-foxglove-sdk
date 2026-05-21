@@ -167,13 +167,19 @@ Phase 112 also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of
 
 The canonical manifest and its SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
 
-Phase 112 covers FoxRun automatic telemetry only. Later phases may use these hashes in generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.
+Phase 112 covers FoxRun automatic telemetry only. Phase 113 embeds the current manifest hash values into generated runtime schema info so Editor Play Mode and Player runtime code can query the same evidence without reflection.
 
-## 11. Debug Overlay Topics
+## 11. Runtime Schema Info
+
+Build-time generation and Editor Play Mode manifest refresh also write `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This generated file registers a runtime schema info snapshot containing the global manifest hash, the FoxRun section manifest hash, and type/contract/field metadata.
+
+The registry is evidence, not publisher logic. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not pull manifest builders into runtime code. MCAP metadata and replay checks can use this registry in later integration work instead of reading JSON files or using reflection.
+
+## 12. Debug Overlay Topics
 
 For temporary diagnostics that should stay outside the FoxRun contract, publish explicit `/debug/...` schemaless JSON through the debug overlay helper. Debug overlay messages are non-contract data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or the canonical manifest fingerprints, and they are not replay guard keys. MCAP recording may still capture them as ordinary JSON frames, but replay schema mismatch checks should ignore them.
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -184,7 +190,7 @@ For temporary diagnostics that should stay outside the FoxRun contract, publish 
 | Generated trigger method returns `false` | Confirm the Foxglove manager is running and live publishers are not suppressed by replay mode. |
 | Build loops or recompiles too often | Generated fallback files should only be written when content changes. |
 
-## 13. Where to Learn More
+## 14. Where to Learn More
 
 - Use [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for build verification.
 - Use [10_Architecture](10_Architecture.md) for generator and fallback internals.

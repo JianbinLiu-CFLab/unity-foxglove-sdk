@@ -157,6 +157,8 @@ Unity2Foxglove currently uses two hosts:
 
 The Roslyn path is implemented as an incremental source generator. It is fast and ergonomic during development because it can participate in Unity's analyzer pipeline without requiring the user to run a separate generation step. The physical `.g.cs` path gives the Player build a normal source file that participates in compilation and IL2CPP conversion.
 
+The same canonical model now also produces generated runtime schema info under `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This file is compiled in both Editor Play Mode and Player builds, and it registers the current manifest hash plus type/contract/field metadata without runtime reflection. That registry is evidence for later MCAP metadata and replay checks; it does not own publisher behavior and does not recompute canonical hashes.
+
 ### 5.5 Runtime Layer
 
 Runtime code only executes generated publishers. It does not:

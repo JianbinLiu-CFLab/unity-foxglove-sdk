@@ -190,7 +190,13 @@ Phase 112 also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of
 
 The canonical manifest and SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
 
-Phase 112 covers FoxRun automatic telemetry only. Later phases may use these hashes in generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.
+Phase 112 covers FoxRun automatic telemetry only. Phase 113 embeds the current manifest hash values into generated runtime schema info so Editor Play Mode and Player runtime code can query the same evidence without reflection.
+
+## Phase 113 runtime schema info
+
+Editor Play Mode manifest refresh and Player build generation also write `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This generated runtime schema info registers the global manifest hash, the FoxRun section manifest hash, and type/contract/field metadata.
+
+This registry is evidence for future MCAP and replay integrations. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not make runtime code read manifest JSON files.
 
 ## Phase 112B debug overlay topics
 

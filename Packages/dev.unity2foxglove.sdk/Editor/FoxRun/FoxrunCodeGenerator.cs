@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Editor
     public static class FoxrunCodeGenerator
     {
         const string OutputDir = "Assets/Scripts/Generated/";
+        private const string ManifestOutputSubdirectory = "Generated/FoxRun";
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         /// <summary>
@@ -120,21 +121,33 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
-            WriteManifestFiles(scan.ManifestMembers);
+            var manifest = WriteManifestFiles(scan.ManifestMembers);
+            WriteSchemaInfoFiles(manifest);
 
             return result;
         }
 
         /// <summary>
-        /// Refresh only the canonical FoxRun manifest artifacts under
-        /// Assets/Generated/FoxRun. This is used by Editor Play Mode so local
-        /// contract evidence is current without writing physical Player fallback
-        /// source files.
+        /// Refresh canonical FoxRun manifest artifacts and generated runtime
+        /// schema info without writing physical Player publisher fallback files.
         /// </summary>
         public static FoxRunCanonicalManifest GenerateManifestFilesOnly()
         {
+            return GenerateManifestAndSchemaInfoFilesOnly();
+        }
+
+        /// <summary>
+        /// Refresh canonical FoxRun manifest artifacts and generated runtime
+        /// schema info under Assets/Generated/FoxRun. This is used by Editor
+        /// Play Mode so local contract evidence is current without writing
+        /// physical _FoxRun.g.cs Player fallback source files.
+        /// </summary>
+        public static FoxRunCanonicalManifest GenerateManifestAndSchemaInfoFilesOnly()
+        {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            return WriteManifestFiles(scan.ManifestMembers);
+            var manifest = WriteManifestFiles(scan.ManifestMembers);
+            WriteSchemaInfoFiles(manifest);
+            return manifest;
         }
 
         public static IReadOnlyList<FoxRunManifestMember> CollectManifestMembers()
@@ -142,11 +155,35 @@ namespace Unity.FoxgloveSDK.Editor
             return ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: false).ManifestMembers;
         }
 
+        public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
+        {
+            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            var manifest = FoxRunManifestBuilder.Build(scan.ManifestMembers);
+            var sourcePath = Path.Combine(GetManifestOutputDirectory(), FoxRunSchemaInfoWriter.SchemaInfoFileName);
+            if (!File.Exists(sourcePath))
+                throw new InvalidOperationException("Missing generated FoxRun schema info: " + sourcePath);
+
+            var verification = FoxRunSchemaInfoWriter.VerifyGeneratedInfo(manifest, File.ReadAllText(sourcePath));
+            if (!verification.IsValid)
+                throw new InvalidOperationException(string.Join("; ", verification.Errors));
+            return verification;
+        }
+
         private static FoxRunCanonicalManifest WriteManifestFiles(IReadOnlyList<FoxRunManifestMember> members)
         {
             return FoxrunManifestWriter.WriteManifestFiles(
-                Path.Combine(Application.dataPath, "Generated/FoxRun"),
+                GetManifestOutputDirectory(),
                 members);
+        }
+
+        private static FoxRunSchemaInfoVerification WriteSchemaInfoFiles(FoxRunCanonicalManifest manifest)
+        {
+            return FoxRunSchemaInfoWriter.WriteGeneratedInfoFiles(GetManifestOutputDirectory(), manifest);
+        }
+
+        private static string GetManifestOutputDirectory()
+        {
+            return Path.Combine(Application.dataPath, ManifestOutputSubdirectory);
         }
 
         private static FoxRunScanResult ScanFoxRunMembers(bool ignoreReflectionTypeLoadExceptions)

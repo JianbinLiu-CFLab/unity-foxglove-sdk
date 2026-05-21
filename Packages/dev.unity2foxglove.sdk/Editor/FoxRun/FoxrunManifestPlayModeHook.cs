@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 var manifest = FoxrunCodeGenerator.GenerateManifestFilesOnly();
-                Debug.Log("[FoxRun] Refreshed canonical manifest before Play Mode: " + manifest.GlobalManifestHash);
+                Debug.Log("[FoxRun] Refreshed canonical manifest and schema info before Play Mode: " + manifest.GlobalManifestHash);
             }
             catch (Exception ex)
             {
