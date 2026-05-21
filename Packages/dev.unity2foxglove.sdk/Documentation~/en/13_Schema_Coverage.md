@@ -10,6 +10,8 @@ The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` recor
 
 Schema Evidence settings let projects decide how much identity enforcement to use. `Off` skips identity checks, `Warn` reports mismatches while continuing, and `Strict` blocks replay on confirmed FoxRun hash mismatch and requires complete recording evidence. Recording sidecars use a sibling `.schema` directory beside the `.mcap` file and copy both `FoxRun/` and `Unity2Foxglove/` evidence groups so the MCAP can be audited later without depending on the current `Assets/Generated` contents.
 
+The Inspector replay preflight reads the selected recording sidecar and compares its recorded FoxRun `globalManifestHash` with the current generated FoxRun hash before Play Mode, so users can see match, mismatch, or missing-evidence status without starting replay.
+
 ## 2. Coverage Definition
 
 In this package, full official schema coverage means every bundled `foxglove.*` protobuf message is:

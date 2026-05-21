@@ -244,7 +244,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (float.IsNaN(value) || float.IsInfinity(value))
                 return "0f";
-            return value.ToString("R", CultureInfo.InvariantCulture) + "f";
+            // Match canonical manifest formatting so generated source is stable across runtimes.
+            return value.ToString("G9", CultureInfo.InvariantCulture) + "f";
         }
 
         private static string BoolLiteral(bool value)

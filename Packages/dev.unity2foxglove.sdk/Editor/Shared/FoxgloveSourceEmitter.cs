@@ -420,7 +420,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string FloatLiteral(float value)
         {
-            return value.ToString("R", CultureInfo.InvariantCulture) + "f";
+            return value.ToString("G9", CultureInfo.InvariantCulture) + "f";
         }
 
         private static string PublishModeLiteral(int mode)

@@ -27,12 +27,14 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
             {
-                Debug.LogWarning("[FoxRun] Skipping canonical manifest refresh before Play Mode while Unity is compiling or updating assets.");
+                EditorApplication.isPlaying = false;
+                Debug.LogWarning("[FoxRun] Skipping canonical manifest refresh before Play Mode while Unity is compiling or updating assets. Play Mode was canceled.");
                 return;
             }
 
             try
             {
+                Unity2FoxgloveSchemaEvidenceSettings.SyncOpenSceneManagers();
                 var schemaInfoPath = Path.Combine(
                     Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
                     FoxRunSchemaInfoWriter.SchemaInfoFileName);
@@ -54,6 +56,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
             catch (Exception ex)
             {
+                EditorApplication.isPlaying = false;
                 Debug.LogError("[FoxRun] Failed to refresh canonical manifest before Play Mode:\n" + ex);
             }
         }

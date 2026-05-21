@@ -22,10 +22,11 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(Components.FoxgloveManager))]
     public class FoxgloveManagerEditor : UnityEditor.Editor
     {
-        private static bool _connectionSecurityExpanded = true;
-        private static bool _publishDataExpanded = true;
+        private static bool _connectionSecurityExpanded;
+        private static bool _publishDataExpanded;
         private static bool _ros2BridgeExpanded;
         private static bool _mcapExpanded;
+        private static bool _schemaEvidenceAdvancedExpanded;
         private static bool _diagnosticsExpanded;
         private readonly McapReplayPreflightDrawer _mcapReplayPreflight = new McapReplayPreflightDrawer();
         private readonly Ros2BridgeHealthDrawer _ros2BridgeHealthDrawer = new Ros2BridgeHealthDrawer();
@@ -49,6 +50,7 @@ namespace Unity.FoxgloveSDK.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+            Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
 
             DrawScriptProperty();
             DrawCompactStatus();
@@ -229,14 +231,17 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (replayPath != null)
             {
-                FoxgloveManagerInspectorLayout.Subheader("Indexed Reader Preflight");
+                FoxgloveManagerInspectorLayout.Subheader("Replay Preflight");
                 _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
             }
         }
 
         private void DrawSchemaEvidenceSection()
         {
-            FoxgloveManagerInspectorLayout.Subheader("Schema Evidence");
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Schema Evidence (Advanced)", ref _schemaEvidenceAdvancedExpanded))
+                return;
+
+            EditorGUI.indentLevel++;
 
             var source = serializedObject.FindProperty("_identityModeSource");
             var overrideMode = serializedObject.FindProperty("_identityModeOverride");
@@ -246,38 +251,44 @@ namespace Unity.FoxgloveSDK.Editor
             if (source == null || overrideMode == null || projectMode == null || evidenceRoot == null)
             {
                 DrawMissingProperty("_identityModeSource / _identityModeOverride / _projectSettingsIdentityMode / _schemaEvidenceRoot");
+                EditorGUI.indentLevel--;
                 return;
             }
 
-            projectMode.enumValueIndex = (int)Unity2FoxgloveSchemaEvidenceSettings.DefaultIdentityMode;
-            evidenceRoot.stringValue = Unity2FoxgloveSchemaEvidencePaths.CurrentEvidenceRootProjectRelative;
+            Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
 
             EditorGUILayout.PropertyField(source, new GUIContent("Identity Mode Source"));
             if (source.enumValueIndex == (int)SchemaIdentityModeSource.Override)
             {
-                EditorGUILayout.PropertyField(overrideMode, new GUIContent("Identity Mode"));
+                EditorGUILayout.PropertyField(overrideMode, new GUIContent("Identity Mode", IdentityModeTooltip((SchemaIdentityMode)overrideMode.enumValueIndex)));
             }
             else
             {
                 using (new EditorGUI.DisabledScope(true))
-                    EditorGUILayout.PropertyField(projectMode, new GUIContent("Identity Mode"));
+                    EditorGUILayout.PropertyField(projectMode, new GUIContent("Identity Mode", IdentityModeTooltip((SchemaIdentityMode)projectMode.enumValueIndex)));
             }
 
-            using (new EditorGUI.DisabledScope(true))
+            using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.TextField("Current Evidence Root", evidenceRoot.stringValue);
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.TextField("Current Evidence Root", evidenceRoot.stringValue);
+                if (GUILayout.Button("Edit Project Settings", GUILayout.Width(150)))
+                    SettingsService.OpenProjectSettings(Unity2FoxgloveSchemaEvidenceSettings.SettingsPath);
             }
+
+            EditorGUILayout.HelpBox(
+                "Evidence refreshes automatically on Play, Build, and Recording. Use manual refresh for inspection.",
+                MessageType.Info);
 
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Apply Project Defaults"))
                 {
                     source.enumValueIndex = (int)SchemaIdentityModeSource.ProjectSettings;
-                    projectMode.enumValueIndex = (int)Unity2FoxgloveSchemaEvidenceSettings.DefaultIdentityMode;
-                    evidenceRoot.stringValue = Unity2FoxgloveSchemaEvidencePaths.CurrentEvidenceRootProjectRelative;
+                    Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
                 }
 
-                if (GUILayout.Button("Generate Evidence Now"))
+                if (GUILayout.Button("Refresh Evidence Now"))
                     GenerateSchemaEvidenceNow();
             }
 
@@ -291,6 +302,21 @@ namespace Unity.FoxgloveSDK.Editor
 
                 if (GUILayout.Button("Copy Hash"))
                     CopyCurrentSchemaEvidenceHash();
+            }
+
+            EditorGUI.indentLevel--;
+        }
+
+        private static string IdentityModeTooltip(SchemaIdentityMode mode)
+        {
+            switch (mode)
+            {
+                case SchemaIdentityMode.Warn:
+                    return "Reports schema mismatches and continues best-effort replay.";
+                case SchemaIdentityMode.Strict:
+                    return "Blocks replay startup when the recorded FoxRun schema hash does not match the current project.";
+                default:
+                    return "Skips schema identity checks.";
             }
         }
 

@@ -49,9 +49,11 @@ If the file opens but topics are missing, verify recording was enabled before Pl
 1. Select the GameObject with **FoxgloveManager**.
 2. Enable **MCAP Replay > Enable Replay**.
 3. Set **Replay File Path** to the `.mcap` file.
-4. Enable **Replay Auto Play** if you want playback to start automatically.
-5. Leave **Disable Live Publishers** enabled for replay tests, so live and replayed topics do not overlap.
-6. Press **Play**.
+4. Use **Replay Preflight > Use Latest Recording** when you want Unity to select the newest file from the recording directory and write it into **Replay File Path**.
+5. Use **Compare With Current** before Play Mode to compare the recorded FoxRun hash from the recording's `.schema` sidecar with the current generated FoxRun hash.
+6. Enable **Replay Auto Play** if you want playback to start automatically.
+7. Leave **Disable Live Publishers** enabled for replay tests, so live and replayed topics do not overlap.
+8. Press **Play**.
 
 Unity should replay recorded messages and update replay adapters or forwarded Foxglove topics.
 
@@ -102,6 +104,8 @@ Recordings/session_20260521_135001.schema/
   FoxRun/
   Unity2Foxglove/
 ```
+
+The **Replay Preflight** block can inspect a selected `.mcap` before Play Mode. It shows the recorded FoxRun hash, the current FoxRun hash, and a `Match`, `Mismatch`, or `Missing Evidence` status. **Open Recording Evidence** reveals the paired `.schema` directory, and **Copy Identity Summary** copies the comparison text for bug reports or acceptance notes.
 
 Use the timestamp and folder name to keep the `.mcap` and `.schema` evidence bundle paired.
 

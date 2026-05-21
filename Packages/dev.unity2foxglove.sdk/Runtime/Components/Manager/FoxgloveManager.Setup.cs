@@ -13,6 +13,8 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
+        private SchemaEvidenceSidecarResult _pendingRecordingSidecar;
+
         /// <summary>
         /// Converts seconds to milliseconds for playback-control windows.
         /// </summary>
@@ -119,6 +121,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private bool SetupRecording()
         {
+            CleanupPendingRecordingSidecar();
+
             if (!_enableRecording)
             {
                 return true;
@@ -136,19 +140,20 @@ namespace Unity.FoxgloveSDK.Components
                 var evidenceRoot = string.IsNullOrWhiteSpace(_schemaEvidenceRoot)
                     ? Path.Combine(ProjectRoot, "Assets", "Generated")
                     : ResolveProjectPath(_schemaEvidenceRoot);
-                var sidecarResult = SchemaEvidenceSidecarWriter.WriteSidecar(
+                _pendingRecordingSidecar = SchemaEvidenceSidecarWriter.StageSidecar(
                     path,
                     evidenceRoot,
                     identityMode,
                     requireComplete: identityMode == SchemaIdentityMode.Strict);
 
-                foreach (var warning in sidecarResult.Warnings)
+                foreach (var warning in _pendingRecordingSidecar.Warnings)
                 {
                     Debug.LogWarning("[Foxglove] Schema evidence: " + warning);
                 }
 
-                if (!sidecarResult.Success)
+                if (!_pendingRecordingSidecar.Success)
                 {
+                    CleanupPendingRecordingSidecar();
                     Debug.LogError("[Foxglove] Recording startup aborted because complete schema evidence is required in Strict mode.");
                     return false;
                 }
@@ -161,8 +166,44 @@ namespace Unity.FoxgloveSDK.Components
                 _ => NoCompressionName
             };
             var coord = _coordinateMode == CoordinateMode.RightHand ? RightHandCoordinateModeName : LeftHandCoordinateModeName;
-            _runtime.EnableRecording(path, _recordingChunkSizeKB * RecordingBytesPerKilobyte, comp, coord);
+            try
+            {
+                _runtime.EnableRecording(path, _recordingChunkSizeKB * RecordingBytesPerKilobyte, comp, coord);
+            }
+            catch
+            {
+                CleanupPendingRecordingSidecar();
+                throw;
+            }
+
             return true;
+        }
+
+        private bool PublishPendingRecordingSidecar()
+        {
+            if (_pendingRecordingSidecar == null)
+                return true;
+
+            var sidecar = _pendingRecordingSidecar;
+            _pendingRecordingSidecar = null;
+            if (SchemaEvidenceSidecarWriter.PublishStagedSidecar(sidecar, out var publishWarning))
+                return true;
+
+            SchemaEvidenceSidecarWriter.CleanupStagedSidecar(sidecar);
+            _runtime.DisableRecording();
+            Debug.LogError("[Foxglove] Recording startup aborted because schema evidence sidecar publish failed: " + publishWarning);
+            return false;
+        }
+
+        private void CleanupPendingRecordingSidecar()
+        {
+            if (_pendingRecordingSidecar == null)
+            {
+                return;
+            }
+
+            SchemaEvidenceSidecarWriter.CleanupStagedSidecar(_pendingRecordingSidecar);
+            _pendingRecordingSidecar = null;
         }
 
         /// <summary>

@@ -47,9 +47,15 @@ namespace Unity.FoxgloveSDK.Components
             {
                 StartCertificateDistributorIfNeeded();
                 _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
+                if (!PublishPendingRecordingSidecar())
+                {
+                    StopServer();
+                    return;
+                }
             }
             catch
             {
+                CleanupPendingRecordingSidecar();
                 StopCertificateDistributor();
                 throw;
             }

@@ -7,8 +7,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -21,9 +23,13 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private string _mcapPreflightSummary;
         private string _mcapPreflightTopics;
+        private string _identitySummary;
+        private string _selectedReplayPath;
+        private string _selectedSidecarDirectory;
         private int _mcapPreflightTopicCount;
         private bool _mcapTopicsExpanded;
         private MessageType _mcapPreflightMessageType = MessageType.Info;
+        private MessageType _identityMessageType = MessageType.Info;
 
         /// <summary>
         /// Draws latest-recording selection, replay-file analysis, and the
@@ -32,7 +38,7 @@ namespace Unity.FoxgloveSDK.Editor
         internal void Draw(SerializedObject serializedObject, UnityEngine.Object targetObject, SerializedProperty replayPath)
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("MCAP Indexed Reader Summary", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Replay Identity Preflight", EditorStyles.boldLabel);
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -40,22 +46,44 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     if (FindLatestReadableRecording(out var latestRecording, out var error))
                     {
-                        replayPath.stringValue = MakeRelative(latestRecording);
-                        serializedObject.ApplyModifiedProperties();
-                        EditorUtility.SetDirty(targetObject);
+                        var projectRelativeReplayPath = MakeRelative(latestRecording);
+                        ApplyReplayPath(serializedObject, targetObject, replayPath, projectRelativeReplayPath);
                         AnalyzeReplayMcap(latestRecording);
                     }
                     else
                     {
-                        SetMcapPreflightMessage(error, MessageType.Warning);
+                        SetIdentityMessage(error, MessageType.Warning);
                     }
                 }
 
-                if (GUILayout.Button("Analyze Replay File"))
+                if (GUILayout.Button("Compare With Current"))
                 {
-                    AnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue));
+                    AnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue), refreshCurrentEvidence: true);
                 }
             }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(_selectedSidecarDirectory)))
+                {
+                    if (GUILayout.Button("Open Recording Evidence"))
+                        OpenRecordingEvidence();
+                }
+
+                using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(_identitySummary)))
+                {
+                    if (GUILayout.Button("Copy Identity Summary"))
+                        EditorGUIUtility.systemCopyBuffer = _identitySummary;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_identitySummary))
+                EditorGUILayout.HelpBox(_identitySummary, _identityMessageType);
+
+            EditorGUILayout.LabelField("MCAP Indexed Reader Summary", EditorStyles.boldLabel);
+
+            if (GUILayout.Button("Analyze Replay File"))
+                AnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue));
 
             if (!string.IsNullOrEmpty(_mcapPreflightSummary))
                 EditorGUILayout.HelpBox(_mcapPreflightSummary, _mcapPreflightMessageType);
@@ -77,19 +105,23 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private void AnalyzeReplayMcap(string path)
+        private void AnalyzeReplayMcap(string path, bool refreshCurrentEvidence = false)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
                 SetMcapPreflightMessage("Select an MCAP replay file first.", MessageType.Warning);
+                SetIdentityMessage("Select an MCAP replay file first.", MessageType.Warning);
                 return;
             }
 
             if (!File.Exists(path))
             {
                 SetMcapPreflightMessage($"MCAP file was not found: {path}", MessageType.Warning);
+                SetIdentityMessage($"MCAP file was not found: {path}", MessageType.Warning);
                 return;
             }
+
+            AnalyzeReplayIdentity(path, refreshCurrentEvidence);
 
             try
             {
@@ -135,6 +167,142 @@ namespace Unity.FoxgloveSDK.Editor
             _mcapPreflightMessageType = messageType;
             _mcapPreflightTopics = topics;
             _mcapPreflightTopicCount = topicCount;
+        }
+
+        private void SetIdentityMessage(string message, MessageType messageType)
+        {
+            _identitySummary = message;
+            _identityMessageType = messageType;
+        }
+
+        private void AnalyzeReplayIdentity(string path, bool refreshCurrentEvidence)
+        {
+            _selectedReplayPath = path;
+            _selectedSidecarDirectory = Path.ChangeExtension(Path.GetFullPath(path), ".schema");
+
+            var warnings = new List<string>();
+            var refreshFailed = false;
+            if (refreshCurrentEvidence)
+            {
+                try
+                {
+                    Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts();
+                    AssetDatabase.Refresh();
+                }
+                catch (Exception ex)
+                {
+                    refreshFailed = true;
+                    warnings.Add("Failed to refresh current evidence: " + ex.Message);
+                }
+            }
+
+            var recordedHash = ReadRecordedFoxRunHash(_selectedSidecarDirectory, warnings);
+            var currentHash = refreshFailed
+                ? string.Empty
+                : ReadCurrentFoxRunHash(warnings);
+            var status = IdentityStatus(recordedHash, currentHash);
+            var messageType = status == "Match" ? MessageType.Info : MessageType.Warning;
+
+            var lines = new List<string>
+            {
+                "Replay: " + MakeRelative(path),
+                "Recording Evidence: " + MakeRelative(_selectedSidecarDirectory),
+                "Recorded FoxRun Hash: " + FormatHash(recordedHash),
+                "Current FoxRun Hash: " + FormatHash(currentHash),
+                "Status: " + status
+            };
+
+            for (var i = 0; i < warnings.Count; i++)
+                lines.Add("Warning: " + warnings[i]);
+
+            SetIdentityMessage(string.Join("\n", lines), messageType);
+        }
+
+        private void OpenRecordingEvidence()
+        {
+            if (!string.IsNullOrEmpty(_selectedSidecarDirectory) && Directory.Exists(_selectedSidecarDirectory))
+            {
+                EditorUtility.RevealInFinder(_selectedSidecarDirectory);
+                return;
+            }
+
+            SetIdentityMessage(
+                "Missing Evidence: recording sidecar was not found for " + MakeRelative(_selectedReplayPath),
+                MessageType.Warning);
+        }
+
+        private static void ApplyReplayPath(
+            SerializedObject serializedObject,
+            UnityEngine.Object targetObject,
+            SerializedProperty replayPath,
+            string projectRelativeReplayPath)
+        {
+            GUI.FocusControl(null);
+            EditorGUIUtility.editingTextField = false;
+            replayPath.stringValue = projectRelativeReplayPath;
+            serializedObject.ApplyModifiedProperties();
+            serializedObject.Update();
+            EditorUtility.SetDirty(targetObject);
+            InternalEditorUtility.RepaintAllViews();
+        }
+
+        private static string ReadRecordedFoxRunHash(string sidecarDirectory, List<string> warnings)
+        {
+            if (string.IsNullOrEmpty(sidecarDirectory) || !Directory.Exists(sidecarDirectory))
+            {
+                warnings.Add("Recording sidecar is missing.");
+                return string.Empty;
+            }
+
+            var indexPath = Path.Combine(sidecarDirectory, "schema-evidence.json");
+            if (!File.Exists(indexPath))
+            {
+                warnings.Add("schema-evidence.json is missing from the recording sidecar.");
+                return string.Empty;
+            }
+
+            try
+            {
+                var index = JObject.Parse(File.ReadAllText(indexPath));
+                var hash = index["foxRun"]?["globalManifestHash"]?.ToString() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(hash))
+                    warnings.Add("Recorded FoxRun hash is missing from schema-evidence.json.");
+                return hash.Trim();
+            }
+            catch (Exception ex)
+            {
+                warnings.Add("Failed to read recording schema evidence: " + ex.Message);
+                return string.Empty;
+            }
+        }
+
+        private static string ReadCurrentFoxRunHash(List<string> warnings)
+        {
+            var hashPath = Path.Combine(
+                Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
+                "foxrun.manifest.hash");
+            if (!File.Exists(hashPath))
+            {
+                warnings.Add("Current FoxRun hash is missing. Refresh current evidence first.");
+                return string.Empty;
+            }
+
+            return File.ReadAllText(hashPath).Trim();
+        }
+
+        private static string IdentityStatus(string recordedHash, string currentHash)
+        {
+            if (string.IsNullOrWhiteSpace(recordedHash) || string.IsNullOrWhiteSpace(currentHash))
+                return "Missing Evidence";
+
+            return string.Equals(recordedHash.Trim(), currentHash.Trim(), StringComparison.Ordinal)
+                ? "Match"
+                : "Mismatch";
+        }
+
+        private static string FormatHash(string hash)
+        {
+            return string.IsNullOrWhiteSpace(hash) ? "(missing)" : hash.Trim();
         }
 
         private static bool FindLatestReadableRecording(out string latestRecording, out string error)

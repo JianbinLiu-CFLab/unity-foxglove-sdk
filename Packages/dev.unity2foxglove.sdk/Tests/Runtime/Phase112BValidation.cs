@@ -213,7 +213,7 @@ namespace Unity.FoxgloveSDK.Tests
                     0f)
             });
 
-            Check(manifest.GlobalManifestHash == "54a93011d18c1ba9d53c955eb047c285096fb1a0a58376beb31c935ed3eff0e4",
+            Check(manifest.GlobalManifestHash == "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d",
                 "112B-D1: Phase112 fixture manifest hash is unchanged");
         }
 

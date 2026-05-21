@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Editor
     [FilePath("ProjectSettings/Unity2FoxgloveSchemaEvidenceSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     internal sealed class Unity2FoxgloveSchemaEvidenceSettings : ScriptableSingleton<Unity2FoxgloveSchemaEvidenceSettings>
     {
+        internal const string SettingsPath = "Project/Unity2Foxglove/Schema Evidence";
+
         [SerializeField] private SchemaIdentityMode _defaultIdentityMode = SchemaIdentityMode.Off;
         [SerializeField] private string _currentEvidenceRoot = Unity2FoxgloveSchemaEvidencePaths.DefaultCurrentEvidenceRoot;
 
@@ -26,7 +28,7 @@ namespace Unity.FoxgloveSDK.Editor
             set
             {
                 instance._defaultIdentityMode = value;
-                instance.Save(true);
+                SaveAndSync();
             }
         }
 
@@ -41,19 +43,80 @@ namespace Unity.FoxgloveSDK.Editor
                     return;
 
                 instance._currentEvidenceRoot = normalized;
-                instance.Save(true);
+                SaveAndSync();
             }
         }
 
         public static void SaveSettings()
         {
-            instance.Save(true);
+            SaveAndSync();
+        }
+
+        internal static bool SyncSerializedManager(SerializedObject serializedObject)
+        {
+            if (serializedObject == null)
+                return false;
+
+            var projectMode = serializedObject.FindProperty("_projectSettingsIdentityMode");
+            var evidenceRoot = serializedObject.FindProperty("_schemaEvidenceRoot");
+            if (projectMode == null || evidenceRoot == null)
+                return false;
+
+            var changed = false;
+            var mode = (int)DefaultIdentityMode;
+            if (projectMode.enumValueIndex != mode)
+            {
+                projectMode.enumValueIndex = mode;
+                changed = true;
+            }
+
+            var root = Unity2FoxgloveSchemaEvidencePaths.CurrentEvidenceRootProjectRelative;
+            if (evidenceRoot.stringValue != root)
+            {
+                evidenceRoot.stringValue = root;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        internal static void SyncOpenSceneManagers()
+        {
+            foreach (var manager in Resources.FindObjectsOfTypeAll<Unity.FoxgloveSDK.Components.FoxgloveManager>())
+            {
+                if (manager == null || EditorUtility.IsPersistent(manager))
+                    continue;
+
+                SyncManager(manager);
+            }
+        }
+
+        internal static void SyncManagersInScene(UnityEngine.SceneManagement.Scene scene)
+        {
+            if (!scene.IsValid())
+                return;
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                foreach (var manager in root.GetComponentsInChildren<Unity.FoxgloveSDK.Components.FoxgloveManager>(true))
+                    SyncManager(manager);
+            }
+        }
+
+        private static void SyncManager(Unity.FoxgloveSDK.Components.FoxgloveManager manager)
+        {
+            var serialized = new SerializedObject(manager);
+            if (!SyncSerializedManager(serialized))
+                return;
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(manager);
         }
 
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
-            return new SettingsProvider("Project/Unity2Foxglove/Schema Evidence", SettingsScope.Project)
+            return new SettingsProvider(SettingsPath, SettingsScope.Project)
             {
                 label = "Schema Evidence & Identity",
                 guiHandler = _ => DrawSettings()
@@ -75,7 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 instance._defaultIdentityMode = mode;
                 instance._currentEvidenceRoot = normalized;
-                instance.Save(true);
+                SaveAndSync();
             }
 
             EditorGUILayout.Space();
@@ -92,9 +155,15 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     instance._defaultIdentityMode = SchemaIdentityMode.Off;
                     instance._currentEvidenceRoot = Unity2FoxgloveSchemaEvidencePaths.DefaultCurrentEvidenceRoot;
-                    instance.Save(true);
+                    SaveAndSync();
                 }
             }
+        }
+
+        private static void SaveAndSync()
+        {
+            instance.Save(true);
+            SyncOpenSceneManagers();
         }
     }
 }

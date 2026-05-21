@@ -22,12 +22,14 @@ namespace Unity.FoxgloveSDK.Core
             bool success,
             bool complete,
             string sidecarDirectory,
-            IReadOnlyList<string> warnings)
+            IReadOnlyList<string> warnings,
+            string temporaryDirectory = null)
         {
             Success = success;
             Complete = complete;
             SidecarDirectory = sidecarDirectory ?? string.Empty;
             Warnings = warnings ?? Array.Empty<string>();
+            TemporaryDirectory = temporaryDirectory ?? string.Empty;
         }
 
         /// <summary>True when the sidecar operation should allow the caller to continue.</summary>
@@ -38,6 +40,9 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Directory written beside the MCAP recording.</summary>
         public string SidecarDirectory { get; }
+
+        /// <summary>Temporary directory holding a staged sidecar before final publish.</summary>
+        public string TemporaryDirectory { get; }
 
         /// <summary>Warnings describing missing or partially copied evidence.</summary>
         public IReadOnlyList<string> Warnings { get; }
@@ -80,10 +85,35 @@ namespace Unity.FoxgloveSDK.Core
             SchemaIdentityMode identityMode,
             bool requireComplete)
         {
+            var staged = StageSidecar(mcapPath, currentEvidenceRoot, identityMode, requireComplete);
+            if (!staged.Success)
+                return staged;
+
+            if (PublishStagedSidecar(staged, out var publishWarning))
+                return staged;
+
+            var warnings = new List<string>(staged.Warnings);
+            warnings.Add(publishWarning);
+            CleanupStagedSidecar(staged);
+            return new SchemaEvidenceSidecarResult(false, staged.Complete, staged.SidecarDirectory, warnings);
+        }
+
+        /// <summary>
+        /// Creates a staged sidecar directory without replacing any existing
+        /// recording sidecar. Call <see cref="PublishStagedSidecar"/> only
+        /// after the corresponding recording startup has succeeded.
+        /// </summary>
+        public static SchemaEvidenceSidecarResult StageSidecar(
+            string mcapPath,
+            string currentEvidenceRoot,
+            SchemaIdentityMode identityMode,
+            bool requireComplete)
+        {
             var warnings = new List<string>();
             var sidecarDirectory = string.IsNullOrWhiteSpace(mcapPath)
                 ? string.Empty
                 : Path.ChangeExtension(Path.GetFullPath(mcapPath), ".schema");
+            string temporaryDirectory = null;
 
             try
             {
@@ -96,20 +126,25 @@ namespace Unity.FoxgloveSDK.Core
                 if (string.IsNullOrWhiteSpace(currentEvidenceRoot))
                     warnings.Add("Current schema evidence root is empty.");
 
-                if (Directory.Exists(sidecarDirectory))
-                    Directory.Delete(sidecarDirectory, recursive: true);
-                Directory.CreateDirectory(sidecarDirectory);
+                var parentDirectory = Path.GetDirectoryName(sidecarDirectory);
+                if (string.IsNullOrWhiteSpace(parentDirectory))
+                    parentDirectory = Directory.GetCurrentDirectory();
+                Directory.CreateDirectory(parentDirectory);
+                temporaryDirectory = Path.Combine(
+                    parentDirectory,
+                    Path.GetFileName(sidecarDirectory) + ".tmp-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(temporaryDirectory);
 
                 var fullEvidenceRoot = string.IsNullOrWhiteSpace(currentEvidenceRoot)
                     ? string.Empty
                     : Path.GetFullPath(currentEvidenceRoot);
 
-                CopyGroup(fullEvidenceRoot, sidecarDirectory, "FoxRun", FoxRunFiles, warnings);
-                CopyGroup(fullEvidenceRoot, sidecarDirectory, "Unity2Foxglove", Unity2FoxgloveFiles, warnings);
+                CopyGroup(fullEvidenceRoot, temporaryDirectory, "FoxRun", FoxRunFiles, warnings);
+                CopyGroup(fullEvidenceRoot, temporaryDirectory, "Unity2Foxglove", Unity2FoxgloveFiles, warnings);
 
                 var complete = warnings.Count == 0;
                 WriteIndex(
-                    sidecarDirectory,
+                    temporaryDirectory,
                     mcapPath,
                     identityMode,
                     complete,
@@ -117,13 +152,85 @@ namespace Unity.FoxgloveSDK.Core
                     ReadHash(Path.Combine(fullEvidenceRoot, "Unity2Foxglove", "unity2foxglove.schema-manifest.hash")),
                     warnings);
 
-                return new SchemaEvidenceSidecarResult(!requireComplete || complete, complete, sidecarDirectory, warnings);
+                if (requireComplete && !complete)
+                {
+                    CleanupDirectory(temporaryDirectory);
+                    return new SchemaEvidenceSidecarResult(false, false, sidecarDirectory, warnings);
+                }
+
+                return new SchemaEvidenceSidecarResult(true, complete, sidecarDirectory, warnings, temporaryDirectory);
             }
             catch (Exception ex)
             {
+                CleanupDirectory(temporaryDirectory);
                 warnings.Add("Failed to write schema evidence sidecar: " + ex.Message);
                 return new SchemaEvidenceSidecarResult(false, false, sidecarDirectory, warnings);
             }
+        }
+
+        /// <summary>
+        /// Publishes a staged sidecar into its final location without deleting
+        /// the previous sidecar until the replacement is ready.
+        /// </summary>
+        public static bool PublishStagedSidecar(SchemaEvidenceSidecarResult staged, out string warning)
+        {
+            warning = string.Empty;
+            if (staged == null || !staged.Success || string.IsNullOrWhiteSpace(staged.TemporaryDirectory))
+            {
+                warning = "Schema evidence sidecar was not staged.";
+                return false;
+            }
+
+            if (!Directory.Exists(staged.TemporaryDirectory))
+            {
+                warning = "Staged schema evidence sidecar is missing.";
+                return false;
+            }
+
+            var targetDirectory = staged.SidecarDirectory;
+            var backupDirectory = targetDirectory + ".bak-" + Guid.NewGuid().ToString("N");
+            var hadExistingTarget = Directory.Exists(targetDirectory);
+
+            try
+            {
+                if (hadExistingTarget)
+                    Directory.Move(targetDirectory, backupDirectory);
+
+                Directory.Move(staged.TemporaryDirectory, targetDirectory);
+                CleanupDirectory(backupDirectory);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (!Directory.Exists(targetDirectory) && Directory.Exists(backupDirectory))
+                {
+                    try
+                    {
+                        Directory.Move(backupDirectory, targetDirectory);
+                    }
+                    catch
+                    {
+                        // Preserve the original exception message below.
+                    }
+                }
+
+                warning = "Failed to publish schema evidence sidecar: " + ex.Message;
+                return false;
+            }
+            finally
+            {
+                if (Directory.Exists(backupDirectory) && Directory.Exists(targetDirectory))
+                    CleanupDirectory(backupDirectory);
+            }
+        }
+
+        /// <summary>Cleans up an unpublished staged sidecar directory.</summary>
+        public static void CleanupStagedSidecar(SchemaEvidenceSidecarResult staged)
+        {
+            if (staged == null || string.IsNullOrWhiteSpace(staged.TemporaryDirectory))
+                return;
+
+            CleanupDirectory(staged.TemporaryDirectory);
         }
 
         private static void CopyGroup(
@@ -190,6 +297,21 @@ namespace Unity.FoxgloveSDK.Core
                 Path.Combine(sidecarDirectory, "schema-evidence.json"),
                 JsonConvert.SerializeObject(json, Formatting.None),
                 Utf8NoBom);
+        }
+
+        private static void CleanupDirectory(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return;
+
+            try
+            {
+                Directory.Delete(path, recursive: true);
+            }
+            catch
+            {
+                // Best-effort cleanup: a failed cleanup must not mask the main operation result.
+            }
         }
     }
 }

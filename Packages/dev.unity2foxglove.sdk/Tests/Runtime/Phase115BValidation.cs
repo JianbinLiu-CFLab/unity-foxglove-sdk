@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase115BValidation
     {
-        private const string ExpectedFoxRunFixtureHash = "54a93011d18c1ba9d53c955eb047c285096fb1a0a58376beb31c935ed3eff0e4";
+        private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string MismatchedHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private const string RuntimeIdentityModePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/SchemaIdentityMode.cs";
         private const string SidecarWriterPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/SchemaEvidenceSidecarWriter.cs";
@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
                           && !warn.LastEnableBlockedBySchemaMismatch
                           && warnLogger.LastWarning.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
                           && warnLogger.LastWarning.Contains("Recorded: 000000000000", StringComparison.Ordinal)
-                          && warnLogger.LastWarning.Contains("Current:  54a93011d18c", StringComparison.Ordinal)
+                          && warnLogger.LastWarning.Contains("Current:  653e287d1f7a", StringComparison.Ordinal)
                           && warnLogger.LastWarning.Contains("will continue", StringComparison.OrdinalIgnoreCase)
                           && !warnLogger.LastWarning.Contains("Replay blocked.", StringComparison.Ordinal),
                         "115B-B3: Warn mode reports mismatch but continues replay load");
@@ -267,7 +267,8 @@ namespace Unity.FoxgloveSDK.Tests
             var server = ReadRepoText(ManagerServerPath);
             Check(setup.Contains("private bool SetupRecording()", StringComparison.Ordinal)
                   && server.Contains("if (!SetupRecording())", StringComparison.Ordinal)
-                  && setup.Contains("SchemaEvidenceSidecarWriter.WriteSidecar", StringComparison.Ordinal)
+                  && setup.Contains("SchemaEvidenceSidecarWriter.StageSidecar", StringComparison.Ordinal)
+                  && setup.Contains("SchemaEvidenceSidecarWriter.PublishStagedSidecar", StringComparison.Ordinal)
                   && setup.Contains("EffectiveSchemaIdentityMode", StringComparison.Ordinal)
                   && setup.Contains("ReplayStartHadSchemaMismatch", StringComparison.Ordinal)
                   && setup.Contains("mixed replay/live data", StringComparison.Ordinal),
@@ -285,11 +286,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "115B-D6: FoxRun and aggregate generation share the schema evidence path resolver");
 
             var editor = ReadRepoText(ManagerEditorPath);
-            Check(editor.Contains("Schema Evidence", StringComparison.Ordinal)
+            Check(editor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
                   && editor.Contains("_identityModeSource", StringComparison.Ordinal)
                   && editor.Contains("_identityModeOverride", StringComparison.Ordinal)
                   && editor.Contains("Apply Project Defaults", StringComparison.Ordinal)
-                  && editor.Contains("Generate Evidence Now", StringComparison.Ordinal)
+                  && editor.Contains("Refresh Evidence Now", StringComparison.Ordinal)
+                  && editor.Contains("Edit Project Settings", StringComparison.Ordinal)
                   && editor.Contains("Open Current Evidence", StringComparison.Ordinal)
                   && editor.Contains("Copy Hash", StringComparison.Ordinal),
                 "115B-D7: Manager Inspector surfaces identity mode and current evidence controls near recording/replay");

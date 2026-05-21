@@ -74,14 +74,22 @@ namespace Unity.FoxgloveSDK.Util
             if (values == null || values.Count == 0)
                 return false;
 
-            foreach (var pair in values)
+            try
             {
-                if (string.IsNullOrWhiteSpace(pair.Key) || !IsSupportedJsonValue(pair.Value, 0))
-                    return false;
-            }
+                foreach (var pair in values)
+                {
+                    if (string.IsNullOrWhiteSpace(pair.Key) || !IsSupportedJsonValue(pair.Value, 0))
+                        return false;
+                }
 
-            envelope = new FoxgloveDebugOverlayEnvelope(source, label, values);
-            return true;
+                envelope = new FoxgloveDebugOverlayEnvelope(source, label, values);
+                return true;
+            }
+            catch
+            {
+                envelope = null;
+                return false;
+            }
         }
 
         public static bool TryCreateValue(
@@ -191,7 +199,7 @@ namespace Unity.FoxgloveSDK.Util
                 return true;
             }
 
-            return true;
+            return false;
         }
 
         private static bool IsBinaryLikeValue(object value)
