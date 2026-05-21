@@ -49,9 +49,11 @@ If the file opens but topics are missing, verify recording was enabled before Pl
 1. Select the GameObject with **FoxgloveManager**.
 2. Enable **MCAP Replay > Enable Replay**.
 3. Set **Replay File Path** to the `.mcap` file.
-4. Enable **Replay Auto Play** if you want playback to start automatically.
-5. Leave **Disable Live Publishers** enabled for replay tests, so live and replayed topics do not overlap.
-6. Press **Play**.
+4. Use **Replay Preflight > Use Latest Recording** when you want Unity to select the newest file from the recording directory and write it into **Replay File Path**.
+5. Use **Compare With Current** before Play Mode to compare the recorded FoxRun hash from the recording's `.schema` sidecar with the current generated FoxRun hash.
+6. Enable **Replay Auto Play** if you want playback to start automatically.
+7. Leave **Disable Live Publishers** enabled for replay tests, so live and replayed topics do not overlap.
+8. Press **Play**.
 
 Unity should replay recorded messages and update replay adapters or forwarded Foxglove topics.
 
@@ -85,7 +87,29 @@ Unity replay reads this metadata after the MCAP file is loaded and before playba
 
 The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` is separate release evidence. It records the FoxRun summary, protobuf registry, ROS2 `.msg` registry, and typed publisher catalog, but Unity replay does not use its aggregate hash, protobuf hash, or ROS2 hash as replay guard keys. Replay compatibility remains governed only by the FoxRun `globalManifestHash` recorded in MCAP metadata.
 
-## 10. Common Mistakes
+## 10. Schema Evidence Identity Modes
+
+The **Schema Evidence** controls in `FoxgloveManager > MCAP Record & Replay` decide how strongly Unity uses the current evidence snapshot:
+
+- `Off`: skip schema identity checks. This is the lightest default for demos and early debugging.
+- `Warn`: report mismatches, but continue recording or replay. If live publishers stay enabled during replay, Foxglove may show mixed replay/live data.
+- `Strict`: require complete evidence for recording sidecars and block replay when the recorded FoxRun `globalManifestHash` does not match the current one.
+
+The current evidence root defaults to `Assets/Generated`. It contains `FoxRun/` and `Unity2Foxglove/` groups. When recording is enabled and identity mode is `Warn` or `Strict`, Unity writes a sidecar next to the MCAP:
+
+```text
+Recordings/session_20260521_135001.mcap
+Recordings/session_20260521_135001.schema/
+  schema-evidence.json
+  FoxRun/
+  Unity2Foxglove/
+```
+
+The **Replay Preflight** block can inspect a selected `.mcap` before Play Mode. It shows the recorded FoxRun hash, the current FoxRun hash, and a `Match`, `Mismatch`, or `Missing Evidence` status. **Open Recording Evidence** reveals the paired `.schema` directory, and **Copy Identity Summary** copies the comparison text for bug reports or acceptance notes.
+
+Use the timestamp and folder name to keep the `.mcap` and `.schema` evidence bundle paired.
+
+## 11. Common Mistakes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|

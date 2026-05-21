@@ -25,6 +25,16 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
+        /// Draws a nested workflow subsection inside a larger Inspector group.
+        /// </summary>
+        internal static bool WorkflowSubsection(string title, ref bool expanded)
+        {
+            EditorGUILayout.Space();
+            expanded = EditorGUILayout.Foldout(expanded, title, true);
+            return expanded;
+        }
+
+        /// <summary>
         /// Draws a compact subsection heading inside a workflow section.
         /// </summary>
         internal static void Subheader(string title)

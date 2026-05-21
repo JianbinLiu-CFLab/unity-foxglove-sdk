@@ -116,6 +116,7 @@ namespace Unity.FoxgloveSDK.Core
             }
             catch (Exception ex)
             {
+                parameters.OnParameterChanged -= OnParameterChanged;
                 session.SetRecorder(null);
                 recorder?.Dispose();
                 fileStream?.Dispose();
@@ -153,9 +154,10 @@ namespace Unity.FoxgloveSDK.Core
 
             var recorder = Interlocked.Exchange(ref _recorder, null);
 
+            if (_parameters != null) _parameters.OnParameterChanged -= OnParameterChanged;
+
             if (recorder != null)
             {
-                if (_parameters != null) _parameters.OnParameterChanged -= OnParameterChanged;
                 recorder.Close();
                 recorder.Dispose();
             }

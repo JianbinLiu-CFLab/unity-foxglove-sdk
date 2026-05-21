@@ -22,18 +22,25 @@ namespace Unity.FoxgloveSDK.Components
             string label = null,
             ulong? logTimeNs = null)
         {
-            if (manager == null)
-                return false;
+            try
+            {
+                if (manager == null)
+                    return false;
 
-            if (!FoxgloveDebugOverlayEnvelope.TryCreate(topic, source, values, label, out var envelope))
-                return false;
+                if (!FoxgloveDebugOverlayEnvelope.TryCreate(topic, source, values, label, out var envelope))
+                    return false;
 
-            if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
-                return false;
+                if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
+                    return false;
 
-            var timestamp = logTimeNs ?? manager.NowNs;
-            manager.PublishJson(topic, "", envelope, timestamp);
-            return true;
+                var timestamp = logTimeNs ?? manager.NowNs;
+                manager.PublishJson(topic, "", envelope, timestamp);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public static bool PublishValue(
@@ -45,18 +52,25 @@ namespace Unity.FoxgloveSDK.Components
             string label = null,
             ulong? logTimeNs = null)
         {
-            if (manager == null)
-                return false;
+            try
+            {
+                if (manager == null)
+                    return false;
 
-            if (!FoxgloveDebugOverlayEnvelope.TryCreateValue(topic, source, key, value, label, out var envelope))
-                return false;
+                if (!FoxgloveDebugOverlayEnvelope.TryCreateValue(topic, source, key, value, label, out var envelope))
+                    return false;
 
-            if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
-                return false;
+                if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
+                    return false;
 
-            var timestamp = logTimeNs ?? manager.NowNs;
-            manager.PublishJson(topic, "", envelope, timestamp);
-            return true;
+                var timestamp = logTimeNs ?? manager.NowNs;
+                manager.PublishJson(topic, "", envelope, timestamp);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

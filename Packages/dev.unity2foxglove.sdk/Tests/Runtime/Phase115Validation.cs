@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase115Validation
     {
-        private const string ExpectedFoxRunFixtureHash = "54a93011d18c1ba9d53c955eb047c285096fb1a0a58376beb31c935ed3eff0e4";
+        private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string SharedDir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest";
         private const string GeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/SchemaManifest/Unity2FoxgloveSchemaManifestGenerator.cs";
         private const string PlayModeHookPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs";
@@ -376,12 +376,18 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            return File.ReadAllText(RepoPath(relativePath));
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase115 file: " + relativePath, path);
+            return File.ReadAllText(path, Encoding.UTF8);
         }
 
         private static string RepoPath(string relativePath)
         {
-            return Path.Combine(Directory.GetCurrentDirectory(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase115 validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static void Check(bool condition, string message)

@@ -13,6 +13,7 @@ using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -20,13 +21,22 @@ namespace Unity.FoxgloveSDK.Editor
     /// Before Player build, generates real .g.cs files for [FoxRun] annotated classes
     /// so IL2CPP has the IFoxgloveLogSource implementation without relying on Roslyn analyzer.
     /// </summary>
-    public class FoxrunBuildPreprocess : IPreprocessBuildWithReport
+    public class FoxrunBuildPreprocess : IPreprocessBuildWithReport, IProcessSceneWithReport
     {
         /// <summary>
         /// Runs early (before most other build callbacks) so generated source
         /// files are present for IL2CPP compilation.
         /// </summary>
         public int callbackOrder => -100;
+
+        /// <summary>
+        /// Syncs project-level schema evidence defaults into each scene's
+        /// managers before Unity serializes them into a Player build.
+        /// </summary>
+        public void OnProcessScene(Scene scene, BuildReport report)
+        {
+            Unity2FoxgloveSchemaEvidenceSettings.SyncManagersInScene(scene);
+        }
 
         /// <summary>
         /// Generates physical <c>_FoxRun.g.cs</c> fallback files and a

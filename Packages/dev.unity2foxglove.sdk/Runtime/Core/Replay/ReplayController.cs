@@ -58,6 +58,7 @@ namespace Unity.FoxgloveSDK.Core
         private ulong _panelHistoryParkTimeNs;
         private bool _hasPanelHistoryTime;
         private ulong _lastPanelHistoryTimeNs;
+        private bool _lastEnableHadSchemaMismatch;
         private bool _lastEnableBlockedBySchemaMismatch;
         private string _lastEnableFailureMessage = string.Empty;
         /// <summary>
@@ -70,6 +71,8 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => _replayEnabled;
+        /// <summary>Whether the most recent replay enable attempt observed a confirmed FoxRun schema mismatch.</summary>
+        public bool LastEnableHadSchemaMismatch => _lastEnableHadSchemaMismatch;
         /// <summary>Whether the most recent replay enable attempt was blocked by a confirmed FoxRun schema mismatch.</summary>
         public bool LastEnableBlockedBySchemaMismatch => _lastEnableBlockedBySchemaMismatch;
         /// <summary>Message from the most recent failed replay enable attempt, or an empty string.</summary>
@@ -100,12 +103,18 @@ namespace Unity.FoxgloveSDK.Core
         /// <para>Disables any previous replay state first. If recording is active,
         /// replay is declined with a warning. Sets the playback clock range, then starts playback.</para>
         /// </summary>
-        public void Enable(string filePath, PlaybackClock playbackClock, bool recordingEnabled, string currentCoordinateMode = "")
+        public void Enable(
+            string filePath,
+            PlaybackClock playbackClock,
+            bool recordingEnabled,
+            string currentCoordinateMode = "",
+            SchemaIdentityMode identityMode = SchemaIdentityMode.Strict)
         {
             lock (_replayEngineLock)
             {
                 // Clean any previous replay state to avoid leaking old engine/stream
                 Disable();
+                _lastEnableHadSchemaMismatch = false;
                 _lastEnableBlockedBySchemaMismatch = false;
                 _lastEnableFailureMessage = string.Empty;
 
@@ -120,14 +129,27 @@ namespace Unity.FoxgloveSDK.Core
                     ValidateReplayFileForLoad(filePath);
                     _replayEngine.Load(filePath);
                     var summary = _replayEngine.Summary;
-                    var schemaGuard = EvaluateFoxRunReplaySchemaGuard(_replayEngine);
-                    if (schemaGuard.IsBlocking)
+                    if (identityMode != SchemaIdentityMode.Off)
                     {
-                        _lastEnableBlockedBySchemaMismatch = true;
-                        throw new InvalidDataException(schemaGuard.Message);
+                        var schemaGuard = EvaluateFoxRunReplaySchemaGuard(_replayEngine);
+                        if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch)
+                            _lastEnableHadSchemaMismatch = true;
+
+                        if (schemaGuard.IsBlocking && identityMode == SchemaIdentityMode.Strict)
+                        {
+                            _lastEnableBlockedBySchemaMismatch = true;
+                            throw new InvalidDataException(schemaGuard.Message);
+                        }
+
+                        if (schemaGuard.State != FoxRunReplaySchemaGuardState.Match)
+                        {
+                            if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch
+                                && identityMode == SchemaIdentityMode.Warn)
+                                _logger.LogWarning(CreateWarnModeSchemaMismatchMessage(schemaGuard));
+                            else
+                                _logger.LogWarning(schemaGuard.Message);
+                        }
                     }
-                    if (schemaGuard.State != FoxRunReplaySchemaGuardState.Match)
-                        _logger.LogWarning(schemaGuard.Message);
 
                     if (summary?.Schemas != null)
                     {
@@ -186,6 +208,22 @@ namespace Unity.FoxgloveSDK.Core
                 return FoxRunSchemaMcapMetadata.CreateMalformedRecordedResult("Metadata record is missing the value entry.");
 
             return FoxRunSchemaMcapMetadata.EvaluateRecordedJson(value, FoxRunSchemaInfoRegistry.Current);
+        }
+
+        private static string CreateWarnModeSchemaMismatchMessage(FoxRunReplaySchemaGuardResult result)
+        {
+            return "FoxRun replay schema mismatch.\n" +
+                   "Recorded: " + ShortHash(result.RecordedGlobalManifestHash) + "\n" +
+                   "Current:  " + ShortHash(result.CurrentGlobalManifestHash) + "\n" +
+                   "Warn mode: replay will continue.";
+        }
+
+        private static string ShortHash(string hash)
+        {
+            if (string.IsNullOrEmpty(hash))
+                return "<missing>";
+
+            return hash.Length <= 12 ? hash : hash.Substring(0, 12);
         }
 
         private static void ValidateReplayFileForLoad(string filePath)

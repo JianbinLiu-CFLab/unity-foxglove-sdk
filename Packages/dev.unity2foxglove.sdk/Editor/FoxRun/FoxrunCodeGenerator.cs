@@ -24,7 +24,6 @@ namespace Unity.FoxgloveSDK.Editor
     public static class FoxrunCodeGenerator
     {
         const string OutputDir = "Assets/Scripts/Generated/";
-        private const string ManifestOutputSubdirectory = "Generated/FoxRun";
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         /// <summary>
@@ -138,7 +137,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Refresh canonical FoxRun manifest artifacts and generated runtime
-        /// schema info under Assets/Generated/FoxRun. This is used by Editor
+        /// schema info under the configured schema evidence root. This is used by Editor
         /// Play Mode so local contract evidence is current without writing
         /// physical _FoxRun.g.cs Player fallback source files.
         /// </summary>
@@ -183,7 +182,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string GetManifestOutputDirectory()
         {
-            return Path.Combine(Application.dataPath, ManifestOutputSubdirectory);
+            return Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory();
         }
 
         private static FoxRunScanResult ScanFoxRunMembers(bool ignoreReflectionTypeLoadExceptions)

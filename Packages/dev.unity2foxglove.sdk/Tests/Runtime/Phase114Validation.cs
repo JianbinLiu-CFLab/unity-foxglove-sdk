@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase114Validation
     {
-        private const string ExpectedFixtureHash = "54a93011d18c1ba9d53c955eb047c285096fb1a0a58376beb31c935ed3eff0e4";
+        private const string ExpectedFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string MismatchedHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private const string MetadataRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs";
         private const string RecordingControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs";
@@ -117,7 +117,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && mismatch.IsBlocking
                   && mismatch.Message.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
                   && mismatch.Message.Contains("Recorded: 000000000000", StringComparison.Ordinal)
-                  && mismatch.Message.Contains("Current:  54a93011d18c", StringComparison.Ordinal),
+                  && mismatch.Message.Contains("Current:  653e287d1f7a", StringComparison.Ordinal),
                 "114-B5: global manifest hash mismatch blocks replay with short-hash diagnostics");
 
             var editedDiagnostic = JObject.Parse(matchingJson);

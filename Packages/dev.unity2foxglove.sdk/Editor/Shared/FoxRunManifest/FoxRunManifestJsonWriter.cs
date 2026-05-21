@@ -318,7 +318,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            sb.Append(value.ToString("R", CultureInfo.InvariantCulture));
+            // Canonical identity text must stay stable across Unity/Mono/.NET runtimes.
+            sb.Append(value.ToString("G9", CultureInfo.InvariantCulture));
         }
     }
 }

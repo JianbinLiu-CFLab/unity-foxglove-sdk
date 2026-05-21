@@ -175,6 +175,13 @@ namespace Unity.FoxgloveSDK.Editor
                 .ToList()
                 .AsReadOnly();
 
+            if (entries.Count != FoxgloveRos2MsgSchemaCatalog.SourceFileCount)
+            {
+                throw new InvalidOperationException(
+                    "ROS2 .msg schema catalog count mismatch. " +
+                    $"Entries={entries.Count}, SourceFileCount={FoxgloveRos2MsgSchemaCatalog.SourceFileCount}.");
+            }
+
             return new Unity2FoxgloveRos2MsgRegistrySection(
                 FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
                 FoxgloveRos2MsgSchemaCatalog.SourceSnapshot,

@@ -8,6 +8,7 @@
 // recording, and MCAP replay.
 
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
@@ -109,6 +110,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _disableLivePublishers = true;
         private bool _livePublishersDisabled;
 
+        [SerializeField] private SchemaIdentityModeSource _identityModeSource = SchemaIdentityModeSource.ProjectSettings;
+        [SerializeField] private SchemaIdentityMode _identityModeOverride = SchemaIdentityMode.Off;
+        [SerializeField, HideInInspector] private SchemaIdentityMode _projectSettingsIdentityMode = SchemaIdentityMode.Off;
+        [SerializeField, HideInInspector] private string _schemaEvidenceRoot = "Assets/Generated";
+
         [Header("Security")]
         [Tooltip("Allow hosted Foxglove Web at https://app.foxglove.dev. This is independent of project, user, layout, and query string.")]
         [SerializeField] private bool _allowHostedFoxgloveWeb = true;
@@ -193,6 +199,15 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>The backing Foxglove runtime, or null after disposal.</summary>
         public Core.FoxgloveRuntime Runtime => _runtime;
+
+        /// <summary>Effective schema identity policy for recording and replay startup.</summary>
+        public SchemaIdentityMode EffectiveSchemaIdentityMode =>
+            _identityModeSource == SchemaIdentityModeSource.Override
+                ? _identityModeOverride
+                : _projectSettingsIdentityMode;
+
+        /// <summary>Project-relative or absolute root containing current schema evidence files.</summary>
+        public string SchemaEvidenceRoot => _schemaEvidenceRoot;
 
         /// <summary>True if the WebSocket server is currently running.</summary>
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
