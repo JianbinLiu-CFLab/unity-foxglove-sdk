@@ -142,11 +142,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Configures MCAP replay and disables live publishers when replay owns published data.
         /// </summary>
-        private void SetupReplay()
+        private bool SetupReplay()
         {
             if (!_enableReplay || string.IsNullOrEmpty(_replayFilePath))
             {
-                return;
+                return true;
             }
 
             if (_disableLivePublishers && !_livePublishersDisabled)
@@ -159,8 +159,14 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.EnableReplay(ResolveProjectPath(_replayFilePath));
             if (!_runtime.ReplayEnabled)
             {
+                if (_runtime.ReplayStartBlockedBySchemaMismatch)
+                {
+                    Debug.LogError("[Foxglove] Replay startup aborted because FoxRun schema mismatch blocked replay. Live publishers remain disabled for this Play session.");
+                    return false;
+                }
+
                 RestoreLivePublishers();
-                return;
+                return true;
             }
 
             if (_replayAutoPlay)
@@ -171,6 +177,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _runtime.ReplayPause();
             }
+
+            return true;
         }
 
         /// <summary>

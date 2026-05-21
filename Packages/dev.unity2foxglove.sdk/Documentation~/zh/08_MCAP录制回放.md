@@ -157,7 +157,7 @@ MCAP 文件包含以下数据类型：
 
 如果当前项目生成了 FoxRun runtime schema info，MCAP 录制会写入名为 `unity2foxglove.foxrun.schema` 的 metadata。它的 `value` 是紧凑 JSON，包含 `globalManifestHash`、FoxRun section 的 `manifestHash`、manifest/generator 版本、计数和每个 contract 的诊断 hash。
 
-Unity replay 会在 MCAP 文件 load 完成后、正式 playback 前读取这条 metadata。recorded `globalManifestHash` 和当前 runtime `globalManifestHash` 不一致时，replay 会因为 schema mismatch 被阻断，并在日志里显示短 hash。缺少 recorded metadata、缺少当前 schema info、或 recorded metadata malformed 只会 warning，以便旧 MCAP 文件还能回放。
+Unity replay 会在 MCAP 文件 load 完成后、正式 playback 前读取这条 metadata。recorded `globalManifestHash` 和当前 runtime `globalManifestHash` 不一致时，replay 会因为 schema mismatch 被阻断，并在日志里显示短 hash。显式 replay 模式下，confirmed mismatch 会 fail closed：Manager 会中止启动，不会恢复 live publishers 作为 fallback。缺少 recorded metadata、缺少当前 schema info、或 recorded metadata malformed 只会 warning，以便旧 MCAP 文件还能回放。
 
 ## 注意事项
 

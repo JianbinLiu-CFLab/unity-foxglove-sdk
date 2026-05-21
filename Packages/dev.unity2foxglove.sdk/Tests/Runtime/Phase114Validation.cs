@@ -26,6 +26,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RecordingControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs";
         private const string ReplayControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
         private const string ReplayEnginePath = "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs";
+        private const string ManagerRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs";
+        private const string ManagerServerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
+        private const string ManagerSetupPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs";
         private static int _passed;
 
         public static void Validate()
@@ -218,6 +221,8 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     mismatchController.Enable(mismatchPath, new PlaybackClock(new FixedClock(0)), recordingEnabled: false);
                     Check(!mismatchController.IsEnabled
+                          && mismatchController.LastEnableBlockedBySchemaMismatch
+                          && mismatchController.LastEnableFailureMessage.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
                           && mismatchLogger.LastError.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
                           && mismatchLogger.LastError.Contains("Replay blocked.", StringComparison.Ordinal),
                         "114-E2: ReplayController blocks replay when schema hashes mismatch");
@@ -257,7 +262,10 @@ namespace Unity.FoxgloveSDK.Tests
                 MetadataRuntimePath + ".meta",
                 RecordingControllerPath,
                 ReplayControllerPath,
-                ReplayEnginePath
+                ReplayEnginePath,
+                ManagerRuntimePath,
+                ManagerServerPath,
+                ManagerSetupPath
             })
             {
                 Check(RepoFileExists(path), "114-F1: required source file exists: " + path);
@@ -304,6 +312,25 @@ namespace Unity.FoxgloveSDK.Tests
             Check(program.Contains("--phase114", StringComparison.Ordinal)
                   && program.Contains("Phase114Validation.Validate()", StringComparison.Ordinal),
                 "114-F9: Program dispatches --phase114 and full validation includes Phase114");
+
+            var manager = ReadRepoText(ManagerRuntimePath);
+            var server = ReadRepoText(ManagerServerPath);
+            var setup = ReadRepoText(ManagerSetupPath);
+            var validateIndex = server.IndexOf("ValidateTransportConfiguration()", StringComparison.Ordinal);
+            var ensureIndex = server.IndexOf("EnsureRuntimeCreated()", StringComparison.Ordinal);
+            var assetRootIndex = server.IndexOf("RegisterAssetRoots()", StringComparison.Ordinal);
+            Check(manager.Contains("private void EnsureRuntimeCreated()", StringComparison.Ordinal)
+                  && manager.Contains("new Core.FoxgloveRuntime(transport", StringComparison.Ordinal)
+                  && ensureIndex > validateIndex
+                  && assetRootIndex > ensureIndex,
+                "114-F10: StartServer ensures runtime exists before registering asset roots or replay setup");
+            Check(setup.Contains("private bool SetupReplay()", StringComparison.Ordinal)
+                  && server.Contains("if (!SetupReplay())", StringComparison.Ordinal)
+                  && server.Contains("return;", StringComparison.Ordinal)
+                  && setup.Contains("ReplayStartBlockedBySchemaMismatch", StringComparison.Ordinal)
+                  && !setup.Contains("RestoreLivePublishers();\r\n                return;", StringComparison.Ordinal)
+                  && !setup.Contains("RestoreLivePublishers();\n                return;", StringComparison.Ordinal),
+                "114-F11: confirmed replay schema mismatch hard-blocks Manager startup without live fallback");
         }
 
         private static void VerifyDocs()

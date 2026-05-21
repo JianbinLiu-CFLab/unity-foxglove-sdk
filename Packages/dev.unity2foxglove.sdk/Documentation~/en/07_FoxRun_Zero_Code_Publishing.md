@@ -175,13 +175,19 @@ Build-time generation and Editor Play Mode manifest refresh also write `Assets/G
 
 The registry is evidence, not publisher logic. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not pull manifest builders into runtime code.
 
-When MCAP recording is enabled, Unity2Foxglove writes this evidence into a metadata record named `unity2foxglove.foxrun.schema`. The metadata value is compact JSON containing `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. During Unity replay, the SDK compares the recorded `globalManifestHash` with the current runtime schema info. A mismatch blocks replay with a short-hash diagnostic; missing or malformed metadata is warning-only so older recordings can still open.
+When MCAP recording is enabled, Unity2Foxglove writes this evidence into a metadata record named `unity2foxglove.foxrun.schema`. The metadata value is compact JSON containing `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. During Unity replay, the SDK compares the recorded `globalManifestHash` with the current runtime schema info. A mismatch blocks replay with a short-hash diagnostic; in explicit replay mode, the Manager aborts startup instead of falling back to live publishers. Missing or malformed metadata is warning-only so older recordings can still open.
 
-## 12. Debug Overlay Topics
+## 12. SDK Schema Manifest Aggregate
+
+Build-time generation and Editor Play Mode manifest refresh also write an SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/`. This aggregate records the FoxRun evidence summary, the bundled protobuf schema registry, the bundled ROS2 `.msg` registry, and the SDK typed publisher catalog in one deterministic JSON artifact.
+
+This SDK schema manifest is release evidence, not replay governance. Unity replay continues to compare only the FoxRun `globalManifestHash` stored in MCAP metadata; protobuf registry changes, ROS2 catalog changes, and typed publisher catalog changes do not become replay guard keys through this aggregate.
+
+## 13. Debug Overlay Topics
 
 For temporary diagnostics that should stay outside the FoxRun contract, publish explicit `/debug/...` schemaless JSON through the debug overlay helper. Debug overlay messages are non-contract data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or the canonical manifest fingerprints, and they are not replay guard keys. MCAP recording may still capture them as ordinary JSON frames, but replay schema mismatch checks should ignore them.
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -192,7 +198,7 @@ For temporary diagnostics that should stay outside the FoxRun contract, publish 
 | Generated trigger method returns `false` | Confirm the Foxglove manager is running and live publishers are not suppressed by replay mode. |
 | Build loops or recompiles too often | Generated fallback files should only be written when content changes. |
 
-## 14. Where to Learn More
+## 15. Where to Learn More
 
 - Use [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for build verification.
 - Use [10_Architecture](10_Architecture.md) for generator and fallback internals.

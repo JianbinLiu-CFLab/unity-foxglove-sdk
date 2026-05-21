@@ -22,6 +22,14 @@ namespace Unity.FoxgloveSDK.Components
         public static string ConflictingHash => _conflictingHash;
         public static FoxRunSchemaManifestInfo Current => _current;
 
+#if UNITY_5_3_OR_NEWER
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetForRuntimeLoad()
+        {
+            ResetState();
+        }
+#endif
+
         public static void RegisterGenerated(FoxRunSchemaManifestInfo manifest)
         {
             if (manifest == null)
@@ -45,6 +53,11 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Clears generated registry state for validation tests.</summary>
         public static void ClearForTests()
+        {
+            ResetState();
+        }
+
+        private static void ResetState()
         {
             _current = null;
             _hasConflict = false;

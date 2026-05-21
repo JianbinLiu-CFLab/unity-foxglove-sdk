@@ -233,7 +233,9 @@ Phase 112 adds a FoxRun canonical manifest governance layer to that evidence cha
 
 A debug overlay path stays outside that descriptor. It publishes explicit `/debug/...` schemaless JSON topics as non-contract diagnostics. Those messages are not included in `foxrun.manifest.json` or its fingerprints and are not replay guard keys, even if MCAP records them as ordinary JSON frames for visual inspection.
 
-The MCAP schema metadata path is deliberately narrow: `unity2foxglove.foxrun.schema` stores compact JSON with `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. Replay blocks only on a `globalManifestHash` mismatch. Missing or malformed recorded metadata is warning-only so older MCAP evidence remains readable.
+The MCAP schema metadata path is deliberately narrow: `unity2foxglove.foxrun.schema` stores compact JSON with `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. Replay blocks only on a `globalManifestHash` mismatch. A confirmed mismatch fails closed in explicit replay mode: the Manager aborts startup instead of falling back to live publishers. Missing or malformed recorded metadata is warning-only so older MCAP evidence remains readable.
+
+The SDK schema manifest aggregate broadens release evidence without broadening replay governance. It records the FoxRun evidence summary, bundled protobuf registry, bundled ROS2 `.msg` registry, and SDK typed publisher catalog under `Assets/Generated/Unity2Foxglove/`. Its aggregate hash is useful for audit and coverage review, while replay remains governed only by the FoxRun `globalManifestHash` stored in MCAP metadata.
 
 ## 9 Implementation Evidence
 

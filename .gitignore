@@ -48,6 +48,8 @@ Unity2Foxglove/Assets/Scripts/Generated.meta
 Unity2Foxglove/Assets/Generated/FoxRun/
 Unity2Foxglove/Assets/Generated.meta
 Unity2Foxglove/Assets/Generated/FoxRun.meta
+Unity2Foxglove/Assets/Generated/Unity2Foxglove/
+Unity2Foxglove/Assets/Generated/Unity2Foxglove.meta
 
 # Local optional ROS2 For Unity asset import for Phase106 manual acceptance.
 Unity2Foxglove/Assets/Ros2ForUnity/

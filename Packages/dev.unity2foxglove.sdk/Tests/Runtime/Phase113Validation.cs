@@ -203,6 +203,17 @@ namespace Unity.FoxgloveSDK.Tests
                     "113-D6: existing FoxRun runtime contract file does not depend on schema registry: " + path);
             }
 
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs");
+            Check(registry.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
+                  && registry.Contains("ResetForRuntimeLoad", StringComparison.Ordinal)
+                  && registry.Contains("ResetState", StringComparison.Ordinal),
+                "113-D6b: schema registry resets static state for each Unity runtime load");
+
+            Check(playModeHook.Contains("FoxRunSchemaInfo.g.cs changed before Play Mode", StringComparison.Ordinal)
+                  && playModeHook.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && playModeHook.Contains("ForceSynchronousImport", StringComparison.Ordinal),
+                "113-D6c: Play Mode refresh cancels once when generated schema info source changes");
+
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
             Check(project.Contains("Phase113Validation.cs", StringComparison.Ordinal)

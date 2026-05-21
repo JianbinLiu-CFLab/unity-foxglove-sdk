@@ -58,6 +58,8 @@ namespace Unity.FoxgloveSDK.Core
         private ulong _panelHistoryParkTimeNs;
         private bool _hasPanelHistoryTime;
         private ulong _lastPanelHistoryTimeNs;
+        private bool _lastEnableBlockedBySchemaMismatch;
+        private string _lastEnableFailureMessage = string.Empty;
         /// <summary>
         /// Guards the MCAP replay cursor. Playback control requests arrive on
         /// the WebSocket receive thread, while replay ticks run on Unity's
@@ -68,6 +70,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => _replayEnabled;
+        /// <summary>Whether the most recent replay enable attempt was blocked by a confirmed FoxRun schema mismatch.</summary>
+        public bool LastEnableBlockedBySchemaMismatch => _lastEnableBlockedBySchemaMismatch;
+        /// <summary>Message from the most recent failed replay enable attempt, or an empty string.</summary>
+        public string LastEnableFailureMessage => _lastEnableFailureMessage;
         /// <summary>Active replay engine instance; null when not replaying.</summary>
         public McapReplayEngine Engine => _replayEngine;
 
@@ -100,6 +106,8 @@ namespace Unity.FoxgloveSDK.Core
             {
                 // Clean any previous replay state to avoid leaking old engine/stream
                 Disable();
+                _lastEnableBlockedBySchemaMismatch = false;
+                _lastEnableFailureMessage = string.Empty;
 
                 if (recordingEnabled)
                 {
@@ -114,7 +122,10 @@ namespace Unity.FoxgloveSDK.Core
                     var summary = _replayEngine.Summary;
                     var schemaGuard = EvaluateFoxRunReplaySchemaGuard(_replayEngine);
                     if (schemaGuard.IsBlocking)
+                    {
+                        _lastEnableBlockedBySchemaMismatch = true;
                         throw new InvalidDataException(schemaGuard.Message);
+                    }
                     if (schemaGuard.State != FoxRunReplaySchemaGuardState.Match)
                         _logger.LogWarning(schemaGuard.Message);
 
@@ -154,6 +165,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 catch (Exception ex)
                 {
+                    _lastEnableFailureMessage = ex.Message ?? string.Empty;
                     _logger.LogError($"Failed to load MCAP replay '{filePath}': {ex.Message}");
                     _replayEngine?.Dispose();
                     _replayEngine = null;

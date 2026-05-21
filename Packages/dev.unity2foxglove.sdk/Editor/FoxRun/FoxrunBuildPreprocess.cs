@@ -67,15 +67,19 @@ namespace Unity.FoxgloveSDK.Editor
                 var verification = FoxrunCodeGenerator.VerifyGeneratedSchemaInfoFiles();
                 Debug.Log("[FoxrunBuildPreprocess] Verified FoxRun schema info after regeneration: " +
                           verification.ActualGlobalManifestHash);
+                var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts();
+                Debug.Log("[FoxrunBuildPreprocess] Generated SDK schema manifest aggregate: " +
+                          aggregate.SdkSchemaManifestHash);
             }
             catch (Exception ex)
             {
                 throw new BuildFailedException(
-                    "[FoxRun] schema info drift gate failed.\n" +
+                    "[FoxRun] schema info or SDK schema manifest gate failed.\n" +
                     "The build was stopped after regeneration because the generated\n" +
-                    "FoxRunSchemaInfo.g.cs file does not match the canonical manifest.\n\n" +
+                    "FoxRunSchemaInfo.g.cs file does not match the canonical manifest,\n" +
+                    "or the SDK schema manifest aggregate could not be written.\n\n" +
                     "Details:\n" +
-                    "  - Failed at: verify-schema-info\n" +
+                    "  - Failed at: verify-schema-info-or-schema-manifest\n" +
                     $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
             }
 
