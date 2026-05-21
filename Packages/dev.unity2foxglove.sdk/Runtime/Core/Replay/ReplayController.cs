@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
@@ -111,6 +112,11 @@ namespace Unity.FoxgloveSDK.Core
                     ValidateReplayFileForLoad(filePath);
                     _replayEngine.Load(filePath);
                     var summary = _replayEngine.Summary;
+                    var schemaGuard = EvaluateFoxRunReplaySchemaGuard(_replayEngine);
+                    if (schemaGuard.IsBlocking)
+                        throw new InvalidDataException(schemaGuard.Message);
+                    if (schemaGuard.State != FoxRunReplaySchemaGuardState.Match)
+                        _logger.LogWarning(schemaGuard.Message);
 
                     if (summary?.Schemas != null)
                     {
@@ -156,6 +162,18 @@ namespace Unity.FoxgloveSDK.Core
                     _replayEnabled = false;
                 }
             }
+        }
+
+        private static FoxRunReplaySchemaGuardResult EvaluateFoxRunReplaySchemaGuard(McapReplayEngine replayEngine)
+        {
+            var metadata = replayEngine?.FindMetadata(FoxRunSchemaMcapMetadata.MetadataName);
+            if (metadata == null)
+                return FoxRunSchemaMcapMetadata.CreateMissingRecordedResult();
+
+            if (metadata.Metadata == null || !metadata.Metadata.TryGetValue("value", out var value))
+                return FoxRunSchemaMcapMetadata.CreateMalformedRecordedResult("Metadata record is missing the value entry.");
+
+            return FoxRunSchemaMcapMetadata.EvaluateRecordedJson(value, FoxRunSchemaInfoRegistry.Current);
         }
 
         private static void ValidateReplayFileForLoad(string filePath)

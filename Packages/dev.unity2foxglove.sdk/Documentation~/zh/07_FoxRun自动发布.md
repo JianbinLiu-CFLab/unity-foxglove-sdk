@@ -196,7 +196,13 @@ Phase 112 covers FoxRun automatic telemetry only. Phase 113 embeds the current m
 
 Editor Play Mode manifest refresh and Player build generation also write `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This generated runtime schema info registers the global manifest hash, the FoxRun section manifest hash, and type/contract/field metadata.
 
-This registry is evidence for future MCAP and replay integrations. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not make runtime code read manifest JSON files.
+This registry is evidence for MCAP and replay integrations. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not make runtime code read manifest JSON files.
+
+## FoxRun MCAP schema metadata
+
+MCAP recording writes a metadata record named `unity2foxglove.foxrun.schema` when generated FoxRun runtime schema info exists. Its `value` is compact JSON with `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes.
+
+Unity replay reads this metadata after loading the MCAP file and before playback starts. If the recorded `globalManifestHash` does not match the current runtime `globalManifestHash`, replay is blocked with a short-hash mismatch diagnostic. Missing recorded metadata, missing current schema info, or malformed recorded metadata only logs a warning, so older MCAP recordings can still replay.
 
 ## Phase 112B debug overlay topics
 

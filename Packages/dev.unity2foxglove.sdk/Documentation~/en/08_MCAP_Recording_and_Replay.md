@@ -77,7 +77,13 @@ Use this checklist:
 
 Unity2Foxglove treats recording and replay as separate modes. If both are enabled on the same Manager, replay is disabled to avoid mixing live output and file playback.
 
-## 9. Common Mistakes
+## 9. FoxRun Schema Metadata
+
+If generated FoxRun runtime schema info is present, MCAP recording writes a metadata record named `unity2foxglove.foxrun.schema`. Its `value` is compact JSON containing `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes.
+
+Unity replay reads this metadata after the MCAP file is loaded and before playback starts. If the recorded `globalManifestHash` does not match the current runtime `globalManifestHash`, replay is blocked with a short-hash mismatch diagnostic. Missing recorded metadata, missing current schema info, or malformed recorded metadata only produces a warning so older MCAP files remain usable.
+
+## 10. Common Mistakes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
@@ -86,3 +92,4 @@ Unity2Foxglove treats recording and replay as separate modes. If both are enable
 | Replay looks mirrored | Coordinate mode mismatch. | Match `FoxgloveManager > Coordinate Mode` to the recording. |
 | Replay and live data both move the object | Live publishers were not disabled. | Enable **Disable Live Publishers** during replay. |
 | Foxglove cannot open the file | File was not closed cleanly. | Stop Play Mode normally and try a new recording. |
+| Replay is blocked by a FoxRun schema mismatch | The MCAP was recorded with a different generated FoxRun contract. | Regenerate the current FoxRun manifest/schema info or replay with the matching project revision. |

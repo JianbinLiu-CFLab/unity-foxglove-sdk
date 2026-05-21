@@ -98,6 +98,29 @@ namespace Unity.FoxgloveSDK.IO
         public McapFileSummary Summary => _summary;
 
         /// <summary>
+        /// Reads the first metadata record with the given name from the loaded
+        /// MCAP summary. Intended for pre-playback guards before the replay
+        /// cursor starts consuming chunk data.
+        /// </summary>
+        public McapMetadata FindMetadata(string name)
+        {
+            if (!IsLoaded || _reader == null || _summary?.MetadataIndexes == null || string.IsNullOrEmpty(name))
+                return null;
+
+            foreach (var index in _summary.MetadataIndexes)
+            {
+                if (!string.Equals(index?.Name, name, StringComparison.Ordinal))
+                    continue;
+
+                var metadata = _reader.ReadMetadataAt(index.Offset);
+                if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
+                    return metadata;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Replay engine state.
         /// </summary>
         public enum Status

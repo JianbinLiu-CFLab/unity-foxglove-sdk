@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 
@@ -102,6 +103,7 @@ namespace Unity.FoxgloveSDK.Core
                     snapshot.Add(new { name = p.Name, type = p.Type, value = p.Value, timestamp = snapshotTime });
                 recorder.WriteMetadata("foxglove.parameters.snapshot",
                     JsonConvert.SerializeObject(snapshot));
+                TryWriteFoxRunSchemaMetadata(recorder);
                 parameters.OnParameterChanged -= OnParameterChanged;
                 parameters.OnParameterChanged += OnParameterChanged;
 
@@ -120,6 +122,22 @@ namespace Unity.FoxgloveSDK.Core
                 Volatile.Write(ref _recorder, null);
                 _session = null;
                 _logger.LogError($"Failed to start MCAP recording: {ex.Message}");
+            }
+        }
+
+        private void TryWriteFoxRunSchemaMetadata(McapRecorder recorder)
+        {
+            if (recorder == null || !FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo)
+                return;
+
+            try
+            {
+                if (FoxRunSchemaMcapMetadata.TryCreateJson(FoxRunSchemaInfoRegistry.Current, out var json))
+                    recorder.WriteMetadata(FoxRunSchemaMcapMetadata.MetadataName, json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Skipping FoxRun schema metadata for MCAP recording: {ex.Message}");
             }
         }
 
