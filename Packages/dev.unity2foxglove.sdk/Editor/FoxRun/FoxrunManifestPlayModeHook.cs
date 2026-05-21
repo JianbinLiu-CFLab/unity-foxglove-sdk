@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Editor
                     EditorApplication.isPlaying = false;
                     Debug.LogWarning(
                         "[FoxRun] Generated FoxRunSchemaInfo.g.cs changed before Play Mode. " +
-                        "Unity must recompile it before runtime replay schema guards can use the new manifest hash. " +
+                        "Unity must recompile it before runtime schema consumers can use the new manifest hash. " +
                         "Play Mode was canceled; press Play again after compilation finishes.");
                 }
             }
