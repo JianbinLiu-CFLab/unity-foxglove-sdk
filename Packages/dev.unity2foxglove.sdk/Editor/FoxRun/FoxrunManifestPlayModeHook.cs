@@ -5,6 +5,7 @@
 // Purpose: Refreshes FoxRun canonical manifest artifacts before Editor Play Mode.
 
 using System;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -32,13 +33,35 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
+                var schemaInfoPath = Path.Combine(
+                    Application.dataPath,
+                    "Generated/FoxRun",
+                    FoxRunSchemaInfoWriter.SchemaInfoFileName);
+                var previousSchemaInfo = ReadExistingText(schemaInfoPath);
                 var manifest = FoxrunCodeGenerator.GenerateManifestFilesOnly();
-                Debug.Log("[FoxRun] Refreshed canonical manifest before Play Mode: " + manifest.GlobalManifestHash);
+                var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts(manifest);
+                Debug.Log("[FoxRun] Refreshed canonical manifest, schema info, and SDK schema manifest before Play Mode: " +
+                          manifest.GlobalManifestHash + " / " + aggregate.SdkSchemaManifestHash);
+
+                if (!string.Equals(previousSchemaInfo, ReadExistingText(schemaInfoPath), StringComparison.Ordinal))
+                {
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                    EditorApplication.isPlaying = false;
+                    Debug.LogWarning(
+                        "[FoxRun] Generated FoxRunSchemaInfo.g.cs changed before Play Mode. " +
+                        "Unity must recompile it before runtime schema consumers can use the new manifest hash. " +
+                        "Play Mode was canceled; press Play again after compilation finishes.");
+                }
             }
             catch (Exception ex)
             {
                 Debug.LogError("[FoxRun] Failed to refresh canonical manifest before Play Mode:\n" + ex);
             }
+        }
+
+        private static string ReadExistingText(string path)
+        {
+            return File.Exists(path) ? File.ReadAllText(path) : null;
         }
     }
 }

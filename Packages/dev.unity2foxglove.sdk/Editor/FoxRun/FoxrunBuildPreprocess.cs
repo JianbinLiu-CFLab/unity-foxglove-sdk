@@ -62,6 +62,27 @@ namespace Unity.FoxgloveSDK.Editor
                 Debug.Log($"[FoxrunBuildPreprocess] Generated {files.Count} file(s): {names}");
             }
 
+            try
+            {
+                var verification = FoxrunCodeGenerator.VerifyGeneratedSchemaInfoFiles();
+                Debug.Log("[FoxrunBuildPreprocess] Verified FoxRun schema info after regeneration: " +
+                          verification.ActualGlobalManifestHash);
+                var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts();
+                Debug.Log("[FoxrunBuildPreprocess] Generated SDK schema manifest aggregate: " +
+                          aggregate.SdkSchemaManifestHash);
+            }
+            catch (Exception ex)
+            {
+                throw new BuildFailedException(
+                    "[FoxRun] schema info or SDK schema manifest gate failed.\n" +
+                    "The build was stopped after regeneration because the generated\n" +
+                    "FoxRunSchemaInfo.g.cs file does not match the canonical manifest,\n" +
+                    "or the SDK schema manifest aggregate could not be written.\n\n" +
+                    "Details:\n" +
+                    "  - Failed at: verify-schema-info-or-schema-manifest\n" +
+                    $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
+            }
+
             // Collect [FoxRun] types for IL2CPP preservation even when no file
             // changed on disk. Discovery happens in the Editor build step; the
             // generated Player code still publishes without runtime reflection.

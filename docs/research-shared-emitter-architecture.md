@@ -157,6 +157,8 @@ Unity2Foxglove currently uses two hosts:
 
 The Roslyn path is implemented as an incremental source generator. It is fast and ergonomic during development because it can participate in Unity's analyzer pipeline without requiring the user to run a separate generation step. The physical `.g.cs` path gives the Player build a normal source file that participates in compilation and IL2CPP conversion.
 
+The same canonical model now also produces generated runtime schema info under `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This file is compiled in both Editor Play Mode and Player builds, and it registers the current manifest hash plus type/contract/field metadata without runtime reflection. MCAP recording writes that evidence into `unity2foxglove.foxrun.schema`, and Unity replay compares the recorded `globalManifestHash` with the current runtime hash before playback. The registry does not own publisher behavior and does not recompute canonical hashes.
+
 ### 5.5 Runtime Layer
 
 Runtime code only executes generated publishers. It does not:
@@ -229,7 +231,11 @@ Unity2Foxglove already includes validation suites that cover shared emitter beha
 
 Phase 112 adds a FoxRun canonical manifest governance layer to that evidence chain. The manifest is derived from deterministic JSON and its fingerprints ignore generated timestamps, comments, file paths, Unity `Library/` contents, and other machine-local state. Editor Play Mode refreshes the same manifest artifacts before play starts, while leaving physical `_FoxRun.g.cs` fallback generation to the Player build path. This makes the descriptor useful as release evidence without turning transient workstation details into semantic drift.
 
-A later debug overlay path stays outside that descriptor. It publishes explicit `/debug/...` schemaless JSON topics as non-contract diagnostics. Those messages are not included in `foxrun.manifest.json` or its fingerprints and are not replay guard keys, even if MCAP records them as ordinary JSON frames for visual inspection.
+A debug overlay path stays outside that descriptor. It publishes explicit `/debug/...` schemaless JSON topics as non-contract diagnostics. Those messages are not included in `foxrun.manifest.json` or its fingerprints and are not replay guard keys, even if MCAP records them as ordinary JSON frames for visual inspection.
+
+The MCAP schema metadata path is deliberately narrow: `unity2foxglove.foxrun.schema` stores compact JSON with `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. Replay blocks only on a `globalManifestHash` mismatch. A confirmed mismatch fails closed in explicit replay mode: the Manager aborts startup instead of falling back to live publishers. Missing or malformed recorded metadata is warning-only so older MCAP evidence remains readable.
+
+The SDK schema manifest aggregate broadens release evidence without broadening replay governance. It records the FoxRun evidence summary, bundled protobuf registry, bundled ROS2 `.msg` registry, and SDK typed publisher catalog under `Assets/Generated/Unity2Foxglove/`. Its aggregate hash is useful for audit and coverage review, while replay remains governed only by the FoxRun `globalManifestHash` stored in MCAP metadata.
 
 ## 9 Implementation Evidence
 
@@ -243,11 +249,13 @@ A later debug overlay path stays outside that descriptor. It publishes explicit 
 | Build preprocess hook | `Editor/FoxRun/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
 | IL2CPP preservation | `Editor/FoxRun/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
 | User declaration API | `Runtime/Components/Attributes/FoxRunAttribute.cs` | Topic/rate/schema/policy declaration surface |
+| Runtime schema info | `Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs` | Exposes generated manifest hash evidence without reflection |
+| MCAP schema metadata | `Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs` | Stores and compares recorded/current `globalManifestHash` values for replay mismatch protection |
 | Runtime scheduler | `Runtime/Components/FoxRun/FoxgloveLogHub.cs` | Registers or discovers generated publisher interfaces without CLR reflection-based member binding |
 
 This implementation also generates `FoxRun_link.xml` for IL2CPP preservation. That is separate from publisher execution: it is a build-time preservation artifact, not a runtime reflection scanner.
 
-The Phase 112 canonical manifest is the first concrete descriptor artifact in this traceability path. It is scoped to FoxRun automatic telemetry and governance only; later phases may connect the same fingerprints to generated runtime schema info, MCAP metadata, replay checks, or broader schema manifest sections.
+The FoxRun canonical manifest is the first concrete descriptor artifact in this traceability path. It is scoped to FoxRun automatic telemetry and governance only. The same fingerprints now feed generated runtime schema info, MCAP metadata, and replay mismatch checks; broader schema manifest sections can be added without changing this FoxRun contract boundary.
 
 ## 10 Contribution
 

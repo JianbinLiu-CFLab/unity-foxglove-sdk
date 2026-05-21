@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../Runtime/Components/Attributes/*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/FoxRunSchema*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
     <Compile Include="../../Runtime/Core/**/*.cs" />
@@ -115,10 +116,15 @@
     <Compile Include="Phase111FValidation.cs" />
     <Compile Include="Phase112Validation.cs" />
     <Compile Include="Phase112BValidation.cs" />
+    <Compile Include="Phase113Validation.cs" />
+    <Compile Include="Phase114Validation.cs" />
+    <Compile Include="Phase115Validation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
+    <Compile Include="../../Editor/Shared/SchemaManifest/**/*.cs" LinkBase="Shared/SchemaManifest" />
     <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
   </ItemGroup>
 </Project>

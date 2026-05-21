@@ -6,6 +6,8 @@ Unity2Foxglove includes the bundled official Foxglove protobuf schema snapshot g
 
 Unity2Foxglove also includes a generated official Foxglove ROS 2 `.msg` schema catalog under `Runtime/Schemas/Ros2Msg`.
 
+The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` records this protobuf registry, the ROS2 `.msg` registry, FoxRun evidence, and the SDK typed publisher catalog in one deterministic artifact. It is schema coverage evidence, not replay governance: replay mismatch checks continue to use only the FoxRun `globalManifestHash` recorded in MCAP metadata.
+
 ## 2. Coverage Definition
 
 In this package, full official schema coverage means every bundled `foxglove.*` protobuf message is:

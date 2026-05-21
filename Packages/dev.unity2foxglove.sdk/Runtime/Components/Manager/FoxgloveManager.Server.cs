@@ -28,10 +28,15 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            EnsureRuntimeCreated();
             RegisterAssetRoots();
             SetupPlaybackControl();
             SetupRecording();
-            SetupReplay();
+            if (!SetupReplay())
+            {
+                return;
+            }
+
             SetupAllowedOrigins();
 
             try

@@ -431,6 +431,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Whether replay is enabled.</summary>
         public bool ReplayEnabled => _replay.IsEnabled;
+        /// <summary>Whether the last replay enable attempt was blocked by a confirmed FoxRun schema mismatch.</summary>
+        public bool ReplayStartBlockedBySchemaMismatch => _replay.LastEnableBlockedBySchemaMismatch;
+        /// <summary>Message from the last failed replay enable attempt, or an empty string.</summary>
+        public string ReplayStartFailureMessage => _replay.LastEnableFailureMessage;
 
         /// <summary>Enable MCAP replay; fails if recording is active.</summary>
         public void EnableReplay(string filePath)

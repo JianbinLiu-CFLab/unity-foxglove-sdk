@@ -272,9 +272,7 @@ namespace Unity.FoxgloveSDK.Components
                 Application.runInBackground = true;
             }
 
-            var logger = new UnityLogger();
-            var transport = CreateTransport(logger);
-            _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
+            EnsureRuntimeCreated();
             CreateRos2BridgeRuntime();
 
             if (_enableRecording && _enableReplay)
@@ -287,6 +285,21 @@ namespace Unity.FoxgloveSDK.Components
             {
                 DisableLivePublishers();
             }
+        }
+
+        /// <summary>
+        /// Creates the runtime if Unity lifecycle callbacks reach StartServer before Awake initialization.
+        /// </summary>
+        private void EnsureRuntimeCreated()
+        {
+            if (_runtime != null)
+            {
+                return;
+            }
+
+            var logger = new UnityLogger();
+            var transport = CreateTransport(logger);
+            _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
         }
 
         /// <summary>
