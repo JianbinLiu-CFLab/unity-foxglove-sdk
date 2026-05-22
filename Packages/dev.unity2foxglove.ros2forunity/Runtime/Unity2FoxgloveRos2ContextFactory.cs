@@ -6,6 +6,10 @@
 
 namespace Unity2Foxglove.Ros2ForUnity
 {
+    /// <summary>
+    /// Creates the optional ROS2 facade context; this package does not bundle
+    /// a ROS2 runtime by itself.
+    /// </summary>
     public static class Unity2FoxgloveRos2ContextFactory
     {
         public static IUnity2FoxgloveRos2Context Create()

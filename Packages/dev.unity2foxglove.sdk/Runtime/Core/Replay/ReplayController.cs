@@ -121,7 +121,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Load an MCAP file for replay.
         /// <para>Disables any previous replay state first. If recording is active,
-        /// replay is declined with a warning. Sets the playback clock range, then starts playback.</para>
+        /// replay is declined with a warning. Strict blocks only confirmed
+        /// FoxRun schema mismatches, Warn logs and continues, and Off skips
+        /// schema identity enforcement. Sets the playback clock range, then starts playback.</para>
         /// </summary>
         public void Enable(
             string filePath,

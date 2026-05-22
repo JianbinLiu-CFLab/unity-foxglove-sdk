@@ -10,6 +10,10 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Host-independent semantic model shared by FoxRun emission, descriptor
+    /// evidence, and validation so all hosts report the same contract they emit.
+    /// </summary>
     public sealed class FoxRunGenerationModel
     {
         public readonly int DescriptorVersion;
@@ -91,8 +95,11 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string MemberName;
         public readonly string MemberKind;
         public readonly string RawTypeName;
+        /// <summary>Host-observed type text retained for provenance and debug evidence only.</summary>
         public readonly string RawObservedTypeName;
+        /// <summary>Legal generated C# type expression consumed by the shared emitter.</summary>
         public readonly string EmissionTypeName;
+        /// <summary>Canonical schema identity token used for manifests and replay hashes.</summary>
         public readonly string CanonicalType;
         public readonly bool IsValueType;
         public readonly bool IsArray;

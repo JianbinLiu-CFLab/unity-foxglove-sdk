@@ -102,7 +102,10 @@ namespace Unity.FoxgloveSDK.Components
         public List<FoxRunSchemaMcapContractMetadata> Contracts { get; set; }
     }
 
-    /// <summary>Builds and evaluates the FoxRun schema metadata record carried by MCAP files.</summary>
+    /// <summary>
+    /// Builds and evaluates the FoxRun contract metadata carried by MCAP files;
+    /// this replay identity guard is not an ordinary topic inventory check.
+    /// </summary>
     public static class FoxRunSchemaMcapMetadata
     {
         public const string MetadataName = "unity2foxglove.foxrun.schema";
