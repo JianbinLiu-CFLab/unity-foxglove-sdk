@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="src\**\*.cs" />
     <Compile Include="..\Shared\FoxgloveSourceEmitter.cs" Link="Shared\FoxgloveSourceEmitter.cs" />
+    <Compile Include="..\Shared\FoxRunDescriptor\**\*.cs" LinkBase="Shared\FoxRunDescriptor" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>

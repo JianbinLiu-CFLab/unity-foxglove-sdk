@@ -64,6 +64,11 @@ namespace Unity.FoxgloveSDK.Core
             "FoxRunSchemaInfo.g.cs"
         };
 
+        private static readonly string[] OptionalFoxRunFiles =
+        {
+            "foxrun.generation-descriptor.json"
+        };
+
         private static readonly string[] Unity2FoxgloveFiles =
         {
             "unity2foxglove.schema-manifest.json",
@@ -143,6 +148,7 @@ namespace Unity.FoxgloveSDK.Core
                 CopyGroup(fullEvidenceRoot, temporaryDirectory, "Unity2Foxglove", Unity2FoxgloveFiles, warnings);
 
                 var complete = warnings.Count == 0;
+                CopyOptionalGroup(fullEvidenceRoot, temporaryDirectory, "FoxRun", OptionalFoxRunFiles, warnings);
                 WriteIndex(
                     temporaryDirectory,
                     mcapPath,
@@ -250,6 +256,30 @@ namespace Unity.FoxgloveSDK.Core
                 if (!File.Exists(sourcePath))
                 {
                     warnings.Add("Missing schema evidence file: " + Path.Combine(groupName, fileName));
+                    continue;
+                }
+
+                File.Copy(sourcePath, Path.Combine(targetDirectory, fileName), overwrite: true);
+            }
+        }
+
+        private static void CopyOptionalGroup(
+            string sourceRoot,
+            string sidecarRoot,
+            string groupName,
+            IReadOnlyList<string> files,
+            List<string> warnings)
+        {
+            var sourceDirectory = Path.Combine(sourceRoot ?? string.Empty, groupName);
+            var targetDirectory = Path.Combine(sidecarRoot, groupName);
+            Directory.CreateDirectory(targetDirectory);
+
+            foreach (var fileName in files)
+            {
+                var sourcePath = Path.Combine(sourceDirectory, fileName);
+                if (!File.Exists(sourcePath))
+                {
+                    warnings.Add("Optional schema evidence file missing: " + Path.Combine(groupName, fileName));
                     continue;
                 }
 

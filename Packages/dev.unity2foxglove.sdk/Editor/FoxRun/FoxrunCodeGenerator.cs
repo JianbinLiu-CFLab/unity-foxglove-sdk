@@ -90,14 +90,16 @@ namespace Unity.FoxgloveSDK.Editor
             var result = new List<string>();
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var byClass = scan.ByClass;
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(scan.ReflectionMembers);
 
             if (byClass.Count > 0)
             {
                 Directory.CreateDirectory(Path.Combine(Application.dataPath, "Scripts/Generated"));
 
-                foreach (var kv in byClass)
+                foreach (var type in model.Types)
                 {
-                    var source = EmitSourceFile(kv.Value.ToArray());
+                    var kv = (Key: (Ns: type.Namespace, ClassName: type.ClassName), Value: type);
+                    var source = EmitSourceFile(kv.Value);
                     var fileName = FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
                     var absolutePath = Path.Combine(Application.dataPath, "Scripts/Generated", fileName);
                     var sourceBytes = Utf8NoBom.GetBytes(source);
@@ -122,6 +124,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             var manifest = WriteManifestFiles(scan.ManifestMembers);
             WriteSchemaInfoFiles(manifest);
+            WriteDescriptorFile(model);
 
             return result;
         }
@@ -144,8 +147,10 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunCanonicalManifest GenerateManifestAndSchemaInfoFilesOnly()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(scan.ReflectionMembers);
             var manifest = WriteManifestFiles(scan.ManifestMembers);
             WriteSchemaInfoFiles(manifest);
+            WriteDescriptorFile(model);
             return manifest;
         }
 
@@ -180,6 +185,14 @@ namespace Unity.FoxgloveSDK.Editor
             return FoxRunSchemaInfoWriter.WriteGeneratedInfoFiles(GetManifestOutputDirectory(), manifest);
         }
 
+        private static void WriteDescriptorFile(FoxRunGenerationModel model)
+        {
+            var outputDirectory = GetManifestOutputDirectory();
+            Directory.CreateDirectory(outputDirectory);
+            var path = Path.Combine(outputDirectory, FoxRunGenerationDescriptorConstants.DescriptorFileName);
+            File.WriteAllText(path, FoxRunGenerationDescriptorJsonWriter.Write(model), Utf8NoBom);
+        }
+
         private static string GetManifestOutputDirectory()
         {
             return Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory();
@@ -189,6 +202,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var byClass = new Dictionary<(string Ns, string ClassName), List<MemberData>>();
             var manifestMembers = new List<FoxRunManifestMember>();
+            var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
 
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -209,6 +223,7 @@ namespace Unity.FoxgloveSDK.Editor
                             byClass[key] = list = new List<MemberData>();
                         list.AddRange(members);
                         manifestMembers.AddRange(members.Select(member => member.ToManifestMember()));
+                        reflectionMembers.AddRange(members.Select(member => member.ToReflectionMember()));
                     }
                 }
                 catch (ReflectionTypeLoadException)
@@ -221,7 +236,7 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
-            return new FoxRunScanResult(byClass, manifestMembers);
+            return new FoxRunScanResult(byClass, manifestMembers, reflectionMembers);
         }
 
         /// <summary>
@@ -261,7 +276,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds));
+                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken));
                 }
             }
             foreach (var pi in type.GetProperties(flags))
@@ -271,7 +286,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds));
+                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken));
                 }
             }
             return result;
@@ -284,13 +299,13 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public static string EmitSourceFile(MemberData[] members)
         {
-            var first = members[0];
-            var args = members.Select(m =>
-                new FoxgloveSourceEmitter.TopicMember(m.MemberName, m.RawTypeName, m.Topic, m.RateHz, m.SchemaName,
-                    m.PublishMode, m.ChangeEpsilon, m.ForceIntervalSeconds))
-                .ToList();
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(members.Select(member => member.ToReflectionMember()).ToList());
+            return EmitSourceFile(model.Types[0]);
+        }
 
-            var core = FoxgloveSourceEmitter.EmitClass(first.Ns, first.ClassName, args);
+        public static string EmitSourceFile(FoxRunGenerationType type)
+        {
+            var core = FoxgloveSourceEmitter.EmitClass(type);
 
             // Wrap with a Player-only guard so Editor compilation uses the Roslyn
             // generated in-memory source and Player builds use the physical file.
@@ -340,13 +355,15 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval seconds.</summary>
             public readonly float ForceIntervalSeconds;
+            public readonly int RawMemberOrder;
+            public readonly string ConditionalSymbols;
 
             /// <summary>
             /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "")
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -362,6 +379,8 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishMode = publishMode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
+                RawMemberOrder = rawMemberOrder;
+                ConditionalSymbols = conditionalSymbols ?? "";
             }
 
             /// <summary>
@@ -369,7 +388,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "")
             {
                 MemberName = name;
                 MemberKind = "field";
@@ -385,6 +404,8 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishMode = publishMode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
+                RawMemberOrder = rawMemberOrder;
+                ConditionalSymbols = conditionalSymbols ?? "";
             }
 
             public FoxRunManifestMember ToManifestMember()
@@ -405,19 +426,43 @@ namespace Unity.FoxgloveSDK.Editor
                     ChangeEpsilon,
                     ForceIntervalSeconds);
             }
+
+            public FoxRunReflectionGenerationMember ToReflectionMember()
+            {
+                return new FoxRunReflectionGenerationMember(
+                    Ns,
+                    ClassName,
+                    MemberName,
+                    MemberKind,
+                    RawTypeName,
+                    IsValueType,
+                    IsArray,
+                    ElementTypeName,
+                    Topic,
+                    SchemaName,
+                    RateHz,
+                    PublishMode,
+                    ChangeEpsilon,
+                    ForceIntervalSeconds,
+                    RawMemberOrder,
+                    ConditionalSymbols);
+            }
         }
 
         private sealed class FoxRunScanResult
         {
             public readonly Dictionary<(string Ns, string ClassName), List<MemberData>> ByClass;
             public readonly List<FoxRunManifestMember> ManifestMembers;
+            public readonly List<FoxRunReflectionGenerationMember> ReflectionMembers;
 
             public FoxRunScanResult(
                 Dictionary<(string Ns, string ClassName), List<MemberData>> byClass,
-                List<FoxRunManifestMember> manifestMembers)
+                List<FoxRunManifestMember> manifestMembers,
+                List<FoxRunReflectionGenerationMember> reflectionMembers)
             {
                 ByClass = byClass;
                 ManifestMembers = manifestMembers;
+                ReflectionMembers = reflectionMembers;
             }
         }
 

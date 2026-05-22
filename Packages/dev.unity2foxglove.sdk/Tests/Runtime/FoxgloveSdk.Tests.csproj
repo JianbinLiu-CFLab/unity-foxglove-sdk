@@ -11,6 +11,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.4" />
     <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
 
   </ItemGroup>
   <ItemGroup>
@@ -122,12 +123,17 @@
     <Compile Include="Phase115BValidation.cs" />
     <Compile Include="Phase115CValidation.cs" />
     <Compile Include="Phase115DValidation.cs" />
+    <Compile Include="Phase115EValidation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
+    <Compile Include="../../Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs" Link="SourceGenerators/FoxgloveLogSourceGenerator.cs" />
+    <Compile Include="../../Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs" Link="SourceGenerators/FoxRunRoslynGenerationModelLowerer.cs" />
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
+    <Compile Include="../../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="../../Editor/Shared/SchemaManifest/**/*.cs" LinkBase="Shared/SchemaManifest" />
     <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
   </ItemGroup>
 </Project>

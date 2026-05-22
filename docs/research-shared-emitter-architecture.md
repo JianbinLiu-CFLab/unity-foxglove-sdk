@@ -81,7 +81,7 @@ The key design principle is:
 
 > Separate "when to generate" from "what to generate."
 
-The shared emitter answers only one question: given a resolved telemetry model, what C# source code should be produced?
+The shared emitter answers only one question: given a resolved telemetry model, what C# source code should be produced? In the current implementation that resolved model is the shared `FoxRunGenerationModel`; it is also serialized as `foxrun.generation-descriptor.json` so the Roslyn and build-time hosts can be compared at the same semantic boundary.
 
 Host integrations answer a different question: when and where should that generated code be injected?
 
@@ -124,7 +124,9 @@ Each host resolves source declarations into a host-independent model:
 - forced interval,
 - diagnostic metadata.
 
-Roslyn and build-time scanning can produce this model through different mechanisms, but the model passed to the emitter should converge.
+Roslyn and build-time scanning produce this model through different mechanisms, but both lower into the same `FoxRunGenerationModel` DTOs before source emission. The Roslyn lowerer lives under `Editor/SourceGenerators/src/`, the reflection/build-time lowerer lives under `Editor/FoxRun/`, and shared descriptor/model files live under `Editor/Shared/FoxRunDescriptor/` with explicit `.csproj` links into the source-generator and validation projects.
+
+The descriptor is serialized from the same model instance passed to `FoxgloveSourceEmitter`. Semantic fields such as declaring type, member name, canonical type, topic, schema, encoding, publish mode, and policy values participate in equivalence checks. Provenance fields such as host kind, raw type display, member order, or conditional-symbol notes are retained for diagnostics but are not replay identity and do not define semantic equality.
 
 ### 5.3 Shared Emitter Layer
 
@@ -190,14 +192,14 @@ For FoxRun publishers, the relevant equivalence surface includes:
 
 Text snapshots are useful, but they are not enough. Unity2Foxglove combines emitter tests, policy tests, runtime tests, IL2CPP smoke validation, and manual Foxglove checks to reduce drift risk.
 
-There is an important caveat: the Roslyn host and the Unity build-time writer can resolve the input model through different mechanisms. For example, a Roslyn incremental source generator observes syntax and semantic model data, while a Unity build-time writer may inspect loaded assemblies during the Editor build phase. The shared emitter prevents drift after the model is resolved, but it does not automatically prove that both hosts resolved the exact same model. A release-quality validation strategy must therefore check both:
+There is an important caveat: the Roslyn host and the Unity build-time writer resolve declarations through different mechanisms. A Roslyn incremental source generator observes syntax and semantic model data, while the Unity build-time writer may inspect loaded assemblies during the Editor build phase. Unity2Foxglove now makes that boundary explicit by lowering both paths into `FoxRunGenerationModel` and comparing normalized descriptors at same-scope fixture granularity. A release-quality validation strategy therefore checks both:
 
 - **model equivalence**: the same members, topics, schemas, publish modes, and diagnostics are passed to the emitter;
 - **output equivalence**: the generated Roslyn source and physical `.g.cs` source are observably equivalent for telemetry behavior.
 
-Current validation starts closing this gap by adding physical generated-file freshness checks for `TestLog_FoxRun.g.cs`. A deeper semantic diff between Roslyn-generated output and build-time output remains a higher-confidence follow-up.
+Current validation includes a Roslyn `CSharpGeneratorDriver` fixture, a compile-and-reflection fixture, a normalized descriptor comparison, negative semantic-drift checks, provenance-only drift checks, and a checked-in analyzer DLL inspection. This matters because Unity loads the package's checked-in analyzer DLL with the `RoslynAnalyzer` label; testing the source-generator source alone would not prove that Unity Editor users receive the same diagnostics and descriptor carrier.
 
-A practical next step is to make each host emit a normalized generation descriptor, for example JSON containing the declaring type, member name, member type, topic, schema, rate, publish mode, diagnostics, and preservation requirements. CI can then diff the descriptors before comparing generated source. That keeps the check close to the model-equivalence claim without requiring tests to compare host-specific Roslyn or Unity object graphs directly.
+The descriptor remains audit evidence, not a replay guard key. Replay blocking still uses the canonical FoxRun `globalManifestHash` written to MCAP metadata, while `foxrun.generation-descriptor.json` helps diagnose generator host drift and sidecar evidence completeness.
 
 ## 7 Failure Modes
 
@@ -221,7 +223,7 @@ The architecture is validated at multiple levels:
 | --- | --- |
 | Emitter output tests | Lock generated source structure |
 | Generation-model tests | Confirm parsed metadata survives into the emitter model |
-| Normalized descriptor diff | Future release gate comparing Roslyn and build-time host models before source comparison |
+| Normalized descriptor diff | Compares same-scope Roslyn and build-time host models before source comparison |
 | Runtime behavior tests | Confirm generated publishers publish expected payloads |
 | IL2CPP build smoke | Confirm physical fallback files participate in Player builds |
 | Manual Foxglove smoke | Confirm topics appear and update in the target viewer |
@@ -237,16 +239,21 @@ The MCAP schema metadata path is deliberately narrow: `unity2foxglove.foxrun.sch
 
 The SDK schema manifest aggregate broadens release evidence without broadening replay governance. It records the FoxRun evidence summary, bundled protobuf registry, bundled ROS2 `.msg` registry, and SDK typed publisher catalog under `Assets/Generated/Unity2Foxglove/`. Its aggregate hash is useful for audit and coverage review, while replay remains governed only by the FoxRun `globalManifestHash` stored in MCAP metadata.
 
-Schema Evidence identity policy makes that governance adjustable for different project stages. `Off` keeps demos and early debugging low-friction, `Warn` surfaces mismatches while allowing replay and live work to continue, and `Strict` treats the FoxRun identity as an acceptance gate. When MCAP recording runs with identity enabled, Unity2Foxglove writes a sibling `.schema` directory next to the `.mcap` and copies both the `FoxRun/` contract evidence and the broader `Unity2Foxglove/` aggregate evidence, giving each recording a portable audit bundle without changing the replay guard key.
+Schema Evidence identity policy makes that governance adjustable for different project stages. `Off` keeps demos and early debugging low-friction, `Warn` surfaces mismatches while allowing replay and live work to continue, and `Strict` treats the FoxRun identity as an acceptance gate. When MCAP recording runs with identity enabled, Unity2Foxglove writes a sibling `.schema` directory next to the `.mcap` and copies both the `FoxRun/` contract evidence and the broader `Unity2Foxglove/` aggregate evidence, giving each recording a portable audit bundle without changing the replay guard key. The FoxRun generation descriptor is copied into that sidecar when present as optional evidence; missing descriptor evidence is reported as a warning and does not make Strict recording incomplete.
 
 ## 9 Implementation Evidence
 
 | Evidence | Location | Meaning |
 | --- | --- | --- |
 | Shared emitter | `Editor/Shared/FoxgloveSourceEmitter.cs` | Single source of generation semantics |
+| Shared generation model | `Editor/Shared/FoxRunDescriptor/` | Host-independent model, descriptor writer, comparer, validator, and canonical type normalizer |
 | FoxRun canonical manifest | `Editor/Shared/FoxRunManifest/` | Host-independent contract normalization and fingerprinting |
 | Roslyn host | `Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs` | Editor source generation path |
+| Roslyn lowerer | `Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs` | Converts Roslyn-extracted declarations into `FoxRunGenerationModel` |
 | Build-time host | `Editor/FoxRun/FoxrunCodeGenerator.cs` | Physical `.g.cs` generation path |
+| Build-time lowerer | `Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs` | Converts reflection-scanned declarations into `FoxRunGenerationModel` |
+| Generation descriptor | `Assets/Generated/FoxRun/foxrun.generation-descriptor.json` | Non-replay-blocking audit descriptor serialized from the model passed to the emitter |
+| Checked-in analyzer DLL | `Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll` | Unity-loaded Roslyn analyzer/source generator artifact; must be rebuilt after source changes |
 | Play Mode manifest hook | `Editor/FoxRun/FoxrunManifestPlayModeHook.cs` | Refreshes canonical manifest artifacts before Editor Play Mode |
 | Build preprocess hook | `Editor/FoxRun/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
 | IL2CPP preservation | `Editor/FoxRun/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
@@ -296,7 +303,7 @@ The following evidence would strengthen this research note:
 
 2. **Emitter migration/churn analysis.** If the shared-emitter pattern is reused in Unity2Rerun, measure how much code changes in the declaration/model layer, shared emitter infrastructure, schema mapping, and runtime adapter layer.
 
-3. **Model and generated-output equivalence checks.** Compare Roslyn and physical writer output at the semantic level rather than only through text snapshots. A minimal release gate should at least detect stale physical `.g.cs` files for demo/sample sources; a stronger gate should have both hosts emit normalized JSON descriptors, diff resolved generation models, and then compare generated output structure between hosts.
+3. **Broader model-equivalence matrix.** The single-fixture descriptor comparison now proves the shared-model boundary. Future work should extend that matrix to more Unity assemblies, asmdef layouts, conditional symbols, Unity value types, and IL2CPP Player-build evidence.
 
 4. **Player-build performance smoke.** Capture IL2CPP Player evidence for frame cost, allocations, and publisher behavior.
 

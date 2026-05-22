@@ -43,7 +43,7 @@ flowchart LR
 | Protocol state | Registry | `Runtime/Core/Registries/`; `Runtime/Core/Services/`; `Runtime/Core/Assets/` | Centralizes mutable protocol state such as channels, subscriptions, parameters, services, and assets. |
 | Transport | Interface-backed backend | `Runtime/Transport/IFoxgloveTransport.cs`; `Runtime/Transport/WebSocket/` | Lets the same session code run against managed WS, managed WSS, and test transports. |
 | MCAP | Pipeline separation | `Runtime/IO/Mcap/`; `Runtime/Core/Recording/`; `Runtime/Core/Replay/` | Keeps binary file records, recording orchestration, replay reading, and runtime replay behavior separate. |
-| FoxRun generation | Shared emitter | `Editor/Shared/FoxgloveSourceEmitter.cs`; `Editor/FoxRun/`; `Editor/SourceGenerators/` | Keeps Roslyn source generation and build-time physical `.g.cs` generation aligned. See [Shared-Emitter Dual-Host AOT Code Generation](research-shared-emitter-architecture.md). |
+| FoxRun generation | Shared model + shared emitter | `Editor/Shared/FoxRunDescriptor/`; `Editor/Shared/FoxgloveSourceEmitter.cs`; `Editor/FoxRun/`; `Editor/SourceGenerators/` | Keeps Roslyn source generation and build-time physical `.g.cs` generation aligned through one semantic model and one emitter. See [Shared-Emitter Dual-Host AOT Code Generation](research-shared-emitter-architecture.md). |
 
 ## Why Some Abstractions Stay Lightweight
 
@@ -63,7 +63,7 @@ Use these entry points when changing a subsystem:
 - **Transport or WSS:** start in `Runtime/Transport/`, then check `Runtime/Core/Session/` for protocol interactions.
 - **Protocol JSON or binary frames:** start in `Runtime/Protocol/` and the relevant session handler.
 - **Publishers:** start in `Runtime/Components/Publishing/` or `Runtime/Schemas/Proto/Publishers/`.
-- **FoxRun:** start with `Editor/Shared/FoxgloveSourceEmitter.cs`, then inspect the Roslyn and build-time hosts.
+- **FoxRun:** start with `Editor/Shared/FoxRunDescriptor/` and `Editor/Shared/FoxgloveSourceEmitter.cs`, then inspect the Roslyn and build-time hosts.
 - **MCAP recording:** start with `Runtime/Core/Recording/RecordingController.cs`, then `Runtime/IO/Mcap/Recording/McapRecorder.cs` and `Runtime/IO/Mcap/McapWriter.cs`.
 - **MCAP replay:** start with `Runtime/Core/Replay/ReplayController.cs`, `Runtime/Core/Replay/ReplaySnapshotStateMachine.cs`, and `Runtime/IO/Mcap/Replay/McapReplayEngine.cs`.
 - **Schemas:** start with `Runtime/Schemas/Registry/` for JSON schema definitions and `Runtime/Schemas/Proto/Registry/` for protobuf catalog behavior.

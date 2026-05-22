@@ -156,7 +156,20 @@ namespace Unity.FoxgloveSDK.Editor
         /// <param name="className">Declaring class name.</param>
         /// <param name="members">All <c>[FoxRun]</c> attributed members of this class.</param>
         /// <returns>Generated C# source as a string.</returns>
+        public static string EmitClass(FoxRunGenerationType type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            return EmitClassCore(type.Namespace, type.ClassName, type.Members.Select(member => member.ToTopicMember()).ToList());
+        }
+
         public static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
+        {
+            return EmitClassCore(ns, className, members);
+        }
+
+        private static string EmitClassCore(string ns, string className, IReadOnlyList<TopicMember> members)
         {
             if (members == null || members.Count == 0)
                 throw new ArgumentException("At least one member is required.", nameof(members));

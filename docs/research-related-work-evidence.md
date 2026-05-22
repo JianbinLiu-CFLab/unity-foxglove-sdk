@@ -123,7 +123,7 @@ AOT-safe source generation is a known and important pattern. Unity2Foxglove's na
 | Claim Area | Sources To Use | Notes |
 | --- | --- | --- |
 | IL2CPP/AOT makes reflection-heavy or runtime-codegen telemetry fragile | Unity scripting restrictions; Unity Roslyn source generators; System.Text.Json; MessagePack-CSharp | Unity provides the platform-specific constraint; .NET and MessagePack show source generation as an established AOT strategy. |
-| Unity supports source generators but package/player workflow has Unity-specific constraints | Unity Roslyn analyzers/source generators | Supports why FoxRun has both Editor generator and physical fallback instead of relying only on an analyzer DLL. |
+| Unity supports source generators but package/player workflow has Unity-specific constraints | Unity Roslyn analyzers/source generators | Supports why FoxRun has both Editor generator and physical fallback instead of relying only on an analyzer DLL; current validation also checks the checked-in Unity analyzer DLL, not only the generator source. |
 | Unity data streaming exists, but not as a Foxglove/MCAP telemetry package | psiUnity; XREcho | Compare scope: XR/HoloLens/`\psi` and XR behavior recording versus Foxglove/MCAP/robotics visualization. |
 | Unity robotics pipelines commonly rely on ROS/ROS2 middleware | Unity ROS-TCP-Connector; Unity Robotics Hub; SimNav-XR; Unity and ROS as Digital and Communication Layer | These support the "external middleware/bridge" contrast. |
 | Foxglove and ROS bridges already exist | Foxglove WebSocket Server guide; `foxglove_bridge`; `rosbridge_suite` | Positions Unity2Foxglove as an in-Unity bridge, not as a replacement for ROS bridges. |
@@ -138,7 +138,7 @@ The following tracked files provide project-side evidence for claims made in thi
 
 - `PAPER.md` - current research positioning and related-work boundary.
 - `README.md` - public positioning, feature list, validation summary, release/test commands, and limitations.
-- `docs/research-shared-emitter-architecture.md` - FoxRun shared-emitter and dual-host generation architecture.
+- `docs/research-shared-emitter-architecture.md` - FoxRun shared-generation-model, shared-emitter, and dual-host generation architecture.
 - `docs/research-remote-timeline-scene-reproduction.md` - replay/timeline scene reproduction research note.
 - `docs/research-related-work-evidence.md` - this citation map.
 - `Packages/dev.unity2foxglove.sdk/README.md` - package-level user-facing feature and setup summary.

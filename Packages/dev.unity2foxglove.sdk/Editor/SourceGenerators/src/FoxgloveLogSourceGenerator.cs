@@ -113,13 +113,29 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                           tds.Modifiers.Any(SyntaxKind.PartialKeyword));
 
             string memberName = symbol.Name;
-            string memberType;
+            string memberKind;
+            ITypeSymbol typeSymbol;
             if (symbol is IFieldSymbol fs)
-                memberType = fs.Type.ToDisplayString();
+            {
+                memberKind = "field";
+                typeSymbol = fs.Type;
+            }
             else if (symbol is IPropertySymbol ps)
-                memberType = ps.Type.ToDisplayString();
+            {
+                memberKind = "property";
+                typeSymbol = ps.Type;
+            }
             else
-                memberType = "object";
+            {
+                memberKind = "field";
+                typeSymbol = null;
+            }
+
+            var memberType = typeSymbol == null ? "object" : typeSymbol.ToDisplayString();
+            var isValueType = typeSymbol?.IsValueType == true;
+            var isArray = TryGetArrayElementType(typeSymbol, out var elementType);
+            var elementTypeName = elementType == null ? "" : elementType.ToDisplayString();
+            var rawMemberOrder = symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start ?? 0;
 
             var topics = new List<TopicEntry>();
             foreach (var attr in attrs)
@@ -146,7 +162,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 && !containingType.ContainingNamespace.IsGlobalNamespace
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberType, topics.ToArray());
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, isValueType, isArray, elementTypeName, rawMemberOrder, topics.ToArray());
         }
 
         /// <summary>
@@ -170,8 +186,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.NotPartial, Location.None, first.ClassName));
                     continue;
                 }
-                EmitClass(spc, first.Ns, first.ClassName, grp.ToArray());
+                EmitClass(spc, grp.ToArray());
             }
+
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(valid.SelectMany(m => m.ToRoslynMembers()).ToList());
+            var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(model);
+            spc.AddSource("FoxRunGeneratedDescriptorInfo.g.cs", DescriptorCarrierSource(descriptor));
         }
 
         /// <summary>
@@ -181,13 +201,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// generation to <c>FoxgloveSourceEmitter.EmitClass</c> for output
         /// consistency with the build-time physical fallback path.
         /// </summary>
-        private static void EmitClass(SourceProductionContext spc, string ns, string className, MemberData[] members)
+        private static void EmitClass(SourceProductionContext spc, MemberData[] members)
         {
-            var args = new List<FoxgloveSourceEmitter.TopicMember>();
-            foreach (var m in members)
-                foreach (var t in m.Topics)
-                    args.Add(new FoxgloveSourceEmitter.TopicMember(m.MemberName, m.MemberType, t.Topic, t.RateHz, t.SchemaName,
-                        t.PublishMode, t.ChangeEpsilon, t.ForceIntervalSeconds));
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(members.SelectMany(m => m.ToRoslynMembers()).ToList());
+            var type = model.Types.First();
+            foreach (var diagnostic in FoxRunGenerationModelValidator.Validate(model))
+                spc.ReportDiagnostic(Diagnostic.Create(Diags.Shared(diagnostic.Id), Location.None, diagnostic.Target));
+            var args = type.Members.Select(member => member.ToTopicMember()).ToList();
 
             // Warn on schema conflicts
             var byTopic = args.GroupBy(a => a.Topic);
@@ -203,7 +223,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             {
                 var cleanNames = grp.Select(a => a.MemberName.TrimStart('_')).ToList();
                 if (cleanNames.Distinct().Count() < cleanNames.Count)
-                    spc.ReportDiagnostic(Diagnostic.Create(Diags.NameConflict, Location.None, className, grp.Key));
+                    spc.ReportDiagnostic(Diagnostic.Create(Diags.NameConflict, Location.None, type.ClassName, grp.Key));
             }
 
             // Warn when a multi-member topic mixes policy knobs. The emitter
@@ -219,8 +239,53 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.MixedTopicPolicy, Location.None, grp.Key));
             }
 
-            var source = FoxgloveSourceEmitter.EmitClass(ns, className, args);
+            var ns = type.Namespace;
+            var className = type.ClassName;
+            var source = FoxgloveSourceEmitter.EmitClass(type);
             spc.AddSource(FoxgloveSourceEmitter.GeneratedSourceName(ns, className), source);
+        }
+
+        private static bool TryGetArrayElementType(ITypeSymbol type, out ITypeSymbol elementType)
+        {
+            if (type is IArrayTypeSymbol array && array.Rank == 1)
+            {
+                elementType = array.ElementType;
+                return true;
+            }
+
+            if (type is INamedTypeSymbol named && named.IsGenericType && named.TypeArguments.Length == 1)
+            {
+                var fullName = named.ConstructedFrom.ToDisplayString();
+                if (fullName == "System.Collections.Generic.List<T>"
+                    || fullName == "System.Collections.Generic.IReadOnlyList<T>"
+                    || fullName == "System.Collections.Generic.IList<T>")
+                {
+                    elementType = named.TypeArguments[0];
+                    return true;
+                }
+            }
+
+            elementType = null;
+            return false;
+        }
+
+        private static string DescriptorCarrierSource(string descriptorJson)
+        {
+            return "// <auto-generated/>\n"
+                   + "namespace Unity.FoxgloveSDK.Generated\n"
+                   + "{\n"
+                   + "    internal static class FoxRunGeneratedDescriptorInfo\n"
+                   + "    {\n"
+                   + "        public const string DescriptorJson = \"" + EscapeStringLiteral(descriptorJson) + "\";\n"
+                   + "    }\n"
+                   + "}\n";
+        }
+
+        private static string EscapeStringLiteral(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            return value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
         }
 
         /// <summary>
@@ -238,6 +303,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly string MemberName;
             /// <summary>Field or property type as fully-qualified string.</summary>
             public readonly string MemberType;
+            public readonly string MemberKind;
+            public readonly bool IsValueType;
+            public readonly bool IsArray;
+            public readonly string ElementTypeName;
+            public readonly int RawMemberOrder;
             /// <summary>Whether the containing class is declared <c>partial</c>.</summary>
             public readonly bool IsPartial;
             /// <summary>Extracted topic entries from <c>[FoxRun]</c> attributes.</summary>
@@ -249,13 +319,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// Factory for diagnostic-only instances (e.g. multi-variable declaration error).
             /// </summary>
             public static MemberData ForDiagnostic(Location location) =>
-                new MemberData("", "", false, "", "", Array.Empty<TopicEntry>(), location);
+                new MemberData("", "", false, "", "", "", false, false, "", 0, Array.Empty<TopicEntry>(), location);
 
             /// <summary>
             /// Creates a valid member-data record with no diagnostic.
             /// </summary>
-            public MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t)
-                : this(ns, cn, partial, mn, mt, t, null)
+            public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, TopicEntry[] t)
+                : this(ns, cn, partial, mn, memberKind, mt, isValueType, isArray, elementTypeName, rawMemberOrder, t, null)
             {
             }
 
@@ -263,8 +333,42 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// Core constructor used by both the public constructor and
             /// <c>ForDiagnostic</c>.
             /// </summary>
-            private MemberData(string ns, string cn, bool partial, string mn, string mt, TopicEntry[] t, Location diagnosticLocation)
-            { Ns = ns; ClassName = cn; IsPartial = partial; MemberName = mn; MemberType = mt; Topics = t; DiagnosticLocation = diagnosticLocation; }
+            private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, TopicEntry[] t, Location diagnosticLocation)
+            {
+                Ns = ns;
+                ClassName = cn;
+                IsPartial = partial;
+                MemberName = mn;
+                MemberKind = memberKind;
+                MemberType = mt;
+                IsValueType = isValueType;
+                IsArray = isArray;
+                ElementTypeName = elementTypeName;
+                RawMemberOrder = rawMemberOrder;
+                Topics = t;
+                DiagnosticLocation = diagnosticLocation;
+            }
+
+            public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers()
+            {
+                return Topics.Select(t => new FoxRunRoslynGenerationMember(
+                    Ns,
+                    ClassName,
+                    MemberName,
+                    MemberKind,
+                    MemberType,
+                    IsValueType,
+                    IsArray,
+                    ElementTypeName,
+                    t.Topic,
+                    t.SchemaName,
+                    t.RateHz,
+                    t.PublishMode,
+                    t.ChangeEpsilon,
+                    t.ForceIntervalSeconds,
+                    RawMemberOrder,
+                    string.Empty)).ToList();
+            }
         }
 
         /// <summary>
@@ -339,6 +443,44 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "FOXRUN005", "Mixed same-topic PublishMode policy",
                 "Topic '{0}' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses OnTrigger precedence before scheduled policy settings.",
                 "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor UnsupportedCanonicalType = new DiagnosticDescriptor(
+                "FOXRUN006", "Unsupported FoxRun type",
+                "{0}: member type is not a canonical built-in FoxRun contract type",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor GenericType = new DiagnosticDescriptor(
+                "FOXRUN007", "Generic FoxRun type",
+                "{0}: generic FoxRun types may be unsafe for IL2CPP contract governance",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor NonAbsoluteTopic = new DiagnosticDescriptor(
+                "FOXRUN008", "FoxRun topic must be absolute",
+                "{0}: FoxRun topic must start with '/'",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor DisabledRate = new DiagnosticDescriptor(
+                "FOXRUN009", "FoxRun scheduled publishing disabled",
+                "{0}: RateHz <= 0 disables scheduled publishing unless the topic is trigger-only",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor BinaryType = new DiagnosticDescriptor(
+                "FOXRUN010", "Binary FoxRun values unsupported",
+                "{0}: binary/blob values are not supported in the FoxRun contract path",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static DiagnosticDescriptor Shared(string id)
+            {
+                switch (id)
+                {
+                    case "FOXRUN006": return UnsupportedCanonicalType;
+                    case "FOXRUN007": return GenericType;
+                    case "FOXRUN008": return NonAbsoluteTopic;
+                    case "FOXRUN009": return DisabledRate;
+                    case "FOXRUN010": return BinaryType;
+                    default: return UnsupportedCanonicalType;
+                }
+            }
         }
     }
 }
