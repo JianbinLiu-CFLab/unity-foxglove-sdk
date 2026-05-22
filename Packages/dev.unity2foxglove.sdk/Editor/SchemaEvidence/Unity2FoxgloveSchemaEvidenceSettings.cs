@@ -11,8 +11,8 @@ using UnityEngine;
 namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
-    /// Project-level schema evidence settings used by generators and the
-    /// FoxgloveManager Inspector.
+    /// Project Settings owner for schema evidence defaults, synchronized into
+    /// scene Manager instances so Inspector overrides start from one policy.
     /// </summary>
     [FilePath("ProjectSettings/Unity2FoxgloveSchemaEvidenceSettings.asset", FilePathAttribute.Location.ProjectFolder)]
     internal sealed class Unity2FoxgloveSchemaEvidenceSettings : ScriptableSingleton<Unity2FoxgloveSchemaEvidenceSettings>

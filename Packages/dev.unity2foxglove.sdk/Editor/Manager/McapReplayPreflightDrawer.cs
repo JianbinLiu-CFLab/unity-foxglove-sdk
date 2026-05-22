@@ -16,8 +16,8 @@ using UnityEngine;
 namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
-    /// Draws the MCAP Replay preflight controls and summary without bloating
-    /// the main FoxgloveManager Inspector.
+    /// Draws advisory MCAP Replay preflight controls before Play Mode starts,
+    /// keeping summaries out of the main FoxgloveManager Inspector.
     /// </summary>
     internal sealed class McapReplayPreflightDrawer
     {

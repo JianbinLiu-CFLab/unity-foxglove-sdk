@@ -8,6 +8,9 @@ using System;
 
 namespace Unity2Foxglove.Ros2ForUnity
 {
+    /// <summary>
+    /// Root context for the optional ROS2 For Unity package boundary.
+    /// </summary>
     public interface IUnity2FoxgloveRos2Context : IDisposable
     {
         bool IsAvailable { get; }

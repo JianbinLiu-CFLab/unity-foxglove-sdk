@@ -83,6 +83,10 @@ namespace Unity.FoxgloveSDK.Core
         }
     }
 
+    /// <summary>
+    /// Behavior-based per-Transform pose owner selection for replayed scene
+    /// and frame-transform sources.
+    /// </summary>
     public sealed class ReplayPoseOwnershipArbiter
     {
         private readonly Dictionary<int, OwnerState> _owners = new();
@@ -92,6 +96,10 @@ namespace Unity.FoxgloveSDK.Core
 
         public bool IsDeferralActive { get; private set; } = true;
 
+        /// <summary>
+        /// Offers one pose sample using channel identity as a concrete source key,
+        /// not topic-name priority, while behavior decides ownership class.
+        /// </summary>
         public ReplayPoseOwnershipDecision OfferPose(
             int transformKey,
             ushort channelId,

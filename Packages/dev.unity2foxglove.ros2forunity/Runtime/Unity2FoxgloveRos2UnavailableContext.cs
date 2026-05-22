@@ -8,6 +8,9 @@ using System;
 
 namespace Unity2Foxglove.Ros2ForUnity
 {
+    /// <summary>
+    /// No-op facade used when the ROS2 For Unity runtime is not bundled or active.
+    /// </summary>
     public sealed class Unity2FoxgloveRos2UnavailableContext : IUnity2FoxgloveRos2Context
     {
         private const string UnavailableMessage =
