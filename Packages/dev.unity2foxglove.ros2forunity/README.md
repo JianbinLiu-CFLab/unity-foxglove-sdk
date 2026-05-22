@@ -24,13 +24,13 @@ This optional package is reserved for users who later want Unity to participate 
 bundleStatus: not_bundled
 adapterStatus: external_assets_sample
 recommendedRuntimeCandidate: Ros2ForUnity_Jazzy_standalone_windows10.zip
-plannedRuntimePackage: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
+runtimePackage: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 legacyRuntimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
 ```
 
 The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment.
 
-The current local artifact candidate has a generated file inventory at `Compliance/r2fu-jazzy-win64-runtime-inventory.json` and artifact-specific notices at `Compliance/r2fu-jazzy-win64-runtime-notices.md`. These records document the zip checksum, file count, critical runtime DLLs, and redistribution caveats without bundling the zip in this adapter package.
+The current Jazzy Windows x64 runtime package has its runtime manifest, generated file inventory, checksum, and artifact-specific notices under `Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`. The adapter package keeps compatibility records under `Compliance/` without bundling runtime binaries itself.
 
 The old Humble standalone asset remains historical/fallback evidence, but it is not the recommended new-user runtime line after the Jazzy rebuild and retest.
 
@@ -107,10 +107,8 @@ See `THIRD_PARTY_NOTICES.md` and `Compliance/ros2-for-unity-adoption-manifest.js
 
 Future work may add:
 
-- a `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package prototype;
-- a runtime bundle inventory;
 - per-platform runtime validation;
 - explicit DDS network-profile troubleshooting;
 - real LAN or bridged Linux acceptance evidence.
 
-Any future binary bundling must update the adoption manifest and add a complete transitive inventory, third-party notices, license inventory, checksums, and fresh Unity project acceptance before distribution.
+Any future runtime package or binary refresh must update the adoption manifest and include a complete transitive inventory, third-party notices, license inventory, checksums, and fresh Unity project acceptance before distribution.

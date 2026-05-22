@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.9.0 - 2026-05-22
+
+### Added
+
+- Optional ROS2 For Unity package line with a lightweight adapter package and a separate Jazzy Windows x64 runtime package.
+- Runtime package metadata for the Jazzy Windows x64 path, including manifest, file inventory, checksum, third-party notices, and package-path loading patch.
+- FoxRun canonical manifest, runtime schema info, MCAP schema metadata, schema evidence sidecar, and replay schema identity guard coverage.
+- Replay pose ownership arbitration and replay batch-boundary hardening so same-`LogTime` message groups are not split by tick caps.
+- FoxRun analyzer and generation-model hardening, including unsupported-type diagnostics and IL2CPP-oriented generated-source equivalence checks.
+
+### Changed
+
+- Root README support boundaries now describe the 1.9 ROS2 For Unity adapter/runtime split instead of treating runtime packaging as only future work.
+- The `Not Supported` list now distinguishes unsupported general ROS2 For Unity platform/distro coverage from the supported Jazzy Windows x64 preview runtime path.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.9.0.
+
+### Verified
+
+- Version synchronization dry-run reported all 1.9.0 references already aligned.
+- Runtime validation suite passed.
+- Release package validation passed with 31 checks.
+- Manual acceptance should cover Unity Play Mode, Foxglove, IL2CPP, MCAP replay, and the optional R2FU Jazzy Windows x64 adapter/runtime smoke path before publishing.
+
 ## 1.8.0 - 2026-05-17
 
 ### Added
