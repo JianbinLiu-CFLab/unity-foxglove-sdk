@@ -25,6 +25,7 @@ Build/
 Builds/
 Logs/
 UserSettings/
+unity_scripts_compile_*_probe.log
 
 # IDE/user files
 .vs/
