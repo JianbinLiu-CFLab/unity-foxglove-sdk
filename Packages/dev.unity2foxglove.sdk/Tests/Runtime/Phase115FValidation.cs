@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
@@ -250,17 +249,12 @@ namespace Unity.FoxgloveSDK.Tests
             if (File.Exists(dllPath) && File.Exists(builtPath))
             {
                 var checkedIn = File.ReadAllBytes(dllPath);
-                var built = File.ReadAllBytes(builtPath);
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    Check(checkedIn.SequenceEqual(built),
-                        "115F-E3: checked-in analyzer DLL matches fresh Release build bytes");
-                }
-                else
-                {
-                    Check(true,
-                        "115F-E3: checked-in analyzer DLL byte comparison is enforced by the Windows freshness job");
-                }
+                var sourceGenerated = RunRoslynGenerator();
+                var checkedInGenerated = RunGenerator(LoadGeneratorFromDll(dllPath), "FoxRunGenerationModelFixtureCheckedInDll115F");
+                Check(GeneratedSourceText(sourceGenerated, "FoxRunGeneratedDescriptorInfo.g.cs")
+                      == GeneratedSourceText(checkedInGenerated, "FoxRunGeneratedDescriptorInfo.g.cs")
+                      && GeneratedFoxRunSource(sourceGenerated) == GeneratedFoxRunSource(checkedInGenerated),
+                    "115F-E3: checked-in analyzer DLL matches source generator semantics");
 
                 Check(BytesContainText(checkedIn, "EmissionTypeName") && BytesContainText(checkedIn, "RawObservedTypeName"),
                     "115F-E4: checked-in analyzer DLL contains 115F type-boundary artifacts");
@@ -318,10 +312,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ExtractDescriptorJsonFromRoslyn()
         {
-            var descriptorSource = RunRoslynGenerator()
-                .First(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
-                .SourceText
-                .ToString();
+            var descriptorSource = GeneratedSourceText(RunRoslynGenerator(), "FoxRunGeneratedDescriptorInfo.g.cs");
             var match = Regex.Match(descriptorSource, "DescriptorJson = \"(?<json>.*)\";");
             if (!match.Success)
                 throw new InvalidOperationException("Could not extract DescriptorJson from Roslyn descriptor carrier.");
@@ -329,17 +320,14 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ExtractFoxRunSourceFromRoslyn()
-        {
-            return RunRoslynGenerator()
-                .First(source => source.HintName.EndsWith("_FoxRun.g.cs", StringComparison.Ordinal))
-                .SourceText
-                .ToString();
-        }
+            => GeneratedFoxRunSource(RunRoslynGenerator());
 
         private static IReadOnlyList<GeneratedSourceResult> RunRoslynGenerator()
+            => RunGenerator(new FoxgloveLogSourceGenerator(), "FoxRunGenerationModelFixtureRoslyn115F");
+
+        private static IReadOnlyList<GeneratedSourceResult> RunGenerator(IIncrementalGenerator generator, string assemblyName)
         {
-            var compilation = CreateCompilation(ReadRepoText(FixtureRelativePath), "FoxRunGenerationModelFixtureRoslyn115F");
-            var generator = new FoxgloveLogSourceGenerator();
+            var compilation = CreateCompilation(ReadRepoText(FixtureRelativePath), assemblyName);
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 new ISourceGenerator[] { generator.AsSourceGenerator() },
                 parseOptions: FixtureParseOptions());
@@ -349,6 +337,20 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
             return driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources).ToList();
         }
+
+        private static IIncrementalGenerator LoadGeneratorFromDll(string dllPath)
+        {
+            var assembly = Assembly.LoadFile(Path.GetFullPath(dllPath));
+            var type = assembly.GetType("Unity.FoxgloveSDK.SourceGenerators.FoxgloveLogSourceGenerator")
+                       ?? throw new InvalidOperationException("Checked-in analyzer DLL does not contain FoxgloveLogSourceGenerator.");
+            return (IIncrementalGenerator)Activator.CreateInstance(type);
+        }
+
+        private static string GeneratedSourceText(IReadOnlyList<GeneratedSourceResult> sources, string hintName)
+            => sources.First(source => source.HintName == hintName).SourceText.ToString();
+
+        private static string GeneratedFoxRunSource(IReadOnlyList<GeneratedSourceResult> sources)
+            => sources.First(source => source.HintName.EndsWith("_FoxRun.g.cs", StringComparison.Ordinal)).SourceText.ToString();
 
         private static FoxRunGenerationModel BuildReflectionModelFromFixtureAssembly()
         {
