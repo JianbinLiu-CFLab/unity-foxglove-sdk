@@ -104,11 +104,11 @@ namespace Unity.FoxgloveSDK.Editor
             var sourceType = member.IsArray && !string.IsNullOrEmpty(member.ElementTypeName)
                 ? member.ElementTypeName
                 : member.TypeName;
-            var normalized = NormalizeType(sourceType);
+            var normalized = FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType);
             var nullable = member.IsArray
-                           || IsNullableType(member.TypeName)
-                           || IsStringType(member.TypeName)
-                           || (!member.IsValueType && !IsKnownUnityValueType(member.TypeName));
+                           || FoxRunCanonicalTypeNormalizer.IsNullableType(member.TypeName)
+                           || FoxRunCanonicalTypeNormalizer.IsStringType(member.TypeName)
+                           || (!member.IsValueType && !FoxRunCanonicalTypeNormalizer.IsKnownUnityValueType(member.TypeName));
             return new FoxRunManifestField(
                 JsonFieldName(member.MemberName),
                 member.MemberName,
@@ -184,123 +184,6 @@ namespace Unity.FoxgloveSDK.Editor
             return string.Equals(memberKind, "property", StringComparison.OrdinalIgnoreCase)
                 ? "property"
                 : "field";
-        }
-
-        private static string NormalizeType(string typeName)
-        {
-            var name = UnwrapNullable(typeName ?? string.Empty);
-            switch (name)
-            {
-                case "float":
-                case "Single":
-                case "System.Single":
-                    return "float32";
-                case "double":
-                case "Double":
-                case "System.Double":
-                    return "float64";
-                case "bool":
-                case "Boolean":
-                case "System.Boolean":
-                    return "bool";
-                case "byte":
-                case "Byte":
-                case "System.Byte":
-                    return "uint8";
-                case "sbyte":
-                case "SByte":
-                case "System.SByte":
-                    return "int8";
-                case "short":
-                case "Int16":
-                case "System.Int16":
-                    return "int16";
-                case "ushort":
-                case "UInt16":
-                case "System.UInt16":
-                    return "uint16";
-                case "int":
-                case "Int32":
-                case "System.Int32":
-                    return "int32";
-                case "uint":
-                case "UInt32":
-                case "System.UInt32":
-                    return "uint32";
-                case "long":
-                case "Int64":
-                case "System.Int64":
-                    return "int64";
-                case "ulong":
-                case "UInt64":
-                case "System.UInt64":
-                    return "uint64";
-                case "string":
-                case "String":
-                case "System.String":
-                    return "string";
-                case "Vector2":
-                case "UnityEngine.Vector2":
-                    return "unity.vector2.float32";
-                case "Vector3":
-                case "UnityEngine.Vector3":
-                    return "unity.vector3.float32";
-                case "Quaternion":
-                case "UnityEngine.Quaternion":
-                    return "unity.quaternion.float32";
-                case "Color":
-                case "UnityEngine.Color":
-                    return "unity.color.float32";
-                default:
-                    return name;
-            }
-        }
-
-        private static bool IsNullableType(string typeName)
-        {
-            return (typeName ?? string.Empty).StartsWith("System.Nullable", StringComparison.Ordinal)
-                   || (typeName ?? string.Empty).EndsWith("?", StringComparison.Ordinal);
-        }
-
-        private static bool IsStringType(string typeName)
-        {
-            var name = typeName ?? string.Empty;
-            return name == "string" || name == "String" || name == "System.String";
-        }
-
-        private static bool IsKnownUnityValueType(string typeName)
-        {
-            var name = typeName ?? string.Empty;
-            return name == "Vector2"
-                   || name == "UnityEngine.Vector2"
-                   || name == "Vector3"
-                   || name == "UnityEngine.Vector3"
-                   || name == "Quaternion"
-                   || name == "UnityEngine.Quaternion"
-                   || name == "Color"
-                   || name == "UnityEngine.Color";
-        }
-
-        private static string UnwrapNullable(string typeName)
-        {
-            if (typeName.EndsWith("?", StringComparison.Ordinal))
-                return typeName.Substring(0, typeName.Length - 1);
-
-            const string genericPrefix = "System.Nullable`1[[";
-            if (typeName.StartsWith(genericPrefix, StringComparison.Ordinal))
-            {
-                var start = genericPrefix.Length;
-                var comma = typeName.IndexOf(',', start);
-                var end = comma >= 0 ? comma : typeName.IndexOf("]]", start, StringComparison.Ordinal);
-                if (end > start)
-                    return typeName.Substring(start, end - start);
-            }
-
-            const string friendlyPrefix = "System.Nullable<";
-            if (typeName.StartsWith(friendlyPrefix, StringComparison.Ordinal) && typeName.EndsWith(">", StringComparison.Ordinal))
-                return typeName.Substring(friendlyPrefix.Length, typeName.Length - friendlyPrefix.Length - 1);
-
-            return typeName;
         }
 
         private readonly struct ContractKey

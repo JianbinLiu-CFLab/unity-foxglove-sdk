@@ -78,7 +78,7 @@ namespace Unity.FoxgloveSDK.Tests
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
             Check(output.Contains("FoxgloveLog_TopicCount => 1"), "grouped topic count");
-            Check(output.Contains("x = this._x, y = this._y"), "grouped fields in JSON");
+            Check(output.Contains("[\"x\"] = this._x, [\"y\"] = this._y"), "grouped fields in JSON");
         }
 
         static void VerifyTwoTopics()
@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new("_pos", "UnityEngine.Vector3", "/pos", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("new { x = this._pos.x, y = this._pos.y, z = this._pos.z }"), "Vector3 decomp");
+            Check(output.Contains("new Dictionary<string, object> { [\"x\"] = this._pos.x, [\"y\"] = this._pos.y, [\"z\"] = this._pos.z }"), "Vector3 decomp");
         }
 
         static void VerifyQuaternionDecomp()
@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new("_rot", "UnityEngine.Quaternion", "/rot", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("new { x = this._rot.x, y = this._rot.y, z = this._rot.z, w = this._rot.w }"), "Quaternion decomp");
+            Check(output.Contains("new Dictionary<string, object> { [\"x\"] = this._rot.x, [\"y\"] = this._rot.y, [\"z\"] = this._rot.z, [\"w\"] = this._rot.w }"), "Quaternion decomp");
         }
 
         static void VerifyColorDecomp()
@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new("_color", "UnityEngine.Color", "/color", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("new { r = this._color.r, g = this._color.g, b = this._color.b, a = this._color.a }"), "Color decomp");
+            Check(output.Contains("new Dictionary<string, object> { [\"r\"] = this._color.r, [\"g\"] = this._color.g, [\"b\"] = this._color.b, [\"a\"] = this._color.a }"), "Color decomp");
         }
 
         static void VerifyUnderscoreStrip()
@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new("___value", "System.Single", "/val", 10f, "")
             };
             var output = FoxgloveSourceEmitter.EmitClass("MyGame", "Player", members);
-            Check(output.Contains("value = this.___value"), "underscore strip: value in JSON");
+            Check(output.Contains("[\"value\"] = this.___value"), "underscore strip: value in JSON");
             Check(!output.Contains("___value = this.___value"), "underscore not raw in JSON");
         }
 

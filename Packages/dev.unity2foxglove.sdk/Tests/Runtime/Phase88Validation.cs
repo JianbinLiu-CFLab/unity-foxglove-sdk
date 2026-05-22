@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDualPublisherSmokeSource()
         {
-            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/Phase88PointCloudFanoutSource.cs");
+            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/PointCloud/Phase88PointCloudFanoutSource.cs");
             Check(!string.IsNullOrEmpty(source),
                 "88C-1: Phase88 fanout smoke source exists");
             Check(source.Contains("FoxglovePointCloudPublisher _rawPublisher")

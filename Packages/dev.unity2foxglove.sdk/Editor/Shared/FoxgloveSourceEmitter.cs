@@ -156,7 +156,20 @@ namespace Unity.FoxgloveSDK.Editor
         /// <param name="className">Declaring class name.</param>
         /// <param name="members">All <c>[FoxRun]</c> attributed members of this class.</param>
         /// <returns>Generated C# source as a string.</returns>
-        public static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
+        public static string EmitClass(FoxRunGenerationType type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            return EmitClassCore(type.Namespace, type.ClassName, type.Members.Select(member => member.ToTopicMember()).ToList());
+        }
+
+        internal static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
+        {
+            return EmitClassCore(ns, className, members);
+        }
+
+        private static string EmitClassCore(string ns, string className, IReadOnlyList<TopicMember> members)
         {
             if (members == null || members.Count == 0)
                 throw new ArgumentException("At least one member is required.", nameof(members));
@@ -361,9 +374,9 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Returns a C# anonymous-object expression string for a Unity type
+        /// Returns a C# payload value expression string for a Unity type
         /// (<c>Vector3</c>, <c>Vector2</c>, <c>Quaternion</c>, <c>Color</c>),
-        /// or the raw member name for all other types.
+        /// or the raw member access for all other types.
         /// </summary>
         public static string ValueExpr(string name, string type)
         {
@@ -372,10 +385,10 @@ namespace Unity.FoxgloveSDK.Editor
             var access = MemberAccess(name);
             switch (t)
             {
-                case "Vector3": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z }}";
-                case "Vector2": return $"new {{ x = {access}.x, y = {access}.y }}";
-                case "Quaternion": return $"new {{ x = {access}.x, y = {access}.y, z = {access}.z, w = {access}.w }}";
-                case "Color": return $"new {{ r = {access}.r, g = {access}.g, b = {access}.b, a = {access}.a }}";
+                case "Vector3": return $"new Dictionary<string, object> {{ [\"x\"] = {access}.x, [\"y\"] = {access}.y, [\"z\"] = {access}.z }}";
+                case "Vector2": return $"new Dictionary<string, object> {{ [\"x\"] = {access}.x, [\"y\"] = {access}.y }}";
+                case "Quaternion": return $"new Dictionary<string, object> {{ [\"x\"] = {access}.x, [\"y\"] = {access}.y, [\"z\"] = {access}.z, [\"w\"] = {access}.w }}";
+                case "Color": return $"new Dictionary<string, object> {{ [\"r\"] = {access}.r, [\"g\"] = {access}.g, [\"b\"] = {access}.b, [\"a\"] = {access}.a }}";
                 default: return access;
             }
         }
@@ -383,18 +396,6 @@ namespace Unity.FoxgloveSDK.Editor
         private static string PayloadExpr(IReadOnlyList<TopicMember> fields)
         {
             var jsonNames = fields.Select(f => JsonFieldName(f.MemberName)).ToList();
-            if (jsonNames.All(IsAnonymousPropertyName))
-            {
-                var sb = new StringBuilder("new { ");
-                for (int j = 0; j < fields.Count; j++)
-                {
-                    if (j > 0) sb.Append(", ");
-                    sb.Append($"{EscapeIdentifier(jsonNames[j])} = {ValueExpr(fields[j].MemberName, fields[j].TypeName)}");
-                }
-                sb.Append(" }");
-                return sb.ToString();
-            }
-
             var dict = new StringBuilder("new Dictionary<string, object> { ");
             for (int j = 0; j < fields.Count; j++)
             {

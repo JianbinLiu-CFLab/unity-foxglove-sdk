@@ -22,5 +22,23 @@ jobs:
         with:
           dotnet-version: "9.0"
 
+      - name: Build Roslyn analyzer DLL for freshness check
+        run: dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj -c Release -o build/SourceGenerators/Release/netstandard2.0
+
       - name: Run validation suite
         run: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+
+  analyzer-freshness:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0"
+
+      - name: Build Roslyn analyzer DLL for freshness check
+        run: dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj -c Release -o build/SourceGenerators/Release/netstandard2.0
+
+      - name: Verify checked-in analyzer DLL freshness
+        run: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase115f
