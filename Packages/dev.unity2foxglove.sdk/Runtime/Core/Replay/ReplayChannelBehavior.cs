@@ -24,6 +24,13 @@ namespace Unity.FoxgloveSDK.Core
             string messageEncoding,
             string schemaName,
             string schemaEncoding)
+            => ClassifyChannel(messageEncoding, schemaName, schemaEncoding, string.Empty);
+
+        public static ReplayChannelBehavior ClassifyChannel(
+            string messageEncoding,
+            string schemaName,
+            string schemaEncoding,
+            string topic)
         {
             if (IsFrameTransformSchema(schemaName))
                 return ReplayChannelBehavior.FrameTransformPose;
@@ -31,8 +38,20 @@ namespace Unity.FoxgloveSDK.Core
             if (IsSceneUpdateSchema(schemaName))
                 return ReplayChannelBehavior.ScenePrimitivePose;
 
-            if (string.Equals(messageEncoding, "json", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrEmpty(messageEncoding))
+            if (string.Equals(messageEncoding, "json", StringComparison.OrdinalIgnoreCase))
+                return ReplayChannelBehavior.Unclassified;
+
+            if (IsCdrEncoding(messageEncoding))
+                return ReplayChannelBehavior.NonPose;
+
+            if (IsDefaultProtobufCompatible(messageEncoding))
+            {
+                var topicBehavior = ClassifyLegacyPoseTopic(topic);
+                if (topicBehavior != ReplayChannelBehavior.NonPose)
+                    return topicBehavior;
+            }
+
+            if (string.IsNullOrEmpty(messageEncoding))
                 return ReplayChannelBehavior.Unclassified;
 
             return ReplayChannelBehavior.NonPose;
@@ -75,6 +94,29 @@ namespace Unity.FoxgloveSDK.Core
 
         private static bool IsSceneUpdateSchema(string schemaName)
             => HasSchemaSuffix(schemaName, "SceneUpdate");
+
+        private static ReplayChannelBehavior ClassifyLegacyPoseTopic(string topic)
+        {
+            if (string.IsNullOrWhiteSpace(topic))
+                return ReplayChannelBehavior.NonPose;
+
+            if (string.Equals(topic, "/tf", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(topic, "/tf_static", StringComparison.OrdinalIgnoreCase))
+                return ReplayChannelBehavior.FrameTransformPose;
+
+            if (string.Equals(topic, "/scene", StringComparison.OrdinalIgnoreCase))
+                return ReplayChannelBehavior.ScenePrimitivePose;
+
+            return ReplayChannelBehavior.NonPose;
+        }
+
+        private static bool IsDefaultProtobufCompatible(string messageEncoding)
+            => string.IsNullOrEmpty(messageEncoding)
+               || string.Equals(messageEncoding, "protobuf", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsCdrEncoding(string messageEncoding)
+            => string.Equals(messageEncoding, "cdr", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(messageEncoding, "ros2msg", StringComparison.OrdinalIgnoreCase);
 
         private static bool HasSchemaSuffix(string schemaName, string suffix)
         {

@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
     [Preserve]
     partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveLogPolicySource
     {
-        int IFoxgloveLogSource.FoxgloveLog_TopicCount => 8;
+        int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
         FoxgloveLogTopicInfo IFoxgloveLogSource.FoxgloveLog_GetTopic(int index)
         {
@@ -23,11 +23,10 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 0: return new FoxgloveLogTopicInfo("/debug/array", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
                 case 1: return new FoxgloveLogTopicInfo("/debug/extra", 0f, FoxRunPublishMode.FixedRate, 0f, 0f);
                 case 2: return new FoxgloveLogTopicInfo("/debug/list", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
-                case 3: return new FoxgloveLogTopicInfo("/debug/nested", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
-                case 4: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
-                case 5: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPublishMode.OnTrigger, 0f, 0f);
-                case 6: return new FoxgloveLogTopicInfo("/debug/value", 10f, FoxRunPublishMode.OnChange, 0.01f, 0f);
-                case 7: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPublishMode.OnChange, 0.001f, 0f);
+                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
+                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPublishMode.OnTrigger, 0f, 0f);
+                case 5: return new FoxgloveLogTopicInfo("/debug/value", 10f, FoxRunPublishMode.OnChange, 0.01f, 0f);
+                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPublishMode.OnChange, 0.001f, 0f);
                 default: return default;
             }
         }
@@ -40,25 +39,24 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 0: mgr.PublishJson("/debug/array", "", new Dictionary<string, object> { ["samples"] = this._samples }, nowNs); break;
                 case 1: mgr.PublishJson("/debug/extra", "", new Dictionary<string, object> { ["extra"] = this._extra }, nowNs); break;
                 case 2: mgr.PublishJson("/debug/list", "", new Dictionary<string, object> { ["sampleList"] = this._sampleList }, nowNs); break;
-                case 3: mgr.PublishJson("/debug/nested", "", new Dictionary<string, object> { ["nested"] = this._nested }, nowNs); break;
-                case 4: mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, nowNs); break;
-                case 5: mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs); break;
-                case 6: mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs); break;
-                case 7: mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs); break;
+                case 3: mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, nowNs); break;
+                case 4: mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs); break;
+                case 5: mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs); break;
+                case 6: mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs); break;
             }
         }
 
         public bool FoxRun_Trigger_trigger()
         {
             var published = false;
-            published |= FoxgloveLogHub.Trigger(this, 5);
+            published |= FoxgloveLogHub.Trigger(this, 4);
             return published;
         }
 
         public bool FoxRun_TriggerAll()
         {
             var published = false;
-            published |= FoxgloveLogHub.Trigger(this, 5);
+            published |= FoxgloveLogHub.Trigger(this, 4);
             return published;
         }
 
@@ -70,17 +68,14 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         private System.Collections.Generic.List<float> __last_2_0;
         private bool __hasLast_3;
         private double __lastPublishSec_3;
-        private Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture.Nested __last_3_0;
-        private bool __hasLast_4;
-        private double __lastPublishSec_4;
-        private int? __last_4_0;
+        private int? __last_3_0;
+        private bool __hasLast_5;
+        private double __lastPublishSec_5;
+        private float __last_5_0;
+        private float __last_5_1;
         private bool __hasLast_6;
         private double __lastPublishSec_6;
-        private float __last_6_0;
-        private float __last_6_1;
-        private bool __hasLast_7;
-        private double __lastPublishSec_7;
-        private UnityEngine.Vector3 __last_7_0;
+        private UnityEngine.Vector3 __last_6_0;
 
         private static bool __foxrun_float_changed(float current, float last, float epsilon)
         {
@@ -110,22 +105,18 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_2, changed, __lastPublishSec_2, 0f);
                 case 3:
                     changed = !__hasLast_3;
-                    if (!changed) changed = !EqualityComparer<Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture.Nested>.Default.Equals(this._nested, __last_3_0);
+                    if (!changed) changed = !EqualityComparer<int?>.Default.Equals(this._optionalCount, __last_3_0);
                     return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_3, changed, __lastPublishSec_3, 0f);
-                case 4:
-                    changed = !__hasLast_4;
-                    if (!changed) changed = !EqualityComparer<int?>.Default.Equals(this._optionalCount, __last_4_0);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_4, changed, __lastPublishSec_4, 0f);
-                case 5: return false;
+                case 4: return false;
+                case 5:
+                    changed = !__hasLast_5;
+                    if (!changed) changed = __foxrun_float_changed(this._value, __last_5_0, 0f);
+                    if (!changed) changed = __foxrun_float_changed(this._valueMirror, __last_5_1, 0.00999999978f);
+                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_5, changed, __lastPublishSec_5, 0f);
                 case 6:
                     changed = !__hasLast_6;
-                    if (!changed) changed = __foxrun_float_changed(this._value, __last_6_0, 0f);
-                    if (!changed) changed = __foxrun_float_changed(this._valueMirror, __last_6_1, 0.00999999978f);
+                    if (!changed) changed = __foxrun_float_changed(this._position.x, __last_6_0.x, 0.00100000005f) || __foxrun_float_changed(this._position.y, __last_6_0.y, 0.00100000005f) || __foxrun_float_changed(this._position.z, __last_6_0.z, 0.00100000005f);
                     return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_6, changed, __lastPublishSec_6, 0f);
-                case 7:
-                    changed = !__hasLast_7;
-                    if (!changed) changed = __foxrun_float_changed(this._position.x, __last_7_0.x, 0.00100000005f) || __foxrun_float_changed(this._position.y, __last_7_0.y, 0.00100000005f) || __foxrun_float_changed(this._position.z, __last_7_0.z, 0.00100000005f);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_7, changed, __lastPublishSec_7, 0f);
                 default: return true;
             }
         }
@@ -145,25 +136,20 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     __lastPublishSec_2 = nowSec;
                     break;
                 case 3:
-                    __last_3_0 = this._nested;
+                    __last_3_0 = this._optionalCount;
                     __hasLast_3 = true;
                     __lastPublishSec_3 = nowSec;
                     break;
-                case 4:
-                    __last_4_0 = this._optionalCount;
-                    __hasLast_4 = true;
-                    __lastPublishSec_4 = nowSec;
+                case 5:
+                    __last_5_0 = this._value;
+                    __last_5_1 = this._valueMirror;
+                    __hasLast_5 = true;
+                    __lastPublishSec_5 = nowSec;
                     break;
                 case 6:
-                    __last_6_0 = this._value;
-                    __last_6_1 = this._valueMirror;
+                    __last_6_0 = this._position;
                     __hasLast_6 = true;
                     __lastPublishSec_6 = nowSec;
-                    break;
-                case 7:
-                    __last_7_0 = this._position;
-                    __hasLast_7 = true;
-                    __lastPublishSec_7 = nowSec;
                     break;
             }
         }

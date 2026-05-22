@@ -234,12 +234,17 @@ namespace Unity.FoxgloveSDK.Editor
             HostKind = hostKind ?? string.Empty;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
-            var sourceType = IsArray && !string.IsNullOrEmpty(ElementTypeName)
-                ? ElementTypeName
-                : RawObservedTypeName;
             CanonicalType = string.IsNullOrEmpty(canonicalType)
-                ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType)
+                ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(SelectCanonicalSourceType())
                 : canonicalType;
+        }
+
+        private string SelectCanonicalSourceType()
+        {
+            if (IsArray && !string.IsNullOrEmpty(ElementTypeName))
+                return FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(ElementTypeName);
+
+            return EmissionTypeName;
         }
 
         public FoxgloveSourceEmitter.TopicMember ToTopicMember()

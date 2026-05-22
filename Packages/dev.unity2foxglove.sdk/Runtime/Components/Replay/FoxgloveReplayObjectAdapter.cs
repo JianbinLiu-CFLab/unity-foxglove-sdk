@@ -69,6 +69,8 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<string, Transform> _entityCache = new();
         /// <summary>Transform instance lookup used when deferred poses resolve after the init window.</summary>
         private readonly Dictionary<int, Transform> _transformByPoseKey = new();
+        /// <summary>Local channel overrides used when heuristic topic fallback fails to decode.</summary>
+        private readonly Dictionary<ushort, ReplayChannelBehavior> _channelBehaviorOverrides = new();
         /// <summary>Pure pose ownership state for the active replay session.</summary>
         private readonly ReplayPoseOwnershipArbiter _poseArbiter = new();
         /// <summary>Suppresses duplicate warnings for missing frames.</summary>
@@ -138,6 +140,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (_subscribed || _manager == null) return;
             _manager.OnReplayMessageContext += OnReplayMessage;
+            _manager.OnReplayBatchCompleted += OnReplayBatchCompleted;
             _subscribed = true;
         }
 
@@ -145,7 +148,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!_subscribed) return;
             if (_manager != null)
+            {
                 _manager.OnReplayMessageContext -= OnReplayMessage;
+                _manager.OnReplayBatchCompleted -= OnReplayBatchCompleted;
+            }
             _subscribed = false;
         }
 
@@ -168,7 +174,6 @@ namespace Unity.FoxgloveSDK.Components
                         HandleFrameTransform(json, context);
                     else if (behavior == ReplayChannelBehavior.ScenePrimitivePose && _driveScene)
                         HandleSceneUpdate(json, context);
-                    EndDeferralIfNeeded(context);
                     return;
                 }
 
@@ -177,18 +182,22 @@ namespace Unity.FoxgloveSDK.Components
                     HandleFrameTransform(ParseProtobuf(GetFrameTransformProtoTypeName(context.SchemaName), context.Payload), context);
                 else if (protobufBehavior == ReplayChannelBehavior.ScenePrimitivePose && _driveScene)
                     HandleSceneUpdate(ParseProtobuf("Foxglove.SceneUpdate", context.Payload), context);
-                EndDeferralIfNeeded(context);
             }
             catch (Exception ex)
             {
                 var warningKey = string.IsNullOrEmpty(context.Topic) ? context.SchemaName : context.Topic;
                 if (_warnedTopics.Add(warningKey ?? string.Empty))
                     Debug.LogWarning($"[Foxglove Replay] Failed to parse replay channel {context.ChannelId} ({warningKey}): {ex.Message}");
+                if (IsTopicFallbackBehavior(context))
+                    _channelBehaviorOverrides[context.ChannelId] = ReplayChannelBehavior.NonPose;
             }
         }
 
         private ReplayChannelBehavior ResolveBehavior(ReplayMessageContext context, JObject json)
         {
+            if (_channelBehaviorOverrides.TryGetValue(context.ChannelId, out var overrideBehavior))
+                return overrideBehavior;
+
             var behavior = _manager != null
                 ? _manager.GetReplayChannelBehavior(context.ChannelId)
                 : ReplayChannelBehavior.NotLoaded;
@@ -205,8 +214,16 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return behavior == ReplayChannelBehavior.NotLoaded
-                ? ReplayChannelBehaviorClassifier.ClassifyChannel(context.MessageEncoding, context.SchemaName, context.SchemaEncoding)
+                ? ReplayChannelBehaviorClassifier.ClassifyChannel(context.MessageEncoding, context.SchemaName, context.SchemaEncoding, context.Topic)
                 : behavior;
+        }
+
+        private void OnReplayBatchCompleted(ReplayBatchContext context)
+        {
+            if (!_hasReplaySession || _activeReplayStartTimeNs != context.ReplayStartTimeNs)
+                return;
+
+            FlushDeferredScenePoses(context);
         }
 
         private void EnsureReplaySession(ReplayMessageContext context)
@@ -223,23 +240,51 @@ namespace Unity.FoxgloveSDK.Components
         {
             _poseArbiter.Reset();
             _transformByPoseKey.Clear();
+            _channelBehaviorOverrides.Clear();
             _hasReplaySession = false;
             _activeReplayStartTimeNs = 0;
         }
 
-        private void EndDeferralIfNeeded(ReplayMessageContext context)
+        private void FlushDeferredScenePoses(ReplayBatchContext context)
         {
-            if (!_poseArbiter.IsDeferralActive || context.LogTimeNs <= context.ReplayStartTimeNs)
+            if (!_poseArbiter.IsDeferralActive)
                 return;
 
             foreach (var decision in _poseArbiter.EndInitDeferral())
             {
-                if (_transformByPoseKey.TryGetValue(decision.TransformKey, out var target))
+                if (TryGetLivePoseTarget(decision.TransformKey, out var target))
                 {
                     ApplyPoseSample(target, decision.Pose);
                     TracePoseWrite("held-scene", context, decision.OwnerChannelId.ToString(), target);
                 }
             }
+        }
+
+        private bool TryGetLivePoseTarget(int transformKey, out Transform target)
+        {
+            if (_transformByPoseKey.TryGetValue(transformKey, out target) && target != null)
+                return true;
+
+            RemoveStalePoseTarget(transformKey);
+            target = null;
+            return false;
+        }
+
+        private void RemoveStalePoseTarget(int transformKey)
+            => _transformByPoseKey.Remove(transformKey);
+
+        private static bool IsTopicFallbackBehavior(ReplayMessageContext context)
+        {
+            if (!string.IsNullOrWhiteSpace(context.SchemaName))
+                return false;
+
+            if (!(string.IsNullOrEmpty(context.MessageEncoding)
+                  || string.Equals(context.MessageEncoding, "protobuf", StringComparison.OrdinalIgnoreCase)))
+                return false;
+
+            return string.Equals(context.Topic, "/tf", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(context.Topic, "/tf_static", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(context.Topic, "/scene", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryParseJsonObject(byte[] payload, out JObject obj)
@@ -704,6 +749,12 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!ReplayPoseTraceEnabled || target == null) return;
             Debug.Log($"[Foxglove Replay Pose Trace] source={source} channel={context.ChannelId} id={id} target={target.name} localPosition={target.localPosition} localRotation={target.localRotation}");
+        }
+
+        private void TracePoseWrite(string source, ReplayBatchContext context, string id, Transform target)
+        {
+            if (!ReplayPoseTraceEnabled || target == null) return;
+            Debug.Log($"[Foxglove Replay Pose Trace] source={source} batchSource={context.Source} id={id} target={target.name} localPosition={target.localPosition} localRotation={target.localRotation}");
         }
 
         private static string GetFrameTransformProtoTypeName(string schemaName)

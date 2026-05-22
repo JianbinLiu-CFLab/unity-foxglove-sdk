@@ -253,6 +253,9 @@ class Program
         if (argList.Contains("--phase115f"))
             return RunPhase115FOnly();
 
+        if (argList.Contains("--phase115g"))
+            return RunPhase115GOnly();
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1557,6 +1560,22 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine("Phase 115F validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase115GOnly()
+    {
+        try
+        {
+            Phase115GValidation.Validate();
+            Console.WriteLine("\nPhase 115G checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 115G validation failed: " + ex.Message);
             Console.Error.WriteLine(ex);
             return 1;
         }

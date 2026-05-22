@@ -95,11 +95,19 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public event Action<ReplayMessageContext> OnReplayMessageContext;
 
+        /// <summary>
+        /// Fires after a replay batch has been forwarded to scene listeners.
+        /// </summary>
+        public event Action<ReplayBatchContext> OnReplayBatchCompleted;
+
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
         internal void FireForTests(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
 
         /// <summary>Test-only hook to fire a context-rich replay message without loading an MCAP file.</summary>
         internal void FireContextForTests(ReplayMessageContext context) => OnReplayMessageContext?.Invoke(context);
+
+        /// <summary>Test-only hook to fire a replay batch boundary without loading an MCAP file.</summary>
+        internal void FireBatchCompletedForTests(ReplayBatchContext context) => OnReplayBatchCompleted?.Invoke(context);
 
         /// <summary>
         /// Creates a replay controller using the provided logger for warnings and
@@ -174,7 +182,7 @@ namespace Unity.FoxgloveSDK.Core
                     {
                         foreach (var ch in summary.Channels)
                         {
-                            if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
+                    if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
                                 && !string.IsNullOrEmpty(mcapMode))
                             {
                                 if (mcapMode != currentCoordinateMode)
@@ -198,7 +206,8 @@ namespace Unity.FoxgloveSDK.Core
                             _channelBehaviorMap[c.Id] = ReplayChannelBehaviorClassifier.ClassifyChannel(
                                 c.MessageEncoding,
                                 schema?.Name,
-                                schema?.Encoding);
+                                schema?.Encoding,
+                                c.Topic);
                         }
 
                     playbackClock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
@@ -523,6 +532,8 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     ForwardReplayMessageToScene(msg);
                 }
+
+                FireReplayBatchCompleted(messages, timeNs, "Snapshot");
             }
         }
 
@@ -551,6 +562,9 @@ namespace Unity.FoxgloveSDK.Core
                     if (forwardToScene && topic != null)
                         ForwardReplayMessageToScene(msg);
                 }
+
+                if (forwardToScene)
+                    FireReplayBatchCompleted(messages, latestLogTime, source);
             }
 
             if (!broadcastTimeNs.HasValue && latestLogTime > 0)
@@ -566,6 +580,18 @@ namespace Unity.FoxgloveSDK.Core
             var context = CreateReplayMessageContext(message);
             OnReplayMessageContext?.Invoke(context);
             OnReplayMessage?.Invoke(context.Topic, context.Payload);
+        }
+
+        private void FireReplayBatchCompleted(IReadOnlyList<McapMessage> messages, ulong batchLogTimeNs, string source)
+        {
+            if (messages == null || messages.Count == 0)
+                return;
+
+            OnReplayBatchCompleted?.Invoke(new ReplayBatchContext(
+                batchLogTimeNs,
+                _replayEngine?.StartTimeNs ?? 0UL,
+                messages.Count,
+                source));
         }
 
         private ReplayMessageContext CreateReplayMessageContext(McapMessage message)
