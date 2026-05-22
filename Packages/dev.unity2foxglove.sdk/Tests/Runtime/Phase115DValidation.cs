@@ -252,21 +252,8 @@ namespace Unity.FoxgloveSDK.Tests
             => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         private static string RepoRoot
-        {
-            get
-            {
-                var dir = AppContext.BaseDirectory;
-                while (!string.IsNullOrEmpty(dir))
-                {
-                    if (Directory.Exists(Path.Combine(dir, "Packages"))
-                        && Directory.Exists(Path.Combine(dir, "Plan")))
-                        return dir;
-                    dir = Directory.GetParent(dir)?.FullName;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
-            }
-        }
+            => Phase16Validation.FindRepoRoot()
+               ?? throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
 
         private static void Check(bool condition, string name)
         {
