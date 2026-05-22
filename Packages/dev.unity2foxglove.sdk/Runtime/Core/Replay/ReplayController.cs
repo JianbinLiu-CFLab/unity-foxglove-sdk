@@ -48,6 +48,10 @@ namespace Unity.FoxgloveSDK.Core
         private Dictionary<ushort, McapSchema> _summarySchemas;
         /// <summary>Channel topic lookup by channel ID for forwarding messages.</summary>
         private Dictionary<ushort, string> _channelTopicMap;
+        /// <summary>Channel lookup by channel ID for context-rich scene forwarding.</summary>
+        private Dictionary<ushort, McapChannel> _channelMap;
+        /// <summary>Behavior lookup by channel ID for replay pose ownership arbitration.</summary>
+        private Dictionary<ushort, ReplayChannelBehavior> _channelBehaviorMap;
         /// <summary>Reusable replay tick output buffer to avoid per-frame list allocations.</summary>
         private readonly List<McapMessage> _replayTickBuffer = new();
         /// <summary>Reusable paused-seek snapshot buffer to avoid per-request list allocations.</summary>
@@ -86,8 +90,16 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public event Action<string, byte[]> OnReplayMessage;
 
+        /// <summary>
+        /// Fires when replay data is forwarded with channel, schema, and log-time context.
+        /// </summary>
+        public event Action<ReplayMessageContext> OnReplayMessageContext;
+
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
         internal void FireForTests(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
+
+        /// <summary>Test-only hook to fire a context-rich replay message without loading an MCAP file.</summary>
+        internal void FireContextForTests(ReplayMessageContext context) => OnReplayMessageContext?.Invoke(context);
 
         /// <summary>
         /// Creates a replay controller using the provided logger for warnings and
@@ -174,10 +186,20 @@ namespace Unity.FoxgloveSDK.Core
                     }
 
                     _channelTopicMap = new Dictionary<ushort, string>();
+                    _channelMap = new Dictionary<ushort, McapChannel>();
+                    _channelBehaviorMap = new Dictionary<ushort, ReplayChannelBehavior>();
                     var channels = _replayEngine.Channels;
                     if (channels != null)
                         foreach (var c in channels)
+                        {
                             _channelTopicMap[c.Id] = c.Topic;
+                            _channelMap[c.Id] = c;
+                            var schema = _summarySchemas != null && _summarySchemas.TryGetValue(c.SchemaId, out var s) ? s : null;
+                            _channelBehaviorMap[c.Id] = ReplayChannelBehaviorClassifier.ClassifyChannel(
+                                c.MessageEncoding,
+                                schema?.Name,
+                                schema?.Encoding);
+                        }
 
                     playbackClock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
                     _replayEngine.Play();
@@ -193,6 +215,8 @@ namespace Unity.FoxgloveSDK.Core
                     _replayEngine = null;
                     _summarySchemas = null;
                     _channelTopicMap = null;
+                    _channelMap = null;
+                    _channelBehaviorMap = null;
                     _replayEnabled = false;
                 }
             }
@@ -290,6 +314,8 @@ namespace Unity.FoxgloveSDK.Core
                 _replayEnabled = false;
                 _summarySchemas = null;
                 _channelTopicMap = null;
+                _channelMap = null;
+                _channelBehaviorMap = null;
                 _panelHistoryBuffer.Clear();
                 _panelHistoryActive = false;
                 _panelHistoryOffset = 0;
@@ -495,8 +521,7 @@ namespace Unity.FoxgloveSDK.Core
                 if (messages == null) return;
                 foreach (var msg in messages)
                 {
-                    if (_channelTopicMap != null && _channelTopicMap.TryGetValue(msg.ChannelId, out var topic))
-                        OnReplayMessage?.Invoke(topic, msg.Data);
+                    ForwardReplayMessageToScene(msg);
                 }
             }
         }
@@ -524,7 +549,7 @@ namespace Unity.FoxgloveSDK.Core
                     if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
 
                     if (forwardToScene && topic != null)
-                        OnReplayMessage?.Invoke(topic, msg.Data);
+                        ForwardReplayMessageToScene(msg);
                 }
             }
 
@@ -534,6 +559,34 @@ namespace Unity.FoxgloveSDK.Core
                     _logger.LogWarning(trace);
                 session.BroadcastReplayBinary(BinaryEncoding.EncodeTime(latestLogTime));
             }
+        }
+
+        private void ForwardReplayMessageToScene(McapMessage message)
+        {
+            var context = CreateReplayMessageContext(message);
+            OnReplayMessageContext?.Invoke(context);
+            OnReplayMessage?.Invoke(context.Topic, context.Payload);
+        }
+
+        private ReplayMessageContext CreateReplayMessageContext(McapMessage message)
+        {
+            McapChannel channel = null;
+            _channelMap?.TryGetValue(message.ChannelId, out channel);
+            McapSchema schema = null;
+            if (channel != null && _summarySchemas != null)
+                _summarySchemas.TryGetValue(channel.SchemaId, out schema);
+            var logTimeNs = message.LogTime;
+            var replayStartTimeNs = _replayEngine?.StartTimeNs ?? 0UL;
+
+            return new ReplayMessageContext(
+                channelId: message.ChannelId,
+                topic: channel?.Topic ?? string.Empty,
+                messageEncoding: channel?.MessageEncoding ?? string.Empty,
+                schemaName: schema?.Name ?? string.Empty,
+                schemaEncoding: schema?.Encoding ?? string.Empty,
+                logTimeNs: logTimeNs,
+                replayStartTimeNs: replayStartTimeNs,
+                payload: message.Data);
         }
 
         /// <summary>Seek the replay engine to the given nanosecond timestamp.</summary>
@@ -559,6 +612,15 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
                 return _replayEngine?.Channels;
+        }
+
+        /// <summary>Return the behavior class loaded for a replay channel id.</summary>
+        public ReplayChannelBehavior GetChannelBehavior(ushort channelId)
+        {
+            lock (_replayEngineLock)
+                return _channelBehaviorMap != null && _channelBehaviorMap.TryGetValue(channelId, out var behavior)
+                    ? behavior
+                    : ReplayChannelBehavior.NotLoaded;
         }
 
         /// <summary>Dispose the replay engine and all associated resources.</summary>

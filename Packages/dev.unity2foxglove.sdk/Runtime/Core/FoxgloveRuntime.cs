@@ -63,6 +63,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ReplaySnapshotStateMachine _replaySnapshots;
         /// <summary>Delegate bridging replay OnReplayMessage to the runtime's own event.</summary>
         private Action<string, byte[]> _replayForwarder;
+        /// <summary>Delegate bridging context-rich replay messages to the runtime's own event.</summary>
+        private Action<ReplayMessageContext> _replayContextForwarder;
         private readonly object _playbackControlLock = new();
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
@@ -179,6 +181,7 @@ namespace Unity.FoxgloveSDK.Core
 
             var session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
             Action<string, byte[]> replayForwarder = null;
+            Action<ReplayMessageContext> replayContextForwarder = null;
             try
             {
                 session.SetRuntimeContext(this);
@@ -193,14 +196,20 @@ namespace Unity.FoxgloveSDK.Core
                 _replay.RegisterChannels(session);
 
                 replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
+                replayContextForwarder = context => OnReplayMessageContext?.Invoke(context);
                 _replay.OnReplayMessage += replayForwarder;
+                _replay.OnReplayMessageContext += replayContextForwarder;
                 _replayForwarder = replayForwarder;
+                _replayContextForwarder = replayContextForwarder;
             }
             catch
             {
                 if (replayForwarder != null)
                     _replay.OnReplayMessage -= replayForwarder;
+                if (replayContextForwarder != null)
+                    _replay.OnReplayMessageContext -= replayContextForwarder;
                 _replayForwarder = null;
+                _replayContextForwarder = null;
                 _recording.DetachFromSession();
                 session.Dispose();
                 _session = null;
@@ -211,9 +220,16 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Fires when the replay engine forwards a message (e.g. for UI update).</summary>
         public event Action<string, byte[]> OnReplayMessage;
 
+        /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
+        public event Action<ReplayMessageContext> OnReplayMessageContext;
+
         /// <summary>Test-only hook to fire replay without loading an MCAP file.</summary>
         internal void FireReplayForTests(string topic, byte[] data)
             => _replay.FireForTests(topic, data);
+
+        /// <summary>Test-only hook to fire context-rich replay without loading an MCAP file.</summary>
+        internal void FireReplayContextForTests(ReplayMessageContext context)
+            => _replay.FireContextForTests(context);
 
         /// <summary>
         /// Stop the server, detach recording/replay, and dispose the session.
@@ -226,6 +242,11 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _replay.OnReplayMessage -= _replayForwarder;
                 _replayForwarder = null;
+            }
+            if (_replayContextForwarder != null)
+            {
+                _replay.OnReplayMessageContext -= _replayContextForwarder;
+                _replayContextForwarder = null;
             }
             var session = _session;
             _session = null;
@@ -509,6 +530,9 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
+
+        /// <summary>Return the behavior class loaded for a replay channel id.</summary>
+        public ReplayChannelBehavior GetReplayChannelBehavior(ushort channelId) => _replay.GetChannelBehavior(channelId);
 
         // ── Tick ──
 
