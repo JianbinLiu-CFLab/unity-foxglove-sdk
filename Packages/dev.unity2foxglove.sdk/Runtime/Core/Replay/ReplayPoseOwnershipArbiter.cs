@@ -104,6 +104,12 @@ namespace Unity.FoxgloveSDK.Core
                 if (owner.ChannelId == channelId)
                     return Apply(transformKey, channelId, owner.ChannelId, owner.Behavior, pose);
 
+                if (IsFrameTransformPose(behavior) && IsDeferredPoseBehavior(owner.Behavior))
+                {
+                    _owners[transformKey] = new OwnerState(channelId, behavior);
+                    return Apply(transformKey, channelId, channelId, behavior, pose);
+                }
+
                 var contentionKey = new ContentionKey(transformKey, channelId);
                 var shouldReport = _reportedContentions.Add(contentionKey);
                 return new ReplayPoseOwnershipDecision(

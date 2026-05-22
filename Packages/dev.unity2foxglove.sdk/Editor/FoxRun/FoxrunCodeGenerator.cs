@@ -91,6 +91,7 @@ namespace Unity.FoxgloveSDK.Editor
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var byClass = scan.ByClass;
             var model = LowerReflectionMembers(scan.ReflectionMembers);
+            ValidateGenerationModel(model);
 
             if (byClass.Count > 0)
             {
@@ -148,6 +149,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var model = LowerReflectionMembers(scan.ReflectionMembers);
+            ValidateGenerationModel(model);
             var manifest = WriteManifestFiles(scan.ManifestMembers);
             WriteSchemaInfoFiles(manifest);
             WriteDescriptorFile(model);
@@ -196,6 +198,20 @@ namespace Unity.FoxgloveSDK.Editor
         private static FoxRunGenerationModel LowerReflectionMembers(IReadOnlyList<FoxRunReflectionGenerationMember> members)
         {
             return FoxRunReflectionGenerationModelLowerer.Lower(members);
+        }
+
+        private static void ValidateGenerationModel(FoxRunGenerationModel model)
+        {
+            var diagnostics = FoxRunGenerationModelValidator.Validate(model);
+            var errors = diagnostics
+                .Where(diagnostic => string.Equals(diagnostic.Severity, "Error", StringComparison.Ordinal))
+                .Select(diagnostic => diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message)
+                .ToList();
+            if (errors.Count > 0)
+                throw new InvalidOperationException(string.Join("; ", errors));
+
+            foreach (var warning in diagnostics.Where(diagnostic => string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal)))
+                Debug.LogWarning("[FoxrunCodeGenerator] " + warning.Id + ": " + warning.Target + ": " + warning.Message);
         }
 
         private static string GetManifestOutputDirectory()

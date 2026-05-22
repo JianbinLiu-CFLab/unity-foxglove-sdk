@@ -48,7 +48,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         [FoxRun("/debug/nullable", PublishMode = FoxRunPublishMode.OnChange)]
         public int? _optionalCount;
 
-        [FoxRun("/debug/nested", PublishMode = FoxRunPublishMode.OnChange)]
+        // Nested custom payloads are intentionally not a valid FoxRun contract field after the
+        // fail-fast diagnostics added for IL2CPP-safe generation.
         public Nested _nested;
 
         [FoxRun("/debug/vector", PublishMode = FoxRunPublishMode.OnChange, ChangeEpsilon = 0.001f)]

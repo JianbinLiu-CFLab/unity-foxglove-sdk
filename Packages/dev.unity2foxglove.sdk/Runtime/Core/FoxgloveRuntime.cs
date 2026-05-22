@@ -65,6 +65,8 @@ namespace Unity.FoxgloveSDK.Core
         private Action<string, byte[]> _replayForwarder;
         /// <summary>Delegate bridging context-rich replay messages to the runtime's own event.</summary>
         private Action<ReplayMessageContext> _replayContextForwarder;
+        /// <summary>Delegate bridging replay batch boundaries to the runtime's own event.</summary>
+        private Action<ReplayBatchContext> _replayBatchForwarder;
         private readonly object _playbackControlLock = new();
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
@@ -182,6 +184,7 @@ namespace Unity.FoxgloveSDK.Core
             var session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
             Action<string, byte[]> replayForwarder = null;
             Action<ReplayMessageContext> replayContextForwarder = null;
+            Action<ReplayBatchContext> replayBatchForwarder = null;
             try
             {
                 session.SetRuntimeContext(this);
@@ -197,10 +200,13 @@ namespace Unity.FoxgloveSDK.Core
 
                 replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
                 replayContextForwarder = context => OnReplayMessageContext?.Invoke(context);
+                replayBatchForwarder = context => OnReplayBatchCompleted?.Invoke(context);
                 _replay.OnReplayMessage += replayForwarder;
                 _replay.OnReplayMessageContext += replayContextForwarder;
+                _replay.OnReplayBatchCompleted += replayBatchForwarder;
                 _replayForwarder = replayForwarder;
                 _replayContextForwarder = replayContextForwarder;
+                _replayBatchForwarder = replayBatchForwarder;
             }
             catch
             {
@@ -208,8 +214,11 @@ namespace Unity.FoxgloveSDK.Core
                     _replay.OnReplayMessage -= replayForwarder;
                 if (replayContextForwarder != null)
                     _replay.OnReplayMessageContext -= replayContextForwarder;
+                if (replayBatchForwarder != null)
+                    _replay.OnReplayBatchCompleted -= replayBatchForwarder;
                 _replayForwarder = null;
                 _replayContextForwarder = null;
+                _replayBatchForwarder = null;
                 _recording.DetachFromSession();
                 session.Dispose();
                 _session = null;
@@ -222,6 +231,9 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
         public event Action<ReplayMessageContext> OnReplayMessageContext;
+
+        /// <summary>Fires after a replay batch has been forwarded to scene listeners.</summary>
+        public event Action<ReplayBatchContext> OnReplayBatchCompleted;
 
         /// <summary>Test-only hook to fire replay without loading an MCAP file.</summary>
         internal void FireReplayForTests(string topic, byte[] data)
@@ -247,6 +259,11 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _replay.OnReplayMessageContext -= _replayContextForwarder;
                 _replayContextForwarder = null;
+            }
+            if (_replayBatchForwarder != null)
+            {
+                _replay.OnReplayBatchCompleted -= _replayBatchForwarder;
+                _replayBatchForwarder = null;
             }
             var session = _session;
             _session = null;

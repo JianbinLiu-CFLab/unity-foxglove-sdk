@@ -159,11 +159,15 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
         public event System.Action<ReplayMessageContext> OnReplayMessageContext;
 
+        /// <summary>Fires after a replay batch has been forwarded to scene listeners.</summary>
+        public event System.Action<ReplayBatchContext> OnReplayBatchCompleted;
+
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
 
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<ReplayMessageContext> _replayContextForwarder;
+        private System.Action<ReplayBatchContext> _replayBatchForwarder;
         private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;
 
         /// <summary>Current coordinate mode, read from Inspector or code.</summary>

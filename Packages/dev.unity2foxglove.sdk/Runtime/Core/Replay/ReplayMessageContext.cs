@@ -40,4 +40,27 @@ namespace Unity.FoxgloveSDK.Core
             Payload = payload;
         }
     }
+
+    /// <summary>
+    /// Immutable context emitted after a replay controller batch has been forwarded.
+    /// </summary>
+    public readonly struct ReplayBatchContext
+    {
+        public readonly ulong BatchLogTimeNs;
+        public readonly ulong ReplayStartTimeNs;
+        public readonly int MessageCount;
+        public readonly string Source;
+
+        public ReplayBatchContext(
+            ulong batchLogTimeNs,
+            ulong replayStartTimeNs,
+            int messageCount,
+            string source)
+        {
+            BatchLogTimeNs = batchLogTimeNs;
+            ReplayStartTimeNs = replayStartTimeNs;
+            MessageCount = messageCount;
+            Source = source ?? string.Empty;
+        }
+    }
 }

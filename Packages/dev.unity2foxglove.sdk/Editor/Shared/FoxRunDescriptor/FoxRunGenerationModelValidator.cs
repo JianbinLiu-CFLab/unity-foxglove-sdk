@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.Editor
             var target = member.DeclaringType + "." + member.MemberName;
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN006", target, member.MemberName, "FoxRun member type '" + member.RawObservedTypeName + "' is not a canonical built-in contract type."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN006", target, member.MemberName, "FoxRun member type '" + member.RawObservedTypeName + "' is not a canonical built-in contract type."));
 
             if (IsUnsupportedGenericMember(member))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN007", target, member.MemberName, "Generic FoxRun member type may be unsafe for IL2CPP contract governance."));
@@ -89,6 +89,11 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunGenerationDiagnostic Warning(string id, string target, string memberName, string message)
         {
             return new FoxRunGenerationDiagnostic(id, "Warning", target, memberName, message);
+        }
+
+        public static FoxRunGenerationDiagnostic Error(string id, string target, string memberName, string message)
+        {
+            return new FoxRunGenerationDiagnostic(id, "Error", target, memberName, message);
         }
     }
 }

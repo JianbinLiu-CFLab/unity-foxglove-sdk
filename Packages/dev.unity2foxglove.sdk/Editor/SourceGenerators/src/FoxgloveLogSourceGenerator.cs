@@ -151,11 +151,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 float forceIntervalSeconds = 0f;
                 foreach (var named in attr.NamedArguments)
                 {
-                    if (named.Key == "RateHz" && named.Value.Value is float rate) rateHz = rate;
+                    if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
                     if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
-                    if (named.Key == "ChangeEpsilon" && named.Value.Value is float eps) changeEpsilon = eps;
-                    if (named.Key == "ForceIntervalSeconds" && named.Value.Value is float fis) forceIntervalSeconds = fis;
+                    if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
+                    if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
                 }
                 topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds));
             }
@@ -165,6 +165,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
 
             return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray());
+        }
+
+        private static bool TryReadFloatConstant(TypedConstant constant, out float value)
+        {
+            value = 0f;
+            if (constant.Value == null)
+                return false;
+
+            try
+            {
+                value = Convert.ToSingle(constant.Value);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -486,7 +503,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public static readonly DiagnosticDescriptor UnsupportedCanonicalType = new DiagnosticDescriptor(
                 "FOXRUN006", "Unsupported FoxRun type",
                 "{0}: member type is not a canonical built-in FoxRun contract type",
-                "FoxRun", DiagnosticSeverity.Warning, true);
+                "FoxRun", DiagnosticSeverity.Error, true);
 
             public static readonly DiagnosticDescriptor GenericType = new DiagnosticDescriptor(
                 "FOXRUN007", "Generic FoxRun type",

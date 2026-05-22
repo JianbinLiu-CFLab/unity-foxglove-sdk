@@ -5,7 +5,7 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-FOXRUN006 | FoxRun | Warning | Unsupported or non-canonical FoxRun member type.
+FOXRUN006 | FoxRun | Error | Unsupported or non-canonical FoxRun member type.
 FOXRUN007 | FoxRun | Warning | Generic FoxRun declaring type or member type may be unsafe for IL2CPP contract governance.
 FOXRUN008 | FoxRun | Warning | FoxRun topic must be absolute and start with '/'.
 FOXRUN009 | FoxRun | Warning | RateHz <= 0 disables scheduled publishing unless trigger-only.

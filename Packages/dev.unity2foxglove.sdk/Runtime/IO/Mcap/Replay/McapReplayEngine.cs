@@ -64,7 +64,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public const ulong ReplayChannelIdBase = 0x80000000UL;
         /// <summary>
-        /// Maximum number of messages emitted per Tick call.
+        /// Best-effort maximum number of messages emitted per Tick call.
+        /// A single log-time group may exceed this soft cap so logically
+        /// simultaneous scene and transform messages are not split across ticks.
         /// </summary>
         public int MaxMessagesPerTick = 8;
 
@@ -581,19 +583,35 @@ namespace Unity.FoxgloveSDK.IO
             if (result.Count > 1)
                 result.Sort(CompareMessages);
 
-            // Cap at MaxMessagesPerTick. Because the list is sorted, the
-            // tail (highest logTimes) is moved to pending. This guarantees
-            // every pending message has logTime >= _lastEmitTime, preventing
-            // cross-frame time regression ("Data went back in time").
-            if (result.Count > MaxMessagesPerTick)
+            // Cap at MaxMessagesPerTick without splitting a single log-time
+            // group. Replay pose ownership treats one log timestamp as one
+            // logical batch, so scene and frame-transform messages sharing the
+            // same timestamp must reach listeners before batch-completed fires.
+            var takeCount = CountTickResultPrefixPreservingLogTimeGroup(result, MaxMessagesPerTick);
+            if (takeCount < result.Count)
             {
-                for (int i = MaxMessagesPerTick; i < result.Count; i++)
+                for (int i = takeCount; i < result.Count; i++)
                     AddPending(result[i]);
-                result.RemoveRange(MaxMessagesPerTick, result.Count - MaxMessagesPerTick);
+                result.RemoveRange(takeCount, result.Count - takeCount);
             }
 
             _lastEmitTime = result[result.Count - 1].LogTime;
             return result;
+        }
+
+        internal static int CountTickResultPrefixPreservingLogTimeGroup(IReadOnlyList<McapMessage> result, int maxMessagesPerTick)
+        {
+            if (result == null) throw new ArgumentNullException(nameof(result));
+            if (result.Count == 0)
+                return 0;
+            if (maxMessagesPerTick <= 0 || result.Count <= maxMessagesPerTick)
+                return result.Count;
+
+            var takeCount = maxMessagesPerTick;
+            var cutoffLogTime = result[takeCount - 1].LogTime;
+            while (takeCount < result.Count && result[takeCount].LogTime == cutoffLogTime)
+                takeCount++;
+            return takeCount;
         }
 
         private static int CompareMessages(McapMessage a, McapMessage b)

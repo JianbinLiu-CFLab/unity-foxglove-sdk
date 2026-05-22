@@ -19,10 +19,9 @@ using UnityEngine;
 ///    running <see cref="FoxgloveManager"/> and FoxRun logging enabled.
 /// 2. Enter Play Mode and connect Foxglove to <c>ws://127.0.0.1:8765</c>.
 /// 3. Confirm that the <c>/debug/115f/...</c> topics appear and publish JSON
-///    values for scalar, string, array, list, nullable, nested, and Unity
-///    vector types. The nested-object member intentionally surfaces a FoxRun
-///    analyzer warning and is trigger-only so Play Mode does not repeatedly
-///    serialize a non-canonical custom object.
+///    values for scalar, string, array, list, nullable, and Unity vector types.
+///    The nested-object member is kept below as a commented negative diagnostic
+///    probe; uncomment its FoxRun attribute only when verifying FOXRUN006.
 /// 4. Toggle <c>Publish Null Optional</c> during Play Mode and confirm the
 ///    nullable topic alternates between a number and null without compile or
 ///    runtime errors.
@@ -69,7 +68,9 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
     [FoxRun("/debug/115f/nullable", RateHz = 2f)]
     public int? optionalCount = 0;
 
-    [FoxRun("/debug/115f/nested", PublishMode = FoxRunPublishMode.OnTrigger)]
+    // Negative diagnostic probe: uncomment this attribute to verify that
+    // FOXRUN006 rejects non-canonical custom object payloads as an error.
+    // [FoxRun("/debug/115f/nested", PublishMode = FoxRunPublishMode.OnTrigger)]
     public NestedPayload nestedPayload = new NestedPayload();
 
     private int _frameCount;
