@@ -144,7 +144,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFoxRunPhysicalGeneratedFileFreshness()
         {
-            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/TestLog.cs");
+            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs");
             var generated = ReadRepoText("Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs");
 
             var declaredTopics = Regex.Matches(source, @"\[FoxRun\(""([^""]+)""")

@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudSmokeSource()
         {
-            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/PointCloudSmokeSource.cs");
+            var source = ReadRepoText("Unity2Foxglove/Assets/Scripts/PointCloud/PointCloudSmokeSource.cs");
             Check(!string.IsNullOrEmpty(source),
                 "85C-1: point-cloud smoke source component exists");
             Check(source.Contains("class PointCloudSmokeSource") && source.Contains("FoxglovePointCloudPublisher"),

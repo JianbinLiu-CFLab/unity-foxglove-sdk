@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Editor
     {
         public static string NormalizeTypeName(string typeName)
         {
-            var name = UnwrapNullable(typeName ?? string.Empty);
+            var name = UnwrapNullable(typeName ?? string.Empty).Replace('+', '.');
             switch (name)
             {
                 case "float":

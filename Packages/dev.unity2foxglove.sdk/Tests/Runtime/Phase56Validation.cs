@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "56B-2: leading-underscore numeric member keeps JSON field name while preserving member access");
             Check(source.Contains("[\"class\"] = this.@class"),
                 "56B-3: keyword member access is escaped while preserving JSON field name");
-            Check(source.Contains("[\"velocity\"] = new { x = this._velocity.x"),
+            Check(source.Contains("[\"velocity\"] = new Dictionary<string, object> { [\"x\"] = this._velocity.x"),
                 "56B-4: Unity value builders still use explicit this-qualified member access inside dictionary payloads");
             Check(!source.Contains("new { 1 =") && !source.Contains("class = this.class"),
                 "56B-5: emitter no longer writes invalid anonymous-object properties");

@@ -123,7 +123,7 @@ AOT-safe source generation is a known and important pattern. Unity2Foxglove's na
 | Claim Area | Sources To Use | Notes |
 | --- | --- | --- |
 | IL2CPP/AOT makes reflection-heavy or runtime-codegen telemetry fragile | Unity scripting restrictions; Unity Roslyn source generators; System.Text.Json; MessagePack-CSharp | Unity provides the platform-specific constraint; .NET and MessagePack show source generation as an established AOT strategy. |
-| Unity supports source generators but package/player workflow has Unity-specific constraints | Unity Roslyn analyzers/source generators | Supports why FoxRun has both Editor generator and physical fallback instead of relying only on an analyzer DLL; current validation also checks the checked-in Unity analyzer DLL, not only the generator source. |
+| Unity supports source generators but package/player workflow has Unity-specific constraints | Unity Roslyn analyzers/source generators | Supports why FoxRun has both Editor generator and physical fallback instead of relying only on an analyzer DLL; current validation checks the checked-in Unity analyzer DLL against a freshly built Release DLL, not only the generator source. |
 | Unity data streaming exists, but not as a Foxglove/MCAP telemetry package | psiUnity; XREcho | Compare scope: XR/HoloLens/`\psi` and XR behavior recording versus Foxglove/MCAP/robotics visualization. |
 | Unity robotics pipelines commonly rely on ROS/ROS2 middleware | Unity ROS-TCP-Connector; Unity Robotics Hub; SimNav-XR; Unity and ROS as Digital and Communication Layer | These support the "external middleware/bridge" contrast. |
 | Foxglove and ROS bridges already exist | Foxglove WebSocket Server guide; `foxglove_bridge`; `rosbridge_suite` | Positions Unity2Foxglove as an in-Unity bridge, not as a replacement for ROS bridges. |
@@ -146,6 +146,7 @@ The following tracked files provide project-side evidence for claims made in thi
 - `Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md` - public schema coverage and smoke MCAP explanation.
 - `Packages/dev.unity2foxglove.sdk/Documentation~/en/15_Secure_WSS.md` - local WSS/browser workflow and security boundary.
 - `Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs` - runtime validation entry point and phase coverage.
+- `Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase115FValidation.cs` - reader-mediated Roslyn/reflection generation-model equivalence, hard type fixture coverage, and analyzer DLL freshness validation.
 - `Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase44Validation.cs` - official schema coverage validation.
 - `Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase52Validation.cs` - WSS/origin/token/certificate validation.
 

@@ -844,6 +844,68 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
   position: {x: 0, y: 0, z: 0}
+--- !u!1 &1691798670
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1691798672}
+  - component: {fileID: 1691798671}
+  m_Layer: 0
+  m_Name: FoxRun115FManualProbe
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1691798671
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1691798670}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16e2bce8534e4cd4aff23ad3f6f3f429, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe
+  _mutateValues: 1
+  _publishNullOptional: 0
+  _lastStatus: Randomized probe values.
+  scalarValue: 0.15267503
+  textValue: random 334
+  vectorValue: {x: 1.6076865, y: 1.2682118, z: -0.17692828}
+  sampleArray:
+  - -7.7005405
+  - -0.79501724
+  - -5.589857
+  sampleList:
+  - 2.9941864
+  - -4.4121895
+  - 5.593078
+  nestedPayload:
+    count: 435
+    label: randomized
+    offset: {x: 1.6076865, y: 1.2682118, z: -0.17692828}
+--- !u!4 &1691798672
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1691798670}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2004464831
 GameObject:
   m_ObjectHideFlags: 0
@@ -1081,6 +1143,7 @@ SceneRoots:
   - {fileID: 346350282}
   - {fileID: 2004464837}
   - {fileID: 1529818994}
+  - {fileID: 1691798672}
   - {fileID: 534487834}
   - {fileID: 2020679429}
   - {fileID: 908391463}

@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Editor
             var result = new List<string>();
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var byClass = scan.ByClass;
-            var model = FoxRunReflectionGenerationModelLowerer.Lower(scan.ReflectionMembers);
+            var model = LowerReflectionMembers(scan.ReflectionMembers);
 
             if (byClass.Count > 0)
             {
@@ -147,7 +147,7 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunCanonicalManifest GenerateManifestAndSchemaInfoFilesOnly()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            var model = FoxRunReflectionGenerationModelLowerer.Lower(scan.ReflectionMembers);
+            var model = LowerReflectionMembers(scan.ReflectionMembers);
             var manifest = WriteManifestFiles(scan.ManifestMembers);
             WriteSchemaInfoFiles(manifest);
             WriteDescriptorFile(model);
@@ -191,6 +191,11 @@ namespace Unity.FoxgloveSDK.Editor
             Directory.CreateDirectory(outputDirectory);
             var path = Path.Combine(outputDirectory, FoxRunGenerationDescriptorConstants.DescriptorFileName);
             File.WriteAllText(path, FoxRunGenerationDescriptorJsonWriter.Write(model), Utf8NoBom);
+        }
+
+        private static FoxRunGenerationModel LowerReflectionMembers(IReadOnlyList<FoxRunReflectionGenerationMember> members)
+        {
+            return FoxRunReflectionGenerationModelLowerer.Lower(members);
         }
 
         private static string GetManifestOutputDirectory()
@@ -299,7 +304,7 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public static string EmitSourceFile(MemberData[] members)
         {
-            var model = FoxRunReflectionGenerationModelLowerer.Lower(members.Select(member => member.ToReflectionMember()).ToList());
+            var model = LowerReflectionMembers(members.Select(member => member.ToReflectionMember()).ToList());
             return EmitSourceFile(model.Types[0]);
         }
 
@@ -333,6 +338,7 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string MemberKind;
             /// <summary>Field or property type as full-qualified string.</summary>
             public readonly string RawTypeName;
+            public readonly string EmissionTypeName;
             /// <summary>Whether the source CLR type is a value type.</summary>
             public readonly bool IsValueType;
             /// <summary>Whether the source CLR type is a supported array/list shape.</summary>
@@ -368,6 +374,7 @@ namespace Unity.FoxgloveSDK.Editor
                 MemberName = name;
                 MemberKind = memberKind;
                 RawTypeName = type.FullName ?? type.Name;
+                EmissionTypeName = FoxRunEmissionTypeNameFormatter.FromReflectionType(type);
                 IsValueType = type.IsValueType;
                 IsArray = TryGetArrayElementType(type, out var elementType);
                 ElementTypeName = elementType == null ? "" : elementType.FullName ?? elementType.Name;
@@ -393,6 +400,7 @@ namespace Unity.FoxgloveSDK.Editor
                 MemberName = name;
                 MemberKind = "field";
                 RawTypeName = rawType;
+                EmissionTypeName = FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawType);
                 IsValueType = false;
                 IsArray = false;
                 ElementTypeName = "";
@@ -412,14 +420,14 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 return new FoxRunManifestMember(
                     Ns,
-                    ClassName,
-                    MemberName,
-                    MemberKind,
-                    RawTypeName,
-                    IsValueType,
-                    IsArray,
-                    ElementTypeName,
-                    Topic,
+                ClassName,
+                MemberName,
+                MemberKind,
+                RawTypeName,
+                IsValueType,
+                IsArray,
+                ElementTypeName,
+                Topic,
                     RateHz,
                     SchemaName,
                     PublishMode,
@@ -435,6 +443,7 @@ namespace Unity.FoxgloveSDK.Editor
                     MemberName,
                     MemberKind,
                     RawTypeName,
+                    EmissionTypeName,
                     IsValueType,
                     IsArray,
                     ElementTypeName,

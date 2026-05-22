@@ -91,6 +91,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string MemberName;
         public readonly string MemberKind;
         public readonly string RawTypeName;
+        public readonly string RawObservedTypeName;
+        public readonly string EmissionTypeName;
         public readonly string CanonicalType;
         public readonly bool IsValueType;
         public readonly bool IsArray;
@@ -125,13 +127,99 @@ namespace Unity.FoxgloveSDK.Editor
             string hostKind,
             int rawMemberOrder,
             string conditionalSymbols)
+            : this(
+                ns,
+                className,
+                memberName,
+                memberKind,
+                rawTypeName,
+                FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawTypeName),
+                isValueType,
+                isArray,
+                elementTypeName,
+                topic,
+                rateHz,
+                schemaName,
+                publishMode,
+                changeEpsilon,
+                forceIntervalSeconds,
+                hostKind,
+                rawMemberOrder,
+                conditionalSymbols)
+        {
+        }
+
+        public FoxRunGenerationMember(
+            string ns,
+            string className,
+            string memberName,
+            string memberKind,
+            string rawObservedTypeName,
+            string emissionTypeName,
+            bool isValueType,
+            bool isArray,
+            string elementTypeName,
+            string topic,
+            float rateHz,
+            string schemaName,
+            int publishMode,
+            float changeEpsilon,
+            float forceIntervalSeconds,
+            string hostKind,
+            int rawMemberOrder,
+            string conditionalSymbols)
+            : this(
+                ns,
+                className,
+                memberName,
+                memberKind,
+                rawObservedTypeName,
+                emissionTypeName,
+                null,
+                isValueType,
+                isArray,
+                elementTypeName,
+                topic,
+                rateHz,
+                schemaName,
+                publishMode,
+                changeEpsilon,
+                forceIntervalSeconds,
+                hostKind,
+                rawMemberOrder,
+                conditionalSymbols)
+        {
+        }
+
+        public FoxRunGenerationMember(
+            string ns,
+            string className,
+            string memberName,
+            string memberKind,
+            string rawObservedTypeName,
+            string emissionTypeName,
+            string canonicalType,
+            bool isValueType,
+            bool isArray,
+            string elementTypeName,
+            string topic,
+            float rateHz,
+            string schemaName,
+            int publishMode,
+            float changeEpsilon,
+            float forceIntervalSeconds,
+            string hostKind,
+            int rawMemberOrder,
+            string conditionalSymbols)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
             DeclaringType = string.IsNullOrEmpty(Namespace) ? ClassName : Namespace + "." + ClassName;
             MemberName = memberName ?? string.Empty;
             MemberKind = NormalizeMemberKind(memberKind);
-            RawTypeName = rawTypeName ?? string.Empty;
+            RawObservedTypeName = rawObservedTypeName ?? string.Empty;
+            RawTypeName = RawObservedTypeName;
+            EmissionTypeName = FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(emissionTypeName);
             IsValueType = isValueType;
             IsArray = isArray;
             ElementTypeName = elementTypeName ?? string.Empty;
@@ -148,15 +236,17 @@ namespace Unity.FoxgloveSDK.Editor
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
             var sourceType = IsArray && !string.IsNullOrEmpty(ElementTypeName)
                 ? ElementTypeName
-                : RawTypeName;
-            CanonicalType = FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType);
+                : RawObservedTypeName;
+            CanonicalType = string.IsNullOrEmpty(canonicalType)
+                ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType)
+                : canonicalType;
         }
 
         public FoxgloveSourceEmitter.TopicMember ToTopicMember()
         {
             return new FoxgloveSourceEmitter.TopicMember(
                 MemberName,
-                RawTypeName,
+                EmissionTypeName,
                 Topic,
                 RateHz,
                 SchemaName,

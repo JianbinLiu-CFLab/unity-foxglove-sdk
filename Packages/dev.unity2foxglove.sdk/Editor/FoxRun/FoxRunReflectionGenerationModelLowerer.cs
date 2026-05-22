@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.MemberKind,
                     member.RawTypeName,
+                    member.EmissionTypeName,
                     member.IsValueType,
                     member.IsArray,
                     member.ElementTypeName,
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string MemberName;
         public readonly string MemberKind;
         public readonly string RawTypeName;
+        public readonly string EmissionTypeName;
         public readonly bool IsValueType;
         public readonly bool IsArray;
         public readonly string ElementTypeName;
@@ -63,6 +65,7 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             string memberKind,
             string rawTypeName,
+            string emissionTypeName,
             bool isValueType,
             bool isArray,
             string elementTypeName,
@@ -80,6 +83,9 @@ namespace Unity.FoxgloveSDK.Editor
             MemberName = memberName ?? string.Empty;
             MemberKind = memberKind ?? string.Empty;
             RawTypeName = rawTypeName ?? string.Empty;
+            EmissionTypeName = string.IsNullOrEmpty(emissionTypeName)
+                ? FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawTypeName)
+                : FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(emissionTypeName);
             IsValueType = isValueType;
             IsArray = isArray;
             ElementTypeName = elementTypeName ?? string.Empty;
@@ -91,6 +97,44 @@ namespace Unity.FoxgloveSDK.Editor
             ForceIntervalSeconds = forceIntervalSeconds;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
+        }
+
+        public FoxRunReflectionGenerationMember(
+            string ns,
+            string className,
+            string memberName,
+            string memberKind,
+            string rawTypeName,
+            bool isValueType,
+            bool isArray,
+            string elementTypeName,
+            string topic,
+            string schemaName,
+            float rateHz,
+            int publishMode,
+            float changeEpsilon,
+            float forceIntervalSeconds,
+            int rawMemberOrder,
+            string conditionalSymbols)
+            : this(
+                ns,
+                className,
+                memberName,
+                memberKind,
+                rawTypeName,
+                FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawTypeName),
+                isValueType,
+                isArray,
+                elementTypeName,
+                topic,
+                schemaName,
+                rateHz,
+                publishMode,
+                changeEpsilon,
+                forceIntervalSeconds,
+                rawMemberOrder,
+                conditionalSymbols)
+        {
         }
     }
 }

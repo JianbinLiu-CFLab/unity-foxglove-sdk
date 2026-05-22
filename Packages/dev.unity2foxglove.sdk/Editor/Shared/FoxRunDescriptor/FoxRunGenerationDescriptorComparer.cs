@@ -56,6 +56,7 @@ namespace Unity.FoxgloveSDK.Editor
             List<string> provenance)
         {
             CompareSemantic(key, "memberKind", left.MemberKind, right.MemberKind, semantic);
+            CompareSemantic(key, "emissionTypeName", left.EmissionTypeName, right.EmissionTypeName, semantic);
             CompareSemantic(key, "canonicalType", left.CanonicalType, right.CanonicalType, semantic);
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
             CompareSemantic(key, "rateHz", left.RateHz, right.RateHz, semantic);

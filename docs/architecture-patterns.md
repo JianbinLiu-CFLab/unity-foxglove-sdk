@@ -43,7 +43,7 @@ flowchart LR
 | Protocol state | Registry | `Runtime/Core/Registries/`; `Runtime/Core/Services/`; `Runtime/Core/Assets/` | Centralizes mutable protocol state such as channels, subscriptions, parameters, services, and assets. |
 | Transport | Interface-backed backend | `Runtime/Transport/IFoxgloveTransport.cs`; `Runtime/Transport/WebSocket/` | Lets the same session code run against managed WS, managed WSS, and test transports. |
 | MCAP | Pipeline separation | `Runtime/IO/Mcap/`; `Runtime/Core/Recording/`; `Runtime/Core/Replay/` | Keeps binary file records, recording orchestration, replay reading, and runtime replay behavior separate. |
-| FoxRun generation | Shared model + shared emitter | `Editor/Shared/FoxRunDescriptor/`; `Editor/Shared/FoxgloveSourceEmitter.cs`; `Editor/FoxRun/`; `Editor/SourceGenerators/` | Keeps Roslyn source generation and build-time physical `.g.cs` generation aligned through one semantic model and one emitter. See [Shared-Emitter Dual-Host AOT Code Generation](research-shared-emitter-architecture.md). |
+| FoxRun generation | Shared model + shared emitter | `Editor/Shared/FoxRunDescriptor/`; `Editor/Shared/FoxgloveSourceEmitter.cs`; `Editor/FoxRun/`; `Editor/SourceGenerators/` | Keeps Roslyn source generation and build-time physical `.g.cs` generation aligned through one semantic model and one emitter. The model separates raw observed type names, legal emission type names, and canonical schema type names so host-specific type strings do not leak into generated source or schema identity. See [Shared-Emitter Dual-Host AOT Code Generation](research-shared-emitter-architecture.md). |
 
 ## Why Some Abstractions Stay Lightweight
 

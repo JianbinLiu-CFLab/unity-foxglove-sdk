@@ -293,7 +293,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(laser.Contains("_syntheticRanges") && laser.Contains("BuildSyntheticRanges"),
                 "51C-5: LaserScan publisher caches synthetic ranges");
 
-            var demo = ReadRepoText("Unity2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs");
+            var demo = ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
             Check(demo.Contains("_cachedCube") && demo.Contains("private GameObject FindCube()"),
                 "51C-6: demo setup caches cube lookup");
 
@@ -310,7 +310,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new FoxgloveSourceEmitter.TopicMember("_health", "System.Single", "/phase51/health", 10f, "")
             });
 
-            Check(source.Contains("x = this.Position.x") && source.Contains("health = this._health"),
+            Check(source.Contains("[\"x\"] = this.Position.x") && source.Contains("[\"health\"] = this._health"),
                 "51D-1: generated value expressions use explicit this. member access");
         }
 

@@ -69,6 +69,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "rawTypeName", member.RawTypeName);
             sb.Append(',');
+            WriteStringField(sb, "emissionTypeName", member.EmissionTypeName);
+            sb.Append(',');
             WriteStringField(sb, "canonicalType", member.CanonicalType);
             sb.Append(',');
             WriteStringField(sb, "topic", member.Topic);

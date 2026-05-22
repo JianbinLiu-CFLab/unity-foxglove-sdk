@@ -478,7 +478,7 @@ namespace Unity.FoxgloveSDK.Tests
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Certificates/FoxgloveLocalDevCertificateGenerator.cs");
-            var demoSource = ReadRepoText("Unity2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs");
+            var demoSource = ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
 
             Check(managerSource.Contains("_transportMode"), "52C-1: manager stores transport mode");
             Check(managerSource.Contains("CreateTransport"), "52C-1b: manager centralizes transport construction");

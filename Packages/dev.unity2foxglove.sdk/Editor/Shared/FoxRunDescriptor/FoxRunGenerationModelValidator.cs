@@ -31,9 +31,9 @@ namespace Unity.FoxgloveSDK.Editor
             var target = member.DeclaringType + "." + member.MemberName;
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN006", target, member.MemberName, "FoxRun member type '" + member.RawTypeName + "' is not a canonical built-in contract type."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN006", target, member.MemberName, "FoxRun member type '" + member.RawObservedTypeName + "' is not a canonical built-in contract type."));
 
-            if (member.RawTypeName.IndexOf('<') >= 0 || member.RawTypeName.IndexOf('`') >= 0)
+            if (IsUnsupportedGenericMember(member))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN007", target, member.MemberName, "Generic FoxRun member type may be unsafe for IL2CPP contract governance."));
 
             if (string.IsNullOrEmpty(member.Topic) || !member.Topic.StartsWith("/", StringComparison.Ordinal))
@@ -42,8 +42,19 @@ namespace Unity.FoxgloveSDK.Editor
             if (member.RateHz <= 0f && member.PublishMode != 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz <= 0 disables scheduled publishing; use OnTrigger or a positive rate for periodic output."));
 
-            if (IsBinaryLike(member.RawTypeName) || IsBinaryLike(member.CanonicalType))
+            if (IsBinaryLike(member.RawObservedTypeName) || IsBinaryLike(member.EmissionTypeName) || IsBinaryLike(member.CanonicalType)
+                || (member.IsArray && member.CanonicalType == "uint8"))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN010", target, member.MemberName, "Binary/blob values are not supported in the FoxRun contract path."));
+        }
+
+        private static bool IsUnsupportedGenericMember(FoxRunGenerationMember member)
+        {
+            var looksGeneric = member.EmissionTypeName.IndexOf('<') >= 0
+                               || member.RawObservedTypeName.IndexOf('`') >= 0;
+            if (!looksGeneric)
+                return false;
+
+            return !member.IsArray || !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType);
         }
 
         private static bool IsBinaryLike(string typeName)
