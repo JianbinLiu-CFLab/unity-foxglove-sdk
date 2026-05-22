@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Components/Replay
-// Purpose: Drives Unity GameObjects from MCAP replay /tf and /scene topic messages via FoxgloveManager.
+// Purpose: Drives Unity GameObjects from MCAP replay messages via behavior-based pose ownership.
 
 using System;
 using System.Collections;
@@ -10,12 +10,13 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Core;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Drives Unity GameObjects from MCAP replay topic messages.
+    /// Drives Unity GameObjects from MCAP replay messages.
     /// Searches scene for GameObjects matching frame_id / entity_id by name.
     /// Manual FrameMapping / EntityMapping arrays override automatic lookup.
     /// </summary>
@@ -36,9 +37,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private EntityMapping[] _entityOverrides;
 
         [Header("Topics")]
-        /// <summary>Process <c>/tf</c> topic messages.</summary>
+        /// <summary>Process frame-transform pose messages, regardless of topic name.</summary>
         [SerializeField] private bool _driveTf = true;
-        /// <summary>Process <c>/scene</c> topic messages.</summary>
+        /// <summary>Process scene update messages, regardless of topic name.</summary>
         [SerializeField] private bool _driveScene = true;
 
         /// <summary>Maps a frame_id string to a Unity Transform.</summary>
@@ -66,6 +67,10 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<string, Transform> _frameCache = new();
         /// <summary>Lookup cache for entity_id to Transform.</summary>
         private readonly Dictionary<string, Transform> _entityCache = new();
+        /// <summary>Transform instance lookup used when deferred poses resolve after the init window.</summary>
+        private readonly Dictionary<int, Transform> _transformByPoseKey = new();
+        /// <summary>Pure pose ownership state for the active replay session.</summary>
+        private readonly ReplayPoseOwnershipArbiter _poseArbiter = new();
         /// <summary>Suppresses duplicate warnings for missing frames.</summary>
         private readonly HashSet<string> _warnedFrames = new();
         /// <summary>Suppresses duplicate warnings for missing entities.</summary>
@@ -78,6 +83,10 @@ namespace Unity.FoxgloveSDK.Components
         private MaterialPropertyBlock _propBlock;
         /// <summary>Whether this adapter is currently subscribed to replay messages.</summary>
         private bool _subscribed;
+        private bool _hasReplaySession;
+        private ulong _activeReplayStartTimeNs;
+        /// <summary>Disabled trace hook used only for manual before/after replay pose investigations.</summary>
+        private const bool ReplayPoseTraceEnabled = false;
 
         /// <summary>
         /// Resolves the FoxgloveManager and loads manual FrameMapping and
@@ -109,12 +118,14 @@ namespace Unity.FoxgloveSDK.Components
         private void OnDisable()
         {
             UnsubscribeReplay();
+            ResetPoseOwnershipSession();
         }
 
         /// <summary>Ensures replay messages are detached during object destruction.</summary>
         private void OnDestroy()
         {
             UnsubscribeReplay();
+            ResetPoseOwnershipSession();
         }
 
         private void ResolveManager()
@@ -126,7 +137,7 @@ namespace Unity.FoxgloveSDK.Components
         private void SubscribeReplay()
         {
             if (_subscribed || _manager == null) return;
-            _manager.OnReplayMessage += OnReplayMessage;
+            _manager.OnReplayMessageContext += OnReplayMessage;
             _subscribed = true;
         }
 
@@ -134,44 +145,100 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!_subscribed) return;
             if (_manager != null)
-                _manager.OnReplayMessage -= OnReplayMessage;
+                _manager.OnReplayMessageContext -= OnReplayMessage;
             _subscribed = false;
         }
 
         /// <summary>
-        /// Receives raw replay messages from FoxgloveManager.
-        /// Routes <c>/tf</c> and <c>/scene</c> JSON or protobuf payloads to their handlers.
+        /// Receives replay messages with source context and routes pose-capable
+        /// payloads through behavior-based ownership arbitration.
         /// </summary>
-        private void OnReplayMessage(string topic, byte[] payload)
+        private void OnReplayMessage(ReplayMessageContext context)
         {
-            if (payload == null) return;
+            if (context.Payload == null) return;
 
             try
             {
-                switch (topic)
+                EnsureReplaySession(context);
+
+                if (TryParseJsonObject(context.Payload, out var json))
                 {
-                    case "/tf":
-                        if (!_driveTf) return;
-                        if (TryParseJsonObject(payload, out var tfJson))
-                            HandleFrameTransform(tfJson);
-                        else
-                            HandleFrameTransform(ParseProtobuf("Foxglove.FrameTransform", payload));
-                        break;
-                    case "/scene":
-                        if (!_driveScene) return;
-                        if (TryParseJsonObject(payload, out var sceneJson))
-                            HandleSceneUpdate(sceneJson);
-                        else
-                            HandleSceneUpdate(ParseProtobuf("Foxglove.SceneUpdate", payload));
-                        break;
-                    default:
-                        return;
+                    var behavior = ResolveBehavior(context, json);
+                    if (behavior == ReplayChannelBehavior.FrameTransformPose && _driveTf)
+                        HandleFrameTransform(json, context);
+                    else if (behavior == ReplayChannelBehavior.ScenePrimitivePose && _driveScene)
+                        HandleSceneUpdate(json, context);
+                    EndDeferralIfNeeded(context);
+                    return;
                 }
+
+                var protobufBehavior = ResolveBehavior(context, null);
+                if (protobufBehavior == ReplayChannelBehavior.FrameTransformPose && _driveTf)
+                    HandleFrameTransform(ParseProtobuf(GetFrameTransformProtoTypeName(context.SchemaName), context.Payload), context);
+                else if (protobufBehavior == ReplayChannelBehavior.ScenePrimitivePose && _driveScene)
+                    HandleSceneUpdate(ParseProtobuf("Foxglove.SceneUpdate", context.Payload), context);
+                EndDeferralIfNeeded(context);
             }
             catch (Exception ex)
             {
-                if (_warnedTopics.Add(topic))
-                    Debug.LogWarning($"[Foxglove Replay] Failed to parse {topic}: {ex.Message}");
+                var warningKey = string.IsNullOrEmpty(context.Topic) ? context.SchemaName : context.Topic;
+                if (_warnedTopics.Add(warningKey ?? string.Empty))
+                    Debug.LogWarning($"[Foxglove Replay] Failed to parse replay channel {context.ChannelId} ({warningKey}): {ex.Message}");
+            }
+        }
+
+        private ReplayChannelBehavior ResolveBehavior(ReplayMessageContext context, JObject json)
+        {
+            var behavior = _manager != null
+                ? _manager.GetReplayChannelBehavior(context.ChannelId)
+                : ReplayChannelBehavior.NotLoaded;
+            if (behavior != ReplayChannelBehavior.NotLoaded
+                && behavior != ReplayChannelBehavior.Unclassified
+                && behavior != ReplayChannelBehavior.NonPose)
+                return behavior;
+
+            if (json != null)
+            {
+                var jsonBehavior = ReplayChannelBehaviorClassifier.ClassifyJsonObject(json);
+                if (jsonBehavior != ReplayChannelBehavior.NonPose)
+                    return jsonBehavior;
+            }
+
+            return behavior == ReplayChannelBehavior.NotLoaded
+                ? ReplayChannelBehaviorClassifier.ClassifyChannel(context.MessageEncoding, context.SchemaName, context.SchemaEncoding)
+                : behavior;
+        }
+
+        private void EnsureReplaySession(ReplayMessageContext context)
+        {
+            if (_hasReplaySession && _activeReplayStartTimeNs == context.ReplayStartTimeNs)
+                return;
+
+            ResetPoseOwnershipSession();
+            _activeReplayStartTimeNs = context.ReplayStartTimeNs;
+            _hasReplaySession = true;
+        }
+
+        private void ResetPoseOwnershipSession()
+        {
+            _poseArbiter.Reset();
+            _transformByPoseKey.Clear();
+            _hasReplaySession = false;
+            _activeReplayStartTimeNs = 0;
+        }
+
+        private void EndDeferralIfNeeded(ReplayMessageContext context)
+        {
+            if (!_poseArbiter.IsDeferralActive || context.LogTimeNs <= context.ReplayStartTimeNs)
+                return;
+
+            foreach (var decision in _poseArbiter.EndInitDeferral())
+            {
+                if (_transformByPoseKey.TryGetValue(decision.TransformKey, out var target))
+                {
+                    ApplyPoseSample(target, decision.Pose);
+                    TracePoseWrite("held-scene", context, decision.OwnerChannelId.ToString(), target);
+                }
             }
         }
 
@@ -227,64 +294,109 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        // ── /tf ──
+        // ── Frame transforms ──
 
         /// <summary>True when coordinate conversion is needed (RightHand mode).</summary>
         private bool ShouldConvert =>
             _manager != null && _manager.ActiveCoordinateMode == CoordinateMode.RightHand;
 
-        /// <summary>
-        /// Parses a <c>/tf</c> JSON object and applies position and rotation
-        /// to the resolved child frame Transform.
-        /// </summary>
-        private void HandleFrameTransform(JObject tf)
+        private void HandleFrameTransform(JObject message, ReplayMessageContext context)
         {
-            var childFrameId = (string)tf["child_frame_id"];
-            if (childFrameId == null) return;
-
-            var target = ResolveFrame(childFrameId);
-            if (target == null) return;
-
-            var translation = tf["translation"];
-            if (translation != null)
+            if (message["transforms"] is JArray transforms)
             {
-                var fp = new Vector3((float)translation["x"], (float)translation["y"], (float)translation["z"]);
-                target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
+                foreach (var item in transforms)
+                    if (item is JObject tf)
+                        ApplyFrameTransform(tf, context);
+                return;
             }
 
-            var rotation = tf["rotation"];
-            if (rotation != null)
-            {
-                var fr = new Quaternion((float)rotation["x"], (float)rotation["y"], (float)rotation["z"], (float)rotation["w"]);
-                target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
-            }
+            ApplyFrameTransform(message, context);
         }
 
-        /// <summary>
-        /// Parses a <c>/tf</c> protobuf message and applies position and rotation
-        /// to the resolved child frame Transform.
-        /// </summary>
-        private void HandleFrameTransform(object tf)
+        private void HandleFrameTransform(object message, ReplayMessageContext context)
         {
-            var childFrameId = GetStringProperty(tf, "ChildFrameId");
-            if (string.IsNullOrEmpty(childFrameId)) return;
+            var transforms = GetPropertyValue(message, "Transforms") as IEnumerable;
+            if (transforms != null)
+            {
+                foreach (var item in transforms)
+                    ApplyFrameTransform(item, context);
+                return;
+            }
+
+            ApplyFrameTransform(message, context);
+        }
+
+        private void ApplyFrameTransform(JObject tf, ReplayMessageContext context)
+        {
+            if (!TryReadFramePose(tf, out var childFrameId, out var pose))
+                return;
 
             var target = ResolveFrame(childFrameId);
             if (target == null) return;
 
-            var translation = GetPropertyValue(tf, "Translation");
-            if (translation != null)
+            ApplyOwnedPose(
+                target,
+                context,
+                ReplayChannelBehavior.FrameTransformPose,
+                pose,
+                "frame-transform",
+                childFrameId);
+        }
+
+        private void ApplyFrameTransform(object tf, ReplayMessageContext context)
+        {
+            if (!TryReadFramePose(tf, out var childFrameId, out var pose))
+                return;
+
+            var target = ResolveFrame(childFrameId);
+            if (target == null) return;
+
+            ApplyOwnedPose(
+                target,
+                context,
+                ReplayChannelBehavior.FrameTransformPose,
+                pose,
+                "frame-transform",
+                childFrameId);
+        }
+
+        private bool TryReadFramePose(JObject tf, out string childFrameId, out ReplayPoseSample pose)
+        {
+            childFrameId = (string)tf?["child_frame_id"];
+            if (string.IsNullOrEmpty(childFrameId))
             {
-                var fp = ToUnityVector(translation);
-                target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
+                pose = default;
+                return false;
             }
 
-            var rotation = GetPropertyValue(tf, "Rotation");
-            if (rotation != null)
+            var translation = tf["translation"];
+            var rotation = tf["rotation"];
+            pose = new ReplayPoseSample(
+                translation != null,
+                translation != null ? (float)translation["x"] : 0,
+                translation != null ? (float)translation["y"] : 0,
+                translation != null ? (float)translation["z"] : 0,
+                rotation != null,
+                rotation != null ? (float)rotation["x"] : 0,
+                rotation != null ? (float)rotation["y"] : 0,
+                rotation != null ? (float)rotation["z"] : 0,
+                rotation != null ? (float)rotation["w"] : 1);
+            return pose.HasPosition || pose.HasRotation;
+        }
+
+        private bool TryReadFramePose(object tf, out string childFrameId, out ReplayPoseSample pose)
+        {
+            childFrameId = GetStringProperty(tf, "ChildFrameId");
+            if (string.IsNullOrEmpty(childFrameId))
             {
-                var fr = ToUnityQuaternion(rotation);
-                target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
+                pose = default;
+                return false;
             }
+
+            var translation = GetPropertyValue(tf, "Translation");
+            var rotation = GetPropertyValue(tf, "Rotation");
+            pose = ToPoseSample(translation, rotation);
+            return pose.HasPosition || pose.HasRotation;
         }
 
         /// <summary>
@@ -313,18 +425,12 @@ namespace Unity.FoxgloveSDK.Components
             return null;
         }
 
-        // ── /scene ──
+        // ── Scene updates ──
 
-        /// <summary>
-        /// Parses a <c>/scene</c> JSON object and applies cube/model primitives
-        /// to the resolved entity Transforms. Deletions are ignored.
-        /// </summary>
-        private void HandleSceneUpdate(JObject scene)
+        private void HandleSceneUpdate(JObject scene, ReplayMessageContext context)
         {
             var entities = scene["entities"] as JArray;
             if (entities == null) return;
-
-            var deletions = scene["deletions"] as JArray;
 
             foreach (var ent in entities)
             {
@@ -337,24 +443,17 @@ namespace Unity.FoxgloveSDK.Components
                 var target = ResolveEntity(entityId);
                 if (target == null) continue;
 
-                var timestamp = entity["timestamp"];
-                var frameId = (string)entity["frame_id"];
-
                 var cubes = entity["cubes"] as JArray;
                 if (cubes != null && cubes.Count > 0)
-                    ApplyCubePrimitive(cubes[0] as JObject, target);
+                    ApplyCubePrimitive(cubes[0] as JObject, target, context, entityId);
 
                 var models = entity["models"] as JArray;
                 if (models != null && models.Count > 0)
-                    ApplyModelPrimitive(models[0] as JObject, target);
+                    ApplyModelPrimitive(models[0] as JObject, target, context, entityId);
             }
         }
 
-        /// <summary>
-        /// Parses a <c>/scene</c> protobuf message and applies cube/model primitives
-        /// to the resolved entity Transforms. Deletions are ignored.
-        /// </summary>
-        private void HandleSceneUpdate(object scene)
+        private void HandleSceneUpdate(object scene, ReplayMessageContext context)
         {
             if (scene == null) return;
 
@@ -371,11 +470,11 @@ namespace Unity.FoxgloveSDK.Components
 
                 var cube = GetFirstItem(GetPropertyValue(entity, "Cubes"));
                 if (cube != null)
-                    ApplyCubePrimitive(cube, target);
+                    ApplyCubePrimitive(cube, target, context, entityId);
 
                 var model = GetFirstItem(GetPropertyValue(entity, "Models"));
                 if (model != null)
-                    ApplyModelPrimitive(model, target);
+                    ApplyModelPrimitive(model, target, context, entityId);
             }
         }
 
@@ -407,65 +506,111 @@ namespace Unity.FoxgloveSDK.Components
 
         // ── Primitive helpers ──
 
-        /// <summary>Applies size, pose, and color from a cube primitive JSON object.</summary>
-        private void ApplyCubePrimitive(JObject cube, Transform target)
+        private void ApplyCubePrimitive(JObject cube, Transform target, ReplayMessageContext context, string entityId)
         {
-            ApplyPrimitive(cube, target, "size");
+            ApplyPrimitive(cube, target, context, entityId, "size");
         }
 
-        /// <summary>Applies size, pose, and color from a cube primitive protobuf object.</summary>
-        private void ApplyCubePrimitive(object cube, Transform target)
+        private void ApplyCubePrimitive(object cube, Transform target, ReplayMessageContext context, string entityId)
         {
             if (cube == null) return;
             ApplyPrimitive(
                 GetPropertyValue(cube, "Pose"),
                 GetPropertyValue(cube, "Size"),
                 GetPropertyValue(cube, "Color"),
-                target);
+                target,
+                context,
+                entityId);
         }
 
-        /// <summary>Applies scale, pose, and color from a model primitive JSON object.</summary>
-        private void ApplyModelPrimitive(JObject model, Transform target)
+        private void ApplyModelPrimitive(JObject model, Transform target, ReplayMessageContext context, string entityId)
         {
-            ApplyPrimitive(model, target, "scale");
+            ApplyPrimitive(model, target, context, entityId, "scale");
         }
 
-        /// <summary>Applies scale, pose, and color from a model primitive protobuf object.</summary>
-        private void ApplyModelPrimitive(object model, Transform target)
+        private void ApplyModelPrimitive(object model, Transform target, ReplayMessageContext context, string entityId)
         {
             if (model == null) return;
             ApplyPrimitive(
                 GetPropertyValue(model, "Pose"),
                 GetPropertyValue(model, "Scale"),
                 GetPropertyValue(model, "Color"),
-                target);
+                target,
+                context,
+                entityId);
         }
 
-        /// <summary>
-        /// Parses pose, size/scale, and color from a primitive JSON object and
-        /// applies them to the target Transform and its Renderer.
-        /// </summary>
-        private void ApplyPrimitive(JObject primitive, Transform target, string sizeKey)
+        private void ApplyPrimitive(
+            JObject primitive,
+            Transform target,
+            ReplayMessageContext context,
+            string entityId,
+            string sizeKey)
         {
             if (primitive == null) return;
 
-            var pose = primitive["pose"] as JObject;
-            if (pose != null)
+            if (TryReadPrimitivePose(primitive["pose"] as JObject, out var pose))
+                ApplyOwnedPose(target, context, ReplayChannelBehavior.ScenePrimitivePose, pose, "scene", entityId);
+
+            ApplySceneVisuals(primitive, target, sizeKey);
+        }
+
+        private void ApplyPrimitive(
+            object pose,
+            object scale,
+            object color,
+            Transform target,
+            ReplayMessageContext context,
+            string entityId)
+        {
+            if (TryReadPrimitivePose(pose, out var poseSample))
+                ApplyOwnedPose(target, context, ReplayChannelBehavior.ScenePrimitivePose, poseSample, "scene", entityId);
+
+            ApplySceneVisuals(scale, color, target);
+        }
+
+        private void ApplyOwnedPose(
+            Transform target,
+            ReplayMessageContext context,
+            ReplayChannelBehavior behavior,
+            ReplayPoseSample pose,
+            string source,
+            string id)
+        {
+            var transformKey = target.GetInstanceID();
+            _transformByPoseKey[transformKey] = target;
+            var decision = _poseArbiter.OfferPose(transformKey, context.ChannelId, behavior, context.LogTimeNs, pose);
+            if (decision.Kind == ReplayPoseOwnershipDecisionKind.Apply)
             {
-                var pos = pose["position"];
-                var orient = pose["orientation"];
-                if (pos != null)
-                {
-                    var fp = new Vector3((float)pos["x"], (float)pos["y"], (float)pos["z"]);
-                    target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
-                }
-                if (orient != null)
-                {
-                    var fr = new Quaternion((float)orient["x"], (float)orient["y"], (float)orient["z"], (float)orient["w"]);
-                    target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
-                }
+                ApplyPoseSample(target, decision.Pose);
+                TracePoseWrite(source, context, id, target);
+            }
+            else if (decision.ShouldReportContention)
+            {
+                Debug.Log(
+                    $"[Foxglove Replay] Pose ownership contention skipped for '{target.name}'. " +
+                    $"ownerChannel={decision.OwnerChannelId}, skippedChannel={context.ChannelId}, " +
+                    $"source={source}, topic='{context.Topic}', schema='{context.SchemaName}'.");
+            }
+        }
+
+        private void ApplyPoseSample(Transform target, ReplayPoseSample pose)
+        {
+            if (pose.HasPosition)
+            {
+                var fp = new Vector3(pose.PositionX, pose.PositionY, pose.PositionZ);
+                target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
             }
 
+            if (pose.HasRotation)
+            {
+                var fr = new Quaternion(pose.RotationX, pose.RotationY, pose.RotationZ, pose.RotationW);
+                target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
+            }
+        }
+
+        private void ApplySceneVisuals(JObject primitive, Transform target, string sizeKey)
+        {
             var scaleObj = primitive[sizeKey] as JObject;
             if (scaleObj != null)
                 target.localScale = new Vector3((float)scaleObj["x"], (float)scaleObj["y"], (float)scaleObj["z"]);
@@ -484,35 +629,61 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        /// <summary>
-        /// Parses pose, size/scale, and color from a primitive protobuf object and
-        /// applies them to the target Transform and its Renderer.
-        /// </summary>
-        private void ApplyPrimitive(object pose, object scale, object color, Transform target)
+        private void ApplySceneVisuals(object scale, object color, Transform target)
         {
-            if (pose != null)
-            {
-                var position = GetPropertyValue(pose, "Position");
-                if (position != null)
-                {
-                    var fp = ToUnityVector(position);
-                    target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
-                }
-
-                var orientation = GetPropertyValue(pose, "Orientation");
-                if (orientation != null)
-                {
-                    var fr = ToUnityQuaternion(orientation);
-                    target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
-                }
-            }
-
             if (scale != null)
                 target.localScale = ToUnityVector(scale);
 
             if (color != null)
                 ApplyColor(color, target);
         }
+
+        private bool TryReadPrimitivePose(JObject pose, out ReplayPoseSample sample)
+        {
+            if (pose == null)
+            {
+                sample = default;
+                return false;
+            }
+
+            var pos = pose["position"];
+            var orient = pose["orientation"];
+            sample = new ReplayPoseSample(
+                pos != null,
+                pos != null ? (float)pos["x"] : 0,
+                pos != null ? (float)pos["y"] : 0,
+                pos != null ? (float)pos["z"] : 0,
+                orient != null,
+                orient != null ? (float)orient["x"] : 0,
+                orient != null ? (float)orient["y"] : 0,
+                orient != null ? (float)orient["z"] : 0,
+                orient != null ? (float)orient["w"] : 1);
+            return sample.HasPosition || sample.HasRotation;
+        }
+
+        private bool TryReadPrimitivePose(object pose, out ReplayPoseSample sample)
+        {
+            if (pose == null)
+            {
+                sample = default;
+                return false;
+            }
+
+            sample = ToPoseSample(GetPropertyValue(pose, "Position"), GetPropertyValue(pose, "Orientation"));
+            return sample.HasPosition || sample.HasRotation;
+        }
+
+        private static ReplayPoseSample ToPoseSample(object position, object rotation)
+            => new(
+                position != null,
+                position != null ? GetFloatProperty(position, "X") : 0,
+                position != null ? GetFloatProperty(position, "Y") : 0,
+                position != null ? GetFloatProperty(position, "Z") : 0,
+                rotation != null,
+                rotation != null ? GetFloatProperty(rotation, "X") : 0,
+                rotation != null ? GetFloatProperty(rotation, "Y") : 0,
+                rotation != null ? GetFloatProperty(rotation, "Z") : 0,
+                rotation != null ? GetFloatProperty(rotation, "W") : 1);
 
         private void ApplyColor(object color, Transform target)
         {
@@ -528,6 +699,17 @@ namespace Unity.FoxgloveSDK.Components
                 GetFloatProperty(color, "A")));
             renderer.SetPropertyBlock(_propBlock);
         }
+
+        private void TracePoseWrite(string source, ReplayMessageContext context, string id, Transform target)
+        {
+            if (!ReplayPoseTraceEnabled || target == null) return;
+            Debug.Log($"[Foxglove Replay Pose Trace] source={source} channel={context.ChannelId} id={id} target={target.name} localPosition={target.localPosition} localRotation={target.localRotation}");
+        }
+
+        private static string GetFrameTransformProtoTypeName(string schemaName)
+            => schemaName != null && schemaName.EndsWith(".FrameTransforms", StringComparison.OrdinalIgnoreCase)
+                ? "Foxglove.FrameTransforms"
+                : "Foxglove.FrameTransform";
 
         private static object GetPropertyValue(object source, string propertyName)
             => source?.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(source);
@@ -552,8 +734,5 @@ namespace Unity.FoxgloveSDK.Components
 
         private static Vector3 ToUnityVector(object value)
             => new Vector3(GetFloatProperty(value, "X"), GetFloatProperty(value, "Y"), GetFloatProperty(value, "Z"));
-
-        private static Quaternion ToUnityQuaternion(object value)
-            => new Quaternion(GetFloatProperty(value, "X"), GetFloatProperty(value, "Y"), GetFloatProperty(value, "Z"), GetFloatProperty(value, "W"));
     }
 }

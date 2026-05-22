@@ -156,10 +156,14 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
         public event System.Action<string, byte[]> OnReplayMessage;
 
+        /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
+        public event System.Action<ReplayMessageContext> OnReplayMessageContext;
+
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
 
         private System.Action<string, byte[]> _replayForwarder;
+        private System.Action<ReplayMessageContext> _replayContextForwarder;
         private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;
 
         /// <summary>Current coordinate mode, read from Inspector or code.</summary>
@@ -211,6 +215,10 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>True if the WebSocket server is currently running.</summary>
         public bool IsRunning => _runtime?.Session?.IsRunning ?? false;
+
+        /// <summary>Return the behavior class loaded for a replay channel id.</summary>
+        public ReplayChannelBehavior GetReplayChannelBehavior(ushort channelId)
+            => _runtime?.GetReplayChannelBehavior(channelId) ?? ReplayChannelBehavior.NotLoaded;
 
         /// <summary>
         /// Gets a read-only snapshot of transport client and queue health.

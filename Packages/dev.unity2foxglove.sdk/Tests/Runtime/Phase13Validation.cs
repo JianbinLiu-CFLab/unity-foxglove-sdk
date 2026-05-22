@@ -546,18 +546,16 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestReplayObjectAdapterRoutesProtobufBeforeJsonParse()
         {
             var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
-            var switchIndex = source.IndexOf("switch (topic)", StringComparison.Ordinal);
-            var parseIndex = source.IndexOf("TryParseJsonObject(payload", StringComparison.Ordinal);
-
-            Assert(switchIndex >= 0 && parseIndex > switchIndex,
-                "Replay adapter routes by topic before attempting JSON parsing");
-            Assert(source.Contains("default:\r\n                        return;", StringComparison.Ordinal)
-                || source.Contains("default:\n                        return;", StringComparison.Ordinal),
-                "Replay adapter ignores unrelated replay topics without parsing them");
-            Assert(source.Contains("ParseProtobuf(\"Foxglove.FrameTransform\"", StringComparison.Ordinal),
-                "Replay adapter supports protobuf /tf payloads through optional assembly reflection");
+            Assert(source.Contains("OnReplayMessage(ReplayMessageContext context)", StringComparison.Ordinal)
+                && source.Contains("ResolveBehavior(context", StringComparison.Ordinal),
+                "Replay adapter routes by replay message context and behavior before protobuf parsing");
+            Assert(source.Contains("ReplayChannelBehavior.FrameTransformPose", StringComparison.Ordinal)
+                && source.Contains("ReplayChannelBehavior.ScenePrimitivePose", StringComparison.Ordinal),
+                "Replay adapter ignores non-pose replay messages through behavior classification");
+            Assert(source.Contains("ParseProtobuf(GetFrameTransformProtoTypeName", StringComparison.Ordinal),
+                "Replay adapter supports frame-transform protobuf payloads through optional assembly reflection");
             Assert(source.Contains("ParseProtobuf(\"Foxglove.SceneUpdate\"", StringComparison.Ordinal),
-                "Replay adapter supports protobuf /scene payloads through optional assembly reflection");
+                "Replay adapter supports scene-update protobuf payloads through optional assembly reflection");
             Assert(!source.Contains("global::Foxglove.", StringComparison.Ordinal),
                 "Replay adapter does not directly reference the optional protobuf assembly");
         }

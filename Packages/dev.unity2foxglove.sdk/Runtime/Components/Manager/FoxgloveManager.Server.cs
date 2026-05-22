@@ -61,7 +61,9 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
+            _replayContextForwarder = context => OnReplayMessageContext?.Invoke(context);
             _runtime.OnReplayMessage += _replayForwarder;
+            _runtime.OnReplayMessageContext += _replayContextForwarder;
             _warnedNotRunning = false;
 
             var transport = _runtime.Session?.Transport;
@@ -189,6 +191,11 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _runtime.OnReplayMessage -= _replayForwarder;
                 _replayForwarder = null;
+            }
+            if (_replayContextForwarder != null)
+            {
+                _runtime.OnReplayMessageContext -= _replayContextForwarder;
+                _replayContextForwarder = null;
             }
 
             _runtime.Stop();

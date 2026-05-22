@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "55F-1: replay adapter has explicit OnEnable/OnDisable lifecycle hooks");
             Check(!startBody.Contains("OnReplayMessage +="),
                 "55F-2: replay adapter does not subscribe from Start only");
-            Check(onDisableBody.Contains("UnsubscribeReplay()") && unsubscribeBody.Contains("OnReplayMessage -="),
+            Check(onDisableBody.Contains("UnsubscribeReplay()") && unsubscribeBody.Contains("OnReplayMessageContext -="),
                 "55F-3: replay adapter unsubscribes when the component is disabled");
         }
 
