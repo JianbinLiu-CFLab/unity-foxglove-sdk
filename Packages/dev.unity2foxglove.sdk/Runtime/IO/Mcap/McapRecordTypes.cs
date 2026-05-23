@@ -223,7 +223,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Absolute byte offset where the data section ends.</summary>
         public ulong DataSectionEndOffset;
 
-        /// <summary>Messages discovered by sequential data-section scanning when no chunk index is available.</summary>
-        public List<McapMessage> SequentialMessages = new();
+        /// <summary>Messages retained by an explicit sequential fallback query when no chunk index is available.</summary>
+        public List<McapMessage> SequentialMessages;
     }
 }

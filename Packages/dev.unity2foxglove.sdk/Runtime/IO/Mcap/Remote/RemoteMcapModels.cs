@@ -4,7 +4,9 @@
 // Module: Runtime/IO/Mcap/Remote
 // Purpose: DTOs for the local prototype remote MCAP data-source boundary.
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -91,6 +93,33 @@ namespace Unity.FoxgloveSDK.IO
             SourceId = string.Empty;
             Data = new byte[0];
             Problems = new List<RemoteMcapProblem>();
+        }
+    }
+
+    /// <summary>Stream response returned by the local prototype data operation for larger MCAP files.</summary>
+    public sealed class RemoteMcapDataStreamResponse : IDisposable
+    {
+        public RemoteMcapResponseStatus Status;
+        public RemoteMcapAuthorizationResult Authorization;
+        public string SourceId;
+        public Stream DataStream;
+        public long Length;
+        public string ContentType;
+        public List<RemoteMcapProblem> Problems;
+
+        public RemoteMcapDataStreamResponse()
+        {
+            Authorization = RemoteMcapAuthorizationResult.Deny(string.Empty);
+            SourceId = string.Empty;
+            ContentType = "application/octet-stream";
+            Problems = new List<RemoteMcapProblem>();
+        }
+
+        /// <summary>Closes the owned response stream, if one was opened.</summary>
+        public void Dispose()
+        {
+            DataStream?.Dispose();
+            DataStream = null;
         }
     }
 

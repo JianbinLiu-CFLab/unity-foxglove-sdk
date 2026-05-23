@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
@@ -77,7 +78,12 @@ namespace Unity.FoxgloveSDK.IO
                 - McapWriter.RecordHeaderLength
                 - McapWriter.FooterContentLength;
             if (footer.SummaryStart == 0)
-                return ScanDataSection(footerOffset, recordSizeLimit, collectInventory: true);
+                return ScanDataSection(
+                    footerOffset,
+                    recordSizeLimit,
+                    collectInventory: true,
+                    collectMessages: false,
+                    sequentialLimits: null);
             if (footer.SummaryStart > footerOffset)
                 throw new InvalidDataException("Footer summary_start is past the footer record");
             if (footer.SummaryOffsetStart != 0 &&
@@ -171,9 +177,15 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public List<McapMessage> ReadSequentialMessages(
             ulong dataSectionEndOffset,
-            ulong recordSizeLimit = DefaultRecordSizeLimit)
+            ulong recordSizeLimit = DefaultRecordSizeLimit,
+            McapSequentialReadLimits sequentialLimits = null)
         {
-            return ScanDataSection(dataSectionEndOffset, recordSizeLimit, collectInventory: false).SequentialMessages;
+            return ScanDataSection(
+                dataSectionEndOffset,
+                recordSizeLimit,
+                collectInventory: false,
+                collectMessages: true,
+                sequentialLimits: sequentialLimits).SequentialMessages ?? new List<McapMessage>();
         }
 
         /// <summary>
@@ -260,13 +272,22 @@ namespace Unity.FoxgloveSDK.IO
         private McapFileSummary ScanDataSection(
             ulong dataSectionEndOffset,
             ulong recordSizeLimit,
-            bool collectInventory)
+            bool collectInventory,
+            bool collectMessages,
+            McapSequentialReadLimits sequentialLimits)
         {
+            if (collectMessages)
+            {
+                sequentialLimits = sequentialLimits ?? McapSequentialReadLimits.Default;
+                sequentialLimits.Validate();
+            }
+
             var summary = new McapFileSummary
             {
                 DataSectionEndOffset = dataSectionEndOffset
             };
             var messageCount = 0UL;
+            var retainedPayloadBytes = 0L;
             var attachmentCount = 0U;
             var metadataCount = 0U;
             var chunkCount = 0U;
@@ -307,13 +328,27 @@ namespace Unity.FoxgloveSDK.IO
                             AddChannel(summary.Channels, DecodeChannel(content));
                         break;
                     case McapWriter.OpcodeMessage:
-                        AddSequentialMessage(
-                            summary,
-                            DecodeMessage(content, 0, content.Length),
-                            ref messageCount,
-                            ref messageStart,
-                            ref messageEnd,
-                            channelMessageCounts);
+                        if (collectMessages)
+                        {
+                            AddSequentialMessage(
+                                summary,
+                                DecodeMessage(content, 0, content.Length),
+                                sequentialLimits,
+                                ref retainedPayloadBytes,
+                                ref messageCount,
+                                ref messageStart,
+                                ref messageEnd,
+                                channelMessageCounts);
+                        }
+                        else
+                        {
+                            AddMessageStats(
+                                DecodeMessageHeader(content, 0, content.Length),
+                                ref messageCount,
+                                ref messageStart,
+                                ref messageEnd,
+                                channelMessageCounts);
+                        }
                         break;
                     case McapWriter.OpcodeChunk:
                         chunkCount++;
@@ -327,6 +362,9 @@ namespace Unity.FoxgloveSDK.IO
                             records,
                             summary,
                             collectInventory,
+                            collectMessages,
+                            sequentialLimits,
+                            ref retainedPayloadBytes,
                             ref messageCount,
                             ref messageStart,
                             ref messageEnd,
@@ -426,6 +464,9 @@ namespace Unity.FoxgloveSDK.IO
             byte[] uncompressedRecords,
             McapFileSummary summary,
             bool collectInventory,
+            bool collectMessages,
+            McapSequentialReadLimits sequentialLimits,
+            ref long retainedPayloadBytes,
             ref ulong messageCount,
             ref ulong messageStart,
             ref ulong messageEnd,
@@ -453,27 +494,37 @@ namespace Unity.FoxgloveSDK.IO
                     case McapWriter.OpcodeSchema:
                         if (collectInventory)
                         {
-                            var schemaContent = new byte[recordLength];
-                            Buffer.BlockCopy(uncompressedRecords, off, schemaContent, 0, recordLength);
-                            AddSchema(summary.Schemas, DecodeSchema(schemaContent));
+                            AddSchema(summary.Schemas, DecodeSchema(uncompressedRecords, off, recordLength));
                         }
                         break;
                     case McapWriter.OpcodeChannel:
                         if (collectInventory)
                         {
-                            var channelContent = new byte[recordLength];
-                            Buffer.BlockCopy(uncompressedRecords, off, channelContent, 0, recordLength);
-                            AddChannel(summary.Channels, DecodeChannel(channelContent));
+                            AddChannel(summary.Channels, DecodeChannel(uncompressedRecords, off, recordLength));
                         }
                         break;
                     case McapWriter.OpcodeMessage:
-                        AddSequentialMessage(
-                            summary,
-                            DecodeMessage(uncompressedRecords, off, recordLength),
-                            ref messageCount,
-                            ref messageStart,
-                            ref messageEnd,
-                            channelMessageCounts);
+                        if (collectMessages)
+                        {
+                            AddSequentialMessage(
+                                summary,
+                                DecodeMessage(uncompressedRecords, off, recordLength),
+                                sequentialLimits,
+                                ref retainedPayloadBytes,
+                                ref messageCount,
+                                ref messageStart,
+                                ref messageEnd,
+                                channelMessageCounts);
+                        }
+                        else
+                        {
+                            AddMessageStats(
+                                DecodeMessageHeader(uncompressedRecords, off, recordLength),
+                                ref messageCount,
+                                ref messageStart,
+                                ref messageEnd,
+                                channelMessageCounts);
+                        }
                         break;
                     default:
                         break;
@@ -486,12 +537,39 @@ namespace Unity.FoxgloveSDK.IO
         private static void AddSequentialMessage(
             McapFileSummary summary,
             McapMessage message,
+            McapSequentialReadLimits sequentialLimits,
+            ref long retainedPayloadBytes,
             ref ulong messageCount,
             ref ulong messageStart,
             ref ulong messageEnd,
             Dictionary<ushort, ulong> channelMessageCounts)
         {
+            if (summary.SequentialMessages == null)
+                summary.SequentialMessages = new List<McapMessage>();
+
+            if (sequentialLimits != null && sequentialLimits.MaxMessages > 0 &&
+                summary.SequentialMessages.Count >= sequentialLimits.MaxMessages)
+                throw new InvalidOperationException(
+                    "Unindexed MCAP sequential fallback exceeded MaxMessages=" + sequentialLimits.MaxMessages + ".");
+
+            var payloadBytes = message?.Data?.LongLength ?? 0L;
+            if (sequentialLimits != null && sequentialLimits.MaxPayloadBytes > 0 &&
+                retainedPayloadBytes + payloadBytes > sequentialLimits.MaxPayloadBytes)
+                throw new InvalidOperationException(
+                    "Unindexed MCAP sequential fallback exceeded MaxPayloadBytes=" + sequentialLimits.MaxPayloadBytes + ".");
+
             summary.SequentialMessages.Add(message);
+            retainedPayloadBytes += payloadBytes;
+            AddMessageStats(message, ref messageCount, ref messageStart, ref messageEnd, channelMessageCounts);
+        }
+
+        private static void AddMessageStats(
+            McapMessage message,
+            ref ulong messageCount,
+            ref ulong messageStart,
+            ref ulong messageEnd,
+            Dictionary<ushort, ulong> channelMessageCounts)
+        {
             messageCount++;
             if (message.LogTime < messageStart)
                 messageStart = message.LogTime;
@@ -552,31 +630,131 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP schema record from raw content bytes.
         /// </summary>
         public static McapSchema DecodeSchema(byte[] content)
+            => DecodeSchema(content, 0, content?.Length ?? 0);
+
+        /// <summary>
+        /// Decodes an MCAP schema record from a segment of a larger byte buffer.
+        /// </summary>
+        public static McapSchema DecodeSchema(byte[] content, int offset, int contentLen)
         {
-            var off = 0;
-            return new McapSchema
+            var end = ValidateRecordSegment(content, offset, contentLen, "schema");
+            var off = offset;
+            var schema = new McapSchema
             {
-                Id = McapBinaryReader.ReadU16LE(content, ref off),
-                Name = McapBinaryReader.ReadString(content, ref off),
-                Encoding = McapBinaryReader.ReadString(content, ref off),
-                Data = McapBinaryReader.ReadPrefixed(content, ref off)
+                Id = ReadU16LE(content, ref off, end, "schema id"),
+                Name = ReadString(content, ref off, end, "schema name"),
+                Encoding = ReadString(content, ref off, end, "schema encoding"),
+                Data = ReadPrefixed(content, ref off, end, "schema data")
             };
+            RequireExactSegmentEnd(off, end, "schema");
+            return schema;
         }
 
         /// <summary>
         /// Decodes an MCAP channel record from raw content bytes.
         /// </summary>
         public static McapChannel DecodeChannel(byte[] content)
+            => DecodeChannel(content, 0, content?.Length ?? 0);
+
+        /// <summary>
+        /// Decodes an MCAP channel record from a segment of a larger byte buffer.
+        /// </summary>
+        public static McapChannel DecodeChannel(byte[] content, int offset, int contentLen)
         {
-            var off = 0;
-            return new McapChannel
+            var end = ValidateRecordSegment(content, offset, contentLen, "channel");
+            var off = offset;
+            var channel = new McapChannel
             {
-                Id = McapBinaryReader.ReadU16LE(content, ref off),
-                SchemaId = McapBinaryReader.ReadU16LE(content, ref off),
-                Topic = McapBinaryReader.ReadString(content, ref off),
-                MessageEncoding = McapBinaryReader.ReadString(content, ref off),
-                Metadata = McapBinaryReader.ReadMap(content, ref off)
+                Id = ReadU16LE(content, ref off, end, "channel id"),
+                SchemaId = ReadU16LE(content, ref off, end, "channel schema id"),
+                Topic = ReadString(content, ref off, end, "channel topic"),
+                MessageEncoding = ReadString(content, ref off, end, "channel message encoding"),
+                Metadata = ReadMap(content, ref off, end, "channel metadata")
             };
+            RequireExactSegmentEnd(off, end, "channel");
+            return channel;
+        }
+
+        private static int ValidateRecordSegment(byte[] content, int offset, int contentLen, string recordName)
+        {
+            if (content == null)
+                throw new ArgumentNullException(nameof(content));
+            if (offset < 0 || contentLen < 0 || offset > content.Length || contentLen > content.Length - offset)
+                throw new InvalidDataException("MCAP " + recordName + " record segment is outside the source buffer.");
+
+            return offset + contentLen;
+        }
+
+        private static void RequireExactSegmentEnd(int off, int end, string recordName)
+        {
+            if (off != end)
+                throw new InvalidDataException("MCAP " + recordName + " record segment has trailing bytes.");
+        }
+
+        private static ushort ReadU16LE(byte[] buf, ref int off, int end, string fieldName)
+        {
+            EnsureSegmentBytes(off, sizeof(ushort), end, fieldName);
+            return McapBinaryReader.ReadU16LE(buf, ref off);
+        }
+
+        private static uint ReadU32LE(byte[] buf, ref int off, int end, string fieldName)
+        {
+            EnsureSegmentBytes(off, sizeof(uint), end, fieldName);
+            return McapBinaryReader.ReadU32LE(buf, ref off);
+        }
+
+        private static string ReadString(byte[] buf, ref int off, int end, string fieldName)
+        {
+            var len = ReadU32LE(buf, ref off, end, fieldName + " length");
+            if (len > int.MaxValue)
+                throw new InvalidDataException("MCAP " + fieldName + " length exceeds supported size.");
+
+            var count = (int)len;
+            EnsureSegmentBytes(off, count, end, fieldName);
+            var value = Encoding.UTF8.GetString(buf, off, count);
+            off += count;
+            return value;
+        }
+
+        private static byte[] ReadPrefixed(byte[] buf, ref int off, int end, string fieldName)
+        {
+            var len = ReadU32LE(buf, ref off, end, fieldName + " length");
+            if (len > int.MaxValue)
+                throw new InvalidDataException("MCAP " + fieldName + " length exceeds supported size.");
+
+            var count = (int)len;
+            EnsureSegmentBytes(off, count, end, fieldName);
+            var data = new byte[count];
+            if (count > 0)
+                Buffer.BlockCopy(buf, off, data, 0, count);
+            off += count;
+            return data;
+        }
+
+        private static Dictionary<string, string> ReadMap(byte[] buf, ref int off, int end, string fieldName)
+        {
+            var totalBytes = ReadU32LE(buf, ref off, end, fieldName + " length");
+            if (totalBytes > int.MaxValue)
+                throw new InvalidDataException("MCAP " + fieldName + " length exceeds supported size.");
+
+            var count = (int)totalBytes;
+            EnsureSegmentBytes(off, count, end, fieldName);
+            var mapEnd = off + count;
+            var map = new Dictionary<string, string>();
+            while (off < mapEnd)
+            {
+                var key = ReadString(buf, ref off, mapEnd, fieldName + " key");
+                var value = ReadString(buf, ref off, mapEnd, fieldName + " value");
+                map[key] = value;
+            }
+
+            return map;
+        }
+
+        private static void EnsureSegmentBytes(int off, int count, int end, string fieldName)
+        {
+            if (count < 0 || off > end || count > end - off)
+                throw new InvalidDataException("Truncated MCAP " + fieldName + " within record segment.");
         }
 
         /// <summary>
@@ -600,6 +778,25 @@ namespace Unity.FoxgloveSDK.IO
                 LogTime = logTime,
                 PublishTime = publishTime,
                 Data = data
+            };
+        }
+
+        private static McapMessage DecodeMessageHeader(byte[] buf, int off, int contentLen)
+        {
+            var start = off;
+            var channelId = McapBinaryReader.ReadU16LE(buf, ref off);
+            var sequence = McapBinaryReader.ReadU32LE(buf, ref off);
+            var logTime = McapBinaryReader.ReadU64LE(buf, ref off);
+            var publishTime = McapBinaryReader.ReadU64LE(buf, ref off);
+            if (contentLen < off - start)
+                throw new InvalidDataException("MCAP message content is truncated.");
+            return new McapMessage
+            {
+                ChannelId = channelId,
+                Sequence = sequence,
+                LogTime = logTime,
+                PublishTime = publishTime,
+                Data = Array.Empty<byte>()
             };
         }
 

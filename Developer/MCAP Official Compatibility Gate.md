@@ -6,6 +6,10 @@
 
 This verdict is intentionally not `PASS` because Foxglove Desktop manual visual opening is recorded as deferred in this automated phase. Core local compatibility and official Python interop are validated by the Phase 120 commands.
 
+## Phase 120B hardening
+
+Phase 120B hardening closes known Phase 116-120 DataLoader review findings without expanding the Phase 120 compatibility verdict. CRC mismatch remains a hard failure, unindexed sequential fallback receives explicit limits, and remote prototype data access keeps production Remote Data Loader infrastructure out of scope.
+
 ## Environment
 
 - Branch: `feature/phase120-mcap-compatibility-gate`

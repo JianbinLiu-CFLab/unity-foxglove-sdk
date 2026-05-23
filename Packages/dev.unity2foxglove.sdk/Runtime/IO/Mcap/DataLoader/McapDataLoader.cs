@@ -18,6 +18,8 @@ namespace Unity.FoxgloveSDK.IO
     public sealed class McapDataLoader : IDisposable
     {
         private readonly McapIndexedReader _reader;
+        private readonly McapSequentialReadLimits _sequentialReadLimits;
+        private readonly long _sourceLengthBytes;
         private McapDataLoaderInitialization _initialization;
         private Dictionary<ushort, McapChannel> _channelMap;
         private Dictionary<string, List<ushort>> _topicChannelMap;
@@ -26,14 +28,22 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Opens a local MCAP file and owns the file stream.</summary>
         public McapDataLoader(string path)
+            : this(path, null)
+        {
+        }
+
+        /// <summary>Opens a local MCAP file with explicit sequential fallback limits.</summary>
+        public McapDataLoader(string path, McapSequentialReadLimits sequentialReadLimits)
         {
             if (path == null)
                 throw new ArgumentNullException(nameof(path));
 
+            _sourceLengthBytes = File.Exists(path) ? new FileInfo(path).Length : -1L;
+            _sequentialReadLimits = sequentialReadLimits ?? McapSequentialReadLimits.Default;
             var stream = File.OpenRead(path);
             try
             {
-                _reader = new McapIndexedReader(stream);
+                _reader = new McapIndexedReader(stream, false, _sequentialReadLimits);
             }
             catch
             {
@@ -44,8 +54,19 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Wraps a seekable MCAP stream with the Phase 68 indexed-reader boundary.</summary>
         public McapDataLoader(Stream stream, bool leaveOpen = false)
+            : this(stream, leaveOpen, null)
         {
-            _reader = new McapIndexedReader(stream, leaveOpen);
+        }
+
+        /// <summary>Wraps a seekable MCAP stream with explicit sequential fallback limits.</summary>
+        public McapDataLoader(
+            Stream stream,
+            bool leaveOpen,
+            McapSequentialReadLimits sequentialReadLimits)
+        {
+            _sourceLengthBytes = stream != null && stream.CanSeek ? stream.Length : -1L;
+            _sequentialReadLimits = sequentialReadLimits ?? McapSequentialReadLimits.Default;
+            _reader = new McapIndexedReader(stream, leaveOpen, _sequentialReadLimits);
         }
 
         /// <summary>Reads and caches summary-derived initialization metadata.</summary>
@@ -64,6 +85,7 @@ namespace Unity.FoxgloveSDK.IO
             AddMetadataIndexes(_initialization, _reader.MetadataIndexes);
             AddAttachmentIndexes(_initialization, _reader.AttachmentIndexes);
             AddSummaryCounts(_initialization, _reader.Summary?.Statistics);
+            AddSequentialFallbackProblems(_initialization);
             AddSchemaReferenceProblems(_initialization);
             AddFoxRunSchemaMetadataProblems(_initialization);
             return _initialization;
@@ -94,26 +116,12 @@ namespace Unity.FoxgloveSDK.IO
             if (!QueryCanMatch(query.ChannelIds, query.Topics))
                 return new List<McapDataLoaderMessage>();
 
-            var messages = _reader.ReadMessages(new McapReadOptions
+            var selected = _reader.ReadLatestBefore(new McapReadOptions
             {
-                StartTimeNs = 0,
                 EndTimeNs = query.TimeNs,
                 ChannelIds = CopyUShorts(query.ChannelIds),
-                Topics = CopyStrings(query.Topics),
-                MaxMessages = 0
+                Topics = CopyStrings(query.Topics)
             });
-
-            var latestByChannel = new Dictionary<ushort, McapMessage>();
-            for (var i = 0; i < messages.Count; i++)
-            {
-                var message = messages[i];
-                if (!latestByChannel.TryGetValue(message.ChannelId, out var current) ||
-                    CompareBackfillCandidate(message, current) > 0)
-                    latestByChannel[message.ChannelId] = message;
-            }
-
-            var selected = new List<McapMessage>(latestByChannel.Values);
-            selected.Sort(CompareBackfillOutput);
             var result = new List<McapDataLoaderMessage>(selected.Count);
             for (var i = 0; i < selected.Count; i++)
                 result.Add(ToDataLoaderMessage(selected[i]));
@@ -357,6 +365,41 @@ namespace Unity.FoxgloveSDK.IO
             initialization.TotalMessageCount = statistics.MessageCount;
         }
 
+        private void AddSequentialFallbackProblems(McapDataLoaderInitialization initialization)
+        {
+            var chunkIndexes = _reader.Summary?.ChunkIndexes;
+            if (chunkIndexes != null && chunkIndexes.Count > 0)
+                return;
+
+            initialization.Problems.Add(new McapDataLoaderProblem(
+                McapDataLoaderProblemSeverity.Warning,
+                "MCAP file has no chunk indexes; queries will use bounded sequential fallback.",
+                "UnindexedSequentialFallback",
+                "Large unindexed files may require adding MCAP chunk indexes or increasing explicit fallback limits."));
+
+            if (_sourceLengthBytes >= 0 &&
+                _sequentialReadLimits.MaxPayloadBytes > 0 &&
+                _sourceLengthBytes > _sequentialReadLimits.MaxPayloadBytes)
+            {
+                initialization.Problems.Add(new McapDataLoaderProblem(
+                    McapDataLoaderProblemSeverity.Warning,
+                    "MCAP file size exceeds the sequential fallback payload limit.",
+                    "UnindexedFileExceedsSequentialPayloadLimit",
+                    "Queries may fail with MaxPayloadBytes unless the file is indexed or the limit is explicitly raised."));
+            }
+
+            var messageCount = _reader.Summary?.Statistics?.MessageCount ?? 0UL;
+            if (_sequentialReadLimits.MaxMessages > 0 &&
+                messageCount > (ulong)_sequentialReadLimits.MaxMessages)
+            {
+                initialization.Problems.Add(new McapDataLoaderProblem(
+                    McapDataLoaderProblemSeverity.Warning,
+                    "MCAP message count exceeds the sequential fallback message limit.",
+                    "UnindexedFileExceedsSequentialMessageLimit",
+                    "Queries may fail with MaxMessages unless the file is indexed or the limit is explicitly raised."));
+            }
+        }
+
         private void AddSchemaReferenceProblems(McapDataLoaderInitialization initialization)
         {
             var schemaIds = new HashSet<ushort>();
@@ -500,28 +543,6 @@ namespace Unity.FoxgloveSDK.IO
 
         private static List<string> CopyStrings(List<string> source)
             => source == null ? new List<string>() : new List<string>(source);
-
-        private static int CompareBackfillCandidate(McapMessage left, McapMessage right)
-        {
-            var cmp = left.LogTime.CompareTo(right.LogTime);
-            if (cmp != 0)
-                return cmp;
-
-            cmp = left.Sequence.CompareTo(right.Sequence);
-            if (cmp != 0)
-                return cmp;
-
-            return left.PublishTime.CompareTo(right.PublishTime);
-        }
-
-        private static int CompareBackfillOutput(McapMessage left, McapMessage right)
-        {
-            var cmp = left.ChannelId.CompareTo(right.ChannelId);
-            if (cmp != 0)
-                return cmp;
-
-            return CompareBackfillCandidate(left, right);
-        }
 
         private void ThrowIfDisposed()
         {

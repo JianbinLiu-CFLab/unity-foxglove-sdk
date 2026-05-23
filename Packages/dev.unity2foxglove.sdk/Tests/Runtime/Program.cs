@@ -274,6 +274,9 @@ class Program
         if (argList.Contains("--phase120-official"))
             return RunPhase120OfficialOnly();
 
+        if (argList.Contains("--phase120b"))
+            return RunPhase120BOnly();
+
         if (argList.Contains("--phase120"))
             return RunPhase120Only();
 
@@ -1709,6 +1712,22 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine("Phase 120 official validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase120BOnly()
+    {
+        try
+        {
+            Phase120BValidation.Validate();
+            Console.WriteLine("\nPhase 120B checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 120B validation failed: " + ex.Message);
             Console.Error.WriteLine(ex);
             return 1;
         }
