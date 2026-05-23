@@ -61,9 +61,18 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         /// <param name="filePath">Path to a local MCAP file.</param>
         /// <returns>An indexed reader for the file.</returns>
+        public static McapIndexedReader OpenRead(string filePath)
+            => OpenRead(filePath, null);
+
+        /// <summary>
+        /// Opens a file-backed indexed reader with explicit memory limits for no-index sequential fallback.
+        /// </summary>
+        /// <param name="filePath">Path to a local MCAP file.</param>
+        /// <param name="sequentialReadLimits">Memory limits for no-index sequential fallback.</param>
+        /// <returns>An indexed reader for the file.</returns>
         public static McapIndexedReader OpenRead(
             string filePath,
-            McapSequentialReadLimits sequentialReadLimits = null)
+            McapSequentialReadLimits sequentialReadLimits)
         {
             var stream = File.OpenRead(filePath);
             try
