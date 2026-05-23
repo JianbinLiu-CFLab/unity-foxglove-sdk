@@ -20,11 +20,12 @@ function Invoke-CommandCapture {
         [Parameter(Mandatory = $true)][string]$FileName,
         [Parameter(Mandatory = $true)][string[]]$Arguments,
         [string]$WorkingDirectory = $RepoRoot,
-        [hashtable]$Environment = @{}
+        [hashtable]$Environment = @{},
+        [int]$TimeoutSeconds = 0
     )
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $FileName
+    $psi.FileName = Resolve-ProcessFileName $FileName
     $psi.Arguments = ($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
     $psi.WorkingDirectory = $WorkingDirectory
     $psi.RedirectStandardOutput = $true
@@ -36,15 +37,80 @@ function Invoke-CommandCapture {
     }
 
     $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $timedOut = $false
+    if ($TimeoutSeconds -gt 0) {
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $timedOut = $true
+            try {
+                & taskkill.exe /PID $process.Id /T /F | Out-Null
+            }
+            catch {
+                try {
+                    $process.Kill()
+                }
+                catch {
+                }
+            }
+            $process.WaitForExit()
+        }
+    }
+    else {
+        $process.WaitForExit()
+    }
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    if ($timedOut) {
+        $timeoutMessage = "Timed out after $TimeoutSeconds second(s)."
+        $stderr = if ([string]::IsNullOrWhiteSpace($stderr)) { $timeoutMessage } else { $stderr + "`n" + $timeoutMessage }
+    }
     return [pscustomobject]@{
-        ExitCode = $process.ExitCode
+        ExitCode = if ($timedOut) { -1 } else { $process.ExitCode }
         Stdout = $stdout
         Stderr = $stderr
         Command = "$FileName $($Arguments -join ' ')"
+        TimedOut = $timedOut
     }
+}
+
+function Resolve-ProcessFileName {
+    param([string]$FileName)
+
+    if ([System.IO.Path]::IsPathRooted($FileName) -or $FileName.Contains("\") -or $FileName.Contains("/")) {
+        return $FileName
+    }
+
+    if ([System.IO.Path]::GetExtension($FileName)) {
+        $command = Get-Command $FileName -ErrorAction SilentlyContinue
+        if ($null -ne $command -and -not [string]::IsNullOrWhiteSpace($command.Source)) {
+            return $command.Source
+        }
+        return $FileName
+    }
+
+    $extensions = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:PATHEXT)) {
+        $extensions = $env:PATHEXT.Split(";", [System.StringSplitOptions]::RemoveEmptyEntries)
+    }
+    if ($extensions.Count -eq 0) {
+        $extensions = @(".COM", ".EXE", ".BAT", ".CMD")
+    }
+
+    foreach ($dir in $env:PATH.Split(";", [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        foreach ($extension in $extensions) {
+            $candidate = Join-Path $dir ($FileName + $extension)
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return $candidate
+            }
+        }
+    }
+
+    $fallback = Get-Command $FileName -ErrorAction SilentlyContinue
+    if ($null -ne $fallback -and -not [string]::IsNullOrWhiteSpace($fallback.Source)) {
+        return $fallback.Source
+    }
+    return $FileName
 }
 
 function ConvertTo-ProcessArgument {
@@ -234,14 +300,17 @@ if ($build.ExitCode -ne 0) {
 
 $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
 $yarnCommand = Get-Command yarn -ErrorAction SilentlyContinue
-if ($null -eq $nodeCommand -or $null -eq $yarnCommand) {
+$corepackCommand = Get-Command corepack -ErrorAction SilentlyContinue
+if ($null -eq $nodeCommand -or ($null -eq $yarnCommand -and $null -eq $corepackCommand)) {
     Write-SkippedReport "Node and Yarn are required for the official foxglove/mcap conformance harness."
     if ($ReleaseBlocking) { exit 1 }
     exit 0
 }
 
+$PackageManagerCommand = if ($null -ne $corepackCommand) { "corepack" } else { "yarn" }
+$PackageManagerPrefix = if ($null -ne $corepackCommand) { @("yarn") } else { @() }
 $nodeVersion = (Invoke-CommandCapture -FileName "node" -Arguments @("--version")).Stdout.Trim()
-$yarnVersion = (Invoke-CommandCapture -FileName "yarn" -Arguments @("--version")).Stdout.Trim()
+$yarnVersion = (Invoke-CommandCapture -FileName $PackageManagerCommand -Arguments (@($PackageManagerPrefix) + @("--version"))).Stdout.Trim()
 
 Copy-DirectoryWithoutLocalState -Source $OfficialRoot -Destination $OverlayRoot
 Add-CsharpRunnerOverlay
@@ -250,7 +319,7 @@ $envMap = @{
     U2F_MCAP_CONFORMANCE_DLL = (Join-Path $RepoRoot "Packages/dev.unity2foxglove.sdk/Tests/McapConformance/bin/Release/net9.0/Unity2Foxglove.McapConformance.dll")
 }
 
-$install = Invoke-CommandCapture -FileName "yarn" -Arguments @("install", "--immutable") -WorkingDirectory $OverlayRoot
+$install = Invoke-CommandCapture -FileName $PackageManagerCommand -Arguments (@($PackageManagerPrefix) + @("install", "--immutable")) -WorkingDirectory $OverlayRoot -TimeoutSeconds 600
 if ($install.ExitCode -ne 0) {
     Write-SkippedReport ("Yarn dependencies are unavailable: " + (($install.Stdout + $install.Stderr).Trim() -split "`r?`n" | Select-Object -First 5) -join " ")
     if ($ReleaseBlocking) { exit 1 }
@@ -258,9 +327,10 @@ if ($install.ExitCode -ne 0) {
 }
 
 $generate = Invoke-CommandCapture `
-    -FileName "yarn" `
-    -Arguments @("workspace", "@foxglove/mcap-conformance", "generate-inputs", "--data-dir", $DataDir) `
-    -WorkingDirectory $OverlayRoot
+    -FileName $PackageManagerCommand `
+    -Arguments (@($PackageManagerPrefix) + @("workspace", "@foxglove/mcap-conformance", "generate-inputs", "--data-dir", $DataDir)) `
+    -WorkingDirectory $OverlayRoot `
+    -TimeoutSeconds 300
 if ($generate.ExitCode -ne 0) {
     Write-SkippedReport ("Official fixture generation failed: " + (($generate.Stdout + $generate.Stderr).Trim() -split "`r?`n" | Select-Object -First 5) -join " ")
     if ($ReleaseBlocking) { exit 1 }
@@ -271,24 +341,27 @@ $variantCount = (Get-ChildItem -LiteralPath $DataDir -Recurse -Filter "*.mcap" |
 $runnerReports = @()
 
 $streamed = Invoke-CommandCapture `
-    -FileName "yarn" `
-    -Arguments @("workspace", "@foxglove/mcap-conformance", "run-tests", "--data-dir", $DataDir, "--runner", "csharp-streamed-reader") `
+    -FileName $PackageManagerCommand `
+    -Arguments (@($PackageManagerPrefix) + @("workspace", "@foxglove/mcap-conformance", "run-tests", "--data-dir", $DataDir, "--runner", "csharp-streamed-reader")) `
     -WorkingDirectory $OverlayRoot `
-    -Environment $envMap
+    -Environment $envMap `
+    -TimeoutSeconds 180
 $runnerReports += Measure-RunnerOutput -Name "csharp-streamed-reader" -Kind "streamed-reader" -Result $streamed
 
 $indexed = Invoke-CommandCapture `
-    -FileName "yarn" `
-    -Arguments @("workspace", "@foxglove/mcap-conformance", "run-tests", "--data-dir", $DataDir, "--runner", "csharp-indexed-reader") `
+    -FileName $PackageManagerCommand `
+    -Arguments (@($PackageManagerPrefix) + @("workspace", "@foxglove/mcap-conformance", "run-tests", "--data-dir", $DataDir, "--runner", "csharp-indexed-reader")) `
     -WorkingDirectory $OverlayRoot `
-    -Environment $envMap
+    -Environment $envMap `
+    -TimeoutSeconds 180
 $runnerReports += Measure-RunnerOutput -Name "csharp-indexed-reader" -Kind "indexed-reader" -Result $indexed
 
 $writer = Invoke-CommandCapture `
-    -FileName "yarn" `
-    -Arguments @("workspace", "@foxglove/mcap-conformance", "run-tests", "--data-dir", $DataDir, "--runner", "csharp-writer") `
+    -FileName $PackageManagerCommand `
+    -Arguments (@($PackageManagerPrefix) + @("workspace", "@foxglove/mcap-conformance", "run-tests", "--data-dir", $DataDir, "--runner", "csharp-writer")) `
     -WorkingDirectory $OverlayRoot `
-    -Environment $envMap
+    -Environment $envMap `
+    -TimeoutSeconds 180
 $runnerReports += Measure-RunnerOutput -Name "csharp-writer" -Kind "writer" -Result $writer
 
 $failed = 0
