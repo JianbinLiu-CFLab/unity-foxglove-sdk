@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.9.1 - 2026-05-23
+
+### Added
+
+- Local MCAP DataLoader facade for initialization, channel/schema inventory, message iteration, and latest-at backfill.
+- Summary-less and direct-message MCAP fallback support, including zero-chunk/no-summary compatibility fixtures.
+- Remote MCAP data-source boundary prototype with local manifest/data DTOs, authorization denial behavior, and exact-byte local reader round trips.
+- Official compatibility gate fixtures covering Unity-authored indexed MCAP, Unity-authored direct MCAP, official Python chunked Zstd MCAP, and official Python unchunked/no-summary MCAP.
+- Manual acceptance evidence for Unity recording, replay preflight, Unity replay, Foxglove Desktop local-file open, compatibility fixtures, and remote-boundary non-overclaim.
+
+### Changed
+
+- MCAP backfill now uses latest-at reader support instead of materializing unbounded `0..T` query windows.
+- No-index sequential fallback now has bounded message and payload limits and reports explicit DataLoader warnings.
+- Indexed and sequential chunk CRC mismatch behavior is aligned as a hard failure.
+- Remote prototype data reads now expose an explicit stream response for larger files and a disposable ownership contract.
+- Schema/channel decoding avoids record-sized temporary allocations and validates bounded buffer segments.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.9.1.
+
+### Verified
+
+- Runtime validation suite passed with `All checks passed`.
+- Targeted MCAP indexed reader regression passed with 44 checks.
+- Targeted MCAP DataLoader hardening validation passed with 37 checks.
+- Analyzer DLL freshness build passed with 0 warnings and 0 errors.
+- GitHub Actions for the release PR passed: docs check, package check, runtime tests, and analyzer freshness.
+- Manual Unity/Foxglove acceptance confirmed Zstd and uncompressed recordings, replay preflight hash match, local replay, Unity-authored compatibility fixtures, Foxglove Desktop local-file open, and remote-boundary non-overclaim.
+
 ## 1.9.0 - 2026-05-22
 
 ### Added
