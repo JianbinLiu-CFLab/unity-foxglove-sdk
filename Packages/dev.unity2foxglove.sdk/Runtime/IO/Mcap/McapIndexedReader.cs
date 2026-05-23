@@ -103,10 +103,7 @@ namespace Unity.FoxgloveSDK.IO
             var chunkIndexes = _summary.ChunkIndexes;
             if (chunkIndexes == null || chunkIndexes.Count == 0)
             {
-                if (_summary.Statistics == null || _summary.Statistics.MessageCount == 0)
-                    return result;
-
-                throw new InvalidOperationException("MCAP message queries require chunk indexes.");
+                return ReadSequentialMessages(options, result);
             }
 
             var selectedChannelIds = ResolveSelectedChannelIds(options);
@@ -142,6 +139,37 @@ namespace Unity.FoxgloveSDK.IO
 
                     result.Add(message);
                 }
+            }
+
+            result.Sort(CompareMessages);
+            if (options.MaxMessages > 0 && result.Count > options.MaxMessages)
+                result.RemoveRange(0, result.Count - options.MaxMessages);
+
+            return result;
+        }
+
+        private List<McapMessage> ReadSequentialMessages(McapReadOptions options, List<McapMessage> result)
+        {
+            var selectedChannelIds = ResolveSelectedChannelIds(options);
+            if (selectedChannelIds != null && selectedChannelIds.Count == 0)
+                return result;
+
+            var messages = _summary.SequentialMessages;
+            if (messages == null || messages.Count == 0)
+            {
+                messages = _reader.ReadSequentialMessages(_summary.DataSectionEndOffset);
+                _summary.SequentialMessages = messages;
+            }
+
+            for (var i = 0; i < messages.Count; i++)
+            {
+                var message = messages[i];
+                if (message.LogTime < options.StartTimeNs || message.LogTime > options.EndTimeNs)
+                    continue;
+                if (selectedChannelIds != null && !selectedChannelIds.Contains(message.ChannelId))
+                    continue;
+
+                result.Add(message);
             }
 
             result.Sort(CompareMessages);
