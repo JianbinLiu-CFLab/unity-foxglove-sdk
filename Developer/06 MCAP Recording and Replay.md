@@ -177,7 +177,32 @@ Each metadata entry is identified by `name`, with `value` as a JSON string:
 
 Playing MCAP files does not require Unity to be running; Foxglove reads and renders them independently.
 
-## 1.5 Important notes
+## 1.5 Local DataLoader decoded view
+
+The local MCAP DataLoader keeps raw message bytes as the source of truth. For tools that need a diagnostic decoded view, `McapDataLoader.CreateDecodedIterator` can wrap the existing raw iterator and return `McapDecodedMessage` objects:
+
+```csharp
+using var loader = new McapDataLoader("D:/recordings/session.mcap");
+foreach (var message in loader.CreateDecodedIterator(new McapDataLoaderQuery()))
+{
+    var raw = message.Raw.Data;
+    var kind = message.Payload.Kind;
+}
+```
+
+Built-in decoders cover:
+
+| Encoding | Result |
+|----------|--------|
+| `json` | `Newtonsoft.Json.Linq.JToken` |
+| packaged Foxglove `protobuf` | generated `Google.Protobuf.IMessage` plus diagnostic JSON |
+| ROS2 `cdr` + `ros2msg` schema | schema-aware CDR diagnostic envelope |
+
+Unknown encodings and malformed payloads keep the raw message and attach `McapDecodeProblem` diagnostics by default. Set `McapDecodeOptions.FailurePolicy = McapDecodeFailurePolicy.Throw` when a tool should stop immediately on malformed payloads.
+
+This decoded view does not change replay behavior, raw `CreateIterator` results, or MCAP bytes. Full typed ROS2 CDR field deserialization is intentionally deferred.
+
+## 1.6 Important notes
 
 - **Do not interrupt recording**: The `Close()` method is responsible for writing the MCAP footer and summary section. If Unity exits abnormally, the footer is not written and the file becomes unreadable. Stopping Play normally triggers `OnDestroy` > `StopServer()` to ensure proper shutdown.
 - **Chunk Size**: Smaller chunk values provide finer-grained indexing but increase file overhead. The default 1024 KB (1 MB) is suitable for most scenarios.

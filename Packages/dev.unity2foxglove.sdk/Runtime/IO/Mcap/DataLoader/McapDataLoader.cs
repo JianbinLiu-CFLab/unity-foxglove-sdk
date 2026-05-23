@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly long _sourceLengthBytes;
         private McapDataLoaderInitialization _initialization;
+        private Dictionary<ushort, McapSchema> _schemaMap;
         private Dictionary<ushort, McapChannel> _channelMap;
         private Dictionary<string, List<ushort>> _topicChannelMap;
         private HashSet<ushort> _knownChannelIds;
@@ -76,6 +77,7 @@ namespace Unity.FoxgloveSDK.IO
             if (_initialization != null)
                 return _initialization;
 
+            _schemaMap = BuildSchemaMap(_reader.Schemas);
             _channelMap = BuildChannelMap(_reader.Channels);
             BuildQueryMaps(_reader.Channels, out _topicChannelMap, out _knownChannelIds);
             _initialization = new McapDataLoaderInitialization();
@@ -104,6 +106,38 @@ namespace Unity.FoxgloveSDK.IO
             for (var i = 0; i < messages.Count; i++)
                 result.Add(ToDataLoaderMessage(messages[i]));
             return result;
+        }
+
+        /// <summary>
+        /// Creates an opt-in decoded iterator over matching messages while
+        /// preserving each raw MCAP payload as the source of truth.
+        /// </summary>
+        public IEnumerable<McapDecodedMessage> CreateDecodedIterator(
+            McapDataLoaderQuery query,
+            McapDecodeOptions options = null)
+        {
+            ThrowIfDisposed();
+            Initialize();
+            var registry = CreateDecodeRegistry(options);
+            foreach (var raw in CreateIterator(query))
+            {
+                registry.TryDecode(raw, out var decoded);
+                yield return decoded;
+            }
+        }
+
+        /// <summary>
+        /// Try to decode one raw DataLoader message with the configured decoder
+        /// factories. The raw message is returned inside <paramref name="decoded"/>.
+        /// </summary>
+        public bool TryDecodeMessage(
+            McapDataLoaderMessage message,
+            McapDecodeOptions options,
+            out McapDecodedMessage decoded)
+        {
+            ThrowIfDisposed();
+            Initialize();
+            return CreateDecodeRegistry(options).TryDecode(message, out decoded);
         }
 
         /// <summary>Gets the latest message per selected channel at or before the requested time.</summary>
@@ -136,6 +170,22 @@ namespace Unity.FoxgloveSDK.IO
 
             _disposed = true;
             _reader.Dispose();
+        }
+
+        private static Dictionary<ushort, McapSchema> BuildSchemaMap(IReadOnlyList<McapSchema> schemas)
+        {
+            var map = new Dictionary<ushort, McapSchema>();
+            if (schemas == null)
+                return map;
+
+            for (var i = 0; i < schemas.Count; i++)
+            {
+                var schema = schemas[i];
+                if (schema != null)
+                    map[schema.Id] = schema;
+            }
+
+            return map;
         }
 
         private static Dictionary<ushort, McapChannel> BuildChannelMap(IReadOnlyList<McapChannel> channels)
@@ -523,6 +573,14 @@ namespace Unity.FoxgloveSDK.IO
                 PublishTime = message.PublishTime,
                 Data = message.Data ?? new byte[0]
             };
+        }
+
+        private McapDecodeRegistry CreateDecodeRegistry(McapDecodeOptions options)
+        {
+            return new McapDecodeRegistry(
+                options ?? new McapDecodeOptions(),
+                _schemaMap,
+                _channelMap);
         }
 
         private static McapReadOptions ToReadOptions(McapDataLoaderQuery query)
