@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -190,7 +191,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 writer.WriteMagic();
                 writer.WriteHeader("", "phase120-direct");
-                writer.WriteSchema(1, "phase120.Direct", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteSchema(1, "phase120.Direct", "jsonschema", Encoding.UTF8.GetBytes("{\"type\":\"object\"}"));
                 writer.WriteChannel(1, 1, "/phase120/direct", "json", new Dictionary<string, string>());
                 writer.WriteMessage(1, 1, 10, 10, Encoding.UTF8.GetBytes("{\"d\":10}"));
                 writer.WriteMessage(1, 2, 20, 20, Encoding.UTF8.GetBytes("{\"d\":20}"));
@@ -220,6 +221,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var summary = new McapReader(fs).ReadSummary();
                 Check(summary.Channels.Count > 0 && summary.Schemas.Count > 0,
                     "120-F1: McapReader opens " + name);
+                VerifyJsonSchemaRoots(summary, name);
                 if (expectMetadata)
                     Check(summary.MetadataIndexes.Count > 0, "120-F2: metadata index exists for " + name);
                 if (expectAttachment)
@@ -243,6 +245,25 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             AddCore(name + "-local-readers", "passed", "Local readers opened generated fixture.");
+        }
+
+        private static void VerifyJsonSchemaRoots(McapFileSummary summary, string fixtureName)
+        {
+            var schemas = summary.Schemas.ToDictionary(schema => schema.Id);
+            foreach (var channel in summary.Channels)
+            {
+                if (!string.Equals(channel.MessageEncoding, "json", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!schemas.TryGetValue(channel.SchemaId, out var schema))
+                    continue;
+                if (!string.Equals(schema.Encoding, "jsonschema", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var json = Encoding.UTF8.GetString(schema.Data ?? new byte[0]);
+                var parsed = JObject.Parse(json);
+                Check(string.Equals(parsed["type"]?.ToString(), "object", StringComparison.Ordinal),
+                    "120-F7: Foxglove Desktop-compatible JSON schema root is object for " + fixtureName + " " + channel.Topic);
+            }
         }
 
         private static void VerifyOfficialPythonInterop(string unityFixturePath)

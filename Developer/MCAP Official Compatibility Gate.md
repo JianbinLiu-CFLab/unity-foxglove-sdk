@@ -32,9 +32,13 @@ Phase 120B hardening closes known Phase 116-120 DataLoader review findings witho
 
 ## Foxglove Desktop Manual Open
 
-Manual visual confirmation is deferred for this automated implementation pass.
+Manual visual confirmation has been performed for the selected compatibility fixtures.
 
-Open `build/mcap-compat/unity_chunked_all_indexes.mcap` in Foxglove Desktop before promoting a public `PASS` verdict. Confirm topics, schemas, timeline, Raw Messages, and relevant visualization panels.
+The manual Desktop scope covered `build/mcap-compat/unity_chunked_all_indexes.mcap` and `build/mcap-compat/unity_summaryless_or_direct_fixture.mcap`, with topic/schema/timeline/raw-message visibility checked where the fixture contains data for those panels.
+
+The direct fixture must use a Foxglove Desktop-compatible JSON schema root (`{"type":"object"}`). Phase 120 validation includes `120-F7` to guard this because Desktop rejects `jsonschema` content `{}` with `Expected ".type": "object"`.
+
+The regenerated direct fixture is intentionally summaryless/unindexed. Foxglove Desktop is expected to show `This file is unindexed. Unindexed files may have degraded performance.` for this file. That warning is accepted for the direct-message fallback fixture; payload/schema errors remain failures.
 
 ## Performance
 
@@ -42,7 +46,7 @@ Phase 118 quick performance mode records DataLoader initialize, iteration, filte
 
 ## Skipped Checks
 
-- Foxglove Desktop manual open: skipped/deferred, so verdict remains `PASS WITH NOTED LIMITATIONS`.
+- Foxglove Desktop manual open: selected local files were opened manually; the summaryless direct fixture keeps an accepted unindexed-file warning.
 - Production Remote Data Loader deployment: intentionally out of scope.
 - Cloud cache, Kubernetes/Helm, organization auth, Remote Access Gateway, and HTTP range serving: intentionally out of scope.
 
