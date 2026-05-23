@@ -259,6 +259,27 @@ class Program
         if (argList.Contains("--phase115h"))
             return RunPhase115HOnly();
 
+        if (argList.Contains("--phase116"))
+            return RunPhase116Only();
+
+        if (argList.Contains("--phase117"))
+            return RunPhase117Only();
+
+        if (argList.Contains("--phase118"))
+            return RunPhase118Only();
+
+        if (argList.Contains("--phase119"))
+            return RunPhase119Only();
+
+        if (argList.Contains("--phase120-official"))
+            return RunPhase120OfficialOnly();
+
+        if (argList.Contains("--phase120b"))
+            return RunPhase120BOnly();
+
+        if (argList.Contains("--phase120"))
+            return RunPhase120Only();
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1595,6 +1616,118 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine("Phase 115H validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase116Only()
+    {
+        try
+        {
+            Phase116Validation.Validate();
+            Console.WriteLine("\nPhase 116 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 116 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase117Only()
+    {
+        try
+        {
+            Phase117Validation.Validate();
+            Console.WriteLine("\nPhase 117 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 117 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase118Only()
+    {
+        try
+        {
+            Phase118Validation.Validate();
+            Console.WriteLine("\nPhase 118 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 118 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase119Only()
+    {
+        try
+        {
+            Phase119Validation.Validate();
+            Console.WriteLine("\nPhase 119 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 119 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase120Only()
+    {
+        try
+        {
+            Phase120Validation.Validate();
+            Console.WriteLine("\nPhase 120 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 120 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase120OfficialOnly()
+    {
+        try
+        {
+            Phase120Validation.ValidateOfficial();
+            Console.WriteLine("\nPhase 120 official checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 120 official validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase120BOnly()
+    {
+        try
+        {
+            Phase120BValidation.Validate();
+            Console.WriteLine("\nPhase 120B checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 120B validation failed: " + ex.Message);
             Console.Error.WriteLine(ex);
             return 1;
         }

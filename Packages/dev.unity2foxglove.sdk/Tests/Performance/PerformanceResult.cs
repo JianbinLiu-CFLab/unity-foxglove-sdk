@@ -21,6 +21,17 @@ namespace Unity.FoxgloveSDK.Performance
         public int gen2Collections { get; set; }
         public string allocationNotes { get; set; }
         public long outputBytes { get; set; }
+        public string fixtureKind { get; set; }
+        public string fixturePath { get; set; }
+        public int channelCount { get; set; }
+        public int schemaCount { get; set; }
+        public int selectedChannelCount { get; set; }
+        public int selectedTopicCount { get; set; }
+        public ulong? queryStartTimeNs { get; set; }
+        public ulong? queryEndTimeNs { get; set; }
+        public int returnedMessageCount { get; set; }
+        public int backfillHitCount { get; set; }
+        public long fixtureBytes { get; set; }
         public string notes { get; set; }
         public bool passed { get; set; }
     }
