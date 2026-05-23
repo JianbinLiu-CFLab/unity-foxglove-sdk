@@ -37,7 +37,9 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>No decoder supports this schema/channel encoding.</summary>
         Unsupported = 4,
         /// <summary>A matching decoder failed and failure policy kept the raw message.</summary>
-        Failed = 5
+        Failed = 5,
+        /// <summary>Payload decoded as a packaged Foxglove ROS2 CDR IMessage.</summary>
+        Ros2CdrTyped = 6
     }
 
     /// <summary>Controls how decode errors are surfaced to callers.</summary>
@@ -58,7 +60,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Caller-provided factories. These run before built-in decoders.</summary>
         public List<IMcapMessageDecoderFactory> DecoderFactories = new List<IMcapMessageDecoderFactory>();
 
-        /// <summary>Whether JSON, packaged protobuf, and ROS2 diagnostic decoders are enabled.</summary>
+        /// <summary>Whether JSON, packaged protobuf, and ROS2 typed/diagnostic decoders are enabled.</summary>
         public bool UseBuiltInDecoders = true;
 
         /// <summary>Policy for malformed payloads or decoder exceptions.</summary>

@@ -196,11 +196,14 @@ Built-in decoders cover:
 |----------|--------|
 | `json` | `Newtonsoft.Json.Linq.JToken` |
 | packaged Foxglove `protobuf` | generated `Google.Protobuf.IMessage` plus diagnostic JSON |
-| ROS2 `cdr` + `ros2msg` schema | schema-aware CDR diagnostic envelope |
+| packaged Foxglove ROS2 `cdr` + `ros2msg` schema | generated `Google.Protobuf.IMessage` plus diagnostic JSON |
+| unsupported ROS2 `cdr` + `ros2msg` schema | schema-aware CDR diagnostic envelope |
 
 Unknown encodings and malformed payloads keep the raw message and attach `McapDecodeProblem` diagnostics by default. Set `McapDecodeOptions.FailurePolicy = McapDecodeFailurePolicy.Throw` when a tool should stop immediately on malformed payloads.
 
-This decoded view does not change replay behavior, raw `CreateIterator` results, or MCAP bytes. Full typed ROS2 CDR field deserialization is intentionally deferred.
+ROS2 CDR typed decode is intentionally limited to the packaged 41 `foxglove_msgs/msg/*` schemas generated from the bundled Foxglove schema catalog. It is not a dynamic decoder for arbitrary ROS2 packages, big-endian CDR, ROS1, or rosbag2 storage APIs.
+
+This decoded view does not change replay behavior, raw `CreateIterator` results, or MCAP bytes.
 
 ## 1.6 Important notes
 

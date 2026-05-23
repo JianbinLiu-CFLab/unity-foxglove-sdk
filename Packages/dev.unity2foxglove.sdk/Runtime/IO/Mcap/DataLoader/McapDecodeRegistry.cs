@@ -7,7 +7,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
@@ -80,6 +79,18 @@ namespace Unity.FoxgloveSDK.IO
                 if (_options.FailurePolicy == McapDecodeFailurePolicy.Throw)
                     throw;
 
+                if (TryDecodeRos2CdrDiagnosticFallback(raw, out var fallback))
+                {
+                    decoded.Payload = fallback;
+                    decoded.Problems.Add(CreateProblem(
+                        raw,
+                        "McapRos2CdrTypedDecodeFailed",
+                        ex.Message,
+                        ex,
+                        McapDataLoaderProblemSeverity.Warning));
+                    return decoded;
+                }
+
                 decoded.Payload = new McapDecodedPayload
                 {
                     Kind = McapDecodedPayloadKind.Failed,
@@ -144,6 +155,9 @@ namespace Unity.FoxgloveSDK.IO
                 var protobufFactory = TryCreateProtobufFactory();
                 if (protobufFactory != null)
                     factories.Add(protobufFactory);
+                var ros2TypedFactory = TryCreateRos2CdrTypedFactory();
+                if (ros2TypedFactory != null)
+                    factories.Add(ros2TypedFactory);
                 factories.Add(new McapRos2CdrDiagnosticDecoderFactory());
             }
 
@@ -152,7 +166,16 @@ namespace Unity.FoxgloveSDK.IO
 
         private static IMcapMessageDecoderFactory TryCreateProtobufFactory()
         {
-            const string typeName = "Unity.FoxgloveSDK.IO.McapFoxgloveProtobufDecoderFactory";
+            return TryCreateAssemblyFactory("Unity.FoxgloveSDK.IO.McapFoxgloveProtobufDecoderFactory");
+        }
+
+        private static IMcapMessageDecoderFactory TryCreateRos2CdrTypedFactory()
+        {
+            return TryCreateAssemblyFactory("Unity.FoxgloveSDK.IO.McapRos2CdrTypedDecoderFactory");
+        }
+
+        private static IMcapMessageDecoderFactory TryCreateAssemblyFactory(string typeName)
+        {
             var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto", throwOnError: false);
             if (type == null)
             {
@@ -164,6 +187,31 @@ namespace Unity.FoxgloveSDK.IO
             if (type == null || !typeof(IMcapMessageDecoderFactory).IsAssignableFrom(type))
                 return null;
             return Activator.CreateInstance(type) as IMcapMessageDecoderFactory;
+        }
+
+        private bool TryDecodeRos2CdrDiagnosticFallback(McapDataLoaderMessage raw, out McapDecodedPayload payload)
+        {
+            payload = null;
+            _channels.TryGetValue(raw.ChannelId, out var channel);
+            if (channel == null)
+                return false;
+
+            _schemas.TryGetValue(channel.SchemaId, out var schema);
+            if (!string.Equals(channel.MessageEncoding, "cdr", StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (!string.Equals(schema?.Encoding, FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            try
+            {
+                payload = new McapRos2CdrDiagnosticDecoder(schema?.Name ?? string.Empty).Decode(raw);
+                return true;
+            }
+            catch
+            {
+                payload = null;
+                return false;
+            }
         }
 
         private static McapDecodeProblem CreateProblem(
