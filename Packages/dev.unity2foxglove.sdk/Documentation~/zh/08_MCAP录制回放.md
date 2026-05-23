@@ -180,4 +180,16 @@ Recordings/session_20260521_135001.schema/
   Unity2Foxglove/
 ```
 
+## Local MCAP DataLoader v1
+
+`McapDataLoader` 是本地文件 API，用于在不启动 replay 的情况下检查 Unity 生成的 `.mcap`。它复用 indexed MCAP reader，并提供：
+
+- `Initialize()`：返回 channels、schemas、time range、metadata indexes、attachment indexes、message count 和 diagnostics。
+- `CreateIterator(query)`：按 topic、channel ID 和 log time 范围迭代原始消息。
+- `GetBackfill(query)`：按选中的 channel 返回请求时间点之前的 latest raw message。
+
+Phase 116 的 DataLoader 只暴露 raw serialized payload bytes，不解码 JSON、protobuf、CDR、image、point cloud 或 FoxRun payload。FoxRun schema metadata mismatch 在 DataLoader 中只是 diagnostic；严格 replay 仍然由 Phase 114 的 replay blocker 控制。
+
+这不是 official Foxglove data-loader host ABI，也不包含 WASM bindings、remote data loading、HTTP range serving、Remote Access Gateway、multi-file timeline merge 或 typed payload views。
+
 这样用户可以通过时间戳和文件夹名确认 MCAP 与 Schema Evidence 的配对关系。

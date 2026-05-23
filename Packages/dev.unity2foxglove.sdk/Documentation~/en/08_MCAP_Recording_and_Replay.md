@@ -109,7 +109,19 @@ The **Replay Preflight** block can inspect a selected `.mcap` before Play Mode. 
 
 Use the timestamp and folder name to keep the `.mcap` and `.schema` evidence bundle paired.
 
-## 11. Common Mistakes
+## 11. Local MCAP DataLoader v1
+
+`McapDataLoader` is a local file-backed API for code that needs to inspect a Unity-created `.mcap` without starting replay. It wraps the indexed MCAP reader and exposes:
+
+- `Initialize()` for channels, schemas, time range, metadata indexes, attachment indexes, message count, and diagnostics.
+- `CreateIterator(query)` for raw message iteration filtered by topic, channel ID, and log-time range.
+- `GetBackfill(query)` for the latest raw message per selected channel at or before a requested log time.
+
+Messages remain raw serialized payload bytes. The DataLoader surfaces FoxRun schema metadata as diagnostics, including missing, malformed, matching, and mismatching metadata, but it does not replace the Phase 114 replay blocker. A confirmed FoxRun mismatch remains diagnostic-only for local DataLoader reads while strict replay may still block.
+
+This is not the official Foxglove data-loader host ABI. It does not add WASM bindings, remote data loading, HTTP range serving, Remote Access Gateway support, multi-file timeline merge, or decoded typed payload views.
+
+## 12. Common Mistakes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
