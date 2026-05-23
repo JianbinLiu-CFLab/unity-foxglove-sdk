@@ -121,6 +121,8 @@ Messages remain raw serialized payload bytes. The DataLoader surfaces FoxRun sch
 
 Phase 118 adds repeatable quick/full performance evidence for DataLoader initialize, raw iteration, topic/time-window filters, and backfill. The performance harness writes generated fixtures under `build/performance/fixtures/` and records DataLoader fixture/query fields in the JSON output under `build/performance/`. Treat those numbers as machine-local release evidence, not cross-machine guarantees.
 
+Phase 120 records the current MCAP compatibility verdict as `PASS WITH NOTED LIMITATIONS`: local readers, local DataLoader workflows, selected Unity-authored fixtures, selected official Python-authored fixtures, and the remote data-source boundary are covered by automated evidence, while Foxglove Desktop manual visual confirmation remains a release-review step before promoting a public `PASS` claim.
+
 This is not the official Foxglove data-loader host ABI. It does not add WASM bindings, remote data loading, HTTP range serving, Remote Access Gateway support, multi-file timeline merge, or decoded typed payload views.
 
 ## 12. Common Mistakes
