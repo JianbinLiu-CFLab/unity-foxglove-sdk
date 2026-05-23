@@ -33,7 +33,16 @@ export default class CsharpIndexedReaderTestRunner extends IndexedReadTestRunner
     if (!records.some((record) => record.type === "Message")) {
       return false;
     }
-    return !features.has(TestFeatures.AddExtraDataToRecords);
+    if (features.has(TestFeatures.AddExtraDataToRecords)) {
+      return false;
+    }
+    return (
+      features.has(TestFeatures.UseChunks) &&
+      features.has(TestFeatures.UseChunkIndex) &&
+      features.has(TestFeatures.UseMessageIndex) &&
+      features.has(TestFeatures.UseRepeatedChannelInfos) &&
+      features.has(TestFeatures.UseRepeatedSchemas)
+    );
   }
 
   async runReadTest(filePath: string): Promise<IndexedReadTestResult> {

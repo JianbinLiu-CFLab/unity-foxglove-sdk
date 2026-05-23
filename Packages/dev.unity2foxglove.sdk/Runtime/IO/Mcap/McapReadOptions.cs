@@ -9,6 +9,19 @@ using System.Collections.Generic;
 namespace Unity.FoxgloveSDK.IO
 {
     /// <summary>
+    /// Output ordering for MCAP message queries.
+    /// </summary>
+    public enum McapReadOrder
+    {
+        /// <summary>Return messages in encountered file order.</summary>
+        FileOrder = 0,
+        /// <summary>Return messages sorted by log time ascending.</summary>
+        LogTimeAscending = 1,
+        /// <summary>Return messages sorted by log time descending.</summary>
+        LogTimeDescending = 2
+    }
+
+    /// <summary>
     /// Options for filtering messages returned by <see cref="McapIndexedReader"/>.
     /// </summary>
     public class McapReadOptions
@@ -40,5 +53,29 @@ namespace Unity.FoxgloveSDK.IO
         /// than or equal to zero mean unlimited.
         /// </summary>
         public int MaxMessages = 0;
+
+        /// <summary>
+        /// Output ordering. The default preserves historical log-time ascending
+        /// query results.
+        /// </summary>
+        public McapReadOrder Order = McapReadOrder.LogTimeAscending;
+
+        /// <summary>
+        /// When true, EndTimeNs is exclusive. The default keeps the historical
+        /// inclusive upper bound used by Unity replay/DataLoader paths.
+        /// </summary>
+        public bool UseOfficialEndTimeSemantics = false;
+
+        /// <summary>
+        /// Allows linear scanning when summary/index records are missing.
+        /// Disable for strict indexed-reader conformance checks.
+        /// </summary>
+        public bool AllowLinearFallback = true;
+
+        /// <summary>
+        /// Validate non-zero CRC fields while reading chunks, attachments, and
+        /// streaming DataEnd records.
+        /// </summary>
+        public bool ValidateCrcs = true;
     }
 }

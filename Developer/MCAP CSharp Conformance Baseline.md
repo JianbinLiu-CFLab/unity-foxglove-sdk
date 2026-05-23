@@ -4,7 +4,7 @@
 
 PASS WITH MEASURED BASELINE.
 
-Phase 121 adds a C# runner bridge for the official `foxglove/mcap` conformance harness shape. Phase 122 adds measured writer option parity for direct/no-chunk, no-padding writer variants. This evidence does not claim full official MCAP conformance or replacement of the upstream SDKs.
+Phase 121 adds a C# runner bridge for the official `foxglove/mcap` conformance harness shape. Phase 122 adds measured writer option parity for direct/no-chunk, no-padding writer variants. Phase 123 routes reader evidence through explicit streaming and strict indexed paths so product fallback behavior is measured separately from official-style indexed requirements. This evidence does not claim full official MCAP conformance or replacement of the upstream SDKs.
 
 ## v1.9.1 Baseline
 
@@ -58,6 +58,8 @@ dotnet Unity2Foxglove.McapConformance.dll read-streamed <mcap>
 
 It serializes MCAP records into the official `{ "records": [...] }` shape, expands chunk contents, skips `MessageIndex`, and preserves summary/footer records.
 
+As of Phase 123, the streamed runner first validates the file through the runtime non-seeking `McapStreamingReader` using official-style query semantics. The normalized official JSON remains produced by the conformance scanner so the output shape can preserve summary/footer records exactly.
+
 Variants using official `pad` extra data are skipped until the reader intentionally supports those trailing bytes.
 
 ### C# indexed reader
@@ -78,6 +80,8 @@ statistics
 ```
 
 Message-less variants are skipped, matching the upstream indexed-reader runner pattern. Direct/no-summary message variants are in scope through the bounded sequential fallback.
+
+As of Phase 123, strict indexed conformance disables linear fallback. Product behavior still permits bounded linear fallback for Unity replay/data loading when indexes are missing, but that behavior is not counted as strict indexed support.
 
 ### C# writer
 
@@ -118,9 +122,10 @@ Phase 122:
 
 Phase 123:
 
-- true non-seeking streaming reader;
-- query/order parity beyond the selected local reader workflows;
-- explicit support decision for `pad` extra data variants.
+- added a true non-seeking runtime streaming reader path;
+- added reader query order, official exclusive end-time, fallback, and CRC validation options;
+- separated strict indexed conformance from product linear fallback behavior;
+- left explicit support for official `pad` extra data variants as deferred work.
 
 ## Non-Claims
 

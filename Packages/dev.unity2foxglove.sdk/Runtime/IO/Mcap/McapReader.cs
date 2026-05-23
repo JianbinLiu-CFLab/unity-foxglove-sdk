@@ -83,7 +83,8 @@ namespace Unity.FoxgloveSDK.IO
                     recordSizeLimit,
                     collectInventory: true,
                     collectMessages: false,
-                    sequentialLimits: null);
+                    sequentialLimits: null,
+                    validateCrcs: true);
             if (footer.SummaryStart > footerOffset)
                 throw new InvalidDataException("Footer summary_start is past the footer record");
             if (footer.SummaryOffsetStart != 0 &&
@@ -178,14 +179,16 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapMessage> ReadSequentialMessages(
             ulong dataSectionEndOffset,
             ulong recordSizeLimit = DefaultRecordSizeLimit,
-            McapSequentialReadLimits sequentialLimits = null)
+            McapSequentialReadLimits sequentialLimits = null,
+            bool validateCrcs = true)
         {
             return ScanDataSection(
                 dataSectionEndOffset,
                 recordSizeLimit,
                 collectInventory: false,
                 collectMessages: true,
-                sequentialLimits: sequentialLimits).SequentialMessages ?? new List<McapMessage>();
+                sequentialLimits: sequentialLimits,
+                validateCrcs: validateCrcs).SequentialMessages ?? new List<McapMessage>();
         }
 
         /// <summary>
@@ -274,7 +277,8 @@ namespace Unity.FoxgloveSDK.IO
             ulong recordSizeLimit,
             bool collectInventory,
             bool collectMessages,
-            McapSequentialReadLimits sequentialLimits)
+            McapSequentialReadLimits sequentialLimits,
+            bool validateCrcs)
         {
             if (collectMessages)
             {
@@ -356,7 +360,7 @@ namespace Unity.FoxgloveSDK.IO
                             content,
                             out var crcValid,
                             DefaultChunkUncompressedSizeLimit);
-                        if (!crcValid)
+                        if (!crcValid && validateCrcs)
                             throw new InvalidDataException("MCAP chunk CRC mismatch.");
                         ScanChunkRecords(
                             records,
@@ -428,7 +432,7 @@ namespace Unity.FoxgloveSDK.IO
             return summary;
         }
 
-        private static byte[] DecodeChunkRecordsContent(
+        public static byte[] DecodeChunkRecordsContent(
             byte[] content,
             out bool crcValid,
             ulong uncompressedSizeLimit)

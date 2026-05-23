@@ -289,6 +289,9 @@ class Program
         if (argList.Contains("--phase122"))
             return RunPhase122Only();
 
+        if (argList.Contains("--phase123"))
+            return RunPhase123Only();
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1785,6 +1788,22 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine("Phase 122 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase123Only()
+    {
+        try
+        {
+            Phase123Validation.Validate();
+            Console.WriteLine("\nPhase 123 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 123 validation failed: " + ex.Message);
             Console.Error.WriteLine(ex);
             return 1;
         }
