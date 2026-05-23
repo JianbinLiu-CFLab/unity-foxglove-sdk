@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { WriteTestRunner } from "./TestRunner.ts";
-import type { TestVariant } from "../../../variants/types.ts";
+import { TestFeatures, type TestVariant } from "../../../variants/types.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,14 +17,22 @@ function conformanceDll(): string {
 export default class CsharpWriterTestRunner extends WriteTestRunner {
   readonly name = "csharp-writer";
 
-  supportsVariant(_variant: TestVariant): boolean {
-    return false;
+  supportsVariant(variant: TestVariant): boolean {
+    if (variant.features.has(TestFeatures.AddExtraDataToRecords)) {
+      return false;
+    }
+    if (variant.features.has(TestFeatures.UseChunks)) {
+      return false;
+    }
+    return true;
   }
 
-  async runWriteTest(filePath: string, _variant: TestVariant): Promise<Uint8Array> {
-    await execFileAsync("dotnet", [conformanceDll(), "write", filePath], {
+  async runWriteTest(filePath: string, variant: TestVariant): Promise<Uint8Array> {
+    const features = Array.from(variant.features).sort().join(",");
+    const result = await execFileAsync("dotnet", [conformanceDll(), "write", filePath, features], {
+      encoding: "buffer",
       maxBuffer: 64 * 1024 * 1024,
     });
-    throw new Error("C# writer parity is deferred to Phase 122 and should be skipped.");
+    return new Uint8Array(result.stdout as Buffer);
   }
 }

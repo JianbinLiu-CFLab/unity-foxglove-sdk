@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
         {
             if (args == null || args.Length < 2)
             {
-                Console.Error.WriteLine("Usage: read-streamed <mcap-path> | read-indexed <mcap-path> | write <testcase-json-path>");
+                Console.Error.WriteLine("Usage: read-streamed <mcap-path> | read-indexed <mcap-path> | write <testcase-json-path> [feature-csv]");
                 return 2;
             }
 
@@ -31,7 +31,8 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                         WriteUtf8(McapConformanceJson.WriteIndexed(McapConformanceReader.ReadIndexed(args[1])));
                         return 0;
                     case "write":
-                        return McapConformanceWriter.WriteUnsupported(args[1], Console.Error);
+                        using (var stdout = Console.OpenStandardOutput())
+                            return McapConformanceWriter.Write(args[1], args.Length >= 3 ? args[2] : "", stdout, Console.Error);
                     default:
                         Console.Error.WriteLine("Unknown mode: " + args[0]);
                         return 2;

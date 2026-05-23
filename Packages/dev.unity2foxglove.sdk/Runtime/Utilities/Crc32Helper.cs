@@ -7,6 +7,7 @@
 // (validation).
 
 using System;
+using System.IO;
 
 namespace Unity.FoxgloveSDK.Util
 {
@@ -37,6 +38,33 @@ namespace Unity.FoxgloveSDK.Util
         public static uint Compute(byte[] data)
         {
             return Compute(new ReadOnlySpan<byte>(data));
+        }
+
+        /// <summary>
+        /// Computes the CRC32 checksum of exactly <paramref name="length"/>
+        /// bytes from the stream's current position.
+        /// </summary>
+        public static uint Compute(Stream stream, long length)
+        {
+            if (stream == null) throw new ArgumentNullException(nameof(stream));
+            if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+
+            uint crc = 0xFFFFFFFF;
+            var buffer = new byte[64 * 1024];
+            var remaining = length;
+            while (remaining > 0)
+            {
+                var toRead = (int)Math.Min(buffer.Length, remaining);
+                var read = stream.Read(buffer, 0, toRead);
+                if (read <= 0)
+                    throw new EndOfStreamException("Unexpected end of stream while computing CRC32.");
+
+                for (var i = 0; i < read; i++)
+                    crc = (crc >> 8) ^ _table[(crc ^ buffer[i]) & 0xFF];
+                remaining -= read;
+            }
+
+            return crc ^ 0xFFFFFFFF;
         }
 
         private static uint[] BuildTable()

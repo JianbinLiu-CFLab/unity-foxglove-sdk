@@ -92,9 +92,10 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
-            Check(writer.Contains("Unsupported", StringComparison.Ordinal)
-                  && writer.Contains("Phase 122", StringComparison.Ordinal),
-                "121-B5: writer command returns explicit Phase 122 unsupported status");
+            Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
+                  && writer.Contains("UseChunking", StringComparison.Ordinal)
+                  && writer.Contains("Unsupported", StringComparison.Ordinal),
+                "121-B5: writer command exposes Phase 122 feature mapping with explicit unsupported exits");
         }
 
         private static void VerifyHarnessOverlay()

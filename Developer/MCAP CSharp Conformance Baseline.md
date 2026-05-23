@@ -4,7 +4,7 @@
 
 PASS WITH MEASURED BASELINE.
 
-Phase 121 adds a C# runner bridge for the official `foxglove/mcap` conformance harness shape. It does not claim full official MCAP conformance, byte-identical writer parity, or replacement of the upstream SDKs.
+Phase 121 adds a C# runner bridge for the official `foxglove/mcap` conformance harness shape. Phase 122 adds measured writer option parity for direct/no-chunk, no-padding writer variants. This evidence does not claim full official MCAP conformance or replacement of the upstream SDKs.
 
 ## v1.9.1 Baseline
 
@@ -81,9 +81,9 @@ Message-less variants are skipped, matching the upstream indexed-reader runner p
 
 ### C# writer
 
-The writer runner is present but returns unsupported for all official variants in Phase 121. This is intentional. The current low-level `McapWriter` can emit MCAP records, but productized official writer option parity is Phase 122.
+The writer runner maps official feature flags to `McapWriterOptions` and supports the measured direct/no-chunk, no-padding subset. Local byte checks confirmed direct `OneMessage`, `OneMetadata-mdx-st-sum`, and `OneAttachment-ax-st-sum` outputs match the official fixture bytes.
 
-Unsupported writer variants are skips, not supported failures.
+Chunked writer byte parity and extra record padding remain skipped. Unsupported writer variants are skips, not supported failures.
 
 ## How To Run
 
@@ -111,9 +111,10 @@ If Node, Yarn, or the official clone is missing, normal validation records an ex
 
 Phase 122:
 
-- productize writer option parity;
-- map official writer flags to supported C# writer controls;
-- decide whether byte-identical writer output is a public requirement.
+- completed writer option parity for the Unity recorder API surface;
+- mapped official writer flags to supported C# writer controls;
+- proved direct/no-chunk byte-identical output for selected official fixtures;
+- left chunked byte-identical writer output and `pad` extra data as deferred work.
 
 Phase 123:
 
