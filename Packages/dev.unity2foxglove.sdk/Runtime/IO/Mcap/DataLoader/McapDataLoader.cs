@@ -20,6 +20,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapIndexedReader _reader;
         private McapDataLoaderInitialization _initialization;
         private Dictionary<ushort, McapChannel> _channelMap;
+        private Dictionary<string, List<ushort>> _topicChannelMap;
+        private HashSet<ushort> _knownChannelIds;
         private bool _disposed;
 
         /// <summary>Opens a local MCAP file and owns the file stream.</summary>
@@ -54,6 +56,7 @@ namespace Unity.FoxgloveSDK.IO
                 return _initialization;
 
             _channelMap = BuildChannelMap(_reader.Channels);
+            BuildQueryMaps(_reader.Channels, out _topicChannelMap, out _knownChannelIds);
             _initialization = new McapDataLoaderInitialization();
             AddSchemas(_initialization, _reader.Schemas);
             AddChannels(_initialization, _reader.Channels, _reader.Summary?.Statistics);
@@ -71,6 +74,8 @@ namespace Unity.FoxgloveSDK.IO
         {
             ThrowIfDisposed();
             Initialize();
+            if (!QueryCanMatch(query?.ChannelIds, query?.Topics))
+                return new List<McapDataLoaderMessage>();
 
             var messages = _reader.ReadMessages(ToReadOptions(query));
             var result = new List<McapDataLoaderMessage>(messages.Count);
@@ -86,6 +91,9 @@ namespace Unity.FoxgloveSDK.IO
             Initialize();
 
             query = query ?? new McapDataLoaderBackfillQuery();
+            if (!QueryCanMatch(query.ChannelIds, query.Topics))
+                return new List<McapDataLoaderMessage>();
+
             var messages = _reader.ReadMessages(new McapReadOptions
             {
                 StartTimeNs = 0,
@@ -136,6 +144,63 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             return map;
+        }
+
+        private static void BuildQueryMaps(
+            IReadOnlyList<McapChannel> channels,
+            out Dictionary<string, List<ushort>> topicChannelMap,
+            out HashSet<ushort> knownChannelIds)
+        {
+            topicChannelMap = new Dictionary<string, List<ushort>>(StringComparer.Ordinal);
+            knownChannelIds = new HashSet<ushort>();
+            if (channels == null)
+                return;
+
+            for (var i = 0; i < channels.Count; i++)
+            {
+                var channel = channels[i];
+                if (channel == null)
+                    continue;
+
+                knownChannelIds.Add(channel.Id);
+                var topic = channel.Topic ?? string.Empty;
+                if (!topicChannelMap.TryGetValue(topic, out var ids))
+                {
+                    ids = new List<ushort>();
+                    topicChannelMap[topic] = ids;
+                }
+
+                ids.Add(channel.Id);
+            }
+        }
+
+        private bool QueryCanMatch(List<ushort> channelIds, List<string> topics)
+        {
+            var hasChannelFilter = channelIds != null && channelIds.Count > 0;
+            var hasTopicFilter = topics != null && topics.Count > 0;
+            if (!hasChannelFilter && !hasTopicFilter)
+                return true;
+
+            if (hasChannelFilter && _knownChannelIds != null)
+            {
+                for (var i = 0; i < channelIds.Count; i++)
+                {
+                    if (_knownChannelIds.Contains(channelIds[i]))
+                        return true;
+                }
+            }
+
+            if (hasTopicFilter && _topicChannelMap != null)
+            {
+                for (var i = 0; i < topics.Count; i++)
+                {
+                    var topic = topics[i] ?? string.Empty;
+                    if (_topicChannelMap.TryGetValue(topic, out var ids) && ids.Count > 0)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         private static void AddSchemas(

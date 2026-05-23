@@ -119,6 +119,8 @@ Use the timestamp and folder name to keep the `.mcap` and `.schema` evidence bun
 
 Messages remain raw serialized payload bytes. The DataLoader surfaces FoxRun schema metadata as diagnostics, including missing, malformed, matching, and mismatching metadata, but it does not replace the Phase 114 replay blocker. A confirmed FoxRun mismatch remains diagnostic-only for local DataLoader reads while strict replay may still block.
 
+Phase 118 adds repeatable quick/full performance evidence for DataLoader initialize, raw iteration, topic/time-window filters, and backfill. The performance harness writes generated fixtures under `build/performance/fixtures/` and records DataLoader fixture/query fields in the JSON output under `build/performance/`. Treat those numbers as machine-local release evidence, not cross-machine guarantees.
+
 This is not the official Foxglove data-loader host ABI. It does not add WASM bindings, remote data loading, HTTP range serving, Remote Access Gateway support, multi-file timeline merge, or decoded typed payload views.
 
 ## 12. Common Mistakes
