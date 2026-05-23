@@ -7,6 +7,7 @@
 // (validation).
 
 using System;
+using System.IO;
 
 namespace Unity.FoxgloveSDK.Util
 {
@@ -25,10 +26,7 @@ namespace Unity.FoxgloveSDK.Util
         /// </summary>
         public static uint Compute(ReadOnlySpan<byte> data)
         {
-            uint crc = 0xFFFFFFFF;
-            foreach (var b in data)
-                crc = (crc >> 8) ^ _table[(crc ^ b) & 0xFF];
-            return crc ^ 0xFFFFFFFF;
+            return Finalize(Update(Initialize(), data));
         }
 
         /// <summary>
@@ -38,6 +36,46 @@ namespace Unity.FoxgloveSDK.Util
         {
             return Compute(new ReadOnlySpan<byte>(data));
         }
+
+        /// <summary>
+        /// Computes the CRC32 checksum of exactly <paramref name="length"/>
+        /// bytes from the stream's current position.
+        /// </summary>
+        public static uint Compute(Stream stream, long length)
+        {
+            if (stream == null) throw new ArgumentNullException(nameof(stream));
+            if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+
+            uint crc = Initialize();
+            var buffer = new byte[64 * 1024];
+            var remaining = length;
+            while (remaining > 0)
+            {
+                var toRead = (int)Math.Min(buffer.Length, remaining);
+                var read = stream.Read(buffer, 0, toRead);
+                if (read <= 0)
+                    throw new EndOfStreamException("Unexpected end of stream while computing CRC32.");
+
+                crc = Update(crc, new ReadOnlySpan<byte>(buffer, 0, read));
+                remaining -= read;
+            }
+
+            return Finalize(crc);
+        }
+
+        /// <summary>Initializes an incremental CRC32 state.</summary>
+        public static uint Initialize() => 0xFFFFFFFF;
+
+        /// <summary>Updates an incremental CRC32 state with more bytes.</summary>
+        public static uint Update(uint crc, ReadOnlySpan<byte> data)
+        {
+            foreach (var b in data)
+                crc = (crc >> 8) ^ _table[(crc ^ b) & 0xFF];
+            return crc;
+        }
+
+        /// <summary>Finalizes an incremental CRC32 state.</summary>
+        public static uint Finalize(uint crc) => crc ^ 0xFFFFFFFF;
 
         private static uint[] BuildTable()
         {

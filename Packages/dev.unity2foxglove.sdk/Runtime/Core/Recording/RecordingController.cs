@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Core
         private string _recordingPath;
         /// <summary>Compression scheme for the MCAP file (e.g. "zstd").</summary>
         private string _recordingCompression = "";
+        /// <summary>Advanced MCAP writer options for the next recorder.</summary>
+        private McapWriterOptions _writerOptions = McapWriterOptions.Normalize(null);
         /// <summary>Coordinate mode for spatial transforms (e.g. "ros" or "unity").</summary>
         private string _coordinateMode = "";
         /// <summary>Chunk size in bytes for MCAP chunk boundaries.</summary>
@@ -58,18 +60,26 @@ namespace Unity.FoxgloveSDK.Core
         /// <c>coordinateMode</c> to configure the MCAP file.</para>
         /// </summary>
         public void Enable(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
+            => Enable(filePath, new McapWriterOptions { ChunkSizeBytes = chunkSizeBytes, Compression = compression }, coordinateMode);
+
+        /// <summary>
+        /// Enable recording with advanced MCAP writer options for the next session start.
+        /// </summary>
+        public void Enable(string filePath, McapWriterOptions options, string coordinateMode = "")
         {
+            var normalized = McapWriterOptions.Normalize(options);
             _recordingEnabled = true;
             _recordingPath = filePath;
-            _recordingCompression = compression ?? "";
+            _recordingCompression = normalized.Compression;
             _coordinateMode = coordinateMode ?? "";
-            _recordingChunkSize = chunkSizeBytes > 0 ? chunkSizeBytes : McapRecorder.DefaultChunkSizeBytes;
+            _recordingChunkSize = normalized.ChunkSizeBytes;
+            _writerOptions = normalized;
         }
 
         /// <summary>Set the coordinate mode after recording was enabled.</summary>
         public void SetCoordinateMode(string mode) { _coordinateMode = mode ?? ""; }
         /// <summary>Disable recording without destroying any in-flight state.</summary>
-        public void Disable() { _recordingEnabled = false; _recordingPath = null; }
+        public void Disable() { _recordingEnabled = false; _recordingPath = null; _writerOptions = McapWriterOptions.Normalize(null); }
 
         /// <summary>
         /// Attach the recorder to a session on start.
@@ -90,7 +100,7 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 fileStream = new FileStream(_recordingPath, FileMode.Create, FileAccess.Write);
-                recorder = new McapRecorder(fileStream, _logger, _recordingChunkSize, _recordingCompression, leaveOpen: false);
+                recorder = new McapRecorder(fileStream, _logger, _writerOptions, leaveOpen: false);
                 recorder.CoordinateMode = _coordinateMode;
 
                 // Defer session attachment until snapshot and event wiring succeed.

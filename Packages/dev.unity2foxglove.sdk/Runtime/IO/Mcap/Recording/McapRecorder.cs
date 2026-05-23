@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         private readonly McapWriter _w;
         private readonly IFoxgloveLogger _log;
+        private readonly McapWriterOptions _options;
         private readonly string _compression;
         private readonly Dictionary<(string name, string enc, string hash), ushort> _sKey = new();
         private readonly Dictionary<(uint clientId, uint chId), ChannelWriteState> _clientChannelWriteState = new();
@@ -60,11 +61,20 @@ namespace Unity.FoxgloveSDK.IO
         /// Optional compression controls per-chunk compression (e.g. "zstd").
         /// </summary>
         public McapRecorder(Stream stream, IFoxgloveLogger logger = null, int chunkSizeBytes = DefaultChunkSizeBytes, string compression = "", bool leaveOpen = true)
+            : this(stream, logger, new McapWriterOptions { ChunkSizeBytes = chunkSizeBytes, Compression = compression }, leaveOpen)
         {
+        }
+
+        /// <summary>
+        /// Creates a new MCAP recorder with advanced writer options.
+        /// </summary>
+        public McapRecorder(Stream stream, IFoxgloveLogger logger, McapWriterOptions options, bool leaveOpen = true)
+        {
+            _options = McapWriterOptions.Normalize(options);
             _w = new McapWriter(stream ?? throw new ArgumentNullException(nameof(stream)), leaveOpen);
             _log = logger ?? new ConsoleLogger();
-            _chunkSz = chunkSizeBytes;
-            _compression = compression ?? "";
+            _chunkSz = _options.ChunkSizeBytes;
+            _compression = _options.Compression;
             _w.WriteMagic();
             _w.WriteHeader("", "unity-foxglove-sdk");
         }
@@ -160,6 +170,13 @@ namespace Unity.FoxgloveSDK.IO
             if (_recordingFailed || _closed) return;
             var seq = map.Seq++;
             var payloadLength = payload?.Length ?? 0;
+            if (!_options.UseChunking)
+            {
+                _w.WriteMessage(map.McapId, seq, logNs, logNs, payload);
+                TrackMessageTimes(logNs);
+                return;
+            }
+
             var contentLength = 2 + 4 + 8 + 8 + payloadLength;
             var recordLength = McapWriter.RecordHeaderLength + contentLength;
             FlushChunkBeforeLargeWriteIfNeeded(recordLength);
@@ -180,6 +197,13 @@ namespace Unity.FoxgloveSDK.IO
             if (logNs > _chunkEt) _chunkEt = logNs;
             _msgCount++;
             if (_chunkBuf.Length >= _chunkSz) FlushChunk();
+        }
+
+        private void TrackMessageTimes(ulong logNs)
+        {
+            if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
+            if (logNs > _msgEt) _msgEt = logNs;
+            _msgCount++;
         }
 
         /// <summary>
@@ -208,7 +232,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 FlushChunk();
-                var index = _w.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data);
+                var index = _w.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
                 _attachmentIdx.Add(index);
                 _attachmentCount++;
             }
@@ -237,7 +261,10 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_closed) return;
                 FlushChunk();
-                _w.WriteDataEnd();
+                var dataSectionCrc = _options.EnableDataCrcs
+                    ? _w.ComputeCrc32FromStartToCurrent()
+                    : 0;
+                _w.WriteDataEnd(dataSectionCrc);
 
                 var sumStart = (ulong)_w.Position;
 
@@ -247,65 +274,91 @@ namespace Unity.FoxgloveSDK.IO
                 var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
 
             // Schema group
-                var schemaGrpStart = 0UL;
-                foreach (var s in _schemas)
-                    summaryWriter.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
+                var schemaGrpStart = (ulong)summaryBuilder.Position;
+                if (_options.RepeatSchemas)
+                {
+                    foreach (var s in _schemas)
+                        summaryWriter.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
+                }
                 var schemaGrpLen = (ulong)summaryBuilder.Position - schemaGrpStart;
 
             // Channel group
                 var channelGrpStart = (ulong)summaryBuilder.Position;
-                foreach (var c in _channels)
-                    summaryWriter.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
+                if (_options.RepeatChannels)
+                {
+                    foreach (var c in _channels)
+                        summaryWriter.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
+                }
                 var channelGrpLen = (ulong)summaryBuilder.Position - channelGrpStart;
 
             // Statistics
                 var msgSt = _msgCount > 0 ? _msgSt : 0;
                 var msgEt = _msgCount > 0 ? _msgEt : 0;
                 var statsGrpStart = (ulong)summaryBuilder.Position;
-                summaryWriter.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, _attachmentCount, _metadataCount, (uint)_chunkCount, msgSt, msgEt,
-                    AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
+                if (_options.UseStatistics)
+                {
+                    summaryWriter.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, _attachmentCount, _metadataCount, (uint)_chunkCount, msgSt, msgEt,
+                        AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
+                }
                 var statsGrpLen = (ulong)summaryBuilder.Position - statsGrpStart;
-
-            // ChunkIndex group
-                var chunkIdxGrpStart = (ulong)summaryBuilder.Position;
-                foreach (var ci in _chunkIdx)
-                    summaryWriter.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
-                var chunkIdxGrpLen = (ulong)summaryBuilder.Position - chunkIdxGrpStart;
-
-            // AttachmentIndex group
-                var attIdxGrpStart = (ulong)summaryBuilder.Position;
-                foreach (var ai in _attachmentIdx)
-                    summaryWriter.WriteAttachmentIndex(ai);
-                var attIdxGrpLen = (ulong)summaryBuilder.Position - attIdxGrpStart;
 
             // MetadataIndex group
                 var metaIdxGrpStart = (ulong)summaryBuilder.Position;
-                foreach (var mi in _metaIdx)
-                    summaryWriter.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
+                if (_options.HasIndex(McapIndexTypes.Metadata))
+                {
+                    foreach (var mi in _metaIdx)
+                        summaryWriter.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
+                }
                 var metaIdxGrpLen = (ulong)summaryBuilder.Position - metaIdxGrpStart;
 
+            // AttachmentIndex group
+                var attIdxGrpStart = (ulong)summaryBuilder.Position;
+                if (_options.HasIndex(McapIndexTypes.Attachment))
+                {
+                    foreach (var ai in _attachmentIdx)
+                        summaryWriter.WriteAttachmentIndex(ai);
+                }
+                var attIdxGrpLen = (ulong)summaryBuilder.Position - attIdxGrpStart;
+
+            // ChunkIndex group
+                var chunkIdxGrpStart = (ulong)summaryBuilder.Position;
+                if (_options.UseChunking && _options.HasIndex(McapIndexTypes.Chunk))
+                {
+                    foreach (var ci in _chunkIdx)
+                        summaryWriter.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
+                }
+                var chunkIdxGrpLen = (ulong)summaryBuilder.Position - chunkIdxGrpStart;
+
             // SummaryOffset per group (absolute offsets = sumStart + relative start)
-                var sumOffStart = sumStart + (ulong)summaryBuilder.Position;
-                if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeSchema, sumStart + schemaGrpStart, schemaGrpLen);
-                if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChannel, sumStart + channelGrpStart, channelGrpLen);
-                if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, sumStart + statsGrpStart, statsGrpLen);
-                if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
-                if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, sumStart + attIdxGrpStart, attIdxGrpLen);
-                if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, sumStart + metaIdxGrpStart, metaIdxGrpLen);
+                var sumOffStart = 0UL;
+                if (_options.UseSummaryOffsets)
+                {
+                    sumOffStart = sumStart + (ulong)summaryBuilder.Position;
+                    if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeSchema, sumStart + schemaGrpStart, schemaGrpLen);
+                    if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChannel, sumStart + channelGrpStart, channelGrpLen);
+                    if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, sumStart + statsGrpStart, statsGrpLen);
+                    if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, sumStart + metaIdxGrpStart, metaIdxGrpLen);
+                    if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, sumStart + attIdxGrpStart, attIdxGrpLen);
+                    if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
+                }
 
                 summaryWriter.Flush();
                 var summaryData = summaryBuilder.ToArray();
+                var hasSummary = summaryData.Length > 0;
+                var footerSummaryStart = hasSummary ? sumStart : 0UL;
+                if (!hasSummary)
+                    sumOffStart = 0;
 
             // Compute summary_crc per MCAP spec: CRC32 over summary_data, then
             // continue CRC32 over footer prefix (opcode, length, sumStart, sumOffStart).
-                var footerPrefix = McapWriter.BuildFooterCrcPrefix(sumStart, sumOffStart);
+                var footerPrefix = McapWriter.BuildFooterCrcPrefix(footerSummaryStart, sumOffStart);
                 var crcInput = new byte[summaryData.Length + footerPrefix.Length];
                 Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
                 Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
-                var summaryCrc = Crc32Helper.Compute(crcInput);
+                var summaryCrc = _options.EnableCrcs ? Crc32Helper.Compute(crcInput) : 0;
 
                 _w.WriteBytes(summaryData);
-                _w.WriteFooter(sumStart, sumOffStart, summaryCrc);
+                _w.WriteFooter(footerSummaryStart, sumOffStart, summaryCrc);
                 _w.WriteMagic();
                 _w.Flush();
                 _closed = true;
@@ -346,10 +399,13 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         void FlushChunk()
         {
+            if (!_options.UseChunking) return;
             if (_chunkBuf.Length == 0) return;
             if (!_chunkBuf.TryGetBuffer(out var raw))
                 throw new InvalidOperationException("MCAP chunk buffer is not publicly visible.");
-            var rawCrc = Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count));
+            var rawCrc = _options.EnableCrcs
+                ? Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count))
+                : 0;
             var compressed = McapCompression.Compress(_compression, raw);
             var off = (ulong)_w.Position;
             _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
@@ -360,14 +416,18 @@ namespace Unity.FoxgloveSDK.IO
             foreach (var map in AllChannelWriteStates())
             {
                 if (map.Pending.Count == 0) continue;
-                var start = (ulong)_w.Position;
-                _w.WriteMessageIndex(map.McapId, map.Pending);
-                var len = (ulong)_w.Position - start;
-                mio[map.McapId] = start;
-                mioTLen += len;
+                if (_options.HasIndex(McapIndexTypes.Message))
+                {
+                    var start = (ulong)_w.Position;
+                    _w.WriteMessageIndex(map.McapId, map.Pending);
+                    var len = (ulong)_w.Position - start;
+                    mio[map.McapId] = start;
+                    mioTLen += len;
+                }
                 map.Pending.Clear();
             }
-            _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
+            if (_options.HasIndex(McapIndexTypes.Chunk))
+                _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
             _chunkCount++; _chunkSt = _chunkEt = 0;
         }
 

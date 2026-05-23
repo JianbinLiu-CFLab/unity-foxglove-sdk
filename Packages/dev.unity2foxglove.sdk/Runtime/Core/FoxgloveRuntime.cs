@@ -402,6 +402,10 @@ namespace Unity.FoxgloveSDK.Core
         public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
             => _recording.Enable(filePath, chunkSizeBytes, compression, coordinateMode);
 
+        /// <summary>Enable MCAP recording with advanced writer options for the next session start.</summary>
+        public void EnableRecording(string filePath, McapWriterOptions options, string coordinateMode = "")
+            => _recording.Enable(filePath, options, coordinateMode);
+
         /// <summary>Set the coordinate mode on the recording controller.</summary>
         public void SetRecordingCoordinateMode(string mode) => _recording.SetCoordinateMode(mode);
         /// <summary>Disable recording.</summary>

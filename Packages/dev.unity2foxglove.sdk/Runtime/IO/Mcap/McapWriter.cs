@@ -26,6 +26,8 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Current byte position in the underlying stream.</summary>
         public long Position => _stream.Position;
+        /// <summary>Whether the underlying stream supports seeking.</summary>
+        public bool CanSeek => _stream.CanSeek;
         /// <summary>MCAP magic bytes: <c>{ 0x89, M, C, A, P, 0x30, 0x0D, 0x0A }</c>.</summary>
         private static readonly byte[] MagicBytes = { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P', 0x30, 0x0D, 0x0A };
 
@@ -104,14 +106,14 @@ namespace Unity.FoxgloveSDK.IO
         public void WriteChunkIndex(ulong startTime, ulong endTime, ulong chunkOffset, ulong chunkLength, Dictionary<ushort,ulong> messageIndexOffsets, ulong messageIndexLength, string compression, ulong compressedSize, ulong uncompressedSize) { var m = new MemoryStream(); WriteU64(m, startTime); WriteU64(m, endTime); WriteU64(m, chunkOffset); WriteU64(m, chunkLength); var mioLength = (uint)((messageIndexOffsets?.Count ?? 0) * 10); WriteU32(m, mioLength); if (messageIndexOffsets != null) foreach (var (k, v) in messageIndexOffsets) { WriteU16(m, k); WriteU64(m, v); } WriteU64(m, messageIndexLength); WriteString(m, compression); WriteU64(m, compressedSize); WriteU64(m, uncompressedSize); WriteRecord(OpcodeChunkIndex, m.ToArray()); }
         /// <summary>Write a Statistics record (opcode <c>0x0B</c>).</summary>
         public void WriteStatistics(ulong messageCount, ushort schemaCount, uint channelCount, uint attachmentCount, uint metadataCount, uint chunkCount, ulong startTime, ulong endTime, Dictionary<ushort,ulong> channelMessageCounts) { var m = new MemoryStream(); WriteU64(m, messageCount); WriteU16(m, schemaCount); WriteU32(m, channelCount); WriteU32(m, attachmentCount); WriteU32(m, metadataCount); WriteU32(m, chunkCount); WriteU64(m, startTime); WriteU64(m, endTime); var cmsLength = (uint)((channelMessageCounts?.Count ?? 0) * 10); WriteU32(m, cmsLength); if (channelMessageCounts != null) foreach (var (k, v) in channelMessageCounts) { WriteU16(m, k); WriteU64(m, v); } WriteRecord(OpcodeStatistics, m.ToArray()); }
-        /// <summary>Write the Data End record (opcode <c>0x0F</c>, 4-byte LE zero CRC).</summary>
-        public void WriteDataEnd() { var m = new MemoryStream(); WriteU32(m, 0); WriteRecord(OpcodeDataEnd, m.ToArray()); }
+        /// <summary>Write the Data End record (opcode <c>0x0F</c>).</summary>
+        public void WriteDataEnd(uint dataSectionCrc = 0) { var m = new MemoryStream(); WriteU32(m, dataSectionCrc); WriteRecord(OpcodeDataEnd, m.ToArray()); }
         /// <summary>Write the Footer record (opcode <c>0x02</c>). Contains summary offsets and CRC.</summary>
         public void WriteFooter(ulong summaryStart, ulong summaryOffsetStart, uint summaryCrc) { var m = new MemoryStream(); WriteU64(m, summaryStart); WriteU64(m, summaryOffsetStart); WriteU32(m, summaryCrc); WriteRecord(OpcodeFooter, m.ToArray()); }
         /// <summary>Write a Summary Offset record (opcode <c>0x0E</c>).</summary>
         public void WriteSummaryOffset(byte groupOpcode, ulong start, ulong length) { var m = new MemoryStream(); m.WriteByte(groupOpcode); WriteU64(m, start); WriteU64(m, length); WriteRecord(OpcodeSummaryOffset, m.ToArray()); }
         /// <summary>Write an Attachment record (opcode <c>0x09</c>) and return its index for summary registration.</summary>
-        public McapAttachmentIndex WriteAttachment(ulong logTime, ulong createTime, string name, string mediaType, byte[] data)
+        public McapAttachmentIndex WriteAttachment(ulong logTime, ulong createTime, string name, string mediaType, byte[] data, bool enableCrc = true)
         {
             var off = (ulong)_stream.Position;
             var m = new MemoryStream();
@@ -122,7 +124,7 @@ namespace Unity.FoxgloveSDK.IO
             WriteU64(m, (ulong)(data?.Length ?? 0));
             if (data != null && data.Length > 0) m.Write(data, 0, data.Length);
             var content = m.ToArray();
-            var crc = Crc32Helper.Compute(content);
+            var crc = enableCrc ? Crc32Helper.Compute(content) : 0;
             var crcBytes = new byte[Crc32SizeBytes];
             crcBytes[0] = (byte)crc; crcBytes[1] = (byte)(crc >> 8); crcBytes[2] = (byte)(crc >> 16); crcBytes[3] = (byte)(crc >> 24);
             var fullContent = new byte[content.Length + Crc32SizeBytes];
@@ -156,6 +158,22 @@ namespace Unity.FoxgloveSDK.IO
         }
         /// <summary>Write raw bytes directly to the underlying stream without MCAP opcode/length framing.</summary>
         public void WriteBytes(byte[] data) { if (data != null && data.Length > 0) _stream.Write(data, 0, data.Length); }
+        /// <summary>
+        /// Compute a CRC32 of all bytes from the start of the stream through
+        /// the current position without changing the final position.
+        /// </summary>
+        public uint ComputeCrc32FromStartToCurrent()
+        {
+            if (!_stream.CanSeek)
+                throw new NotSupportedException("Data-section CRC requires a seekable MCAP output stream.");
+
+            var oldPosition = _stream.Position;
+            _stream.Flush();
+            _stream.Position = 0;
+            var crc = Crc32Helper.Compute(_stream, oldPosition);
+            _stream.Position = oldPosition;
+            return crc;
+        }
         /// <summary>Flush the underlying stream.</summary>
         public void Flush()
         {
