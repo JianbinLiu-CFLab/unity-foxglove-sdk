@@ -33,10 +33,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Validate();
 
-            var script = RepoPath("Scripts/mcap/conformance/run_phase121_conformance.ps1");
+            var script = RepoPath("Scripts/mcap/conformance/run_phase121_conformance.py");
             var result = RunProcess(
-                "powershell",
-                "-NoProfile -ExecutionPolicy Bypass -File " + Quote(script));
+                "python",
+                Quote(script));
 
             Check(result.ExitCode == 0,
                 "121-E1: phase121 conformance wrapper exits successfully");
@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHarnessOverlay()
         {
-            var script = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.ps1");
+            var script = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
             foreach (var required in new[]
             {
                 "third-party/mcap",
@@ -108,7 +108,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "phase121-conformance-report.json",
                 "externalToolingStatus",
                 "c3cab6bd3ce79199e362766daec3a4689f3a0335",
-                "Write-SkippedReport",
+                "write_skipped_report",
                 "Scripts/mcap/conformance/csharp-runners"
             })
             {
