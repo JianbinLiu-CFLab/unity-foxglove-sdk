@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildProjectDirectory)/../../../../build/McapConformance/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(BaseOutputPath)obj/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

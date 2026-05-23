@@ -316,7 +316,7 @@ Copy-DirectoryWithoutLocalState -Source $OfficialRoot -Destination $OverlayRoot
 Add-CsharpRunnerOverlay
 
 $envMap = @{
-    U2F_MCAP_CONFORMANCE_DLL = (Join-Path $RepoRoot "Packages/dev.unity2foxglove.sdk/Tests/McapConformance/bin/Release/net9.0/Unity2Foxglove.McapConformance.dll")
+    U2F_MCAP_CONFORMANCE_DLL = (Join-Path $RepoRoot "build/McapConformance/Release/net9.0/Unity2Foxglove.McapConformance.dll")
 }
 
 $install = Invoke-CommandCapture -FileName $PackageManagerCommand -Arguments (@($PackageManagerPrefix) + @("install", "--immutable")) -WorkingDirectory $OverlayRoot -TimeoutSeconds 600
