@@ -62,7 +62,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(4);
             Ensure(4);
-            var value = BitConverter.ToInt32(CopyEndianBytes(4), 0);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToInt32(_data, _offset)
+                : BitConverter.ToInt32(CopyReversedBytes(4), 0);
             _offset += 4;
             return value;
         }
@@ -72,7 +74,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(4);
             Ensure(4);
-            var value = BitConverter.ToUInt32(CopyEndianBytes(4), 0);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToUInt32(_data, _offset)
+                : BitConverter.ToUInt32(CopyReversedBytes(4), 0);
             _offset += 4;
             return value;
         }
@@ -82,7 +86,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(8);
             Ensure(8);
-            var value = BitConverter.ToInt64(CopyEndianBytes(8), 0);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToInt64(_data, _offset)
+                : BitConverter.ToInt64(CopyReversedBytes(8), 0);
             _offset += 8;
             return value;
         }
@@ -92,7 +98,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(8);
             Ensure(8);
-            var value = BitConverter.ToUInt64(CopyEndianBytes(8), 0);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToUInt64(_data, _offset)
+                : BitConverter.ToUInt64(CopyReversedBytes(8), 0);
             _offset += 8;
             return value;
         }
@@ -102,7 +110,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(4);
             Ensure(4);
-            var value = BitConverter.ToSingle(CopyEndianBytes(4), 0);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToSingle(_data, _offset)
+                : BitConverter.ToSingle(CopyReversedBytes(4), 0);
             _offset += 4;
             return value;
         }
@@ -112,7 +122,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(8);
             Ensure(8);
-            var value = BitConverter.ToDouble(CopyEndianBytes(8), 0);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToDouble(_data, _offset)
+                : BitConverter.ToDouble(CopyReversedBytes(8), 0);
             _offset += 8;
             return value;
         }
@@ -146,7 +158,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Read a float64 sequence.</summary>
         public double[] ReadFloat64Sequence()
         {
-            var length = CheckedLength(ReadUInt32(), "ROS2 CDR float64 sequence length");
+            var length = CheckedLength(ReadUInt32(), "ROS2 CDR float64 sequence length", 8);
             var value = new double[length];
             for (var i = 0; i < length; i++)
                 value[i] = ReadFloat64();
@@ -156,7 +168,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Read a uint32 sequence.</summary>
         public uint[] ReadUInt32Sequence()
         {
-            var length = CheckedLength(ReadUInt32(), "ROS2 CDR uint32 sequence length");
+            var length = CheckedLength(ReadUInt32(), "ROS2 CDR uint32 sequence length", 4);
             var value = new uint[length];
             for (var i = 0; i < length; i++)
                 value[i] = ReadUInt32();
@@ -181,11 +193,16 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             return CheckedLength(ReadUInt32(), "ROS2 CDR sequence length");
         }
 
-        private static int CheckedLength(uint value, string label)
+        private int CheckedLength(uint value, string label, int minElementByteCount = 1)
         {
             if (value > int.MaxValue)
                 throw new InvalidDataException(label + " exceeds the supported int32 range.");
-            return (int)value;
+
+            var length = (int)value;
+            if (length > 0 && minElementByteCount > 0 &&
+                (long)length * minElementByteCount > _data.Length - _offset)
+                throw new InvalidDataException(label + " exceeds the remaining CDR payload bytes.");
+            return length;
         }
 
         private void Align(int alignment)
@@ -197,12 +214,11 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             _offset += alignment - relative;
         }
 
-        private byte[] CopyEndianBytes(int length)
+        private byte[] CopyReversedBytes(int length)
         {
             var bytes = new byte[length];
             Buffer.BlockCopy(_data, _offset, bytes, 0, length);
-            if (!BitConverter.IsLittleEndian)
-                Array.Reverse(bytes);
+            Array.Reverse(bytes);
             return bytes;
         }
 

@@ -147,15 +147,25 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(threw, "123-D2: AllowLinearFallback=false preserves strict indexed behavior");
             }
 
+            using (var stream = new CountingSeekStream(new MemoryStream(direct)))
+            using (var indexed = new McapIndexedReader(stream, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests))
+            {
+                stream.ResetSeekToStartCount();
+                Check(indexed.ReadMessages().Count == 3
+                      && indexed.ReadLatestBefore(new McapReadOptions { EndTimeNs = 30 }).Count == 1
+                      && stream.SeekToStartCount == 1,
+                    "123-D3: non-index linear fallback caches one full scan across read and latest-at queries");
+            }
+
             var chunked = TempMcap(CreateTimedSample(new McapWriterOptions { ChunkSizeBytes = 96 }));
             using (var indexed = McapIndexedReader.OpenRead(chunked, McapSequentialReadLimits.UnlimitedForTests))
             {
                 var desc = indexed.ReadMessages(new McapReadOptions { Order = McapReadOrder.LogTimeDescending });
                 Check(Payloads(desc) == "thirty,twenty,ten",
-                    "123-D3: indexed reader honors descending order option");
+                    "123-D4: indexed reader honors descending order option");
                 var exclusive = indexed.ReadMessages(new McapReadOptions { EndTimeNs = 20, UseOfficialEndTimeSemantics = true });
                 Check(Payloads(exclusive) == "ten",
-                    "123-D4: indexed reader honors official exclusive end-time option");
+                    "123-D5: indexed reader honors official exclusive end-time option");
             }
         }
 
@@ -315,6 +325,44 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new Exception(name);
             _passed++;
             Console.WriteLine("[PASS] " + name);
+        }
+
+        private sealed class CountingSeekStream : Stream
+        {
+            private readonly Stream _inner;
+
+            public CountingSeekStream(Stream inner)
+            {
+                _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            }
+
+            public int SeekToStartCount { get; private set; }
+
+            public void ResetSeekToStartCount()
+            {
+                SeekToStartCount = 0;
+            }
+
+            public override bool CanRead => _inner.CanRead;
+            public override bool CanSeek => _inner.CanSeek;
+            public override bool CanWrite => _inner.CanWrite;
+            public override long Length => _inner.Length;
+            public override long Position
+            {
+                get => _inner.Position;
+                set => _inner.Position = value;
+            }
+
+            public override void Flush() => _inner.Flush();
+            public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                if (offset == 0 && origin == SeekOrigin.Begin)
+                    SeekToStartCount++;
+                return _inner.Seek(offset, origin);
+            }
+            public override void SetLength(long value) => _inner.SetLength(value);
+            public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
         }
 
         private sealed class NonSeekableReadStream : Stream

@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyFailurePolicies();
             VerifyCustomFactoryCache();
             VerifyRawIteratorPreserved();
+            VerifyBuiltInFactoryCache();
 
             Console.WriteLine($"Phase 124: {_passed} checks passed.");
         }
@@ -175,6 +176,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(loader.TryDecodeMessage(raw[0], null, out var single)
                   && single.Raw.Data.SequenceEqual(raw[0].Data),
                 "124-E2: TryDecodeMessage returns decoded wrapper while preserving raw message");
+        }
+
+        private static void VerifyBuiltInFactoryCache()
+        {
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs");
+            Check(registry.Contains("Lazy<List<IMcapMessageDecoderFactory>>", StringComparison.Ordinal)
+                  && registry.Contains("BuiltInFactories", StringComparison.Ordinal)
+                  && registry.Contains("AddRange(BuiltInFactories.Value", StringComparison.Ordinal),
+                "124-F1: built-in decoder factories are cached instead of rescanning assemblies per registry");
         }
 
         private static string CreateDecodedFixture()

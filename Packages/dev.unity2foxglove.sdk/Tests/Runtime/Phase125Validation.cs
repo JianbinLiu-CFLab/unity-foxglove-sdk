@@ -97,6 +97,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "125-B3: big-endian CDR header is rejected");
             Check(Throws<EndOfStreamException>(() => new Ros2CdrReader(new byte[] { 0, 1, 0, 0 }).ReadUInt32()),
                 "125-B4: reads beyond payload fail clearly");
+
+            var hugeSequence = new byte[] { 0, 1, 0, 0, 0xFF, 0xFF, 0xFF, 0x7F };
+            Check(Throws<InvalidDataException>(() => new Ros2CdrReader(hugeSequence).ReadSequenceLength()),
+                "125-B5: sequence lengths are bounded by remaining CDR payload bytes before allocation");
         }
 
         private static void VerifyGeneratedRegistryParity()
@@ -197,6 +201,15 @@ namespace Unity.FoxgloveSDK.Tests
                         new McapDataLoaderQuery { Topics = new List<string> { "/phase125/malformed" } },
                         new McapDecodeOptions { FailurePolicy = McapDecodeFailurePolicy.Throw }).ToList()),
                 "125-G4: Throw policy propagates typed decode failures");
+
+            var fallbackFailed = loader.CreateDecodedIterator(new McapDataLoaderQuery
+            {
+                Topics = new List<string> { "/phase125/fallback-failed" }
+            }).Single();
+            Check(fallbackFailed.Payload.Kind == McapDecodedPayloadKind.Failed
+                  && fallbackFailed.Problems.Any(problem => problem.Code == "McapDecodeFailed")
+                  && fallbackFailed.Problems.Any(problem => problem.Code == "McapRos2CdrDiagnosticFallbackFailed"),
+                "125-G5: diagnostic fallback failures are reported instead of being silently swallowed");
         }
 
         private static void VerifySourceWiring()
@@ -216,6 +229,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(generator.Contains("generate_deserializers", StringComparison.Ordinal)
                   && generator.Contains("generate_deserializer_registry", StringComparison.Ordinal),
                 "125-H3: generator owns deserializer source and registry output");
+
+            var cdrReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrReader.cs");
+            Check(!cdrReader.Contains("CopyEndianBytes", StringComparison.Ordinal)
+                  && cdrReader.Contains("BitConverter.ToDouble(_data, _offset)", StringComparison.Ordinal),
+                "125-H4: CDR primitive reads avoid per-field endian byte-array allocations on little-endian platforms");
         }
 
         private static string CreateDecodedFixture()
@@ -241,6 +259,9 @@ namespace Unity.FoxgloveSDK.Tests
 
                 recorder.AddChannel(3, "/phase125/malformed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, string.Empty);
                 recorder.WriteMessage(3, 30, new byte[] { 0, 1, 0, 0 });
+
+                recorder.AddChannel(4, "/phase125/fallback-failed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, string.Empty);
+                recorder.WriteMessage(4, 40, new byte[] { 0 });
 
                 recorder.Close();
             }

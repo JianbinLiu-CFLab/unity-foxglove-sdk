@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.IO
 {
     internal sealed class McapDecodeRegistry
     {
+        private static readonly Lazy<List<IMcapMessageDecoderFactory>> BuiltInFactories =
+            new Lazy<List<IMcapMessageDecoderFactory>>(BuildBuiltInFactories);
+
         private readonly McapDecodeOptions _options;
         private readonly Dictionary<ushort, McapSchema> _schemas;
         private readonly Dictionary<ushort, McapChannel> _channels;
@@ -79,7 +82,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (_options.FailurePolicy == McapDecodeFailurePolicy.Throw)
                     throw;
 
-                if (TryDecodeRos2CdrDiagnosticFallback(raw, out var fallback))
+                if (TryDecodeRos2CdrDiagnosticFallback(raw, out var fallback, out var fallbackException))
                 {
                     decoded.Payload = fallback;
                     decoded.Problems.Add(CreateProblem(
@@ -103,6 +106,15 @@ namespace Unity.FoxgloveSDK.IO
                     ex.Message,
                     ex,
                     McapDataLoaderProblemSeverity.Error));
+                if (fallbackException != null)
+                {
+                    decoded.Problems.Add(CreateProblem(
+                        raw,
+                        "McapRos2CdrDiagnosticFallbackFailed",
+                        fallbackException.Message,
+                        fallbackException,
+                        McapDataLoaderProblemSeverity.Warning));
+                }
                 return decoded;
             }
         }
@@ -150,17 +162,24 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             if (options.UseBuiltInDecoders)
-            {
-                factories.Add(new McapJsonMessageDecoderFactory());
-                var protobufFactory = TryCreateProtobufFactory();
-                if (protobufFactory != null)
-                    factories.Add(protobufFactory);
-                var ros2TypedFactory = TryCreateRos2CdrTypedFactory();
-                if (ros2TypedFactory != null)
-                    factories.Add(ros2TypedFactory);
-                factories.Add(new McapRos2CdrDiagnosticDecoderFactory());
-            }
+                factories.AddRange(BuiltInFactories.Value);
 
+            return factories;
+        }
+
+        private static List<IMcapMessageDecoderFactory> BuildBuiltInFactories()
+        {
+            var factories = new List<IMcapMessageDecoderFactory>
+            {
+                new McapJsonMessageDecoderFactory()
+            };
+            var protobufFactory = TryCreateProtobufFactory();
+            if (protobufFactory != null)
+                factories.Add(protobufFactory);
+            var ros2TypedFactory = TryCreateRos2CdrTypedFactory();
+            if (ros2TypedFactory != null)
+                factories.Add(ros2TypedFactory);
+            factories.Add(new McapRos2CdrDiagnosticDecoderFactory());
             return factories;
         }
 
@@ -189,9 +208,13 @@ namespace Unity.FoxgloveSDK.IO
             return Activator.CreateInstance(type) as IMcapMessageDecoderFactory;
         }
 
-        private bool TryDecodeRos2CdrDiagnosticFallback(McapDataLoaderMessage raw, out McapDecodedPayload payload)
+        private bool TryDecodeRos2CdrDiagnosticFallback(
+            McapDataLoaderMessage raw,
+            out McapDecodedPayload payload,
+            out Exception exception)
         {
             payload = null;
+            exception = null;
             _channels.TryGetValue(raw.ChannelId, out var channel);
             if (channel == null)
                 return false;
@@ -207,8 +230,9 @@ namespace Unity.FoxgloveSDK.IO
                 payload = new McapRos2CdrDiagnosticDecoder(schema?.Name ?? string.Empty).Decode(raw);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                exception = ex;
                 payload = null;
                 return false;
             }
