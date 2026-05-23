@@ -280,6 +280,12 @@ class Program
         if (argList.Contains("--phase120"))
             return RunPhase120Only();
 
+        if (argList.Contains("--phase121-conformance"))
+            return RunPhase121ConformanceOnly();
+
+        if (argList.Contains("--phase121"))
+            return RunPhase121Only();
+
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
         {
@@ -1728,6 +1734,38 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine("Phase 120B validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase121Only()
+    {
+        try
+        {
+            Phase121Validation.Validate();
+            Console.WriteLine("\nPhase 121 checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 121 validation failed: " + ex.Message);
+            Console.Error.WriteLine(ex);
+            return 1;
+        }
+    }
+
+    private static int RunPhase121ConformanceOnly()
+    {
+        try
+        {
+            Phase121Validation.ValidateConformance();
+            Console.WriteLine("\nPhase 121 conformance checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Phase 121 conformance validation failed: " + ex.Message);
             Console.Error.WriteLine(ex);
             return 1;
         }
