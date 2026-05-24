@@ -122,10 +122,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "129C-5: smoke script publishes TFMessage and PointCloud2 with default R2FU QoS");
             Check(script.Contains("new PointCloudFrame", StringComparison.Ordinal)
                   && script.Contains("new PointCloudPoint", StringComparison.Ordinal)
+                  && script.Contains("DefaultPointCount = 1000", StringComparison.Ordinal)
+                  && script.Contains("DefaultColumns = 50", StringComparison.Ordinal)
+                  && script.Contains("DefaultSpacingMeters = 0.08f", StringComparison.Ordinal)
+                  && script.Contains("DefaultWaveHeightMeters = 0.35f", StringComparison.Ordinal)
                   && script.Contains("Intensity", StringComparison.Ordinal)
+                  && script.Contains("index / (float)(count - 1)", StringComparison.Ordinal)
                   && script.Contains("Phase129PointCloud2MessageBuilder.Build", StringComparison.Ordinal)
                   && script.Contains("FrameId = FramePointCloudSensor", StringComparison.Ordinal),
-                "129C-6: smoke script builds a deterministic synthetic PointCloudFrame and publishes it in point_cloud_sensor");
+                "129C-6: smoke script builds a deterministic synthetic wave PointCloudFrame and publishes it in point_cloud_sensor");
             Check(!ContainsAny(script, new[]
                   {
                       "IPhase129PointCloudFrameSource",
@@ -256,6 +261,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("sensor_msgs/msg/PointCloud2", StringComparison.Ordinal)
                   && script.Contains("--once", StringComparison.Ordinal)
                   && script.Contains("--spin-time", StringComparison.Ordinal)
+                  && script.Contains("EXPECTED_POINT_COUNT = 1000", StringComparison.Ordinal)
+                  && script.Contains("EXPECTED_ROW_STEP = EXPECTED_POINT_COUNT * EXPECTED_POINT_STEP", StringComparison.Ordinal)
                   && script.Contains("map", StringComparison.Ordinal)
                   && script.Contains("base_link", StringComparison.Ordinal)
                   && script.Contains("point_cloud_sensor", StringComparison.Ordinal)
@@ -301,7 +308,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sampleReadme.Contains("generic", StringComparison.OrdinalIgnoreCase)
                   && sampleReadme.Contains("not vendor-specific", StringComparison.OrdinalIgnoreCase)
                   && sampleReadme.Contains("unorganized", StringComparison.OrdinalIgnoreCase)
-                  && sampleReadme.Contains("height = 1", StringComparison.Ordinal),
+                  && sampleReadme.Contains("height = 1", StringComparison.Ordinal)
+                  && sampleReadme.Contains("width = 1000", StringComparison.Ordinal),
                 "129G-3: sample README documents generic, unorganized PointCloud2 scope");
             Check(evidence.Contains("OS", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("Unity version", StringComparison.OrdinalIgnoreCase)

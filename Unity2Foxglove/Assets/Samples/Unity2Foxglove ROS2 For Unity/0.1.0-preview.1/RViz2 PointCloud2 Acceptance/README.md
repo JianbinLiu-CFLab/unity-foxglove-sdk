@@ -27,11 +27,11 @@ The sample is generic and not vendor-specific. It does not add organized clouds,
 
 The default topic is `/points` because that is the common RViz2 convention for point cloud displays. The message type is `sensor_msgs/msg/PointCloud2` because it is the ROS2 standard point cloud message RViz2 understands directly.
 
-The v1 payload is unorganized:
+The v1 payload is an animated synthetic wave with 1000 points, 50 columns, 0.08 m spacing, and 0.35 m wave height. It remains unorganized:
 
 ```text
 height = 1
-width = point count
+width = 1000
 ```
 
 ## Windows Acceptance Helper
@@ -68,5 +68,5 @@ $ rviz2 -d rviz2_phase129_pointcloud2.rviz
 
 - `/tf` and `/points` each have a publisher endpoint from `unity2foxglove_phase129_pointcloud2`.
 - `/tf` echo contains `map`, `base_link`, and `point_cloud_sensor`.
-- `/points` echo contains `frame_id: point_cloud_sensor`, `height: 1`, positive `width`, non-empty fields, and non-empty data.
+- `/points` echo contains `frame_id: point_cloud_sensor`, `height: 1`, `width: 1000`, non-empty fields, and non-empty data.
 - RViz2 shows the TF tree and receives the PointCloud2 display without persistent fixed-frame, missing-transform, stale-transform, or extrapolation errors.

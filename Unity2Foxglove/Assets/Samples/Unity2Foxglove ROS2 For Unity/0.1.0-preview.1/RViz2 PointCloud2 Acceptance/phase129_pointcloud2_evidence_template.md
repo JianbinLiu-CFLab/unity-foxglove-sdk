@@ -19,9 +19,9 @@
 - Status:
 - Published TF count:
 - Published point-cloud count:
-- Point count:
-- Point step:
-- Row step:
+- Point count (expected 1000):
+- Point step (expected 16):
+- Row step (expected 16000):
 - Last error:
 
 ## ROS2 CLI

@@ -34,6 +34,9 @@ TF_TOPIC = "/tf"
 POINTS_TOPIC = "/points"
 TF_MSG_TYPE = "tf2_msgs/msg/TFMessage"
 POINTS_MSG_TYPE = "sensor_msgs/msg/PointCloud2"
+EXPECTED_POINT_COUNT = 1000
+EXPECTED_POINT_STEP = 16
+EXPECTED_ROW_STEP = EXPECTED_POINT_COUNT * EXPECTED_POINT_STEP
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -334,6 +337,13 @@ def validate_pointcloud2_echo(output: str) -> None:
     width_match = re.search(r"width:\s*([1-9][0-9]*)", output)
     if not width_match:
         raise RuntimeError(f"PointCloud2 echo did not contain a positive width.\n{output}")
+    if int(width_match.group(1)) != EXPECTED_POINT_COUNT:
+        raise RuntimeError(f"PointCloud2 echo width was not {EXPECTED_POINT_COUNT}.\n{output}")
+
+    for label, expected in (("point_step", EXPECTED_POINT_STEP), ("row_step", EXPECTED_ROW_STEP)):
+        match = re.search(rf"{label}:\s*([1-9][0-9]*)", output)
+        if not match or int(match.group(1)) != expected:
+            raise RuntimeError(f"PointCloud2 echo {label} was not {expected}.\n{output}")
 
     if "name: x" not in output or "name: y" not in output or "name: z" not in output:
         raise RuntimeError(f"PointCloud2 echo did not contain x/y/z fields.\n{output}")

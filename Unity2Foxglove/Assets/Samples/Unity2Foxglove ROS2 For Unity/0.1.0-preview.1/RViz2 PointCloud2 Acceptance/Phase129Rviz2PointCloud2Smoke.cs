@@ -25,7 +25,11 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     private const string FrameBaseLink = "base_link";
     private const string FramePointCloudSensor = "point_cloud_sensor";
     private const float DefaultPublishIntervalSeconds = 0.5f;
-    private const int GridHalfExtent = 5;
+    private const int DefaultPointCount = 1000;
+    private const int DefaultColumns = 50;
+    private const float DefaultSpacingMeters = 0.08f;
+    private const float DefaultWaveHeightMeters = 0.35f;
+    private const float DefaultAnimationSpeed = 1f;
 
     [Header("Publish")]
     [SerializeField, Min(0.1f)] private float _publishIntervalSeconds = DefaultPublishIntervalSeconds;
@@ -148,20 +152,25 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             FrameId = FramePointCloudSensor
         };
 
-        var phase = Time.unscaledTime * 0.7f;
-        for (var x = -GridHalfExtent; x <= GridHalfExtent; x++)
+        var count = DefaultPointCount;
+        var columns = DefaultColumns;
+        var rows = Mathf.CeilToInt(count / (float)columns);
+        var xOrigin = (columns - 1) * 0.5f;
+        var yOrigin = (rows - 1) * 0.5f;
+        var phase = Time.unscaledTime * DefaultAnimationSpeed;
+
+        for (var index = 0; index < count; index++)
         {
-            for (var y = -GridHalfExtent; y <= GridHalfExtent; y++)
+            var column = index % columns;
+            var row = index / columns;
+            var xf = (column - xOrigin) * DefaultSpacingMeters;
+            var yf = (row - yOrigin) * DefaultSpacingMeters;
+            var zf = Mathf.Sin((column * 0.37f) + (row * 0.19f) + phase) * DefaultWaveHeightMeters;
+            var point = new PointCloudPoint(xf, yf, zf)
             {
-                var xf = x * 0.18f;
-                var yf = y * 0.18f;
-                var zf = 0.15f + (0.04f * Mathf.Sin(phase + (x * 0.35f) + (y * 0.2f)));
-                var point = new PointCloudPoint(xf, yf, zf)
-                {
-                    Intensity = Mathf.Clamp01((x + GridHalfExtent) / (float)(GridHalfExtent * 2))
-                };
-                frame.Points.Add(point);
-            }
+                Intensity = count == 1 ? 1f : index / (float)(count - 1)
+            };
+            frame.Points.Add(point);
         }
 
         return frame;
