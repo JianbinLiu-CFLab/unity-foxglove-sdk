@@ -3,7 +3,7 @@
 This notice describes the local runtime artifact candidate:
 
 ```text
-Ros2ForUnity_Jazzy_standalone_windows10.zip
+Ros2ForUnity_jazzy_standalone_windows_x86_64.zip
 ```
 
 The artifact is a candidate input for a future Unity runtime package. It is not published by this adapter package, it is not committed to git, and it is not a completed legal audit.
@@ -17,7 +17,7 @@ The artifact is a candidate input for a future Unity runtime package. It is not 
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936` |
+| SHA-256 | `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188` |
 | Inventory | `Compliance/r2fu-jazzy-win64-runtime-inventory.json` |
 
 ## Attribution Boundary

@@ -8,14 +8,14 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 
 | Field | Value |
 |---|---|
-| Artifact | `Ros2ForUnity_Jazzy_standalone_windows10.zip` |
+| Artifact | `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip` |
 | Runtime id | `r2fu-jazzy-win64` |
 | ROS distro | `jazzy` |
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936` |
-| Inventory file count | `1045` |
+| SHA-256 | `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188` |
+| Inventory file count | `1044` |
 
 ## Known Upstream Components
 

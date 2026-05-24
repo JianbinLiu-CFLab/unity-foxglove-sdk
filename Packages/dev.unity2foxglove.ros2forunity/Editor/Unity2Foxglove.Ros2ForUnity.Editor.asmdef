@@ -1,0 +1,16 @@
+{
+  "name": "Unity2Foxglove.Ros2ForUnity.Editor",
+  "rootNamespace": "Unity2Foxglove.Ros2ForUnity.Editor",
+  "references": [],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

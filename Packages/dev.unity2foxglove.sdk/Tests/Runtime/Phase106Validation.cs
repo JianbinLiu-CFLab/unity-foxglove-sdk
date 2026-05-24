@@ -100,6 +100,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(text.Contains("CreateSubscription<std_msgs.msg.String>", StringComparison.Ordinal)
                   && text.Contains("\"" + InTopic + "\"", StringComparison.Ordinal),
                 "106C-7: acceptance subscriber uses default QoS");
+            var subscriptionIndex = text.IndexOf("CreateSubscription<std_msgs.msg.String>", StringComparison.Ordinal);
+            var publisherIndex = text.IndexOf("CreatePublisher<std_msgs.msg.String>", StringComparison.Ordinal);
+            Check(subscriptionIndex >= 0 && publisherIndex >= 0 && subscriptionIndex < publisherIndex,
+                "106C-7a: acceptance creates subscription before publisher so R2FU/Jazzy exposes both graph endpoints");
             Check(!text.Contains("QualityOfServiceProfile", StringComparison.Ordinal),
                 "106C-8: acceptance component does not construct custom QoS");
             Check(!text.Contains("SpinOnce", StringComparison.Ordinal),

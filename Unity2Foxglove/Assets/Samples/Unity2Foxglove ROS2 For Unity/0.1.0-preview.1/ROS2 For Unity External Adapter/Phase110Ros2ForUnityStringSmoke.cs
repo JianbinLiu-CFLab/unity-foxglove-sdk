@@ -197,18 +197,18 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         if (_directRos2Node == null)
             _directRos2Node = _directRos2Unity.CreateNode(NormalizeTopic(_nodeName, NodeName));
 
-        if (_enablePublisher && _directPublisher == null)
-        {
-            _directPublisher =
-                _directRos2Node.CreatePublisher<std_msgs.msg.String>(NormalizeTopic(_outTopic, OutTopic));
-        }
-
         if (_enableSubscription && _directSubscription == null)
         {
             _directSubscription =
                 _directRos2Node.CreateSubscription<std_msgs.msg.String>(
                     NormalizeTopic(_inTopic, InTopic),
                     QueueDirectStringReceived);
+        }
+
+        if (_enablePublisher && _directPublisher == null)
+        {
+            _directPublisher =
+                _directRos2Node.CreatePublisher<std_msgs.msg.String>(NormalizeTopic(_outTopic, OutTopic));
         }
 
         _statusMessage = "Direct ROS2 For Unity endpoints ready.";
@@ -330,12 +330,12 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         if (_node == null)
             _node = _context.CreateNode(NormalizeTopic(_nodeName, NodeName));
 
-        if (_enablePublisher && _publisher == null)
-            _publisher = _node.CreatePublisher<std_msgs.msg.String>(NormalizeTopic(_outTopic, OutTopic));
         if (_enableSubscription && _subscription == null)
             _subscription = _node.CreateSubscription<std_msgs.msg.String>(
                 NormalizeTopic(_inTopic, InTopic),
                 OnStringReceived);
+        if (_enablePublisher && _publisher == null)
+            _publisher = _node.CreatePublisher<std_msgs.msg.String>(NormalizeTopic(_outTopic, OutTopic));
 
         _statusMessage = "ROS2 For Unity string smoke ready.";
         _lastError = string.Empty;

@@ -23,7 +23,7 @@ This optional package is reserved for users who later want Unity to participate 
 ```text
 bundleStatus: not_bundled
 adapterStatus: external_assets_sample
-recommendedRuntimeCandidate: Ros2ForUnity_Jazzy_standalone_windows10.zip
+recommendedRuntimeCandidate: Ros2ForUnity_jazzy_standalone_windows_x86_64.zip
 runtimePackage: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 legacyRuntimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
 ```

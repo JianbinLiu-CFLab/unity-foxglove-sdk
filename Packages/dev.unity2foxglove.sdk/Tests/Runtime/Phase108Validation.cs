@@ -145,10 +145,15 @@ namespace Unity.FoxgloveSDK.Tests
                         SearchOption.AllDirectories)
                     .Where(HasTextExtension)
                     .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
+                    .OrderBy(path => path, StringComparer.Ordinal)
                     .ToList()
                 : new List<string>();
-            Check(editorFiles.Count == 1
-                  && editorFiles[0] == OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
+            var expectedEditorFiles = new[]
+            {
+                OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
+                OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
+            };
+            Check(editorFiles.SequenceEqual(expectedEditorFiles),
                 "108-C4: optional package Editor surface is limited to runtime define management");
         }
 

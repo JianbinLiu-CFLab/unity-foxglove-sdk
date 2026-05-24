@@ -445,7 +445,7 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestReplayHandlerNoAccumulate()
         {
             int count = 0;
-            var rt = new FoxgloveRuntime();
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), new SystemClock(), new DefaultSchemaRegistry());
             rt.OnReplayMessage += (t, d) => count++;
             rt.Start("test", "127.0.0.1", 9877);
             rt.Stop();

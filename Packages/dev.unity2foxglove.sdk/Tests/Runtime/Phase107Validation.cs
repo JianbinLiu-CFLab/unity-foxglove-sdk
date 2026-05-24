@@ -20,6 +20,8 @@ namespace Unity.FoxgloveSDK.Tests
         private const string CorePackageJson = "Packages/dev.unity2foxglove.sdk/package.json";
         private const string Manifest = OptionalPackage + "/Compliance/ros2-for-unity-adoption-manifest.json";
         private const string OptionalPackageValidator = "Scripts/release/validate_ros2forunity_package.py";
+        private const string JazzyArtifactName = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip";
+        private const string JazzyArtifactSha256 = "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188";
 
         private static int _passed;
 
@@ -123,8 +125,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && (string)currentRuntime["supportLevel"] == "Recommended"
                   && (string)currentRuntime["distributionLevel"] == "BundleCandidate",
                 "107-B5: manifest records Jazzy runtime package candidate");
-            Check((string)currentRuntime["artifact"] == "Ros2ForUnity_Jazzy_standalone_windows10.zip"
-                  && (string)currentRuntime["artifactSha256"] == "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+            Check((string)currentRuntime["artifact"] == JazzyArtifactName
+                  && (string)currentRuntime["artifactSha256"] == JazzyArtifactSha256,
                 "107-B6: manifest records Jazzy runtime artifact identity");
 
             var legacyRuntime = (JObject)manifest["legacyRuntime"]!;

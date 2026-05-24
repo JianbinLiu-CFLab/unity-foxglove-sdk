@@ -25,6 +25,8 @@ namespace ROS2
 /// </summary>
 public class DotnetTimeSource : ITimeSource
 {
+    private static readonly DateTime UnixEpoch =
+        new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     private readonly double maxUnsyncedSeconds = 10;
 
     private Stopwatch stopwatch = new Stopwatch();
@@ -33,17 +35,15 @@ public class DotnetTimeSource : ITimeSource
 
     private double systemTimeIntervalStart = 0;
 
-    private double stopwatchStartTimeStamp;
-
     private double TotalSystemTimeSeconds()
     {
-        return TimeSpan.FromTicks(DateTime.UtcNow.Ticks).TotalSeconds;
+        return (DateTime.UtcNow - UnixEpoch).TotalSeconds;
     }
 
     private void UpdateSystemTime()
     {
         systemTimeIntervalStart = TotalSystemTimeSeconds();
-        stopwatchStartTimeStamp = Stopwatch.GetTimestamp();
+        stopwatch.Restart();
     }
 
     public DotnetTimeSource()
@@ -55,8 +55,7 @@ public class DotnetTimeSource : ITimeSource
     {
         lock(mutex) // Threading
         {
-            double endTimestamp = Stopwatch.GetTimestamp();
-            var durationInSeconds = (endTimestamp - stopwatchStartTimeStamp) / Stopwatch.Frequency;
+            var durationInSeconds = stopwatch.Elapsed.TotalSeconds;
             double timeOffset = 0;
             if (durationInSeconds >= maxUnsyncedSeconds)
             {   // acquire DateTime to sync

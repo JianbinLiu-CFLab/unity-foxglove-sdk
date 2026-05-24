@@ -11,7 +11,7 @@ This package does not bundle the ROS2 For Unity runtime asset, generated message
 - **License**: Apache-2.0
 - **Copied license**: `Upstream/LICENSE.AL2`
 - **Historical upstream release evidence**: `Ros2ForUnity_humble_standalone_windows11.zip`, version `1.3.0`
-- **Current runtime package candidate**: `Ros2ForUnity_Jazzy_standalone_windows10.zip`, produced by the local Jazzy rebuild path
+- **Current runtime package candidate**: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`, produced by the local Jazzy rebuild path
 - **Runtime artifact inventory**: `Compliance/r2fu-jazzy-win64-runtime-inventory.json`
 - **Runtime artifact notices**: `Compliance/r2fu-jazzy-win64-runtime-notices.md`
 - **Bundle status**: not bundled

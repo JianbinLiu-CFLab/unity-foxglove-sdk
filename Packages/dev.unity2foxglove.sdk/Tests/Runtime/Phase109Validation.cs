@@ -134,6 +134,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(text.Contains(Define, StringComparison.Ordinal)
                   && AllR2fuReferencesAreGuarded(text),
                 "109-D6: smoke component guards R2FU references behind the scripting define");
+            var subscriptionIndex = text.IndexOf("CreateSubscription<std_msgs.msg.String>", StringComparison.Ordinal);
+            var publisherIndex = text.IndexOf("CreatePublisher<std_msgs.msg.String>", StringComparison.Ordinal);
+            Check(subscriptionIndex >= 0 && publisherIndex >= 0 && subscriptionIndex < publisherIndex,
+                "109-D7: smoke component creates subscription before publisher so R2FU/Jazzy exposes both graph endpoints");
         }
 
         private static void VerifyPackageBoundaries()

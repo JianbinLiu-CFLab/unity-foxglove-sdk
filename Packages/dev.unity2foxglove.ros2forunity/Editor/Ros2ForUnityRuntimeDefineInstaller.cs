@@ -26,6 +26,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             EditorApplication.delayCall += ReconcileCompileSymbol;
         }
 
+        public static void ReconcileCompileSymbolForBatch()
+        {
+            ReconcileCompileSymbol();
+            AssetDatabase.SaveAssets();
+            EditorApplication.Exit(0);
+        }
+
         private static void ReconcileCompileSymbol()
         {
             var runtimeInstalled = IsRuntimePackageInstalled();
@@ -56,7 +63,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static bool IsRuntimePackageInstalled()
         {
-            var manifestPath = Path.Combine(Directory.GetCurrentDirectory(), "Packages", "manifest.json");
+            var assetsDirectory = new DirectoryInfo(Application.dataPath);
+            var projectDirectory = assetsDirectory.Parent;
+            if (projectDirectory == null)
+                return false;
+
+            var manifestPath = Path.Combine(projectDirectory.FullName, "Packages", "manifest.json");
             if (!File.Exists(manifestPath))
                 return false;
 

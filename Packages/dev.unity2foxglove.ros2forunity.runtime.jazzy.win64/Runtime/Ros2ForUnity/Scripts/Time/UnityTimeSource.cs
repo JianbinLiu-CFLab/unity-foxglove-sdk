@@ -1,5 +1,4 @@
 // Copyright 2022 Robotec.ai.
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,18 +26,35 @@ namespace ROS2
 /// </summary>
 public class UnityTimeSource : ITimeSource
 {
-  private Thread mainThread;
+  private readonly object mutex = new object();
+  private int mainThreadId;
   private double lastReadingSecs;
 
   public UnityTimeSource()
   {
-    mainThread = Thread.CurrentThread;
+    mainThreadId = Thread.CurrentThread.ManagedThreadId;
+    lastReadingSecs = Time.timeAsDouble;
   }
 
   public void GetTime(out int seconds, out uint nanoseconds)
   {
-    lastReadingSecs = mainThread.Equals(Thread.CurrentThread) ? Time.timeAsDouble : lastReadingSecs;
-    TimeUtils.TimeFromTotalSeconds(lastReadingSecs, out seconds, out nanoseconds);
+    double reading;
+    if (mainThreadId == Thread.CurrentThread.ManagedThreadId)
+    {
+      reading = Time.timeAsDouble;
+      lock (mutex)
+      {
+        lastReadingSecs = reading;
+      }
+    }
+    else
+    {
+      lock (mutex)
+      {
+        reading = lastReadingSecs;
+      }
+    }
+    TimeUtils.TimeFromTotalSeconds(reading, out seconds, out nanoseconds);
   }
 }
 

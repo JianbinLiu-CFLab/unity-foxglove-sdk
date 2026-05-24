@@ -4,7 +4,7 @@
 #
 # Purpose: Build the ROS2 For Unity Jazzy Win64 runtime Unity package from a vetted artifact.
 # Usage: python Scripts/release/build_r2fu_runtime_package.py
-# Inputs: build/dist/Ros2ForUnity_Jazzy_standalone_windows10.zip and compliance inventory.
+# Inputs: build/dist/Ros2ForUnity_jazzy_standalone_windows_x86_64.zip and compliance inventory.
 # Outputs: Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64 package directory.
 
 """Build the ROS2 For Unity Jazzy Win64 runtime package prototype."""
@@ -30,10 +30,10 @@ EXIT_FAILURE = 1
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-jazzy-win64"
-ARTIFACT_NAME = "Ros2ForUnity_Jazzy_standalone_windows10.zip"
-ARTIFACT_SHA256 = "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936"
-ARTIFACT_SIZE = 16858288
-INVENTORY_FILE_COUNT = 1045
+ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
+ARTIFACT_SHA256 = "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188"
+ARTIFACT_SIZE = 16686195
+INVENTORY_FILE_COUNT = 1044
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "build" / "dist" / ARTIFACT_NAME
@@ -293,7 +293,7 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
     overlays: dict[str, str] = {}
     for path in scripts.rglob("*.cs"):
         text = path.read_text(encoding="utf-8", errors="replace")
-        if LOCAL_PATCH_MARKER in text or MODIFICATIONS_COPYRIGHT in text:
+        if LOCAL_PATCH_MARKER in text:
             overlays[path.relative_to(package).as_posix()] = text
     return overlays
 
@@ -481,8 +481,8 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - Build type: standalone
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-jazzy-win64`
-- Artifact source: `Ros2ForUnity_Jazzy_standalone_windows10.zip`
-- SHA-256: `ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936`
+- Artifact source: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`
+- SHA-256: `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
 
@@ -517,13 +517,13 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 
 | Field | Value |
 |---|---|
-| Artifact | `Ros2ForUnity_Jazzy_standalone_windows10.zip` |
+| Artifact | `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip` |
 | Runtime id | `r2fu-jazzy-win64` |
 | ROS distro | `jazzy` |
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936` |
+| SHA-256 | `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188` |
 | Inventory file count | `{file_count}` |
 
 ## Known Upstream Components
@@ -601,6 +601,11 @@ def patch_ros2_for_unity(package: Path) -> None:
             '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n',
             '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n' + PACKAGE_CONSTANTS_BLOCK,
         )
+    text = text.replace(
+        "// Modifications Copyright (c) 2026 Jianbin Liu.\n",
+        "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n",
+        1,
+    )
     source.write_text(text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK), encoding="utf-8")
 
 

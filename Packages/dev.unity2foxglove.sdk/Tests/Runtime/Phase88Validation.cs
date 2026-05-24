@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Scripts/smoke/phase88_draco_evidence_template.md");
             Check(!string.IsNullOrEmpty(source),
                 "88D-1: tracked Phase88 evidence template exists");
-            Check(source.Contains("Developer/50 Phase88 Compressed PointCloud Draco Evidence Gate.md")
+            Check(source.Contains("Developer/51 Phase88 Compressed PointCloud Draco Evidence Gate.md")
                   && source.Contains("Final Verdict")
                   && source.Contains("GREEN")
                   && source.Contains("YELLOW")
