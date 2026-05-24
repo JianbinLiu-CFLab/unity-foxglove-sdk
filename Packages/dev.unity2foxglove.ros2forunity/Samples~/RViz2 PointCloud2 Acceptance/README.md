@@ -36,12 +36,19 @@ width = 1000
 
 ## Windows Acceptance Helper
 
-Run Unity first, then execute:
+Run Unity first, then execute this canonical command from the repository root:
+
+```text
+python Scripts\smoke\phase129_pointcloud2_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz" --launch-rviz
+```
+
+The same command split across lines:
 
 ```powershell
 python Scripts\smoke\phase129_pointcloud2_acceptance.py `
   --ros2-root C:\ros2_jazzy\ros2-windows `
-  --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz"
+  --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz" `
+  --launch-rviz
 ```
 
 The helper uses:
@@ -53,7 +60,7 @@ The helper uses:
 It checks the `unity2foxglove_phase129_pointcloud2` node, publisher endpoints for `/tf` and `/points`, one TF echo, and one PointCloud2 echo. Add `--launch-rviz` to open RViz2 with the included config after the CLI checks pass. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting.
 Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for the canonical same-machine acceptance path unless you are deliberately debugging discovery behavior.
 
-When `--launch-rviz` is used, the helper launches direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces.
+When `--launch-rviz` is used, the helper launches direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces. RViz2 can still open slowly on Windows during cold starts, Defender scanning, or concurrent ROS2/colcon builds; the helper's `GREEN` line proves the ROS2 `/tf` and `/points` data path before the manual RViz2 visual check.
 
 ## Secondary Manual Commands
 
