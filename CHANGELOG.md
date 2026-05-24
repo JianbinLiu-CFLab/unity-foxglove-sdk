@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.9.3 - 2026-05-24
+
+### Added
+
+- Real-project ROS2 For Unity integration validation for the rebuilt Jazzy Windows x64 runtime package.
+- Manual Unity interaction acceptance for ROS2 string publish/subscribe through both the facade component path and direct runtime path.
+- Python-based external ROS2 smoke helper for Windows Jazzy graph checks without interactive PowerShell command composition.
+- Architecture coupling and repository-boundary evidence for keeping planned refactors organized by high cohesion and low coupling.
+
+### Changed
+
+- The optional ROS2 For Unity runtime package was refreshed from newly rebuilt `ros2-for-unity` and `ros2cs` artifacts.
+- Runtime integration docs now distinguish package runtime loading from direct `Assets/Ros2ForUnity` imports, with package-mode evidence kept explicit.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.9.3.
+
+### Verified
+
+- Runtime validation suite passed.
+- Release package validation passed.
+- Version synchronization dry-run reported all 1.9.3 references aligned.
+- Rebuilt ROS2 For Unity artifact hash was checked before integration: `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188`.
+- Automated and manual Unity acceptance confirmed external ROS2 graph topic discovery, Unity-to-ROS2 echo, and ROS2-to-Unity inbound string delivery.
+
 ## 1.9.2 - 2026-05-24
 
 ### Added

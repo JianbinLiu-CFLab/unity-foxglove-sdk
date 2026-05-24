@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
-[![Release](https://img.shields.io/badge/release-v1.9.2-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
+[![Release](https://img.shields.io/badge/release-v1.9.3-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20112833.svg)](https://doi.org/10.5281/zenodo.20112833)
 [![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
 [![Docs Check](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml)
@@ -44,7 +44,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 
 ### 1.1.4 Cross-Platform Data Bridge
 
-- A pure C# WebSocket server for Unity Editor and Standalone Player. Windows is verified for v1.9.2; macOS/Linux are intended targets but not yet verified.
+- A pure C# WebSocket server for Unity Editor and Standalone Player. Windows is verified for v1.9.3; macOS/Linux are intended targets but not yet verified.
 - No ROS installation, no Python bridge process, no native dependencies required.
 - Same code path in Editor, Standalone Player, and IL2CPP builds.
 
@@ -201,6 +201,7 @@ Release and compliance documents:
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [v1.9.3 release notes](docs/releases/RELEASE_NOTES_v1.9.3.md)
 - [v1.9.2 release notes](docs/releases/RELEASE_NOTES_v1.9.2.md)
 - [v1.9.1 release notes](docs/releases/RELEASE_NOTES_v1.9.1.md)
 - [v1.9.0 release notes](docs/releases/RELEASE_NOTES_v1.9.0.md)
