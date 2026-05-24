@@ -44,6 +44,15 @@ The helper uses:
 ```
 
 It checks the `unity2foxglove_phase128_rviz2` node, publisher endpoints for `/tf` and `/scan`, one TF echo, and one LaserScan echo. Add `--launch-rviz` to open RViz2 with the included config after the CLI checks pass. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting.
+Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for the canonical same-machine acceptance path unless you are deliberately debugging discovery behavior.
+
+To launch only RViz2 after Unity is already publishing, use the Python launcher:
+
+```text
+python Scripts\smoke\launch_phase128_rviz2.py
+```
+
+The launcher uses direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces.
 
 ## Secondary Manual Commands
 
@@ -54,7 +63,7 @@ $ ros2 topic info -v /tf
 $ ros2 topic info -v /scan
 $ ros2 topic echo --once /tf tf2_msgs/msg/TFMessage
 $ ros2 topic echo --once /scan sensor_msgs/msg/LaserScan
-$ rviz2 -d rviz2_phase128_tf_laserscan.rviz
+$ python Scripts\smoke\launch_phase128_rviz2.py
 ```
 
 ## PASS Criteria

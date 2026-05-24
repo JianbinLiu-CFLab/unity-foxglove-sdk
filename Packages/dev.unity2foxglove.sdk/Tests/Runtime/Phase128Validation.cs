@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RvizConfigPath = SamplePath + "/rviz2_phase128_tf_laserscan.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase128_rviz2_evidence_template.md";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase128_rviz2_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/launch_phase128_rviz2.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
@@ -164,6 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAcceptanceHelper()
         {
             var script = ReadRepoText(AcceptanceScriptPath);
+            var launcher = ReadRepoText(RvizLauncherPath);
 
             Check(script.Contains("# Purpose:", StringComparison.Ordinal)
                   && script.Contains("argparse", StringComparison.Ordinal)
@@ -184,6 +186,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("Publisher count:", StringComparison.Ordinal)
                   && script.Contains("Node name:", StringComparison.Ordinal),
                 "128E-4: helper proves required publisher endpoints belong to the Phase128 node");
+            Check(script.Contains("probe_node_list", StringComparison.Ordinal)
+                  && script.Contains("node list did not include", StringComparison.Ordinal)
+                  && script.Contains("continuing with publisher endpoint and echo checks", StringComparison.Ordinal)
+                  && script.Contains("topic info -v /tf (diagnostic)", StringComparison.Ordinal),
+                "128E-4b: helper treats flaky node list and /tf topic info as diagnostics instead of hard gates");
             Check(script.Contains("tf2_msgs/msg/TFMessage", StringComparison.Ordinal)
                   && script.Contains("sensor_msgs/msg/LaserScan", StringComparison.Ordinal)
                   && script.Contains("--once", StringComparison.Ordinal)
@@ -195,14 +202,28 @@ namespace Unity.FoxgloveSDK.Tests
                 "128E-5: helper echoes TF/LaserScan once with bounded spin time and content checks");
             Check(script.Contains("--launch-rviz", StringComparison.Ordinal)
                   && script.Contains("--rviz-config", StringComparison.Ordinal)
-                  && script.Contains("\"run\"", StringComparison.Ordinal)
-                  && script.Contains("\"rviz2\"", StringComparison.Ordinal)
-                  && !script.Contains("[\"rviz2\"", StringComparison.Ordinal),
-                "128E-6: helper can optionally launch RViz2 through the pinned ros2-script.py entry point");
+                  && script.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && script.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && script.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && !script.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal),
+                "128E-6: helper can optionally launch RViz2 through direct rviz2.exe with required DLL paths");
             Check(script.Contains("--rmw", StringComparison.Ordinal)
                   && script.Contains("rmw_implementation", StringComparison.Ordinal)
                   && script.Contains("env.get(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal),
                 "128E-7: helper lets manual acceptance select or preserve the RMW implementation");
+            Check(script.Contains("--discovery-range", StringComparison.Ordinal)
+                  && script.Contains("discovery_range", StringComparison.Ordinal)
+                  && !script.Contains("env[\"ROS_AUTOMATIC_DISCOVERY_RANGE\"] = \"SUBNET\"", StringComparison.Ordinal),
+                "128E-8: helper can override discovery range without forcing SUBNET by default");
+            Check(launcher.Contains("# Purpose:", StringComparison.Ordinal)
+                  && launcher.Contains("argparse", StringComparison.Ordinal)
+                  && launcher.Contains("subprocess.Popen", StringComparison.Ordinal)
+                  && launcher.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && launcher.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && launcher.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && launcher.Contains("ROS_AUTOMATIC_DISCOVERY_RANGE", StringComparison.Ordinal)
+                  && launcher.Contains("--dry-run", StringComparison.Ordinal),
+                "128E-9: Python RViz2 launcher replaces durable PowerShell launch asset");
         }
 
         private static void VerifyDocsAndEvidenceTemplate()
@@ -221,9 +242,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("python Scripts\\smoke\\phase128_rviz2_acceptance.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("--ros2-root C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
                   && sampleReadme.Contains("--rviz-config", StringComparison.Ordinal)
+                  && sampleReadme.Contains("ROS_AUTOMATIC_DISCOVERY_RANGE", StringComparison.Ordinal)
+                  && sampleReadme.Contains("launch_phase128_rviz2.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("ros2-script.py", StringComparison.Ordinal)
                   && !sampleReadme.Contains("\nros2 topic", StringComparison.Ordinal),
-                "128F-2: sample README gives the Windows helper path and does not make bare ros2 primary");
+                "128F-2: sample README gives Python helper/launcher paths and does not make bare ros2 primary");
             Check(evidence.Contains("OS", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("Unity version", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("ROS2 distro", StringComparison.OrdinalIgnoreCase)

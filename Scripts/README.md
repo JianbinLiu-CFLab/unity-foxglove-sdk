@@ -2,6 +2,13 @@
 
 Project-level helper scripts. Scripts under this directory are Python entry points so they can run on Windows, Ubuntu/Linux, and macOS without requiring PowerShell. All paths are resolved relative to each script location or the workspace root; no hardcoded absolute paths are required.
 
+PowerShell boundary:
+
+- Do not add new project-owned `.ps1` files under `Scripts/`.
+- Use Python for durable project automation and manual acceptance helpers.
+- PowerShell snippets may be used for one-off local debugging, but they are not repo assets or canonical workflows.
+- Python orchestrators may call upstream/vendor PowerShell scripts only when the upstream toolchain requires them.
+
 Directory layout:
 
 ```text

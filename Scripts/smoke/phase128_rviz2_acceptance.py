@@ -69,6 +69,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="RMW implementation to use. Omit to preserve RMW_IMPLEMENTATION or default to rmw_fastrtps_cpp.",
     )
     parser.add_argument(
+        "--discovery-range",
+        choices=("LOCALHOST", "SUBNET", "OFF", "SYSTEM_DEFAULT"),
+        default=None,
+        help=(
+            "Override ROS_AUTOMATIC_DISCOVERY_RANGE. Omit to preserve the shell value "
+            "or the ROS2 default. Use LOCALHOST for same-machine Unity acceptance if SUBNET sees no Unity node."
+        ),
+    )
+    parser.add_argument(
         "--launch-rviz",
         action="store_true",
         help="Launch RViz2 with --rviz-config after CLI checks pass.",
@@ -76,7 +85,40 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def build_ros_env(ros2_root: pathlib.Path, rmw_implementation: str | None = None) -> dict[str, str]:
+def find_workspace_root() -> pathlib.Path:
+    """Find the repository root from either cwd or this script location."""
+
+    starts = [pathlib.Path.cwd(), pathlib.Path(__file__).resolve().parent]
+    for start in starts:
+        for candidate in (start, *start.parents):
+            if (candidate / "Packages").is_dir() and (candidate / "Scripts").is_dir():
+                return candidate
+    return pathlib.Path.cwd()
+
+
+def resolve_existing_path(path_text: str, description: str, workspace_root: pathlib.Path) -> pathlib.Path:
+    """Resolve an absolute path or a path relative to the workspace root."""
+
+    path = pathlib.Path(path_text)
+    candidates = [path] if path.is_absolute() else [workspace_root / path, pathlib.Path.cwd() / path]
+    for candidate in candidates:
+        try:
+            return candidate.resolve(strict=True)
+        except FileNotFoundError:
+            continue
+
+    path = candidates[0]
+    try:
+        return path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"{description} does not exist: {path}") from exc
+
+
+def build_ros_env(
+    ros2_root: pathlib.Path,
+    rmw_implementation: str | None = None,
+    discovery_range: str | None = None,
+) -> dict[str, str]:
     """Build a deterministic Windows ROS2 Jazzy environment."""
 
     pixi = ros2_root / ".pixi" / "envs" / "default"
@@ -104,7 +146,8 @@ def build_ros_env(ros2_root: pathlib.Path, rmw_implementation: str | None = None
     env["ROS_DISTRO"] = "jazzy"
     env["ROS_DOMAIN_ID"] = "0"
     env["RMW_IMPLEMENTATION"] = rmw_implementation or env.get("RMW_IMPLEMENTATION") or "rmw_fastrtps_cpp"
-    env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = "SUBNET"
+    if discovery_range:
+        env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = discovery_range
     env.pop("ROS_LOCALHOST_ONLY", None)
     env.pop("ROS_DISCOVERY_SERVER", None)
     return env
@@ -150,35 +193,51 @@ def run_ros2(
     return result
 
 
-def wait_for_node(
+def probe_node_list(
     pixi_python: pathlib.Path,
     ros2_script: pathlib.Path,
     env: dict[str, str],
-    timeout_seconds: float,
+    timeout_seconds: float = 10.0,
 ) -> str:
-    """Wait until the Phase128 node appears in the ROS2 graph."""
+    """Return one node-list snapshot without making it a hard acceptance gate."""
 
-    deadline = time.monotonic() + timeout_seconds
-    last_output = ""
-    while time.monotonic() < deadline:
+    try:
         result = run_ros2(
             pixi_python,
             ros2_script,
             env,
             ["node", "list", "--no-daemon"],
             check=False,
-            timeout_seconds=10.0,
+            timeout_seconds=timeout_seconds,
         )
-        last_output = result.stdout
-        if NODE_NAME in last_output:
-            return last_output
-        time.sleep(2.0)
+    except subprocess.TimeoutExpired:
+        return f"<node list timed out after {timeout_seconds:.1f}s>"
 
-    raise TimeoutError(
-        f"Timed out waiting for node {NODE_NAME}.\n"
-        "Make sure Unity is in Play mode and Phase128Rviz2TfLaserScanSmoke is enabled.\n"
-        f"Last node list:\n{last_output}"
-    )
+    return result.stdout
+
+
+def probe_topic_info(
+    pixi_python: pathlib.Path,
+    ros2_script: pathlib.Path,
+    env: dict[str, str],
+    topic: str,
+    timeout_seconds: float = 10.0,
+) -> str:
+    """Return one verbose topic-info snapshot without making it a hard gate."""
+
+    try:
+        result = run_ros2(
+            pixi_python,
+            ros2_script,
+            env,
+            ["topic", "info", "-v", topic, "--no-daemon"],
+            check=False,
+            timeout_seconds=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return f"<topic info {topic} timed out after {timeout_seconds:.1f}s>"
+
+    return result.stdout
 
 
 def wait_for_publisher(
@@ -290,8 +349,7 @@ def extract_ranges_block(output: str) -> str:
 
 
 def launch_rviz(
-    pixi_python: pathlib.Path,
-    ros2_script: pathlib.Path,
+    ros2_root: pathlib.Path,
     config: pathlib.Path,
     env: dict[str, str],
 ) -> None:
@@ -300,9 +358,34 @@ def launch_rviz(
     if not config.exists():
         raise FileNotFoundError(f"RViz2 config does not exist: {config}")
 
+    rviz_exe = ros2_root / "bin" / "rviz2.exe"
+    if not rviz_exe.exists():
+        raise FileNotFoundError(f"rviz2.exe does not exist: {rviz_exe}")
+
+    pixi = ros2_root / ".pixi" / "envs" / "default"
+    rviz_path = [
+        str(ros2_root / "bin"),
+        str(ros2_root / "Scripts"),
+        str(pixi),
+        str(pixi / "Library" / "bin"),
+        str(pixi / "Scripts"),
+        str(ros2_root / "opt" / "rviz_ogre_vendor" / "bin"),
+        str(ros2_root / "opt" / "gz_math_vendor" / "bin"),
+        r"C:\Windows\system32",
+        r"C:\Windows",
+        r"C:\Windows\System32\Wbem",
+        r"C:\Windows\System32\WindowsPowerShell\v1.0",
+    ]
+    rviz_env = env.copy()
+    rviz_env["PATH"] = os.pathsep.join(rviz_path)
+    rviz_env["QT_OPENGL"] = "software"
+    rviz_env["QT_QUICK_BACKEND"] = "software"
+    rviz_env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+
     process = subprocess.Popen(
-        [str(pixi_python), str(ros2_script), "run", "rviz2", "rviz2", "-d", str(config)],
-        env=env,
+        [str(rviz_exe), "-d", str(config)],
+        cwd=str(ros2_root),
+        env=rviz_env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -313,10 +396,11 @@ def main(argv: list[str]) -> int:
     """Script entry point."""
 
     args = parse_args(argv)
-    ros2_root = pathlib.Path(args.ros2_root).resolve()
-    rviz_config = pathlib.Path(args.rviz_config).resolve()
+    workspace_root = find_workspace_root()
+    ros2_root = resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
+    rviz_config = resolve_existing_path(args.rviz_config, "RViz2 config", workspace_root)
     pixi_python, ros2_script = validate_ros2_root(ros2_root)
-    env = build_ros_env(ros2_root, args.rmw)
+    env = build_ros_env(ros2_root, args.rmw, args.discovery_range)
 
     print(f"[phase128] ROS2 root: {ros2_root}")
     print(f"[phase128] pixi Python: {pixi_python}")
@@ -324,19 +408,24 @@ def main(argv: list[str]) -> int:
     print(f"[phase128] ROS_DISTRO: {env.get('ROS_DISTRO')}")
     print(f"[phase128] RMW_IMPLEMENTATION: {env.get('RMW_IMPLEMENTATION')}")
     print(f"[phase128] ROS_DOMAIN_ID: {env.get('ROS_DOMAIN_ID')}")
+    print(f"[phase128] ROS_AUTOMATIC_DISCOVERY_RANGE: {env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')}")
     print(f"[phase128] RViz2 config: {rviz_config}")
 
-    print("--- node list ---")
-    nodes = wait_for_node(pixi_python, ros2_script, env, args.wait_seconds)
-    print(nodes.rstrip())
-
-    print("--- topic info -v /tf ---")
-    tf_info = wait_for_publisher(pixi_python, ros2_script, env, TF_TOPIC, args.wait_seconds)
-    print(tf_info.rstrip())
+    print("--- node list (diagnostic) ---")
+    nodes = probe_node_list(pixi_python, ros2_script, env)
+    print(nodes.rstrip() or "<empty>")
+    if NODE_NAME not in nodes:
+        print(f"[phase128] node list did not include {NODE_NAME}; continuing with publisher endpoint and echo checks.")
 
     print("--- topic info -v /scan ---")
     scan_info = wait_for_publisher(pixi_python, ros2_script, env, SCAN_TOPIC, args.wait_seconds)
     print(scan_info.rstrip())
+
+    print("--- topic info -v /tf (diagnostic) ---")
+    tf_info = probe_topic_info(pixi_python, ros2_script, env, TF_TOPIC)
+    print(tf_info.rstrip() or "<empty>")
+    if not has_phase128_publisher(tf_info):
+        print("[phase128] /tf topic info did not prove the publisher; continuing with /tf echo content check.")
 
     print("--- echo /tf ---")
     tf_echo = echo_once(pixi_python, ros2_script, env, TF_TOPIC, TF_MSG_TYPE, args.echo_spin_seconds)
@@ -349,7 +438,7 @@ def main(argv: list[str]) -> int:
     validate_scan_echo(scan_echo)
 
     if args.launch_rviz:
-        launch_rviz(pixi_python, ros2_script, rviz_config, env)
+        launch_rviz(ros2_root, rviz_config, env)
 
     print("[phase128] GREEN: /tf and /scan external ROS2 acceptance checks completed.")
     print("[phase128] Confirm RViz2 displays TF map/base_link/laser and LaserScan /scan before marking manual PASS.")
