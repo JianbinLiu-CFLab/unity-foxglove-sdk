@@ -29,7 +29,9 @@ CORE_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 MANIFEST = PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json"
 RUNTIME_INVENTORY = PACKAGE / "Compliance" / "r2fu-jazzy-win64-runtime-inventory.json"
 RUNTIME_NOTICES = PACKAGE / "Compliance" / "r2fu-jazzy-win64-runtime-notices.md"
-SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
+ADAPTER_SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
+RVIZ_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization Acceptance"
+RVIZ_POINTCLOUD2_SAMPLE = PACKAGE / "Samples~" / "RViz2 PointCloud2 Acceptance"
 
 RUNTIME_BINARY_SUFFIXES = {
     ".dll",
@@ -54,6 +56,7 @@ ALLOWED_SAMPLE_SUFFIXES = {
     ".cs",
     ".md",
     ".meta",
+    ".rviz",
 }
 
 ALLOWED_EDITOR_SUFFIXES = {
@@ -136,9 +139,19 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     add(results, "package has no dependencies", dependencies == {}, f"dependencies={dependencies!r}")
 
     samples = data.get("samples")
-    add(results, "package has one external adapter sample", isinstance(samples, list) and len(samples) == 1, f"samples={samples!r}")
+    add(
+        results,
+        "package has External Adapter, Phase 128, and Phase 129 samples",
+        isinstance(samples, list) and len(samples) == 3,
+        f"samples={samples!r}",
+    )
     if isinstance(samples, list) and samples:
-        sample = samples[0]
+        samples_by_name = {
+            str(sample.get("displayName", "")): sample
+            for sample in samples
+            if isinstance(sample, dict)
+        }
+        sample = samples_by_name.get("ROS2 For Unity External Adapter", {})
         add(
             results,
             "sample displayName",
@@ -157,6 +170,46 @@ def check_package_metadata(results: list[CheckResult]) -> None:
             "sample description names runtime package or external R2FU",
             "ROS2 For Unity runtime package or external runtime" in description,
             description,
+        )
+        rviz_sample = samples_by_name.get("RViz2 Standard Visualization Acceptance", {})
+        add(
+            results,
+            "RViz2 sample displayName",
+            rviz_sample.get("displayName") == "RViz2 Standard Visualization Acceptance",
+            f"displayName={rviz_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "RViz2 sample path",
+            rviz_sample.get("path") == "Samples~/RViz2 Standard Visualization Acceptance",
+            f"path={rviz_sample.get('path')!r}",
+        )
+        rviz_description = str(rviz_sample.get("description", ""))
+        add(
+            results,
+            "RViz2 sample description names TF and scan",
+            "/tf" in rviz_description and "/scan" in rviz_description,
+            rviz_description,
+        )
+        pointcloud_sample = samples_by_name.get("RViz2 PointCloud2 Acceptance", {})
+        add(
+            results,
+            "PointCloud2 sample displayName",
+            pointcloud_sample.get("displayName") == "RViz2 PointCloud2 Acceptance",
+            f"displayName={pointcloud_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "PointCloud2 sample path",
+            pointcloud_sample.get("path") == "Samples~/RViz2 PointCloud2 Acceptance",
+            f"path={pointcloud_sample.get('path')!r}",
+        )
+        pointcloud_description = str(pointcloud_sample.get("description", ""))
+        add(
+            results,
+            "PointCloud2 sample description names standard type and /points",
+            "sensor_msgs/msg/PointCloud2" in pointcloud_description and "/points" in pointcloud_description,
+            pointcloud_description,
         )
 
 
@@ -300,13 +353,23 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         else ""
     )
     sample_readme = (
-        (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
-        if (SAMPLE / "README.md").exists()
+        (ADAPTER_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (ADAPTER_SAMPLE / "README.md").exists()
+        else ""
+    )
+    rviz_sample_readme = (
+        (RVIZ_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_SAMPLE / "README.md").exists()
+        else ""
+    )
+    pointcloud_sample_readme = (
+        (RVIZ_POINTCLOUD2_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_POINTCLOUD2_SAMPLE / "README.md").exists()
         else ""
     )
     runtime_notices = RUNTIME_NOTICES.read_text(encoding="utf-8", errors="replace") if RUNTIME_NOTICES.exists() else ""
     runtime_inventory = RUNTIME_INVENTORY.read_text(encoding="utf-8", errors="replace") if RUNTIME_INVENTORY.exists() else ""
-    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
+    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + rviz_sample_readme + "\n" + pointcloud_sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
@@ -338,8 +401,9 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         and "UnsatisfiedLinkError" in runtime_notices,
         rel(RUNTIME_NOTICES),
     )
+    general_public_docs = readme + "\n" + notices + "\n" + sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
     forbidden_public_tokens = ["Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108", "phase", "Phase"]
-    hits = [token for token in forbidden_public_tokens if token in combined]
+    hits = [token for token in forbidden_public_tokens if token in general_public_docs]
     manifest_text = (PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json").read_text(
         encoding="utf-8",
         errors="replace",
@@ -462,38 +526,146 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
 
 
 def check_sample_source_boundary(results: list[CheckResult]) -> None:
-    """Validate the external adapter sample is source-only and names the stable smoke boundary."""
+    """Validate package samples are source-only and name their acceptance boundaries."""
     required = [
-        SAMPLE / "README.md",
-        SAMPLE / "Phase110Ros2ForUnityContextFactory.cs",
-        SAMPLE / "Phase110Ros2ForUnityContext.cs",
-        SAMPLE / "Phase110Ros2ForUnityStringSmoke.cs",
+        ADAPTER_SAMPLE / "README.md",
+        ADAPTER_SAMPLE / "Phase110Ros2ForUnityContextFactory.cs",
+        ADAPTER_SAMPLE / "Phase110Ros2ForUnityContext.cs",
+        ADAPTER_SAMPLE / "Phase110Ros2ForUnityStringSmoke.cs",
+        RVIZ_SAMPLE / "README.md",
+        RVIZ_SAMPLE / "Phase128Rviz2TfLaserScanSmoke.cs",
+        RVIZ_SAMPLE / "rviz2_phase128_tf_laserscan.rviz",
+        RVIZ_SAMPLE / "phase128_rviz2_evidence_template.md",
+        RVIZ_POINTCLOUD2_SAMPLE / "README.md",
+        RVIZ_POINTCLOUD2_SAMPLE / "Phase129Rviz2PointCloud2Smoke.cs",
+        RVIZ_POINTCLOUD2_SAMPLE / "Phase129PointCloud2MessageBuilder.cs",
+        RVIZ_POINTCLOUD2_SAMPLE / "rviz2_phase129_pointcloud2.rviz",
+        RVIZ_POINTCLOUD2_SAMPLE / "phase129_pointcloud2_evidence_template.md",
     ]
     for path in required:
         add(results, f"sample file: {path.name}", path.exists(), rel(path))
 
-    invalid_files = [rel(path) for path in iter_files(SAMPLE) if path.suffix.lower() not in ALLOWED_SAMPLE_SUFFIXES]
+    sample_roots = [ADAPTER_SAMPLE, RVIZ_SAMPLE, RVIZ_POINTCLOUD2_SAMPLE]
+    invalid_files = [
+        rel(path)
+        for sample_root in sample_roots
+        for path in iter_files(sample_root)
+        if path.suffix.lower() not in ALLOWED_SAMPLE_SUFFIXES
+    ]
     add(
         results,
-        "sample contains only source/docs/meta files",
+        "samples contain only source/docs/rviz/meta files",
         not invalid_files,
         "; ".join(invalid_files[:MAX_REPORTED_OFFENDERS]) if invalid_files else "source-only sample",
     )
 
-    readme = (SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace") if (SAMPLE / "README.md").exists() else ""
+    readme = (ADAPTER_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace") if (ADAPTER_SAMPLE / "README.md").exists() else ""
     add(
         results,
         "sample README documents runtime package activation",
         "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in readme
         and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in readme,
-        rel(SAMPLE / "README.md"),
+        rel(ADAPTER_SAMPLE / "README.md"),
     )
     add(
         results,
         "sample README documents live topics",
         "/unity2foxglove/ros2forunity/string/out" in readme
         and "/unity2foxglove/ros2forunity/string/in" in readme,
-        rel(SAMPLE / "README.md"),
+        rel(ADAPTER_SAMPLE / "README.md"),
+    )
+    rviz_readme = (RVIZ_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace") if (RVIZ_SAMPLE / "README.md").exists() else ""
+    rviz_script = (
+        (RVIZ_SAMPLE / "Phase128Rviz2TfLaserScanSmoke.cs").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_SAMPLE / "Phase128Rviz2TfLaserScanSmoke.cs").exists()
+        else ""
+    )
+    rviz_config = (
+        (RVIZ_SAMPLE / "rviz2_phase128_tf_laserscan.rviz").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_SAMPLE / "rviz2_phase128_tf_laserscan.rviz").exists()
+        else ""
+    )
+    add(
+        results,
+        "RViz2 sample README documents helper and compile symbol",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in rviz_readme
+        and "phase128_rviz2_acceptance.py" in rviz_readme
+        and "/tf" in rviz_readme
+        and "/scan" in rviz_readme,
+        rel(RVIZ_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "RViz2 sample script is guarded and source-only",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in rviz_script
+        and "CreatePublisher<tf2_msgs.msg.TFMessage>" in rviz_script
+        and "CreatePublisher<sensor_msgs.msg.LaserScan>" in rviz_script,
+        rel(RVIZ_SAMPLE / "Phase128Rviz2TfLaserScanSmoke.cs"),
+    )
+    add(
+        results,
+        "RViz2 config uses map fixed frame and scan topic",
+        "Fixed Frame: map" in rviz_config
+        and "/tf" in rviz_config
+        and "/scan" in rviz_config
+        and "rviz_default_plugins/LaserScan" in rviz_config,
+        rel(RVIZ_SAMPLE / "rviz2_phase128_tf_laserscan.rviz"),
+    )
+
+    pointcloud_readme = (
+        (RVIZ_POINTCLOUD2_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_POINTCLOUD2_SAMPLE / "README.md").exists()
+        else ""
+    )
+    pointcloud_smoke = (
+        (RVIZ_POINTCLOUD2_SAMPLE / "Phase129Rviz2PointCloud2Smoke.cs").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_POINTCLOUD2_SAMPLE / "Phase129Rviz2PointCloud2Smoke.cs").exists()
+        else ""
+    )
+    pointcloud_builder = (
+        (RVIZ_POINTCLOUD2_SAMPLE / "Phase129PointCloud2MessageBuilder.cs").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_POINTCLOUD2_SAMPLE / "Phase129PointCloud2MessageBuilder.cs").exists()
+        else ""
+    )
+    pointcloud_config = (
+        (RVIZ_POINTCLOUD2_SAMPLE / "rviz2_phase129_pointcloud2.rviz").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_POINTCLOUD2_SAMPLE / "rviz2_phase129_pointcloud2.rviz").exists()
+        else ""
+    )
+    add(
+        results,
+        "PointCloud2 sample README documents helper, TF, and standard type",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in pointcloud_readme
+        and "phase129_pointcloud2_acceptance.py" in pointcloud_readme
+        and "/tf" in pointcloud_readme
+        and "/points" in pointcloud_readme
+        and "sensor_msgs/msg/PointCloud2" in pointcloud_readme,
+        rel(RVIZ_POINTCLOUD2_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "PointCloud2 sample smoke is guarded and source-only",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in pointcloud_smoke
+        and "CreatePublisher<tf2_msgs.msg.TFMessage>" in pointcloud_smoke
+        and "CreatePublisher<sensor_msgs.msg.PointCloud2>" in pointcloud_smoke,
+        rel(RVIZ_POINTCLOUD2_SAMPLE / "Phase129Rviz2PointCloud2Smoke.cs"),
+    )
+    add(
+        results,
+        "PointCloud2 sample builder maps packed SDK layout explicitly",
+        "PointCloudPackedDataBuilder.Build(frame)" in pointcloud_builder
+        and "PointFieldFloat32 = 7" in pointcloud_builder
+        and "(byte)field.Type" not in pointcloud_builder,
+        rel(RVIZ_POINTCLOUD2_SAMPLE / "Phase129PointCloud2MessageBuilder.cs"),
+    )
+    add(
+        results,
+        "PointCloud2 config uses map fixed frame and points topic",
+        "Fixed Frame: map" in pointcloud_config
+        and "/tf" in pointcloud_config
+        and "/points" in pointcloud_config
+        and "rviz_default_plugins/PointCloud2" in pointcloud_config,
+        rel(RVIZ_POINTCLOUD2_SAMPLE / "rviz2_phase129_pointcloud2.rviz"),
     )
 
 

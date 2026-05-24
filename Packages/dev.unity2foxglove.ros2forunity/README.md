@@ -85,6 +85,46 @@ The sample exposes one bidirectional `std_msgs/msg/String` smoke pair:
 
 Standard ROS2 visualization mapping starts after the external adapter sample and runtime package path are stable.
 
+## RViz2 Standard Visualization Acceptance
+
+The `RViz2 Standard Visualization Acceptance` sample is the first narrow standard-message acceptance kit for the ROS2 For Unity path. It publishes:
+
+```text
+/tf
+/scan
+```
+
+The frame tree is:
+
+```text
+map -> base_link -> laser
+```
+
+This sample is intentionally limited to `tf2_msgs/msg/TFMessage` and `sensor_msgs/msg/LaserScan`. It does not add PointCloud2, MarkerArray, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency. Import it from Package Manager only when the project has a ROS2 For Unity runtime package or an external ROS2 For Unity import and the `UNITY2FOXGLOVE_ROS2_FOR_UNITY` symbol is active.
+
+## RViz2 PointCloud2 Acceptance
+
+The `RViz2 PointCloud2 Acceptance` sample extends the narrow standard-message acceptance route with generic unorganized point clouds. It publishes:
+
+```text
+/tf
+/points
+```
+
+The `/points` topic uses:
+
+```text
+sensor_msgs/msg/PointCloud2
+```
+
+The frame tree is:
+
+```text
+map -> base_link -> point_cloud_sensor
+```
+
+This sample uses Unity2Foxglove's existing packed point-cloud layout through `PointCloudFrame` and `PointCloudPackedDataBuilder`, then maps that packed layout to `sensor_msgs/msg/PointCloud2` for RViz2. It is generic and not vendor-specific. It does not claim organized clouds, PointCloud2 subscription, LiDAR vendor presets, MarkerArray, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency.
+
 ## Attribution Boundary
 
 RobotecAI ROS2 For Unity is an upstream Apache-2.0 project:

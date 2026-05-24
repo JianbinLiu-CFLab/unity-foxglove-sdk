@@ -16,6 +16,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -326,6 +327,27 @@ internal class ROS2ForUnity
         Ros2csLogger.LogLevel = LogLevel.WARNING;
     }
 
+    private static void SuppressRos2csFinalizer()
+    {
+        try
+        {
+            var destructorField = typeof(Ros2cs).GetField(
+                "destructor",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            var destructor = destructorField != null
+                ? destructorField.GetValue(null)
+                : null;
+            if (destructor != null)
+            {
+                GC.SuppressFinalize(destructor);
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Unable to suppress Ros2cs finalizer before shutdown: " + exception.Message);
+        }
+    }
+
     private string GetMetadataValue(XmlDocument doc, string valuePath)
     {
         return doc.DocumentElement.SelectSingleNode(valuePath).InnerText;
@@ -457,6 +479,7 @@ internal class ROS2ForUnity
         if (shouldShutdown)
         {
             Debug.Log("Shutting down Ros2 For Unity");
+            SuppressRos2csFinalizer();
             Ros2cs.Shutdown();
         }
     }

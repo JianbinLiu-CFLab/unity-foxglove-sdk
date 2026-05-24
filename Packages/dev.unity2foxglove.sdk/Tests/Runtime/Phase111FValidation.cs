@@ -141,6 +141,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!runtime.Contains("~ROS2ForUnity", StringComparison.Ordinal)
                   && (oldLifecycle || currentLifecycle),
                 "111F-E2: ROS2ForUnity uses deterministic ownership instead of finalizer shutdown");
+            Check(runtime.Contains("SuppressRos2csFinalizer", StringComparison.Ordinal)
+                  && runtime.Contains("GC.SuppressFinalize(destructor)", StringComparison.Ordinal)
+                  && runtime.IndexOf("SuppressRos2csFinalizer();", StringComparison.Ordinal)
+                     < runtime.LastIndexOf("Ros2cs.Shutdown();", StringComparison.Ordinal),
+                "111F-E2b: ROS2ForUnity suppresses ros2cs finalizer before explicit shutdown");
 
             var node = ReadRepoText(RuntimeScripts + "/ROS2Node.cs");
             Check(node.Contains("class ROS2Node : IDisposable", StringComparison.Ordinal)

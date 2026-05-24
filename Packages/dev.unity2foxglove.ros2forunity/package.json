@@ -11,6 +11,16 @@
       "displayName": "ROS2 For Unity External Adapter",
       "description": "Imports a source-only adapter sample that connects the Unity2Foxglove ROS2 facade to a ROS2 For Unity runtime package or external runtime.",
       "path": "Samples~/ROS2 For Unity External Adapter"
+    },
+    {
+      "displayName": "RViz2 Standard Visualization Acceptance",
+      "description": "Imports a source-only ROS2 For Unity sample that publishes /tf and /scan for RViz2 acceptance.",
+      "path": "Samples~/RViz2 Standard Visualization Acceptance"
+    },
+    {
+      "displayName": "RViz2 PointCloud2 Acceptance",
+      "description": "Imports a source-only ROS2 For Unity sample that publishes generic Unity2Foxglove point-cloud frames as sensor_msgs/msg/PointCloud2 on /points.",
+      "path": "Samples~/RViz2 PointCloud2 Acceptance"
     }
   ],
   "keywords": [
