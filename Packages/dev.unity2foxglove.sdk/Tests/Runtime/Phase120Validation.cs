@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEvidenceNote()
         {
-            var note = ReadRepoText("Developer/MCAP Official Compatibility Gate.md");
+            var note = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
             foreach (var required in new[]
             {
                 "Final Verdict",
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyParityMatrix()
         {
-            var matrix = ReadRepoText("Developer/MCAP Spec Parity Matrix.md");
+            var matrix = ReadRepoText("Developer/102 Phase117 MCAP Spec Parity Matrix.md");
             foreach (var opcode in new[]
             {
                 "0x01", "0x02", "0x03", "0x04", "0x05", "0x06", "0x07", "0x08",
@@ -145,7 +145,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyClaimLedgerDocs()
         {
-            var note = ReadRepoText("Developer/MCAP Official Compatibility Gate.md");
+            var note = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
             Check(note.Contains("complete official MCAP library replacement", StringComparison.Ordinal)
                   && note.Contains("production Foxglove Remote Data Loader infrastructure", StringComparison.Ordinal)
                   && note.Contains("Remote Access Gateway support", StringComparison.Ordinal),

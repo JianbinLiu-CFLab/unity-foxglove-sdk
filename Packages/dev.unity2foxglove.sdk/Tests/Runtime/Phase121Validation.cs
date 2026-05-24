@@ -136,7 +136,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEvidenceNote()
         {
-            var note = ReadRepoText("Developer/MCAP CSharp Conformance Baseline.md");
+            var note = ReadRepoText("Developer/106 Phase121 MCAP CSharp Conformance Baseline.md");
             foreach (var required in new[]
             {
                 "v1.9.1 Baseline",

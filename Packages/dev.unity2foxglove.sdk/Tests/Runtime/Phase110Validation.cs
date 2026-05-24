@@ -26,6 +26,10 @@ namespace Unity.FoxgloveSDK.Tests
         private const string SmokePath = SamplePath + "/Phase110Ros2ForUnityStringSmoke.cs";
         private const string DefineInstallerPath = OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string SampleReadmePath = SamplePath + "/README.md";
+        private const string StringSmokeBatchPath =
+            "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs";
+        private const string StringSmokeRos2ScriptPath =
+            "Scripts/smoke/phase110_string_smoke_acceptance.py";
         private const string RuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
         private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
@@ -47,6 +51,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyComplianceManifest();
             VerifyDocs();
             VerifyTrackedAssetBoundary();
+            VerifyStringSmokeBatchAcceptance();
+            VerifyStringSmokeRos2AcceptanceScript();
             VerifyValidationWiring();
 
             Console.WriteLine($"Phase 110: {_passed} checks passed.");
@@ -162,6 +168,26 @@ namespace Unity.FoxgloveSDK.Tests
                   && smoke.Contains("DrainDirectReceived", StringComparison.Ordinal)
                   && smoke.Contains("RecordReceived", StringComparison.Ordinal),
                 "110-D11a: direct runtime mode uses product-facing label and drains callbacks on Update");
+            var directSubscriptionIndex = smoke.IndexOf(
+                "_directRos2Node.CreateSubscription<std_msgs.msg.String>",
+                StringComparison.Ordinal);
+            var directPublisherIndex = smoke.IndexOf(
+                "_directRos2Node.CreatePublisher<std_msgs.msg.String>",
+                StringComparison.Ordinal);
+            Check(directSubscriptionIndex >= 0
+                  && directPublisherIndex >= 0
+                  && directSubscriptionIndex < directPublisherIndex,
+                "110-D11b: direct runtime mode creates subscription before publisher so R2FU/Jazzy exposes both graph endpoints");
+            var facadeSubscriptionIndex = smoke.IndexOf(
+                "_subscription = _node.CreateSubscription<std_msgs.msg.String>",
+                StringComparison.Ordinal);
+            var facadePublisherIndex = smoke.IndexOf(
+                "_publisher = _node.CreatePublisher<std_msgs.msg.String>",
+                StringComparison.Ordinal);
+            Check(facadeSubscriptionIndex >= 0
+                  && facadePublisherIndex >= 0
+                  && facadeSubscriptionIndex < facadePublisherIndex,
+                "110-D11c: facade sample smoke creates subscription before publisher so R2FU/Jazzy exposes both graph endpoints");
 
             var defineInstaller = ReadRepoText(DefineInstallerPath);
             Check(defineInstaller.Contains(RuntimePackageName, StringComparison.Ordinal)
@@ -282,6 +308,56 @@ namespace Unity.FoxgloveSDK.Tests
             Check(forbiddenTracked.Count == 0,
                 "110-I1: tracked files contain no R2FU assets, raw artifacts, or adapter runtime binaries outside runtime packages"
                 + (forbiddenTracked.Count == 0 ? string.Empty : " (" + string.Join(", ", forbiddenTracked) + ")"));
+        }
+
+        private static void VerifyStringSmokeBatchAcceptance()
+        {
+            var batch = ReadRepoText(StringSmokeBatchPath);
+
+            Check(batch.Contains("Phase110Ros2ForUnityStringSmoke", StringComparison.Ordinal)
+                  && batch.Contains("Assets/Scenes/Phase106Acceptance.unity", StringComparison.Ordinal),
+                "110-J1: batch acceptance drives the actual Phase106Acceptance String Smoke component");
+            Check(batch.Contains("_useDirectRuntime", StringComparison.Ordinal)
+                  && batch.Contains("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_DIRECT", StringComparison.Ordinal)
+                  && batch.Contains("DIRECT_MODE=True", StringComparison.Ordinal)
+                  && batch.Contains("DIRECT_MODE=False", StringComparison.Ordinal),
+                "110-J2: batch acceptance explicitly supports direct-runtime and facade String Smoke modes");
+            Check(batch.Contains(OutTopic, StringComparison.Ordinal)
+                  && batch.Contains(InTopic, StringComparison.Ordinal)
+                  && batch.Contains("unity2foxglove_phase110", StringComparison.Ordinal),
+                "110-J3: batch acceptance uses the same String Smoke topics and node as the Unity scene");
+            Check(batch.Contains("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_GREEN", StringComparison.Ordinal)
+                  && batch.Contains("received=", StringComparison.Ordinal)
+                  && batch.Contains("_receivedCount", StringComparison.Ordinal),
+                "110-J4: batch acceptance fails unless Unity records inbound String Smoke messages");
+            Check(batch.Contains("UNITY2FOXGLOVE_PHASE110_INITIAL_PATH_CLEAN", StringComparison.Ordinal)
+                  && batch.Contains("ContainsMachineRosPath", StringComparison.Ordinal),
+                "110-J5: batch acceptance records whether Unity inherited machine ROS2 PATH entries");
+        }
+
+        private static void VerifyStringSmokeRos2AcceptanceScript()
+        {
+            var script = ReadRepoText(StringSmokeRos2ScriptPath);
+
+            Check(script.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal)
+                  && script.Contains("ros2_root", StringComparison.Ordinal)
+                  && script.Contains(".pixi", StringComparison.Ordinal)
+                  && script.Contains("ros2-script.py", StringComparison.Ordinal),
+                "110-K1: Python manual acceptance script defaults to the Windows ROS2 Jazzy root");
+            Check(script.Contains("topic\", \"info\"", StringComparison.Ordinal)
+                  && script.Contains(InTopic, StringComparison.Ordinal)
+                  && script.Contains("Subscription count: 1", StringComparison.Ordinal)
+                  && script.Contains("Node name: " + "{" + "NODE_NAME" + "}", StringComparison.Ordinal),
+                "110-K2: Python manual acceptance script waits for Unity's String Smoke subscription");
+            Check(script.Contains("\"echo\"", StringComparison.Ordinal)
+                  && script.Contains(OutTopic, StringComparison.Ordinal)
+                  && script.Contains("unity2foxglove string tick", StringComparison.Ordinal),
+                "110-K3: Python manual acceptance script echoes Unity's String Smoke publisher");
+            Check(script.Contains("\"pub\"", StringComparison.Ordinal)
+                  && script.Contains("--wait-matching-subscriptions", StringComparison.Ordinal)
+                  && script.Contains("--keep-alive", StringComparison.Ordinal)
+                  && !script.Contains("--no-daemon\",\n            \"--times", StringComparison.Ordinal),
+                "110-K4: Python manual acceptance script publishes inbound messages without ros2 pub --no-daemon");
         }
 
         private static void VerifyValidationWiring()

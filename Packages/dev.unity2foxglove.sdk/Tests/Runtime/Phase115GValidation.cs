@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTask0Evidence()
         {
-            Check(File.Exists(RepoPath("Developer/Phase115G_Review_Fixes_And_Fixture_Hardening_Report.md")),
+            Check(File.Exists(RepoPath("Developer/99 Phase115G Review Fixes And Fixture Hardening Report.md")),
                 "115G-A1: Developer report records dirty-patch triage and review evidence");
         }
 

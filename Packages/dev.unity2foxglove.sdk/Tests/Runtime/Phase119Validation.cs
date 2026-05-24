@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBoundaryNote()
         {
-            var note = ReadRepoText("Developer/MCAP Remote Data Source Boundary.md");
+            var note = ReadRepoText("Developer/103 Phase119 MCAP Remote Data Source Boundary.md");
             foreach (var required in new[]
             {
                 "Remote Data Loader",

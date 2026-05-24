@@ -126,10 +126,10 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
             return;
 
         _ros2Node = ros2Unity.CreateNode("unity2foxglove_phase106");
-        _publisher = _ros2Node.CreatePublisher<std_msgs.msg.String>("/unity2foxglove/phase106/out");
         _subscriber = _ros2Node.CreateSubscription<std_msgs.msg.String>(
             "/unity2foxglove/phase106/in",
             OnRos2StringReceived);
+        _publisher = _ros2Node.CreatePublisher<std_msgs.msg.String>("/unity2foxglove/phase106/out");
 
         Debug.Log("[Phase106Ros2ForUnityAcceptance] ROS2 node ready: unity2foxglove_phase106");
     }

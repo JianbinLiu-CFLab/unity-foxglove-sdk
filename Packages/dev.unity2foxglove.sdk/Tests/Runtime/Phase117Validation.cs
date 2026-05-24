@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyParityMatrix()
         {
-            var matrix = ReadRepoText("Developer/MCAP Spec Parity Matrix.md");
+            var matrix = ReadRepoText("Developer/102 Phase117 MCAP Spec Parity Matrix.md");
             foreach (var opcode in new[]
             {
                 "0x01", "0x02", "0x03", "0x04", "0x05", "0x06", "0x07", "0x08",

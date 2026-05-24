@@ -109,8 +109,8 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
         if (_node == null)
             _node = _context.CreateNode("unity2foxglove_phase109");
 
-        _publisher = _node.CreatePublisher<std_msgs.msg.String>(OutTopic);
         _subscription = _node.CreateSubscription<std_msgs.msg.String>(InTopic, OnStringReceived);
+        _publisher = _node.CreatePublisher<std_msgs.msg.String>(OutTopic);
         _statusMessage = "Phase109 ROS2 For Unity string smoke ready.";
     }
 

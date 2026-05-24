@@ -226,14 +226,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("Phase120BValidation.cs", StringComparison.Ordinal),
                 "120B-H2: runtime test project compiles Phase120BValidation");
 
-            var note = ReadRepoText("Developer/MCAP DataLoader Hardening Review Closure.md");
+            var note = ReadRepoText("Developer/105 Phase120B MCAP DataLoader Hardening Review Closure.md");
             foreach (var required in new[] { "M1", "M2", "M3", "L1", "L2", "R1", "R2", "R3", "R4", "two-pass unindexed scan", "CRC hard failure", "MaxMessages", "MaxPayloadBytes" })
             {
                 Check(note.Contains(required, StringComparison.Ordinal),
                     "120B-H3: hardening evidence records " + required);
             }
 
-            var gate = ReadRepoText("Developer/MCAP Official Compatibility Gate.md");
+            var gate = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
             Check(gate.Contains("Phase 120B hardening", StringComparison.Ordinal),
                 "120B-H4: Phase 120 compatibility gate references 120B hardening");
         }

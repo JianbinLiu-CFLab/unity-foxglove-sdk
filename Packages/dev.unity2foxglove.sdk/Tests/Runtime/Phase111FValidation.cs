@@ -158,6 +158,18 @@ namespace Unity.FoxgloveSDK.Tests
                       || component.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal))
                   && component.Contains("node.Dispose()", StringComparison.Ordinal),
                 "111F-E4: ROS2UnityComponent stops, joins, and disposes nodes deterministically");
+            Check(component.Contains("Ros2cs.SpinOnce(ros2csNodes", StringComparison.Ordinal)
+                  && !component.Contains("nodesSnapshot", StringComparison.Ordinal),
+                "111F-E4b: ROS2UnityComponent keeps node spin serialized with graph mutation");
+            Check(component.Contains("private HashSet<Action> executableActionSet", StringComparison.Ordinal)
+                  && component.Contains("executableActionSet.Add(executable)", StringComparison.Ordinal)
+                  && component.Contains("executableActionSet.Remove(executable)", StringComparison.Ordinal),
+                "111F-E4c: ROS2UnityComponent uses constant-time executable de-duplication");
+            Check(component.Contains("private bool StopExecutor()", StringComparison.Ordinal)
+                  && component.Contains("if (!StopExecutor())", StringComparison.Ordinal)
+                  && component.Contains("ReferenceEquals(executorThread, threadToJoin)", StringComparison.Ordinal)
+                  && component.Contains("return false;", StringComparison.Ordinal),
+                "111F-E4d: ROS2UnityComponent does not clear a timed-out executor thread");
 
             var core = ReadRepoText(RuntimeScripts + "/ROS2UnityCore.cs");
             Check(core.Contains("IDisposable", StringComparison.Ordinal)
@@ -165,6 +177,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && (core.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal)
                       || core.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal)),
                 "111F-E5: ROS2UnityCore has deterministic shutdown");
+            Check(core.Contains("Ros2cs.SpinOnce(ros2csNodes", StringComparison.Ordinal)
+                  && !core.Contains("nodesSnapshot", StringComparison.Ordinal),
+                "111F-E5b: ROS2UnityCore keeps node spin serialized with graph mutation");
+            Check(core.Contains("private HashSet<Action> executableActionSet", StringComparison.Ordinal)
+                  && core.Contains("executableActionSet.Add(executable)", StringComparison.Ordinal)
+                  && core.Contains("executableActionSet.Remove(executable)", StringComparison.Ordinal),
+                "111F-E5c: ROS2UnityCore uses constant-time executable de-duplication");
+            Check(core.Contains("private bool StopExecutor()", StringComparison.Ordinal)
+                  && core.Contains("if (!StopExecutor())", StringComparison.Ordinal)
+                  && core.Contains("ReferenceEquals(executorThread, threadToJoin)", StringComparison.Ordinal)
+                  && core.Contains("return false;", StringComparison.Ordinal),
+                "111F-E5d: ROS2UnityCore does not clear a timed-out executor thread");
 
             var dotnetTime = ReadRepoText(RuntimeScripts + "/Time/DotnetTimeSource.cs");
             Check(dotnetTime.Contains("/ Stopwatch.Frequency", StringComparison.Ordinal)
