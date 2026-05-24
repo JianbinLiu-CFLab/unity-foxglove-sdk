@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyProbeSource()
         {
-            var source = ReadRepoText("Unity2Foxglove/Assets/Developer/OpenH264/OpenH264ProbePublisher.cs");
+            var source = ReadRepoText("Unity2Foxglove/Assets/Experimental/OpenH264/OpenH264ProbePublisher.cs");
             Check(!string.IsNullOrEmpty(source),
                 "80B-1: demo OpenH264 probe publisher exists");
             Check(source.Contains("AddComponentMenu(\"Foxglove/Experimental/OpenH264 Source Probe Publisher\")"),
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyNativeHelperSource()
         {
-            var sidecar = ReadRepoText("Unity2Foxglove/Assets/Developer/OpenH264/OpenH264ProbeSidecar.cs");
+            var sidecar = ReadRepoText("Unity2Foxglove/Assets/Experimental/OpenH264/OpenH264ProbeSidecar.cs");
             Check(!string.IsNullOrEmpty(sidecar),
                 "80C-1: managed OpenH264 probe sidecar exists");
             Check(sidecar.Contains("UseShellExecute = false")

@@ -38,6 +38,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "85A-2: editor targets FoxglovePointCloudPublisher");
             Check(source.Contains("General") && source.Contains("Point Sources") && source.Contains("Point Cloud QoS"),
                 "85A-3: editor groups point-cloud workflow sections");
+            Check(!source.Contains("LabelField(\"General\"", StringComparison.Ordinal)
+                  && !source.Contains("LabelField(\"Point Sources\"", StringComparison.Ordinal),
+                "85A-3b: editor avoids duplicate General and Point Sources headings");
             Check(source.Contains("Publish Rate") && source.Contains("Encoding Policy"),
                 "85A-4: editor preserves shared publisher policy sections");
             Check(source.Contains("_voxelSizeMeters") && source.Contains("PointCloudSamplingMode.VoxelGrid"),

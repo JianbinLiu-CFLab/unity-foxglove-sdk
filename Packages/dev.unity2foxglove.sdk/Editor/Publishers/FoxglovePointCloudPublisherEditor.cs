@@ -91,7 +91,6 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawGeneralSection()
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("General", EditorStyles.boldLabel);
             DrawProperty("_manager", "Manager");
             DrawProperty("_topic", "Topic");
             DrawProperty("_publishOnEnable", "Publish On Enable");
@@ -102,7 +101,6 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawPointSourcesSection()
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Point Sources", EditorStyles.boldLabel);
             DrawProperty("_pointSources", "Point Sources");
             DrawProperty("_useChildrenWhenSourcesEmpty", "Use Children When Sources Empty");
             DrawProperty("_includeInactiveChildren", "Include Inactive Children");

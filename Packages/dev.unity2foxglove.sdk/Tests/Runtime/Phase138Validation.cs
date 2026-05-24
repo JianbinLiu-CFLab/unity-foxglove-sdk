@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 136 R2FU standalone distro upgrade ladder strategy validation.
+// Purpose: Phase 138 R2FU Jazzy standalone rebuild evidence validation.
 
 using System;
 using System.Collections.Generic;
@@ -12,99 +12,91 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    public static class Phase136Validation
+    public static class Phase138Validation
     {
-        private const string PlanPath = "Plan/136_PHASE136_R2FU_STANDALONE_DISTRO_UPGRADE_LADDER_PLAN.md";
-        private const string Phase206PlanPath = "Plan/206_R2FU_JAZZY_STANDALONE_REBUILD_SPIKE_PLAN.md";
-        private const string EvidencePath = "Developer/85 Phase136 R2FU Standalone Distro Upgrade Ladder.md";
+        private const string PlanPath = "Plan/138_PHASE138_R2FU_JAZZY_STANDALONE_REBUILD_PLAN.md";
+        private const string EvidencePath = "Developer/86 Phase138 R2FU Jazzy Standalone Rebuild Evidence.md";
         private static int _passed;
 
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 136: R2FU Standalone Distro Upgrade Ladder ===");
+            Console.WriteLine("=== Phase 138: R2FU Jazzy Standalone Rebuild ===");
             _passed = 0;
 
             VerifyPrivatePlanIfPresent();
-            VerifyPhase206SupersededIfPresent();
             VerifyEvidenceNoteIfPresent();
             VerifyTrackedArtifactHygiene();
-            VerifyCoreSdkStaysRosFree();
+            VerifyCoreSdkBoundary();
             VerifyValidationWiring();
 
-            Console.WriteLine($"Phase 136: {_passed} checks passed.");
+            Console.WriteLine($"Phase 138: {_passed} checks passed.");
         }
 
         private static void VerifyPrivatePlanIfPresent()
         {
             if (!RepoFileExists(PlanPath))
             {
-                Check(true, "136A-1: private Phase136 plan may be absent in clean tracked checkout");
+                Check(true, "138A-1: private Phase138 plan may be absent in clean tracked checkout");
                 return;
             }
 
             var plan = ReadRepoText(PlanPath);
-            Check(plan.Contains("Phase 136 is the umbrella strategy gate", StringComparison.Ordinal)
-                  && plan.Contains("delegates Jazzy runtime execution to Phase 137", StringComparison.Ordinal)
-                  && plan.Contains("delegates Lyrical / Ubuntu 26.04 feasibility to Phase 138", StringComparison.Ordinal)
-                  && plan.Contains("feeds the compatibility matrix in Phase 139", StringComparison.Ordinal),
-                "136A-1: Phase136 is scoped as the umbrella strategy gate");
-            Check(plan.Contains("must not re-prove Phase 106", StringComparison.Ordinal)
-                  && plan.Contains("Phase106-only Unity publishing did not crash", StringComparison.Ordinal)
-                  && plan.Contains("ROS graph visibility", StringComparison.Ordinal)
-                  && plan.Contains("Phase 110 sample crashes must not be used", StringComparison.Ordinal),
-                "136A-2: Phase136 preserves the Phase106/110 caveat instead of over-claiming Humble");
-            Check(plan.Contains("empirical interop evidence", StringComparison.Ordinal)
-                  && plan.Contains("not an official ROS2 cross-distribution support guarantee", StringComparison.Ordinal)
-                  && plan.Contains("cross-distribution communication", StringComparison.Ordinal),
-                "136A-3: Phase136 records the Humble-to-Jazzy cross-distro boundary");
-            Check(plan.Contains("Jazzy maps to Ubuntu 24.04", StringComparison.Ordinal)
-                  && plan.Contains("Lyrical maps to Ubuntu 26.04", StringComparison.Ordinal)
-                  && plan.Contains("Lyrical supported platforms", StringComparison.Ordinal)
-                  && plan.Contains("pre-release binaries", StringComparison.Ordinal),
-                "136A-4: Phase136 records Jazzy/Lyrical platform and release-state boundaries");
-            Check(plan.Contains("Phase 137 is the sole execution owner", StringComparison.Ordinal)
-                  && plan.Contains("Phase 138 is the sole execution owner", StringComparison.Ordinal)
-                  && plan.Contains("Phase 139 is the sole owner", StringComparison.Ordinal),
-                "136A-5: Phase136 delegates execution to 137/138 and matrix work to 139");
-            Check(plan.Contains("LYRICAL_PRERELEASE_ONLY", StringComparison.Ordinal)
-                  && plan.Contains("BLOCKED_LYRICAL_NOT_RELEASED_OR_PACKAGED", StringComparison.Ordinal)
-                  && plan.Contains("STRATEGY_GREEN_PENDING_RUNG_EVIDENCE", StringComparison.Ordinal),
-                "136A-6: Phase136 verdict vocabulary covers pre-release and umbrella states");
-        }
-
-        private static void VerifyPhase206SupersededIfPresent()
-        {
-            if (!RepoFileExists(Phase206PlanPath))
-            {
-                Check(true, "136B-1: private Phase206 plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = ReadRepoText(Phase206PlanPath);
-            Check(plan.Contains("status: superseded", StringComparison.Ordinal)
-                  && plan.Contains("Superseded by [[136_PHASE136_R2FU_STANDALONE_DISTRO_UPGRADE_LADDER_PLAN]]", StringComparison.Ordinal),
-                "136B-1: Phase206 Jazzy rebuild note is superseded by Phase136");
+            Check(plan.Contains("Phase 138 is Jazzy-only", StringComparison.Ordinal)
+                  && plan.Contains("Lyrical / Ubuntu 26.04 remains a later rung", StringComparison.Ordinal),
+                "138A-1: Phase138 is scoped to Jazzy only");
+            Check(plan.Contains("Phase 106's Humble standalone result as the frozen baseline", StringComparison.Ordinal)
+                  && plan.Contains("does not re-prove the Humble asset", StringComparison.Ordinal),
+                "138A-2: Phase138 consumes Phase106 as baseline instead of re-proving Humble");
+            Check(plan.Contains("WSL2 NAT is diagnostic-only", StringComparison.Ordinal)
+                  && (plan.Contains("Do not treat WSL2 NAT failure as a product blocker", StringComparison.Ordinal)
+                      || plan.Contains("WSL2 NAT as the only remote Linux evidence", StringComparison.Ordinal)),
+                "138A-3: Phase138 keeps WSL2 NAT diagnostic-only");
+            Check(plan.Contains("Do not use the Phase110 sample as the Phase 138 live gate", StringComparison.Ordinal)
+                  && plan.Contains("Phase 138 must use the exact Phase106 acceptance component", StringComparison.Ordinal),
+                "138A-4: Phase138 live gate uses Phase106, not Phase110");
+            Check(plan.Contains("Visual Studio developer shell", StringComparison.Ordinal)
+                  && plan.Contains("C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
+                  && plan.Contains("package Python invocation", StringComparison.Ordinal),
+                "138A-5: Phase138 records the Windows Jazzy build/CLI environment");
+            Check(plan.Contains("Ros2ForUnity*.zip", StringComparison.Ordinal)
+                  && plan.Contains("Unity2Foxglove/Assets/Ros2ForUnity/", StringComparison.Ordinal)
+                  && plan.Contains("third-party/ros2-for-unity/install/", StringComparison.Ordinal)
+                  && plan.Contains("metadata_ros2cs.xml", StringComparison.Ordinal),
+                "138A-6: Phase138 lists forbidden runtime artifacts");
+            Check(plan.Contains("BLOCKED_JAZZY_ENVIRONMENT", StringComparison.Ordinal)
+                  && plan.Contains("BLOCKED_NATIVE_DEPENDENCY", StringComparison.Ordinal)
+                  && plan.Contains("PROMOTE_JAZZY_RUNTIME_CANDIDATE", StringComparison.Ordinal),
+                "138A-7: Phase138 verdict vocabulary covers Jazzy build blockers and promotion");
         }
 
         private static void VerifyEvidenceNoteIfPresent()
         {
             if (!RepoFileExists(EvidencePath))
             {
-                Check(true, "136C-1: local Phase136 evidence note may be absent before manual evidence is recorded");
+                Check(true, "138B-1: local Phase138 evidence note may be absent before build evidence is recorded");
                 return;
             }
 
             var evidence = ReadRepoText(EvidencePath);
-            Check(evidence.Contains("STRATEGY_GREEN_PENDING_RUNG_EVIDENCE", StringComparison.Ordinal)
-                  && evidence.Contains("Phase 137", StringComparison.Ordinal)
-                  && evidence.Contains("Phase 138", StringComparison.Ordinal)
-                  && evidence.Contains("Phase 139", StringComparison.Ordinal),
-                "136C-1: local Phase136 evidence note records the umbrella verdict and downstream owners");
+            Check(evidence.Contains("BLOCKED_JAZZY_ENVIRONMENT", StringComparison.Ordinal)
+                  && evidence.Contains("feature/jazzy-support", StringComparison.Ordinal)
+                  && evidence.Contains("ros2_jazzy.repos", StringComparison.Ordinal),
+                "138B-1: evidence records the Jazzy-support branch and final blocker verdict");
+            Check((evidence.Contains("phase138_build_jazzy_vctargets.log", StringComparison.Ordinal)
+                   || evidence.Contains("phase137_build_jazzy_vctargets.log", StringComparison.Ordinal))
+                  && (evidence.Contains("phase138_colcon_jazzy_ninja_pixi_temp.log", StringComparison.Ordinal)
+                      || evidence.Contains("phase137_colcon_jazzy_ninja_pixi_temp.log", StringComparison.Ordinal))
+                  && evidence.Contains("VisualStudioVersion", StringComparison.Ordinal)
+                  && evidence.Contains("VCTargetsPath", StringComparison.Ordinal),
+                "138B-2: evidence records build attempts and native toolchain details");
             Check(evidence.Contains("Phase106", StringComparison.Ordinal)
-                  && evidence.Contains("graph visibility", StringComparison.Ordinal)
-                  && evidence.Contains("cross-distro", StringComparison.Ordinal),
-                "136C-2: local Phase136 evidence note records current Humble caveats");
+                  && evidence.Contains("Phase110", StringComparison.Ordinal)
+                  && evidence.Contains("WSL2 NAT", StringComparison.Ordinal),
+                "138B-3: evidence preserves Phase106/Phase110/WSL acceptance boundaries");
+            Check(evidence.Contains("No Unity load was attempted", StringComparison.Ordinal)
+                  && evidence.Contains("No Windows ROS2 pub/sub smoke was attempted", StringComparison.Ordinal),
+                "138B-4: evidence does not over-claim past the failed build gate");
         }
 
         private static void VerifyTrackedArtifactHygiene()
@@ -114,16 +106,16 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToList();
 
             Check(offenders.Count == 0,
-                "136D-1: tracked files contain no R2FU zips, Unity imports, metadata XML, native plugin artifacts, or build outputs"
+                "138C-1: tracked files contain no R2FU zips, Unity imports, metadata XML, native plugin artifacts, or build outputs"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
         }
 
-        private static void VerifyCoreSdkStaysRosFree()
+        private static void VerifyCoreSdkBoundary()
         {
             var packageJson = ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json");
             Check(!packageJson.Contains("rclcpp", StringComparison.OrdinalIgnoreCase)
                   && !packageJson.Contains("Ros2ForUnity", StringComparison.Ordinal),
-                "136E-1: core SDK package manifest remains free of R2FU/rclcpp dependencies");
+                "138D-1: core SDK package manifest remains free of R2FU/rclcpp dependencies");
 
             var productionRoots = new[]
             {
@@ -140,24 +132,25 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToList();
 
             Check(offenders.Count == 0,
-                "136E-2: core SDK production surface has no hard ROS2 For Unity dependency"
+                "138D-2: core SDK production surface has no hard ROS2 For Unity dependency"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
         }
 
         private static void VerifyValidationWiring()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("--phase136", StringComparison.Ordinal)
-                  && program.Contains("RunPhase136Only", StringComparison.Ordinal)
-                  && program.Contains("Phase136Validation.Validate()", StringComparison.Ordinal),
-                "136F-1: Program.cs wires --phase136");
-            Check(program.IndexOf("Phase105Validation.Validate()", StringComparison.Ordinal)
-                  < program.IndexOf("Phase136Validation.Validate()", StringComparison.Ordinal),
-                "136F-2: full runtime validation calls Phase136 after Phase105");
-            Check(project.Contains("Phase136Validation.cs", StringComparison.Ordinal),
-                "136F-3: test project compiles Phase136Validation");
+            Check(program.Contains("PhaseValidationRegistry.Find", StringComparison.Ordinal)
+                  && registry.Contains("Local(\"--phase138\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase138Validation.Validate", StringComparison.Ordinal),
+                "138E-1: validation registry wires --phase138");
+            Check(registry.Contains("Local(\"--phase138\"", StringComparison.Ordinal)
+                  && registry.Contains("ValidationCategory.LocalEvidence, run, includeInDefault: true", StringComparison.Ordinal),
+                "138E-2: Phase138 is classified as local-evidence opt-in outside default CI");
+            Check(project.Contains("Phase138Validation.cs", StringComparison.Ordinal),
+                "138E-3: test project compiles Phase138Validation");
         }
 
         private static bool IsForbiddenTrackedArtifact(string path)
@@ -277,7 +270,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = RepoPath(relativePath);
             if (!File.Exists(path))
-                throw new FileNotFoundException("Missing required Phase136 file: " + relativePath, path);
+                throw new FileNotFoundException("Missing required Phase138 file: " + relativePath, path);
             return File.ReadAllText(path);
         }
 

@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifyWorkflowSections();
+            VerifyPublishDataHeaders();
             VerifySerializedFieldCoverage();
             VerifyConnectionSecurityAdjacency();
             VerifyMcapWorkflowGrouping();
@@ -47,6 +48,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "70A-3: Inspector has MCAP Record & Replay workflow section");
             Check(source.Contains("DrawSection(\"Diagnostics\""),
                 "70A-4: Inspector has Diagnostics workflow section");
+            CheckOrdered(source,
+                "DrawSection(\"Connection & Security\"",
+                "DrawSection(\"Publish Data\"",
+                "70A-4b: main workflow order starts with Connection & Security before Publish Data");
+            CheckOrdered(source,
+                "DrawSection(\"Publish Data\"",
+                "DrawSection(\"MCAP Record & Replay\"",
+                "70A-4c: main workflow order promotes MCAP before optional bridge");
+            CheckOrdered(source,
+                "DrawSection(\"MCAP Record & Replay\"",
+                "DrawSection(\"ROS2 Bridge\"",
+                "70A-4d: ROS2 Bridge follows MCAP Record & Replay");
+            CheckOrdered(source,
+                "DrawSection(\"ROS2 Bridge\"",
+                "DrawSection(\"Diagnostics\"",
+                "70A-4e: Diagnostics remains last after ROS2 Bridge");
 
             Check(!source.Contains("DrawSection(\"Server\""),
                 "70A-5: Server is no longer a top-level section");
@@ -54,10 +71,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "70A-6: Publisher Encoding is no longer a top-level section");
             Check(!source.Contains("DrawSection(\"Coordinate System\""),
                 "70A-7: Coordinate System is no longer a top-level section");
+            Check(!source.Contains("Subheader(\"Coordinates\""),
+                "70A-7b: Publish Data relies on the serialized Coordinate System header");
             Check(!source.Contains("DrawSection(\"Assets\""),
                 "70A-8: Assets is no longer a top-level section");
             Check(!source.Contains("DrawSection(\"Playback Control\""),
                 "70A-9: Playback Control is no longer a top-level section");
+            Check(!source.Contains("Subheader(\"Recording\""),
+                "70A-9b: MCAP section relies on the serialized MCAP Recording header");
+            Check(!source.Contains("Subheader(\"Replay\""),
+                "70A-9c: MCAP section relies on the serialized MCAP Replay header");
+            Check(!source.Contains("Subheader(\"Replay Preflight\""),
+                "70A-9d: MCAP preflight drawer owns its specific headings");
             Check(!source.Contains("DrawSection(\"MCAP Recording\""),
                 "70A-10: MCAP Recording is no longer a top-level section");
             Check(!source.Contains("DrawSection(\"MCAP Replay\""),
@@ -66,6 +91,37 @@ namespace Unity.FoxgloveSDK.Tests
                 "70A-12: Security is no longer a top-level section");
             Check(!source.Contains("DrawSection(\"Transport Health\""),
                 "70A-13: Transport Health is no longer a top-level section");
+        }
+
+        private static void VerifyPublishDataHeaders()
+        {
+            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var section = Slice(editorSource, "private void DrawPublishDataSection()", "private void DrawMcapSection()");
+
+            Check(section.Contains("Subheader(\"Publish Rate\")"),
+                "70A-14: Publish Data labels rate settings as Publish Rate");
+            Check(section.Contains("Subheader(\"Publisher Encoding\")"),
+                "70A-15: Publish Data labels global encoding settings as Publisher Encoding");
+            Check(!section.Contains("Subheader(\"Rate\")") && !section.Contains("Subheader(\"Encoding\")"),
+                "70A-16: Publish Data avoids ambiguous Rate and Encoding headings");
+            Check(IndexOf(section, "Subheader(\"Publish Rate\")") < IndexOf(section, "_defaultPublishRateHz")
+                  && IndexOf(section, "_defaultPublishRateHz") < IndexOf(section, "Subheader(\"Publisher Encoding\")")
+                  && IndexOf(section, "Subheader(\"Publisher Encoding\")") < IndexOf(section, "_defaultPublisherEncoding")
+                  && IndexOf(section, "_defaultPublisherEncoding") < IndexOf(section, "_allowPublisherOverride"),
+                "70A-17: Publish Data header order is Publish Rate -> Publisher Encoding");
+            var publishRateHeader = IndexOf(managerSource, "[Header(\"Publish Rate\")]");
+            var publishRateField = IndexOf(managerSource, "_defaultPublishRateHz");
+            var publisherEncodingHeader = IndexOf(managerSource, "[Header(\"Publisher Encoding\")]");
+            var publisherEncodingField = IndexOf(managerSource, "_defaultPublisherEncoding");
+            Check(publishRateHeader >= 0
+                  && publishRateField >= 0
+                  && publisherEncodingHeader >= 0
+                  && publisherEncodingField >= 0
+                  && publishRateHeader < publishRateField
+                  && publishRateField < publisherEncodingHeader
+                  && publisherEncodingHeader < publisherEncodingField,
+                "70A-18: serialized headers align with rate and encoding fields");
         }
 
         private static void VerifySerializedFieldCoverage()
@@ -188,6 +244,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static int IndexOf(string text, string pattern)
         {
             return text.IndexOf(pattern, StringComparison.Ordinal);
+        }
+
+        private static void CheckOrdered(string text, string before, string after, string name)
+        {
+            Check(IndexOf(text, before) >= 0 && IndexOf(text, after) >= 0 && IndexOf(text, before) < IndexOf(text, after), name);
         }
 
         private static int CountOccurrences(string text, string pattern)

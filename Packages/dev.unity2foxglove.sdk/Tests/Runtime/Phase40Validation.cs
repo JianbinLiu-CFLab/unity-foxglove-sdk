@@ -5,6 +5,7 @@
 // Purpose: Phase 40 camera backpressure policy validation.
 
 using System;
+using System.IO;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -28,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestBudgetZeroIsUnlimited();
             TestBudgetAcceptsUnderOrEqual();
             TestBudgetRejectsOverLimit();
+            TestInspectorBackpressurePlacement();
 
             Console.WriteLine("Phase 40: All checks passed.");
         }
@@ -108,6 +110,50 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestBudgetRejectsOverLimit()
         {
             Check(CameraBackpressurePolicy.ExceedsBudget(new byte[201], 200), "40A-10: over budget rejected");
+        }
+
+        private static void TestInspectorBackpressurePlacement()
+        {
+            var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
+            Check(!editor.Contains("LabelField(\"Backpressure\"", StringComparison.Ordinal),
+                "40B-1: camera inspector relies on the serialized Header for one Backpressure heading");
+            CheckOrdered(editor, "DrawEncodingPolicySection();", "DrawBackpressureSection(",
+                "40B-2: camera inspector draws Backpressure after Encoding Policy");
+            CheckOrdered(editor, "DrawBackpressureSection(", "DrawRos2BridgeSection();",
+                "40B-3: camera inspector draws Backpressure before ROS2 Bridge");
+            Check(editor.Contains("if (mode == CameraOutputMode.Jpeg)", StringComparison.Ordinal)
+                  && editor.Contains("EditorGUILayout.PropertyField(enableBackpressure", StringComparison.Ordinal),
+                "40B-4: Backpressure controls remain scoped to JPEG camera output");
+        }
+
+        private static void CheckOrdered(string text, string first, string second, string label)
+        {
+            var firstIndex = text.IndexOf(first, StringComparison.Ordinal);
+            var secondIndex = text.IndexOf(second, StringComparison.Ordinal);
+            Check(firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex, label);
+        }
+
+        private static string ReadRepoText(string relativePath)
+        {
+            var root = FindRepoRoot();
+            if (root == null)
+                return "";
+
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            return File.Exists(path) ? File.ReadAllText(path) : "";
+        }
+
+        private static string FindRepoRoot()
+        {
+            var dir = AppContext.BaseDirectory;
+            while (!string.IsNullOrEmpty(dir))
+            {
+                if (Directory.Exists(Path.Combine(dir, ".git")))
+                    return dir;
+                dir = Directory.GetParent(dir)?.FullName;
+            }
+
+            return null;
         }
 
         private static void Check(bool condition, string label)

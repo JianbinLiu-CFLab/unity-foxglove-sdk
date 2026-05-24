@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115H-A5: evidence records post-105 audit buckets",
                 "Self-owned source inventory",
                 "Modified third-party/vendored candidates",
-                "Phase 111F/137B",
+                "Phase 111F/138B",
                 "Phase 112-115G");
         }
 
@@ -206,8 +206,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "115H-F3: unavailable context summary documents no bundled runtime behavior",
                 "not bundled", "facade");
             CheckContainsAll(
-                ReadRepoText("Scripts/smoke/phase137b_r2fu_jazzy_windows_build.py"),
-                "115H-F4: Phase137B smoke script documents Python orchestrator and upstream PowerShell boundary",
+                ReadRepoText("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
+                "115H-F4: Phase138B smoke script documents Python orchestrator and upstream PowerShell boundary",
                 "Python orchestrator",
                 "not a project-owned PowerShell",
                 "upstream build entry points");

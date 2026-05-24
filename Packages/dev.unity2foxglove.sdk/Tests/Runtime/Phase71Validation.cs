@@ -46,10 +46,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "71A-1: manager exposes Default Publish Rate Hz serialized default");
             Check(managerSource.Contains("public float DefaultPublishRateHz => _defaultPublishRateHz"),
                 "71A-2: manager exposes DefaultPublishRateHz read-only property");
-            Check(publishDataSection.Contains("DrawProperty(\"_defaultPublishRateHz\")"),
+            Check(publishDataSection.Contains("_defaultPublishRateHz"),
                 "71A-3: Manager Inspector draws Default Publish Rate Hz in Publish Data");
-            Check(IndexOf(publishDataSection, "Subheader(\"Rate\")") < IndexOf(publishDataSection, "Subheader(\"Encoding\")"),
-                "71A-4: Publish Data shows Rate before Encoding");
+            Check(IndexOf(publishDataSection, "Subheader(\"Publish Rate\")") < IndexOf(publishDataSection, "Subheader(\"Publisher Encoding\")"),
+                "71A-4: Publish Data shows Publish Rate before Publisher Encoding");
         }
 
         private static void VerifyPublisherRatePolicy()
@@ -106,8 +106,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPublisherInspectorUx()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var editorClass = Slice(source, "public class FoxglovePublisherBaseEditor", "public class AssetRootDefinitionDrawer");
+            var editorClass = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs");
 
             Check(editorClass.Contains("prop.name == \"_publishRateSource\""),
                 "71D-1: publisher Inspector hides raw rate source from generic loop");

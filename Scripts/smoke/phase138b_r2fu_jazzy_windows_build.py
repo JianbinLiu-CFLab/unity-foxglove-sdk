@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Module: Scripts/smoke
-# Purpose: Phase137B R2FU Jazzy Windows build toolchain orchestrator.
+# Purpose: Phase138B R2FU Jazzy Windows build toolchain orchestrator.
 
 """Run a deterministic R2FU Jazzy Windows build attempt.
 
@@ -49,7 +49,7 @@ VERDICTS = (
 )
 
 
-class Phase137BError(RuntimeError):
+class Phase138BError(RuntimeError):
     """Build orchestration failure with a stable verdict label."""
 
     def __init__(self, verdict: str, message: str) -> None:
@@ -80,7 +80,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--generator", choices=("auto", "visualstudio", "ninja"), default="auto")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--no-build", action="store_true")
-    parser.add_argument("--log-prefix", default="phase137b")
+    parser.add_argument("--log-prefix", default="phase138b")
     return parser.parse_args(argv)
 
 
@@ -91,7 +91,7 @@ def find_repo_root(start: pathlib.Path) -> pathlib.Path:
     for candidate in (current, *current.parents):
         if (candidate / ".git").exists():
             return candidate
-    raise Phase137BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Could not locate repo root from {start}")
+    raise Phase138BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Could not locate repo root from {start}")
 
 
 def is_relative_to(path: pathlib.Path, parent: pathlib.Path) -> bool:
@@ -109,12 +109,12 @@ def assert_safe_root(label: str, path: pathlib.Path, repo_root: pathlib.Path) ->
 
     resolved = path.resolve()
     if is_relative_to(resolved, repo_root):
-        raise Phase137BError(
+        raise Phase138BError(
             "BLOCKED_UNKNOWN_TOOLCHAIN",
             f"{label} must not be inside the repository: {resolved}",
         )
     if "baidusyncdisk" in str(resolved).lower() or "BaiduSyncdisk" in str(resolved):
-        raise Phase137BError(
+        raise Phase138BError(
             "BLOCKED_UNKNOWN_TOOLCHAIN",
             f"{label} must not be inside D:\\BaiduSyncdisk: {resolved}",
         )
@@ -138,7 +138,7 @@ def remove_known_subdir(path: pathlib.Path, allowed_parent: pathlib.Path) -> Non
     resolved = path.resolve()
     parent = allowed_parent.resolve()
     if resolved == parent or not is_relative_to(resolved, parent):
-        raise Phase137BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Refusing unsafe delete: {resolved}")
+        raise Phase138BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Refusing unsafe delete: {resolved}")
     if resolved.exists():
         def make_writable(function, item, _exc_info):
             """Make a readonly build artifact writable before retrying removal."""
@@ -217,7 +217,7 @@ def run_command(
 
     result = CommandResult(command, cwd, exit_code, output)
     if check and exit_code != 0:
-        raise Phase137BError(classify_output(output), f"Command failed: {' '.join(command)}")
+        raise Phase138BError(classify_output(output), f"Command failed: {' '.join(command)}")
     return result
 
 
@@ -285,7 +285,7 @@ def find_vswhere() -> pathlib.Path:
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise Phase137BError("BLOCKED_VSDEV_ENV", "vswhere.exe was not found")
+    raise Phase138BError("BLOCKED_VSDEV_ENV", "vswhere.exe was not found")
 
 
 def resolve_vs_dev_cmd(explicit: str, env: dict[str, str], log_file: pathlib.Path) -> pathlib.Path:
@@ -295,7 +295,7 @@ def resolve_vs_dev_cmd(explicit: str, env: dict[str, str], log_file: pathlib.Pat
         path = pathlib.Path(explicit)
         if path.exists():
             return path
-        raise Phase137BError("BLOCKED_VSDEV_ENV", f"Explicit VsDevCmd.bat was not found: {path}")
+        raise Phase138BError("BLOCKED_VSDEV_ENV", f"Explicit VsDevCmd.bat was not found: {path}")
 
     candidates: list[pathlib.Path] = [
         pathlib.Path(r"C:\Program Files\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"),
@@ -329,7 +329,7 @@ def resolve_vs_dev_cmd(explicit: str, env: dict[str, str], log_file: pathlib.Pat
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise Phase137BError("BLOCKED_VSDEV_ENV", "VsDevCmd.bat was not found")
+    raise Phase138BError("BLOCKED_VSDEV_ENV", "VsDevCmd.bat was not found")
 
 
 def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_file: pathlib.Path) -> dict[str, str]:
@@ -353,7 +353,7 @@ def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_f
         log.write(output)
         log.write(f"\n# exit={completed.returncode}\n")
     if completed.returncode != 0:
-        raise Phase137BError(classify_output(output), f"Command failed: {command}")
+        raise Phase138BError(classify_output(output), f"Command failed: {command}")
     merged = dict(env)
     for line in output.splitlines():
         if "=" not in line:
@@ -430,7 +430,7 @@ def capture_ros2_environment(ros2_root: pathlib.Path, env: dict[str, str], log_f
 
     setup = ros2_root / "local_setup.ps1"
     if not setup.exists():
-        raise Phase137BError("BLOCKED_PYTHON_SELECTION", f"ROS2 local_setup.ps1 was not found: {setup}")
+        raise Phase138BError("BLOCKED_PYTHON_SELECTION", f"ROS2 local_setup.ps1 was not found: {setup}")
     command = f"& '{setup}'; Get-ChildItem Env: | ForEach-Object {{ \"$($_.Name)=$($_.Value)\" }}"
     result = run_command(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
@@ -470,7 +470,7 @@ def verify_python(ros2_root: pathlib.Path, env: dict[str, str], log_file: pathli
 
     python = ros2_root / ".pixi" / "envs" / "default" / "python.exe"
     if not python.exists():
-        raise Phase137BError("BLOCKED_PYTHON_SELECTION", f"Pinned Python is missing: {python}")
+        raise Phase138BError("BLOCKED_PYTHON_SELECTION", f"Pinned Python is missing: {python}")
     run_command(
         [str(python), "-c", "import sys, catkin_pkg, ament_package; print(sys.executable); print(catkin_pkg.__file__); print(ament_package.__file__)"],
         cwd=ros2_root,
@@ -485,12 +485,12 @@ def verify_cl_compile(temp_root: pathlib.Path, env: dict[str, str], log_file: pa
     """Compile a tiny C file using cl.exe from the imported VS environment."""
 
     ensure_dir(temp_root)
-    source = temp_root / "phase137b_cl_probe.c"
-    obj = temp_root / "phase137b_cl_probe.obj"
+    source = temp_root / "phase138b_cl_probe.c"
+    obj = temp_root / "phase138b_cl_probe.obj"
     source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
     cl_path = shutil.which("cl", path=env.get("Path") or env.get("PATH"))
     if not cl_path:
-        raise Phase137BError("BLOCKED_VSDEV_ENV", "cl.exe was not found in the imported VS environment")
+        raise Phase138BError("BLOCKED_VSDEV_ENV", "cl.exe was not found in the imported VS environment")
     try:
         result = run_command(
             [cl_path, "/nologo", "/c", str(source), f"/Fo{obj}"],
@@ -499,7 +499,7 @@ def verify_cl_compile(temp_root: pathlib.Path, env: dict[str, str], log_file: pa
             log_file=log_file,
         )
         if result.exit_code != 0:
-            raise Phase137BError(classify_output(result.output), "cl.exe tiny compile failed")
+            raise Phase138BError(classify_output(result.output), "cl.exe tiny compile failed")
     finally:
         for probe in (source, obj):
             try:
@@ -514,7 +514,7 @@ def resolve_cmake_generator(requested: str, env: dict[str, str], log_file: pathl
     path = env.get("Path") or env.get("PATH")
     ninja = shutil.which("ninja", path=path)
     if requested == "ninja" and not ninja:
-        raise Phase137BError("BLOCKED_CMAKE_GENERATOR", "Ninja was requested but ninja.exe was not found")
+        raise Phase138BError("BLOCKED_CMAKE_GENERATOR", "Ninja was requested but ninja.exe was not found")
     if requested == "visualstudio":
         effective = "visualstudio"
     elif requested == "ninja":
@@ -604,7 +604,7 @@ def patch_ros2cs_jazzy_windows_standalone(checkout: pathlib.Path, log_file: path
         cmake.write_text(text.replace(old, new), encoding="utf-8")
         patched = True
     else:
-        raise Phase137BError("BLOCKED_ROS2CS_BUILD", "Could not patch ros2cs_core OpenSSL standalone DLL list")
+        raise Phase138BError("BLOCKED_ROS2CS_BUILD", "Could not patch ros2cs_core OpenSSL standalone DLL list")
 
     with log_file.open("a", encoding="utf-8", errors="replace") as log:
         state = "applied" if patched else "already-present"
@@ -617,7 +617,7 @@ def run_jazzy_dependency_import(checkout: pathlib.Path, env: dict[str, str], log
     ros2cs = checkout / "src" / "ros2cs"
     get_repos = ros2cs / "get_repos.ps1"
     if not get_repos.exists():
-        raise Phase137BError("BLOCKED_ROS2CS_BUILD", f"Missing upstream get_repos.ps1: {get_repos}")
+        raise Phase138BError("BLOCKED_ROS2CS_BUILD", f"Missing upstream get_repos.ps1: {get_repos}")
     result = run_command(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(get_repos)],
         cwd=ros2cs,
@@ -625,7 +625,7 @@ def run_jazzy_dependency_import(checkout: pathlib.Path, env: dict[str, str], log
         log_file=log_file,
     )
     if result.exit_code != 0:
-        raise Phase137BError(classify_output(result.output), "Jazzy dependency import failed")
+        raise Phase138BError(classify_output(result.output), "Jazzy dependency import failed")
 
 
 def clean_colcon_outputs(checkout: pathlib.Path) -> None:
@@ -661,7 +661,7 @@ def copy_jazzy_pixi_runtime_closure(
     for name in JAZZY_PIXI_RUNTIME_DLLS:
         source = pixi_bin / name
         if not source.exists():
-            raise Phase137BError("BLOCKED_NATIVE_DEPENDENCY", f"Missing Jazzy pixi runtime DLL: {source}")
+            raise Phase138BError("BLOCKED_NATIVE_DEPENDENCY", f"Missing Jazzy pixi runtime DLL: {source}")
         shutil.copy2(source, plugin_dir / name)
         copied.append(name)
 
@@ -738,7 +738,7 @@ def run_direct_colcon_build(
 
     colcon_path = shutil.which("colcon", path=env.get("Path") or env.get("PATH"))
     if not colcon_path:
-        raise Phase137BError("BLOCKED_PYTHON_SELECTION", "colcon was not found in the pinned ROS2 Jazzy environment")
+        raise Phase138BError("BLOCKED_PYTHON_SELECTION", "colcon was not found in the pinned ROS2 Jazzy environment")
     command = [
         colcon_path,
         "build",
@@ -771,7 +771,7 @@ def run_upstream_build(
 
     build_script = checkout / "build.ps1"
     if not build_script.exists():
-        raise Phase137BError("BLOCKED_R2FU_BUILD_SCRIPT", f"Missing upstream build.ps1: {build_script}")
+        raise Phase138BError("BLOCKED_R2FU_BUILD_SCRIPT", f"Missing upstream build.ps1: {build_script}")
     result = run_command(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(build_script), "-standalone", "-clean_install"],
         cwd=checkout,
@@ -816,14 +816,14 @@ def write_evidence(
     effective_generator: str,
     no_build: bool,
 ) -> None:
-    """Write the local Phase137B evidence note."""
+    """Write the local Phase138B evidence note."""
 
     lines = [
         "---",
-        'title: "Phase137B R2FU Jazzy Windows Build Toolchain Closure Evidence"',
+        'title: "Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence"',
         "tags:",
         "  - developer",
-        "  - phase137b",
+        "  - phase138b",
         "  - ros2-for-unity",
         "  - jazzy",
         "  - windows",
@@ -831,7 +831,7 @@ def write_evidence(
         f"updated: {_dt.date.today().isoformat()}",
         "---",
         "",
-        "# Phase137B R2FU Jazzy Windows Build Toolchain Closure Evidence",
+        "# Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence",
         "",
         "## Verdict",
         "",
@@ -873,9 +873,9 @@ def write_evidence(
         "",
         "## Boundary",
         "",
-        "Phase137B does not import any partial R2FU asset into Unity.",
+        "Phase138B does not import any partial R2FU asset into Unity.",
         "",
-        "Phase137 runtime acceptance remains Phase106-only after a complete asset exists.",
+        "Phase138 runtime acceptance remains Phase106-only after a complete asset exists.",
         "",
     ]
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
@@ -894,7 +894,7 @@ def main(argv: list[str]) -> int:
     ensure_dir(log_dir)
     ensure_dir(temp_root)
     log_file = log_dir / f"{args.log_prefix}_{timestamp()}.log"
-    evidence_path = repo_root / "Developer" / "87 Phase137B R2FU Jazzy Windows Build Toolchain Closure Evidence.md"
+    evidence_path = repo_root / "Developer" / "87 Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence.md"
     vs_dev_cmd: pathlib.Path | None = None
     effective_generator = "unresolved"
 
@@ -943,7 +943,7 @@ def main(argv: list[str]) -> int:
         print(f"log={log_file}")
         print(f"evidence={evidence_path}")
         return 0 if verdict == "BUILD_ORCHESTRATOR_GREEN" or args.no_build else 2
-    except Phase137BError as exc:
+    except Phase138BError as exc:
         verdict = exc.verdict if exc.verdict in VERDICTS else "BLOCKED_UNKNOWN_TOOLCHAIN"
         write_evidence(
             evidence_path,

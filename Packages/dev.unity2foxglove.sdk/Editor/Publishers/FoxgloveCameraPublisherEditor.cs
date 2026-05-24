@@ -117,11 +117,13 @@ namespace Unity.FoxgloveSDK.Editor
             }
             else
             {
-                DrawJpegSection(jpegQuality, maxPendingReadbacks, enableBackpressure, backpressureCooldown, maxEncodedBytes, logBackpressureSkips);
+                DrawJpegSection(jpegQuality, maxPendingReadbacks);
             }
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
+            if (mode == CameraOutputMode.Jpeg)
+                DrawBackpressureSection(enableBackpressure, backpressureCooldown, maxEncodedBytes, logBackpressureSkips);
             DrawRos2BridgeSection();
 
             serializedObject.ApplyModifiedProperties();
@@ -131,19 +133,21 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawJpegSection(
             SerializedProperty jpegQuality,
-            SerializedProperty maxPendingReadbacks,
+            SerializedProperty maxPendingReadbacks)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(jpegQuality, new GUIContent("JPEG Quality"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
+        }
+
+        private void DrawBackpressureSection(
             SerializedProperty enableBackpressure,
             SerializedProperty backpressureCooldown,
             SerializedProperty maxEncodedBytes,
             SerializedProperty logBackpressureSkips)
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(jpegQuality, new GUIContent("JPEG Quality"));
-            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Backpressure", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(enableBackpressure, new GUIContent("Enable Backpressure Adaptation"));
             EditorGUILayout.PropertyField(backpressureCooldown, new GUIContent("Backpressure Cooldown"));
             EditorGUILayout.PropertyField(maxEncodedBytes, new GUIContent("Max Encoded Bytes"));

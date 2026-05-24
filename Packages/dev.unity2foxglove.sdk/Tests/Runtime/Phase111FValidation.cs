@@ -225,7 +225,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBuildOrchestratorCleanup()
         {
-            var script = ReadRepoText("Scripts/smoke/phase137b_r2fu_jazzy_windows_build.py");
+            var script = ReadRepoText("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py");
             Check(script.Contains("kill_process_tree_windows", StringComparison.Ordinal)
                   && script.Contains("taskkill", StringComparison.Ordinal)
                   && script.Contains("timed_out", StringComparison.Ordinal)

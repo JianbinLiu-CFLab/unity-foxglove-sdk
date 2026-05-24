@@ -58,9 +58,9 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawSection("Connection & Security", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
             DrawSection("Publish Data", ref _publishDataExpanded, DrawPublishDataSection);
-            DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
+            DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
             DrawSection("Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
 
             serializedObject.ApplyModifiedProperties();
@@ -176,14 +176,16 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawPublishDataSection()
         {
-            FoxgloveManagerInspectorLayout.Subheader("Rate");
-            DrawProperty("_defaultPublishRateHz");
+            FoxgloveManagerInspectorLayout.Subheader("Publish Rate");
+            DrawFloatProperty(
+                "_defaultPublishRateHz",
+                "Default Publish Rate Hz",
+                "Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.");
 
-            FoxgloveManagerInspectorLayout.Subheader("Encoding");
+            FoxgloveManagerInspectorLayout.Subheader("Publisher Encoding");
             DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Default Publisher Encoding");
             DrawProperty("_allowPublisherOverride");
 
-            FoxgloveManagerInspectorLayout.Subheader("Coordinates");
             DrawProperty("_coordinateMode");
 
             FoxgloveManagerInspectorLayout.Subheader("Assets");
@@ -199,7 +201,6 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawSchemaEvidenceSection();
 
-            FoxgloveManagerInspectorLayout.Subheader("Recording");
             DrawProperty("_enableRecording");
             DrawProperty("_recordingPrefix");
             var directory = serializedObject.FindProperty("_recordingDirectory");
@@ -210,7 +211,6 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_recordingChunkSizeKB");
             DrawProperty("_recordingCompression");
 
-            FoxgloveManagerInspectorLayout.Subheader("Replay");
             DrawProperty("_enableReplay");
             DrawProperty("_replayAutoPlay");
             DrawProperty("_disableLivePublishers");
@@ -231,7 +231,6 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (replayPath != null)
             {
-                FoxgloveManagerInspectorLayout.Subheader("Replay Preflight");
                 _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
             }
         }
@@ -506,6 +505,18 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.PropertyField(prop, new GUIContent(label), true);
+        }
+
+        private void DrawFloatProperty(string propertyName, string label, string tooltip)
+        {
+            var prop = serializedObject.FindProperty(propertyName);
+            if (prop == null)
+            {
+                DrawMissingProperty(propertyName);
+                return;
+            }
+
+            prop.floatValue = EditorGUILayout.FloatField(new GUIContent(label, tooltip), prop.floatValue);
         }
 
         private void DrawGlobalEncodingProperty(string propertyName, string label)
@@ -1025,128 +1036,6 @@ namespace Unity.FoxgloveSDK.Editor
             var relative = MakeRelative(value);
             if (relative != value)
                 prop.stringValue = relative;
-        }
-    }
-
-    /// <summary>
-    /// Custom Inspector for publisher components. Draws the normal serialized
-    /// fields plus a read-only encoding summary resolved from manager policy
-    /// and publisher capabilities.
-    /// </summary>
-    [CustomEditor(typeof(Components.FoxglovePublisherBase), true)]
-    public class FoxglovePublisherBaseEditor : UnityEditor.Editor
-    {
-        /// <summary>
-        /// Draws the shared publisher inspector, including encoding override
-        /// controls and inherited serialized fields.
-        /// </summary>
-        public override void OnInspectorGUI()
-        {
-            serializedObject.Update();
-
-            var publishRateSource = serializedObject.FindProperty("_publishRateSource");
-            var publishRateHz = serializedObject.FindProperty("_publishRateHz");
-            var encodingOverride = serializedObject.FindProperty("_encodingOverride");
-            var bridgeOverride = serializedObject.FindProperty("_ros2BridgeOutput");
-            var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
-            var prop = serializedObject.GetIterator();
-            if (prop.NextVisible(true))
-            {
-                do
-                {
-                    if (prop.name == "_publishRateSource")
-                        continue;
-                    if (prop.name == "_publishRateHz")
-                        continue;
-                    if (prop.name == "_encodingOverride")
-                        continue;
-                    if (prop.name == "_ros2BridgeOutput")
-                        continue;
-                    if (prop.name == "_ros2BridgeTopicOverride")
-                        continue;
-
-                    using (new EditorGUI.DisabledScope(prop.propertyPath == "m_Script"))
-                    {
-                        EditorGUILayout.PropertyField(prop, true);
-                    }
-                }
-                while (prop.NextVisible(false));
-            }
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
-            if (publishRateSource != null)
-                EditorGUILayout.PropertyField(publishRateSource, new GUIContent("Publish Rate Source"));
-
-            var usesLocalRate = publishRateSource == null
-                || publishRateSource.enumValueIndex == (int)Components.PublisherRateSource.OverrideLocal;
-            using (new EditorGUI.DisabledScope(!usesLocalRate))
-            {
-                if (publishRateHz != null)
-                    EditorGUILayout.PropertyField(publishRateHz, new GUIContent("Publish Rate Hz"));
-            }
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
-            if (encodingOverride != null)
-                PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
-            if (bridgeOverride != null)
-                PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOverride, "Bridge Output");
-            if (bridgeTopicOverride != null)
-                EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
-
-            serializedObject.ApplyModifiedProperties();
-
-            var publisher = (Components.FoxglovePublisherBase)target;
-            var resolution = publisher.EncodingResolution;
-            var bridgeResolution = publisher.BridgeOutputResolution;
-
-            EditorGUILayout.Space();
-            using (new EditorGUI.DisabledScope(true))
-            {
-                EditorGUILayout.FloatField("Effective Publish Rate Hz", publisher.EffectivePublishRateHz);
-            }
-
-            EditorGUILayout.Space();
-            using (new EditorGUI.DisabledScope(true))
-            {
-                EditorGUILayout.TextField("Supported Encodings", publisher.SupportedEncodingSummary);
-                PublisherEncodingEditorLabels.DrawEffectiveEncoding(resolution.Effective, "Effective Encoding");
-                PublisherEncodingEditorLabels.DrawEffectiveRos2BridgeOutput(bridgeResolution.Effective, "Effective ROS2 Bridge");
-                EditorGUILayout.TextField("Effective Bridge Topic", publisher.EffectiveRos2BridgeTopic);
-                EditorGUILayout.TextField("Effective Bridge QoS", publisher.EffectiveRos2BridgeQos.DisplaySummary);
-            }
-
-            if (publisher.ConfiguredManager != null
-                && !publisher.ConfiguredManager.AllowPublisherOverride
-                && publisher.EncodingOverride != Components.PublisherEncodingOverride.UseManager)
-            {
-                EditorGUILayout.HelpBox(
-                    "FoxgloveManager disables publisher overrides; the global default is used.",
-                    MessageType.Info);
-            }
-            else if (resolution.Effective == Components.PublisherEffectiveEncoding.Unsupported)
-            {
-                EditorGUILayout.HelpBox(
-                    "This publisher declares no supported encoding and will not publish messages.",
-                    MessageType.Error);
-            }
-            else if (resolution.FellBack)
-            {
-                EditorGUILayout.HelpBox(
-                    $"Requested {resolution.RequestedLabel}, but this publisher will emit {resolution.EffectiveLabel}.",
-                    MessageType.Warning);
-            }
-
-            if (bridgeResolution.FellBack)
-            {
-                EditorGUILayout.HelpBox(
-                    "Requested ROS2 Bridge output, but this publisher cannot mirror a ROS2 payload.",
-                    MessageType.Warning);
-            }
         }
     }
 

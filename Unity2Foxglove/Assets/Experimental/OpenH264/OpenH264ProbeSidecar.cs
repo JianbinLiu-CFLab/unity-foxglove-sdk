@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Unity2Foxglove/Assets/Developer/OpenH264
+// Module: Unity2Foxglove/Assets/Experimental/OpenH264
 // Purpose: Demo-only managed sidecar for Phase 80 OpenH264 source spike.
 
 using System;

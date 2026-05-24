@@ -6,12 +6,16 @@ on:
     paths:
       - "Plan/**"
       - "Developer/**"
+      - "*/Developer/**"
+      - "*/Developer.meta"
       - ".github/workflows/repository-boundary-check.yml"
   pull_request:
     branches: [main]
     paths:
       - "Plan/**"
       - "Developer/**"
+      - "*/Developer/**"
+      - "*/Developer.meta"
       - ".github/workflows/repository-boundary-check.yml"
 
 jobs:
@@ -22,9 +26,16 @@ jobs:
 
       - name: Block tracked private workspace files
         run: |
-          tracked="$(git ls-files -- 'Plan/**' 'Developer/**')"
-          if [ -n "$tracked" ]; then
+          root_private="$(git ls-files -- 'Plan/**' 'Developer/**')"
+          if [ -n "$root_private" ]; then
             echo "::error::Plan/ and Developer/ are local-only private workspace material and must not be tracked."
-            printf '%s\n' "$tracked"
+            printf '%s\n' "$root_private"
+            exit 1
+          fi
+
+          nested_developer="$(git ls-files -- ':(glob)**/Developer/**' ':(glob)**/Developer.meta')"
+          if [ -n "$nested_developer" ]; then
+            echo "::error::Tracked demo or experimental assets must use Experimental/, not Developer/."
+            printf '%s\n' "$nested_developer"
             exit 1
           fi

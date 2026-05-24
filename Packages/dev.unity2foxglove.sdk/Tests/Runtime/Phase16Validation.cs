@@ -82,6 +82,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var requiredHeaderFiles = new[]
             {
+                "Scripts/architecture/analyze_coupling.py",
                 "Scripts/build_tools/unity_il2cpp.py",
                 "Scripts/performance/run_baseline.py",
                 "Scripts/release/bump_version.py",
@@ -352,6 +353,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var trackedDeveloperFiles = RunGitLsFiles(repoRoot, "Developer/**");
             Assert(trackedDeveloperFiles.Length == 0, "Developer/ contains no git-tracked files");
+
+            var trackedNestedDeveloperFiles = RunGitLsFiles(repoRoot, ":(glob)**/Developer/**")
+                .Concat(RunGitLsFiles(repoRoot, ":(glob)**/Developer.meta"))
+                .Where(path => !path.Replace('\\', '/').StartsWith("Developer/", StringComparison.Ordinal))
+                .Where(path => File.Exists(Path.Combine(repoRoot, path.Replace('/', Path.DirectorySeparatorChar))))
+                .ToArray();
+            Assert(trackedNestedDeveloperFiles.Length == 0, "Nested Developer/ paths are not tracked; use Experimental/ for tracked demo assets");
         }
 
         static string[] RunGitLsFiles(string repoRoot, string pathspec)

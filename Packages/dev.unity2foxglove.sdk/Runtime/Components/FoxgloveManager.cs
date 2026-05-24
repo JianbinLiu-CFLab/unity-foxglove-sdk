@@ -60,9 +60,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _runInBackground = true;
         [SerializeField] private FoxgloveTransportMode _transportMode = FoxgloveTransportMode.WebSocket;
 
-        [Header("Publisher Encoding")]
+        [Header("Publish Rate")]
         [Tooltip("Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.")]
         [SerializeField] private float _defaultPublishRateHz = 10f;
+        [Header("Publisher Encoding")]
         [Tooltip("Global default encoding for publishers that support it.")]
         [SerializeField] private GlobalEncoding _defaultPublisherEncoding = GlobalEncoding.Protobuf;
         [Tooltip("When enabled, individual publishers can override the global default.")]

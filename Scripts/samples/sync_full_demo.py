@@ -39,6 +39,8 @@ ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 # Source roots in the live Unity demo project.
 DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
 DEMO_CONFIGS = ROOT / "Unity2Foxglove" / "Configs"
+FULL_DEMO_VISUALIZATION_SCRIPTS = DEMO_ASSETS / "Scripts" / "FullDemoVisualization"
+FOXRUN_SCRIPTS = DEMO_ASSETS / "Scripts" / "FoxRun"
 
 # Destination root for the package sample that is shipped to Unity users.
 PACKAGE_SAMPLE = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Samples~" / "FullDemoVisualization"
@@ -72,18 +74,18 @@ FILE_MAPS = (
     FileMap(DEMO_ASSETS / "InputSystem_Actions.inputactions.meta", PACKAGE_SAMPLE / "InputSystem_Actions.inputactions.meta"),
     FileMap(DEMO_ASSETS / "Scenes" / "SampleScene.unity", PACKAGE_SAMPLE / "Scenes" / "FullDemoVisualization.unity"),
     FileMap(DEMO_ASSETS / "Scenes" / "SampleScene.unity.meta", PACKAGE_SAMPLE / "Scenes" / "FullDemoVisualization.unity.meta"),
-    FileMap(DEMO_ASSETS / "Scripts" / "FoxgloveDemoSetup.cs", PACKAGE_SAMPLE / "Scripts" / "FoxgloveDemoSetup.cs"),
-    FileMap(DEMO_ASSETS / "Scripts" / "FoxgloveDemoSetup.cs.meta", PACKAGE_SAMPLE / "Scripts" / "FoxgloveDemoSetup.cs.meta"),
-    FileMap(DEMO_ASSETS / "Scripts" / "MouseDragCube.cs", PACKAGE_SAMPLE / "Scripts" / "MouseDragCube.cs"),
-    FileMap(DEMO_ASSETS / "Scripts" / "MouseDragCube.cs.meta", PACKAGE_SAMPLE / "Scripts" / "MouseDragCube.cs.meta"),
-    FileMap(DEMO_ASSETS / "Scripts" / "TestLog.cs", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs"),
-    FileMap(DEMO_ASSETS / "Scripts" / "TestLog.cs.meta", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs.meta"),
+    FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "FoxgloveDemoSetup.cs", PACKAGE_SAMPLE / "Scripts" / "FoxgloveDemoSetup.cs"),
+    FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "FoxgloveDemoSetup.cs.meta", PACKAGE_SAMPLE / "Scripts" / "FoxgloveDemoSetup.cs.meta"),
+    FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "MouseDragCube.cs", PACKAGE_SAMPLE / "Scripts" / "MouseDragCube.cs"),
+    FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "MouseDragCube.cs.meta", PACKAGE_SAMPLE / "Scripts" / "MouseDragCube.cs.meta"),
+    FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "TestLog.cs", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs"),
+    FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "TestLog.cs.meta", PACKAGE_SAMPLE / "Scripts" / "TestLog.cs.meta"),
     FileMap(
-        DEMO_ASSETS / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs",
+        FOXRUN_SCRIPTS / "FoxRunTriggerTelemetrySmoke.cs",
         PACKAGE_SAMPLE / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs",
     ),
     FileMap(
-        DEMO_ASSETS / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs.meta",
+        FOXRUN_SCRIPTS / "FoxRunTriggerTelemetrySmoke.cs.meta",
         PACKAGE_SAMPLE / "Scripts" / "FoxRunTriggerTelemetrySmoke.cs.meta",
     ),
     FileMap(DEMO_ASSETS / "Settings" / "DefaultVolumeProfile.asset", PACKAGE_SAMPLE / "Settings" / "DefaultVolumeProfile.asset"),
@@ -196,6 +198,8 @@ def portable_full_demo_scene_payload(src: Path) -> bytes:
 def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
     """Build ordered source/destination pairs for the selected sync mode."""
     mode = args.mode
+    if mode == "validate":
+        return [(m.demo, m.sample) for m in FILE_MAPS]
     if mode == "demo-to-package":
         return [(m.demo, m.sample) for m in FILE_MAPS]
     if mode == "package-to-demo":
@@ -213,6 +217,17 @@ def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
         return imported_maps(imported_root, "demo")
 
     raise ValueError(f"Unsupported mode: {mode}")
+
+
+def validate_file_maps(pairs: list[tuple[Path, Path]]) -> list[str]:
+    """Return validation errors for configured source and destination roots."""
+    errors = []
+    for src, dst in pairs:
+        if not src.exists():
+            errors.append(f"missing source: {rel(src)}")
+        if not dst.parent.exists():
+            errors.append(f"missing destination parent: {rel(dst.parent)}")
+    return errors
 
 
 def copy_file(src: Path, dst: Path, dry_run: bool) -> str:
@@ -248,7 +263,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("demo-to-package", "package-to-demo", "package-to-imported", "demo-to-imported"),
+        choices=("demo-to-package", "package-to-demo", "package-to-imported", "demo-to-imported", "validate"),
         default="demo-to-package",
         help="Synchronization direction. Default: demo-to-package.",
     )
@@ -273,6 +288,15 @@ def main() -> int:
     args = parse_args()
     try:
         pairs = build_pairs(args)
+        if args.mode == "validate":
+            errors = validate_file_maps(pairs)
+            if errors:
+                for error in errors:
+                    print(f"[missing] {error}", file=sys.stderr)
+                return EXIT_FAILURE
+            print(f"sync_full_demo: validated {len(pairs)} file map(s).")
+            return EXIT_SUCCESS
+
         changed = INITIAL_CHANGED_COUNT
         for src, dst in pairs:
             status = copy_file(src, dst, args.dry_run)

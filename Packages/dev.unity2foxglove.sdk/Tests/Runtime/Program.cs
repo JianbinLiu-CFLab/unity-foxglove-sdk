@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Test runner entry point — discovers and executes all Phase validation tests.
+// Purpose: Test runner entry point - discovers and executes all Phase validation tests.
 
 using System;
 using System.Collections.Generic;
@@ -36,6 +36,9 @@ class Program
             var demo3d = argList.Contains("--demo3d");
             return RunServer(port, demo, demo3d);
         }
+
+        if (TryRunRegisteredValidation(argList, out var registeredValidationExitCode))
+            return registeredValidationExitCode;
 
         if (argList.Contains("--phase50"))
             return RunPhase50Only();
@@ -393,7 +396,49 @@ class Program
             }
         }
 
-        return RunTests();
+        return RunTests(argList.Contains("--local-evidence"));
+    }
+
+    private static bool TryRunRegisteredValidation(List<string> argList, out int exitCode)
+    {
+        if (argList.Contains("--list-validations"))
+        {
+            foreach (var validation in PhaseValidationRegistry.All)
+            {
+                var flags = string.Join(", ", validation.AllFlags());
+                if (string.IsNullOrEmpty(flags))
+                    flags = "(default only)";
+                Console.WriteLine($"{flags} [{validation.Category}] {validation.Name}");
+            }
+
+            exitCode = 0;
+            return true;
+        }
+
+        var selected = PhaseValidationRegistry.Find(argList);
+        if (selected == null)
+        {
+            exitCode = 0;
+            return false;
+        }
+
+        exitCode = RunValidation(selected);
+        return true;
+    }
+
+    private static int RunValidation(PhaseValidationCase validation)
+    {
+        try
+        {
+            validation.Run();
+            Console.WriteLine($"\n{validation.Name} checks passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
+            return 1;
+        }
     }
 
     private static int RunPhase16Only()
@@ -1332,7 +1377,7 @@ class Program
     {
         try
         {
-            Phase136Validation.Validate();
+            Phase137Validation.Validate();
             Console.WriteLine("\nPhase 136 checks passed.");
             return 0;
         }
@@ -1362,7 +1407,7 @@ class Program
     {
         try
         {
-            Phase137BValidation.Validate();
+            Phase138BValidation.Validate();
             Console.WriteLine("\nPhase 137B checks passed.");
             return 0;
         }
@@ -1866,202 +1911,21 @@ class Program
     /// Runs all Phase validation classes sequentially and returns 0 on
     /// success or 1 on the first failure.
     /// </summary>
-    static int RunTests()
+    static int RunTests(bool includeLocalEvidence)
     {
-        Console.WriteLine("=== FoxgloveSDK Phase 0 + Phase 1 Validation ===\n");
+        Console.WriteLine(includeLocalEvidence
+            ? "=== FoxgloveSDK CI-safe + local evidence validation ===\n"
+            : "=== FoxgloveSDK CI-safe validation ===\n");
 
-        try
+        foreach (var validation in PhaseValidationRegistry.DefaultValidations(includeLocalEvidence))
         {
-            SkeletonValidation.Validate();
-            Console.WriteLine();
-            Phase1Validation.Validate();
-            Console.WriteLine();
-            Phase2Validation.Validate();
-            Console.WriteLine();
-            Phase3Validation.Validate();
-            Console.WriteLine();
-            Phase4Validation.Validate();
-            Console.WriteLine();
-            Phase5Validation.Validate();
-            Console.WriteLine();
-            Phase6Validation.Validate();
-            Console.WriteLine();
-            Phase7Validation.Validate();
-            Console.WriteLine();
-            Phase8Validation.Validate();
-            Console.WriteLine();
-            Phase9Validation.Validate();
-            Console.WriteLine();
-            Phase10Validation.Validate();
-            Console.WriteLine();
-            Phase11Validation.Validate();
-            Console.WriteLine();
-            Phase12Validation.Validate();
-            Console.WriteLine();
-            Phase13Validation.Validate();
-            Console.WriteLine();
-            Phase14Validation.Validate();
-            Console.WriteLine();
-            Phase16Validation.Validate();
-            Console.WriteLine();
-            Phase17Validation.Validate();
-            Console.WriteLine();
-            Phase24DValidation.Validate();
-            Console.WriteLine();
-            Phase28Validation.Validate();
-            Console.WriteLine();
-            Phase31Validation.Validate();
-            Console.WriteLine();
-            Phase32Validation.Run();
-            Console.WriteLine();
-            Phase33Validation.Validate();
-            Console.WriteLine();
-            Phase34Validation.Validate();
-            Console.WriteLine();
-            Phase36Validation.Validate();
-            Console.WriteLine();
-            Phase37Validation.Validate();
-            Console.WriteLine();
-            Phase40Validation.Validate();
-            Console.WriteLine();
-            Phase41Validation.Validate();
-            Console.WriteLine();
-            Phase44Validation.Validate();
-            Console.WriteLine();
-            Phase48Validation.Validate();
-            Console.WriteLine();
-            Phase49Validation.Validate();
-            Console.WriteLine();
-            Phase50Validation.Validate();
-            Console.WriteLine();
-            Phase51Validation.Validate();
-            Console.WriteLine();
-            Phase52Validation.Validate();
-            Console.WriteLine();
-            Phase53Validation.Validate();
-            Console.WriteLine();
-            Phase54Validation.Validate();
-            Console.WriteLine();
-            Phase55Validation.Validate();
-            Console.WriteLine();
-            Phase56Validation.Validate();
-            Console.WriteLine();
-            Phase57Validation.Validate();
-            Console.WriteLine();
-            Phase65Validation.Validate();
-            Console.WriteLine();
-            Phase67Validation.Validate();
-            Console.WriteLine();
-            Phase68Validation.Validate();
-            Console.WriteLine();
-            Phase69Validation.Validate();
-            Console.WriteLine();
-            Phase70Validation.Validate();
-            Console.WriteLine();
-            Phase71Validation.Validate();
-            Console.WriteLine();
-            Phase72Validation.Validate();
-            Console.WriteLine();
-            Phase73Validation.Validate();
-            Console.WriteLine();
-            Phase74Validation.Validate();
-            Console.WriteLine();
-            Phase75Validation.Validate();
-            Console.WriteLine();
-            Phase76Validation.Validate();
-            Console.WriteLine();
-            Phase77Validation.Validate();
-            Console.WriteLine();
-            Phase80Validation.Validate();
-            Console.WriteLine();
-            Phase81Validation.Validate();
-            Console.WriteLine();
-            Phase82Validation.Validate();
-            Console.WriteLine();
-            Phase83Validation.Validate();
-            Console.WriteLine();
-            Phase84Validation.Validate();
-            Console.WriteLine();
-            Phase85Validation.Validate();
-            Console.WriteLine();
-            Phase86Validation.Validate();
-            Console.WriteLine();
-            Phase87Validation.Validate();
-            Console.WriteLine();
-            Phase88Validation.Validate();
-            Console.WriteLine();
-            Phase89Validation.Validate();
-            Console.WriteLine();
-            Phase90Validation.Validate();
-            Console.WriteLine();
-            Phase91Validation.Validate();
-            Console.WriteLine();
-            Phase92Validation.Validate();
-            Console.WriteLine();
-            Phase93Validation.Validate();
-            Console.WriteLine();
-            Phase94Validation.Validate();
-            Console.WriteLine();
-            Phase95Validation.Validate();
-            Console.WriteLine();
-            Phase96Validation.Validate();
-            Console.WriteLine();
-            Phase97Validation.Validate();
-            Console.WriteLine();
-            Phase98Validation.Validate();
-            Console.WriteLine();
-            Phase99Validation.Validate();
-            Console.WriteLine();
-            Phase100Validation.Validate();
-            Console.WriteLine();
-            Phase105Validation.Validate();
-            Console.WriteLine();
-            Phase106Validation.Validate();
-            Console.WriteLine();
-            Phase136Validation.Validate();
-            Console.WriteLine();
-            Phase137Validation.Validate();
-            Console.WriteLine();
-            Phase137BValidation.Validate();
-            Console.WriteLine();
-            Phase107Validation.Validate();
-            Console.WriteLine();
-            Phase108Validation.Validate();
-            Console.WriteLine();
-            Phase109Validation.Validate();
-            Console.WriteLine();
-            Phase110Validation.Validate();
-            Console.WriteLine();
-            Phase111FValidation.Validate();
-            Console.WriteLine();
-            Phase112Validation.Validate();
-            Console.WriteLine();
-            Phase112BValidation.Validate();
-            Console.WriteLine();
-            Phase113Validation.Validate();
-            Console.WriteLine();
-            Phase114Validation.Validate();
-            Console.WriteLine();
-            Phase115Validation.Validate();
-            Console.WriteLine();
-            Phase115BValidation.Validate();
-            Console.WriteLine();
-            Phase115CValidation.Validate();
-            Console.WriteLine();
-            Phase115DValidation.Validate();
-            Console.WriteLine();
-            Phase115EValidation.Validate();
-            Console.WriteLine();
-            Phase115FValidation.Validate();
+            var result = RunValidation(validation);
+            if (result != 0)
+                return result;
+        }
 
-            Console.WriteLine("\nAll checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
+        Console.WriteLine("\nAll checks passed.");
+        return 0;
     }
 
     /// <summary>
@@ -2078,7 +1942,7 @@ class Program
         runtime.Start("Unity Foxglove SDK", "127.0.0.1", port);
 
         Console.WriteLine($"Server running. SessionId: {runtime.Session.SessionId}");
-        Console.WriteLine("Open Foxglove → Open connection → ws://127.0.0.1:{0}", port);
+        Console.WriteLine("Open Foxglove -> Open connection -> ws://127.0.0.1:{0}", port);
 
         Timer heartbeat = null;
         if (demo)
@@ -2170,7 +2034,7 @@ class Program
         if (demo3d)
         {
             Console.WriteLine("Demo3D: /tf and /scene visible.");
-            Console.WriteLine("  Foxglove → 3D panel → select /scene → green cube at origin.");
+            Console.WriteLine("  Foxglove -> 3D panel -> select /scene -> green cube at origin.");
         }
         Console.WriteLine("Press Ctrl+C to stop...");
 
