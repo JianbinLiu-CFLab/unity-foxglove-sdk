@@ -1,0 +1,30 @@
+name: repository boundary check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Plan/**"
+      - "Developer/**"
+      - ".github/workflows/repository-boundary-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Plan/**"
+      - "Developer/**"
+      - ".github/workflows/repository-boundary-check.yml"
+
+jobs:
+  private-boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Block tracked private workspace files
+        run: |
+          tracked="$(git ls-files -- 'Plan/**' 'Developer/**')"
+          if [ -n "$tracked" ]; then
+            echo "::error::Plan/ and Developer/ are local-only private workspace material and must not be tracked."
+            printf '%s\n' "$tracked"
+            exit 1
+          fi
