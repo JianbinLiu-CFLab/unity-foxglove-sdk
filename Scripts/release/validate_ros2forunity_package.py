@@ -33,6 +33,7 @@ ADAPTER_SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
 RVIZ_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization Acceptance"
 RVIZ_POINTCLOUD2_SAMPLE = PACKAGE / "Samples~" / "RViz2 PointCloud2 Acceptance"
 RVIZ_MARKERARRAY_SAMPLE = PACKAGE / "Samples~" / "RViz2 MarkerArray Acceptance"
+RVIZ_V1_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization v1"
 
 RUNTIME_BINARY_SUFFIXES = {
     ".dll",
@@ -142,8 +143,8 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     samples = data.get("samples")
     add(
         results,
-        "package has External Adapter, Phase 128, Phase 129, and Phase 130 samples",
-        isinstance(samples, list) and len(samples) == 4,
+        "package has External Adapter and RViz2 v1 sample set",
+        isinstance(samples, list) and len(samples) >= 5,
         f"samples={samples!r}",
     )
     if isinstance(samples, list) and samples:
@@ -231,6 +232,26 @@ def check_package_metadata(results: list[CheckResult]) -> None:
             "MarkerArray sample description names standard type and /markers",
             "visualization_msgs/msg/MarkerArray" in markerarray_description and "/markers" in markerarray_description,
             markerarray_description,
+        )
+        v1_sample = samples_by_name.get("RViz2 Standard Visualization v1", {})
+        add(
+            results,
+            "RViz2 v1 sample displayName",
+            v1_sample.get("displayName") == "RViz2 Standard Visualization v1",
+            f"displayName={v1_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "RViz2 v1 sample path",
+            v1_sample.get("path") == "Samples~/RViz2 Standard Visualization v1",
+            f"path={v1_sample.get('path')!r}",
+        )
+        v1_description = str(v1_sample.get("description", ""))
+        add(
+            results,
+            "RViz2 v1 sample description names all v1 topics",
+            all(topic in v1_description for topic in ("/tf", "/scan", "/points", "/markers")),
+            v1_description,
         )
 
 
@@ -393,9 +414,14 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         if (RVIZ_MARKERARRAY_SAMPLE / "README.md").exists()
         else ""
     )
+    v1_sample_readme = (
+        (RVIZ_V1_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_V1_SAMPLE / "README.md").exists()
+        else ""
+    )
     runtime_notices = RUNTIME_NOTICES.read_text(encoding="utf-8", errors="replace") if RUNTIME_NOTICES.exists() else ""
     runtime_inventory = RUNTIME_INVENTORY.read_text(encoding="utf-8", errors="replace") if RUNTIME_INVENTORY.exists() else ""
-    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + rviz_sample_readme + "\n" + pointcloud_sample_readme + "\n" + markerarray_sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
+    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + rviz_sample_readme + "\n" + pointcloud_sample_readme + "\n" + markerarray_sample_readme + "\n" + v1_sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
@@ -572,11 +598,14 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         RVIZ_MARKERARRAY_SAMPLE / "Phase130MarkerArrayMessageBuilder.cs",
         RVIZ_MARKERARRAY_SAMPLE / "rviz2_phase130_markerarray.rviz",
         RVIZ_MARKERARRAY_SAMPLE / "phase130_markerarray_evidence_template.md",
+        RVIZ_V1_SAMPLE / "README.md",
+        RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz",
+        RVIZ_V1_SAMPLE / "phase131_standard_visualization_evidence_template.md",
     ]
     for path in required:
         add(results, f"sample file: {path.name}", path.exists(), rel(path))
 
-    sample_roots = [ADAPTER_SAMPLE, RVIZ_SAMPLE, RVIZ_POINTCLOUD2_SAMPLE, RVIZ_MARKERARRAY_SAMPLE]
+    sample_roots = [ADAPTER_SAMPLE, RVIZ_SAMPLE, RVIZ_POINTCLOUD2_SAMPLE, RVIZ_MARKERARRAY_SAMPLE, RVIZ_V1_SAMPLE]
     invalid_files = [
         rel(path)
         for sample_root in sample_roots
@@ -757,6 +786,48 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         and "rviz_default_plugins/TF" not in markerarray_config
         and "rviz_default_plugins/PointCloud2" not in markerarray_config,
         rel(RVIZ_MARKERARRAY_SAMPLE / "rviz2_phase130_markerarray.rviz"),
+    )
+
+    v1_readme = (
+        (RVIZ_V1_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_V1_SAMPLE / "README.md").exists()
+        else ""
+    )
+    v1_config = (
+        (RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz").exists()
+        else ""
+    )
+    add(
+        results,
+        "RViz2 v1 README documents docs-only kit and publisher sample imports",
+        "not a publisher sample by itself" in v1_readme
+        and "RViz2 Standard Visualization Acceptance" in v1_readme
+        and "RViz2 PointCloud2 Acceptance" in v1_readme
+        and "RViz2 MarkerArray Acceptance" in v1_readme,
+        rel(RVIZ_V1_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "RViz2 v1 README documents TF owner rule",
+        "single owner" in v1_readme
+        and "map -> base_link" in v1_readme
+        and "Publish Shared Base Tf" in v1_readme,
+        rel(RVIZ_V1_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "RViz2 v1 config uses only supported standard visualization topics",
+        "Fixed Frame: map" in v1_config
+        and "/tf" in v1_config
+        and "/scan" in v1_config
+        and "/points" in v1_config
+        and "/markers" in v1_config
+        and "rviz_default_plugins/TF" in v1_config
+        and "rviz_default_plugins/LaserScan" in v1_config
+        and "rviz_default_plugins/PointCloud2" in v1_config
+        and "rviz_default_plugins/MarkerArray" in v1_config,
+        rel(RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz"),
     )
 
 

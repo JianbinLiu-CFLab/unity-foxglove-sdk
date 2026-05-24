@@ -26,6 +26,11 @@
       "displayName": "RViz2 MarkerArray Acceptance",
       "description": "Imports a source-only ROS2 For Unity sample that publishes cube scene markers as visualization_msgs/msg/MarkerArray on /markers.",
       "path": "Samples~/RViz2 MarkerArray Acceptance"
+    },
+    {
+      "displayName": "RViz2 Standard Visualization v1",
+      "description": "Imports a docs/config/evidence kit for the ROS2 For Unity RViz2 v1 workflow across /tf, /scan, /points, and /markers.",
+      "path": "Samples~/RViz2 Standard Visualization v1"
     }
   ],
   "keywords": [

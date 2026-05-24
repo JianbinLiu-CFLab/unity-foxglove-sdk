@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyRvizConfig();
             VerifyAcceptanceHelper();
             VerifyDocsAndEvidenceTemplate();
-            VerifyReleaseValidatorAcceptsFourSamples();
+            VerifyReleaseValidatorAcceptsV1SampleSet();
             VerifyCoreAndOptionalRuntimeBoundaries();
             VerifyValidationWiring();
 
@@ -340,17 +340,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "129G-5: docs do not over-claim deferred PointCloud2 or ROS2 workflows");
         }
 
-        private static void VerifyReleaseValidatorAcceptsFourSamples()
+        private static void VerifyReleaseValidatorAcceptsV1SampleSet()
         {
             var script = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
             Check(script.Contains("RVIZ_POINTCLOUD2_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("RViz2 PointCloud2 Acceptance", StringComparison.Ordinal)
-                  && script.Contains("len(samples) == 4", StringComparison.Ordinal)
+                  && script.Contains("RVIZ_SAMPLE", StringComparison.Ordinal)
+                  && script.Contains("RVIZ_MARKERARRAY_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("External Adapter", StringComparison.Ordinal)
-                  && script.Contains("Phase 128", StringComparison.Ordinal)
-                  && script.Contains("Phase 129", StringComparison.Ordinal)
-                  && script.Contains("Phase 130", StringComparison.Ordinal),
-                "129H-1: release validator accepts External Adapter, Phase 128, Phase 129, and Phase 130 samples");
+                  && script.Contains("RVIZ_V1_SAMPLE", StringComparison.Ordinal),
+                "129H-1: release validator accepts External Adapter and RViz2 v1 sample set");
         }
 
         private static void VerifyCoreAndOptionalRuntimeBoundaries()

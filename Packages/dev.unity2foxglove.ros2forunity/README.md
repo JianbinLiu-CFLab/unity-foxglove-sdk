@@ -141,6 +141,21 @@ visualization_msgs/msg/MarkerArray
 
 The v1 payload is one animated cube marker in the `map` frame with deterministic positive 31-bit marker IDs, zero marker lifetime, and periodic `DELETE`/`DELETEALL` cleanup messages. It does not claim arbitrary marker types, mesh resources, text markers, interactive markers, PointCloud2 subscription, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency.
 
+## RViz2 Standard Visualization v1
+
+The `RViz2 Standard Visualization v1` sample is a docs/config/evidence kit that consolidates the RViz2 workflow from the TF/LaserScan, PointCloud2, and MarkerArray samples. It does not contain publishers by itself. Import the three publisher samples first, then import the v1 kit for the combined RViz2 config and checklist.
+
+The v1 topic matrix is:
+
+```text
+/tf      -> tf2_msgs/msg/TFMessage
+/scan    -> sensor_msgs/msg/LaserScan
+/points  -> sensor_msgs/msg/PointCloud2
+/markers -> visualization_msgs/msg/MarkerArray
+```
+
+The combined scene must avoid conflicting TF ownership. Let one component own each transform edge, especially `map -> base_link`. The core SDK remains ROS-free; this v1 workflow remains optional and ROS2 For Unity driven.
+
 ## Attribution Boundary
 
 RobotecAI ROS2 For Unity is an upstream Apache-2.0 project:
