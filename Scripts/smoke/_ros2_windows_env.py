@@ -52,6 +52,7 @@ def build_ros_env(
     ros2_root: pathlib.Path,
     rmw_implementation: str | None = None,
     discovery_range: str | None = None,
+    domain_id: str | None = None,
 ) -> dict[str, str]:
     """Build a deterministic Windows ROS2 Jazzy environment."""
 
@@ -78,7 +79,7 @@ def build_ros_env(
     env["ROS_VERSION"] = "2"
     env["ROS_PYTHON_VERSION"] = "3"
     env["ROS_DISTRO"] = "jazzy"
-    env["ROS_DOMAIN_ID"] = "0"
+    env["ROS_DOMAIN_ID"] = str(domain_id) if domain_id is not None else "0"
     env["RMW_IMPLEMENTATION"] = rmw_implementation or env.get("RMW_IMPLEMENTATION") or "rmw_fastrtps_cpp"
     if discovery_range:
         env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = discovery_range

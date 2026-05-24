@@ -156,6 +156,23 @@ The v1 topic matrix is:
 
 The combined scene must avoid conflicting TF ownership. Let one component own each transform edge, especially `map -> base_link`. The core SDK remains ROS-free; this v1 workflow remains optional and ROS2 For Unity driven.
 
+## ROS2 Standard Message Expansion
+
+The `ROS2 Standard Message Expansion` sample adds CLI-validated source components for:
+
+```text
+/camera/camera_info -> sensor_msgs/msg/CameraInfo
+/camera/image_raw   -> sensor_msgs/msg/Image
+/imu/data           -> sensor_msgs/msg/Imu
+/odom               -> nav_msgs/msg/Odometry
+/pose               -> geometry_msgs/msg/PoseStamped
+/fix                -> sensor_msgs/msg/NavSatFix
+```
+
+This sample is not a new RViz2 productization gate. It uses explicit source components for camera, IMU, odometry, pose, and synthetic NavSatFix data, and the primary check is the sample README's Python acceptance helper. It does not publish `/tf`, does not claim ROS2 `sensor_data` QoS parity, and does not add image rectification, calibration services, state estimation, Nav2, `/clock`, MCAP fanout, rosbag2, or any core SDK ROS2 dependency.
+
+The default topics are conventional ROS2 names and can collide with real drivers or Nav2 stacks. Production projects should namespace them, for example `/unity/odom` or `/unity/camera/image_raw`.
+
 ## Attribution Boundary
 
 RobotecAI ROS2 For Unity is an upstream Apache-2.0 project:

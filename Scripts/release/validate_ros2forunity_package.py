@@ -34,6 +34,7 @@ RVIZ_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization Acceptance"
 RVIZ_POINTCLOUD2_SAMPLE = PACKAGE / "Samples~" / "RViz2 PointCloud2 Acceptance"
 RVIZ_MARKERARRAY_SAMPLE = PACKAGE / "Samples~" / "RViz2 MarkerArray Acceptance"
 RVIZ_V1_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization v1"
+STANDARD_MESSAGES_SAMPLE = PACKAGE / "Samples~" / "ROS2 Standard Message Expansion"
 
 RUNTIME_BINARY_SUFFIXES = {
     ".dll",
@@ -143,8 +144,8 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     samples = data.get("samples")
     add(
         results,
-        "package has External Adapter and RViz2 v1 sample set",
-        isinstance(samples, list) and len(samples) >= 5,
+        "package has External Adapter, RViz2 v1, and standard message sample set",
+        isinstance(samples, list) and len(samples) >= 6,
         f"samples={samples!r}",
     )
     if isinstance(samples, list) and samples:
@@ -252,6 +253,26 @@ def check_package_metadata(results: list[CheckResult]) -> None:
             "RViz2 v1 sample description names all v1 topics",
             all(topic in v1_description for topic in ("/tf", "/scan", "/points", "/markers")),
             v1_description,
+        )
+        standard_messages_sample = samples_by_name.get("ROS2 Standard Message Expansion", {})
+        add(
+            results,
+            "Standard Messages sample displayName",
+            standard_messages_sample.get("displayName") == "ROS2 Standard Message Expansion",
+            f"displayName={standard_messages_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "Standard Messages sample path",
+            standard_messages_sample.get("path") == "Samples~/ROS2 Standard Message Expansion",
+            f"path={standard_messages_sample.get('path')!r}",
+        )
+        standard_messages_description = str(standard_messages_sample.get("description", ""))
+        add(
+            results,
+            "Standard Messages sample description names supported types",
+            all(token in standard_messages_description for token in ("CameraInfo", "raw Image", "IMU", "Odometry", "PoseStamped", "NavSatFix")),
+            standard_messages_description,
         )
 
 
@@ -601,11 +622,26 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         RVIZ_V1_SAMPLE / "README.md",
         RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz",
         RVIZ_V1_SAMPLE / "phase131_standard_visualization_evidence_template.md",
+        STANDARD_MESSAGES_SAMPLE / "README.md",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardCameraSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardImuSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardOdometrySource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardPoseSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardNavSatFixSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "phase132_standard_messages_evidence_template.md",
     ]
     for path in required:
         add(results, f"sample file: {path.name}", path.exists(), rel(path))
 
-    sample_roots = [ADAPTER_SAMPLE, RVIZ_SAMPLE, RVIZ_POINTCLOUD2_SAMPLE, RVIZ_MARKERARRAY_SAMPLE, RVIZ_V1_SAMPLE]
+    sample_roots = [
+        ADAPTER_SAMPLE,
+        RVIZ_SAMPLE,
+        RVIZ_POINTCLOUD2_SAMPLE,
+        RVIZ_MARKERARRAY_SAMPLE,
+        RVIZ_V1_SAMPLE,
+        STANDARD_MESSAGES_SAMPLE,
+    ]
     invalid_files = [
         rel(path)
         for sample_root in sample_roots
@@ -828,6 +864,93 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         and "rviz_default_plugins/PointCloud2" in v1_config
         and "rviz_default_plugins/MarkerArray" in v1_config,
         rel(RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz"),
+    )
+
+    standard_readme = (
+        (STANDARD_MESSAGES_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (STANDARD_MESSAGES_SAMPLE / "README.md").exists()
+        else ""
+    )
+    standard_smoke = (
+        (STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs").read_text(encoding="utf-8", errors="replace")
+        if (STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs").exists()
+        else ""
+    )
+    standard_sources = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in [
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardCameraSource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardImuSource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardOdometrySource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardPoseSource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardNavSatFixSource.cs",
+        ]
+        if path.exists()
+    )
+    standard_helper = (ROOT / "Scripts" / "smoke" / "phase132_standard_messages_acceptance.py")
+    standard_helper_text = standard_helper.read_text(encoding="utf-8", errors="replace") if standard_helper.exists() else ""
+    add(
+        results,
+        "Standard Messages README documents topics, helper, QoS, TF, and namespace caveats",
+        all(
+            token in standard_readme
+            for token in (
+                "/camera/camera_info",
+                "/camera/image_raw",
+                "/imu/data",
+                "/odom",
+                "/pose",
+                "/fix",
+                "phase132_standard_messages_acceptance.py",
+                "R2FU default QoS",
+                "does not publish `/tf`",
+                "Production projects should namespace",
+                "synthetic constant WGS84",
+            )
+        ),
+        rel(STANDARD_MESSAGES_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "Standard Messages smoke is guarded and publishes only the six standard topics",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.CameraInfo>" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.Image>" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.Imu>" in standard_smoke
+        and "CreatePublisher<nav_msgs.msg.Odometry>" in standard_smoke
+        and "CreatePublisher<geometry_msgs.msg.PoseStamped>" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.NavSatFix>" in standard_smoke
+        and "CreatePublisher<tf2_msgs.msg.TFMessage>" not in standard_smoke
+        and "CreatePublisher<rosgraph_msgs.msg.Clock>" not in standard_smoke,
+        rel(STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs"),
+    )
+    add(
+        results,
+        "Standard Messages sources validate fixed arrays and tiny rgb8 image",
+        "CameraInfo.k[9]" in standard_sources
+        and "CameraInfo.r[9]" in standard_sources
+        and "CameraInfo.p[12]" in standard_sources
+        and "double[9]" in standard_sources
+        and "double[36]" in standard_sources
+        and "rgb8" in standard_sources
+        and "step = checked((uint)(width * 3))" in standard_sources
+        and "data.Length must equal height * step" in standard_sources,
+        rel(STANDARD_MESSAGES_SAMPLE),
+    )
+    add(
+        results,
+        "Standard Messages helper uses ros2-script.py and validates non-zero defaults",
+        "import _ros2_windows_env" in standard_helper_text
+        and "validate_ros2_root" in standard_helper_text
+        and "[str(pixi_python), str(ros2_script)" not in standard_helper_text
+        and "--domain-id" in standard_helper_text
+        and "validate_camera_info" in standard_helper_text
+        and "validate_image" in standard_helper_text
+        and "validate_imu" in standard_helper_text
+        and "validate_navsatfix" in standard_helper_text
+        and "expected at least" in standard_helper_text
+        and "GREEN" in standard_helper_text,
+        rel(standard_helper),
     )
 
 

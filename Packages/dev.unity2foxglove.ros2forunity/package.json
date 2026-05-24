@@ -31,6 +31,11 @@
       "displayName": "RViz2 Standard Visualization v1",
       "description": "Imports a docs/config/evidence kit for the ROS2 For Unity RViz2 v1 workflow across /tf, /scan, /points, and /markers.",
       "path": "Samples~/RViz2 Standard Visualization v1"
+    },
+    {
+      "displayName": "ROS2 Standard Message Expansion",
+      "description": "Imports source-only ROS2 For Unity samples for CameraInfo, raw Image, IMU, Odometry, PoseStamped, and NavSatFix.",
+      "path": "Samples~/ROS2 Standard Message Expansion"
     }
   ],
   "keywords": [
