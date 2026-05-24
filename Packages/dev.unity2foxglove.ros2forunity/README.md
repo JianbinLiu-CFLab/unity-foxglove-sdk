@@ -125,6 +125,22 @@ map -> base_link -> point_cloud_sensor
 
 This sample uses Unity2Foxglove's existing packed point-cloud layout through `PointCloudFrame` and `PointCloudPackedDataBuilder`, then maps that packed layout to `sensor_msgs/msg/PointCloud2` for RViz2. It is generic and not vendor-specific. It does not claim organized clouds, PointCloud2 subscription, LiDAR vendor presets, MarkerArray, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency.
 
+## RViz2 MarkerArray Acceptance
+
+The `RViz2 MarkerArray Acceptance` sample adds a narrow scene-marker route for RViz2. It publishes:
+
+```text
+/markers
+```
+
+The `/markers` topic uses:
+
+```text
+visualization_msgs/msg/MarkerArray
+```
+
+The v1 payload is one animated cube marker in the `map` frame with deterministic positive 31-bit marker IDs, zero marker lifetime, and periodic `DELETE`/`DELETEALL` cleanup messages. It does not claim arbitrary marker types, mesh resources, text markers, interactive markers, PointCloud2 subscription, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency.
+
 ## Attribution Boundary
 
 RobotecAI ROS2 For Unity is an upstream Apache-2.0 project:

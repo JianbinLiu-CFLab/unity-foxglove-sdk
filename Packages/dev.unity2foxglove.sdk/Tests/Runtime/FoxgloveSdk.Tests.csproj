@@ -145,6 +145,7 @@
     <Compile Include="Phase126Validation.cs" />
     <Compile Include="Phase128Validation.cs" />
     <Compile Include="Phase129Validation.cs" />
+    <Compile Include="Phase130Validation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />

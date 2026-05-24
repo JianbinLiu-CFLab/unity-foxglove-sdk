@@ -21,6 +21,11 @@
       "displayName": "RViz2 PointCloud2 Acceptance",
       "description": "Imports a source-only ROS2 For Unity sample that publishes generic Unity2Foxglove point-cloud frames as sensor_msgs/msg/PointCloud2 on /points.",
       "path": "Samples~/RViz2 PointCloud2 Acceptance"
+    },
+    {
+      "displayName": "RViz2 MarkerArray Acceptance",
+      "description": "Imports a source-only ROS2 For Unity sample that publishes cube scene markers as visualization_msgs/msg/MarkerArray on /markers.",
+      "path": "Samples~/RViz2 MarkerArray Acceptance"
     }
   ],
   "keywords": [
