@@ -27,8 +27,8 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - Build type: standalone
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-jazzy-win64`
-- Artifact source: `Ros2ForUnity_Jazzy_standalone_windows10.zip`
-- SHA-256: `ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936`
+- Artifact source: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`
+- SHA-256: `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
 

@@ -4,7 +4,7 @@
 #
 # Purpose: Inspect a ROS2 For Unity standalone runtime artifact and write a compliance inventory.
 # Usage: python Scripts/release/inspect_r2fu_runtime_artifact.py
-# Inputs: build/dist/Ros2ForUnity_Jazzy_standalone_windows10.zip and optional sha256 sidecar.
+# Inputs: build/dist/Ros2ForUnity_jazzy_standalone_windows_x86_64.zip and optional sha256 sidecar.
 # Outputs: Packages/dev.unity2foxglove.ros2forunity/Compliance/r2fu-jazzy-win64-runtime-inventory.json
 
 """Inspect the local ROS2 For Unity Jazzy Windows runtime artifact."""
@@ -27,8 +27,8 @@ EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
-DEFAULT_ARTIFACT = ROOT / "build" / "dist" / "Ros2ForUnity_Jazzy_standalone_windows10.zip"
-DEFAULT_SHA256 = ROOT / "build" / "dist" / "Ros2ForUnity_Jazzy_standalone_windows10.sha256"
+DEFAULT_ARTIFACT = ROOT / "build" / "dist" / "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
+DEFAULT_SHA256 = ROOT / "build" / "dist" / "Ros2ForUnity_jazzy_standalone_windows_x86_64.sha256.txt"
 DEFAULT_OUTPUT = (
     ROOT
     / "Packages"
@@ -37,7 +37,7 @@ DEFAULT_OUTPUT = (
     / "r2fu-jazzy-win64-runtime-inventory.json"
 )
 
-ARTIFACT_NAME = "Ros2ForUnity_Jazzy_standalone_windows10.zip"
+ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
 ARTIFACT_ID = "r2fu-jazzy-win64"
 CRITICAL_FILES = (
     "rcl.dll",

@@ -2,9 +2,9 @@
 <ros2cs>
    <ros2>jazzy</ros2>
    <version>
-      <sha>e08651b64fe9868c0df9d98d81e77fc40b8d5c92</sha>
-      <desc>1.3.0-8-ge08651b</desc>
-      <date>2025-11-24 09:11:19 +0100</date>
+      <sha>65db9898f9bd7b5ccd749834d457dfa53fb97821</sha>
+      <desc>65db989</desc>
+      <date>2026-05-23 11:58:02 +0200</date>
    </version>
    <standalone>1</standalone>
 </ros2cs>

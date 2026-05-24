@@ -33,10 +33,10 @@ PLUGIN_ROOT = RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64"
 MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json"
 
-ARTIFACT_NAME = "Ros2ForUnity_Jazzy_standalone_windows10.zip"
-ARTIFACT_SHA256 = "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936"
-ARTIFACT_SIZE = 16858288
-INVENTORY_FILE_COUNT = 1045
+ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
+ARTIFACT_SHA256 = "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188"
+ARTIFACT_SIZE = 16686195
+INVENTORY_FILE_COUNT = 1044
 
 CRITICAL_DLLS = (
     "rcl.dll",
@@ -45,7 +45,7 @@ CRITICAL_DLLS = (
     "fmt.dll",
 )
 
-MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."
+MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu"
 LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
 LEAKY_UPSTREAM_EXAMPLES = (
     "ROS2TalkerExample.cs",
@@ -363,30 +363,63 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "ROS2Node removed UnityEditor using", "using UnityEditor;" not in node, "ROS2Node.cs")
 
     component = (scripts / "ROS2UnityComponent.cs").read_text(encoding="utf-8", errors="replace")
-    for token in ("private volatile bool quitting", "private Thread spinThread", "OnDestroy()", "OnApplicationQuit()", "threadToJoin.Join(1000)", "node.Dispose()"):
+    component_join = "threadToJoin.Join(1000)" in component or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in component
+    for token in ("private volatile bool quitting", "OnDestroy()", "OnApplicationQuit()", "node.Dispose()"):
         add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
+    add(
+        results,
+        "ROS2UnityComponent executor thread",
+        "private Thread spinThread" in component or "private Thread executorThread" in component,
+        "ROS2UnityComponent.cs",
+    )
+    add(results, "ROS2UnityComponent bounded join", component_join, "ROS2UnityComponent.cs")
     add(results, "ROS2UnityComponent does not shutdown on ordinary disable", "OnDisable()" not in component, "ROS2UnityComponent.cs")
 
     core = (scripts / "ROS2UnityCore.cs").read_text(encoding="utf-8", errors="replace")
-    for token in ("IDisposable", "private volatile bool quitting", "private Thread spinThread", "public void Dispose()", "threadToJoin.Join(1000)"):
+    core_join = "threadToJoin.Join(1000)" in core or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in core
+    for token in ("IDisposable", "private volatile bool quitting", "public void Dispose()"):
         add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)
+    add(
+        results,
+        "ROS2UnityCore executor thread",
+        "private Thread spinThread" in core or "private Thread executorThread" in core,
+        "ROS2UnityCore.cs",
+    )
+    add(results, "ROS2UnityCore bounded join", core_join, "ROS2UnityCore.cs")
 
     runtime = (scripts / "ROS2ForUnity.cs").read_text(encoding="utf-8", errors="replace")
-    for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"):
-        add(results, f"ROS2ForUnity lifecycle token: {token}", token in runtime, token)
+    old_lifecycle = all(token in runtime for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"))
+    current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
+    add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
 
     dotnet_time = (scripts / "Time" / "DotnetTimeSource.cs").read_text(encoding="utf-8", errors="replace")
-    add(results, "DotnetTimeSource divides by Stopwatch.Frequency", "Stopwatch.Frequency" in dotnet_time and "/ Stopwatch.Frequency" in dotnet_time, "DotnetTimeSource.cs")
+    add(
+        results,
+        "DotnetTimeSource converts Stopwatch duration to seconds",
+        ("Stopwatch.Frequency" in dotnet_time and "/ Stopwatch.Frequency" in dotnet_time)
+        or "stopwatch.Elapsed.TotalSeconds" in dotnet_time,
+        "DotnetTimeSource.cs",
+    )
 
     time_utils = (scripts / "Time" / "TimeUtils.cs").read_text(encoding="utf-8", errors="replace")
-    add(results, "TimeUtils normalizes negative nanoseconds", "Math.Floor(secondsIn)" in time_utils and "normalizedNanoseconds < 0" in time_utils, "TimeUtils.cs")
+    add(
+        results,
+        "TimeUtils normalizes nanoseconds",
+        "Math.Floor(secondsIn)" in time_utils
+        and ("normalizedNanoseconds < 0" in time_utils or "wholeNanoseconds >= 1000000000" in time_utils),
+        "TimeUtils.cs",
+    )
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
 
     sensor = (scripts / "Sensor.cs").read_text(encoding="utf-8", errors="replace")
     add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
-    add(results, "Sensor checks readings before dereference", "if (readings != null)" in sensor and sensor.index("if (readings != null)") < sensor.index("readings.SetHeaderFrame"), "Sensor.cs")
-    add(results, "Sensor unregisters executable action", "UnregisterExecutable" in sensor and "DisposeRosParticipants" in sensor, "Sensor.cs")
+    sensor_null_guard = (
+        ("if (readings != null)" in sensor and sensor.index("if (readings != null)") < sensor.index("readings.SetHeaderFrame"))
+        or ("if (acquiredReading == null)" in sensor and "acquiredReading.SetHeaderFrame" in sensor)
+    )
+    add(results, "Sensor checks readings before dereference", sensor_null_guard, "Sensor.cs")
+    add(results, "Sensor unregisters executable action", "UnregisterExecutable" in sensor, "Sensor.cs")
 
 
 def check_generator_alignment(results: list[CheckResult]) -> None:

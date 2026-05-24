@@ -57,6 +57,7 @@ ALLOWED_SAMPLE_SUFFIXES = {
 }
 
 ALLOWED_EDITOR_SUFFIXES = {
+    ".asmdef",
     ".cs",
     ".meta",
 }
@@ -216,12 +217,12 @@ def check_manifest(results: list[CheckResult]) -> None:
             "platform": "win64",
             "supportLevel": "Recommended",
             "distributionLevel": "BundleCandidate",
-            "artifact": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
-            "artifactSha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
-            "artifactSize": 16858288,
+            "artifact": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
+            "artifactSha256": "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188",
+            "artifactSize": 16686195,
             "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
             "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
-            "inventoryFileCount": 1045,
+            "inventoryFileCount": 1044,
         }
         for key, value in current_expected.items():
             add(
@@ -323,7 +324,7 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
     add(
         results,
         "runtime notices name artifact candidate",
-        "Ros2ForUnity_Jazzy_standalone_windows10.zip" in runtime_notices
+        "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip" in runtime_notices
         and "candidate input" in runtime_notices,
         rel(RUNTIME_NOTICES),
     )
@@ -360,15 +361,15 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
     expected = {
         "schemaVersion": 1,
         "runtimeId": "r2fu-jazzy-win64",
-        "artifactName": "Ros2ForUnity_Jazzy_standalone_windows10.zip",
-        "artifactSize": 16858288,
-        "sha256": "ac06054e05282b4ebd53b31ff4a48b815ebadc7f6985a5cebcbe35e01c830936",
+        "artifactName": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
+        "artifactSize": 16686195,
+        "sha256": "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188",
         "rosDistro": "jazzy",
         "rmw": "rmw_fastrtps_cpp",
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",
-        "fileCount": 1045,
+        "fileCount": 1044,
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
@@ -435,12 +436,22 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         for path in iter_files(editor)
         if path.suffix.lower() not in ALLOWED_EDITOR_SUFFIXES
     ] if editor.exists() else []
+    editor_asmdefs = list(editor.glob("*.asmdef")) if editor.exists() else []
+    editor_asmdefs_are_editor_only = True
+    for asmdef in editor_asmdefs:
+        asmdef_data = load_json(asmdef, results, f"editor asmdef parses: {asmdef.name}")
+        editor_asmdefs_are_editor_only = editor_asmdefs_are_editor_only and bool(
+            asmdef_data
+            and asmdef_data.get("includePlatforms") == ["Editor"]
+            and asmdef_data.get("autoReferenced") is True
+        )
     installer = editor / "Ros2ForUnityRuntimeDefineInstaller.cs"
     installer_text = installer.read_text(encoding="utf-8", errors="replace") if installer.exists() else ""
     add(
         results,
         "optional package editor surface only enables runtime compile symbol",
         not invalid_editor_files
+        and editor_asmdefs_are_editor_only
         and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in installer_text
         and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in installer_text
         and "NamedBuildTarget.Standalone" in installer_text

@@ -132,9 +132,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtime.Contains("using UnityEditor;", StringComparison.Ordinal)
                   && runtime.Contains("PackageInfo.FindForAssetPath", StringComparison.Ordinal),
                 "111F-E1: ROS2ForUnity keeps Editor-only package lookup guarded");
+            var oldLifecycle = runtime.Contains("ownerCount", StringComparison.Ordinal)
+                               && runtime.Contains("UnregisterCallbacks()", StringComparison.Ordinal);
+            var currentLifecycle = runtime.Contains("referenceCount", StringComparison.Ordinal)
+                                   && runtime.Contains("ShutdownShared()", StringComparison.Ordinal)
+                                   && runtime.Contains("initMutex", StringComparison.Ordinal)
+                                   && runtime.Contains("ownsReference", StringComparison.Ordinal);
             Check(!runtime.Contains("~ROS2ForUnity", StringComparison.Ordinal)
-                  && runtime.Contains("ownerCount", StringComparison.Ordinal)
-                  && runtime.Contains("UnregisterCallbacks()", StringComparison.Ordinal),
+                  && (oldLifecycle || currentLifecycle),
                 "111F-E2: ROS2ForUnity uses deterministic ownership instead of finalizer shutdown");
 
             var node = ReadRepoText(RuntimeScripts + "/ROS2Node.cs");
@@ -145,40 +150,46 @@ namespace Unity.FoxgloveSDK.Tests
 
             var component = ReadRepoText(RuntimeScripts + "/ROS2UnityComponent.cs");
             Check(component.Contains("private volatile bool quitting", StringComparison.Ordinal)
-                  && component.Contains("private Thread spinThread", StringComparison.Ordinal)
+                  && (component.Contains("private Thread spinThread", StringComparison.Ordinal)
+                      || component.Contains("private Thread executorThread", StringComparison.Ordinal))
                   && component.Contains("OnDestroy()", StringComparison.Ordinal)
                   && !component.Contains("OnDisable()", StringComparison.Ordinal)
-                  && component.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal)
+                  && (component.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal)
+                      || component.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal))
                   && component.Contains("node.Dispose()", StringComparison.Ordinal),
                 "111F-E4: ROS2UnityComponent stops, joins, and disposes nodes deterministically");
 
             var core = ReadRepoText(RuntimeScripts + "/ROS2UnityCore.cs");
             Check(core.Contains("IDisposable", StringComparison.Ordinal)
                   && core.Contains("private volatile bool quitting", StringComparison.Ordinal)
-                  && core.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal),
+                  && (core.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal)
+                      || core.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal)),
                 "111F-E5: ROS2UnityCore has deterministic shutdown");
 
             var dotnetTime = ReadRepoText(RuntimeScripts + "/Time/DotnetTimeSource.cs");
-            Check(dotnetTime.Contains("/ Stopwatch.Frequency", StringComparison.Ordinal),
+            Check(dotnetTime.Contains("/ Stopwatch.Frequency", StringComparison.Ordinal)
+                  || dotnetTime.Contains("stopwatch.Elapsed.TotalSeconds", StringComparison.Ordinal),
                 "111F-E6: DotnetTimeSource converts Stopwatch ticks to seconds");
 
             var timeUtils = ReadRepoText(RuntimeScripts + "/Time/TimeUtils.cs");
             Check(timeUtils.Contains("Math.Floor(secondsIn)", StringComparison.Ordinal)
-                  && timeUtils.Contains("normalizedNanoseconds < 0", StringComparison.Ordinal)
+                  && (timeUtils.Contains("normalizedNanoseconds < 0", StringComparison.Ordinal)
+                      || timeUtils.Contains("wholeNanoseconds >= 1000000000", StringComparison.Ordinal))
                   && !timeUtils.Contains("(uint)(nanosec %", StringComparison.Ordinal),
                 "111F-E7: TimeUtils normalizes negative nanoseconds before uint conversion");
 
             var sensor = ReadRepoText(RuntimeScripts + "/Sensor.cs");
             Check(sensor.Contains("publisher != null && publishing", StringComparison.Ordinal)
                   && sensor.Contains("UnregisterExecutable", StringComparison.Ordinal)
-                  && sensor.Contains("if (readings != null)", StringComparison.Ordinal)
+                  && (sensor.Contains("if (readings != null)", StringComparison.Ordinal)
+                      || sensor.Contains("if (acquiredReading == null)", StringComparison.Ordinal))
                   && !sensor.Contains("clockSubscriber", StringComparison.Ordinal),
                 "111F-E8: Sensor null/lifecycle hazards are patched");
 
             foreach (var relative in PatchedVendorFiles())
             {
                 var source = ReadRepoText(RuntimeScripts + "/" + relative);
-                Check(source.Contains("Modifications Copyright (c) 2026 Jianbin Liu", StringComparison.Ordinal),
+                Check(HasVendoredAttribution(source),
                     "111F-E9: modified vendored file carries modifications copyright: " + relative);
             }
 
@@ -275,6 +286,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "Time/ROS2TimeSource.cs",
                 "Time/TimeUtils.cs"
             };
+        }
+
+        private static bool HasVendoredAttribution(string source)
+        {
+            return source.Contains("Modifications Copyright (c) 2026 Jianbin Liu", StringComparison.Ordinal);
         }
 
         private static string Normalize(string text)

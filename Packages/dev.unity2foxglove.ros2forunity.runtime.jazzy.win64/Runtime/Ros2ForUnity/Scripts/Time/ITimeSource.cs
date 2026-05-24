@@ -1,4 +1,5 @@
 // Copyright 2022 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +21,7 @@ namespace ROS2
 /// </summary>
 public interface ITimeSource
 {
-  public void GetTime(out int seconds, out uint nanoseconds);
+  void GetTime(out int seconds, out uint nanoseconds);
 }
 
 }  // namespace ROS2
