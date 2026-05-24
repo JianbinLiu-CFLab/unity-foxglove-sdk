@@ -246,6 +246,61 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!1 &95746711
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 95746713}
+  - component: {fileID: 95746712}
+  m_Layer: 0
+  m_Name: Rviz2PointCloud2Smoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &95746712
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 95746711}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f3ce2d07673464eaf2437099b947837, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase129Rviz2PointCloud2Smoke
+  _publishIntervalSeconds: 0.5
+  _runtimeRoot:
+  _runtimeRootIsPackage: 0
+  _assetRuntimePresent: 0
+  _statusMessage: Not started.
+  _publishedTfCount: 0
+  _publishedPointCloudCount: 0
+  _pointCount: 0
+  _pointStep: 0
+  _rowStep: 0
+  _lastError:
+--- !u!4 &95746713
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 95746711}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &143140016
 GameObject:
   m_ObjectHideFlags: 0
@@ -270,7 +325,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 143140016}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9e1addcea2684de7bdf354b574acaff8, type: 3}
   m_Name:
@@ -442,3 +497,4 @@ SceneRoots:
   - {fileID: 306081359}
   - {fileID: 73391074}
   - {fileID: 143140018}
+  - {fileID: 95746713}
