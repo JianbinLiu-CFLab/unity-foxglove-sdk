@@ -56,9 +56,9 @@ Unity2Foxglove/Assets/Generated/Unity2Foxglove.meta
 Unity2Foxglove/Assets/Ros2ForUnity/
 Unity2Foxglove/Assets/Ros2ForUnity.meta
 
-# developer plans
+# local/private planning and evidence
 Plan/
-Developer/*
+Developer/
 
 # temporary test/verification projects
 Unitytest/
