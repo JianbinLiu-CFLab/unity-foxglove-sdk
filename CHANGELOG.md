@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.9.2 - 2026-05-24
+
+### Added
+
+- Official MCAP conformance runner integration using the project-owned Python wrapper.
+- MCAP writer option parity controls for chunking, compression, CRC, summary, and direct-message profiles.
+- Streaming MCAP reader/query parity coverage for indexed and sequential fallback paths.
+- Decoded MCAP DataLoader view for JSON, Protobuf, and unsupported/malformed payload classification.
+- ROS2 CDR typed decode v1 for supported generated deserializers.
+- Repository boundary CI that blocks tracked `Plan/` and `Developer/` private workspace files.
+
+### Changed
+
+- MCAP conformance outputs are kept under repo-level `build/` paths instead of Unity package directories.
+- Phase16 validation now fails when `Plan/` or `Developer/` files are tracked by git.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.9.2.
+
+### Verified
+
+- Runtime validation suite passed.
+- Release package validation passed.
+- Version synchronization dry-run reported all 1.9.2 references aligned.
+- Repository boundary check passed for private `Plan/` and `Developer/` folders.
+
 ## 1.9.1 - 2026-05-23
 
 ### Added
