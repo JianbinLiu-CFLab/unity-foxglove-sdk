@@ -29,6 +29,8 @@ DEFAULT_RVIZ_CONFIG = pathlib.Path(
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse command-line options for the Phase128 RViz2 launcher."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ros2-root",
@@ -76,6 +78,8 @@ def find_workspace_root() -> pathlib.Path:
 
 
 def resolve_existing_path(path_text: str, description: str, workspace_root: pathlib.Path) -> pathlib.Path:
+    """Resolve an absolute or workspace-relative path and require it to exist."""
+
     path = pathlib.Path(path_text)
     candidates = [path] if path.is_absolute() else [workspace_root / path, pathlib.Path.cwd() / path]
     for candidate in candidates:
@@ -96,6 +100,8 @@ def build_rviz_env(
     discovery_range: str | None,
     software_rendering: bool,
 ) -> dict[str, str]:
+    """Build the Windows Jazzy environment required by direct rviz2.exe launch."""
+
     pixi = ros2_root / ".pixi" / "envs" / "default"
     path_entries = [
         ros2_root / "bin",
@@ -150,6 +156,8 @@ def print_summary(
     rviz_config: pathlib.Path,
     env: dict[str, str],
 ) -> None:
+    """Print the resolved launch inputs for acceptance evidence."""
+
     print(f"[phase128] ROS2 root: {ros2_root}")
     print(f"[phase128] RViz2 exe: {rviz_exe}")
     print(f"[phase128] RViz2 config: {rviz_config}")
@@ -161,6 +169,8 @@ def print_summary(
 
 
 def main(argv: list[str]) -> int:
+    """Run the launcher and return a process-style exit code."""
+
     args = parse_args(argv)
     workspace_root = find_workspace_root()
     ros2_root = resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
