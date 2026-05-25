@@ -2,40 +2,34 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Ros2ForUnity.Sample
-// Purpose: Publishes Phase129 RViz2 TF and PointCloud2 acceptance topics.
+// Purpose: Publishes Phase130 RViz2 MarkerArray acceptance topics.
 
 using System;
 using System.IO;
 using System.Reflection;
-using Unity.FoxgloveSDK.Schemas;
 using UnityEngine;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using ROS2;
 #endif
 
 [DisallowMultipleComponent]
-[AddComponentMenu("Foxglove/ROS2 For Unity/RViz2 PointCloud2 Smoke")]
-public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
+[AddComponentMenu("Foxglove/ROS2 For Unity/RViz2 MarkerArray Smoke")]
+public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 {
-    private const string LogPrefix = "[Phase129Rviz2PointCloud2Smoke]";
-    private const string NodeName = "unity2foxglove_phase129_pointcloud2";
+    private const string LogPrefix = "[Phase130Rviz2MarkerArraySmoke]";
+    private const string NodeName = "unity2foxglove_phase130_markerarray";
     private const string TfTopic = "/tf";
-    private const string PointsTopic = "/points";
+    private const string MarkersTopic = "/markers";
     private const string FrameMap = "map";
-    private const string FrameBaseLink = "base_link";
-    private const string FramePointCloudSensor = "point_cloud_sensor";
+    private const string FrameMarkerOrigin = "phase130_marker_origin";
+    private const string MarkerStableName = "phase130_cube";
     private const float DefaultPublishIntervalSeconds = 0.5f;
-    private const int DefaultPointCount = 1000;
-    private const int DefaultColumns = 50;
-    private const float DefaultSpacingMeters = 0.08f;
-    private const float DefaultWaveHeightMeters = 0.35f;
-    private const float DefaultAnimationSpeed = 1f;
+    private const int DeleteCycleLength = 24;
+    private const int DeleteFrame = 20;
+    private const int DeleteAllFrame = 21;
 
     [Header("Publish")]
     [SerializeField, Min(0.1f)] private float _publishIntervalSeconds = DefaultPublishIntervalSeconds;
-
-    [Header("Consolidated Acceptance")]
-    [SerializeField] private bool _publishSharedBaseTf = true;
 
     [Header("Runtime Evidence")]
     [SerializeField] private string _runtimeRoot = string.Empty;
@@ -45,10 +39,10 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     [Header("Status")]
     [SerializeField] private string _statusMessage = "Not started.";
     [SerializeField] private int _publishedTfCount;
-    [SerializeField] private int _publishedPointCloudCount;
-    [SerializeField] private int _pointCount;
-    [SerializeField] private uint _pointStep;
-    [SerializeField] private uint _rowStep;
+    [SerializeField] private int _publishedMarkerArrayCount;
+    [SerializeField] private int _activeMarkerCount;
+    [SerializeField] private int _lastMarkerId;
+    [SerializeField] private string _lastAction = string.Empty;
     [SerializeField] private string _lastError = string.Empty;
 
     private float _nextPublishAt;
@@ -66,7 +60,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
     private IPublisher<tf2_msgs.msg.TFMessage> _tfPublisher;
-    private IPublisher<sensor_msgs.msg.PointCloud2> _pointCloudPublisher;
+    private IPublisher<visualization_msgs.msg.MarkerArray> _markerPublisher;
     private MethodInfo _startExecutor;
     private bool _ownsRos2UnityComponent;
     private bool _executorStarted;
@@ -77,12 +71,12 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         Application.runInBackground = true;
         _nextPublishAt = 0f;
         _publishedTfCount = 0;
-        _publishedPointCloudCount = 0;
-        _pointCount = 0;
-        _pointStep = 0;
-        _rowStep = 0;
+        _publishedMarkerArrayCount = 0;
+        _activeMarkerCount = 0;
+        _lastMarkerId = Phase130MarkerArrayMessageBuilder.CreateDeterministicId(MarkerStableName);
+        _lastAction = string.Empty;
         _lastError = string.Empty;
-        _statusMessage = "Starting Phase129 RViz2 PointCloud2 smoke.";
+        _statusMessage = "Starting Phase130 RViz2 MarkerArray smoke.";
         _runtimeRoot = string.Empty;
         _runtimeRootIsPackage = false;
         _assetRuntimePresent = false;
@@ -147,38 +141,6 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         Debug.LogWarning(LogPrefix + " " + _statusMessage);
     }
 
-    private PointCloudFrame CreateSyntheticFrame(ulong unixNs)
-    {
-        var frame = new PointCloudFrame
-        {
-            UnixNs = unixNs,
-            FrameId = FramePointCloudSensor
-        };
-
-        var count = DefaultPointCount;
-        var columns = DefaultColumns;
-        var rows = Mathf.CeilToInt(count / (float)columns);
-        var xOrigin = (columns - 1) * 0.5f;
-        var yOrigin = (rows - 1) * 0.5f;
-        var phase = Time.unscaledTime * DefaultAnimationSpeed;
-
-        for (var index = 0; index < count; index++)
-        {
-            var column = index % columns;
-            var row = index / columns;
-            var xf = (column - xOrigin) * DefaultSpacingMeters;
-            var yf = (row - yOrigin) * DefaultSpacingMeters;
-            var zf = Mathf.Sin((column * 0.37f) + (row * 0.19f) + phase) * DefaultWaveHeightMeters;
-            var point = new PointCloudPoint(xf, yf, zf)
-            {
-                Intensity = count == 1 ? 1f : index / (float)(count - 1)
-            };
-            frame.Points.Add(point);
-        }
-
-        return frame;
-    }
-
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private void EnsureRos2UnityComponent()
     {
@@ -207,7 +169,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             EnsureRos2UnityComponent();
             if (_ros2Unity != null && _ros2Unity.Ok())
             {
-                _statusMessage = "ROS2 For Unity is ready for Phase129 PointCloud2 acceptance.";
+                _statusMessage = "ROS2 For Unity is ready for Phase130 MarkerArray acceptance.";
                 _lastError = string.Empty;
                 return true;
             }
@@ -248,27 +210,27 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private void EnsureEndpoints()
     {
-        if (_tfPublisher != null && _pointCloudPublisher != null)
+        if (_tfPublisher != null && _markerPublisher != null)
             return;
 
         if (_node == null)
             _node = _ros2Unity.CreateNode(NodeName);
         if (_tfPublisher == null)
             _tfPublisher = _node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfTopic);
-        if (_pointCloudPublisher == null)
-            _pointCloudPublisher = _node.CreatePublisher<sensor_msgs.msg.PointCloud2>(PointsTopic);
+        if (_markerPublisher == null)
+            _markerPublisher = _node.CreatePublisher<visualization_msgs.msg.MarkerArray>(MarkersTopic);
 
-        if (!_endpointsLogged && _tfPublisher != null && _pointCloudPublisher != null)
+        if (!_endpointsLogged && _tfPublisher != null && _markerPublisher != null)
         {
             _endpointsLogged = true;
-            _statusMessage = "Phase129 RViz2 PointCloud2 endpoints ready.";
-            Debug.Log(LogPrefix + " READY node=" + NodeName + " tf=" + TfTopic + " points=" + PointsTopic);
+            _statusMessage = "Phase130 RViz2 MarkerArray endpoints ready.";
+            Debug.Log(LogPrefix + " READY node=" + NodeName + " tf=" + TfTopic + " markers=" + MarkersTopic);
         }
     }
 
     private void PublishIfDue()
     {
-        if (_tfPublisher == null || _pointCloudPublisher == null)
+        if (_tfPublisher == null || _markerPublisher == null)
             return;
 
         if (Time.unscaledTime < _nextPublishAt)
@@ -276,17 +238,12 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
         _nextPublishAt = Time.unscaledTime + _publishIntervalSeconds;
         CreateStamp(out var sec, out var nanosec);
-        var unixNs = CreateUnixNanoseconds(sec, nanosec);
 
         try
         {
-            var frame = CreateSyntheticFrame(unixNs);
-            var pointCloud = Phase129PointCloud2MessageBuilder.Build(frame, sec, nanosec);
             _tfPublisher.Publish(CreateTfMessage(sec, nanosec));
-            _pointCloudPublisher.Publish(pointCloud);
-            _pointCount = checked((int)pointCloud.Width);
-            _pointStep = pointCloud.Point_step;
-            _rowStep = pointCloud.Row_step;
+            var markerArray = CreateMarkerArray(sec, nanosec);
+            _markerPublisher.Publish(markerArray);
         }
         catch (Exception ex)
         {
@@ -297,54 +254,30 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         }
 
         _publishedTfCount++;
-        _publishedPointCloudCount++;
+        _publishedMarkerArrayCount++;
         _lastError = string.Empty;
-        _statusMessage = "Published TF=" + _publishedTfCount + " points=" + _publishedPointCloudCount + ".";
+        _statusMessage = "Published TF=" + _publishedTfCount
+            + " markers=" + _publishedMarkerArrayCount
+            + " active=" + _activeMarkerCount
+            + " action=" + _lastAction + ".";
 
         if (!_firstPublishLogged)
         {
             _firstPublishLogged = true;
-            Debug.Log(LogPrefix + " first publish: frames=" + FrameMap + "," + FrameBaseLink + "," + FramePointCloudSensor);
+            Debug.Log(LogPrefix + " first publish: frame=map tf=" + TfTopic + " topic=" + MarkersTopic + " ns=" + Phase130MarkerArrayMessageBuilder.DefaultNamespace);
         }
     }
 
     private tf2_msgs.msg.TFMessage CreateTfMessage(int sec, uint nanosec)
     {
-        var sensorTransform = new geometry_msgs.msg.TransformStamped
-        {
-            Header = CreateHeader(FrameBaseLink, sec, nanosec),
-            Child_frame_id = FramePointCloudSensor,
-            Transform = new geometry_msgs.msg.Transform
-            {
-                Translation = new geometry_msgs.msg.Vector3
-                {
-                    X = 0.4,
-                    Y = 0.0,
-                    Z = 0.35
-                },
-                Rotation = IdentityRotation()
-            }
-        };
-
-        if (!_publishSharedBaseTf)
-        {
-            return new tf2_msgs.msg.TFMessage
-            {
-                Transforms = new[]
-                {
-                    sensorTransform
-                }
-            };
-        }
-
         return new tf2_msgs.msg.TFMessage
         {
             Transforms = new[]
             {
                 new geometry_msgs.msg.TransformStamped
                 {
-                    Header = CreateHeader(FrameMap, sec, nanosec),
-                    Child_frame_id = FrameBaseLink,
+                    Header = CreateTfHeader(FrameMap, sec, nanosec),
+                    Child_frame_id = FrameMarkerOrigin,
                     Transform = new geometry_msgs.msg.Transform
                     {
                         Translation = new geometry_msgs.msg.Vector3
@@ -353,36 +286,53 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
                             Y = 0.0,
                             Z = 0.0
                         },
-                        Rotation = IdentityRotation()
+                        Rotation = new geometry_msgs.msg.Quaternion
+                        {
+                            X = 0.0,
+                            Y = 0.0,
+                            Z = 0.0,
+                            W = 1.0
+                        }
                     }
-                },
-                sensorTransform
+                }
             }
         };
     }
 
-    private static std_msgs.msg.Header CreateHeader(string frameId, int sec, uint nanosec)
+    private visualization_msgs.msg.MarkerArray CreateMarkerArray(int sec, uint nanosec)
     {
-        return new std_msgs.msg.Header
+        var cycle = _publishedMarkerArrayCount % DeleteCycleLength;
+        if (cycle == DeleteFrame)
         {
-            Stamp = new builtin_interfaces.msg.Time
-            {
-                Sec = sec,
-                Nanosec = nanosec
-            },
-            Frame_id = frameId
-        };
-    }
+            _activeMarkerCount = 0;
+            _lastAction = "DELETE";
+            return Phase130MarkerArrayMessageBuilder.BuildDelete(MarkerStableName, sec, nanosec);
+        }
 
-    private static geometry_msgs.msg.Quaternion IdentityRotation()
-    {
-        return new geometry_msgs.msg.Quaternion
+        if (cycle == DeleteAllFrame)
         {
-            X = 0.0,
-            Y = 0.0,
-            Z = 0.0,
-            W = 1.0
-        };
+            _activeMarkerCount = 0;
+            _lastAction = "DELETEALL";
+            return Phase130MarkerArrayMessageBuilder.BuildDeleteAll(sec, nanosec);
+        }
+
+        var phase = Time.unscaledTime;
+        var x = Mathf.Sin(phase * 0.7f) * 1.2f;
+        var y = Mathf.Cos(phase * 0.5f) * 0.8f;
+        var z = 0.5f + Mathf.Sin(phase * 1.3f) * 0.25f;
+        var size = 0.35f + (Mathf.Sin(phase * 0.9f) + 1f) * 0.08f;
+        var color = Color.HSVToRGB(Mathf.Repeat(phase * 0.08f, 1f), 0.85f, 1f);
+        color.a = 0.9f;
+
+        _activeMarkerCount = 1;
+        _lastAction = "ADD";
+        return Phase130MarkerArrayMessageBuilder.BuildAddOrModify(
+            MarkerStableName,
+            new Vector3(x, y, z),
+            new Vector3(size, size, size),
+            color,
+            sec,
+            nanosec);
     }
 
     private void CreateStamp(out int sec, out uint nanosec)
@@ -404,14 +354,6 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         }
 
         nanosec = nanos;
-    }
-
-    private static ulong CreateUnixNanoseconds(int sec, uint nanosec)
-    {
-        if (sec < 0)
-            throw new ArgumentOutOfRangeException(nameof(sec), "PointCloud2 smoke timestamps require non-negative Unix time.");
-
-        return checked(((ulong)sec * 1000000000UL) + nanosec);
     }
 
     private void LogRuntimeRootOnce()
@@ -450,11 +392,11 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             }
         }
 
-        if (_node != null && _pointCloudPublisher != null)
+        if (_node != null && _markerPublisher != null)
         {
             try
             {
-                _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_pointCloudPublisher);
+                _node.RemovePublisher<visualization_msgs.msg.MarkerArray>(_markerPublisher);
             }
             catch (Exception)
             {
@@ -473,7 +415,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         }
 
         _tfPublisher = null;
-        _pointCloudPublisher = null;
+        _markerPublisher = null;
         _node = null;
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);
@@ -482,6 +424,19 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         _executorStarted = false;
         _initializationBlocked = false;
         _warnedMissingStartExecutor = false;
+    }
+
+    private static std_msgs.msg.Header CreateTfHeader(string frameId, int sec, uint nanosec)
+    {
+        return new std_msgs.msg.Header
+        {
+            Stamp = new builtin_interfaces.msg.Time
+            {
+                Sec = sec,
+                Nanosec = nanosec
+            },
+            Frame_id = frameId
+        };
     }
 #endif
 

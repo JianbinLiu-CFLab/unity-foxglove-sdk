@@ -25,6 +25,8 @@ The sample is generic and not vendor-specific. It does not add organized clouds,
 4. Enter Play Mode and wait for the component status to report ready and publish counts to increase.
 5. Record runtime root, runtime root package flag, asset runtime flag, point count, point step, and row step in the evidence template.
 
+When this sample runs alone, leave `Publish Shared Base Tf` enabled. When it runs in the consolidated v1 acceptance scene with the LaserScan sample, turn `Publish Shared Base Tf` off so the LaserScan sample owns `map -> base_link` and this sample only publishes `base_link -> point_cloud_sensor`.
+
 The default topic is `/points` because that is the common RViz2 convention for point cloud displays. The message type is `sensor_msgs/msg/PointCloud2` because it is the ROS2 standard point cloud message RViz2 understands directly.
 
 The v1 payload is an animated synthetic wave with 1000 points, 50 columns, 0.08 m spacing, and 0.35 m wave height. It remains unorganized:

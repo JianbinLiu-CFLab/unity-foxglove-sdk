@@ -262,7 +262,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &95746712
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -270,12 +270,13 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 95746711}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0f3ce2d07673464eaf2437099b947837, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::Phase129Rviz2PointCloud2Smoke
   _publishIntervalSeconds: 0.5
+  _publishSharedBaseTf: 1
   _runtimeRoot:
   _runtimeRootIsPackage: 0
   _assetRuntimePresent: 0
@@ -317,7 +318,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &143140017
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -325,7 +326,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 143140016}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9e1addcea2684de7bdf354b574acaff8, type: 3}
   m_Name:
@@ -490,6 +491,235 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!1 &1104292971
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1104292973}
+  - component: {fileID: 1104292972}
+  m_Layer: 0
+  m_Name: Rviz2MarkerArraySmoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1104292972
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1104292971}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2800c31a2bd4cabbaf19fe9ca7634a2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase130Rviz2MarkerArraySmoke
+  _publishIntervalSeconds: 0.5
+  _runtimeRoot:
+  _runtimeRootIsPackage: 0
+  _assetRuntimePresent: 0
+  _statusMessage: Not started.
+  _publishedTfCount: 0
+  _publishedMarkerArrayCount: 0
+  _activeMarkerCount: 0
+  _lastMarkerId: 0
+  _lastAction:
+  _lastError:
+--- !u!4 &1104292973
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1104292971}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1262249678
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1262249682}
+  - component: {fileID: 1262249681}
+  - component: {fileID: 1262249680}
+  - component: {fileID: 1262249679}
+  m_Layer: 0
+  m_Name: Rviz2StandardVisualizationV1
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1262249679
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262249678}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2800c31a2bd4cabbaf19fe9ca7634a2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase130Rviz2MarkerArraySmoke
+  _publishIntervalSeconds: 0.5
+  _runtimeRoot:
+  _runtimeRootIsPackage: 0
+  _assetRuntimePresent: 0
+  _statusMessage: Not started.
+  _publishedTfCount: 0
+  _publishedMarkerArrayCount: 0
+  _activeMarkerCount: 0
+  _lastMarkerId: 0
+  _lastAction:
+  _lastError:
+--- !u!114 &1262249680
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262249678}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f3ce2d07673464eaf2437099b947837, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase129Rviz2PointCloud2Smoke
+  _publishIntervalSeconds: 0.5
+  _publishSharedBaseTf: 0
+  _runtimeRoot:
+  _runtimeRootIsPackage: 0
+  _assetRuntimePresent: 0
+  _statusMessage: Not started.
+  _publishedTfCount: 0
+  _publishedPointCloudCount: 0
+  _pointCount: 0
+  _pointStep: 0
+  _rowStep: 0
+  _lastError:
+--- !u!114 &1262249681
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262249678}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e1addcea2684de7bdf354b574acaff8, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase128Rviz2TfLaserScanSmoke
+  _publishIntervalSeconds: 0.5
+  _runtimeRoot:
+  _runtimeRootIsPackage: 0
+  _assetRuntimePresent: 0
+  _statusMessage: Not started.
+  _publishedTfCount: 0
+  _publishedScanCount: 0
+  _lastError:
+--- !u!4 &1262249682
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262249678}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1826128475
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1826128477}
+  - component: {fileID: 1826128476}
+  m_Layer: 0
+  m_Name: Rviz2StandardMessagesSmoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1826128476
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1826128475}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d42085065494821847e2b697563c350, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Phase132StandardMessagesSmoke
+  _cameraInfoTopic: /camera/camera_info
+  _imageTopic: /camera/image_raw
+  _imuTopic: /imu/data
+  _odometryTopic: /odom
+  _poseTopic: /pose
+  _navSatFixTopic: /fix
+  _publishCamera: 1
+  _publishImu: 1
+  _publishOdometry: 1
+  _publishPose: 1
+  _publishNavSatFix: 1
+  _cameraSource: {fileID: 0}
+  _imuSource: {fileID: 0}
+  _odometrySource: {fileID: 0}
+  _poseSource: {fileID: 0}
+  _navSatFixSource: {fileID: 0}
+  _publishIntervalSeconds: 0.5
+  _runtimeRoot:
+  _runtimeRootIsPackage: 0
+  _assetRuntimePresent: 0
+  _statusMessage: Not started.
+  _enabledSourceCount: 0
+  _publishedCameraInfoCount: 0
+  _publishedImageCount: 0
+  _publishedImuCount: 0
+  _publishedOdometryCount: 0
+  _publishedPoseCount: 0
+  _publishedNavSatFixCount: 0
+  _lastError:
+--- !u!4 &1826128477
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1826128475}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -498,3 +728,6 @@ SceneRoots:
   - {fileID: 73391074}
   - {fileID: 143140018}
   - {fileID: 95746713}
+  - {fileID: 1104292973}
+  - {fileID: 1262249682}
+  - {fileID: 1826128477}
