@@ -60,6 +60,9 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     foreach (var n in names)
                         subs.Remove(n);
+
+                    if (subs.Count == 0)
+                        _clients.Remove(clientId);
                 }
             }
         }

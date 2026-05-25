@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class SubscriptionRegistry
     {
+        internal const int MaxSubscriptionsPerClient = 1024;
+        internal const int MaxTotalSubscriptions = 8192;
+
         private readonly Dictionary<uint, Dictionary<uint, uint>> _clients
             = new Dictionary<uint, Dictionary<uint, uint>>();
 
@@ -26,19 +29,84 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Add a subscription for a client. Called when a "subscribe" message is received.</summary>
         public void AddSubscription(uint clientId, uint subscriptionId, uint channelId)
         {
+            TryAddSubscriptions(
+                clientId,
+                new[] { (subscriptionId, channelId) },
+                out _,
+                out _);
+        }
+
+        /// <summary>
+        /// Try to apply a subscribe batch atomically. Over-budget batches are
+        /// rejected without mutating client subscription or reverse-index state.
+        /// </summary>
+        public bool TryAddSubscriptions(
+            uint clientId,
+            IEnumerable<(uint subscriptionId, uint channelId)> subscriptions,
+            out List<SubscriptionRegistryChange> changes,
+            out string error)
+        {
             lock (_lock)
             {
+                changes = new List<SubscriptionRegistryChange>();
+                error = null;
+
+                var deduped = new Dictionary<uint, uint>();
+                if (subscriptions != null)
+                {
+                    foreach (var (subscriptionId, channelId) in subscriptions)
+                        deduped[subscriptionId] = channelId;
+                }
+
                 if (!_clients.TryGetValue(clientId, out var subs))
+                    subs = null;
+
+                var currentClientCount = subs?.Count ?? 0;
+                var resulting = subs != null
+                    ? new Dictionary<uint, uint>(subs)
+                    : new Dictionary<uint, uint>();
+
+                foreach (var (subscriptionId, channelId) in deduped)
+                    resulting[subscriptionId] = channelId;
+
+                if (resulting.Count > MaxSubscriptionsPerClient)
+                {
+                    error = $"Too many subscriptions for client {clientId}";
+                    return false;
+                }
+
+                var totalAfter = TotalSubscriptionCountLocked() - currentClientCount + resulting.Count;
+                if (totalAfter > MaxTotalSubscriptions)
+                {
+                    error = "Too many total subscriptions";
+                    return false;
+                }
+
+                if (deduped.Count == 0)
+                    return true;
+
+                if (subs == null)
                 {
                     subs = new Dictionary<uint, uint>();
                     _clients[clientId] = subs;
                 }
 
-                if (subs.TryGetValue(subscriptionId, out var previousChannelId))
-                    RemoveReverseIndex(previousChannelId, clientId, subscriptionId);
+                foreach (var (subscriptionId, channelId) in deduped)
+                {
+                    var hadPrevious = subs.TryGetValue(subscriptionId, out var previousChannelId);
+                    if (hadPrevious)
+                        RemoveReverseIndex(previousChannelId, clientId, subscriptionId);
 
-                subs[subscriptionId] = channelId;
-                AddReverseIndex(channelId, clientId, subscriptionId);
+                    subs[subscriptionId] = channelId;
+                    AddReverseIndex(channelId, clientId, subscriptionId);
+                    changes.Add(new SubscriptionRegistryChange(
+                        subscriptionId,
+                        channelId,
+                        hadPrevious,
+                        hadPrevious ? previousChannelId : 0));
+                }
+
+                return true;
             }
         }
 
@@ -63,6 +131,9 @@ namespace Unity.FoxgloveSDK.Core
                             RemoveReverseIndex(chId, clientId, sid);
                         }
                     }
+
+                    if (subs.Count == 0)
+                        _clients.Remove(clientId);
                 }
                 return removed;
             }
@@ -128,6 +199,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 _byChannel.Remove(channelId);
+                RemoveEmptyClientEntriesLocked();
                 return removed;
             }
         }
@@ -186,6 +258,27 @@ namespace Unity.FoxgloveSDK.Core
             get { lock (_lock) { return _clients.Count; } }
         }
 
+        private int TotalSubscriptionCountLocked()
+        {
+            var count = 0;
+            foreach (var subs in _clients.Values)
+                count += subs.Count;
+            return count;
+        }
+
+        private void RemoveEmptyClientEntriesLocked()
+        {
+            var toRemove = new List<uint>();
+            foreach (var (clientId, subs) in _clients)
+            {
+                if (subs.Count == 0)
+                    toRemove.Add(clientId);
+            }
+
+            foreach (var clientId in toRemove)
+                _clients.Remove(clientId);
+        }
+
         private void AddReverseIndex(uint channelId, uint clientId, uint subscriptionId)
         {
             if (!_byChannel.TryGetValue(channelId, out var subscribers))
@@ -215,5 +308,25 @@ namespace Unity.FoxgloveSDK.Core
             if (subscribers.Count == 0)
                 _byChannel.Remove(channelId);
         }
+    }
+
+    public readonly struct SubscriptionRegistryChange
+    {
+        public SubscriptionRegistryChange(
+            uint subscriptionId,
+            uint channelId,
+            bool hadPrevious,
+            uint previousChannelId)
+        {
+            SubscriptionId = subscriptionId;
+            ChannelId = channelId;
+            HadPrevious = hadPrevious;
+            PreviousChannelId = previousChannelId;
+        }
+
+        public uint SubscriptionId { get; }
+        public uint ChannelId { get; }
+        public bool HadPrevious { get; }
+        public uint PreviousChannelId { get; }
     }
 }
