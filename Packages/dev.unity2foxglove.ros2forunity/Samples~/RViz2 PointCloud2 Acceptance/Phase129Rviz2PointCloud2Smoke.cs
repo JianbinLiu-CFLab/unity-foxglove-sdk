@@ -34,6 +34,9 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     [Header("Publish")]
     [SerializeField, Min(0.1f)] private float _publishIntervalSeconds = DefaultPublishIntervalSeconds;
 
+    [Header("Consolidated Acceptance")]
+    [SerializeField] private bool _publishSharedBaseTf = true;
+
     [Header("Runtime Evidence")]
     [SerializeField] private string _runtimeRoot = string.Empty;
     [SerializeField] private bool _runtimeRootIsPackage;
@@ -307,6 +310,33 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private tf2_msgs.msg.TFMessage CreateTfMessage(int sec, uint nanosec)
     {
+        var sensorTransform = new geometry_msgs.msg.TransformStamped
+        {
+            Header = CreateHeader(FrameBaseLink, sec, nanosec),
+            Child_frame_id = FramePointCloudSensor,
+            Transform = new geometry_msgs.msg.Transform
+            {
+                Translation = new geometry_msgs.msg.Vector3
+                {
+                    X = 0.4,
+                    Y = 0.0,
+                    Z = 0.35
+                },
+                Rotation = IdentityRotation()
+            }
+        };
+
+        if (!_publishSharedBaseTf)
+        {
+            return new tf2_msgs.msg.TFMessage
+            {
+                Transforms = new[]
+                {
+                    sensorTransform
+                }
+            };
+        }
+
         return new tf2_msgs.msg.TFMessage
         {
             Transforms = new[]
@@ -326,21 +356,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
                         Rotation = IdentityRotation()
                     }
                 },
-                new geometry_msgs.msg.TransformStamped
-                {
-                    Header = CreateHeader(FrameBaseLink, sec, nanosec),
-                    Child_frame_id = FramePointCloudSensor,
-                    Transform = new geometry_msgs.msg.Transform
-                    {
-                        Translation = new geometry_msgs.msg.Vector3
-                        {
-                            X = 0.4,
-                            Y = 0.0,
-                            Z = 0.35
-                        },
-                        Rotation = IdentityRotation()
-                    }
-                }
+                sensorTransform
             }
         };
     }

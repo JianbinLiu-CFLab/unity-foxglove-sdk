@@ -30,6 +30,13 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Maximum queued payload bytes per client before drop/disconnect policy applies.</summary>
         public int MaxQueuedBytesPerClient { get; set; } = DefaultMaxQueuedBytes;
 
+        /// <summary>Normalize frame capacity so a misconfigured value cannot disable protocol traffic.</summary>
+        internal static int NormalizeMaxQueuedFrames(int value) => Math.Max(1, value);
+
+        /// <summary>Normalize byte capacity so zero/negative values fall back to the usable default.</summary>
+        internal static int NormalizeMaxQueuedBytes(int value) =>
+            value > 0 ? value : DefaultMaxQueuedBytes;
+
         /// <summary>
         /// Whether client disconnects before the WebSocket handshake should be logged.
         /// Browsers and desktop clients can open and cancel TLS probes during normal

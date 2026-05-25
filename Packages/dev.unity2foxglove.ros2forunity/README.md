@@ -125,6 +125,54 @@ map -> base_link -> point_cloud_sensor
 
 This sample uses Unity2Foxglove's existing packed point-cloud layout through `PointCloudFrame` and `PointCloudPackedDataBuilder`, then maps that packed layout to `sensor_msgs/msg/PointCloud2` for RViz2. It is generic and not vendor-specific. It does not claim organized clouds, PointCloud2 subscription, LiDAR vendor presets, MarkerArray, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency.
 
+## RViz2 MarkerArray Acceptance
+
+The `RViz2 MarkerArray Acceptance` sample adds a narrow scene-marker route for RViz2. It publishes:
+
+```text
+/markers
+```
+
+The `/markers` topic uses:
+
+```text
+visualization_msgs/msg/MarkerArray
+```
+
+The v1 payload is one animated cube marker in the `map` frame with deterministic positive 31-bit marker IDs, zero marker lifetime, and periodic `DELETE`/`DELETEALL` cleanup messages. It does not claim arbitrary marker types, mesh resources, text markers, interactive markers, PointCloud2 subscription, Camera/Image, MCAP replay fanout, rosbag2, or any core SDK ROS2 dependency.
+
+## RViz2 Standard Visualization v1
+
+The `RViz2 Standard Visualization v1` sample is a docs/config/evidence kit that consolidates the RViz2 workflow from the TF/LaserScan, PointCloud2, and MarkerArray samples. It does not contain publishers by itself. Import the three publisher samples first, then import the v1 kit for the combined RViz2 config and checklist.
+
+The v1 topic matrix is:
+
+```text
+/tf      -> tf2_msgs/msg/TFMessage
+/scan    -> sensor_msgs/msg/LaserScan
+/points  -> sensor_msgs/msg/PointCloud2
+/markers -> visualization_msgs/msg/MarkerArray
+```
+
+The combined scene must avoid conflicting TF ownership. Let one component own each transform edge, especially `map -> base_link`. The core SDK remains ROS-free; this v1 workflow remains optional and ROS2 For Unity driven.
+
+## ROS2 Standard Message Expansion
+
+The `ROS2 Standard Message Expansion` sample adds CLI-validated source components for:
+
+```text
+/camera/camera_info -> sensor_msgs/msg/CameraInfo
+/camera/image_raw   -> sensor_msgs/msg/Image
+/imu/data           -> sensor_msgs/msg/Imu
+/odom               -> nav_msgs/msg/Odometry
+/pose               -> geometry_msgs/msg/PoseStamped
+/fix                -> sensor_msgs/msg/NavSatFix
+```
+
+This sample is not a new RViz2 productization gate. It uses explicit source components for camera, IMU, odometry, pose, and synthetic NavSatFix data, and the primary check is the sample README's Python acceptance helper. It does not publish `/tf`, does not claim ROS2 `sensor_data` QoS parity, and does not add image rectification, calibration services, state estimation, Nav2, `/clock`, MCAP fanout, rosbag2, or any core SDK ROS2 dependency.
+
+The default topics are conventional ROS2 names and can collide with real drivers or Nav2 stacks. Production projects should namespace them, for example `/unity/odom` or `/unity/camera/image_raw`.
+
 ## Attribution Boundary
 
 RobotecAI ROS2 For Unity is an upstream Apache-2.0 project:

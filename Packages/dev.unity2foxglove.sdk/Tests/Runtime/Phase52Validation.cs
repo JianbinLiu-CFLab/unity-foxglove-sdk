@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestWrongTokenRejectedBeforeUpgrade();
             TestTlsOptionsValidateDeterministicPfx();
             TestWssHandshakeAndServerInfo();
+            TestWebSocketHandshakeRejectsUnsupportedVersion();
             TestWssTlsHandshakeAbortIsQuietByDefault();
             TestWssTlsHandshakeAbortCanBeLoggedWhenEnabled();
             TestWssOriginGuardRejectsDisallowedOrigin();
@@ -48,6 +49,8 @@ namespace Unity.FoxgloveSDK.Tests
             TestReceiveLoopIgnoresSslStreamDisposalRace();
             TestFrameCodecTreatsRemoteAbortAggregateAsCleanEnd();
             TestWebSocketFrameProtocolRejectsInvalidClientFrames();
+            TestSendQueueZeroByteLimitKeepsProtocolFramesUsable();
+            TestClientConnectedExceptionDisconnectsRegisteredClient();
             TestManagedBackendStopDisposesCancellationSource();
             TestHostedFoxgloveWebUrlMatchesOfficialSdk();
             TestManagerDefaultsAllowFoxgloveWebOrigin();
@@ -179,6 +182,26 @@ namespace Unity.FoxgloveSDK.Tests
             var firstTextFrame = ReadServerTextFrame(ssl);
             Check(firstTextFrame.Contains("\"op\":\"serverInfo\""),
                 "52B-2b: WSS client receives serverInfo frame");
+        }
+
+        private static void TestWebSocketHandshakeRejectsUnsupportedVersion()
+        {
+            var port = GetFreeTcpPort();
+            using var backend = new ManagedWsBackend();
+            backend.Start("127.0.0.1", port);
+
+            var response = SendRawHandshake(
+                port,
+                "/",
+                origin: null,
+                useTls: false,
+                serverName: null,
+                websocketVersion: "12");
+
+            Check(response.StartsWith("HTTP/1.1 426", StringComparison.Ordinal),
+                "52B-2b1: unsupported WebSocket version is rejected with 426");
+            Check(response.Contains("Sec-WebSocket-Version: 13", StringComparison.Ordinal),
+                "52B-2b2: unsupported WebSocket version response advertises version 13");
         }
 
         private static void TestWssTlsHandshakeAbortIsQuietByDefault()
@@ -339,6 +362,57 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Ping, new byte[126], masked: true, fin: true)) == null,
                 "52B-5c: oversized control frames are rejected before dispatch");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("hi"), masked: true, fin: true, reservedBits: 0x40)) == null,
+                "52B-5d: client frames with RSV bits are rejected when no extension is negotiated");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(0x0, Encoding.UTF8.GetBytes("tail"), masked: true, fin: true)) == null,
+                "52B-5e: unsupported continuation frames are rejected");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(0x3, Encoding.UTF8.GetBytes("reserved"), masked: true, fin: true)) == null,
+                "52B-5f: reserved data opcodes are rejected");
+        }
+
+        private static void TestSendQueueZeroByteLimitKeepsProtocolFramesUsable()
+        {
+            var queue = new WsSendQueue(maxFrames: 1, maxQueuedBytes: 0);
+            var result = queue.Enqueue(new QueuedFrame(
+                WsOpcode.Text,
+                Encoding.UTF8.GetBytes(new string('s', 128)),
+                FramePriority.Control));
+
+            Check(result.Accepted && !result.ShouldDisconnect,
+                "52B-5f1: zero configured send-queue byte limit falls back to a usable default");
+            Check(queue.QueuedBytes == 128,
+                "52B-5f2: normalized send-queue byte limit accounts for queued protocol bytes");
+            Check(ManagedWebSocketOptions.NormalizeMaxQueuedBytes(0) == ManagedWebSocketOptions.DefaultMaxQueuedBytes,
+                "52B-5f3: queue byte-limit normalization is shared with transport stats");
+        }
+
+        private static void TestClientConnectedExceptionDisconnectsRegisteredClient()
+        {
+            var port = GetFreeTcpPort();
+            var logger = new Phase52CaptureLogger();
+            using var backend = new ManagedWsBackend(logger);
+            backend.OnClientConnected += _ => throw new InvalidOperationException("phase52 connected event failure");
+            backend.Start("127.0.0.1", port);
+
+            using var client = new TcpClient();
+            client.ReceiveTimeout = TestTimeoutMs;
+            client.SendTimeout = TestTimeoutMs;
+            client.Connect("127.0.0.1", port);
+            using var stream = client.GetStream();
+            stream.ReadTimeout = TestTimeoutMs;
+            stream.WriteTimeout = TestTimeoutMs;
+
+            WriteHandshake(stream, "/", origin: null);
+            var response = ReadHttpResponse(stream);
+            Check(response.StartsWith("HTTP/1.1 101", StringComparison.Ordinal),
+                "52B-5g: test client completes the WebSocket upgrade before connected event failure");
+
+            WaitUntil(() => backend.GetStatsSnapshot().ActiveClientCount == 0, TestTimeoutMs);
+            Check(backend.GetStatsSnapshot().ActiveClientCount == 0,
+                "52B-5h: connected event failures disconnect the already registered client");
         }
 
         private static void TestManagedBackendStopDisposesCancellationSource()
@@ -582,7 +656,8 @@ namespace Unity.FoxgloveSDK.Tests
             string target,
             string origin,
             bool useTls,
-            string serverName)
+            string serverName,
+            string websocketVersion = "13")
         {
             using var client = new TcpClient();
             client.Connect("127.0.0.1", port);
@@ -595,14 +670,14 @@ namespace Unity.FoxgloveSDK.Tests
                 ssl.AuthenticateAsClient(serverName ?? "localhost");
                 ssl.ReadTimeout = TestTimeoutMs;
                 ssl.WriteTimeout = TestTimeoutMs;
-                WriteHandshake(ssl, target, origin);
+                WriteHandshake(ssl, target, origin, websocketVersion);
                 return ReadHttpResponse(ssl);
             }
 
             using var stream = client.GetStream();
             stream.ReadTimeout = TestTimeoutMs;
             stream.WriteTimeout = TestTimeoutMs;
-            WriteHandshake(stream, target, origin);
+            WriteHandshake(stream, target, origin, websocketVersion);
             return ReadHttpResponse(stream);
         }
 
@@ -628,7 +703,7 @@ namespace Unity.FoxgloveSDK.Tests
                 userCertificateValidationCallback: (_, _, _, _) => true);
         }
 
-        private static void WriteHandshake(Stream stream, string target, string origin)
+        private static void WriteHandshake(Stream stream, string target, string origin, string websocketVersion = "13")
         {
             var sb = new StringBuilder();
             sb.Append($"GET {target} HTTP/1.1\r\n");
@@ -636,7 +711,8 @@ namespace Unity.FoxgloveSDK.Tests
             sb.Append("Upgrade: websocket\r\n");
             sb.Append("Connection: Upgrade\r\n");
             sb.Append("Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n");
-            sb.Append("Sec-WebSocket-Version: 13\r\n");
+            if (websocketVersion != null)
+                sb.Append($"Sec-WebSocket-Version: {websocketVersion}\r\n");
             sb.Append("Sec-WebSocket-Protocol: foxglove.sdk.v1\r\n");
             if (!string.IsNullOrEmpty(origin))
                 sb.Append($"Origin: {origin}\r\n");
@@ -787,11 +863,11 @@ namespace Unity.FoxgloveSDK.Tests
             return WsFrameCodec.TryReadFrame(stream, out var frame) ? frame : null;
         }
 
-        private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin)
+        private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin, byte reservedBits = 0)
         {
             payload ??= Array.Empty<byte>();
             using var ms = new MemoryStream();
-            ms.WriteByte((byte)((fin ? 0x80 : 0x00) | opcode));
+            ms.WriteByte((byte)((fin ? 0x80 : 0x00) | (reservedBits & 0x70) | opcode));
 
             var maskFlag = masked ? 0x80 : 0x00;
             if (payload.Length <= 125)

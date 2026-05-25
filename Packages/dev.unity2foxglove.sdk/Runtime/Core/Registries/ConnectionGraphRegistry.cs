@@ -6,7 +6,6 @@
 // graph subscription state for the Foxglove ConnectionGraph capability.
 
 using System.Collections.Generic;
-using System.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
 namespace Unity.FoxgloveSDK.Core
@@ -52,7 +51,13 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Get a snapshot of all graph subscriber client IDs.</summary>
         public IReadOnlyCollection<uint> GetSubscribers()
         {
-            lock (_lock) { return _graphSubscribers.ToList(); }
+            lock (_lock)
+            {
+                var result = new List<uint>(_graphSubscribers.Count);
+                foreach (var clientId in _graphSubscribers)
+                    result.Add(clientId);
+                return result;
+            }
         }
 
         /// <summary>Clear graph subscribers and all topology state.</summary>
@@ -152,16 +157,67 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
-                return new ConnectionGraphUpdate
+                var snapshot = new ConnectionGraphUpdate
                 {
-                    PublishedTopics = _publishedTopics.Select(kv => new PublishedTopic
-                    { Name = kv.Key, PublisherIds = kv.Value.ToList() }).ToList(),
-                    SubscribedTopics = _subscribedTopics.Select(kv => new SubscribedTopic
-                    { Name = kv.Key, SubscriberIds = kv.Value.ToList() }).ToList(),
-                    AdvertisedServices = _advertisedServices.Select(kv => new AdvertisedService
-                    { Name = kv.Key, ProviderIds = kv.Value.ToList() }).ToList()
+                    PublishedTopics = new List<PublishedTopic>(_publishedTopics.Count),
+                    SubscribedTopics = new List<SubscribedTopic>(_subscribedTopics.Count),
+                    AdvertisedServices = new List<AdvertisedService>(_advertisedServices.Count)
                 };
+                CopyTopologyPublished(_publishedTopics, snapshot.PublishedTopics);
+                CopyTopologySubscribed(_subscribedTopics, snapshot.SubscribedTopics);
+                CopyTopologyServices(_advertisedServices, snapshot.AdvertisedServices);
+                return snapshot;
             }
+        }
+
+        private static void CopyTopologyPublished(
+            Dictionary<string, HashSet<string>> source,
+            List<PublishedTopic> destination)
+        {
+            foreach (var kv in source)
+            {
+                destination.Add(new PublishedTopic
+                {
+                    Name = kv.Key,
+                    PublisherIds = CopyIds(kv.Value)
+                });
+            }
+        }
+
+        private static void CopyTopologySubscribed(
+            Dictionary<string, HashSet<string>> source,
+            List<SubscribedTopic> destination)
+        {
+            foreach (var kv in source)
+            {
+                destination.Add(new SubscribedTopic
+                {
+                    Name = kv.Key,
+                    SubscriberIds = CopyIds(kv.Value)
+                });
+            }
+        }
+
+        private static void CopyTopologyServices(
+            Dictionary<string, HashSet<string>> source,
+            List<AdvertisedService> destination)
+        {
+            foreach (var kv in source)
+            {
+                destination.Add(new AdvertisedService
+                {
+                    Name = kv.Key,
+                    ProviderIds = CopyIds(kv.Value)
+                });
+            }
+        }
+
+        private static List<string> CopyIds(HashSet<string> ids)
+        {
+            var result = new List<string>(ids.Count);
+            foreach (var id in ids)
+                result.Add(id);
+            return result;
         }
     }
 }

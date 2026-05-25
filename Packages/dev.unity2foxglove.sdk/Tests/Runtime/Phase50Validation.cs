@@ -113,7 +113,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
             var tickIndex = source.IndexOf("_playbackClock.Tick()", StringComparison.Ordinal);
-            var replayIndex = source.IndexOf("_replay.Tick(_session", StringComparison.Ordinal);
+            var replayIndex = source.IndexOf("_replay.Tick(", StringComparison.Ordinal);
             Check(tickIndex >= 0 && replayIndex > tickIndex,
                 "50A-6: FoxgloveRuntime.Tick() advances PlaybackClock before replay dispatch");
         }

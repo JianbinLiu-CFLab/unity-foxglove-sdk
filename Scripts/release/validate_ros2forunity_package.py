@@ -32,6 +32,9 @@ RUNTIME_NOTICES = PACKAGE / "Compliance" / "r2fu-jazzy-win64-runtime-notices.md"
 ADAPTER_SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
 RVIZ_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization Acceptance"
 RVIZ_POINTCLOUD2_SAMPLE = PACKAGE / "Samples~" / "RViz2 PointCloud2 Acceptance"
+RVIZ_MARKERARRAY_SAMPLE = PACKAGE / "Samples~" / "RViz2 MarkerArray Acceptance"
+RVIZ_V1_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization v1"
+STANDARD_MESSAGES_SAMPLE = PACKAGE / "Samples~" / "ROS2 Standard Message Expansion"
 
 RUNTIME_BINARY_SUFFIXES = {
     ".dll",
@@ -141,8 +144,8 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     samples = data.get("samples")
     add(
         results,
-        "package has External Adapter, Phase 128, and Phase 129 samples",
-        isinstance(samples, list) and len(samples) == 3,
+        "package has External Adapter, RViz2 v1, and standard message sample set",
+        isinstance(samples, list) and len(samples) >= 6,
         f"samples={samples!r}",
     )
     if isinstance(samples, list) and samples:
@@ -210,6 +213,68 @@ def check_package_metadata(results: list[CheckResult]) -> None:
             "PointCloud2 sample description names standard type and /points",
             "sensor_msgs/msg/PointCloud2" in pointcloud_description and "/points" in pointcloud_description,
             pointcloud_description,
+        )
+        markerarray_sample = samples_by_name.get("RViz2 MarkerArray Acceptance", {})
+        add(
+            results,
+            "MarkerArray sample displayName",
+            markerarray_sample.get("displayName") == "RViz2 MarkerArray Acceptance",
+            f"displayName={markerarray_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "MarkerArray sample path",
+            markerarray_sample.get("path") == "Samples~/RViz2 MarkerArray Acceptance",
+            f"path={markerarray_sample.get('path')!r}",
+        )
+        markerarray_description = str(markerarray_sample.get("description", ""))
+        add(
+            results,
+            "MarkerArray sample description names standard type, /markers, and /tf",
+            "visualization_msgs/msg/MarkerArray" in markerarray_description
+            and "/markers" in markerarray_description
+            and "/tf" in markerarray_description,
+            markerarray_description,
+        )
+        v1_sample = samples_by_name.get("RViz2 Standard Visualization v1", {})
+        add(
+            results,
+            "RViz2 v1 sample displayName",
+            v1_sample.get("displayName") == "RViz2 Standard Visualization v1",
+            f"displayName={v1_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "RViz2 v1 sample path",
+            v1_sample.get("path") == "Samples~/RViz2 Standard Visualization v1",
+            f"path={v1_sample.get('path')!r}",
+        )
+        v1_description = str(v1_sample.get("description", ""))
+        add(
+            results,
+            "RViz2 v1 sample description names all v1 topics",
+            all(topic in v1_description for topic in ("/tf", "/scan", "/points", "/markers")),
+            v1_description,
+        )
+        standard_messages_sample = samples_by_name.get("ROS2 Standard Message Expansion", {})
+        add(
+            results,
+            "Standard Messages sample displayName",
+            standard_messages_sample.get("displayName") == "ROS2 Standard Message Expansion",
+            f"displayName={standard_messages_sample.get('displayName')!r}",
+        )
+        add(
+            results,
+            "Standard Messages sample path",
+            standard_messages_sample.get("path") == "Samples~/ROS2 Standard Message Expansion",
+            f"path={standard_messages_sample.get('path')!r}",
+        )
+        standard_messages_description = str(standard_messages_sample.get("description", ""))
+        add(
+            results,
+            "Standard Messages sample description names supported types",
+            all(token in standard_messages_description for token in ("CameraInfo", "raw Image", "IMU", "Odometry", "PoseStamped", "NavSatFix")),
+            standard_messages_description,
         )
 
 
@@ -367,9 +432,19 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         if (RVIZ_POINTCLOUD2_SAMPLE / "README.md").exists()
         else ""
     )
+    markerarray_sample_readme = (
+        (RVIZ_MARKERARRAY_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_MARKERARRAY_SAMPLE / "README.md").exists()
+        else ""
+    )
+    v1_sample_readme = (
+        (RVIZ_V1_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_V1_SAMPLE / "README.md").exists()
+        else ""
+    )
     runtime_notices = RUNTIME_NOTICES.read_text(encoding="utf-8", errors="replace") if RUNTIME_NOTICES.exists() else ""
     runtime_inventory = RUNTIME_INVENTORY.read_text(encoding="utf-8", errors="replace") if RUNTIME_INVENTORY.exists() else ""
-    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + rviz_sample_readme + "\n" + pointcloud_sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
+    combined = readme + "\n" + notices + "\n" + sample_readme + "\n" + rviz_sample_readme + "\n" + pointcloud_sample_readme + "\n" + markerarray_sample_readme + "\n" + v1_sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
@@ -541,11 +616,35 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         RVIZ_POINTCLOUD2_SAMPLE / "Phase129PointCloud2MessageBuilder.cs",
         RVIZ_POINTCLOUD2_SAMPLE / "rviz2_phase129_pointcloud2.rviz",
         RVIZ_POINTCLOUD2_SAMPLE / "phase129_pointcloud2_evidence_template.md",
+        RVIZ_MARKERARRAY_SAMPLE / "README.md",
+        RVIZ_MARKERARRAY_SAMPLE / "Phase130Rviz2MarkerArraySmoke.cs",
+        RVIZ_MARKERARRAY_SAMPLE / "Phase130MarkerArrayMessageBuilder.cs",
+        RVIZ_MARKERARRAY_SAMPLE / "rviz2_phase130_markerarray.rviz",
+        RVIZ_MARKERARRAY_SAMPLE / "phase130_markerarray_evidence_template.md",
+        RVIZ_V1_SAMPLE / "README.md",
+        RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz",
+        RVIZ_V1_SAMPLE / "phase131_standard_visualization_evidence_template.md",
+        STANDARD_MESSAGES_SAMPLE / "README.md",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardCameraSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardImuSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardOdometrySource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardPoseSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "Phase132StandardNavSatFixSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz",
+        STANDARD_MESSAGES_SAMPLE / "phase132_standard_messages_evidence_template.md",
     ]
     for path in required:
         add(results, f"sample file: {path.name}", path.exists(), rel(path))
 
-    sample_roots = [ADAPTER_SAMPLE, RVIZ_SAMPLE, RVIZ_POINTCLOUD2_SAMPLE]
+    sample_roots = [
+        ADAPTER_SAMPLE,
+        RVIZ_SAMPLE,
+        RVIZ_POINTCLOUD2_SAMPLE,
+        RVIZ_MARKERARRAY_SAMPLE,
+        RVIZ_V1_SAMPLE,
+        STANDARD_MESSAGES_SAMPLE,
+    ]
     invalid_files = [
         rel(path)
         for sample_root in sample_roots
@@ -666,6 +765,220 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         and "/points" in pointcloud_config
         and "rviz_default_plugins/PointCloud2" in pointcloud_config,
         rel(RVIZ_POINTCLOUD2_SAMPLE / "rviz2_phase129_pointcloud2.rviz"),
+    )
+
+    markerarray_readme = (
+        (RVIZ_MARKERARRAY_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_MARKERARRAY_SAMPLE / "README.md").exists()
+        else ""
+    )
+    markerarray_smoke = (
+        (RVIZ_MARKERARRAY_SAMPLE / "Phase130Rviz2MarkerArraySmoke.cs").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_MARKERARRAY_SAMPLE / "Phase130Rviz2MarkerArraySmoke.cs").exists()
+        else ""
+    )
+    markerarray_builder = (
+        (RVIZ_MARKERARRAY_SAMPLE / "Phase130MarkerArrayMessageBuilder.cs").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_MARKERARRAY_SAMPLE / "Phase130MarkerArrayMessageBuilder.cs").exists()
+        else ""
+    )
+    markerarray_config = (
+        (RVIZ_MARKERARRAY_SAMPLE / "rviz2_phase130_markerarray.rviz").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_MARKERARRAY_SAMPLE / "rviz2_phase130_markerarray.rviz").exists()
+        else ""
+    )
+    add(
+        results,
+        "MarkerArray sample README documents helper, fixed frame, and standard type",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in markerarray_readme
+        and "phase130_markerarray_acceptance.py" in markerarray_readme
+        and "/tf" in markerarray_readme
+        and "/markers" in markerarray_readme
+        and "visualization_msgs/msg/MarkerArray" in markerarray_readme
+        and "frame_id = map" in markerarray_readme,
+        rel(RVIZ_MARKERARRAY_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "MarkerArray sample smoke is guarded and source-only",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in markerarray_smoke
+        and "CreatePublisher<visualization_msgs.msg.MarkerArray>" in markerarray_smoke
+        and "CreatePublisher<tf2_msgs.msg.TFMessage>" in markerarray_smoke
+        and "FrameMarkerOrigin = \"phase130_marker_origin\"" in markerarray_smoke
+        and "CreatePublisher<sensor_msgs.msg" not in markerarray_smoke,
+        rel(RVIZ_MARKERARRAY_SAMPLE / "Phase130Rviz2MarkerArraySmoke.cs"),
+    )
+    add(
+        results,
+        "MarkerArray sample builder uses deterministic ids and cleanup actions",
+        "FnvOffsetBasis" in markerarray_builder
+        and "0x7fffffff" in markerarray_builder
+        and "Marker.DELETE" in markerarray_builder
+        and "Marker.DELETEALL" in markerarray_builder
+        and "Lifetime" in markerarray_builder,
+        rel(RVIZ_MARKERARRAY_SAMPLE / "Phase130MarkerArrayMessageBuilder.cs"),
+    )
+    add(
+        results,
+        "MarkerArray config uses map fixed frame and markers topic",
+        "Fixed Frame: map" in markerarray_config
+        and "/markers" in markerarray_config
+        and "rviz_default_plugins/MarkerArray" in markerarray_config
+        and "rviz_default_plugins/TF" not in markerarray_config
+        and "rviz_default_plugins/PointCloud2" not in markerarray_config,
+        rel(RVIZ_MARKERARRAY_SAMPLE / "rviz2_phase130_markerarray.rviz"),
+    )
+
+    v1_readme = (
+        (RVIZ_V1_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_V1_SAMPLE / "README.md").exists()
+        else ""
+    )
+    v1_config = (
+        (RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz").read_text(encoding="utf-8", errors="replace")
+        if (RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz").exists()
+        else ""
+    )
+    add(
+        results,
+        "RViz2 v1 README documents docs-only kit and publisher sample imports",
+        "not a publisher sample by itself" in v1_readme
+        and "RViz2 Standard Visualization Acceptance" in v1_readme
+        and "RViz2 PointCloud2 Acceptance" in v1_readme
+        and "RViz2 MarkerArray Acceptance" in v1_readme,
+        rel(RVIZ_V1_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "RViz2 v1 README documents TF owner rule",
+        "single owner" in v1_readme
+        and "map -> base_link" in v1_readme
+        and "Publish Shared Base Tf" in v1_readme,
+        rel(RVIZ_V1_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "RViz2 v1 config uses only supported standard visualization topics",
+        "Fixed Frame: map" in v1_config
+        and "/tf" in v1_config
+        and "/scan" in v1_config
+        and "/points" in v1_config
+        and "/markers" in v1_config
+        and "rviz_default_plugins/TF" in v1_config
+        and "rviz_default_plugins/LaserScan" in v1_config
+        and "rviz_default_plugins/PointCloud2" in v1_config
+        and "rviz_default_plugins/MarkerArray" in v1_config,
+        rel(RVIZ_V1_SAMPLE / "rviz2_phase131_standard_visualization.rviz"),
+    )
+
+    standard_readme = (
+        (STANDARD_MESSAGES_SAMPLE / "README.md").read_text(encoding="utf-8", errors="replace")
+        if (STANDARD_MESSAGES_SAMPLE / "README.md").exists()
+        else ""
+    )
+    standard_smoke = (
+        (STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs").read_text(encoding="utf-8", errors="replace")
+        if (STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs").exists()
+        else ""
+    )
+    standard_sources = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in [
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardCameraSource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardImuSource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardOdometrySource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardPoseSource.cs",
+            STANDARD_MESSAGES_SAMPLE / "Phase132StandardNavSatFixSource.cs",
+        ]
+        if path.exists()
+    )
+    standard_helper = (ROOT / "Scripts" / "smoke" / "phase132_standard_messages_acceptance.py")
+    standard_helper_text = standard_helper.read_text(encoding="utf-8", errors="replace") if standard_helper.exists() else ""
+    standard_launcher = (ROOT / "Scripts" / "smoke" / "launch_phase132_rviz2.py")
+    standard_launcher_text = standard_launcher.read_text(encoding="utf-8", errors="replace") if standard_launcher.exists() else ""
+    standard_rviz_config = (
+        (STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz").read_text(encoding="utf-8", errors="replace")
+        if (STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz").exists()
+        else ""
+    )
+    add(
+        results,
+        "Standard Messages README documents topics, helper, QoS, TF, and namespace caveats",
+        all(
+            token in standard_readme
+            for token in (
+                "/camera/camera_info",
+                "/camera/image_raw",
+                "/imu/data",
+                "/odom",
+                "/pose",
+                "/fix",
+                "phase132_standard_messages_acceptance.py",
+                "launches RViz2 by default",
+                "--no-launch-rviz",
+                "R2FU default QoS",
+                "does not publish `/tf`",
+                "Production projects should namespace",
+                "synthetic constant WGS84",
+            )
+        ),
+        rel(STANDARD_MESSAGES_SAMPLE / "README.md"),
+    )
+    add(
+        results,
+        "Standard Messages smoke is guarded and publishes only the six standard topics",
+        "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.CameraInfo>" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.Image>" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.Imu>" in standard_smoke
+        and "CreatePublisher<nav_msgs.msg.Odometry>" in standard_smoke
+        and "CreatePublisher<geometry_msgs.msg.PoseStamped>" in standard_smoke
+        and "CreatePublisher<sensor_msgs.msg.NavSatFix>" in standard_smoke
+        and "CreatePublisher<tf2_msgs.msg.TFMessage>" not in standard_smoke
+        and "CreatePublisher<rosgraph_msgs.msg.Clock>" not in standard_smoke,
+        rel(STANDARD_MESSAGES_SAMPLE / "Phase132StandardMessagesSmoke.cs"),
+    )
+    add(
+        results,
+        "Standard Messages sources validate fixed arrays and tiny rgb8 image",
+        "CameraInfo.k[9]" in standard_sources
+        and "CameraInfo.r[9]" in standard_sources
+        and "CameraInfo.p[12]" in standard_sources
+        and "double[9]" in standard_sources
+        and "double[36]" in standard_sources
+        and "rgb8" in standard_sources
+        and "step = checked((uint)(width * 3))" in standard_sources
+        and "data.Length must equal height * step" in standard_sources,
+        rel(STANDARD_MESSAGES_SAMPLE),
+    )
+    add(
+        results,
+        "Standard Messages helper uses ros2-script.py and validates non-zero defaults",
+        "import _ros2_windows_env" in standard_helper_text
+        and "validate_ros2_root" in standard_helper_text
+        and "[str(pixi_python), str(ros2_script)" not in standard_helper_text
+        and "--domain-id" in standard_helper_text
+        and "parser.set_defaults(launch_rviz=True)" in standard_helper_text
+        and "rviz2_phase132_standard_messages.rviz" in standard_helper_text
+        and "--no-launch-rviz" in standard_helper_text
+        and "validate_camera_info" in standard_helper_text
+        and "validate_image" in standard_helper_text
+        and "validate_imu" in standard_helper_text
+        and "validate_navsatfix" in standard_helper_text
+        and "expected at least" in standard_helper_text
+        and "GREEN" in standard_helper_text,
+        rel(standard_helper),
+    )
+    add(
+        results,
+        "Standard Messages RViz2 helper config and launcher are wired",
+        "rviz_default_plugins/Pose" in standard_rviz_config
+        and "rviz_default_plugins/Image" in standard_rviz_config
+        and "/pose" in standard_rviz_config
+        and "/camera/image_raw" in standard_rviz_config
+        and "ros2env.launch_rviz" in standard_launcher_text
+        and "rviz2_phase132_standard_messages.rviz" in standard_launcher_text,
+        rel(STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz"),
     )
 
 

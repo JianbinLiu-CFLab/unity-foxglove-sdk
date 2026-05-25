@@ -42,15 +42,32 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyServiceCallTerminalStateIsIdempotent();
             VerifyServiceUnregisterRemovesHandler();
             VerifyServiceDrainUsesSingleOwnershipPass();
+            VerifyServiceRegistryRejectsDuplicatePendingCallIds();
+            VerifyServiceRegistryTracksPendingCountsWithoutLinqScan();
+            VerifyServiceDrainFailsRegisteredServiceWithoutHandler();
+            VerifyServiceRequestJsonParsedOnce();
             VerifyParameterSubscriptionSemantics();
             VerifyParameterBroadcastIncludesClientZero();
             VerifyAssetRegistryDoesIoOutsideLock();
             VerifyRuntimeStartRollbackAfterTransportFailure();
             VerifyClearSessionClearsTransientServiceCallsOnly();
             VerifyBinaryPriorityContracts();
+            VerifySessionCachesPrioritizedTransportCapability();
             VerifyClientIdAllocationCannotWrapToZero();
+            VerifySubscribeBroadcastFailuresAreCaught();
+            VerifyRecordingControllerDetachesSessionAtomically();
+            VerifyManagerDocumentsStopServerDetachOrder();
+            VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated();
+            VerifyRuntimeTickLockBoundaryIsDocumented();
             VerifyReplayTickSupportsCallerOwnedBuffer();
+            VerifyMcapReplayAvoidsPendingHeadRemovalAndDeadSeekGuard();
+            VerifyMcapReplayHistoryCapAvoidsRepeatedFullSort();
+            VerifyMcapReplayUsesLoggerForCrcWarnings();
+            VerifyMcapWriterAvoidsPerRecordToArray();
             VerifyMcapRecorderAvoidsChunkToArrayCopy();
+            VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline();
+            VerifyConnectionGraphSnapshotAvoidsLinqInsideLock();
+            VerifySubscriptionRegistryRemoveChannelUsesReverseIndex();
             VerifyUnityAllocationFixes();
             VerifySourceEmitterUsesThisAccess();
             VerifyFoxRunMixedPolicyDiagnostic();
@@ -140,8 +157,80 @@ namespace Unity.FoxgloveSDK.Tests
             var drain = ExtractMethodBody(source, "DrainCompleted");
             Check(!drain.Contains("_pending.ToList()"),
                 "51B-5: DrainCompleted does not allocate LINQ snapshots while holding ownership");
-            Check(drain.Contains("_pending.Remove"),
-                "51B-6: DrainCompleted removes completed calls in the ownership pass");
+            Check(drain.Contains("RemovePendingCall"),
+                "51B-6: DrainCompleted removes completed calls through the pending ownership helper");
+        }
+
+        private static void VerifyServiceRegistryRejectsDuplicatePendingCallIds()
+        {
+            var registry = new FoxgloveServiceRegistry();
+            var firstPayload = Encoding.UTF8.GetBytes("{\"first\":true}");
+            var secondPayload = Encoding.UTF8.GetBytes("{\"second\":true}");
+
+            Check(registry.TryEnqueue(1, 10, 7, "json", firstPayload, out var first, out var firstError)
+                  && first != null && firstError == null,
+                "51B-6a: first service call enqueue succeeds");
+            Check(!registry.TryEnqueue(2, 10, 7, "json", secondPayload, out var duplicate, out var duplicateError)
+                  && duplicate == null && duplicateError.Contains("Duplicate", StringComparison.OrdinalIgnoreCase),
+                "51B-6b: duplicate service call id for the same client is rejected");
+
+            first.Complete("json", Encoding.UTF8.GetBytes("{}"));
+            var drained = registry.DrainCompleted();
+            Check(drained.Count == 1
+                  && drained[0].ServiceId == 1
+                  && Encoding.UTF8.GetString(drained[0].Payload).Contains("first"),
+                "51B-6c: duplicate enqueue cannot overwrite the original pending call");
+        }
+
+        private static void VerifyServiceRegistryTracksPendingCountsWithoutLinqScan()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Services/FoxgloveServiceRegistry.cs");
+            Check(source.Contains("_pendingCountByClient"),
+                "51B-6d: service registry maintains per-client pending call counts");
+            Check(!source.Contains("_pending.Keys.Count"),
+                "51B-6e: service enqueue no longer scans all pending keys under lock");
+        }
+
+        private static void VerifyServiceDrainFailsRegisteredServiceWithoutHandler()
+        {
+            var transport = new Phase51FakeTransport();
+            var services = new FoxgloveServiceRegistry();
+            var serviceId = services.Register(new ServiceDescriptor { Name = "/phase51/no_handler", Type = "phase51.NoHandler" });
+            var session = new FoxgloveSession("phase51", transport, new FixedClock(10),
+                new DefaultSchemaRegistry(), null, new FoxgloveParameterStore(), services);
+
+            transport.RaiseBinary(3, BuildServiceCallFrame(serviceId, 777, "{}"));
+            Check(services.GetPendingCalls().Count == 1,
+                "51B-6f: registered service without handler can receive a pending call");
+
+            session.DrainServiceCalls();
+
+            var failure = transport.SentText
+                .Select(t => JObject.Parse(t.Text))
+                .FirstOrDefault(j => j["op"]?.ToString() == "serviceCallFailure");
+            Check(failure != null && failure["message"]?.ToString().Contains("No handler", StringComparison.OrdinalIgnoreCase) == true,
+                "51B-6g: service drain immediately fails calls with no registered handler");
+            Check(services.GetPendingCalls().Count == 0,
+                "51B-6h: no-handler service failures are removed from the pending queue during drain");
+        }
+
+        private static void VerifyServiceRequestJsonParsedOnce()
+        {
+            var callSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Services/FoxgloveServiceCall.cs");
+            var registrySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Services/FoxgloveServiceRegistry.cs");
+            var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Services.cs");
+            var handle = ExtractMethodBody(sessionSource, "private void HandleServiceCallRequest");
+            var drain = ExtractMethodBody(sessionSource, "public void DrainServiceCalls");
+
+            Check(callSource.Contains("JsonPayload"),
+                "51B-6i: service call model can carry an already parsed JSON payload");
+            Check(registrySource.Contains("JToken jsonPayload") && registrySource.Contains("JsonPayload = jsonPayload"),
+                "51B-6j: service registry stores the parsed service request payload with the pending call");
+            Check(handle.Contains("parsedPayload = JToken.Parse") && handle.Contains("parsedPayload"),
+                "51B-6k: service request handler parses JSON once at ingress");
+            Check(drain.Contains("call.JsonPayload") && !drain.Contains("Encoding.UTF8.GetString(call.Payload)")
+                  && !drain.Contains("JToken.Parse(payloadStr)"),
+                "51B-6l: service drain reuses parsed JSON instead of decoding and parsing the payload again");
         }
 
         private static void VerifyParameterSubscriptionSemantics()
@@ -206,6 +295,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(runtime.Session != null && runtime.IsRunning,
                 "51B-15: runtime can start successfully after rollback");
             runtime.Dispose();
+
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var start = ExtractMethodBody(source, "public void Start");
+            var catchIndex = start.IndexOf("catch", StringComparison.Ordinal);
+            var detachIndex = start.IndexOf("_recording.DetachFromSession()", StringComparison.Ordinal);
+            Check(start.Contains("finally") && detachIndex > catchIndex,
+                "51B-15b: runtime Start rollback detaches recording in a cleanup path that survives dispose failures");
+            Check(start.Contains("startup dispose failure", StringComparison.OrdinalIgnoreCase),
+                "51B-15c: runtime Start rollback preserves the original startup exception if session dispose also fails");
         }
 
         private static void VerifyClearSessionClearsTransientServiceCallsOnly()
@@ -256,12 +354,89 @@ namespace Unity.FoxgloveSDK.Tests
                 "51B-20: broadcast binary API distinguishes reliable control from droppable data");
         }
 
+        private static void VerifySessionCachesPrioritizedTransportCapability()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
+            var publish = ExtractMethodBody(source, "public void Publish(uint channelId, byte[] payload, ulong logTimeNs)");
+            var replay = ExtractMethodBody(source, "internal void PublishReplay");
+
+            Check(source.Contains("_prioritizedTransport") && source.Contains("_transport as IPrioritizedFoxgloveTransport"),
+                "51B-20a: FoxgloveSession caches prioritized transport capability at construction");
+            Check(!publish.Contains("_transport is IPrioritizedFoxgloveTransport")
+                  && publish.Contains("_prioritizedTransport"),
+                "51B-20b: live publish hot path uses cached prioritized transport capability");
+            Check(!replay.Contains("_transport is IPrioritizedFoxgloveTransport")
+                  && replay.Contains("_prioritizedTransport"),
+                "51B-20c: replay publish hot path uses cached prioritized transport capability");
+        }
+
         private static void VerifyClientIdAllocationCannotWrapToZero()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             Check(source.Contains("long _nextClientId") && source.Contains("AllocateClientId")
                   && source.Contains("uint.MaxValue") && !source.Contains("(uint)Interlocked.Increment(ref _nextClientId)"),
                 "51B-21: ManagedWsBackend allocates nonzero client ids without uint wraparound");
+        }
+
+        private static void VerifySubscribeBroadcastFailuresAreCaught()
+        {
+            var transport = new Phase51ThrowingSendTransport();
+            var session = new FoxgloveSession("phase51", transport, new FixedClock(1), new DefaultSchemaRegistry());
+            session.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/phase51/topic", Encoding = "json" });
+
+            transport.RaiseText(7, "{\"op\":\"subscribeConnectionGraph\"}");
+            transport.ThrowOnSendText = true;
+
+            Check(!ThrowsAny(() => transport.RaiseText(7, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":11,\"channelId\":1}]}")),
+                "51B-22: subscribe catches connection graph broadcast failures");
+            Check(transport.SendTextThrowCount > 0,
+                "51B-23: subscribe test exercised the throwing graph broadcast path");
+
+            Check(!ThrowsAny(() => transport.RaiseText(7, "{\"op\":\"unsubscribe\",\"subscriptionIds\":[11]}")),
+                "51B-24: unsubscribe catches connection graph broadcast failures");
+        }
+
+        private static void VerifyRecordingControllerDetachesSessionAtomically()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
+            Check(source.Contains("Interlocked.Exchange(ref _session, null)"),
+                "51B-25: RecordingController detaches the session with an atomic exchange");
+            Check(source.Contains("Volatile.Write(ref _session, session)")
+                  && source.Contains("Volatile.Write(ref _session, null)"),
+                "51B-26: RecordingController publishes session attach/detach state with volatile writes");
+        }
+
+        private static void VerifyManagerDocumentsStopServerDetachOrder()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var stop = ExtractMethodBody(source, "private void StopServer");
+            var stopIndex = source.IndexOf("private void StopServer", StringComparison.Ordinal);
+            var detachIndex = source.IndexOf("transport.OnClientConnected -=", stopIndex, StringComparison.Ordinal);
+            var runtimeStopIndex = source.IndexOf("_runtime.Stop()", stopIndex, StringComparison.Ordinal);
+            Check(stop.Contains("capture and detach") || stop.Contains("Capture and detach"),
+                "51B-27: StopServer documents that callbacks are detached before runtime Stop clears Session");
+            Check(detachIndex >= 0 && runtimeStopIndex >= 0 && detachIndex < runtimeStopIndex,
+                "51B-28: StopServer detaches transport callbacks before runtime Stop");
+        }
+
+        private static void VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionGraphHandler.cs");
+            Check(source.Contains("FlushMetadataSnapshotIfDirty"),
+                "51B-29: SessionGraphHandler separates websocket broadcast from MCAP metadata flush");
+            var flush = ExtractMethodBody(source, "FlushMetadataSnapshotIfDirty");
+            Check(flush.Contains("if (!_dirty)") && flush.Contains("WriteMetadata") && flush.Contains("_dirty = false"),
+                "51B-30: graph metadata writes remain dirty-gated");
+        }
+
+        private static void VerifyRuntimeTickLockBoundaryIsDocumented()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var tick = ExtractMethodBody(source, "public void Tick");
+            Check(tick.Contains("broadcastLiveTime") && tick.Contains("session.BroadcastTime()"),
+                "51B-31: live time broadcast runs outside the playback control lock");
+            Check(tick.Contains("Replay work intentionally stays inside _playbackControlLock"),
+                "51B-32: replay lock boundary documents why snapshot publishing remains serialized");
         }
 
         private static void VerifyReplayTickSupportsCallerOwnedBuffer()
@@ -275,11 +450,98 @@ namespace Unity.FoxgloveSDK.Tests
                 "51C-2: ReplayController reuses a replay tick message buffer");
         }
 
+        private static void VerifyMcapReplayAvoidsPendingHeadRemovalAndDeadSeekGuard()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var tick = ExtractMethodBody(source, "public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)");
+            var popPending = ExtractMethodBody(source, "private McapMessage PopPending");
+            var seek = ExtractMethodBody(source, "public void Seek");
+            Check(source.Contains("_pendingHeadIndex"),
+                "51C-2c: McapReplayEngine tracks a pending head index for O(1) front dequeue");
+            Check(!tick.Contains("_pending.RemoveAt(0)") && !popPending.Contains("RemoveAt(0)"),
+                "51C-2d: replay pending dequeue path avoids List.RemoveAt(0)");
+            Check(!seek.Contains("_currentChunkIdx < -1"),
+                "51C-2e: replay seek no longer carries an unreachable chunk-index guard");
+        }
+
+        private static void VerifyMcapReplayHistoryCapAvoidsRepeatedFullSort()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var addHistory = ExtractMethodBody(source, "private static void AddHistoryMessage");
+            Check(addHistory.Contains("FindHistoryInsertIndex") && !addHistory.Contains("result.Sort(CompareMessages)"),
+                "51C-2f: capped history retention inserts chronologically instead of sorting on every overflow");
+        }
+
+        private static void VerifyMcapReplayUsesLoggerForCrcWarnings()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            Check(source.Contains("IFoxgloveLogger") && source.Contains("_logger.LogWarning"),
+                "51C-2g: McapReplayEngine routes CRC warnings through IFoxgloveLogger");
+            Check(!source.Contains("Console.Error.WriteLine"),
+                "51C-2h: McapReplayEngine does not write CRC warnings directly to stderr");
+        }
+
+        private static void VerifyMcapWriterAvoidsPerRecordToArray()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            Check(source.Contains("WriteBufferedRecord") && source.Contains("TryGetBuffer"),
+                "51C-2a: McapWriter writes buffered records without forcing MemoryStream.ToArray");
+
+            var commonRecordMethods = new[]
+            {
+                "public void WriteHeader",
+                "public void WriteSchema",
+                "public void WriteChannel",
+                "public void WriteMessage",
+                "public void WriteMetadata",
+                "public void WriteDataEnd",
+                "public void WriteFooter",
+                "public void WriteSummaryOffset"
+            };
+            foreach (var method in commonRecordMethods)
+            {
+                var body = ExtractMethodBody(source, method);
+                Check(!body.Contains("new MemoryStream") && !body.Contains(".ToArray()"),
+                    $"51C-2b: {method} avoids per-record MemoryStream allocation and ToArray copy");
+            }
+        }
+
         private static void VerifyMcapRecorderAvoidsChunkToArrayCopy()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
             Check(!source.Contains("_chunkBuf.ToArray()") && source.Contains("TryGetBuffer"),
                 "51C-3: McapRecorder FlushChunk avoids the raw chunk ToArray copy");
+        }
+
+        private static void VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var method = ExtractMethodBody(source, "IEnumerable<ChannelWriteState> AllChannelWriteStates");
+            Check(method.Contains("if (seen.Add(m.McapId))")
+                  && !Regex.IsMatch(method, @"foreach\s*\(var\s+m\s+in\s+_chMap\.Values\)\s*seen\.Add\(m\.McapId\)"),
+                "51C-3b: McapRecorder tracks channel ids during the first AllChannelWriteStates pass");
+        }
+
+        private static void VerifyConnectionGraphSnapshotAvoidsLinqInsideLock()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/ConnectionGraphRegistry.cs");
+            var snapshot = ExtractMethodBody(source, "public ConnectionGraphUpdate GetSnapshot");
+            Check(!snapshot.Contains(".Select(") && !snapshot.Contains(".ToList()"),
+                "51C-3c: connection graph snapshot avoids LINQ allocation while holding the registry lock");
+            Check(source.Contains("CopyTopology"),
+                "51C-3d: connection graph snapshot uses explicit topology copy helpers");
+        }
+
+        private static void VerifySubscriptionRegistryRemoveChannelUsesReverseIndex()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/SubscriptionRegistry.cs");
+            var removeChannel = ExtractMethodBody(source, "public List<(uint clientId, uint subscriptionId, uint channelId)> RemoveChannel");
+            Check(source.Contains("_byChannel"),
+                "51C-3e: subscription registry maintains a channel-to-subscriber reverse index");
+            Check(removeChannel.Contains("_byChannel.TryGetValue")
+                  && !removeChannel.Contains("new List<uint>")
+                  && !removeChannel.Contains("foreach (var (clientId, subs) in _clients)"),
+                "51C-3f: RemoveChannel removes via reverse index without per-client removal buffers");
         }
 
         private static void VerifyUnityAllocationFixes()
@@ -443,6 +705,36 @@ namespace Unity.FoxgloveSDK.Tests
             public void SendText(uint clientId, string json) => SentText.Add((clientId, json));
             public void SendBinary(uint clientId, byte[] data) => ControlBinary.Add((clientId, data));
             public void SendDataBinary(uint clientId, byte[] data) => DataBinary.Add((clientId, data));
+            public void Dispose() => Stop();
+            public void RaiseText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
+            public void RaiseBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
+            public void RaiseConnected(uint clientId) => OnClientConnected?.Invoke(clientId);
+            public void RaiseDisconnected(uint clientId) => OnClientDisconnected?.Invoke(clientId);
+        }
+
+        private sealed class Phase51ThrowingSendTransport : IFoxgloveTransport
+        {
+            public bool ThrowOnSendText;
+            public int SendTextThrowCount;
+            public bool IsRunning { get; private set; }
+            public event Action<uint> OnClientConnected;
+            public event Action<uint> OnClientDisconnected;
+            public event Action<uint, string> OnTextReceived;
+            public event Action<uint, byte[]> OnBinaryReceived;
+
+            public void Start(string host, int port) => IsRunning = true;
+            public void Stop() => IsRunning = false;
+            public void BroadcastText(string json) { }
+            public void BroadcastBinary(byte[] data) { }
+            public void SendText(uint clientId, string json)
+            {
+                if (!ThrowOnSendText)
+                    return;
+
+                SendTextThrowCount++;
+                throw new InvalidOperationException("phase51 send text failure");
+            }
+            public void SendBinary(uint clientId, byte[] data) { }
             public void Dispose() => Stop();
             public void RaiseText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
             public void RaiseBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);

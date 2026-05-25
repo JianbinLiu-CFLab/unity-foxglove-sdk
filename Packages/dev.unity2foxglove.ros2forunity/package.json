@@ -21,6 +21,21 @@
       "displayName": "RViz2 PointCloud2 Acceptance",
       "description": "Imports a source-only ROS2 For Unity sample that publishes generic Unity2Foxglove point-cloud frames as sensor_msgs/msg/PointCloud2 on /points.",
       "path": "Samples~/RViz2 PointCloud2 Acceptance"
+    },
+    {
+      "displayName": "RViz2 MarkerArray Acceptance",
+      "description": "Imports a source-only ROS2 For Unity sample that publishes cube scene markers as visualization_msgs/msg/MarkerArray on /markers plus minimal /tf for RViz2 fixed-frame acceptance.",
+      "path": "Samples~/RViz2 MarkerArray Acceptance"
+    },
+    {
+      "displayName": "RViz2 Standard Visualization v1",
+      "description": "Imports a docs/config/evidence kit for the ROS2 For Unity RViz2 v1 workflow across /tf, /scan, /points, and /markers.",
+      "path": "Samples~/RViz2 Standard Visualization v1"
+    },
+    {
+      "displayName": "ROS2 Standard Message Expansion",
+      "description": "Imports source-only ROS2 For Unity samples for CameraInfo, raw Image, IMU, Odometry, PoseStamped, and NavSatFix.",
+      "path": "Samples~/ROS2 Standard Message Expansion"
     }
   ],
   "keywords": [

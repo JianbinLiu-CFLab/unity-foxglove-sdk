@@ -29,11 +29,15 @@ namespace Unity.FoxgloveSDK.Core
             foreach (var call in _services.GetPendingCalls())
             {
                 var handler = _services.GetHandler(call.ServiceId);
-                if (handler == null) continue;
+                if (handler == null)
+                {
+                    _services.Fail(call.ClientId, call.CallId, $"No handler registered for service {call.ServiceId}");
+                    continue;
+                }
+
                 try
                 {
-                    var payloadStr = Encoding.UTF8.GetString(call.Payload);
-                    var input = JToken.Parse(payloadStr);
+                    var input = call.JsonPayload ?? ParseJsonPayloadBytes(call.Payload);
                     var result = handler(input);
                     var responseBytes = Encoding.UTF8.GetBytes(result.ToString(Formatting.None));
                     _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
@@ -99,15 +103,21 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            try { JToken.Parse(Encoding.UTF8.GetString(payload)); }
+            JToken parsedPayload;
+            try { parsedPayload = JToken.Parse(Encoding.UTF8.GetString(payload)); }
             catch
             {
                 SendServiceCallFailure(clientId, serviceId, callId, "Malformed JSON payload");
                 return;
             }
 
-            if (!_services.TryEnqueue(serviceId, callId, clientId, encoding, payload, out _, out var error))
+            if (!_services.TryEnqueue(serviceId, callId, clientId, encoding, payload, parsedPayload, out _, out var error))
                 SendServiceCallFailure(clientId, serviceId, callId, error);
+        }
+
+        private static JToken ParseJsonPayloadBytes(byte[] payload)
+        {
+            return JToken.Parse(Encoding.UTF8.GetString(payload ?? Array.Empty<byte>()));
         }
 
         private void SendServiceCallFailure(uint clientId, uint serviceId, uint callId, string message)

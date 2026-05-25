@@ -176,6 +176,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
+            // Capture and detach manager callbacks before runtime Stop clears
+            // the active Session and would otherwise hide the Transport reference.
             var transport = _runtime.Session?.Transport;
             if (transport != null)
             {

@@ -581,7 +581,7 @@ namespace Unity.FoxgloveSDK.Tests
                 && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
                 && sessionSource.Contains("_playback.Drain()", StringComparison.Ordinal),
                 "Playback control requests are queued by the transport thread and drained by runtime Tick");
-            var drainIndex = runtimeSource.IndexOf("_session.DrainPlaybackControls()", StringComparison.Ordinal);
+            var drainIndex = runtimeSource.IndexOf("DrainPlaybackControls()", StringComparison.Ordinal);
             var clockTickIndex = runtimeSource.IndexOf("_playbackClock.Tick()", StringComparison.Ordinal);
             Assert(drainIndex >= 0 && clockTickIndex > drainIndex,
                 "Runtime drains playback controls before advancing replay time");

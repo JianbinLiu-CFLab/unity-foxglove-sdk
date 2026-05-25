@@ -82,6 +82,13 @@ namespace Unity.FoxgloveSDK.Transport
             if (!headers.TryGetValue("Sec-WebSocket-Key", out var wsKey))
                 return (false, null);
 
+            if (!headers.TryGetValue("Sec-WebSocket-Version", out var version)
+                || !version.Equals("13", StringComparison.Ordinal))
+            {
+                WriteResponse(stream, "HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n");
+                return (false, null);
+            }
+
             // file:// origins come from non-browser environments such as Foxglove Desktop.
             if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
                 && !origin.StartsWith("file://", StringComparison.OrdinalIgnoreCase)

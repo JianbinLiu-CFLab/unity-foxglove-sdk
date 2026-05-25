@@ -23,6 +23,8 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RvizConfigPath = SamplePath + "/rviz2_phase129_pointcloud2.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase129_pointcloud2_evidence_template.md";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase129_pointcloud2_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/launch_phase129_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
@@ -40,7 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyRvizConfig();
             VerifyAcceptanceHelper();
             VerifyDocsAndEvidenceTemplate();
-            VerifyReleaseValidatorAcceptsThreeSamples();
+            VerifyReleaseValidatorAcceptsV1SampleSet();
             VerifyCoreAndOptionalRuntimeBoundaries();
             VerifyValidationWiring();
 
@@ -88,7 +90,9 @@ namespace Unity.FoxgloveSDK.Tests
                          BuilderScriptPath,
                          RvizConfigPath,
                          EvidenceTemplatePath,
-                         AcceptanceScriptPath
+                         AcceptanceScriptPath,
+                         RvizLauncherPath,
+                         SharedHelperPath
                      })
             {
                 Check(RepoFileExists(path), "129B-1: Phase129 file exists: " + path);
@@ -232,25 +236,32 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAcceptanceHelper()
         {
             var script = ReadRepoText(AcceptanceScriptPath);
+            var launcher = ReadRepoText(RvizLauncherPath);
+            var shared = ReadRepoText(SharedHelperPath);
+            var helperSurface = script + "\n" + shared;
+            var launcherSurface = launcher + "\n" + shared;
 
             Check(script.Contains("# Purpose:", StringComparison.Ordinal)
                   && script.Contains("argparse", StringComparison.Ordinal)
                   && script.Contains("phase129", StringComparison.Ordinal),
                 "129F-1: Python acceptance helper has repository header and CLI entry point");
-            Check(script.Contains("ros2-script.py", StringComparison.Ordinal)
-                  && script.Contains(".pixi", StringComparison.Ordinal)
-                  && script.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
+            Check(script.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
+                  && script.Contains("ros2env.DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
+                  && shared.Contains("ros2-script.py", StringComparison.Ordinal)
+                  && shared.Contains(".pixi", StringComparison.Ordinal)
+                  && shared.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
                 "129F-2: helper uses pinned Windows Jazzy pixi Python and ros2-script.py");
-            Check(script.Contains("--no-daemon", StringComparison.Ordinal)
-                  && script.Contains("topic\", \"info\"", StringComparison.Ordinal)
-                  && script.Contains("\"-v\"", StringComparison.Ordinal)
-                  && script.Contains("node\", \"list\"", StringComparison.Ordinal),
+            Check(shared.Contains("--no-daemon", StringComparison.Ordinal)
+                  && shared.Contains("topic\", \"info\"", StringComparison.Ordinal)
+                  && shared.Contains("\"-v\"", StringComparison.Ordinal)
+                  && shared.Contains("node\", \"list\"", StringComparison.Ordinal),
                 "129F-3: helper uses no-daemon graph checks, node list, and topic info -v");
             Check(script.Contains("unity2foxglove_phase129_pointcloud2", StringComparison.Ordinal)
                   && script.Contains("/tf", StringComparison.Ordinal)
                   && script.Contains("/points", StringComparison.Ordinal)
-                  && script.Contains("Publisher count:", StringComparison.Ordinal)
-                  && script.Contains("Node name:", StringComparison.Ordinal),
+                  && shared.Contains("Publisher count:", StringComparison.Ordinal)
+                  && shared.Contains("Node name:", StringComparison.Ordinal)
+                  && script.Contains("node_name=NODE_NAME", StringComparison.Ordinal),
                 "129F-4: helper proves required publisher endpoints belong to the Phase129 node");
             Check(script.Contains("probe_node_list", StringComparison.Ordinal)
                   && script.Contains("node list did not include", StringComparison.Ordinal)
@@ -259,8 +270,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "129F-4b: helper treats flaky node list and /tf topic info as diagnostics instead of hard gates");
             Check(script.Contains("tf2_msgs/msg/TFMessage", StringComparison.Ordinal)
                   && script.Contains("sensor_msgs/msg/PointCloud2", StringComparison.Ordinal)
-                  && script.Contains("--once", StringComparison.Ordinal)
-                  && script.Contains("--spin-time", StringComparison.Ordinal)
+                  && helperSurface.Contains("--once", StringComparison.Ordinal)
+                  && helperSurface.Contains("--spin-time", StringComparison.Ordinal)
                   && script.Contains("EXPECTED_POINT_COUNT = 1000", StringComparison.Ordinal)
                   && script.Contains("EXPECTED_ROW_STEP = EXPECTED_POINT_COUNT * EXPECTED_POINT_STEP", StringComparison.Ordinal)
                   && script.Contains("map", StringComparison.Ordinal)
@@ -275,12 +286,25 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("--rviz-config", StringComparison.Ordinal)
                   && script.Contains("--rmw", StringComparison.Ordinal)
                   && script.Contains("--discovery-range", StringComparison.Ordinal)
-                  && script.Contains("rviz2.exe", StringComparison.Ordinal)
-                  && script.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
-                  && script.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && shared.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && shared.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && shared.Contains("gz_math_vendor", StringComparison.Ordinal)
                   && !script.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal)
                   && !script.Contains("env[\"ROS_AUTOMATIC_DISCOVERY_RANGE\"] = \"SUBNET\"", StringComparison.Ordinal),
                 "129F-6: helper supports RMW/discovery selection and launches RViz2 through direct rviz2.exe");
+            Check(script.Contains("launch_rviz_before_echo", StringComparison.Ordinal)
+                  && script.IndexOf("launch_rviz_before_echo", StringComparison.Ordinal)
+                     < script.IndexOf("print(\"--- echo /tf ---\")", StringComparison.Ordinal),
+                "129F-6b: helper launches RViz2 before bounded echo checks for faster manual feedback");
+            Check(launcher.Contains("# Purpose:", StringComparison.Ordinal)
+                  && launcher.Contains("argparse", StringComparison.Ordinal)
+                  && launcherSurface.Contains("subprocess.Popen", StringComparison.Ordinal)
+                  && launcherSurface.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && launcherSurface.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && launcherSurface.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && launcherSurface.Contains("ROS_AUTOMATIC_DISCOVERY_RANGE", StringComparison.Ordinal)
+                  && launcher.Contains("--dry-run", StringComparison.Ordinal),
+                "129F-7: Python RViz2 launcher replaces durable PowerShell launch asset");
         }
 
         private static void VerifyDocsAndEvidenceTemplate()
@@ -340,16 +364,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "129G-5: docs do not over-claim deferred PointCloud2 or ROS2 workflows");
         }
 
-        private static void VerifyReleaseValidatorAcceptsThreeSamples()
+        private static void VerifyReleaseValidatorAcceptsV1SampleSet()
         {
             var script = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
             Check(script.Contains("RVIZ_POINTCLOUD2_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("RViz2 PointCloud2 Acceptance", StringComparison.Ordinal)
-                  && script.Contains("len(samples) == 3", StringComparison.Ordinal)
+                  && script.Contains("RVIZ_SAMPLE", StringComparison.Ordinal)
+                  && script.Contains("RVIZ_MARKERARRAY_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("External Adapter", StringComparison.Ordinal)
-                  && script.Contains("Phase 128", StringComparison.Ordinal)
-                  && script.Contains("Phase 129", StringComparison.Ordinal),
-                "129H-1: release validator accepts External Adapter, Phase 128, and Phase 129 samples");
+                  && script.Contains("RVIZ_V1_SAMPLE", StringComparison.Ordinal),
+                "129H-1: release validator accepts External Adapter and RViz2 v1 sample set");
         }
 
         private static void VerifyCoreAndOptionalRuntimeBoundaries()

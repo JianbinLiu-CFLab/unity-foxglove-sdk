@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -36,6 +37,12 @@ namespace Unity.FoxgloveSDK.IO
         /// Messages read ahead of their emission time, waiting to be flushed.
         /// </summary>
         private readonly List<McapMessage> _pending = new();
+        /// <summary>
+        /// Logical front of <see cref="_pending"/>. Avoids O(n) RemoveAt(0)
+        /// shifts while replay ticks drain due messages.
+        /// </summary>
+        private int _pendingHeadIndex;
+        private readonly IFoxgloveLogger _logger;
 
         // Per-chunk state
         /// <summary>
@@ -141,6 +148,16 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public Status CurrentStatus { get; private set; } = Status.Paused;
 
+        public McapReplayEngine()
+            : this(null)
+        {
+        }
+
+        public McapReplayEngine(IFoxgloveLogger logger)
+        {
+            _logger = logger ?? new ConsoleLogger();
+        }
+
         /// <summary>
         /// Opens an .mcap file and reads its summary section, preparing for replay.
         /// </summary>
@@ -198,14 +215,15 @@ namespace Unity.FoxgloveSDK.IO
             // Filter against emitAfter to drop stale overflow messages
             // whose logTime fell below _lastEmitTime after sort-based capping.
             SortPending();
-            while (_pending.Count > 0)
+            while (PendingCount > 0)
             {
-                if (_pending[0].LogTime > clampedNow) break;
-                if (_pending[0].LogTime < emitAfter) { _pending.RemoveAt(0); continue; }
+                var pending = PeekPending();
+                if (pending.LogTime > clampedNow) break;
+                if (pending.LogTime < emitAfter) { DropPending(); continue; }
                 result.Add(PopPending());
             }
 
-            if (_pending.Count > 0 && _pending[0].LogTime <= clampedNow)
+            if (PendingCount > 0 && PeekPending().LogTime <= clampedNow)
             {
                 CurrentStatus = Status.Buffering;
                 return FinishTickResult(result);
@@ -267,12 +285,12 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
-            if (result.Count == 0 && _pending.Count == 0 && _currentChunkIdx >= _summary.ChunkIndexes.Count - 1
+            if (result.Count == 0 && PendingCount == 0 && _currentChunkIdx >= _summary.ChunkIndexes.Count - 1
                 && _readOffset >= (_currentUncompressed?.Length ?? 0))
             {
                 CurrentStatus = Status.Ended;
             }
-            else if (_pending.Count > 0)
+            else if (PendingCount > 0)
             {
                 CurrentStatus = Status.Buffering;
             }
@@ -306,7 +324,7 @@ namespace Unity.FoxgloveSDK.IO
 
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
                 if (!crcValid)
-                    Console.Error.WriteLine("[McapReplayEngine] Snapshot chunk CRC mismatch; data may be corrupted.");
+                    LogCrcWarning("Snapshot chunk");
 
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
@@ -390,7 +408,7 @@ namespace Unity.FoxgloveSDK.IO
 
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
                 if (!crcValid)
-                    Console.Error.WriteLine("[McapReplayEngine] History chunk CRC mismatch; data may be corrupted.");
+                    LogCrcWarning("History chunk");
 
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
@@ -470,21 +488,24 @@ namespace Unity.FoxgloveSDK.IO
             if (!IsLoaded || !CanSeek) return;
 
             _pending.Clear();
+            _pendingHeadIndex = 0;
             _lastEmitTime = timeNs;
             _currentTimeNs = timeNs;
 
             // Find first chunk that contains or is after timeNs
             _currentChunkIdx = -1;
+            var foundChunk = false;
             for (var i = 0; i < _summary.ChunkIndexes.Count; i++)
             {
                 if (timeNs <= _summary.ChunkIndexes[i].MessageEndTime)
                 {
                     _currentChunkIdx = i - 1; // LoadNextChunk will advance to i
+                    foundChunk = true;
                     break;
                 }
             }
-            if (_currentChunkIdx < -1)
-                _currentChunkIdx = _summary.ChunkIndexes.Count - 2;
+            if (!foundChunk)
+                _currentChunkIdx = _summary.ChunkIndexes.Count - 1;
 
             // Force reload on next tick by marking current chunk exhausted
             _readOffset = int.MaxValue;
@@ -515,6 +536,7 @@ namespace Unity.FoxgloveSDK.IO
             _reader = null;
             _summary = null;
             _pending.Clear();
+            _pendingHeadIndex = 0;
             _currentChunkIdx = -1;
             _currentUncompressed = null;
             _readOffset = 0;
@@ -539,19 +561,29 @@ namespace Unity.FoxgloveSDK.IO
             var ci = _summary.ChunkIndexes[_currentChunkIdx];
             _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength, out var crcValid);
             if (!crcValid)
-                Console.Error.WriteLine($"[McapReplayEngine] Chunk {_currentChunkIdx} CRC mismatch; data may be corrupted.");
+                LogCrcWarning($"Chunk {_currentChunkIdx}");
             _readOffset = 0;
             return true;
         }
+
+        private int PendingCount => _pending.Count - _pendingHeadIndex;
+
+        private McapMessage PeekPending() => _pending[_pendingHeadIndex];
 
         /// <summary>
         /// Dequeues the oldest pending message and updates the last emitted time.
         /// </summary>
         private McapMessage PopPending()
         {
-            var m = _pending[0];
-            _pending.RemoveAt(0);
+            var m = _pending[_pendingHeadIndex++];
+            CompactPendingIfUseful();
             return m;
+        }
+
+        private void DropPending()
+        {
+            _pendingHeadIndex++;
+            CompactPendingIfUseful();
         }
 
         private void AddPending(McapMessage message)
@@ -561,18 +593,63 @@ namespace Unity.FoxgloveSDK.IO
 
         private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages)
         {
-            result.Add(message);
-            if (maxMessages > 0 && result.Count > maxMessages)
+            if (maxMessages <= 0)
             {
-                result.Sort(CompareMessages);
-                result.RemoveRange(0, result.Count - maxMessages);
+                result.Add(message);
+                return;
             }
+
+            if (result.Count >= maxMessages && CompareMessages(message, result[0]) <= 0)
+                return;
+
+            result.Insert(FindHistoryInsertIndex(result, message), message);
+            if (result.Count > maxMessages)
+                result.RemoveAt(0);
+        }
+
+        private static int FindHistoryInsertIndex(List<McapMessage> result, McapMessage message)
+        {
+            var low = 0;
+            var high = result.Count;
+            while (low < high)
+            {
+                var mid = low + ((high - low) / 2);
+                if (CompareMessages(result[mid], message) <= 0)
+                    low = mid + 1;
+                else
+                    high = mid;
+            }
+            return low;
         }
 
         private void SortPending()
         {
+            CompactPending();
             if (_pending.Count > 1)
                 _pending.Sort(CompareMessages);
+        }
+
+        private void CompactPendingIfUseful()
+        {
+            if (_pendingHeadIndex > 32 && _pendingHeadIndex * 2 >= _pending.Count)
+                CompactPending();
+        }
+
+        private void CompactPending()
+        {
+            if (_pendingHeadIndex <= 0)
+                return;
+
+            if (_pendingHeadIndex >= _pending.Count)
+                _pending.Clear();
+            else
+                _pending.RemoveRange(0, _pendingHeadIndex);
+            _pendingHeadIndex = 0;
+        }
+
+        private void LogCrcWarning(string scope)
+        {
+            _logger.LogWarning($"[McapReplayEngine] {scope} CRC mismatch; data may be corrupted.");
         }
 
         private List<McapMessage> FinishTickResult(List<McapMessage> result)

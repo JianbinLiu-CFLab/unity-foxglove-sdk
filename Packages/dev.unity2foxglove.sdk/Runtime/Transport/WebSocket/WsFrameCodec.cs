@@ -19,6 +19,8 @@ namespace Unity.FoxgloveSDK.Transport
         private const byte FinBit = 0x80;
         /// <summary>RFC 6455 MASK bit in the second WebSocket frame header byte.</summary>
         private const byte MaskBit = 0x80;
+        /// <summary>RFC 6455 RSV1/RSV2/RSV3 bits. No extensions are negotiated by this server.</summary>
+        private const byte ReservedBitsMask = 0x70;
         /// <summary>RFC 6455 low-nibble opcode mask for the first frame header byte.</summary>
         private const byte OpcodeMask = 0x0F;
         /// <summary>RFC 6455 payload-length mask for the second frame header byte.</summary>
@@ -84,6 +86,9 @@ namespace Unity.FoxgloveSDK.Transport
             if (!ReadExact(stream, header, 0, 2))
                 return false;
 
+            if ((header[0] & ReservedBitsMask) != 0)
+                return false;
+
             var fin = (header[0] & FinBit) != 0;
             var opcode = header[0] & OpcodeMask;
             var masked = (header[1] & MaskBit) != 0;
@@ -112,8 +117,11 @@ namespace Unity.FoxgloveSDK.Transport
             if (!masked)
                 return false;
 
+            if (!IsKnownDataOpcode(opcode) && !IsKnownControlOpcode(opcode))
+                return false;
+
             if (IsControlOpcode(opcode)
-                && (!IsKnownControlOpcode(opcode) || !fin || payloadLen > SmallPayloadLimit))
+                && (!fin || payloadLen > SmallPayloadLimit))
                 return false;
 
             var mask = new byte[4];
@@ -140,6 +148,9 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         private static bool IsControlOpcode(int opcode) => opcode >= WsOpcode.Close;
+
+        private static bool IsKnownDataOpcode(int opcode) =>
+            opcode == WsOpcode.Text || opcode == WsOpcode.Binary;
 
         private static bool IsKnownControlOpcode(int opcode) =>
             opcode == WsOpcode.Close || opcode == WsOpcode.Ping || opcode == WsOpcode.Pong;
@@ -198,6 +209,8 @@ namespace Unity.FoxgloveSDK.Transport
     /// <summary>RFC 6455 WebSocket opcode constants.</summary>
     internal static class WsOpcode
     {
+        /// <summary>Continuation frame opcode (0x0). Fragmentation is not supported by this server.</summary>
+        public const byte Continuation = 0x0;
         /// <summary>Text frame opcode (0x1).</summary>
         public const byte Text = 0x1;
         /// <summary>Binary frame opcode (0x2).</summary>

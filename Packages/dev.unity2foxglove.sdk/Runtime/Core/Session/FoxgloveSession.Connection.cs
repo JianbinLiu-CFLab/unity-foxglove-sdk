@@ -24,18 +24,21 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
-                foreach (var sub in msg.Subscriptions)
+                if (msg?.Subscriptions != null)
                 {
-                    var ch = _channels.Get(sub.ChannelId);
-                    if (ch != null)
+                    foreach (var sub in msg.Subscriptions)
                     {
-                        _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
-                        _graph.AddSubscribedTopic(clientId, sub.Id, ch.Topic);
+                        var ch = _channels.Get(sub.ChannelId);
+                        if (ch != null)
+                        {
+                            _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
+                            _graph.AddSubscribedTopic(clientId, sub.Id, ch.Topic);
+                        }
                     }
                 }
+                _graph.BroadcastUpdate();
             }
-            catch (Exception ex) { _logger.LogWarning($"subscribe parse error: {ex.Message}"); }
-            _graph.BroadcastUpdate();
+            catch (Exception ex) { _logger.LogWarning($"subscribe error: {ex.Message}"); }
         }
 
         /// <summary>
@@ -57,9 +60,9 @@ namespace Unity.FoxgloveSDK.Core
                             _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
                     }
                 }
+                _graph.BroadcastUpdate();
             }
-            catch (Exception ex) { _logger.LogWarning($"unsubscribe parse error: {ex.Message}"); }
-            _graph.BroadcastUpdate();
+            catch (Exception ex) { _logger.LogWarning($"unsubscribe error: {ex.Message}"); }
         }
 
         // ── ConnectionGraph ──
