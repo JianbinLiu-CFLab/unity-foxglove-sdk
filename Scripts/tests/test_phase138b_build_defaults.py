@@ -18,6 +18,7 @@ EXPECTED_ROOT = Path(r"D:\ros2unity\.build\r2fu-jazzy-win64")
 
 
 def load_build_module():
+    """Load the Phase 138B build script as a Python module."""
     spec = importlib.util.spec_from_file_location("phase138b_r2fu_jazzy_windows_build", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -27,7 +28,10 @@ def load_build_module():
 
 
 class Phase138BBuildDefaultsTests(unittest.TestCase):
+    """Regression coverage for R2FU Jazzy Windows build defaults."""
+
     def test_default_roots_stay_under_consolidated_build_root(self) -> None:
+        """Default temporary roots stay under the consolidated build directory."""
         module = load_build_module()
 
         args = module.parse_args([])

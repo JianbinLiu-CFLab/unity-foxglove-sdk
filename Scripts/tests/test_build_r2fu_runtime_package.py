@@ -19,6 +19,7 @@ BUILDER_PATH = ROOT / "Scripts" / "release" / "build_r2fu_runtime_package.py"
 
 
 def load_builder_module():
+    """Load the runtime package builder module under test."""
     spec = importlib.util.spec_from_file_location("build_r2fu_runtime_package", BUILDER_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -28,10 +29,14 @@ def load_builder_module():
 
 
 class RuntimePackageExtractionTests(unittest.TestCase):
+    """Regression coverage for runtime package archive extraction."""
+
     def setUp(self) -> None:
+        """Load a fresh reference to the builder module for each test."""
         self.builder = load_builder_module()
 
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
+        """Reject archive entries that would escape the package root."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             archive = root / "runtime.zip"
@@ -47,6 +52,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             self.assertFalse((root / "escape.txt").exists())
 
     def test_extract_runtime_keeps_valid_entries_under_runtime_root(self) -> None:
+        """Extract normal runtime archive entries beneath the package runtime root."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             archive = root / "runtime.zip"
