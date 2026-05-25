@@ -5,6 +5,7 @@
 // Purpose: Immutable frame object for the experimental Unity-to-ROS2 bridge.
 
 using System;
+using System.IO;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
@@ -14,6 +15,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     {
         /// <summary>Message encoding label used for ROS2 CDR payloads in U2R2 frames.</summary>
         public const string CdrEncoding = "cdr";
+
+        private readonly byte[] _payload;
 
         public Ros2BridgeFrame(string topic, string schemaName, string encoding, ulong logTimeNs, ulong sequence, byte[] payload)
             : this(topic, schemaName, encoding, logTimeNs, sequence, payload, null)
@@ -45,7 +48,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             Encoding = encoding;
             LogTimeNs = logTimeNs;
             Sequence = sequence;
-            Payload = (byte[])payload.Clone();
+            _payload = (byte[])payload.Clone();
             Qos = qos;
             ProfileName = qos.HasValue ? qos.Value.PresetName : null;
         }
@@ -55,8 +58,18 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public string Encoding { get; }
         public ulong LogTimeNs { get; }
         public ulong Sequence { get; }
-        public byte[] Payload { get; }
+        public byte[] Payload => (byte[])_payload.Clone();
         public string ProfileName { get; }
         public Ros2BridgeQosProfile? Qos { get; }
+
+        internal int PayloadLength => _payload.Length;
+
+        internal void WritePayloadTo(Stream stream)
+        {
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+
+            stream.Write(_payload, 0, _payload.Length);
+        }
     }
 }

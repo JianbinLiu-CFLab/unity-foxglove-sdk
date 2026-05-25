@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
-            if (frame.Payload.Length > MaxPayloadBytes)
+            if (frame.PayloadLength > MaxPayloadBytes)
                 throw new ArgumentException("ROS 2 bridge payload exceeds the Phase 94 maximum.", nameof(frame));
 
             var header = new FrameHeader
@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (headerBytes.Length > MaxHeaderBytes)
                 throw new ArgumentException("ROS 2 bridge JSON header exceeds the Phase 94 maximum.", nameof(frame));
 
-            using var stream = new MemoryStream(16 + headerBytes.Length + frame.Payload.Length);
+            using var stream = new MemoryStream(16 + headerBytes.Length + frame.PayloadLength);
             stream.WriteByte((byte)'U');
             stream.WriteByte((byte)'2');
             stream.WriteByte((byte)'R');
@@ -59,9 +59,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             WriteUInt16LE(stream, 1);
             WriteUInt16LE(stream, 0);
             WriteUInt32LE(stream, checked((uint)headerBytes.Length));
-            WriteUInt32LE(stream, checked((uint)frame.Payload.Length));
+            WriteUInt32LE(stream, checked((uint)frame.PayloadLength));
             stream.Write(headerBytes, 0, headerBytes.Length);
-            stream.Write(frame.Payload, 0, frame.Payload.Length);
+            frame.WritePayloadTo(stream);
             return stream.ToArray();
         }
 
