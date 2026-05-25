@@ -166,6 +166,7 @@
     <Compile Include="Phase134_17Validation.cs" />
     <Compile Include="Phase134_18Validation.cs" />
     <Compile Include="Phase134_19Validation.cs" />
+    <Compile Include="Phase134_20Validation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
@@ -174,6 +175,7 @@
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
     <Compile Include="../../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="../../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />
+    <Compile Include="../../Editor/Shared/Process/**/*.cs" LinkBase="Shared/Process" />
     <Compile Include="../../Editor/Shared/SchemaManifest/**/*.cs" LinkBase="Shared/SchemaManifest" />
     <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
