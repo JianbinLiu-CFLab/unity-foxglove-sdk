@@ -177,6 +177,7 @@
     <Compile Include="Phase134_28Validation.cs" />
     <Compile Include="Phase134_30Validation.cs" />
     <Compile Include="Phase134_32Validation.cs" />
+    <Compile Include="Phase134_35Validation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />

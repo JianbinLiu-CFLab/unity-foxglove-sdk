@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
 
@@ -44,10 +45,19 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var opcode = data[offset++];
                 var len = McapBinaryReader.ReadU64LE(data, ref offset);
-                if (offset + (int)len > data.Length) break;
-                var content = new byte[len];
-                if (len > 0) Buffer.BlockCopy(data, offset, content, 0, (int)len);
-                offset += (int)len;
+                if (len > int.MaxValue)
+                    throw new InvalidDataException(
+                        $"MCAP record length {len} exceeds the test parser limit {int.MaxValue}.");
+
+                var remaining = data.Length - offset;
+                if (len > (ulong)remaining)
+                    throw new InvalidDataException(
+                        $"MCAP record length {len} exceeds remaining buffer length {remaining}.");
+
+                var contentLength = (int)len;
+                var content = new byte[contentLength];
+                if (contentLength > 0) Buffer.BlockCopy(data, offset, content, 0, contentLength);
+                offset += contentLength;
                 records.Add(new McapRecord { Opcode = opcode, Content = content });
             }
 
