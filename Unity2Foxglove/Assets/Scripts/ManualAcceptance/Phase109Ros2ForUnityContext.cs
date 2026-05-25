@@ -116,7 +116,7 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         try
         {
-            var ros2Node = _ros2Unity.CreateNode("unity2foxglove_phase109");
+            var ros2Node = _ros2Unity.CreateNode(normalizedName);
             var node = new Phase109Ros2ForUnityNode(_ros2Unity, ros2Node, normalizedName);
             _nodes.Add(node);
             return node;

@@ -104,8 +104,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && combined.Contains("AddComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && combined.Contains(".Ok()", StringComparison.Ordinal),
                 "109-C6: manual adapter gets or adds ROS2UnityComponent and waits for Ok()");
-            Check(combined.Contains("CreateNode(\"unity2foxglove_phase109\")", StringComparison.Ordinal),
-                "109-C7: manual adapter creates the locked Phase109 node name");
+            Check(combined.Contains("var normalizedName = NormalizeName(nodeName);", StringComparison.Ordinal)
+                  && combined.Contains("_ros2Unity.CreateNode(normalizedName)", StringComparison.Ordinal)
+                  && combined.Contains("new Phase109Ros2ForUnityNode(_ros2Unity, ros2Node, normalizedName)", StringComparison.Ordinal),
+                "109-C7: manual adapter passes the requested normalized node name to ROS2 For Unity");
             Check(!combined.Contains("SpinOnce", StringComparison.Ordinal)
                   && !combined.Contains("QualityOfServiceProfile", StringComparison.Ordinal),
                 "109-C8: manual adapter does not manually spin or construct QoS");
