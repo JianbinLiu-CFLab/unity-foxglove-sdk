@@ -32,9 +32,9 @@ namespace Unity.FoxgloveSDK.Components
 
         [Header("Manual Overrides")]
         /// <summary>Explicit frame_id to Transform mappings.</summary>
-        [SerializeField] private FrameMapping[] _frameOverrides;
+        [SerializeField] private FrameMapping[] _frameOverrides = Array.Empty<FrameMapping>();
         /// <summary>Explicit entity_id to Transform mappings.</summary>
-        [SerializeField] private EntityMapping[] _entityOverrides;
+        [SerializeField] private EntityMapping[] _entityOverrides = Array.Empty<EntityMapping>();
 
         [Header("Topics")]
         /// <summary>Process frame-transform pose messages, regardless of topic name.</summary>
@@ -97,6 +97,7 @@ namespace Unity.FoxgloveSDK.Components
         private void Start()
         {
             ResolveManager();
+            EnsureMappingArrays();
             foreach (var fm in _frameOverrides)
                 if (!string.IsNullOrEmpty(fm.ChildFrameId) && fm.Target != null)
                     _frameCache[fm.ChildFrameId] = fm.Target;
@@ -107,6 +108,11 @@ namespace Unity.FoxgloveSDK.Components
 
             if (isActiveAndEnabled)
                 SubscribeReplay();
+        }
+
+        private void OnValidate()
+        {
+            EnsureMappingArrays();
         }
 
         /// <summary>Subscribes to replay messages while the component is enabled.</summary>
@@ -134,6 +140,14 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (_manager == null)
                 _manager = FindFirstObjectByType<FoxgloveManager>();
+        }
+
+        private void EnsureMappingArrays()
+        {
+            if (_frameOverrides == null)
+                _frameOverrides = Array.Empty<FrameMapping>();
+            if (_entityOverrides == null)
+                _entityOverrides = Array.Empty<EntityMapping>();
         }
 
         private void SubscribeReplay()

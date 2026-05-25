@@ -7,6 +7,7 @@
 // this hub acts as their registry, relaying value updates to Foxglove
 // topics through FoxgloveManager.
 
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.FoxgloveSDK.Util;
@@ -89,6 +90,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveLogSource> _stale = new();
         private readonly List<IFoxgloveLogSource> _pendingAdds = new();
         private readonly List<IFoxgloveLogSource> _pendingRemoves = new();
+        private readonly HashSet<string> _warnedSourceFailures = new();
         private bool _iteratingTimers;
         /// <summary>Countdown until the next Scan for new sources.</summary>
         private float _scanTimer;
@@ -208,29 +210,8 @@ namespace Unity.FoxgloveSDK.Components
                     if (kv.Key is MonoBehaviour mb && mb == null) { _stale.Add(kv.Key); continue; }
                     if (kv.Key is MonoBehaviour mb2 && !mb2.isActiveAndEnabled) continue;
                     var t = kv.Value;
-                    var policySource = kv.Key as IFoxgloveLogPolicySource;
                     for (int i = 0; i < t.Length; i++)
-                    {
-                        var info = kv.Key.FoxgloveLog_GetTopic(i);
-                        if (info.PublishMode == FoxRunPublishMode.OnTrigger)
-                            continue;
-
-                        var rateHz = info.RateHz;
-                        if (FixedRatePublishScheduler.ShouldPublish(
-                                nowSec,
-                                rateHz,
-                                ref t[i],
-                                nonPositivePublishesEveryFrame: false))
-                        {
-                            bool shouldPublish = policySource == null
-                                || policySource.FoxgloveLog_ShouldPublish(i, nowSec);
-                            if (shouldPublish)
-                            {
-                                kv.Key.FoxgloveLog_Publish(i, _mgr, nowNs);
-                                policySource?.FoxgloveLog_MarkPublished(i, nowSec);
-                            }
-                        }
-                    }
+                        TryPublishScheduledTopic(kv.Key, i, ref t[i], nowNs, nowSec);
                 }
             }
             finally
@@ -239,6 +220,66 @@ namespace Unity.FoxgloveSDK.Components
             }
             foreach (var s in _stale) RemoveSource(s);
             ApplyPendingTimerMutations();
+        }
+
+        private bool TryPublishScheduledTopic(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            ref FixedRatePublishState timer,
+            ulong nowNs,
+            double nowSec)
+        {
+            try
+            {
+                var info = source.FoxgloveLog_GetTopic(topicIndex);
+                if (info.PublishMode == FoxRunPublishMode.OnTrigger)
+                    return false;
+
+                var rateHz = info.RateHz;
+                if (!FixedRatePublishScheduler.ShouldPublish(
+                        nowSec,
+                        rateHz,
+                        ref timer,
+                        nonPositivePublishesEveryFrame: false))
+                    return false;
+
+                var policySource = source as IFoxgloveLogPolicySource;
+                if (policySource != null && !policySource.FoxgloveLog_ShouldPublish(topicIndex, nowSec))
+                    return false;
+
+                source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
+                policySource?.FoxgloveLog_MarkPublished(topicIndex, nowSec);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogSourceFailure(source, topicIndex, "scheduled publish", ex);
+                return false;
+            }
+        }
+
+        private bool TryPublishTriggeredTopic(IFoxgloveLogSource source, int topicIndex, ulong nowNs, double nowSec)
+        {
+            try
+            {
+                source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
+                if (source is IFoxgloveLogPolicySource policySource)
+                    policySource.FoxgloveLog_MarkPublished(topicIndex, nowSec);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogSourceFailure(source, topicIndex, "trigger publish", ex);
+                return false;
+            }
+        }
+
+        private void LogSourceFailure(IFoxgloveLogSource source, int topicIndex, string operation, Exception ex)
+        {
+            var sourceName = source?.GetType().FullName ?? "<null>";
+            var key = sourceName + ":" + topicIndex + ":" + operation;
+            if (_warnedSourceFailures.Add(key))
+                Debug.LogWarning($"[FoxRun] {operation} failed for {sourceName}[{topicIndex}]: {ex.Message}");
         }
 
         /// <summary>
@@ -321,10 +362,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_mgr.SuppressLivePublishersForReplay)
                 return false;
 
-            source.FoxgloveLog_Publish(topicIndex, _mgr, _mgr.NowNs);
-            if (source is IFoxgloveLogPolicySource policySource)
-                policySource.FoxgloveLog_MarkPublished(topicIndex, Time.realtimeSinceStartupAsDouble);
-            return true;
+            return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs, Time.realtimeSinceStartupAsDouble);
         }
 
         /// <summary>Clears all timers and nulls the singleton reference.</summary>
