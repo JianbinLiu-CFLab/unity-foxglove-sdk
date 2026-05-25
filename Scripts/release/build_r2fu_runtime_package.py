@@ -20,7 +20,7 @@ import sys
 import time
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 REPO_ROOT_PARENT_DEPTH = 2
@@ -565,16 +565,36 @@ def extract_runtime(paths: BuildPaths) -> None:
     """Extract the Ros2ForUnity asset folder into the runtime package layout."""
     runtime_root = paths.package / "Runtime" / "Ros2ForUnity"
     runtime_root.mkdir(parents=True, exist_ok=True)
+    runtime_root_resolved = runtime_root.resolve()
     with zipfile.ZipFile(paths.artifact) as archive:
         for info in archive.infolist():
             name = info.filename
             if info.is_dir() or not name.startswith("Ros2ForUnity/"):
                 continue
-            relative = Path(name).relative_to("Ros2ForUnity")
-            target = runtime_root / relative
+            relative = safe_runtime_zip_relative_path(name)
+            target = (runtime_root / relative).resolve()
+            try:
+                target.relative_to(runtime_root_resolved)
+            except ValueError as exc:
+                raise ValueError(f"Rejected runtime zip entry outside package root: {name}") from exc
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(info) as source, target.open("wb") as destination:
                 shutil.copyfileobj(source, destination)
+
+
+def safe_runtime_zip_relative_path(name: str) -> Path:
+    """Return the path under Runtime/Ros2ForUnity for a trusted zip entry name."""
+    zip_path = PurePosixPath(name)
+    if zip_path.is_absolute():
+        raise ValueError(f"Rejected absolute runtime zip entry: {name}")
+
+    parts = zip_path.parts
+    if len(parts) < 2 or parts[0] != "Ros2ForUnity":
+        raise ValueError(f"Rejected unexpected runtime zip entry: {name}")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"Rejected unsafe runtime zip entry: {name}")
+
+    return Path(*parts[1:])
 
 
 def prune_non_contract_examples(package: Path) -> None:
