@@ -370,13 +370,40 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Dispose()
         {
-            Close();
+            try
+            {
+                Close();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning($"MCAP recorder close failed during dispose; file may be incomplete: {ex.Message}");
+                lock (_lock)
+                {
+                    _closed = true;
+                }
+            }
+
             lock (_lock)
             {
                 if (_disposed) return;
                 _disposed = true;
-                _w.Dispose();
-                _chunkBuf.Dispose();
+                try
+                {
+                    _w.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"MCAP recorder writer dispose failed during shutdown: {ex.Message}");
+                }
+
+                try
+                {
+                    _chunkBuf.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"MCAP recorder chunk buffer dispose failed during shutdown: {ex.Message}");
+                }
             }
         }
 

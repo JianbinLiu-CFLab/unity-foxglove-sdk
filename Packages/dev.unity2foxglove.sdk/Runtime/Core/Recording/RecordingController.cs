@@ -166,9 +166,18 @@ namespace Unity.FoxgloveSDK.Core
             if (_parameters != null) _parameters.OnParameterChanged -= OnParameterChanged;
 
             if (recorder != null)
+                DisposeRecorderBestEffort(recorder);
+        }
+
+        private void DisposeRecorderBestEffort(McapRecorder recorder)
+        {
+            try
             {
-                recorder.Close();
                 recorder.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning($"MCAP recorder dispose failed during shutdown; continuing: {ex.Message}");
             }
         }
 

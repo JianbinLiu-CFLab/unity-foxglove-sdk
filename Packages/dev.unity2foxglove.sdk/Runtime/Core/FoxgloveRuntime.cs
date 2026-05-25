@@ -198,9 +198,9 @@ namespace Unity.FoxgloveSDK.Core
                 _session = session;
                 _replay.RegisterChannels(session);
 
-                replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
-                replayContextForwarder = context => OnReplayMessageContext?.Invoke(context);
-                replayBatchForwarder = context => OnReplayBatchCompleted?.Invoke(context);
+                replayForwarder = SafeInvokeReplayMessage;
+                replayContextForwarder = SafeInvokeReplayMessageContext;
+                replayBatchForwarder = SafeInvokeReplayBatchCompleted;
                 _replay.OnReplayMessage += replayForwarder;
                 _replay.OnReplayMessageContext += replayContextForwarder;
                 _replay.OnReplayBatchCompleted += replayBatchForwarder;
@@ -594,12 +594,12 @@ namespace Unity.FoxgloveSDK.Core
                     // releasing the lock here could publish a stale pre-seek
                     // snapshot after a newer playback control request.
                     if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
-                        _replay.ApplySnapshotToScene(sceneSnapshotTimeNs);
+                        _replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);
                     if (TryConsumeReplaySnapshot(out var snapshotTimeNs))
                         _replay.PublishSnapshot(session, snapshotTimeNs);
                     else
                         _replay.DrainPanelHistory(session);
-                    _replay.Tick(session, _playbackClock.NowNs);
+                    _replay.Tick(session, _playbackClock.NowNs, deferCallbacks: true);
                 }
                 else
                     broadcastLiveTime = true;
@@ -607,6 +607,64 @@ namespace Unity.FoxgloveSDK.Core
 
             if (broadcastLiveTime)
                 session.BroadcastTime();
+            _replay.DrainReplayCallbacks();
+        }
+
+        private void SafeInvokeReplayMessage(string topic, byte[] data)
+        {
+            var handlers = OnReplayMessage;
+            if (handlers == null)
+                return;
+
+            foreach (Action<string, byte[]> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(topic, data);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Replay message listener failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void SafeInvokeReplayMessageContext(ReplayMessageContext context)
+        {
+            var handlers = OnReplayMessageContext;
+            if (handlers == null)
+                return;
+
+            foreach (Action<ReplayMessageContext> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(context);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Replay message context listener failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void SafeInvokeReplayBatchCompleted(ReplayBatchContext context)
+        {
+            var handlers = OnReplayBatchCompleted;
+            if (handlers == null)
+                return;
+
+            foreach (Action<ReplayBatchContext> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(context);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Replay batch listener failed: {ex.Message}");
+                }
+            }
         }
 
         // ── Transport Health ──
