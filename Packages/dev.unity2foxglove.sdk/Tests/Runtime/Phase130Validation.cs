@@ -76,8 +76,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "130A-3: optional package sample entry points at the MarkerArray acceptance sample");
             Check(value.TryGetProperty("description", out var description)
                   && (description.GetString() ?? string.Empty).Contains("visualization_msgs/msg/MarkerArray", StringComparison.Ordinal)
-                  && (description.GetString() ?? string.Empty).Contains("/markers", StringComparison.Ordinal),
-                "130A-4: optional package sample description names MarkerArray and /markers");
+                  && (description.GetString() ?? string.Empty).Contains("/markers", StringComparison.Ordinal)
+                  && (description.GetString() ?? string.Empty).Contains("/tf", StringComparison.Ordinal),
+                "130A-4: optional package sample description names MarkerArray, /markers, and minimal /tf");
         }
 
         private static void VerifySampleFiles()
@@ -106,17 +107,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "130C-1: smoke script guards ROS2 For Unity and generated message references");
             Check(script.Contains("NodeName = \"unity2foxglove_phase130_markerarray\"", StringComparison.Ordinal)
                   && script.Contains("MarkersTopic = \"/markers\"", StringComparison.Ordinal)
+                  && script.Contains("TfTopic = \"/tf\"", StringComparison.Ordinal)
                   && !script.Contains("\"/clock\"", StringComparison.Ordinal),
-                "130C-2: smoke script uses the required node and marker topic without /clock");
+                "130C-2: smoke script uses the required node, marker topic, and TF topic without /clock");
             Check(script.Contains("GetComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && script.Contains("AddComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
                   && script.Contains(".Ok()", StringComparison.Ordinal),
                 "130C-3: smoke script finds or adds ROS2UnityComponent and waits for Ok()");
             Check(script.Contains("CreatePublisher<visualization_msgs.msg.MarkerArray>", StringComparison.Ordinal)
-                  && !script.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>", StringComparison.Ordinal)
+                  && script.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>", StringComparison.Ordinal)
                   && !script.Contains("CreatePublisher<sensor_msgs.msg", StringComparison.Ordinal)
                   && !script.Contains("QualityOfServiceProfile", StringComparison.Ordinal),
-                "130C-4: smoke script publishes only MarkerArray with default R2FU QoS");
+                "130C-4: smoke script publishes MarkerArray and minimal TF with default R2FU QoS");
             Check(script.Contains("CreateStamp", StringComparison.Ordinal)
                   && script.Contains("ROS2 Time.sec is int32", StringComparison.Ordinal)
                   && script.Contains("Y2038", StringComparison.Ordinal)
@@ -141,6 +143,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("BuildDeleteAll", StringComparison.Ordinal)
                   && script.Contains("DeleteCycleLength", StringComparison.Ordinal),
                 "130C-8: smoke script exercises ADD, DELETE, and DELETEALL marker actions");
+            Check(script.Contains("FrameMap = \"map\"", StringComparison.Ordinal)
+                  && script.Contains("FrameMarkerOrigin = \"phase130_marker_origin\"", StringComparison.Ordinal)
+                  && script.Contains("CreateTfMessage", StringComparison.Ordinal)
+                  && script.Contains("Child_frame_id = FrameMarkerOrigin", StringComparison.Ordinal),
+                "130C-9: smoke script publishes a minimal TF frame so RViz2 fixed frame map is valid");
         }
 
         private static void VerifyMarkerArrayBuilder()
@@ -236,14 +243,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "130F-3: helper uses no-daemon graph checks, node list, and topic info -v");
             Check(script.Contains("unity2foxglove_phase130_markerarray", StringComparison.Ordinal)
                   && script.Contains("/markers", StringComparison.Ordinal)
+                  && script.Contains("/tf", StringComparison.Ordinal)
                   && script.Contains("visualization_msgs/msg/MarkerArray", StringComparison.Ordinal)
+                  && script.Contains("tf2_msgs/msg/TFMessage", StringComparison.Ordinal)
                   && shared.Contains("Publisher count:", StringComparison.Ordinal)
                   && shared.Contains("Node name:", StringComparison.Ordinal)
                   && script.Contains("node_name=NODE_NAME", StringComparison.Ordinal),
-                "130F-4: helper proves required publisher endpoint belongs to the Phase130 node");
+                "130F-4: helper proves required marker and TF publisher endpoints belong to the Phase130 node");
             Check(helperSurface.Contains("--once", StringComparison.Ordinal)
                   && helperSurface.Contains("--spin-time", StringComparison.Ordinal)
                   && script.Contains("frame_id: map", StringComparison.Ordinal)
+                  && script.Contains("child_frame_id: phase130_marker_origin", StringComparison.Ordinal)
                   && script.Contains("ns: unity2foxglove", StringComparison.Ordinal)
                   && script.Contains("type: 1", StringComparison.Ordinal)
                   && script.Contains("action: 0", StringComparison.Ordinal)
@@ -295,9 +305,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("ROS_AUTOMATIC_DISCOVERY_RANGE", StringComparison.Ordinal)
                   && sampleReadme.Contains("ros2-script.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("/markers", StringComparison.Ordinal)
+                  && sampleReadme.Contains("/tf", StringComparison.Ordinal)
                   && sampleReadme.Contains("frame_id = map", StringComparison.Ordinal)
                   && !sampleReadme.Contains("\nros2 topic", StringComparison.Ordinal),
-                "130G-2: sample README documents fixed-frame markers and the Windows helper path");
+                "130G-2: sample README documents fixed-frame markers, minimal TF, and the Windows helper path");
             Check(sampleReadme.Contains("FNV-1a", StringComparison.Ordinal)
                   && sampleReadme.Contains("DELETE", StringComparison.Ordinal)
                   && sampleReadme.Contains("DELETEALL", StringComparison.Ordinal)
@@ -310,7 +321,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && evidence.Contains("RMW implementation", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("runtime root", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("topic info -v /markers", StringComparison.OrdinalIgnoreCase)
+                  && evidence.Contains("topic info -v /tf", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("/markers echo", StringComparison.OrdinalIgnoreCase)
+                  && evidence.Contains("/tf echo", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("RViz2 MarkerArray observation", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("screenshot", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("verdict", StringComparison.OrdinalIgnoreCase),

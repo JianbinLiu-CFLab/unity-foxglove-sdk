@@ -29,6 +29,8 @@ DEFAULT_RVIZ_CONFIG = pathlib.Path(
     r"\RViz2 MarkerArray Acceptance\rviz2_phase130_markerarray.rviz"
 )
 NODE_NAME = "unity2foxglove_phase130_markerarray"
+TF_TOPIC = "/tf"
+TF_MSG_TYPE = "tf2_msgs/msg/TFMessage"
 MARKERS_TOPIC = "/markers"
 MARKERS_MSG_TYPE = "visualization_msgs/msg/MarkerArray"
 
@@ -104,6 +106,15 @@ def validate_markerarray_echo(output: str) -> None:
         raise RuntimeError(f"MarkerArray echo did not contain zero marker lifetime.\n{output}")
 
 
+def validate_tf_echo(output: str) -> None:
+    """Validate the minimal TF that makes RViz2 fixed frame map valid."""
+
+    required = ["transforms:", "frame_id: map", "child_frame_id: phase130_marker_origin"]
+    missing = [token for token in required if token not in output]
+    if missing:
+        raise RuntimeError(f"TF echo missing required token(s): {', '.join(missing)}\n{output}")
+
+
 def main(argv: list[str]) -> int:
     """Script entry point."""
 
@@ -129,6 +140,18 @@ def main(argv: list[str]) -> int:
     if NODE_NAME not in nodes:
         print(f"[phase130] node list did not include {NODE_NAME}; continuing with publisher endpoint and echo checks.")
 
+    print("--- topic info -v /tf (diagnostic) ---")
+    tf_info = ros2env.wait_for_publisher(
+        pixi_python,
+        ros2_script,
+        env,
+        TF_TOPIC,
+        args.wait_seconds,
+        expected_type=TF_MSG_TYPE,
+        node_name=NODE_NAME,
+    )
+    print(tf_info.rstrip())
+
     print("--- topic info -v /markers ---")
     markers_info = ros2env.wait_for_publisher(
         pixi_python,
@@ -140,6 +163,18 @@ def main(argv: list[str]) -> int:
         node_name=NODE_NAME,
     )
     print(markers_info.rstrip())
+
+    print("--- echo /tf ---")
+    tf_echo = ros2env.echo_once(
+        pixi_python,
+        ros2_script,
+        env,
+        TF_TOPIC,
+        TF_MSG_TYPE,
+        args.echo_spin_seconds,
+    )
+    print(tf_echo.rstrip())
+    validate_tf_echo(tf_echo)
 
     print("--- echo /markers ---")
     markers_echo = ros2env.echo_once(
@@ -156,8 +191,8 @@ def main(argv: list[str]) -> int:
     if args.launch_rviz:
         ros2env.launch_rviz(ros2_root, rviz_config, env, "phase130")
 
-    print("[phase130] GREEN: /markers external ROS2 acceptance checks completed.")
-    print("[phase130] Confirm RViz2 displays MarkerArray /markers before marking manual PASS.")
+    print("[phase130] GREEN: /tf and /markers external ROS2 acceptance checks completed.")
+    print("[phase130] Confirm RViz2 displays MarkerArray /markers without fixed-frame warnings before marking manual PASS.")
     return 0
 
 

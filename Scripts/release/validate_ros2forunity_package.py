@@ -230,8 +230,10 @@ def check_package_metadata(results: list[CheckResult]) -> None:
         markerarray_description = str(markerarray_sample.get("description", ""))
         add(
             results,
-            "MarkerArray sample description names standard type and /markers",
-            "visualization_msgs/msg/MarkerArray" in markerarray_description and "/markers" in markerarray_description,
+            "MarkerArray sample description names standard type, /markers, and /tf",
+            "visualization_msgs/msg/MarkerArray" in markerarray_description
+            and "/markers" in markerarray_description
+            and "/tf" in markerarray_description,
             markerarray_description,
         )
         v1_sample = samples_by_name.get("RViz2 Standard Visualization v1", {})
@@ -789,6 +791,7 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         "MarkerArray sample README documents helper, fixed frame, and standard type",
         "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in markerarray_readme
         and "phase130_markerarray_acceptance.py" in markerarray_readme
+        and "/tf" in markerarray_readme
         and "/markers" in markerarray_readme
         and "visualization_msgs/msg/MarkerArray" in markerarray_readme
         and "frame_id = map" in markerarray_readme,
@@ -799,7 +802,8 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         "MarkerArray sample smoke is guarded and source-only",
         "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in markerarray_smoke
         and "CreatePublisher<visualization_msgs.msg.MarkerArray>" in markerarray_smoke
-        and "CreatePublisher<tf2_msgs.msg.TFMessage>" not in markerarray_smoke
+        and "CreatePublisher<tf2_msgs.msg.TFMessage>" in markerarray_smoke
+        and "FrameMarkerOrigin = \"phase130_marker_origin\"" in markerarray_smoke
         and "CreatePublisher<sensor_msgs.msg" not in markerarray_smoke,
         rel(RVIZ_MARKERARRAY_SAMPLE / "Phase130Rviz2MarkerArraySmoke.cs"),
     )

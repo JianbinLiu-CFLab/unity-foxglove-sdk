@@ -18,7 +18,10 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 {
     private const string LogPrefix = "[Phase130Rviz2MarkerArraySmoke]";
     private const string NodeName = "unity2foxglove_phase130_markerarray";
+    private const string TfTopic = "/tf";
     private const string MarkersTopic = "/markers";
+    private const string FrameMap = "map";
+    private const string FrameMarkerOrigin = "phase130_marker_origin";
     private const string MarkerStableName = "phase130_cube";
     private const float DefaultPublishIntervalSeconds = 0.5f;
     private const int DeleteCycleLength = 24;
@@ -35,6 +38,7 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
     [Header("Status")]
     [SerializeField] private string _statusMessage = "Not started.";
+    [SerializeField] private int _publishedTfCount;
     [SerializeField] private int _publishedMarkerArrayCount;
     [SerializeField] private int _activeMarkerCount;
     [SerializeField] private int _lastMarkerId;
@@ -55,6 +59,7 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
+    private IPublisher<tf2_msgs.msg.TFMessage> _tfPublisher;
     private IPublisher<visualization_msgs.msg.MarkerArray> _markerPublisher;
     private MethodInfo _startExecutor;
     private bool _ownsRos2UnityComponent;
@@ -65,6 +70,7 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
     {
         Application.runInBackground = true;
         _nextPublishAt = 0f;
+        _publishedTfCount = 0;
         _publishedMarkerArrayCount = 0;
         _activeMarkerCount = 0;
         _lastMarkerId = Phase130MarkerArrayMessageBuilder.CreateDeterministicId(MarkerStableName);
@@ -204,24 +210,27 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
     private void EnsureEndpoints()
     {
-        if (_markerPublisher != null)
+        if (_tfPublisher != null && _markerPublisher != null)
             return;
 
         if (_node == null)
             _node = _ros2Unity.CreateNode(NodeName);
-        _markerPublisher = _node.CreatePublisher<visualization_msgs.msg.MarkerArray>(MarkersTopic);
+        if (_tfPublisher == null)
+            _tfPublisher = _node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfTopic);
+        if (_markerPublisher == null)
+            _markerPublisher = _node.CreatePublisher<visualization_msgs.msg.MarkerArray>(MarkersTopic);
 
-        if (!_endpointsLogged && _markerPublisher != null)
+        if (!_endpointsLogged && _tfPublisher != null && _markerPublisher != null)
         {
             _endpointsLogged = true;
             _statusMessage = "Phase130 RViz2 MarkerArray endpoints ready.";
-            Debug.Log(LogPrefix + " READY node=" + NodeName + " markers=" + MarkersTopic);
+            Debug.Log(LogPrefix + " READY node=" + NodeName + " tf=" + TfTopic + " markers=" + MarkersTopic);
         }
     }
 
     private void PublishIfDue()
     {
-        if (_markerPublisher == null)
+        if (_tfPublisher == null || _markerPublisher == null)
             return;
 
         if (Time.unscaledTime < _nextPublishAt)
@@ -232,6 +241,7 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
         try
         {
+            _tfPublisher.Publish(CreateTfMessage(sec, nanosec));
             var markerArray = CreateMarkerArray(sec, nanosec);
             _markerPublisher.Publish(markerArray);
         }
@@ -243,17 +253,50 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
             return;
         }
 
+        _publishedTfCount++;
         _publishedMarkerArrayCount++;
         _lastError = string.Empty;
-        _statusMessage = "Published markers=" + _publishedMarkerArrayCount
+        _statusMessage = "Published TF=" + _publishedTfCount
+            + " markers=" + _publishedMarkerArrayCount
             + " active=" + _activeMarkerCount
             + " action=" + _lastAction + ".";
 
         if (!_firstPublishLogged)
         {
             _firstPublishLogged = true;
-            Debug.Log(LogPrefix + " first publish: frame=map topic=" + MarkersTopic + " ns=" + Phase130MarkerArrayMessageBuilder.DefaultNamespace);
+            Debug.Log(LogPrefix + " first publish: frame=map tf=" + TfTopic + " topic=" + MarkersTopic + " ns=" + Phase130MarkerArrayMessageBuilder.DefaultNamespace);
         }
+    }
+
+    private tf2_msgs.msg.TFMessage CreateTfMessage(int sec, uint nanosec)
+    {
+        return new tf2_msgs.msg.TFMessage
+        {
+            Transforms = new[]
+            {
+                new geometry_msgs.msg.TransformStamped
+                {
+                    Header = CreateTfHeader(FrameMap, sec, nanosec),
+                    Child_frame_id = FrameMarkerOrigin,
+                    Transform = new geometry_msgs.msg.Transform
+                    {
+                        Translation = new geometry_msgs.msg.Vector3
+                        {
+                            X = 0.0,
+                            Y = 0.0,
+                            Z = 0.0
+                        },
+                        Rotation = new geometry_msgs.msg.Quaternion
+                        {
+                            X = 0.0,
+                            Y = 0.0,
+                            Z = 0.0,
+                            W = 1.0
+                        }
+                    }
+                }
+            }
+        };
     }
 
     private visualization_msgs.msg.MarkerArray CreateMarkerArray(int sec, uint nanosec)
@@ -338,6 +381,17 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
     private void CleanupRuntime()
     {
+        if (_node != null && _tfPublisher != null)
+        {
+            try
+            {
+                _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         if (_node != null && _markerPublisher != null)
         {
             try
@@ -360,6 +414,7 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
             }
         }
 
+        _tfPublisher = null;
         _markerPublisher = null;
         _node = null;
         if (_ownsRos2UnityComponent && _ros2Unity != null)
@@ -369,6 +424,19 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
         _executorStarted = false;
         _initializationBlocked = false;
         _warnedMissingStartExecutor = false;
+    }
+
+    private static std_msgs.msg.Header CreateTfHeader(string frameId, int sec, uint nanosec)
+    {
+        return new std_msgs.msg.Header
+        {
+            Stamp = new builtin_interfaces.msg.Time
+            {
+                Sec = sec,
+                Nanosec = nanosec
+            },
+            Frame_id = frameId
+        };
     }
 #endif
 

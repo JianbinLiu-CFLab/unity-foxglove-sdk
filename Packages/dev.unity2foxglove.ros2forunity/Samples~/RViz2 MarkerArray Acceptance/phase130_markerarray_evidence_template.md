@@ -17,6 +17,7 @@
 
 - Component:
 - Status:
+- Published TF count:
 - Published marker array count:
 - Active marker count:
 - Last marker ID:
@@ -37,6 +38,18 @@
 
 ```
 
+### topic info -v /tf
+
+```text
+
+```
+
+### /tf echo
+
+```text
+
+```
+
 ### /markers echo
 
 ```text
@@ -47,6 +60,7 @@
 
 - RViz2 config:
 - RViz2 MarkerArray observation:
+- RViz2 Fixed Frame status:
 - Screenshot path(s):
 
 ## Verdict
