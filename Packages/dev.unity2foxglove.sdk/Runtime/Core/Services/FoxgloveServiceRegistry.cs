@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
 namespace Unity.FoxgloveSDK.Core
@@ -110,6 +111,30 @@ namespace Unity.FoxgloveSDK.Core
             out FoxgloveServiceCall call,
             out string error)
         {
+            return TryEnqueue(
+                serviceId,
+                callId,
+                clientId,
+                encoding,
+                payload,
+                jsonPayload: null,
+                out call,
+                out error);
+        }
+
+        /// <summary>
+        /// Try to enqueue a service call and carry a parsed JSON payload from ingress.
+        /// </summary>
+        public bool TryEnqueue(
+            uint serviceId,
+            uint callId,
+            uint clientId,
+            string encoding,
+            byte[] payload,
+            JToken jsonPayload,
+            out FoxgloveServiceCall call,
+            out string error)
+        {
             lock (_lock)
             {
                 var key = (clientId, callId);
@@ -142,6 +167,7 @@ namespace Unity.FoxgloveSDK.Core
                     ClientId = clientId,
                     Encoding = encoding,
                     Payload = payload,
+                    JsonPayload = jsonPayload,
                     CreatedAt = DateTime.UtcNow
                 };
                 _pending[key] = call;

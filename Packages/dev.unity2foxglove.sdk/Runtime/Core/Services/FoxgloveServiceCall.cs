@@ -6,6 +6,7 @@
 // Complete/Fail methods used by the service drain pipeline.
 
 using System;
+using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -25,6 +26,8 @@ namespace Unity.FoxgloveSDK.Core
         public string Encoding { get; set; }
         /// <summary>Raw request payload bytes.</summary>
         public byte[] Payload { get; set; }
+        /// <summary>Parsed JSON request payload when the request uses JSON encoding.</summary>
+        public JToken JsonPayload { get; set; }
         /// <summary>UTC timestamp when the call was created.</summary>
         public DateTime CreatedAt { get; set; }
 

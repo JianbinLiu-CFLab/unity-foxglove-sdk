@@ -79,8 +79,8 @@ namespace Unity.FoxgloveSDK.Transport
 
         public WsSendQueue(int maxFrames, int maxQueuedBytes)
         {
-            _maxFrames = Math.Max(1, maxFrames);
-            _maxQueuedBytes = Math.Max(0, maxQueuedBytes);
+            _maxFrames = ManagedWebSocketOptions.NormalizeMaxQueuedFrames(maxFrames);
+            _maxQueuedBytes = ManagedWebSocketOptions.NormalizeMaxQueuedBytes(maxQueuedBytes);
         }
 
         public int Count

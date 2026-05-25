@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Core
     public partial class FoxgloveSession : IDisposable
     {
         private readonly IFoxgloveTransport _transport;
+        private readonly IPrioritizedFoxgloveTransport _prioritizedTransport;
         private readonly IFoxgloveClock _clock;
         private readonly ChannelRegistry _channels = new();
         private readonly SubscriptionRegistry _subscriptions = new();
@@ -118,6 +119,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            _prioritizedTransport = _transport as IPrioritizedFoxgloveTransport;
             _clock = clock ?? new SystemClock();
             _schemaRegistry = schemaRegistry ?? new DefaultSchemaRegistry();
             _logger = logger ?? new ConsoleLogger();
@@ -373,11 +375,11 @@ namespace Unity.FoxgloveSDK.Core
                     foreach (var (clientId, subscriptionId) in _subscriberScratch)
                     {
                         var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_transport is IPrioritizedFoxgloveTransport prioritized)
+                        if (_prioritizedTransport != null)
                         {
                             if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
                                 _logger.LogWarning(trace);
-                            prioritized.SendDataBinary(clientId, frame);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
                         }
                         else
                         {
@@ -423,11 +425,11 @@ namespace Unity.FoxgloveSDK.Core
                     foreach (var (clientId, subscriptionId) in _subscriberScratch)
                     {
                         var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_transport is IPrioritizedFoxgloveTransport prioritized)
+                        if (_prioritizedTransport != null)
                         {
                             if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
                                 _logger.LogWarning(trace);
-                            prioritized.SendDataBinary(clientId, frame);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
                         }
                         else
                         {
@@ -530,8 +532,8 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Broadcast droppable data binary frames when the transport supports priority queues.</summary>
         internal void BroadcastDataBinary(byte[] data)
         {
-            if (_transport is IPrioritizedFoxgloveTransport prioritized)
-                prioritized.BroadcastDataBinary(data);
+            if (_prioritizedTransport != null)
+                _prioritizedTransport.BroadcastDataBinary(data);
             else
                 _transport.BroadcastBinary(data);
         }

@@ -198,8 +198,8 @@ namespace Unity.FoxgloveSDK.Transport
                 ControlOverflowDisconnects = Interlocked.Read(ref _totalControlOverflowDisconnects),
                 TotalQueuedFrames = totalQueuedFrames,
                 TotalQueuedBytes = totalQueuedBytes,
-                MaxQueuedFramesPerClient = _options.MaxQueuedFramesPerClient,
-                MaxQueuedBytesPerClient = _options.MaxQueuedBytesPerClient,
+                MaxQueuedFramesPerClient = ManagedWebSocketOptions.NormalizeMaxQueuedFrames(_options.MaxQueuedFramesPerClient),
+                MaxQueuedBytesPerClient = ManagedWebSocketOptions.NormalizeMaxQueuedBytes(_options.MaxQueuedBytesPerClient),
                 Clients = clientList.AsReadOnly()
             };
         }

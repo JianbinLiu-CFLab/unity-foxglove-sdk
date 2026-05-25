@@ -210,18 +210,33 @@ namespace Unity.FoxgloveSDK.Core
             }
             catch
             {
-                if (replayForwarder != null)
-                    _replay.OnReplayMessage -= replayForwarder;
-                if (replayContextForwarder != null)
-                    _replay.OnReplayMessageContext -= replayContextForwarder;
-                if (replayBatchForwarder != null)
-                    _replay.OnReplayBatchCompleted -= replayBatchForwarder;
-                _replayForwarder = null;
-                _replayContextForwarder = null;
-                _replayBatchForwarder = null;
-                _recording.DetachFromSession();
-                session.Dispose();
-                _session = null;
+                try
+                {
+                    if (replayForwarder != null)
+                        _replay.OnReplayMessage -= replayForwarder;
+                    if (replayContextForwarder != null)
+                        _replay.OnReplayMessageContext -= replayContextForwarder;
+                    if (replayBatchForwarder != null)
+                        _replay.OnReplayBatchCompleted -= replayBatchForwarder;
+                    _replayForwarder = null;
+                    _replayContextForwarder = null;
+                    _replayBatchForwarder = null;
+
+                    try
+                    {
+                        session.Dispose();
+                    }
+                    catch (Exception disposeEx)
+                    {
+                        _logger.LogWarning(
+                            $"Ignoring startup dispose failure while preserving the original Start exception: {disposeEx.Message}");
+                    }
+                }
+                finally
+                {
+                    _recording.DetachFromSession();
+                    _session = null;
+                }
                 throw;
             }
         }

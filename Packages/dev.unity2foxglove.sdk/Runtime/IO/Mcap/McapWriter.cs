@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         private readonly Stream _stream;
         private readonly bool _leaveOpen;
+        private readonly MemoryStream _recordBuffer = new MemoryStream();
         private bool _disposed;
 
         /// <summary>Current byte position in the underlying stream.</summary>
@@ -82,56 +83,203 @@ namespace Unity.FoxgloveSDK.IO
             if (content != null && content.Length > 0) _stream.Write(content, 0, content.Length);
         }
 
+        private void WriteRecord(byte opcode, MemoryStream content)
+        {
+            _stream.WriteByte(opcode);
+            WriteU64(_stream, (ulong)(content?.Length ?? 0));
+            WriteMemoryStreamContent(content);
+        }
+
+        private void WriteBufferedRecord(byte opcode, Action<Stream> writeContent)
+        {
+            _recordBuffer.SetLength(0);
+            writeContent(_recordBuffer);
+            WriteRecord(opcode, _recordBuffer);
+        }
+
+        private void WriteMemoryStreamContent(MemoryStream content)
+        {
+            if (content == null || content.Length == 0)
+                return;
+
+            if (content.TryGetBuffer(out var segment))
+            {
+                _stream.Write(segment.Array, segment.Offset, segment.Count);
+                return;
+            }
+
+            var oldPosition = content.Position;
+            content.Position = 0;
+            content.CopyTo(_stream);
+            content.Position = oldPosition;
+        }
+
         /// <summary>Write the MCAP Header record (opcode <c>0x01</c>).</summary>
-        public void WriteHeader(string profile, string library) { var m = new MemoryStream(); WriteString(m, profile); WriteString(m, library); WriteRecord(OpcodeHeader, m.ToArray()); }
+        public void WriteHeader(string profile, string library) =>
+            WriteBufferedRecord(OpcodeHeader, m => { WriteString(m, profile); WriteString(m, library); });
         /// <summary>Write a Schema record (opcode <c>0x03</c>).</summary>
-        public void WriteSchema(ushort id, string name, string encoding, byte[] data) { var m = new MemoryStream(); WriteU16(m, id); WriteString(m, name); WriteString(m, encoding); WriteLengthPrefixedBytes(m, data ?? new byte[0]); WriteRecord(OpcodeSchema, m.ToArray()); }
+        public void WriteSchema(ushort id, string name, string encoding, byte[] data) =>
+            WriteBufferedRecord(OpcodeSchema, m =>
+            {
+                WriteU16(m, id);
+                WriteString(m, name);
+                WriteString(m, encoding);
+                WriteLengthPrefixedBytes(m, data ?? new byte[0]);
+            });
         /// <summary>Write a Channel record (opcode <c>0x04</c>).</summary>
-        public void WriteChannel(ushort channelId, ushort schemaId, string topic, string encoding, Dictionary<string,string> meta) { var m = new MemoryStream(); WriteU16(m, channelId); WriteU16(m, schemaId); WriteString(m, topic); WriteString(m, encoding); WriteStringMap(m, meta ?? new()); WriteRecord(OpcodeChannel, m.ToArray()); }
+        public void WriteChannel(ushort channelId, ushort schemaId, string topic, string encoding, Dictionary<string,string> meta) =>
+            WriteBufferedRecord(OpcodeChannel, m =>
+            {
+                WriteU16(m, channelId);
+                WriteU16(m, schemaId);
+                WriteString(m, topic);
+                WriteString(m, encoding);
+                WriteStringMap(m, meta ?? new());
+            });
         /// <summary>Write a Message record (opcode <c>0x05</c>).</summary>
-        public void WriteMessage(ushort channelId, uint seq, ulong logTime, ulong publishTime, byte[] data) { var m = new MemoryStream(); WriteU16(m, channelId); WriteU32(m, seq); WriteU64(m, logTime); WriteU64(m, publishTime); if (data != null) m.Write(data, 0, data.Length); WriteRecord(OpcodeMessage, m.ToArray()); }
+        public void WriteMessage(ushort channelId, uint seq, ulong logTime, ulong publishTime, byte[] data) =>
+            WriteBufferedRecord(OpcodeMessage, m =>
+            {
+                WriteU16(m, channelId);
+                WriteU32(m, seq);
+                WriteU64(m, logTime);
+                WriteU64(m, publishTime);
+                if (data != null) m.Write(data, 0, data.Length);
+            });
         /// <summary>Write a Chunk record (opcode <c>0x06</c>). Chunks contain compressed records plus start/end times, sizes, and checksums.</summary>
         public void WriteChunk(ulong startTime, ulong endTime, ulong uncompressedSize, uint uncompressedCrc, string compression, ulong compressedSize, byte[] records)
             => WriteChunk(startTime, endTime, uncompressedSize, uncompressedCrc, compression, compressedSize,
                 new ArraySegment<byte>(records ?? Array.Empty<byte>()));
         /// <summary>Write a Chunk record from an existing byte segment, avoiding a caller-side copy.</summary>
-        public void WriteChunk(ulong startTime, ulong endTime, ulong uncompressedSize, uint uncompressedCrc, string compression, ulong compressedSize, ArraySegment<byte> records) { var m = new MemoryStream(); WriteU64(m, startTime); WriteU64(m, endTime); WriteU64(m, uncompressedSize); WriteU32(m, uncompressedCrc); WriteString(m, compression); WriteU64(m, compressedSize); if (records.Array != null && records.Count > 0) m.Write(records.Array, records.Offset, records.Count); WriteRecord(OpcodeChunk, m.ToArray()); }
+        public void WriteChunk(ulong startTime, ulong endTime, ulong uncompressedSize, uint uncompressedCrc, string compression, ulong compressedSize, ArraySegment<byte> records) =>
+            WriteBufferedRecord(OpcodeChunk, m =>
+            {
+                WriteU64(m, startTime);
+                WriteU64(m, endTime);
+                WriteU64(m, uncompressedSize);
+                WriteU32(m, uncompressedCrc);
+                WriteString(m, compression);
+                WriteU64(m, compressedSize);
+                if (records.Array != null && records.Count > 0)
+                    m.Write(records.Array, records.Offset, records.Count);
+            });
         /// <summary>Write a Metadata record (opcode <c>0x0C</c>).</summary>
-        public void WriteMetadata(string name, Dictionary<string,string> meta) { var m = new MemoryStream(); WriteString(m, name); WriteStringMap(m, meta ?? new()); WriteRecord(OpcodeMetadata, m.ToArray()); }
+        public void WriteMetadata(string name, Dictionary<string,string> meta) =>
+            WriteBufferedRecord(OpcodeMetadata, m => { WriteString(m, name); WriteStringMap(m, meta ?? new()); });
         /// <summary>Write a Metadata Index record (opcode <c>0x0D</c>).</summary>
-        public void WriteMetadataIndex(ulong metadataOffset, ulong metadataLength, string name) { var m = new MemoryStream(); WriteU64(m, metadataOffset); WriteU64(m, metadataLength); WriteString(m, name ?? ""); WriteRecord(OpcodeMetadataIndex, m.ToArray()); }
+        public void WriteMetadataIndex(ulong metadataOffset, ulong metadataLength, string name) =>
+            WriteBufferedRecord(OpcodeMetadataIndex, m =>
+            {
+                WriteU64(m, metadataOffset);
+                WriteU64(m, metadataLength);
+                WriteString(m, name ?? "");
+            });
         /// <summary>Write a Message Index record (opcode <c>0x07</c>).</summary>
-        public void WriteMessageIndex(ushort channelId, List<(ulong,ulong)> entries) { var m = new MemoryStream(); WriteU16(m, channelId); var recordsLength = (uint)((entries?.Count ?? 0) * 16); WriteU32(m, recordsLength); if (entries != null) foreach (var (timestamp, offset) in entries) { WriteU64(m, timestamp); WriteU64(m, offset); } WriteRecord(OpcodeMessageIndex, m.ToArray()); }
+        public void WriteMessageIndex(ushort channelId, List<(ulong,ulong)> entries) =>
+            WriteBufferedRecord(OpcodeMessageIndex, m =>
+            {
+                WriteU16(m, channelId);
+                var recordsLength = (uint)((entries?.Count ?? 0) * 16);
+                WriteU32(m, recordsLength);
+                if (entries != null)
+                {
+                    foreach (var (timestamp, offset) in entries)
+                    {
+                        WriteU64(m, timestamp);
+                        WriteU64(m, offset);
+                    }
+                }
+            });
         /// <summary>Write a Chunk Index record (opcode <c>0x08</c>).</summary>
-        public void WriteChunkIndex(ulong startTime, ulong endTime, ulong chunkOffset, ulong chunkLength, Dictionary<ushort,ulong> messageIndexOffsets, ulong messageIndexLength, string compression, ulong compressedSize, ulong uncompressedSize) { var m = new MemoryStream(); WriteU64(m, startTime); WriteU64(m, endTime); WriteU64(m, chunkOffset); WriteU64(m, chunkLength); var mioLength = (uint)((messageIndexOffsets?.Count ?? 0) * 10); WriteU32(m, mioLength); if (messageIndexOffsets != null) foreach (var (k, v) in messageIndexOffsets) { WriteU16(m, k); WriteU64(m, v); } WriteU64(m, messageIndexLength); WriteString(m, compression); WriteU64(m, compressedSize); WriteU64(m, uncompressedSize); WriteRecord(OpcodeChunkIndex, m.ToArray()); }
+        public void WriteChunkIndex(ulong startTime, ulong endTime, ulong chunkOffset, ulong chunkLength, Dictionary<ushort,ulong> messageIndexOffsets, ulong messageIndexLength, string compression, ulong compressedSize, ulong uncompressedSize) =>
+            WriteBufferedRecord(OpcodeChunkIndex, m =>
+            {
+                WriteU64(m, startTime);
+                WriteU64(m, endTime);
+                WriteU64(m, chunkOffset);
+                WriteU64(m, chunkLength);
+                var mioLength = (uint)((messageIndexOffsets?.Count ?? 0) * 10);
+                WriteU32(m, mioLength);
+                if (messageIndexOffsets != null)
+                {
+                    foreach (var (k, v) in messageIndexOffsets)
+                    {
+                        WriteU16(m, k);
+                        WriteU64(m, v);
+                    }
+                }
+                WriteU64(m, messageIndexLength);
+                WriteString(m, compression);
+                WriteU64(m, compressedSize);
+                WriteU64(m, uncompressedSize);
+            });
         /// <summary>Write a Statistics record (opcode <c>0x0B</c>).</summary>
-        public void WriteStatistics(ulong messageCount, ushort schemaCount, uint channelCount, uint attachmentCount, uint metadataCount, uint chunkCount, ulong startTime, ulong endTime, Dictionary<ushort,ulong> channelMessageCounts) { var m = new MemoryStream(); WriteU64(m, messageCount); WriteU16(m, schemaCount); WriteU32(m, channelCount); WriteU32(m, attachmentCount); WriteU32(m, metadataCount); WriteU32(m, chunkCount); WriteU64(m, startTime); WriteU64(m, endTime); var cmsLength = (uint)((channelMessageCounts?.Count ?? 0) * 10); WriteU32(m, cmsLength); if (channelMessageCounts != null) foreach (var (k, v) in channelMessageCounts) { WriteU16(m, k); WriteU64(m, v); } WriteRecord(OpcodeStatistics, m.ToArray()); }
+        public void WriteStatistics(ulong messageCount, ushort schemaCount, uint channelCount, uint attachmentCount, uint metadataCount, uint chunkCount, ulong startTime, ulong endTime, Dictionary<ushort,ulong> channelMessageCounts) =>
+            WriteBufferedRecord(OpcodeStatistics, m =>
+            {
+                WriteU64(m, messageCount);
+                WriteU16(m, schemaCount);
+                WriteU32(m, channelCount);
+                WriteU32(m, attachmentCount);
+                WriteU32(m, metadataCount);
+                WriteU32(m, chunkCount);
+                WriteU64(m, startTime);
+                WriteU64(m, endTime);
+                var cmsLength = (uint)((channelMessageCounts?.Count ?? 0) * 10);
+                WriteU32(m, cmsLength);
+                if (channelMessageCounts != null)
+                {
+                    foreach (var (k, v) in channelMessageCounts)
+                    {
+                        WriteU16(m, k);
+                        WriteU64(m, v);
+                    }
+                }
+            });
         /// <summary>Write the Data End record (opcode <c>0x0F</c>).</summary>
-        public void WriteDataEnd(uint dataSectionCrc = 0) { var m = new MemoryStream(); WriteU32(m, dataSectionCrc); WriteRecord(OpcodeDataEnd, m.ToArray()); }
+        public void WriteDataEnd(uint dataSectionCrc = 0) =>
+            WriteBufferedRecord(OpcodeDataEnd, m => WriteU32(m, dataSectionCrc));
         /// <summary>Write the Footer record (opcode <c>0x02</c>). Contains summary offsets and CRC.</summary>
-        public void WriteFooter(ulong summaryStart, ulong summaryOffsetStart, uint summaryCrc) { var m = new MemoryStream(); WriteU64(m, summaryStart); WriteU64(m, summaryOffsetStart); WriteU32(m, summaryCrc); WriteRecord(OpcodeFooter, m.ToArray()); }
+        public void WriteFooter(ulong summaryStart, ulong summaryOffsetStart, uint summaryCrc) =>
+            WriteBufferedRecord(OpcodeFooter, m =>
+            {
+                WriteU64(m, summaryStart);
+                WriteU64(m, summaryOffsetStart);
+                WriteU32(m, summaryCrc);
+            });
         /// <summary>Write a Summary Offset record (opcode <c>0x0E</c>).</summary>
-        public void WriteSummaryOffset(byte groupOpcode, ulong start, ulong length) { var m = new MemoryStream(); m.WriteByte(groupOpcode); WriteU64(m, start); WriteU64(m, length); WriteRecord(OpcodeSummaryOffset, m.ToArray()); }
+        public void WriteSummaryOffset(byte groupOpcode, ulong start, ulong length) =>
+            WriteBufferedRecord(OpcodeSummaryOffset, m =>
+            {
+                m.WriteByte(groupOpcode);
+                WriteU64(m, start);
+                WriteU64(m, length);
+            });
         /// <summary>Write an Attachment record (opcode <c>0x09</c>) and return its index for summary registration.</summary>
         public McapAttachmentIndex WriteAttachment(ulong logTime, ulong createTime, string name, string mediaType, byte[] data, bool enableCrc = true)
         {
             var off = (ulong)_stream.Position;
-            var m = new MemoryStream();
-            WriteU64(m, logTime);
-            WriteU64(m, createTime);
-            WriteString(m, name);
-            WriteString(m, mediaType);
-            WriteU64(m, (ulong)(data?.Length ?? 0));
-            if (data != null && data.Length > 0) m.Write(data, 0, data.Length);
-            var content = m.ToArray();
-            var crc = enableCrc ? Crc32Helper.Compute(content) : 0;
-            var crcBytes = new byte[Crc32SizeBytes];
-            crcBytes[0] = (byte)crc; crcBytes[1] = (byte)(crc >> 8); crcBytes[2] = (byte)(crc >> 16); crcBytes[3] = (byte)(crc >> 24);
-            var fullContent = new byte[content.Length + Crc32SizeBytes];
-            Buffer.BlockCopy(content, 0, fullContent, 0, content.Length);
-            Buffer.BlockCopy(crcBytes, 0, fullContent, content.Length, Crc32SizeBytes);
-            WriteRecord(OpcodeAttachment, fullContent);
-            var totalLen = (ulong)(RecordHeaderLength + fullContent.Length);
+            _recordBuffer.SetLength(0);
+            WriteU64(_recordBuffer, logTime);
+            WriteU64(_recordBuffer, createTime);
+            WriteString(_recordBuffer, name);
+            WriteString(_recordBuffer, mediaType);
+            WriteU64(_recordBuffer, (ulong)(data?.Length ?? 0));
+            if (data != null && data.Length > 0) _recordBuffer.Write(data, 0, data.Length);
+
+            var contentLength = _recordBuffer.Length;
+            var crc = 0u;
+            if (enableCrc && contentLength > 0)
+            {
+                if (_recordBuffer.TryGetBuffer(out var content))
+                    crc = Crc32Helper.Compute(new ReadOnlySpan<byte>(content.Array, content.Offset, content.Count));
+            }
+
+            _stream.WriteByte(OpcodeAttachment);
+            WriteU64(_stream, (ulong)(contentLength + Crc32SizeBytes));
+            WriteMemoryStreamContent(_recordBuffer);
+            WriteU32(_stream, crc);
+            var totalLen = (ulong)(RecordHeaderLength + contentLength + Crc32SizeBytes);
             return new McapAttachmentIndex
             {
                 Offset = off,
@@ -145,17 +293,16 @@ namespace Unity.FoxgloveSDK.IO
         }
         /// <summary>Write an Attachment Index record (opcode <c>0x0A</c>).</summary>
         public void WriteAttachmentIndex(McapAttachmentIndex index)
-        {
-            var m = new MemoryStream();
-            WriteU64(m, index.Offset);
-            WriteU64(m, index.Length);
-            WriteU64(m, index.LogTime);
-            WriteU64(m, index.CreateTime);
-            WriteU64(m, index.DataSize);
-            WriteString(m, index.Name);
-            WriteString(m, index.MediaType);
-            WriteRecord(OpcodeAttachmentIndex, m.ToArray());
-        }
+            => WriteBufferedRecord(OpcodeAttachmentIndex, m =>
+            {
+                WriteU64(m, index.Offset);
+                WriteU64(m, index.Length);
+                WriteU64(m, index.LogTime);
+                WriteU64(m, index.CreateTime);
+                WriteU64(m, index.DataSize);
+                WriteString(m, index.Name);
+                WriteString(m, index.MediaType);
+            });
         /// <summary>Write raw bytes directly to the underlying stream without MCAP opcode/length framing.</summary>
         public void WriteBytes(byte[] data) { if (data != null && data.Length > 0) _stream.Write(data, 0, data.Length); }
         /// <summary>
@@ -189,6 +336,7 @@ namespace Unity.FoxgloveSDK.IO
 
             _disposed = true;
             _stream.Flush();
+            _recordBuffer.Dispose();
             if (!_leaveOpen)
                 _stream.Dispose();
         }
@@ -222,7 +370,29 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Write raw bytes with a 4-byte LE length prefix.</summary>
         public static void WriteLengthPrefixedBytes(Stream stream, byte[] data) { WriteU32(stream, (uint)(data?.Length ?? 0)); if (data != null && data.Length > 0) stream.Write(data, 0, data.Length); }
         /// <summary>Write a string-to-string map: key-value pairs sorted by key, with a 4-byte LE total-length prefix.</summary>
-        public static void WriteStringMap(Stream stream, Dictionary<string,string> map) { var t = new MemoryStream(); foreach (var kv in map.OrderBy(kv => kv.Key, StringComparer.Ordinal)) { WriteString(t, kv.Key); WriteString(t, kv.Value); } var b = t.ToArray(); WriteU32(stream, (uint)b.Length); if (b.Length > 0) stream.Write(b, 0, b.Length); }
+        public static void WriteStringMap(Stream stream, Dictionary<string,string> map)
+        {
+            if (map == null || map.Count == 0)
+            {
+                WriteU32(stream, 0);
+                return;
+            }
+
+            var ordered = map.OrderBy(kv => kv.Key, StringComparer.Ordinal).ToList();
+            var totalLength = 0u;
+            foreach (var kv in ordered)
+            {
+                totalLength += checked((uint)(4 + Encoding.UTF8.GetByteCount(kv.Key ?? "")));
+                totalLength += checked((uint)(4 + Encoding.UTF8.GetByteCount(kv.Value ?? "")));
+            }
+
+            WriteU32(stream, totalLength);
+            foreach (var kv in ordered)
+            {
+                WriteString(stream, kv.Key);
+                WriteString(stream, kv.Value);
+            }
+        }
 
         /// <summary>[Obsolete] Use <see cref="WriteString"/>.</summary>
         [Obsolete("Use WriteString.")]
