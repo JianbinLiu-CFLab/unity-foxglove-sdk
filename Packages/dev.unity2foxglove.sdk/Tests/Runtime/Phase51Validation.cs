@@ -49,8 +49,10 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyClearSessionClearsTransientServiceCallsOnly();
             VerifyBinaryPriorityContracts();
             VerifyClientIdAllocationCannotWrapToZero();
+            VerifySubscribeBroadcastFailuresAreCaught();
             VerifyReplayTickSupportsCallerOwnedBuffer();
             VerifyMcapRecorderAvoidsChunkToArrayCopy();
+            VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline();
             VerifyUnityAllocationFixes();
             VerifySourceEmitterUsesThisAccess();
             VerifyFoxRunMixedPolicyDiagnostic();
@@ -264,6 +266,24 @@ namespace Unity.FoxgloveSDK.Tests
                 "51B-21: ManagedWsBackend allocates nonzero client ids without uint wraparound");
         }
 
+        private static void VerifySubscribeBroadcastFailuresAreCaught()
+        {
+            var transport = new Phase51ThrowingSendTransport();
+            var session = new FoxgloveSession("phase51", transport, new FixedClock(1), new DefaultSchemaRegistry());
+            session.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/phase51/topic", Encoding = "json" });
+
+            transport.RaiseText(7, "{\"op\":\"subscribeConnectionGraph\"}");
+            transport.ThrowOnSendText = true;
+
+            Check(!ThrowsAny(() => transport.RaiseText(7, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":11,\"channelId\":1}]}")),
+                "51B-22: subscribe catches connection graph broadcast failures");
+            Check(transport.SendTextThrowCount > 0,
+                "51B-23: subscribe test exercised the throwing graph broadcast path");
+
+            Check(!ThrowsAny(() => transport.RaiseText(7, "{\"op\":\"unsubscribe\",\"subscriptionIds\":[11]}")),
+                "51B-24: unsubscribe catches connection graph broadcast failures");
+        }
+
         private static void VerifyReplayTickSupportsCallerOwnedBuffer()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
@@ -280,6 +300,15 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
             Check(!source.Contains("_chunkBuf.ToArray()") && source.Contains("TryGetBuffer"),
                 "51C-3: McapRecorder FlushChunk avoids the raw chunk ToArray copy");
+        }
+
+        private static void VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var method = ExtractMethodBody(source, "IEnumerable<ChannelWriteState> AllChannelWriteStates");
+            Check(method.Contains("if (seen.Add(m.McapId))")
+                  && !Regex.IsMatch(method, @"foreach\s*\(var\s+m\s+in\s+_chMap\.Values\)\s*seen\.Add\(m\.McapId\)"),
+                "51C-3b: McapRecorder tracks channel ids during the first AllChannelWriteStates pass");
         }
 
         private static void VerifyUnityAllocationFixes()
@@ -443,6 +472,36 @@ namespace Unity.FoxgloveSDK.Tests
             public void SendText(uint clientId, string json) => SentText.Add((clientId, json));
             public void SendBinary(uint clientId, byte[] data) => ControlBinary.Add((clientId, data));
             public void SendDataBinary(uint clientId, byte[] data) => DataBinary.Add((clientId, data));
+            public void Dispose() => Stop();
+            public void RaiseText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
+            public void RaiseBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
+            public void RaiseConnected(uint clientId) => OnClientConnected?.Invoke(clientId);
+            public void RaiseDisconnected(uint clientId) => OnClientDisconnected?.Invoke(clientId);
+        }
+
+        private sealed class Phase51ThrowingSendTransport : IFoxgloveTransport
+        {
+            public bool ThrowOnSendText;
+            public int SendTextThrowCount;
+            public bool IsRunning { get; private set; }
+            public event Action<uint> OnClientConnected;
+            public event Action<uint> OnClientDisconnected;
+            public event Action<uint, string> OnTextReceived;
+            public event Action<uint, byte[]> OnBinaryReceived;
+
+            public void Start(string host, int port) => IsRunning = true;
+            public void Stop() => IsRunning = false;
+            public void BroadcastText(string json) { }
+            public void BroadcastBinary(byte[] data) { }
+            public void SendText(uint clientId, string json)
+            {
+                if (!ThrowOnSendText)
+                    return;
+
+                SendTextThrowCount++;
+                throw new InvalidOperationException("phase51 send text failure");
+            }
+            public void SendBinary(uint clientId, byte[] data) { }
             public void Dispose() => Stop();
             public void RaiseText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
             public void RaiseBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);

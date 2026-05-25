@@ -384,8 +384,12 @@ namespace Unity.FoxgloveSDK.IO
         IEnumerable<ChannelWriteState> AllChannelWriteStates()
         {
             var seen = new HashSet<ushort>();
-            foreach (var m in _chMap.Values) yield return m;
-            foreach (var m in _chMap.Values) seen.Add(m.McapId);
+            foreach (var m in _chMap.Values)
+            {
+                if (seen.Add(m.McapId))
+                    yield return m;
+            }
+
             foreach (var m in _clientChannelWriteState.Values)
             {
                 if (seen.Add(m.McapId))

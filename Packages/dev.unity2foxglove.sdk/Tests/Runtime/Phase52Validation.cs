@@ -48,6 +48,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestReceiveLoopIgnoresSslStreamDisposalRace();
             TestFrameCodecTreatsRemoteAbortAggregateAsCleanEnd();
             TestWebSocketFrameProtocolRejectsInvalidClientFrames();
+            TestClientConnectedExceptionDisconnectsRegisteredClient();
             TestManagedBackendStopDisposesCancellationSource();
             TestHostedFoxgloveWebUrlMatchesOfficialSdk();
             TestManagerDefaultsAllowFoxgloveWebOrigin();
@@ -339,6 +340,41 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Ping, new byte[126], masked: true, fin: true)) == null,
                 "52B-5c: oversized control frames are rejected before dispatch");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("hi"), masked: true, fin: true, reservedBits: 0x40)) == null,
+                "52B-5d: client frames with RSV bits are rejected when no extension is negotiated");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(0x0, Encoding.UTF8.GetBytes("tail"), masked: true, fin: true)) == null,
+                "52B-5e: unsupported continuation frames are rejected");
+
+            Check(ReadFrameFromBytes(BuildClientFrame(0x3, Encoding.UTF8.GetBytes("reserved"), masked: true, fin: true)) == null,
+                "52B-5f: reserved data opcodes are rejected");
+        }
+
+        private static void TestClientConnectedExceptionDisconnectsRegisteredClient()
+        {
+            var port = GetFreeTcpPort();
+            var logger = new Phase52CaptureLogger();
+            using var backend = new ManagedWsBackend(logger);
+            backend.OnClientConnected += _ => throw new InvalidOperationException("phase52 connected event failure");
+            backend.Start("127.0.0.1", port);
+
+            using var client = new TcpClient();
+            client.ReceiveTimeout = TestTimeoutMs;
+            client.SendTimeout = TestTimeoutMs;
+            client.Connect("127.0.0.1", port);
+            using var stream = client.GetStream();
+            stream.ReadTimeout = TestTimeoutMs;
+            stream.WriteTimeout = TestTimeoutMs;
+
+            WriteHandshake(stream, "/", origin: null);
+            var response = ReadHttpResponse(stream);
+            Check(response.StartsWith("HTTP/1.1 101", StringComparison.Ordinal),
+                "52B-5g: test client completes the WebSocket upgrade before connected event failure");
+
+            WaitUntil(() => backend.GetStatsSnapshot().ActiveClientCount == 0, TestTimeoutMs);
+            Check(backend.GetStatsSnapshot().ActiveClientCount == 0,
+                "52B-5h: connected event failures disconnect the already registered client");
         }
 
         private static void TestManagedBackendStopDisposesCancellationSource()
@@ -787,11 +823,11 @@ namespace Unity.FoxgloveSDK.Tests
             return WsFrameCodec.TryReadFrame(stream, out var frame) ? frame : null;
         }
 
-        private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin)
+        private static byte[] BuildClientFrame(byte opcode, byte[] payload, bool masked, bool fin, byte reservedBits = 0)
         {
             payload ??= Array.Empty<byte>();
             using var ms = new MemoryStream();
-            ms.WriteByte((byte)((fin ? 0x80 : 0x00) | opcode));
+            ms.WriteByte((byte)((fin ? 0x80 : 0x00) | (reservedBits & 0x70) | opcode));
 
             var maskFlag = masked ? 0x80 : 0x00;
             if (payload.Length <= 125)

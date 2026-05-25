@@ -268,6 +268,8 @@ namespace Unity.FoxgloveSDK.Transport
         {
             WsConnection conn = null;
             Stream stream = null;
+            var clientId = 0u;
+            var registeredClient = false;
             try
             {
                 stream = CreateClientStream(tcpClient);
@@ -289,13 +291,14 @@ namespace Unity.FoxgloveSDK.Transport
                     stream.WriteTimeout = Timeout.Infinite;
                 }
 
-                var clientId = AllocateClientId();
+                clientId = AllocateClientId();
                 conn = new WsConnection(
                     tcpClient,
                     stream,
                     _options.MaxQueuedFramesPerClient,
                     _options.MaxQueuedBytesPerClient);
                 _clients[clientId] = conn;
+                registeredClient = true;
                 conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
 
                 Interlocked.Increment(ref _totalAcceptedClients);
@@ -305,7 +308,11 @@ namespace Unity.FoxgloveSDK.Transport
             }
             catch (Exception ex)
             {
-                if (conn == null)
+                if (registeredClient && conn != null)
+                {
+                    try { DisconnectClient(clientId, conn); } catch { }
+                }
+                else
                 {
                     try { stream?.Close(); } catch { }
                     try { stream?.Dispose(); } catch { }
@@ -446,8 +453,18 @@ namespace Unity.FoxgloveSDK.Transport
             if (!_clients.TryRemove(clientId, out _)) return;
             Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             Interlocked.Increment(ref _totalDisconnectedClients);
-            OnClientDisconnected?.Invoke(clientId);
-            try { conn.Dispose(); } catch { }
+            try
+            {
+                OnClientDisconnected?.Invoke(clientId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Client disconnected handler error: {FormatExceptionChain(ex)}");
+            }
+            finally
+            {
+                try { conn.Dispose(); } catch { }
+            }
         }
 
         private void HandleEnqueueResult(uint clientId, WsConnection conn, EnqueueResult result, string operation)
