@@ -45,6 +45,21 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 Directory.CreateDirectory(versionDir);
                 DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedPath);
+                if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
+                        compressedPath,
+                        OpenH264OfficialBinaryManifest.CompressedAssetSha256,
+                        "OpenH264 compressed asset",
+                        out _,
+                        out var compressedHashError))
+                {
+                    return Fail(
+                        compressedHashError
+                        + "\nManual fallback: open "
+                        + OpenH264OfficialBinaryManifest.ReleasePageUrl
+                        + ", download "
+                        + OpenH264OfficialBinaryManifest.AssetName
+                        + ", and compare SHA256 before installing.");
+                }
 
                 var tempDll = finalDllPath + ".tmp";
                 if (File.Exists(tempDll))
@@ -57,6 +72,21 @@ namespace Unity.FoxgloveSDK.Editor
                         + "\nManual fallback: download "
                         + OpenH264OfficialBinaryManifest.AssetName
                         + ", decompress it, then choose the resulting DLL with ...");
+                }
+
+                if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
+                        tempDll,
+                        OpenH264OfficialBinaryManifest.DllSha256,
+                        "OpenH264 DLL",
+                        out _,
+                        out var dllHashError))
+                {
+                    TryDelete(tempDll);
+                    return Fail(
+                        dllHashError
+                        + "\nManual fallback: open "
+                        + OpenH264OfficialBinaryManifest.ReleasePageUrl
+                        + ", download and decompress the pinned asset, and compare SHA256 before installing.");
                 }
 
                 if (File.Exists(finalDllPath))
