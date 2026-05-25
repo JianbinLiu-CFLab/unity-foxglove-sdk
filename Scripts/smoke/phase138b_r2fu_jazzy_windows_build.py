@@ -31,6 +31,9 @@ R2FU_REPO_URL = "https://github.com/RobotecAI/ros2-for-unity.git"
 R2FU_BRANCH = "feature/jazzy-support"
 ROS2CS_REPO_URL = "https://github.com/RobotecAI/ros2cs.git"
 ROS2CS_BRANCH = "feature/jazzy-support"
+DEFAULT_BUILD_ROOT = pathlib.Path(r"D:\ros2unity\.build\r2fu-jazzy-win64")
+DEFAULT_WORK_ROOT = DEFAULT_BUILD_ROOT / "work"
+DEFAULT_TEMP_ROOT = DEFAULT_BUILD_ROOT / "tmp"
 CHECKOUT_DIR_NAME = "r2u"
 JAZZY_PIXI_RUNTIME_DLLS = ("yaml.dll", "spdlog.dll", "fmt.dll")
 
@@ -73,8 +76,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=str(find_repo_root(pathlib.Path.cwd())))
-    parser.add_argument("--work-root", default=r"D:\r")
-    parser.add_argument("--temp-root", default=r"D:\t")
+    parser.add_argument("--work-root", default=str(DEFAULT_WORK_ROOT))
+    parser.add_argument("--temp-root", default=str(DEFAULT_TEMP_ROOT))
     parser.add_argument("--ros2-root", default=r"C:\ros2_jazzy\ros2-windows")
     parser.add_argument("--vs-dev-cmd", default="")
     parser.add_argument("--generator", choices=("auto", "visualstudio", "ninja"), default="auto")

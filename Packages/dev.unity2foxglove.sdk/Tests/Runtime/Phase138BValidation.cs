@@ -77,9 +77,12 @@ namespace Unity.FoxgloveSDK.Tests
             var script = ReadRepoText(OrchestratorPath);
             Check(script.Contains("argparse", StringComparison.Ordinal)
                   && script.Contains("--work-root", StringComparison.Ordinal)
-                  && script.Contains("D:\\r", StringComparison.Ordinal)
-                  && script.Contains("D:\\t", StringComparison.Ordinal),
-                "138B-B2: orchestrator exposes work-root arguments with short defaults");
+                  && script.Contains(@"D:\ros2unity\.build\r2fu-jazzy-win64", StringComparison.Ordinal)
+                  && script.Contains("DEFAULT_WORK_ROOT", StringComparison.Ordinal)
+                  && script.Contains("DEFAULT_TEMP_ROOT", StringComparison.Ordinal)
+                  && !script.Contains("default=r\"D:\\r\"", StringComparison.Ordinal)
+                  && !script.Contains("default=r\"D:\\t\"", StringComparison.Ordinal),
+                "138B-B2: orchestrator exposes work-root arguments under the consolidated build root");
             Check(script.Contains("assert_safe_root", StringComparison.Ordinal)
                   && script.Contains("BaiduSyncdisk", StringComparison.Ordinal),
                 "138B-B3: orchestrator refuses synced/repo work roots");
