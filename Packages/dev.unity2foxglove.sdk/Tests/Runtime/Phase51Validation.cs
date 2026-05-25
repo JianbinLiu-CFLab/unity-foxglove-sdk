@@ -60,9 +60,14 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated();
             VerifyRuntimeTickLockBoundaryIsDocumented();
             VerifyReplayTickSupportsCallerOwnedBuffer();
+            VerifyMcapReplayAvoidsPendingHeadRemovalAndDeadSeekGuard();
+            VerifyMcapReplayHistoryCapAvoidsRepeatedFullSort();
+            VerifyMcapReplayUsesLoggerForCrcWarnings();
             VerifyMcapWriterAvoidsPerRecordToArray();
             VerifyMcapRecorderAvoidsChunkToArrayCopy();
             VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline();
+            VerifyConnectionGraphSnapshotAvoidsLinqInsideLock();
+            VerifySubscriptionRegistryRemoveChannelUsesReverseIndex();
             VerifyUnityAllocationFixes();
             VerifySourceEmitterUsesThisAccess();
             VerifyFoxRunMixedPolicyDiagnostic();
@@ -445,6 +450,37 @@ namespace Unity.FoxgloveSDK.Tests
                 "51C-2: ReplayController reuses a replay tick message buffer");
         }
 
+        private static void VerifyMcapReplayAvoidsPendingHeadRemovalAndDeadSeekGuard()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var tick = ExtractMethodBody(source, "public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)");
+            var popPending = ExtractMethodBody(source, "private McapMessage PopPending");
+            var seek = ExtractMethodBody(source, "public void Seek");
+            Check(source.Contains("_pendingHeadIndex"),
+                "51C-2c: McapReplayEngine tracks a pending head index for O(1) front dequeue");
+            Check(!tick.Contains("_pending.RemoveAt(0)") && !popPending.Contains("RemoveAt(0)"),
+                "51C-2d: replay pending dequeue path avoids List.RemoveAt(0)");
+            Check(!seek.Contains("_currentChunkIdx < -1"),
+                "51C-2e: replay seek no longer carries an unreachable chunk-index guard");
+        }
+
+        private static void VerifyMcapReplayHistoryCapAvoidsRepeatedFullSort()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var addHistory = ExtractMethodBody(source, "private static void AddHistoryMessage");
+            Check(addHistory.Contains("FindHistoryInsertIndex") && !addHistory.Contains("result.Sort(CompareMessages)"),
+                "51C-2f: capped history retention inserts chronologically instead of sorting on every overflow");
+        }
+
+        private static void VerifyMcapReplayUsesLoggerForCrcWarnings()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            Check(source.Contains("IFoxgloveLogger") && source.Contains("_logger.LogWarning"),
+                "51C-2g: McapReplayEngine routes CRC warnings through IFoxgloveLogger");
+            Check(!source.Contains("Console.Error.WriteLine"),
+                "51C-2h: McapReplayEngine does not write CRC warnings directly to stderr");
+        }
+
         private static void VerifyMcapWriterAvoidsPerRecordToArray()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
@@ -484,6 +520,28 @@ namespace Unity.FoxgloveSDK.Tests
             Check(method.Contains("if (seen.Add(m.McapId))")
                   && !Regex.IsMatch(method, @"foreach\s*\(var\s+m\s+in\s+_chMap\.Values\)\s*seen\.Add\(m\.McapId\)"),
                 "51C-3b: McapRecorder tracks channel ids during the first AllChannelWriteStates pass");
+        }
+
+        private static void VerifyConnectionGraphSnapshotAvoidsLinqInsideLock()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/ConnectionGraphRegistry.cs");
+            var snapshot = ExtractMethodBody(source, "public ConnectionGraphUpdate GetSnapshot");
+            Check(!snapshot.Contains(".Select(") && !snapshot.Contains(".ToList()"),
+                "51C-3c: connection graph snapshot avoids LINQ allocation while holding the registry lock");
+            Check(source.Contains("CopyTopology"),
+                "51C-3d: connection graph snapshot uses explicit topology copy helpers");
+        }
+
+        private static void VerifySubscriptionRegistryRemoveChannelUsesReverseIndex()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/SubscriptionRegistry.cs");
+            var removeChannel = ExtractMethodBody(source, "public List<(uint clientId, uint subscriptionId, uint channelId)> RemoveChannel");
+            Check(source.Contains("_byChannel"),
+                "51C-3e: subscription registry maintains a channel-to-subscriber reverse index");
+            Check(removeChannel.Contains("_byChannel.TryGetValue")
+                  && !removeChannel.Contains("new List<uint>")
+                  && !removeChannel.Contains("foreach (var (clientId, subs) in _clients)"),
+                "51C-3f: RemoveChannel removes via reverse index without per-client removal buffers");
         }
 
         private static void VerifyUnityAllocationFixes()

@@ -147,7 +147,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 try
                 {
-                    _replayEngine = new McapReplayEngine();
+                    _replayEngine = new McapReplayEngine(_logger);
                     ValidateReplayFileForLoad(filePath);
                     _replayEngine.Load(filePath);
                     var summary = _replayEngine.Summary;
