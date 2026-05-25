@@ -128,6 +128,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "130C-6: smoke script reports missing define and optional StartExecutor diagnostics clearly");
             Check(script.Contains("_publishedMarkerArrayCount", StringComparison.Ordinal)
                   && script.Contains("_activeMarkerCount", StringComparison.Ordinal)
+                  && script.Contains("\" active=\" + _activeMarkerCount", StringComparison.Ordinal)
                   && script.Contains("_lastMarkerId", StringComparison.Ordinal)
                   && script.Contains("_lastAction", StringComparison.Ordinal)
                   && script.Contains("_runtimeRoot", StringComparison.Ordinal)

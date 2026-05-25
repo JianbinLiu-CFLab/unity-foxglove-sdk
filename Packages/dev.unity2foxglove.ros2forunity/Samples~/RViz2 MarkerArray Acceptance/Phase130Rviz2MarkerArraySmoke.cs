@@ -245,7 +245,9 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
         _publishedMarkerArrayCount++;
         _lastError = string.Empty;
-        _statusMessage = "Published markers=" + _publishedMarkerArrayCount + " action=" + _lastAction + ".";
+        _statusMessage = "Published markers=" + _publishedMarkerArrayCount
+            + " active=" + _activeMarkerCount
+            + " action=" + _lastAction + ".";
 
         if (!_firstPublishLogged)
         {
