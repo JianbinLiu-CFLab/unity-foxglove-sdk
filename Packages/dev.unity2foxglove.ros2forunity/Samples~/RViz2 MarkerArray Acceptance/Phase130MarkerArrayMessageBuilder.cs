@@ -45,10 +45,7 @@ public static class Phase130MarkerArrayMessageBuilder
         {
             Markers = new[]
             {
-                CreateBaseMarker(stableName, sec, nanosec, visualization_msgs.msg.Marker.ADD, visualization_msgs.msg.Marker.CUBE)
-                    .WithPose(position)
-                    .WithScale(scale)
-                    .WithColor(color)
+                CreateAddOrModifyMarker(stableName, position, scale, color, sec, nanosec)
             }
         };
     }
@@ -75,6 +72,29 @@ public static class Phase130MarkerArrayMessageBuilder
         };
     }
 
+    private static visualization_msgs.msg.Marker CreateAddOrModifyMarker(
+        string stableName,
+        Vector3 position,
+        Vector3 scale,
+        Color color,
+        int sec,
+        uint nanosec)
+    {
+        return new visualization_msgs.msg.Marker
+        {
+            Header = CreateHeader(sec, nanosec),
+            Ns = DefaultNamespace,
+            Id = CreateDeterministicId(stableName),
+            Type = visualization_msgs.msg.Marker.CUBE,
+            Action = visualization_msgs.msg.Marker.ADD,
+            Pose = CreatePose(position),
+            Scale = CreateScale(scale),
+            Color = CreateColor(color),
+            Lifetime = ZeroLifetime(),
+            Frame_locked = false
+        };
+    }
+
     private static visualization_msgs.msg.Marker CreateBaseMarker(string stableName, int sec, uint nanosec, int action, int type)
     {
         return new visualization_msgs.msg.Marker
@@ -84,21 +104,14 @@ public static class Phase130MarkerArrayMessageBuilder
             Id = CreateDeterministicId(stableName),
             Type = type,
             Action = action,
-            Pose = IdentityPose(),
-            Scale = OneScale(),
-            Color = WhiteColor(),
-            Lifetime = new builtin_interfaces.msg.Duration
-            {
-                Sec = 0,
-                Nanosec = 0u
-            },
+            Lifetime = ZeroLifetime(),
             Frame_locked = false
         };
     }
 
-    private static visualization_msgs.msg.Marker WithPose(this visualization_msgs.msg.Marker marker, Vector3 position)
+    private static geometry_msgs.msg.Pose CreatePose(Vector3 position)
     {
-        marker.Pose = new geometry_msgs.msg.Pose
+        return new geometry_msgs.msg.Pose
         {
             Position = new geometry_msgs.msg.Point
             {
@@ -108,30 +121,27 @@ public static class Phase130MarkerArrayMessageBuilder
             },
             Orientation = IdentityRotation()
         };
-        return marker;
     }
 
-    private static visualization_msgs.msg.Marker WithScale(this visualization_msgs.msg.Marker marker, Vector3 scale)
+    private static geometry_msgs.msg.Vector3 CreateScale(Vector3 scale)
     {
-        marker.Scale = new geometry_msgs.msg.Vector3
+        return new geometry_msgs.msg.Vector3
         {
             X = Math.Max(0.001d, scale.x),
             Y = Math.Max(0.001d, scale.y),
             Z = Math.Max(0.001d, scale.z)
         };
-        return marker;
     }
 
-    private static visualization_msgs.msg.Marker WithColor(this visualization_msgs.msg.Marker marker, Color color)
+    private static std_msgs.msg.ColorRGBA CreateColor(Color color)
     {
-        marker.Color = new std_msgs.msg.ColorRGBA
+        return new std_msgs.msg.ColorRGBA
         {
             R = color.r,
             G = color.g,
             B = color.b,
             A = Mathf.Clamp01(color.a)
         };
-        return marker;
     }
 
     private static std_msgs.msg.Header CreateHeader(int sec, uint nanosec)
@@ -147,27 +157,12 @@ public static class Phase130MarkerArrayMessageBuilder
         };
     }
 
-    private static geometry_msgs.msg.Pose IdentityPose()
+    private static builtin_interfaces.msg.Duration ZeroLifetime()
     {
-        return new geometry_msgs.msg.Pose
+        return new builtin_interfaces.msg.Duration
         {
-            Position = new geometry_msgs.msg.Point
-            {
-                X = 0.0,
-                Y = 0.0,
-                Z = 0.0
-            },
-            Orientation = IdentityRotation()
-        };
-    }
-
-    private static geometry_msgs.msg.Vector3 OneScale()
-    {
-        return new geometry_msgs.msg.Vector3
-        {
-            X = 1.0,
-            Y = 1.0,
-            Z = 1.0
+            Sec = 0,
+            Nanosec = 0u
         };
     }
 
@@ -182,15 +177,5 @@ public static class Phase130MarkerArrayMessageBuilder
         };
     }
 
-    private static std_msgs.msg.ColorRGBA WhiteColor()
-    {
-        return new std_msgs.msg.ColorRGBA
-        {
-            R = 1f,
-            G = 1f,
-            B = 1f,
-            A = 1f
-        };
-    }
 #endif
 }

@@ -89,3 +89,5 @@ $ ros2 topic echo --once /markers
 - The helper reports `GREEN`.
 - RViz2 displays TF, LaserScan, PointCloud2, and MarkerArray.
 - Evidence records commit hash, package version, Unity version, ROS2 distro, RMW implementation, ROS2 For Unity source, screenshots, and final verdict.
+
+This kit does not bump the package version or create a release tag by itself. Versioning and release tags remain part of the separate release process.

@@ -154,6 +154,38 @@ namespace Unity.FoxgloveSDK.Tests
                   && shared.Contains("gz_math_vendor", StringComparison.Ordinal)
                   && !helper.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal),
                 "131D-5: helper supports RMW/discovery selection and direct rviz2.exe launch");
+            Check(shared.Contains("startup_check_seconds", StringComparison.Ordinal)
+                  && shared.Contains("process.poll()", StringComparison.Ordinal)
+                  && shared.Contains("RViz2 exited immediately", StringComparison.Ordinal),
+                "131D-6: shared helper detects immediate RViz2 launch failures instead of reporting a dead pid as launched");
+            Check(shared.Contains("poll_interval_seconds", StringComparison.Ordinal)
+                  && shared.Contains("remaining = deadline - time.monotonic()", StringComparison.Ordinal)
+                  && shared.Contains("min(5.0, remaining)", StringComparison.Ordinal),
+                "131D-7: shared publisher wait loop is deadline-aware and avoids fixed long sleeps");
+            foreach (var path in new[]
+                     {
+                         "Scripts/smoke/phase128_rviz2_acceptance.py",
+                         "Scripts/smoke/phase129_pointcloud2_acceptance.py",
+                         "Scripts/smoke/phase130_markerarray_acceptance.py",
+                         "Scripts/smoke/phase131_standard_visualization_acceptance.py",
+                         "Scripts/smoke/phase132_standard_messages_acceptance.py"
+                     })
+            {
+                var smokeHelper = ReadRepoText(path);
+                Check(smokeHelper.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
+                      && !ContainsAny(smokeHelper, new[]
+                      {
+                          "def build_ros_env",
+                          "def validate_ros2_root",
+                          "def run_ros2",
+                          "def probe_node_list",
+                          "def probe_topic_info",
+                          "def wait_for_publisher",
+                          "def echo_once",
+                          "def launch_rviz"
+                      }),
+                    "131D-8: standard visualization helper reuses shared ROS2 env module: " + path);
+            }
         }
 
         private static void VerifyReadmeAndEvidenceTemplate()
@@ -198,6 +230,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("Publish Shared Base Tf", StringComparison.Ordinal)
                   && pointcloudReadme.Contains("Publish Shared Base Tf", StringComparison.Ordinal),
                 "131E-5: docs include the single-TF-owner rule and PointCloud2 shared-base toggle");
+            Check(sampleReadme.Contains("This kit does not bump the package version", StringComparison.Ordinal)
+                  && sampleReadme.Contains("release tag", StringComparison.Ordinal),
+                "131E-6: docs state version/tag handling remains a separate release process");
             Check(AllTokens(evidence,
                       "Commit hash",
                       "Package version",
@@ -211,7 +246,14 @@ namespace Unity.FoxgloveSDK.Tests
                       "/markers",
                       "Screenshot",
                       "Verdict"),
-                "131E-6: evidence template captures environment, v1 topics, screenshots, and verdict");
+                "131E-7: evidence template captures environment, v1 topics, screenshots, and verdict");
+            Check(AllTokens(evidence,
+                      "PASS",
+                      "PASS WITH NOTED LIMITATIONS",
+                      "BLOCKED",
+                      "SKIPPED")
+                  && !evidence.Contains("SKIPPED LIVE", StringComparison.Ordinal),
+                "131E-8: evidence template uses the same verdict vocabulary as the v1 README");
             Check(!ContainsAny(combined, new[]
                   {
                       "CameraInfo is supported",
@@ -224,7 +266,7 @@ namespace Unity.FoxgloveSDK.Tests
                       "rosbag2 interop is supported",
                       "all marker types are supported"
                   }),
-                "131E-7: docs do not over-claim deferred standard message families");
+                "131E-9: docs do not over-claim deferred standard message families");
         }
 
         private static void VerifyReleaseValidatorAcceptsV1SampleSet()

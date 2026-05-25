@@ -329,7 +329,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
         try
         {
-            if (_publishCamera && _cameraSource != null)
+            if (_publishCamera && _cameraSource != null && _cameraInfoPublisher != null && _imagePublisher != null)
             {
                 _cameraInfoPublisher.Publish(_cameraSource.CreateCameraInfo(sec, nanosec));
                 _cameraSource.RecordCameraInfoPublished();
@@ -340,28 +340,28 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
                 _publishedImageCount++;
             }
 
-            if (_publishImu && _imuSource != null)
+            if (_publishImu && _imuSource != null && _imuPublisher != null)
             {
                 _imuPublisher.Publish(_imuSource.CreateImu(sec, nanosec));
                 _imuSource.RecordPublished();
                 _publishedImuCount++;
             }
 
-            if (_publishOdometry && _odometrySource != null)
+            if (_publishOdometry && _odometrySource != null && _odometryPublisher != null)
             {
                 _odometryPublisher.Publish(_odometrySource.CreateOdometry(sec, nanosec));
                 _odometrySource.RecordPublished();
                 _publishedOdometryCount++;
             }
 
-            if (_publishPose && _poseSource != null)
+            if (_publishPose && _poseSource != null && _posePublisher != null)
             {
                 _posePublisher.Publish(_poseSource.CreatePoseStamped(sec, nanosec));
                 _poseSource.RecordPublished();
                 _publishedPoseCount++;
             }
 
-            if (_publishNavSatFix && _navSatFixSource != null)
+            if (_publishNavSatFix && _navSatFixSource != null && _navSatFixPublisher != null)
             {
                 _navSatFixPublisher.Publish(_navSatFixSource.CreateNavSatFix(sec, nanosec));
                 _navSatFixSource.RecordPublished();

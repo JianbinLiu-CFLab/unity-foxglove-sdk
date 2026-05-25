@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RvizConfigPath = SamplePath + "/rviz2_phase130_markerarray.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase130_markerarray_evidence_template.md";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase130_markerarray_acceptance.py";
+        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
@@ -85,11 +86,12 @@ namespace Unity.FoxgloveSDK.Tests
                      {
                          SampleReadmePath,
                          SmokeScriptPath,
-                         BuilderScriptPath,
-                         RvizConfigPath,
-                         EvidenceTemplatePath,
-                         AcceptanceScriptPath
-                     })
+                          BuilderScriptPath,
+                          RvizConfigPath,
+                          EvidenceTemplatePath,
+                          AcceptanceScriptPath,
+                          SharedHelperPath
+                      })
             {
                 Check(RepoFileExists(path), "130B-1: Phase130 file exists: " + path);
             }
@@ -161,7 +163,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("Type = type", StringComparison.Ordinal)
                   && builder.Contains("Action = action", StringComparison.Ordinal),
                 "130D-3: builder writes cube markers and cleanup actions");
-            Check(builder.Contains("Lifetime = new builtin_interfaces.msg.Duration", StringComparison.Ordinal)
+            Check(builder.Contains("Lifetime = ZeroLifetime()", StringComparison.Ordinal)
+                  && builder.Contains("new builtin_interfaces.msg.Duration", StringComparison.Ordinal)
                   && builder.Contains("Sec = 0", StringComparison.Ordinal)
                   && builder.Contains("Nanosec = 0u", StringComparison.Ordinal)
                   && builder.Contains("Frame_locked = false", StringComparison.Ordinal),
@@ -171,6 +174,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("Ns = DefaultNamespace", StringComparison.Ordinal)
                   && builder.Contains("Id = CreateDeterministicId(stableName)", StringComparison.Ordinal),
                 "130D-5: DELETE reuses the same namespace and deterministic ID as ADD");
+            Check(!ContainsAny(builder, new[]
+                  {
+                      ".WithPose(",
+                      ".WithScale(",
+                      ".WithColor(",
+                      "WithPose(this",
+                      "WithScale(this",
+                      "WithColor(this",
+                      "IdentityPose()",
+                      "OneScale()",
+                      "WhiteColor()"
+                  })
+                  && builder.Contains("CreatePose(position)", StringComparison.Ordinal)
+                  && builder.Contains("CreateScale(scale)", StringComparison.Ordinal)
+                  && builder.Contains("CreateColor(color)", StringComparison.Ordinal),
+                "130D-6: ADD builder constructs final pose, scale, and color directly without mutating fluent helpers");
         }
 
         private static void VerifyRvizConfig()
@@ -196,28 +215,33 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAcceptanceHelper()
         {
             var script = ReadRepoText(AcceptanceScriptPath);
+            var shared = ReadRepoText(SharedHelperPath);
+            var helperSurface = script + "\n" + shared;
 
             Check(script.Contains("# Purpose:", StringComparison.Ordinal)
                   && script.Contains("argparse", StringComparison.Ordinal)
                   && script.Contains("phase130", StringComparison.Ordinal),
                 "130F-1: Python acceptance helper has repository header and CLI entry point");
-            Check(script.Contains("ros2-script.py", StringComparison.Ordinal)
-                  && script.Contains(".pixi", StringComparison.Ordinal)
-                  && script.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
+            Check(script.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
+                  && script.Contains("ros2env.DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
+                  && shared.Contains("ros2-script.py", StringComparison.Ordinal)
+                  && shared.Contains(".pixi", StringComparison.Ordinal)
+                  && shared.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
                 "130F-2: helper uses pinned Windows Jazzy pixi Python and ros2-script.py");
-            Check(script.Contains("--no-daemon", StringComparison.Ordinal)
-                  && script.Contains("topic\", \"info\"", StringComparison.Ordinal)
-                  && script.Contains("\"-v\"", StringComparison.Ordinal)
-                  && script.Contains("node\", \"list\"", StringComparison.Ordinal),
+            Check(shared.Contains("--no-daemon", StringComparison.Ordinal)
+                  && shared.Contains("topic\", \"info\"", StringComparison.Ordinal)
+                  && shared.Contains("\"-v\"", StringComparison.Ordinal)
+                  && shared.Contains("node\", \"list\"", StringComparison.Ordinal),
                 "130F-3: helper uses no-daemon graph checks, node list, and topic info -v");
             Check(script.Contains("unity2foxglove_phase130_markerarray", StringComparison.Ordinal)
                   && script.Contains("/markers", StringComparison.Ordinal)
                   && script.Contains("visualization_msgs/msg/MarkerArray", StringComparison.Ordinal)
-                  && script.Contains("Publisher count:", StringComparison.Ordinal)
-                  && script.Contains("Node name:", StringComparison.Ordinal),
+                  && shared.Contains("Publisher count:", StringComparison.Ordinal)
+                  && shared.Contains("Node name:", StringComparison.Ordinal)
+                  && script.Contains("node_name=NODE_NAME", StringComparison.Ordinal),
                 "130F-4: helper proves required publisher endpoint belongs to the Phase130 node");
-            Check(script.Contains("--once", StringComparison.Ordinal)
-                  && script.Contains("--spin-time", StringComparison.Ordinal)
+            Check(helperSurface.Contains("--once", StringComparison.Ordinal)
+                  && helperSurface.Contains("--spin-time", StringComparison.Ordinal)
                   && script.Contains("frame_id: map", StringComparison.Ordinal)
                   && script.Contains("ns: unity2foxglove", StringComparison.Ordinal)
                   && script.Contains("type: 1", StringComparison.Ordinal)
@@ -231,12 +255,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("--rviz-config", StringComparison.Ordinal)
                   && script.Contains("--rmw", StringComparison.Ordinal)
                   && script.Contains("--discovery-range", StringComparison.Ordinal)
-                  && script.Contains("rviz2.exe", StringComparison.Ordinal)
-                  && script.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
-                  && script.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && shared.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && shared.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && shared.Contains("gz_math_vendor", StringComparison.Ordinal)
                   && !script.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal)
                   && !script.Contains("env[\"ROS_AUTOMATIC_DISCOVERY_RANGE\"] = \"SUBNET\"", StringComparison.Ordinal),
                 "130F-6: helper supports RMW/discovery selection and launches RViz2 through direct rviz2.exe");
+            Check(!ContainsAny(script, new[]
+                  {
+                      "def build_ros_env",
+                      "def validate_ros2_root",
+                      "def run_ros2",
+                      "def probe_node_list",
+                      "def probe_topic_info",
+                      "def wait_for_publisher",
+                      "def echo_once",
+                      "def launch_rviz"
+                  }),
+                "130F-7: helper reuses the shared ROS2 Windows module instead of carrying local copies");
         }
 
         private static void VerifyDocsAndEvidenceTemplate()
@@ -264,7 +300,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sampleReadme.Contains("FNV-1a", StringComparison.Ordinal)
                   && sampleReadme.Contains("DELETE", StringComparison.Ordinal)
                   && sampleReadme.Contains("DELETEALL", StringComparison.Ordinal)
-                  && sampleReadme.Contains("lifetime is zero", StringComparison.OrdinalIgnoreCase),
+                  && sampleReadme.Contains("lifetime is zero", StringComparison.OrdinalIgnoreCase)
+                  && sampleReadme.Contains("leave RViz2 clean", StringComparison.OrdinalIgnoreCase),
                 "130G-3: sample README documents marker ID, lifetime, and cleanup behavior");
             Check(evidence.Contains("OS", StringComparison.OrdinalIgnoreCase)
                   && evidence.Contains("Unity version", StringComparison.OrdinalIgnoreCase)

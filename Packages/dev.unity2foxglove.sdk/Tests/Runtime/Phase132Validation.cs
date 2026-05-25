@@ -157,11 +157,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(smoke.Contains("DefaultPublishIntervalSeconds = 0.5f", StringComparison.Ordinal)
                   && smoke.Contains("[SerializeField, Min(0.2f)]", StringComparison.Ordinal),
                 "132C-5: smoke defaults to no more than 5 Hz per source");
+            Check(AllTokens(smoke,
+                      "_cameraInfoPublisher != null",
+                      "_imagePublisher != null",
+                      "_imuPublisher != null",
+                      "_odometryPublisher != null",
+                      "_posePublisher != null",
+                      "_navSatFixPublisher != null"),
+                "132C-6: publish loop guards every optional publisher before publishing");
             Check(smoke.Contains("monotonic", StringComparison.OrdinalIgnoreCase)
                   && smoke.Contains("Y2038", StringComparison.Ordinal)
                   && smoke.Contains("Time.sec is int32", StringComparison.Ordinal)
                   && smoke.Contains("_lastStampSeconds", StringComparison.Ordinal),
-                "132C-6: smoke uses monotonic timestamps and documents ROS2 Time.sec/Y2038");
+                "132C-7: smoke uses monotonic timestamps and documents ROS2 Time.sec/Y2038");
             Check(AllTokens(camera,
                       "CameraInfo.k[9]",
                       "CameraInfo.r[9]",
@@ -172,7 +180,7 @@ namespace Unity.FoxgloveSDK.Tests
                       "Range(1, 128)",
                       "_width = 32",
                       "_height = 24"),
-                "132C-7: camera source validates calibration arrays and tiny rgb8 image rules");
+                "132C-8: camera source validates calibration arrays and tiny rgb8 image rules");
             Check(AllTokens(imu, "sensor_msgs.msg.Imu", "double[9]", "9.80665", "Linear_acceleration"),
                 "132C-8: IMU source has fixed covariance arrays and non-zero defaults");
             Check(AllTokens(odom, "nav_msgs.msg.Odometry", "double[36]", "Child_frame_id", "Linear", "Angular"),

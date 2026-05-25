@@ -194,25 +194,38 @@ def wait_for_publisher(
     timeout_seconds: float,
     expected_type: str | None = None,
     node_name: str | None = None,
+    poll_interval_seconds: float = 1.0,
 ) -> str:
     """Wait until a topic has a publisher endpoint, optionally from a node."""
 
     deadline = time.monotonic() + timeout_seconds
     last_output = ""
-    while time.monotonic() < deadline:
-        result = run_ros2(
-            pixi_python,
-            ros2_script,
-            env,
-            ["topic", "info", "-v", topic, "--no-daemon"],
-            check=False,
-            timeout_seconds=10.0,
-        )
-        last_output = result.stdout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.0:
+            break
+
+        probe_timeout_seconds = max(0.5, min(5.0, remaining))
+        try:
+            result = run_ros2(
+                pixi_python,
+                ros2_script,
+                env,
+                ["topic", "info", "-v", topic, "--no-daemon"],
+                check=False,
+                timeout_seconds=probe_timeout_seconds,
+            )
+            last_output = result.stdout
+        except subprocess.TimeoutExpired:
+            last_output = f"<topic info {topic} timed out after {probe_timeout_seconds:.1f}s>"
+
         type_ok = expected_type is None or expected_type in last_output
         if type_ok and topic_info_has_publisher(last_output, node_name):
             return last_output
-        time.sleep(2.0)
+
+        remaining = deadline - time.monotonic()
+        if remaining > 0.0:
+            time.sleep(min(poll_interval_seconds, remaining))
 
     topic_list = run_ros2(
         pixi_python,
@@ -220,7 +233,7 @@ def wait_for_publisher(
         env,
         ["topic", "list", "-t", "--no-daemon"],
         check=False,
-        timeout_seconds=10.0,
+        timeout_seconds=5.0,
     ).stdout
     node_text = "" if node_name is None else f" from {node_name}"
     raise TimeoutError(
@@ -262,6 +275,7 @@ def launch_rviz(
     config: pathlib.Path,
     env: dict[str, str],
     log_prefix: str,
+    startup_check_seconds: float = 1.5,
 ) -> None:
     """Launch RViz2 with the supplied config."""
 
@@ -299,4 +313,14 @@ def launch_rviz(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+    if startup_check_seconds > 0.0:
+        time.sleep(startup_check_seconds)
+        exit_code = process.poll()
+        if exit_code is not None:
+            raise RuntimeError(
+                f"RViz2 exited immediately with code {exit_code}; "
+                f"check the RViz2 config and DLL search path. config={config}"
+            )
+
     print(f"[{log_prefix}] Launched RViz2 pid={process.pid} config={config}")

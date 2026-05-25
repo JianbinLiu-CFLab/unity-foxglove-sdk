@@ -29,7 +29,7 @@ The sample is intentionally narrow. It does not add arbitrary marker types, mesh
 
 The default topic is `/markers` because that is the common RViz2 convention for marker displays. The message type is `visualization_msgs/msg/MarkerArray` because RViz2 understands it directly.
 
-Marker IDs are deterministic positive 31-bit values produced from stable marker names with FNV-1a. `DELETE` uses the same namespace and ID as the previous `ADD`, and the sample also emits `DELETEALL` periodically to prove cleanup behavior. Marker lifetime is zero, which means the marker persists until another marker message deletes or replaces it.
+Marker IDs are deterministic positive 31-bit values produced from stable marker names with FNV-1a. `DELETE` uses the same namespace and ID as the previous `ADD`, and the sample also emits `DELETEALL` periodically to prove cleanup behavior. Marker lifetime is zero, which means the marker persists until another marker message deletes or replaces it. To leave RViz2 clean after a manual run, stop after a `DELETEALL` frame has been observed or restart RViz2 before the next run.
 
 ## Windows Acceptance Helper
 

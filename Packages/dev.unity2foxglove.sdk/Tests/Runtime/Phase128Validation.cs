@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string EvidenceTemplatePath = SamplePath + "/phase128_rviz2_evidence_template.md";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase128_rviz2_acceptance.py";
         private const string RvizLauncherPath = "Scripts/smoke/launch_phase128_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
@@ -166,25 +167,30 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var script = ReadRepoText(AcceptanceScriptPath);
             var launcher = ReadRepoText(RvizLauncherPath);
+            var shared = ReadRepoText(SharedHelperPath);
+            var helperSurface = script + "\n" + shared;
 
             Check(script.Contains("# Purpose:", StringComparison.Ordinal)
                   && script.Contains("argparse", StringComparison.Ordinal)
                   && script.Contains("phase128", StringComparison.Ordinal),
                 "128E-1: Python acceptance helper has repository header and CLI entry point");
-            Check(script.Contains("ros2-script.py", StringComparison.Ordinal)
-                  && script.Contains(".pixi", StringComparison.Ordinal)
-                  && script.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
+            Check(script.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
+                  && script.Contains("ros2env.DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
+                  && shared.Contains("ros2-script.py", StringComparison.Ordinal)
+                  && shared.Contains(".pixi", StringComparison.Ordinal)
+                  && shared.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
                 "128E-2: helper uses pinned Windows Jazzy pixi Python and ros2-script.py");
-            Check(script.Contains("--no-daemon", StringComparison.Ordinal)
-                  && script.Contains("topic\", \"info\"", StringComparison.Ordinal)
-                  && script.Contains("\"-v\"", StringComparison.Ordinal)
-                  && script.Contains("node\", \"list\"", StringComparison.Ordinal),
+            Check(shared.Contains("--no-daemon", StringComparison.Ordinal)
+                  && shared.Contains("topic\", \"info\"", StringComparison.Ordinal)
+                  && shared.Contains("\"-v\"", StringComparison.Ordinal)
+                  && shared.Contains("node\", \"list\"", StringComparison.Ordinal),
                 "128E-3: helper uses no-daemon graph checks, node list, and topic info -v");
             Check(script.Contains("unity2foxglove_phase128_rviz2", StringComparison.Ordinal)
                   && script.Contains("/tf", StringComparison.Ordinal)
                   && script.Contains("/scan", StringComparison.Ordinal)
-                  && script.Contains("Publisher count:", StringComparison.Ordinal)
-                  && script.Contains("Node name:", StringComparison.Ordinal),
+                  && shared.Contains("Publisher count:", StringComparison.Ordinal)
+                  && shared.Contains("Node name:", StringComparison.Ordinal)
+                  && script.Contains("node_name=NODE_NAME", StringComparison.Ordinal),
                 "128E-4: helper proves required publisher endpoints belong to the Phase128 node");
             Check(script.Contains("probe_node_list", StringComparison.Ordinal)
                   && script.Contains("node list did not include", StringComparison.Ordinal)
@@ -193,8 +199,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "128E-4b: helper treats flaky node list and /tf topic info as diagnostics instead of hard gates");
             Check(script.Contains("tf2_msgs/msg/TFMessage", StringComparison.Ordinal)
                   && script.Contains("sensor_msgs/msg/LaserScan", StringComparison.Ordinal)
-                  && script.Contains("--once", StringComparison.Ordinal)
-                  && script.Contains("--spin-time", StringComparison.Ordinal)
+                  && helperSurface.Contains("--once", StringComparison.Ordinal)
+                  && helperSurface.Contains("--spin-time", StringComparison.Ordinal)
                   && script.Contains("map", StringComparison.Ordinal)
                   && script.Contains("base_link", StringComparison.Ordinal)
                   && script.Contains("laser", StringComparison.Ordinal)
@@ -202,17 +208,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "128E-5: helper echoes TF/LaserScan once with bounded spin time and content checks");
             Check(script.Contains("--launch-rviz", StringComparison.Ordinal)
                   && script.Contains("--rviz-config", StringComparison.Ordinal)
-                  && script.Contains("rviz2.exe", StringComparison.Ordinal)
-                  && script.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
-                  && script.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && shared.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && shared.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && shared.Contains("gz_math_vendor", StringComparison.Ordinal)
                   && !script.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal),
                 "128E-6: helper can optionally launch RViz2 through direct rviz2.exe with required DLL paths");
             Check(script.Contains("--rmw", StringComparison.Ordinal)
-                  && script.Contains("rmw_implementation", StringComparison.Ordinal)
-                  && script.Contains("env.get(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal),
+                  && helperSurface.Contains("rmw_implementation", StringComparison.Ordinal)
+                  && shared.Contains("env.get(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal),
                 "128E-7: helper lets manual acceptance select or preserve the RMW implementation");
             Check(script.Contains("--discovery-range", StringComparison.Ordinal)
-                  && script.Contains("discovery_range", StringComparison.Ordinal)
+                  && helperSurface.Contains("discovery_range", StringComparison.Ordinal)
                   && !script.Contains("env[\"ROS_AUTOMATIC_DISCOVERY_RANGE\"] = \"SUBNET\"", StringComparison.Ordinal),
                 "128E-8: helper can override discovery range without forcing SUBNET by default");
             Check(launcher.Contains("# Purpose:", StringComparison.Ordinal)
