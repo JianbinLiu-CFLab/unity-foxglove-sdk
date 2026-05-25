@@ -14,9 +14,22 @@ import pathlib
 import re
 import subprocess
 import time
+from datetime import datetime
 
 
 DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows")
+
+
+def timestamp() -> str:
+    """Return a local wall-clock timestamp for acceptance diagnostics."""
+
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
+def log_event(log_prefix: str, message: str) -> None:
+    """Print a timestamped acceptance diagnostic line."""
+
+    print(f"[{timestamp()}] [{log_prefix}] {message}", flush=True)
 
 
 def find_workspace_root() -> pathlib.Path:
@@ -227,14 +240,17 @@ def wait_for_publisher(
         if remaining > 0.0:
             time.sleep(min(poll_interval_seconds, remaining))
 
-    topic_list = run_ros2(
-        pixi_python,
-        ros2_script,
-        env,
-        ["topic", "list", "-t", "--no-daemon"],
-        check=False,
-        timeout_seconds=5.0,
-    ).stdout
+    try:
+        topic_list = run_ros2(
+            pixi_python,
+            ros2_script,
+            env,
+            ["topic", "list", "-t", "--no-daemon"],
+            check=False,
+            timeout_seconds=5.0,
+        ).stdout
+    except subprocess.TimeoutExpired:
+        topic_list = "<topic list timed out after 5.0s>"
     node_text = "" if node_name is None else f" from {node_name}"
     raise TimeoutError(
         f"Timed out waiting for publisher{node_text} on {topic}.\n"
@@ -270,14 +286,51 @@ def echo_once(
     ).stdout
 
 
+def visible_windows_for_pid(pid: int) -> list[str]:
+    """Return visible top-level Windows titles owned by a process id."""
+
+    if os.name != "nt":
+        return []
+
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    titles: list[str] = []
+
+    enum_windows_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def callback(hwnd: wintypes.HWND, _lparam: wintypes.LPARAM) -> bool:
+        """Collect visible window titles owned by the target process."""
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        process_id = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+        if process_id.value != pid:
+            return True
+
+        length = user32.GetWindowTextLengthW(hwnd)
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buffer, length + 1)
+        titles.append(buffer.value or "<untitled>")
+        return True
+
+    user32.EnumWindows(enum_windows_proc(callback), 0)
+    return titles
+
+
 def launch_rviz(
     ros2_root: pathlib.Path,
     config: pathlib.Path,
     env: dict[str, str],
     log_prefix: str,
     startup_check_seconds: float = 1.5,
-) -> None:
-    """Launch RViz2 with the supplied config."""
+    window_wait_seconds: float = 0.0,
+) -> subprocess.Popen:
+    """Launch RViz2 with the supplied config and optional visible-window timing."""
+
+    launch_started = time.perf_counter()
 
     if not config.exists():
         raise FileNotFoundError(f"RViz2 config does not exist: {config}")
@@ -306,6 +359,8 @@ def launch_rviz(
     rviz_env["QT_QUICK_BACKEND"] = "software"
     rviz_env["LIBGL_ALWAYS_SOFTWARE"] = "1"
 
+    log_event(log_prefix, f"RViz2 launch request exe={rviz_exe} config={config}")
+    popen_started = time.perf_counter()
     process = subprocess.Popen(
         [str(rviz_exe), "-d", str(config)],
         cwd=str(ros2_root),
@@ -313,14 +368,57 @@ def launch_rviz(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    popen_elapsed = time.perf_counter() - popen_started
+    total_elapsed = time.perf_counter() - launch_started
+    log_event(
+        log_prefix,
+        f"RViz2 Popen returned pid={process.pid} popen_elapsed={popen_elapsed:.3f}s total_elapsed={total_elapsed:.3f}s",
+    )
 
     if startup_check_seconds > 0.0:
-        time.sleep(startup_check_seconds)
-        exit_code = process.poll()
+        check_deadline = time.perf_counter() + startup_check_seconds
+        exit_code = None
+        while time.perf_counter() < check_deadline:
+            exit_code = process.poll()
+            if exit_code is not None:
+                break
+            time.sleep(0.1)
         if exit_code is not None:
             raise RuntimeError(
                 f"RViz2 exited immediately with code {exit_code}; "
                 f"check the RViz2 config and DLL search path. config={config}"
             )
+        log_event(
+            log_prefix,
+            f"RViz2 process alive after startup_check={startup_check_seconds:.1f}s elapsed={time.perf_counter() - launch_started:.3f}s",
+        )
 
-    print(f"[{log_prefix}] Launched RViz2 pid={process.pid} config={config}")
+    if window_wait_seconds > 0.0:
+        log_event(log_prefix, f"Waiting up to {window_wait_seconds:.1f}s for visible RViz2 window.")
+        window_deadline = time.perf_counter() + window_wait_seconds
+        while time.perf_counter() < window_deadline:
+            exit_code = process.poll()
+            if exit_code is not None:
+                raise RuntimeError(
+                    f"RViz2 exited with code {exit_code} before a visible window appeared; "
+                    f"elapsed={time.perf_counter() - launch_started:.3f}s config={config}"
+                )
+
+            titles = visible_windows_for_pid(process.pid)
+            if titles:
+                log_event(
+                    log_prefix,
+                    f"RViz2 visible window detected elapsed={time.perf_counter() - launch_started:.3f}s title={titles[0]}",
+                )
+                break
+
+            time.sleep(0.25)
+        else:
+            log_event(
+                log_prefix,
+                f"RViz2 visible window not detected within {window_wait_seconds:.1f}s; "
+                f"process_alive={process.poll() is None} elapsed={time.perf_counter() - launch_started:.3f}s",
+            )
+
+    log_event(log_prefix, f"Launched RViz2 pid={process.pid} config={config}")
+    return process

@@ -10,8 +10,8 @@
 Start Unity manually first. Import the RViz2 Standard Visualization Acceptance,
 RViz2 PointCloud2 Acceptance, and RViz2 MarkerArray Acceptance publisher samples,
 then enter Play Mode. This helper uses the pinned Windows ROS2 Jazzy Python
-entry point to check /tf, /scan, /points, and /markers, then optionally launches
-RViz2 with the consolidated v1 config.
+entry point to check /tf, /scan, /points, and /markers, then launches RViz2
+with the consolidated v1 config by default.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import argparse
 import pathlib
 import re
 import sys
+import time
 
 import _ros2_windows_env as ros2env
 
@@ -78,10 +79,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="Override ROS_AUTOMATIC_DISCOVERY_RANGE. Omit to preserve the shell value or ROS2 default.",
     )
-    parser.add_argument(
+    launch_group = parser.add_mutually_exclusive_group()
+    launch_group.add_argument(
         "--launch-rviz",
+        dest="launch_rviz",
         action="store_true",
-        help="Launch RViz2 with --rviz-config after CLI checks pass.",
+        help="Launch RViz2 with --rviz-config after publisher endpoint checks. This is the default.",
+    )
+    launch_group.add_argument(
+        "--no-launch-rviz",
+        dest="launch_rviz",
+        action="store_false",
+        help="Run ROS2 graph and echo checks without launching RViz2.",
+    )
+    parser.set_defaults(launch_rviz=True)
+    parser.add_argument(
+        "--rviz-startup-check-seconds",
+        type=float,
+        default=1.5,
+        help="Seconds to wait for an immediate RViz2 process exit after launch.",
+    )
+    parser.add_argument(
+        "--rviz-window-wait-seconds",
+        type=float,
+        default=45.0,
+        help="Seconds to wait for a visible RViz2 window after launch.",
     )
     return parser.parse_args(argv)
 
@@ -143,10 +165,40 @@ def validate_markerarray_echo(output: str) -> None:
         raise RuntimeError(f"MarkerArray echo did not contain ADD or DELETE action.\n{output}")
 
 
+def launch_rviz_before_echo(
+    should_launch: bool,
+    ros2_root: pathlib.Path,
+    rviz_config: pathlib.Path,
+    env: dict[str, str],
+    startup_check_seconds: float,
+    window_wait_seconds: float,
+) -> None:
+    """Launch RViz2 before one-shot echo validation, once publisher endpoints exist."""
+
+    if should_launch:
+        ros2env.launch_rviz(
+            ros2_root,
+            rviz_config,
+            env,
+            "phase131",
+            startup_check_seconds=startup_check_seconds,
+            window_wait_seconds=window_wait_seconds,
+        )
+    else:
+        ros2env.log_event("phase131", "RViz2 launch skipped because --no-launch-rviz was supplied.")
+
+
 def main(argv: list[str]) -> int:
     """Script entry point."""
 
     args = parse_args(argv)
+    script_started = time.perf_counter()
+    ros2env.log_event(
+        "phase131",
+        "script start "
+        + f"launch_rviz={args.launch_rviz} wait_seconds={args.wait_seconds:.1f} "
+        + f"echo_spin_seconds={args.echo_spin_seconds:.1f}",
+    )
     workspace_root = ros2env.find_workspace_root()
     ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
     rviz_config = ros2env.resolve_existing_path(args.rviz_config, "RViz2 config", workspace_root)
@@ -162,9 +214,21 @@ def main(argv: list[str]) -> int:
     print(f"[phase131] ROS_AUTOMATIC_DISCOVERY_RANGE: {env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')}")
     print(f"[phase131] RViz2 config: {rviz_config}")
 
+    launch_rviz_before_echo(
+        args.launch_rviz,
+        ros2_root,
+        rviz_config,
+        env,
+        args.rviz_startup_check_seconds,
+        args.rviz_window_wait_seconds,
+    )
+
     print("--- node list (diagnostic) ---")
+    stage_started = time.perf_counter()
+    ros2env.log_event("phase131", "node list probe start")
     nodes = ros2env.probe_node_list(pixi_python, ros2_script, env)
     print(nodes.rstrip() or "<empty>")
+    ros2env.log_event("phase131", f"node list probe done elapsed={time.perf_counter() - stage_started:.3f}s")
 
     topics = [
         (TF_TOPIC, TF_MSG_TYPE, None),
@@ -174,6 +238,8 @@ def main(argv: list[str]) -> int:
     ]
     for topic, msg_type, node_name in topics:
         print(f"--- topic info -v {topic} ---")
+        stage_started = time.perf_counter()
+        ros2env.log_event("phase131", f"topic wait start topic={topic} type={msg_type}")
         info = ros2env.wait_for_publisher(
             pixi_python,
             ros2_script,
@@ -184,8 +250,11 @@ def main(argv: list[str]) -> int:
             node_name,
         )
         print(info.rstrip())
+        ros2env.log_event("phase131", f"topic wait done topic={topic} elapsed={time.perf_counter() - stage_started:.3f}s")
 
     print("--- echo /tf ---")
+    stage_started = time.perf_counter()
+    ros2env.log_event("phase131", "echo start topic=/tf")
     tf_echo = echo_until_tokens(
         pixi_python,
         ros2_script,
@@ -196,27 +265,35 @@ def main(argv: list[str]) -> int:
         ["map", "base_link", "laser", "point_cloud_sensor"],
     )
     print(tf_echo.rstrip())
+    ros2env.log_event("phase131", f"echo done topic=/tf elapsed={time.perf_counter() - stage_started:.3f}s")
 
     print("--- echo /scan ---")
+    stage_started = time.perf_counter()
+    ros2env.log_event("phase131", "echo start topic=/scan")
     scan_echo = ros2env.echo_once(pixi_python, ros2_script, env, SCAN_TOPIC, SCAN_MSG_TYPE, args.echo_spin_seconds)
     print(scan_echo.rstrip())
     validate_scan_echo(scan_echo)
+    ros2env.log_event("phase131", f"echo done topic=/scan elapsed={time.perf_counter() - stage_started:.3f}s")
 
     print("--- echo /points ---")
+    stage_started = time.perf_counter()
+    ros2env.log_event("phase131", "echo start topic=/points")
     points_echo = ros2env.echo_once(pixi_python, ros2_script, env, POINTS_TOPIC, POINTS_MSG_TYPE, args.echo_spin_seconds)
     print(points_echo.rstrip())
     validate_pointcloud2_echo(points_echo)
+    ros2env.log_event("phase131", f"echo done topic=/points elapsed={time.perf_counter() - stage_started:.3f}s")
 
     print("--- echo /markers ---")
+    stage_started = time.perf_counter()
+    ros2env.log_event("phase131", "echo start topic=/markers")
     markers_echo = ros2env.echo_once(pixi_python, ros2_script, env, MARKERS_TOPIC, MARKERS_MSG_TYPE, args.echo_spin_seconds)
     print(markers_echo.rstrip())
     validate_markerarray_echo(markers_echo)
-
-    if args.launch_rviz:
-        ros2env.launch_rviz(ros2_root, rviz_config, env, "phase131")
+    ros2env.log_event("phase131", f"echo done topic=/markers elapsed={time.perf_counter() - stage_started:.3f}s")
 
     print("[phase131] GREEN: /tf, /scan, /points, and /markers external ROS2 acceptance checks completed.")
     print("[phase131] Confirm RViz2 displays TF, LaserScan, PointCloud2, and MarkerArray before marking manual PASS.")
+    ros2env.log_event("phase131", f"script completed elapsed={time.perf_counter() - script_started:.3f}s")
     return 0
 
 

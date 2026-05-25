@@ -10,7 +10,7 @@
 Start Unity manually first, import the RViz2 MarkerArray Acceptance sample, add
 Phase130Rviz2MarkerArraySmoke to a scene object, and enter Play Mode. This
 helper then uses the pinned Windows ROS2 Jazzy Python entry point to check the
-external ROS2 graph and, optionally, launch RViz2.
+external ROS2 graph and launch RViz2 by default.
 """
 
 from __future__ import annotations
@@ -75,10 +75,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "or the ROS2 default."
         ),
     )
-    parser.add_argument(
+    launch_group = parser.add_mutually_exclusive_group()
+    launch_group.add_argument(
         "--launch-rviz",
+        dest="launch_rviz",
         action="store_true",
-        help="Launch RViz2 with --rviz-config after CLI checks pass.",
+        help="Launch RViz2 with --rviz-config after publisher checks. This is the default.",
+    )
+    launch_group.add_argument(
+        "--no-launch-rviz",
+        dest="launch_rviz",
+        action="store_false",
+        help="Run ROS2 graph and echo checks without launching RViz2.",
+    )
+    parser.set_defaults(launch_rviz=True)
+    parser.add_argument(
+        "--rviz-startup-check-seconds",
+        type=float,
+        default=1.5,
+        help="Seconds to wait for an immediate RViz2 process exit after launch.",
+    )
+    parser.add_argument(
+        "--rviz-window-wait-seconds",
+        type=float,
+        default=45.0,
+        help="Seconds to wait for a visible RViz2 window after launch.",
     )
     return parser.parse_args(argv)
 
@@ -115,6 +136,29 @@ def validate_tf_echo(output: str) -> None:
         raise RuntimeError(f"TF echo missing required token(s): {', '.join(missing)}\n{output}")
 
 
+def launch_rviz_before_echo(
+    should_launch: bool,
+    ros2_root: pathlib.Path,
+    rviz_config: pathlib.Path,
+    env: dict[str, str],
+    startup_check_seconds: float,
+    window_wait_seconds: float,
+) -> None:
+    """Launch RViz2 as soon as publisher endpoints are visible."""
+
+    if should_launch:
+        ros2env.launch_rviz(
+            ros2_root,
+            rviz_config,
+            env,
+            "phase130",
+            startup_check_seconds=startup_check_seconds,
+            window_wait_seconds=window_wait_seconds,
+        )
+    else:
+        ros2env.log_event("phase130", "RViz2 launch skipped because --no-launch-rviz was supplied.")
+
+
 def main(argv: list[str]) -> int:
     """Script entry point."""
 
@@ -133,6 +177,15 @@ def main(argv: list[str]) -> int:
     print(f"[phase130] ROS_DOMAIN_ID: {env.get('ROS_DOMAIN_ID')}")
     print(f"[phase130] ROS_AUTOMATIC_DISCOVERY_RANGE: {env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')}")
     print(f"[phase130] RViz2 config: {rviz_config}")
+
+    launch_rviz_before_echo(
+        args.launch_rviz,
+        ros2_root,
+        rviz_config,
+        env,
+        args.rviz_startup_check_seconds,
+        args.rviz_window_wait_seconds,
+    )
 
     print("--- node list (diagnostic) ---")
     nodes = ros2env.probe_node_list(pixi_python, ros2_script, env)
@@ -187,9 +240,6 @@ def main(argv: list[str]) -> int:
     )
     print(markers_echo.rstrip())
     validate_markerarray_echo(markers_echo)
-
-    if args.launch_rviz:
-        ros2env.launch_rviz(ros2_root, rviz_config, env, "phase130")
 
     print("[phase130] GREEN: /tf and /markers external ROS2 acceptance checks completed.")
     print("[phase130] Confirm RViz2 displays MarkerArray /markers without fixed-frame warnings before marking manual PASS.")

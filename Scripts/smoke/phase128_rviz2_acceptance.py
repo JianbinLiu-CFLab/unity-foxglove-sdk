@@ -10,7 +10,7 @@
 Start Unity manually first, import the RViz2 Standard Visualization Acceptance
 sample, add Phase128Rviz2TfLaserScanSmoke to a scene object, and enter Play
 Mode. This helper then uses the pinned Windows ROS2 Jazzy Python entry point to
-check the external ROS2 graph and, optionally, launch RViz2.
+check the external ROS2 graph and launch RViz2 by default.
 """
 
 from __future__ import annotations
@@ -76,10 +76,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "or the ROS2 default. Use LOCALHOST for same-machine Unity acceptance if SUBNET sees no Unity node."
         ),
     )
-    parser.add_argument(
+    launch_group = parser.add_mutually_exclusive_group()
+    launch_group.add_argument(
         "--launch-rviz",
+        dest="launch_rviz",
         action="store_true",
-        help="Launch RViz2 with --rviz-config after CLI checks pass.",
+        help="Launch RViz2 with --rviz-config after publisher checks. This is the default.",
+    )
+    launch_group.add_argument(
+        "--no-launch-rviz",
+        dest="launch_rviz",
+        action="store_false",
+        help="Run ROS2 graph and echo checks without launching RViz2.",
+    )
+    parser.set_defaults(launch_rviz=True)
+    parser.add_argument(
+        "--rviz-startup-check-seconds",
+        type=float,
+        default=1.5,
+        help="Seconds to wait for an immediate RViz2 process exit after launch.",
+    )
+    parser.add_argument(
+        "--rviz-window-wait-seconds",
+        type=float,
+        default=45.0,
+        help="Seconds to wait for a visible RViz2 window after launch.",
     )
     return parser.parse_args(argv)
 
@@ -124,6 +145,29 @@ def extract_ranges_block(output: str) -> str:
     return output[ranges_index:intensities_index]
 
 
+def launch_rviz_before_echo(
+    should_launch: bool,
+    ros2_root: pathlib.Path,
+    rviz_config: pathlib.Path,
+    env: dict[str, str],
+    startup_check_seconds: float,
+    window_wait_seconds: float,
+) -> None:
+    """Launch RViz2 as soon as publisher endpoints are visible."""
+
+    if should_launch:
+        ros2env.launch_rviz(
+            ros2_root,
+            rviz_config,
+            env,
+            "phase128",
+            startup_check_seconds=startup_check_seconds,
+            window_wait_seconds=window_wait_seconds,
+        )
+    else:
+        ros2env.log_event("phase128", "RViz2 launch skipped because --no-launch-rviz was supplied.")
+
+
 def main(argv: list[str]) -> int:
     """Script entry point."""
 
@@ -142,6 +186,15 @@ def main(argv: list[str]) -> int:
     print(f"[phase128] ROS_DOMAIN_ID: {env.get('ROS_DOMAIN_ID')}")
     print(f"[phase128] ROS_AUTOMATIC_DISCOVERY_RANGE: {env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')}")
     print(f"[phase128] RViz2 config: {rviz_config}")
+
+    launch_rviz_before_echo(
+        args.launch_rviz,
+        ros2_root,
+        rviz_config,
+        env,
+        args.rviz_startup_check_seconds,
+        args.rviz_window_wait_seconds,
+    )
 
     print("--- node list (diagnostic) ---")
     nodes = ros2env.probe_node_list(pixi_python, ros2_script, env)
@@ -176,9 +229,6 @@ def main(argv: list[str]) -> int:
     scan_echo = ros2env.echo_once(pixi_python, ros2_script, env, SCAN_TOPIC, SCAN_MSG_TYPE, args.echo_spin_seconds)
     print(scan_echo.rstrip())
     validate_scan_echo(scan_echo)
-
-    if args.launch_rviz:
-        ros2env.launch_rviz(ros2_root, rviz_config, env, "phase128")
 
     print("[phase128] GREEN: /tf and /scan external ROS2 acceptance checks completed.")
     print("[phase128] Confirm RViz2 displays TF map/base_link/laser and LaserScan /scan before marking manual PASS.")
