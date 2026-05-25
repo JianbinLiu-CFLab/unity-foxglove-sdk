@@ -56,7 +56,7 @@ namespace Foxglove.Schemas
         /// </summary>
         public byte[] GetFileDescriptorSet(string schemaName)
         {
-            return _descriptors.TryGetValue(schemaName, out var bytes) ? bytes : null;
+            return _descriptors.TryGetValue(schemaName, out var bytes) ? (byte[])bytes.Clone() : null;
         }
 
         /// <summary>
@@ -72,7 +72,7 @@ namespace Foxglove.Schemas
                     Name = kv.Key,
                     Encoding = SchemaEncoding,
                     Content = Convert.ToBase64String(kv.Value),
-                    RawContent = kv.Value
+                    RawContent = (byte[])kv.Value.Clone()
                 });
             }
         }

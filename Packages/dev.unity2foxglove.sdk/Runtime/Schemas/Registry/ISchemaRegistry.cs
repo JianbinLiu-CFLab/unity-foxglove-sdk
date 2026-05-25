@@ -62,13 +62,25 @@ namespace Unity.FoxgloveSDK.Schemas
         /// <summary>Try to get a schema by name.</summary>
         public bool TryGetSchema(string name, out SchemaEntry entry)
         {
-            return _schemas.TryGetValue(name, out entry);
+            if (_schemas.TryGetValue(name, out entry))
+            {
+                entry = CloneEntry(entry);
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>Try to get a schema by name and schema encoding.</summary>
         public bool TryGetSchema(string name, string encoding, out SchemaEntry entry)
         {
-            return _schemasByEncoding.TryGetValue(MakeKey(name, NormalizeEncoding(encoding)), out entry);
+            if (_schemasByEncoding.TryGetValue(MakeKey(name, NormalizeEncoding(encoding)), out entry))
+            {
+                entry = CloneEntry(entry);
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -80,6 +92,7 @@ namespace Unity.FoxgloveSDK.Schemas
             if (string.IsNullOrEmpty(entry.Name))
                 throw new ArgumentException("Schema name is required", nameof(entry));
 
+            entry = CloneEntry(entry);
             entry.Encoding = NormalizeEncoding(entry.Encoding);
             _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
 
@@ -105,6 +118,13 @@ namespace Unity.FoxgloveSDK.Schemas
             if (string.Equals(newEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase))
                 return true;
             return !string.Equals(existingEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static SchemaEntry CloneEntry(SchemaEntry entry)
+        {
+            if (entry.RawContent != null)
+                entry.RawContent = (byte[])entry.RawContent.Clone();
+            return entry;
         }
     }
 }
