@@ -51,6 +51,9 @@ namespace Unity.FoxgloveSDK.Components
         /// First channel identifier assigned by manager-owned manual publishing APIs.
         /// </summary>
         private const int FirstAutoChannelId = 1;
+        private const int MaxQueuedClientEvents = 4096;
+        private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
+        private const long ClientEventOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
 
         [Header("General")]
         [SerializeField] private string _serverName = "Unity Foxglove SDK";
@@ -137,8 +140,10 @@ namespace Unity.FoxgloveSDK.Components
         private FoxgloveCertificateDistributor _certificateDistributor;
         private int _nextChannelId = FirstAutoChannelId;
         private bool _warnedNotRunning;
+        private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
-        private readonly System.Collections.Concurrent.ConcurrentQueue<ClientEvent> _clientEvents = new();
+        private readonly BoundedEventQueue<ClientEvent> _clientEvents =
+            new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
 
         /// <summary>Current nanosecond timestamp for publish calls.</summary>
         public ulong NowNs => _runtime?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
@@ -335,14 +340,66 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         /// <param name="id">Connected Foxglove client identifier.</param>
         private void EnqueueConnect(uint id) =>
-            _clientEvents.Enqueue(new ClientEvent { ClientId = id, IsConnect = true });
+            EnqueueClientEvent(new ClientEvent { ClientId = id, IsConnect = true });
 
         /// <summary>
         /// Queues a transport disconnect event for main-thread delivery.
         /// </summary>
         /// <param name="id">Disconnected Foxglove client identifier.</param>
         private void EnqueueDisconnect(uint id) =>
-            _clientEvents.Enqueue(new ClientEvent { ClientId = id, IsConnect = false });
+            EnqueueClientEvent(new ClientEvent { ClientId = id, IsConnect = false });
+
+        private void EnqueueClientEvent(ClientEvent evt)
+        {
+            if (_clientEvents.TryEnqueue(evt, out var overflow))
+            {
+                return;
+            }
+
+            WarnClientEventQueueOverflow(evt, overflow);
+        }
+
+        private void WarnClientEventQueueOverflow(ClientEvent evt, BoundedEventQueueOverflow overflow)
+        {
+            var nowTicks = System.DateTime.UtcNow.Ticks;
+            var previousTicks = System.Threading.Interlocked.Read(ref _lastClientEventOverflowWarningTicks);
+            if (nowTicks - previousTicks < ClientEventOverflowWarningIntervalTicks)
+            {
+                return;
+            }
+
+            if (System.Threading.Interlocked.CompareExchange(
+                    ref _lastClientEventOverflowWarningTicks,
+                    nowTicks,
+                    previousTicks) != previousTicks)
+            {
+                return;
+            }
+
+            var eventKind = evt.IsMessage ? "message" : evt.IsConnect ? "connect" : "disconnect";
+            Debug.LogWarning(
+                "[Foxglove] Dropped client " + eventKind
+                + " event because the Unity main-thread event queue is full. queuedEvents="
+                + overflow.QueuedFrames
+                + " queuedPayloadBytes="
+                + overflow.QueuedBytes
+                + " rejectedPayloadBytes="
+                + overflow.RejectedBytes
+                + " droppedEvents="
+                + overflow.DroppedCount
+                + " droppedPayloadBytes="
+                + overflow.DroppedBytes
+                + " limits="
+                + MaxQueuedClientEvents
+                + "/"
+                + MaxQueuedClientEventPayloadBytes
+                + " bytes.");
+        }
+
+        private static int MeasureClientEventPayloadBytes(ClientEvent evt)
+        {
+            return evt.IsMessage ? evt.Payload?.Length ?? 0 : 0;
+        }
 
         /// <summary>
         /// Starts the server automatically when configured to start on enable.
