@@ -171,10 +171,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && component.Contains("executableActionSet.Remove(executable)", StringComparison.Ordinal),
                 "111F-E4c: ROS2UnityComponent uses constant-time executable de-duplication");
             Check(component.Contains("private bool StopExecutor()", StringComparison.Ordinal)
-                  && component.Contains("if (!StopExecutor())", StringComparison.Ordinal)
                   && component.Contains("ReferenceEquals(executorThread, threadToJoin)", StringComparison.Ordinal)
-                  && component.Contains("return false;", StringComparison.Ordinal),
-                "111F-E4d: ROS2UnityComponent does not clear a timed-out executor thread");
+                  && !component.Contains("if (!StopExecutor())", StringComparison.Ordinal)
+                  && component.Contains("QuarantineNodesAfterExecutorTimeout", StringComparison.Ordinal)
+                  && component.Contains("TryDetachRuntimeState(executorStopped, out instance)", StringComparison.Ordinal),
+                "111F-E4d: ROS2UnityComponent quarantines timed-out executor state without skipping lifecycle cleanup");
 
             var core = ReadRepoText(RuntimeScripts + "/ROS2UnityCore.cs");
             Check(core.Contains("IDisposable", StringComparison.Ordinal)
@@ -190,10 +191,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && core.Contains("executableActionSet.Remove(executable)", StringComparison.Ordinal),
                 "111F-E5c: ROS2UnityCore uses constant-time executable de-duplication");
             Check(core.Contains("private bool StopExecutor()", StringComparison.Ordinal)
-                  && core.Contains("if (!StopExecutor())", StringComparison.Ordinal)
                   && core.Contains("ReferenceEquals(executorThread, threadToJoin)", StringComparison.Ordinal)
-                  && core.Contains("return false;", StringComparison.Ordinal),
-                "111F-E5d: ROS2UnityCore does not clear a timed-out executor thread");
+                  && !core.Contains("if (!StopExecutor())", StringComparison.Ordinal)
+                  && core.Contains("QuarantineNodesAfterExecutorTimeout", StringComparison.Ordinal)
+                  && core.Contains("TryDetachRuntimeState(executorStopped, out instance)", StringComparison.Ordinal),
+                "111F-E5d: ROS2UnityCore quarantines timed-out executor state without skipping lifecycle cleanup");
 
             var dotnetTime = ReadRepoText(RuntimeScripts + "/Time/DotnetTimeSource.cs");
             Check(dotnetTime.Contains("/ Stopwatch.Frequency", StringComparison.Ordinal)

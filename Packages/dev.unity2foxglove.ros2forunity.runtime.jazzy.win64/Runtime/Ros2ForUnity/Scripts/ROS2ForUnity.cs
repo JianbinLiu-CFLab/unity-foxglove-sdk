@@ -191,7 +191,54 @@ internal class ROS2ForUnity
             envPathSep = ';';
         }
 
-        Environment.SetEnvironmentVariable(GetEnvPathVariableName(), pluginPath + envPathSep + currentPath);
+        string normalizedPluginPath = NormalizeEnvPathEntry(pluginPath);
+        var comparer = GetOS() == Platform.Windows
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var entries = new List<string>();
+        var seen = new HashSet<string>(comparer);
+
+        entries.Add(pluginPath);
+        seen.Add(normalizedPluginPath);
+
+        if (!string.IsNullOrEmpty(currentPath))
+        {
+            foreach (string rawEntry in currentPath.Split(new[] { envPathSep }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string entry = rawEntry.Trim();
+                if (entry.Length == 0)
+                {
+                    continue;
+                }
+
+                if (seen.Add(NormalizeEnvPathEntry(entry)))
+                {
+                    entries.Add(entry);
+                }
+            }
+        }
+
+        Environment.SetEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));
+    }
+
+    private static string NormalizeEnvPathEntry(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string trimmed = value.Trim();
+        try
+        {
+            trimmed = Path.GetFullPath(trimmed);
+        }
+        catch
+        {
+            // Preserve invalid or shell-expanded PATH entries while still de-duplicating exact text.
+        }
+
+        return trimmed.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     public bool IsStandalone() {

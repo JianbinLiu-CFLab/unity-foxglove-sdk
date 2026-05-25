@@ -290,28 +290,23 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private void Shutdown()
     {
-        if (!StopExecutor())
+        bool executorStopped = StopExecutor();
+        if (executorStopped)
         {
-            return;
+            DisposeNodes();
+        }
+        else
+        {
+            Debug.LogError(
+                "ROS2UnityComponent executor thread timed out during shutdown; " +
+                "continuing best-effort lifecycle cleanup with nodes quarantined.");
+            QuarantineNodesAfterExecutorTimeout();
         }
 
-        DisposeNodes();
-
         ROS2ForUnity instance = null;
-        lock (mutex)
+        if (!TryDetachRuntimeState(executorStopped, out instance))
         {
-            if (disposed)
-            {
-                return;
-            }
-
-            disposed = true;
-            instance = ros2forUnity;
-            ros2forUnity = null;
-            executableActions = null;
-            executableActionSet = null;
-            nodes = null;
-            ros2csNodes = null;
+            return;
         }
 
         if (instance != null)
@@ -320,11 +315,70 @@ public class ROS2UnityComponent : MonoBehaviour
         }
     }
 
+    private bool TryDetachRuntimeState(bool executorStopped, out ROS2ForUnity instance)
+    {
+        instance = null;
+        if (!executorStopped && !Monitor.TryEnter(mutex, TimeSpan.FromMilliseconds(250)))
+        {
+            Debug.LogError("ROS2UnityComponent could not acquire state lock after executor timeout; ROS2 lifecycle owner remains active.");
+            return false;
+        }
+
+        try
+        {
+            if (executorStopped)
+            {
+                Monitor.Enter(mutex);
+            }
+
+            if (disposed)
+            {
+                return false;
+            }
+
+            disposed = true;
+            initialized = false;
+            instance = ros2forUnity;
+            ros2forUnity = null;
+            executableActions = null;
+            executableActionSet = null;
+            nodes = null;
+            ros2csNodes = null;
+            return true;
+        }
+        finally
+        {
+            Monitor.Exit(mutex);
+        }
+    }
+
     private void ThrowIfDisposed()
     {
         if (disposed)
         {
             throw new ObjectDisposedException(nameof(ROS2UnityComponent));
+        }
+    }
+
+    private void QuarantineNodesAfterExecutorTimeout()
+    {
+        if (!Monitor.TryEnter(mutex, TimeSpan.FromMilliseconds(250)))
+        {
+            Debug.LogError("ROS2UnityComponent could not acquire node lock after executor timeout; nodes remain quarantined by the stuck executor.");
+            return;
+        }
+
+        try
+        {
+            if (nodes != null)
+            {
+                nodes.Clear();
+                ros2csNodes.Clear();
+            }
+        }
+        finally
+        {
+            Monitor.Exit(mutex);
         }
     }
 
