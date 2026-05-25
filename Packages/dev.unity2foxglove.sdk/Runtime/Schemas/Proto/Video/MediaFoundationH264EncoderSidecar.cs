@@ -101,7 +101,14 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            if (rgb24Frame == null || rgb24Frame.Length != _options.Rgb24FrameByteCount)
+            var expectedBytes = _options != null ? _options.Rgb24FrameByteCount : 0;
+            if (expectedBytes <= 0)
+            {
+                LastError = "Media Foundation encoder dimensions produce an invalid RGB24 frame size.";
+                return false;
+            }
+
+            if (rgb24Frame == null || rgb24Frame.Length != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match Media Foundation encoder dimensions.";
                 return false;
@@ -524,8 +531,11 @@ namespace Foxglove.Schemas.Video
 
         private static byte[] ConvertRgb24ToNv12(byte[] rgb24Frame, int width, int height)
         {
-            var yPlaneLength = width * height;
-            var nv12 = new byte[yPlaneLength + yPlaneLength / 2];
+            if (!CameraVideoFrameGeometry.TryGetYuv420FrameByteCount(width, height, out var nv12Length))
+                throw new InvalidOperationException("Media Foundation H.264 NV12 frame byte count is invalid.");
+
+            var yPlaneLength = checked(width * height);
+            var nv12 = new byte[nv12Length];
 
             for (var y = 0; y < height; y++)
             {

@@ -21,10 +21,13 @@ namespace Foxglove.Schemas.Video
         public int MaxInputQueue = 1;
         public int MaxOutputQueue = 4;
 
-        public int Rgb24FrameByteCount => Positive(Width, 640) * Positive(Height, 480) * 3;
-        public int Nv12FrameByteCount => Positive(Width, 640) * Positive(Height, 480) * 3 / 2;
+        public int Rgb24FrameByteCount
+            => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
+        public int Nv12FrameByteCount
+            => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
         public int BitrateBitsPerSecond => (int)((long)Positive(BitrateKbps, 1) * 1000L);
-        public bool HasManagedConversionCostWarning => Positive(Width, 640) * Positive(Height, 480) > 1280 * 720;
+        public bool HasManagedConversionCostWarning
+            => (long)Positive(Width, 640) * Positive(Height, 480) > 1280L * 720L;
 
         /// <summary>Validates settings required by NV12 and Media Foundation.</summary>
         public bool Validate(out string error)
@@ -41,6 +44,12 @@ namespace Foxglove.Schemas.Video
                 error = "Media Foundation H.264 width and height must be even for NV12 input.";
                 return false;
             }
+
+            if (!CameraVideoFrameGeometry.ValidateRgb24Dimensions(Width, Height, "Media Foundation H.264 RGB24", out error))
+                return false;
+
+            if (!CameraVideoFrameGeometry.ValidateYuv420Dimensions(Width, Height, "Media Foundation H.264 NV12", out error))
+                return false;
 
             if (FrameRate <= 0)
             {

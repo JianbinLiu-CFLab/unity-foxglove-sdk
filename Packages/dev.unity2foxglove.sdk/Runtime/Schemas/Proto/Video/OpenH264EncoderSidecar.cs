@@ -122,7 +122,13 @@ namespace Foxglove.Schemas.Video
                 return false;
 
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
-            if (expectedBytes > 0 && frame.Length != expectedBytes)
+            if (expectedBytes <= 0)
+            {
+                LastError = "OpenH264 encoder dimensions produce an invalid I420 frame size.";
+                return false;
+            }
+
+            if (frame.Length != expectedBytes)
             {
                 LastError = "I420 frame byte count does not match OpenH264 encoder dimensions.";
                 return false;

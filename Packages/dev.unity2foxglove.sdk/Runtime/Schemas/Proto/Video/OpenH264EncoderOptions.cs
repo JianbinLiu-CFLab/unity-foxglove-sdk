@@ -26,7 +26,7 @@ namespace Foxglove.Schemas.Video
         public int MaxInputQueue = 2;
         public int MaxOutputQueue = 4;
 
-        public int FrameByteCount => Width > 0 && Height > 0 ? Width * Height * 3 / 2 : 0;
+        public int FrameByteCount => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Width, Height);
 
         public bool Validate(out string error)
         {
@@ -65,6 +65,9 @@ namespace Foxglove.Schemas.Video
                 error = "OpenH264 requires positive even width and height.";
                 return false;
             }
+
+            if (!CameraVideoFrameGeometry.ValidateYuv420Dimensions(Width, Height, "OpenH264 I420", out error))
+                return false;
 
             if (FrameRate <= 0 || BitrateKbps <= 0 || KeyframeInterval <= 0)
             {
