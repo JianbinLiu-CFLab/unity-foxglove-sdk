@@ -213,6 +213,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && shared.Contains("gz_math_vendor", StringComparison.Ordinal)
                   && !script.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal),
                 "128E-6: helper can optionally launch RViz2 through direct rviz2.exe with required DLL paths");
+            Check(script.Contains("launch_rviz_before_echo", StringComparison.Ordinal)
+                  && script.IndexOf("launch_rviz_before_echo", StringComparison.Ordinal)
+                     < script.IndexOf("print(\"--- echo /tf ---\")", StringComparison.Ordinal),
+                "128E-6b: helper launches RViz2 before bounded echo checks for faster manual feedback");
             Check(script.Contains("--rmw", StringComparison.Ordinal)
                   && helperSurface.Contains("rmw_implementation", StringComparison.Ordinal)
                   && shared.Contains("env.get(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal),

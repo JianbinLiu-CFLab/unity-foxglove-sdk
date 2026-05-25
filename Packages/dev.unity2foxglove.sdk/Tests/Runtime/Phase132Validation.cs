@@ -25,7 +25,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string OdometrySourcePath = SamplePath + "/Phase132StandardOdometrySource.cs";
         private const string PoseSourcePath = SamplePath + "/Phase132StandardPoseSource.cs";
         private const string NavSatFixSourcePath = SamplePath + "/Phase132StandardNavSatFixSource.cs";
+        private const string RvizConfigPath = SamplePath + "/rviz2_phase132_standard_messages.rviz";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase132_standard_messages_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/launch_phase132_rviz2.py";
         private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
 
         private static readonly string[] Topics =
@@ -107,12 +109,14 @@ namespace Unity.FoxgloveSDK.Tests
                          SmokePath,
                          CameraSourcePath,
                          ImuSourcePath,
-                         OdometrySourcePath,
-                         PoseSourcePath,
-                         NavSatFixSourcePath,
-                         AcceptanceScriptPath,
-                         SharedHelperPath
-                     })
+                          OdometrySourcePath,
+                          PoseSourcePath,
+                          NavSatFixSourcePath,
+                          RvizConfigPath,
+                          AcceptanceScriptPath,
+                          RvizLauncherPath,
+                          SharedHelperPath
+                      })
             {
                 Check(RepoFileExists(path), "132B-1: Phase132 file exists: " + path);
             }
@@ -197,6 +201,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAcceptanceHelper()
         {
             var helper = ReadRepoText(AcceptanceScriptPath);
+            var launcher = ReadRepoText(RvizLauncherPath);
+            var rvizConfig = ReadRepoText(RvizConfigPath);
             var shared = ReadRepoText(SharedHelperPath);
 
             Check(helper.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
@@ -212,16 +218,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && shared.Contains("ros2-script.py", StringComparison.Ordinal)
                   && !helper.Contains("subprocess.run([\"ros2\"", StringComparison.Ordinal),
                 "132D-2: helper uses pinned Windows Jazzy pixi Python and ros2-script.py");
+            Check(helper.Contains("DEFAULT_RVIZ_CONFIG", StringComparison.Ordinal)
+                  && helper.Contains("rviz2_phase132_standard_messages.rviz", StringComparison.Ordinal)
+                  && helper.Contains("parser.set_defaults(launch_rviz=True)", StringComparison.Ordinal)
+                  && helper.Contains("ros2env.launch_rviz", StringComparison.Ordinal)
+                  && helper.Contains("--no-launch-rviz", StringComparison.Ordinal),
+                "132D-3: helper launches RViz2 by default with CLI-only opt-out");
             Check(AllTokens(helper, Topics)
                   && AllTokens(helper, Types)
                   && helper.Contains("unity2foxglove_phase132_standard_messages", StringComparison.Ordinal),
-                "132D-3: helper validates all six topics, types, and publisher node");
+                "132D-4: helper validates all six topics, types, and publisher node");
             Check(helper.Contains("--domain-id", StringComparison.Ordinal)
                   && helper.Contains("--rmw", StringComparison.Ordinal)
                   && helper.Contains("--discovery-range", StringComparison.Ordinal)
                   && helper.Contains("--wait-seconds", StringComparison.Ordinal)
                   && helper.Contains("--echo-spin-seconds", StringComparison.Ordinal),
-                "132D-4: helper supports RMW/domain/discovery/wait/echo options");
+                "132D-5: helper supports RMW/domain/discovery/wait/echo options");
             Check(AllTokens(helper,
                       "validate_camera_info",
                       "validate_image",
@@ -233,7 +245,18 @@ namespace Unity.FoxgloveSDK.Tests
                       "appears truncated",
                       "non-zero",
                       "GREEN"),
-                "132D-5: helper validates bounded full image echo and non-zero defaults");
+                "132D-6: helper validates bounded full image echo and non-zero defaults");
+            Check(launcher.Contains("DEFAULT_RVIZ_CONFIG", StringComparison.Ordinal)
+                  && launcher.Contains("rviz2_phase132_standard_messages.rviz", StringComparison.Ordinal)
+                  && launcher.Contains("ros2env.launch_rviz", StringComparison.Ordinal)
+                  && launcher.Contains("--domain-id", StringComparison.Ordinal),
+                "132D-7: standalone Phase132 RViz2 launcher uses shared Windows environment");
+            Check(rvizConfig.Contains("Fixed Frame: map", StringComparison.Ordinal)
+                  && rvizConfig.Contains("/pose", StringComparison.Ordinal)
+                  && rvizConfig.Contains("/camera/image_raw", StringComparison.Ordinal)
+                  && rvizConfig.Contains("rviz_default_plugins/Pose", StringComparison.Ordinal)
+                  && rvizConfig.Contains("rviz_default_plugins/Image", StringComparison.Ordinal),
+                "132D-8: RViz2 helper config visualizes supported Phase132 topics without requiring /tf");
         }
 
         private static void VerifyReadmeAndEvidenceTemplate()
@@ -248,6 +271,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(readme.Contains("python Scripts\\smoke\\phase132_standard_messages_acceptance.py", StringComparison.Ordinal)
                   && readme.Contains("--ros2-root C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
                   && readme.Contains("ros2-script.py", StringComparison.Ordinal)
+                  && readme.Contains("launches RViz2 by default", StringComparison.Ordinal)
+                  && readme.Contains("--no-launch-rviz", StringComparison.Ordinal)
+                  && readme.Contains("python Scripts\\smoke\\launch_phase132_rviz2.py", StringComparison.Ordinal)
                   && readme.Contains("Use bare ROS2 commands only after", StringComparison.Ordinal)
                   && AllTokens(readme,
                       "ros2 topic info /camera/camera_info",

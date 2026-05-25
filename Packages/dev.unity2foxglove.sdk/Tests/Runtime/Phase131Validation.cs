@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RvizConfigPath = SamplePath + "/rviz2_phase131_standard_visualization.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase131_standard_visualization_evidence_template.md";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase131_standard_visualization_acceptance.py";
+        private const string RvizLauncherScriptPath = "Scripts/smoke/launch_phase131_rviz2.py";
         private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
 
         private static int _passed;
@@ -82,6 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
                          RvizConfigPath,
                          EvidenceTemplatePath,
                          AcceptanceScriptPath,
+                         RvizLauncherScriptPath,
                          SharedHelperPath
                      })
             {
@@ -118,6 +120,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAcceptanceHelper()
         {
             var helper = ReadRepoText(AcceptanceScriptPath);
+            var launcher = ReadRepoText(RvizLauncherScriptPath);
             var shared = ReadRepoText(SharedHelperPath);
 
             Check(helper.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
@@ -146,6 +149,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("echo_until_tokens", StringComparison.Ordinal),
                 "131D-4: helper performs bounded representative echo validation");
             Check(helper.Contains("--launch-rviz", StringComparison.Ordinal)
+                  && helper.Contains("--no-launch-rviz", StringComparison.Ordinal)
+                  && helper.Contains("parser.set_defaults(launch_rviz=True)", StringComparison.Ordinal)
                   && helper.Contains("--rviz-config", StringComparison.Ordinal)
                   && helper.Contains("--rmw", StringComparison.Ordinal)
                   && helper.Contains("--discovery-range", StringComparison.Ordinal)
@@ -154,6 +159,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && shared.Contains("gz_math_vendor", StringComparison.Ordinal)
                   && !helper.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal),
                 "131D-5: helper supports RMW/discovery selection and direct rviz2.exe launch");
+            var launchCallIndex = helper.IndexOf("launch_rviz_before_echo(\n        args.launch_rviz", StringComparison.Ordinal);
+            var nodeListIndex = helper.IndexOf("print(\"--- node list", StringComparison.Ordinal);
+            Check(RepoFileExists(RvizLauncherScriptPath)
+                  && helper.Contains("launch_rviz_before_echo", StringComparison.Ordinal)
+                  && launchCallIndex >= 0
+                  && nodeListIndex >= 0
+                  && launchCallIndex < nodeListIndex,
+                "131D-5b: helper and launcher can open RViz2 before flaky graph and echo validation");
+            Check(helper.Contains("--rviz-window-wait-seconds", StringComparison.Ordinal)
+                  && helper.Contains("--rviz-startup-check-seconds", StringComparison.Ordinal)
+                  && launcher.Contains("--rviz-window-wait-seconds", StringComparison.Ordinal)
+                  && launcher.Contains("--rviz-startup-check-seconds", StringComparison.Ordinal)
+                  && shared.Contains("def log_event", StringComparison.Ordinal)
+                  && shared.Contains("visible_windows_for_pid", StringComparison.Ordinal)
+                  && shared.Contains("GetWindowThreadProcessId", StringComparison.Ordinal),
+                "131D-5c: helper timestamps RViz2 startup and measures visible-window readiness");
             Check(shared.Contains("startup_check_seconds", StringComparison.Ordinal)
                   && shared.Contains("process.poll()", StringComparison.Ordinal)
                   && shared.Contains("RViz2 exited immediately", StringComparison.Ordinal),
@@ -175,14 +196,14 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(smokeHelper.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
                       && !ContainsAny(smokeHelper, new[]
                       {
-                          "def build_ros_env",
-                          "def validate_ros2_root",
-                          "def run_ros2",
-                          "def probe_node_list",
-                          "def probe_topic_info",
-                          "def wait_for_publisher",
-                          "def echo_once",
-                          "def launch_rviz"
+                          "def build_ros_env(",
+                          "def validate_ros2_root(",
+                          "def run_ros2(",
+                          "def probe_node_list(",
+                          "def probe_topic_info(",
+                          "def wait_for_publisher(",
+                          "def echo_once(",
+                          "def launch_rviz("
                       }),
                     "131D-8: standard visualization helper reuses shared ROS2 env module: " + path);
             }
@@ -210,7 +231,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("external ROS2 For Unity", StringComparison.OrdinalIgnoreCase)
                   && sampleReadme.Contains("python Scripts\\smoke\\phase131_standard_visualization_acceptance.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("--ros2-root C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
-                  && sampleReadme.Contains("--launch-rviz", StringComparison.Ordinal)
+                  && sampleReadme.Contains("--no-launch-rviz", StringComparison.Ordinal)
+                  && sampleReadme.Contains("timestamped RViz2 startup diagnostics", StringComparison.Ordinal)
                   && sampleReadme.Contains("ros2-script.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("rviz2.exe", StringComparison.Ordinal),
                 "131E-3: sample README includes canonical Python helper command and Windows path rules");

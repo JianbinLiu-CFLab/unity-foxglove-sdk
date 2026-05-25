@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RvizConfigPath = SamplePath + "/rviz2_phase130_markerarray.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase130_markerarray_evidence_template.md";
         private const string AcceptanceScriptPath = "Scripts/smoke/phase130_markerarray_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/launch_phase130_rviz2.py";
         private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
@@ -88,11 +89,12 @@ namespace Unity.FoxgloveSDK.Tests
                          SampleReadmePath,
                          SmokeScriptPath,
                           BuilderScriptPath,
-                          RvizConfigPath,
-                          EvidenceTemplatePath,
-                          AcceptanceScriptPath,
-                          SharedHelperPath
-                      })
+                         RvizConfigPath,
+                         EvidenceTemplatePath,
+                         AcceptanceScriptPath,
+                         RvizLauncherPath,
+                         SharedHelperPath
+                     })
             {
                 Check(RepoFileExists(path), "130B-1: Phase130 file exists: " + path);
             }
@@ -223,8 +225,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAcceptanceHelper()
         {
             var script = ReadRepoText(AcceptanceScriptPath);
+            var launcher = ReadRepoText(RvizLauncherPath);
             var shared = ReadRepoText(SharedHelperPath);
             var helperSurface = script + "\n" + shared;
+            var launcherSurface = launcher + "\n" + shared;
 
             Check(script.Contains("# Purpose:", StringComparison.Ordinal)
                   && script.Contains("argparse", StringComparison.Ordinal)
@@ -272,18 +276,31 @@ namespace Unity.FoxgloveSDK.Tests
                   && !script.Contains("\"run\", \"rviz2\"", StringComparison.Ordinal)
                   && !script.Contains("env[\"ROS_AUTOMATIC_DISCOVERY_RANGE\"] = \"SUBNET\"", StringComparison.Ordinal),
                 "130F-6: helper supports RMW/discovery selection and launches RViz2 through direct rviz2.exe");
+            Check(script.Contains("launch_rviz_before_echo", StringComparison.Ordinal)
+                  && script.IndexOf("launch_rviz_before_echo", StringComparison.Ordinal)
+                     < script.IndexOf("print(\"--- echo /tf ---\")", StringComparison.Ordinal),
+                "130F-6b: helper launches RViz2 before bounded echo checks for faster manual feedback");
+            Check(launcher.Contains("# Purpose:", StringComparison.Ordinal)
+                  && launcher.Contains("argparse", StringComparison.Ordinal)
+                  && launcherSurface.Contains("subprocess.Popen", StringComparison.Ordinal)
+                  && launcherSurface.Contains("rviz2.exe", StringComparison.Ordinal)
+                  && launcherSurface.Contains("rviz_ogre_vendor", StringComparison.Ordinal)
+                  && launcherSurface.Contains("gz_math_vendor", StringComparison.Ordinal)
+                  && launcherSurface.Contains("ROS_AUTOMATIC_DISCOVERY_RANGE", StringComparison.Ordinal)
+                  && launcher.Contains("--dry-run", StringComparison.Ordinal),
+                "130F-7: Python RViz2 launcher replaces durable PowerShell launch asset");
             Check(!ContainsAny(script, new[]
                   {
-                      "def build_ros_env",
-                      "def validate_ros2_root",
-                      "def run_ros2",
-                      "def probe_node_list",
-                      "def probe_topic_info",
-                      "def wait_for_publisher",
-                      "def echo_once",
-                      "def launch_rviz"
+                      "def build_ros_env(",
+                      "def validate_ros2_root(",
+                      "def run_ros2(",
+                      "def probe_node_list(",
+                      "def probe_topic_info(",
+                      "def wait_for_publisher(",
+                      "def echo_once(",
+                      "def launch_rviz("
                   }),
-                "130F-7: helper reuses the shared ROS2 Windows module instead of carrying local copies");
+                "130F-8: helper reuses the shared ROS2 Windows module instead of carrying local copies");
         }
 
         private static void VerifyDocsAndEvidenceTemplate()

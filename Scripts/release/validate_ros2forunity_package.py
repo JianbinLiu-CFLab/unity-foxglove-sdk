@@ -631,6 +631,7 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         STANDARD_MESSAGES_SAMPLE / "Phase132StandardOdometrySource.cs",
         STANDARD_MESSAGES_SAMPLE / "Phase132StandardPoseSource.cs",
         STANDARD_MESSAGES_SAMPLE / "Phase132StandardNavSatFixSource.cs",
+        STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz",
         STANDARD_MESSAGES_SAMPLE / "phase132_standard_messages_evidence_template.md",
     ]
     for path in required:
@@ -893,6 +894,13 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
     )
     standard_helper = (ROOT / "Scripts" / "smoke" / "phase132_standard_messages_acceptance.py")
     standard_helper_text = standard_helper.read_text(encoding="utf-8", errors="replace") if standard_helper.exists() else ""
+    standard_launcher = (ROOT / "Scripts" / "smoke" / "launch_phase132_rviz2.py")
+    standard_launcher_text = standard_launcher.read_text(encoding="utf-8", errors="replace") if standard_launcher.exists() else ""
+    standard_rviz_config = (
+        (STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz").read_text(encoding="utf-8", errors="replace")
+        if (STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz").exists()
+        else ""
+    )
     add(
         results,
         "Standard Messages README documents topics, helper, QoS, TF, and namespace caveats",
@@ -906,6 +914,8 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
                 "/pose",
                 "/fix",
                 "phase132_standard_messages_acceptance.py",
+                "launches RViz2 by default",
+                "--no-launch-rviz",
                 "R2FU default QoS",
                 "does not publish `/tf`",
                 "Production projects should namespace",
@@ -948,6 +958,9 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         and "validate_ros2_root" in standard_helper_text
         and "[str(pixi_python), str(ros2_script)" not in standard_helper_text
         and "--domain-id" in standard_helper_text
+        and "parser.set_defaults(launch_rviz=True)" in standard_helper_text
+        and "rviz2_phase132_standard_messages.rviz" in standard_helper_text
+        and "--no-launch-rviz" in standard_helper_text
         and "validate_camera_info" in standard_helper_text
         and "validate_image" in standard_helper_text
         and "validate_imu" in standard_helper_text
@@ -955,6 +968,17 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         and "expected at least" in standard_helper_text
         and "GREEN" in standard_helper_text,
         rel(standard_helper),
+    )
+    add(
+        results,
+        "Standard Messages RViz2 helper config and launcher are wired",
+        "rviz_default_plugins/Pose" in standard_rviz_config
+        and "rviz_default_plugins/Image" in standard_rviz_config
+        and "/pose" in standard_rviz_config
+        and "/camera/image_raw" in standard_rviz_config
+        and "ros2env.launch_rviz" in standard_launcher_text
+        and "rviz2_phase132_standard_messages.rviz" in standard_launcher_text,
+        rel(STANDARD_MESSAGES_SAMPLE / "rviz2_phase132_standard_messages.rviz"),
     )
 
 
