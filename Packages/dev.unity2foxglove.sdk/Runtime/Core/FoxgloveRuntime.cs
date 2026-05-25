@@ -563,26 +563,35 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Tick()
         {
-            if (_session == null) return;
-            _session.DrainPlaybackControls();
-            _session.DrainServiceCalls();
+            var session = _session;
+            if (session == null) return;
+            session.DrainPlaybackControls();
+            session.DrainServiceCalls();
+            var broadcastLiveTime = false;
             lock (_playbackControlLock)
             {
                 _playbackClock.Tick();
 
                 if (_replay.IsEnabled)
                 {
+                    // Replay work intentionally stays inside _playbackControlLock.
+                    // Seek/play/pause mutate the same snapshot scheduler, and
+                    // releasing the lock here could publish a stale pre-seek
+                    // snapshot after a newer playback control request.
                     if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
                         _replay.ApplySnapshotToScene(sceneSnapshotTimeNs);
                     if (TryConsumeReplaySnapshot(out var snapshotTimeNs))
-                        _replay.PublishSnapshot(_session, snapshotTimeNs);
+                        _replay.PublishSnapshot(session, snapshotTimeNs);
                     else
-                        _replay.DrainPanelHistory(_session);
-                    _replay.Tick(_session, _playbackClock.NowNs);
+                        _replay.DrainPanelHistory(session);
+                    _replay.Tick(session, _playbackClock.NowNs);
                 }
                 else
-                    _session.BroadcastTime();
+                    broadcastLiveTime = true;
             }
+
+            if (broadcastLiveTime)
+                session.BroadcastTime();
         }
 
         // ── Transport Health ──

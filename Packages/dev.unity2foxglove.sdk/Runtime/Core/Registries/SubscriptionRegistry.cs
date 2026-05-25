@@ -18,6 +18,9 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, Dictionary<uint, uint>> _clients
             = new Dictionary<uint, Dictionary<uint, uint>>();
 
+        private readonly Dictionary<uint, List<(uint clientId, uint subscriptionId)>> _byChannel
+            = new Dictionary<uint, List<(uint clientId, uint subscriptionId)>>();
+
         private readonly object _lock = new object();
 
         /// <summary>Add a subscription for a client. Called when a "subscribe" message is received.</summary>
@@ -30,7 +33,12 @@ namespace Unity.FoxgloveSDK.Core
                     subs = new Dictionary<uint, uint>();
                     _clients[clientId] = subs;
                 }
+
+                if (subs.TryGetValue(subscriptionId, out var previousChannelId))
+                    RemoveReverseIndex(previousChannelId, clientId, subscriptionId);
+
                 subs[subscriptionId] = channelId;
+                AddReverseIndex(channelId, clientId, subscriptionId);
             }
         }
 
@@ -52,6 +60,7 @@ namespace Unity.FoxgloveSDK.Core
                         {
                             removed.Add((sid, chId));
                             subs.Remove(sid);
+                            RemoveReverseIndex(chId, clientId, sid);
                         }
                     }
                 }
@@ -64,7 +73,12 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
-                _clients.Remove(clientId);
+                if (_clients.TryGetValue(clientId, out var subs))
+                {
+                    foreach (var (subId, chId) in subs)
+                        RemoveReverseIndex(chId, clientId, subId);
+                    _clients.Remove(clientId);
+                }
             }
         }
 
@@ -80,7 +94,10 @@ namespace Unity.FoxgloveSDK.Core
                 if (_clients.TryGetValue(clientId, out var subs))
                 {
                     foreach (var (subId, chId) in subs)
+                    {
                         result.Add((subId, chId));
+                        RemoveReverseIndex(chId, clientId, subId);
+                    }
                     _clients.Remove(clientId);
                 }
                 return result;
@@ -96,20 +113,21 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 var removed = new List<(uint, uint, uint)>();
-                foreach (var (clientId, subs) in _clients)
+                if (!_byChannel.TryGetValue(channelId, out var subscribers))
+                    return removed;
+
+                foreach (var (clientId, subId) in subscribers)
                 {
-                    var toRemove = new List<uint>();
-                    foreach (var (subId, chId) in subs)
+                    if (_clients.TryGetValue(clientId, out var subs)
+                        && subs.TryGetValue(subId, out var chId)
+                        && chId == channelId)
                     {
-                        if (chId == channelId)
-                        {
-                            toRemove.Add(subId);
-                            removed.Add((clientId, subId, chId));
-                        }
+                        subs.Remove(subId);
+                        removed.Add((clientId, subId, chId));
                     }
-                    foreach (var sid in toRemove)
-                        subs.Remove(sid);
                 }
+
+                _byChannel.Remove(channelId);
                 return removed;
             }
         }
@@ -121,18 +139,24 @@ namespace Unity.FoxgloveSDK.Core
         public List<(uint clientId, uint subscriptionId)> GetSubscribersForChannel(uint channelId)
         {
             var result = new List<(uint, uint)>();
+            CopySubscribersForChannel(channelId, result);
+            return result;
+        }
+
+        /// <summary>
+        /// Copy subscribers for a channel into a caller-owned list.
+        /// </summary>
+        public void CopySubscribersForChannel(uint channelId, List<(uint clientId, uint subscriptionId)> destination)
+        {
+            if (destination == null)
+                return;
+
             lock (_lock)
             {
-                foreach (var (clientId, subs) in _clients)
-                {
-                    foreach (var (subId, chId) in subs)
-                    {
-                        if (chId == channelId)
-                            result.Add((clientId, subId));
-                    }
-                }
+                destination.Clear();
+                if (_byChannel.TryGetValue(channelId, out var subscribers))
+                    destination.AddRange(subscribers);
             }
-            return result;
         }
 
         /// <summary>
@@ -142,17 +166,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
-                // O(clients * subscriptions_per_client); acceptable for per-publisher cadence gating.
-                foreach (var subs in _clients.Values)
-                {
-                    foreach (var chId in subs.Values)
-                    {
-                        if (chId == channelId)
-                            return true;
-                    }
-                }
-
-                return false;
+                return _byChannel.TryGetValue(channelId, out var subscribers) && subscribers.Count > 0;
             }
         }
 
@@ -162,6 +176,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 _clients.Clear();
+                _byChannel.Clear();
             }
         }
 
@@ -169,6 +184,36 @@ namespace Unity.FoxgloveSDK.Core
         public int ClientCount
         {
             get { lock (_lock) { return _clients.Count; } }
+        }
+
+        private void AddReverseIndex(uint channelId, uint clientId, uint subscriptionId)
+        {
+            if (!_byChannel.TryGetValue(channelId, out var subscribers))
+            {
+                subscribers = new List<(uint clientId, uint subscriptionId)>();
+                _byChannel[channelId] = subscribers;
+            }
+
+            subscribers.Add((clientId, subscriptionId));
+        }
+
+        private void RemoveReverseIndex(uint channelId, uint clientId, uint subscriptionId)
+        {
+            if (!_byChannel.TryGetValue(channelId, out var subscribers))
+                return;
+
+            for (var i = subscribers.Count - 1; i >= 0; i--)
+            {
+                var subscriber = subscribers[i];
+                if (subscriber.clientId == clientId && subscriber.subscriptionId == subscriptionId)
+                {
+                    subscribers.RemoveAt(i);
+                    break;
+                }
+            }
+
+            if (subscribers.Count == 0)
+                _byChannel.Remove(channelId);
         }
     }
 }

@@ -46,9 +46,8 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/SubscriptionRegistry.cs");
             Check(source.Contains("public bool HasSubscribersForChannel"),
                 "73A-1: SubscriptionRegistry exposes HasSubscribersForChannel");
-            Check(source.Contains("O(clients * subscriptions_per_client)")
-                    || source.Contains("O(clients * subscriptions per client)"),
-                "73A-2: subscriber scan cost is documented");
+            Check(source.Contains("_byChannel") && source.Contains("CopySubscribersForChannel"),
+                "73A-2: SubscriptionRegistry maintains a reverse channel subscriber index");
 
             var method = typeof(SubscriptionRegistry).GetMethod(
                 "HasSubscribersForChannel",
@@ -78,6 +77,32 @@ namespace Unity.FoxgloveSDK.Tests
                 "73A-7: removing a client clears that client's channel demand");
             Check(InvokeHasSubscribers(method, registry, 43),
                 "73A-8: removing one client preserves other client demand");
+
+            registry.AddSubscription(clientId: 11, subscriptionId: 21, channelId: 44);
+            Check(!InvokeHasSubscribers(method, registry, 43) && InvokeHasSubscribers(method, registry, 44),
+                "73A-9: replacing a subscription id moves demand between channels");
+
+            var copyMethod = typeof(SubscriptionRegistry).GetMethod(
+                "CopySubscribersForChannel",
+                BindingFlags.Public | BindingFlags.Instance,
+                binder: null,
+                types: new[] { typeof(uint), typeof(List<(uint clientId, uint subscriptionId)>) },
+                modifiers: null);
+            Check(copyMethod != null,
+                "73A-10: CopySubscribersForChannel is available for caller-owned snapshots");
+
+            var copied = new List<(uint clientId, uint subscriptionId)>();
+            copyMethod?.Invoke(registry, new object[] { 44u, copied });
+            Check(copied.Count == 1 && copied[0].clientId == 11 && copied[0].subscriptionId == 21,
+                "73A-11: CopySubscribersForChannel writes the channel snapshot into a caller-owned list");
+
+            var removed = registry.RemoveChannel(44);
+            Check(removed.Count == 1 && !InvokeHasSubscribers(method, registry, 44),
+                "73A-12: removing a channel clears reverse-index demand");
+
+            var hasDemandBody = ExtractMethodBody(source, "HasSubscribersForChannel");
+            Check(!hasDemandBody.Contains("_clients.Values") && hasDemandBody.Contains("_byChannel.TryGetValue"),
+                "73A-13: HasSubscribersForChannel uses the reverse index instead of a full client scan");
         }
 
         private static void VerifySessionRuntimeAndManagerDemandSurface()
@@ -111,6 +136,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(IndexOf(pointCloudSource, "ShouldPreparePublishPayload()") < IndexOf(pointCloudSource, "_pendingFrame = null"),
                 "73B-10: point cloud pending frame is not cleared before demand guard");
+
+            Check(sessionSource.Contains("CopySubscribersForChannel")
+                  && sessionSource.Contains("_subscriberScratchLock")
+                  && !sessionSource.Contains("_subscriptions.GetSubscribersForChannel(channelId)"),
+                "73B-11: session publish paths reuse caller-owned subscriber snapshots");
 
             VerifyCompiledSessionDemand();
             VerifyCompiledRuntimeDemandSurface();
@@ -292,6 +322,26 @@ namespace Unity.FoxgloveSDK.Tests
             return endIndex < 0
                 ? text.Substring(startIndex)
                 : text.Substring(startIndex, endIndex - startIndex);
+        }
+
+        private static string ExtractMethodBody(string source, string methodName)
+        {
+            var index = source.IndexOf(methodName, StringComparison.Ordinal);
+            if (index < 0) return "";
+            var brace = source.IndexOf('{', index);
+            if (brace < 0) return "";
+            var depth = 0;
+            for (var i = brace; i < source.Length; i++)
+            {
+                if (source[i] == '{') depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(brace, i - brace + 1);
+                }
+            }
+            return source.Substring(brace);
         }
 
         private static void Check(bool condition, string name)

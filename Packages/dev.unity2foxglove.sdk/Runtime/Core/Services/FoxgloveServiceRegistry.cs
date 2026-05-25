@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, ServiceDescriptor> _services = new();
         // Key: (clientId, callId) — two clients may independently use the same callId
         private readonly Dictionary<(uint clientId, uint callId), FoxgloveServiceCall> _pending = new();
+        private readonly Dictionary<uint, int> _pendingCountByClient = new();
         private readonly object _lock = new();
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
@@ -112,22 +113,26 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 var key = (clientId, callId);
-                if (!_pending.ContainsKey(key))
+                if (_pending.ContainsKey(key))
                 {
-                    var clientPending = _pending.Keys.Count(k => k.clientId == clientId);
-                    if (clientPending >= MaxPendingCallsPerClient)
-                    {
-                        call = null;
-                        error = $"Too many pending service calls for client {clientId}";
-                        return false;
-                    }
+                    call = null;
+                    error = $"Duplicate pending service call {callId} for client {clientId}";
+                    return false;
+                }
 
-                    if (_pending.Count >= MaxPendingCallsTotal)
-                    {
-                        call = null;
-                        error = "Too many pending service calls";
-                        return false;
-                    }
+                _pendingCountByClient.TryGetValue(clientId, out var clientPending);
+                if (clientPending >= MaxPendingCallsPerClient)
+                {
+                    call = null;
+                    error = $"Too many pending service calls for client {clientId}";
+                    return false;
+                }
+
+                if (_pending.Count >= MaxPendingCallsTotal)
+                {
+                    call = null;
+                    error = "Too many pending service calls";
+                    return false;
                 }
 
                 call = new FoxgloveServiceCall
@@ -140,6 +145,7 @@ namespace Unity.FoxgloveSDK.Core
                     CreatedAt = DateTime.UtcNow
                 };
                 _pending[key] = call;
+                _pendingCountByClient[clientId] = clientPending + 1;
                 error = null;
                 return true;
             }
@@ -190,7 +196,7 @@ namespace Unity.FoxgloveSDK.Core
                     }
                 }
                 foreach (var key in completedKeys)
-                    _pending.Remove(key);
+                    RemovePendingCall(key);
             }
             return completed;
         }
@@ -221,19 +227,44 @@ namespace Unity.FoxgloveSDK.Core
                         toRemove.Add(key);
                 foreach (var key in toRemove)
                     _pending.Remove(key);
+                _pendingCountByClient.Remove(clientId);
             }
         }
 
         /// <summary>Remove all pending service calls while keeping registered service definitions and handlers.</summary>
         public void ClearPendingCalls()
         {
-            lock (_lock) { _pending.Clear(); }
+            lock (_lock)
+            {
+                _pending.Clear();
+                _pendingCountByClient.Clear();
+            }
         }
 
         /// <summary>Remove all services and pending calls.</summary>
         public void Clear()
         {
-            lock (_lock) { _services.Clear(); _pending.Clear(); _handlers.Clear(); }
+            lock (_lock)
+            {
+                _services.Clear();
+                _pending.Clear();
+                _pendingCountByClient.Clear();
+                _handlers.Clear();
+            }
+        }
+
+        private void RemovePendingCall((uint clientId, uint callId) key)
+        {
+            if (!_pending.Remove(key))
+                return;
+
+            if (!_pendingCountByClient.TryGetValue(key.clientId, out var count))
+                return;
+
+            if (count <= 1)
+                _pendingCountByClient.Remove(key.clientId);
+            else
+                _pendingCountByClient[key.clientId] = count - 1;
         }
     }
 }

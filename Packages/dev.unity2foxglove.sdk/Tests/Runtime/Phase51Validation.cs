@@ -42,6 +42,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyServiceCallTerminalStateIsIdempotent();
             VerifyServiceUnregisterRemovesHandler();
             VerifyServiceDrainUsesSingleOwnershipPass();
+            VerifyServiceRegistryRejectsDuplicatePendingCallIds();
+            VerifyServiceRegistryTracksPendingCountsWithoutLinqScan();
             VerifyParameterSubscriptionSemantics();
             VerifyParameterBroadcastIncludesClientZero();
             VerifyAssetRegistryDoesIoOutsideLock();
@@ -50,6 +52,10 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyBinaryPriorityContracts();
             VerifyClientIdAllocationCannotWrapToZero();
             VerifySubscribeBroadcastFailuresAreCaught();
+            VerifyRecordingControllerDetachesSessionAtomically();
+            VerifyManagerDocumentsStopServerDetachOrder();
+            VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated();
+            VerifyRuntimeTickLockBoundaryIsDocumented();
             VerifyReplayTickSupportsCallerOwnedBuffer();
             VerifyMcapRecorderAvoidsChunkToArrayCopy();
             VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline();
@@ -142,8 +148,38 @@ namespace Unity.FoxgloveSDK.Tests
             var drain = ExtractMethodBody(source, "DrainCompleted");
             Check(!drain.Contains("_pending.ToList()"),
                 "51B-5: DrainCompleted does not allocate LINQ snapshots while holding ownership");
-            Check(drain.Contains("_pending.Remove"),
-                "51B-6: DrainCompleted removes completed calls in the ownership pass");
+            Check(drain.Contains("RemovePendingCall"),
+                "51B-6: DrainCompleted removes completed calls through the pending ownership helper");
+        }
+
+        private static void VerifyServiceRegistryRejectsDuplicatePendingCallIds()
+        {
+            var registry = new FoxgloveServiceRegistry();
+            var firstPayload = Encoding.UTF8.GetBytes("{\"first\":true}");
+            var secondPayload = Encoding.UTF8.GetBytes("{\"second\":true}");
+
+            Check(registry.TryEnqueue(1, 10, 7, "json", firstPayload, out var first, out var firstError)
+                  && first != null && firstError == null,
+                "51B-6a: first service call enqueue succeeds");
+            Check(!registry.TryEnqueue(2, 10, 7, "json", secondPayload, out var duplicate, out var duplicateError)
+                  && duplicate == null && duplicateError.Contains("Duplicate", StringComparison.OrdinalIgnoreCase),
+                "51B-6b: duplicate service call id for the same client is rejected");
+
+            first.Complete("json", Encoding.UTF8.GetBytes("{}"));
+            var drained = registry.DrainCompleted();
+            Check(drained.Count == 1
+                  && drained[0].ServiceId == 1
+                  && Encoding.UTF8.GetString(drained[0].Payload).Contains("first"),
+                "51B-6c: duplicate enqueue cannot overwrite the original pending call");
+        }
+
+        private static void VerifyServiceRegistryTracksPendingCountsWithoutLinqScan()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Services/FoxgloveServiceRegistry.cs");
+            Check(source.Contains("_pendingCountByClient"),
+                "51B-6d: service registry maintains per-client pending call counts");
+            Check(!source.Contains("_pending.Keys.Count"),
+                "51B-6e: service enqueue no longer scans all pending keys under lock");
         }
 
         private static void VerifyParameterSubscriptionSemantics()
@@ -282,6 +318,49 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!ThrowsAny(() => transport.RaiseText(7, "{\"op\":\"unsubscribe\",\"subscriptionIds\":[11]}")),
                 "51B-24: unsubscribe catches connection graph broadcast failures");
+        }
+
+        private static void VerifyRecordingControllerDetachesSessionAtomically()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
+            Check(source.Contains("Interlocked.Exchange(ref _session, null)"),
+                "51B-25: RecordingController detaches the session with an atomic exchange");
+            Check(source.Contains("Volatile.Write(ref _session, session)")
+                  && source.Contains("Volatile.Write(ref _session, null)"),
+                "51B-26: RecordingController publishes session attach/detach state with volatile writes");
+        }
+
+        private static void VerifyManagerDocumentsStopServerDetachOrder()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var stop = ExtractMethodBody(source, "private void StopServer");
+            var stopIndex = source.IndexOf("private void StopServer", StringComparison.Ordinal);
+            var detachIndex = source.IndexOf("transport.OnClientConnected -=", stopIndex, StringComparison.Ordinal);
+            var runtimeStopIndex = source.IndexOf("_runtime.Stop()", stopIndex, StringComparison.Ordinal);
+            Check(stop.Contains("capture and detach") || stop.Contains("Capture and detach"),
+                "51B-27: StopServer documents that callbacks are detached before runtime Stop clears Session");
+            Check(detachIndex >= 0 && runtimeStopIndex >= 0 && detachIndex < runtimeStopIndex,
+                "51B-28: StopServer detaches transport callbacks before runtime Stop");
+        }
+
+        private static void VerifySessionGraphMetadataFlushIsSeparatedAndDirtyGated()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionGraphHandler.cs");
+            Check(source.Contains("FlushMetadataSnapshotIfDirty"),
+                "51B-29: SessionGraphHandler separates websocket broadcast from MCAP metadata flush");
+            var flush = ExtractMethodBody(source, "FlushMetadataSnapshotIfDirty");
+            Check(flush.Contains("if (!_dirty)") && flush.Contains("WriteMetadata") && flush.Contains("_dirty = false"),
+                "51B-30: graph metadata writes remain dirty-gated");
+        }
+
+        private static void VerifyRuntimeTickLockBoundaryIsDocumented()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var tick = ExtractMethodBody(source, "public void Tick");
+            Check(tick.Contains("broadcastLiveTime") && tick.Contains("session.BroadcastTime()"),
+                "51B-31: live time broadcast runs outside the playback control lock");
+            Check(tick.Contains("Replay work intentionally stays inside _playbackControlLock"),
+                "51B-32: replay lock boundary documents why snapshot publishing remains serialized");
         }
 
         private static void VerifyReplayTickSupportsCallerOwnedBuffer()

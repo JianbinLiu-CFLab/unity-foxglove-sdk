@@ -120,7 +120,7 @@ namespace Unity.FoxgloveSDK.Core
                 // All setup succeeded — transfer ownership to session
                 session.SetRecorder(recorder);
                 fileStream = null;
-                _session = session;
+                Volatile.Write(ref _session, session);
                 Volatile.Write(ref _recorder, recorder);
                 recorder = null;
             }
@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Core
                 recorder?.Dispose();
                 fileStream?.Dispose();
                 Volatile.Write(ref _recorder, null);
-                _session = null;
+                Volatile.Write(ref _session, null);
                 _logger.LogError($"Failed to start MCAP recording: {ex.Message}");
             }
         }
@@ -158,8 +158,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DetachFromSession()
         {
-            var session = _session;
-            _session = null;
+            var session = Interlocked.Exchange(ref _session, null);
             session?.SetRecorder(null);
 
             var recorder = Interlocked.Exchange(ref _recorder, null);

@@ -129,6 +129,11 @@ namespace Unity.FoxgloveSDK.Core
             foreach (var subId in _graph.GetSubscribers())
                 _transport.SendText(subId, json);
 
+            FlushMetadataSnapshotIfDirty(json);
+        }
+
+        private void FlushMetadataSnapshotIfDirty(string json)
+        {
             if (!_dirty)
                 return;
 
