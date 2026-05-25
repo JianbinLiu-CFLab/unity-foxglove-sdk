@@ -198,6 +198,9 @@ namespace Unity.FoxgloveSDK.Protocol
 
         // ── Phase 9: PlaybackControl ──
 
+        /// <summary>Maximum UTF-8 byte length accepted for PlaybackControl request ids.</summary>
+        public const int MaxPlaybackRequestIdBytes = 256;
+
         /// <summary>Write a 32-bit float in little-endian byte order.</summary>
         public static void WriteF32LE(byte[] buf, int offset, float value)
         {
@@ -229,6 +232,7 @@ namespace Unity.FoxgloveSDK.Protocol
             var idLen = ReadU32LE(data, 15);
             if (idLen > int.MaxValue) return false;
             var idLenInt = (int)idLen;
+            if (idLenInt > MaxPlaybackRequestIdBytes) return false;
             if (idLenInt > data.Length - 19) return false;
             requestId = idLenInt > 0 ? System.Text.Encoding.UTF8.GetString(data, 19, idLenInt) : null;
             return true;
