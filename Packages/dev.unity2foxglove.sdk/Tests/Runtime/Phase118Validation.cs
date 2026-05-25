@@ -123,7 +123,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 "fixtureKind", "fixturePath", "channelCount", "schemaCount",
                 "selectedChannelCount", "selectedTopicCount", "queryStartTimeNs",
-                "queryEndTimeNs", "returnedMessageCount", "backfillHitCount", "fixtureBytes"
+                "queryEndTimeNs", "returnedMessageCount", "backfillHitCount", "fixtureBytes",
+                "thresholdsEvaluated", "thresholdNotes"
             })
             {
                 Check(result.Contains(field, StringComparison.Ordinal),
@@ -152,6 +153,25 @@ namespace Unity.FoxgloveSDK.Tests
                   && runner.Contains("CreateDataLoaderDirectFixture", StringComparison.Ordinal)
                   && runner.Contains("CreateDataLoaderSparseFixture", StringComparison.Ordinal),
                 "118-C3: performance harness creates deterministic DataLoader fixtures under build/performance/fixtures");
+
+            Check(runner.Contains("ApplyThresholds(result)", StringComparison.Ordinal)
+                  && runner.Contains("RunThresholdSelfTest", StringComparison.Ordinal)
+                  && runner.Contains("maxAllocatedBytesPerMessage", StringComparison.Ordinal)
+                  && runner.Contains("minMessagesPerSecond", StringComparison.Ordinal),
+                "118-C4: performance harness enforces configurable regression thresholds");
+
+            var entryPoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Performance/Program.cs");
+            Check(entryPoint.Contains("--thresholds", StringComparison.Ordinal)
+                  && entryPoint.Contains("--threshold-self-test", StringComparison.Ordinal)
+                  && entryPoint.Contains("Performance thresholds:", StringComparison.Ordinal),
+                "118-C5: performance entry point exposes threshold config and self-test gates");
+
+            var thresholds = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Performance/performance-thresholds.json");
+            Check(thresholds.Contains("\"defaults\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"scenarios\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"maxElapsedMs\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"minMessagesPerSecond\"", StringComparison.Ordinal),
+                "118-C6: default performance threshold file is checked in");
         }
 
         private static void VerifyValidationWiring()

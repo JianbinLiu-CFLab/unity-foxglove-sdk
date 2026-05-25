@@ -44,7 +44,77 @@ namespace Unity.FoxgloveSDK.Performance
         private const int QuickMessages = 2000;
         private const int FullMessages = 50000;
 
-        public static List<PerformanceScenarioResult> RunAll(string mode)
+        private static PerformanceThresholdConfig _activeThresholds;
+
+        public static PerformanceThresholdConfig CreateDefaultThresholds(string mode)
+        {
+            var isFull = mode == "full";
+            return new PerformanceThresholdConfig
+            {
+                enabled = true,
+                defaults = new PerformanceScenarioThreshold
+                {
+                    maxElapsedMs = isFull ? 600000 : 120000,
+                    minMessagesPerSecond = 1,
+                    maxAllocatedBytesPerMessage = 64 * 1024 * 1024,
+                    maxGen2Collections = 1000
+                },
+                scenarios = new Dictionary<string, PerformanceScenarioThreshold>
+                {
+                    ["CameraBackpressurePolicyMicro"] = new PerformanceScenarioThreshold
+                    {
+                        maxElapsedMs = isFull ? 30000 : 10000,
+                        minMessagesPerSecond = 10000,
+                        maxAllocatedBytesPerMessage = 64,
+                        maxGen2Collections = 0
+                    }
+                }
+            };
+        }
+
+        public static bool RunThresholdSelfTest()
+        {
+            var previous = _activeThresholds;
+            try
+            {
+                _activeThresholds = new PerformanceThresholdConfig
+                {
+                    enabled = true,
+                    defaults = new PerformanceScenarioThreshold
+                    {
+                        maxElapsedMs = 1,
+                        minMessagesPerSecond = 1000,
+                        maxAllocatedBytesPerMessage = 1,
+                        maxGen0Collections = 0
+                    }
+                };
+
+                var result = new PerformanceScenarioResult
+                {
+                    name = "ThresholdSelfTest",
+                    messageCount = 1,
+                    elapsedMs = 10,
+                    messagesPerSecond = 10,
+                    allocatedBytesPerMessage = 2,
+                    gen0Collections = 1,
+                    passed = true
+                };
+
+                ApplyThresholds(result);
+                return result.thresholdsEvaluated
+                    && !result.passed
+                    && result.thresholdNotes.Contains("elapsedMs", StringComparison.Ordinal)
+                    && result.thresholdNotes.Contains("messagesPerSecond", StringComparison.Ordinal)
+                    && result.thresholdNotes.Contains("allocatedBytesPerMessage", StringComparison.Ordinal)
+                    && result.thresholdNotes.Contains("gen0Collections", StringComparison.Ordinal);
+            }
+            finally
+            {
+                _activeThresholds = previous;
+            }
+        }
+
+        public static List<PerformanceScenarioResult> RunAll(string mode, PerformanceThresholdConfig thresholds = null)
         {
             bool isFull = mode == "full";
             var results = new List<PerformanceScenarioResult>();
@@ -54,31 +124,40 @@ namespace Unity.FoxgloveSDK.Performance
             int clients = isFull ? FullClients : QuickClients;
             int messages = isFull ? FullMessages : QuickMessages;
 
-            results.Add(RunPublishJsonFanout(warmup, topics, clients, messages));
-            results.Add(RunPublishProtoFanout(warmup, topics, clients, messages));
-            results.Add(RunMcapRecord(warmup, topics, messages, "", "McapRecordNone"));
-            results.Add(RunMcapRecord(warmup, topics, messages, "lz4", "McapRecordLz4"));
-            results.Add(RunMcapRecord(warmup, topics, messages, "zstd", "McapRecordZstd"));
-            results.Add(RunMcapRecordNonePrebuiltPayload(warmup, topics, messages));
-            results.Add(RunMcapReplayTick(warmup, topics, messages, isFull));
-            var dataLoaderMessages = isFull ? Math.Min(messages, 10000) : Math.Min(messages, 1000);
-            var dataLoaderInitializeIterations = isFull ? 20 : 5;
-            var indexedFixture = CreateDataLoaderIndexedFixture(topics, dataLoaderMessages);
-            var directFixture = CreateDataLoaderDirectFixture(topics, dataLoaderMessages);
-            var sparseFixture = CreateDataLoaderSparseFixture();
-            results.Add(RunMcapDataLoaderInitializeIndexed(indexedFixture, dataLoaderInitializeIterations));
-            results.Add(RunMcapDataLoaderInitializeDirect(directFixture, dataLoaderInitializeIterations));
-            results.Add(RunMcapDataLoaderIterateAllIndexed(indexedFixture));
-            results.Add(RunMcapDataLoaderIterateTopicFilterIndexed(indexedFixture));
-            results.Add(RunMcapDataLoaderIterateTimeWindowIndexed(indexedFixture));
-            results.Add(RunMcapDataLoaderIterateAllDirect(directFixture));
-            results.Add(RunMcapDataLoaderBackfillIndexed(indexedFixture));
-            results.Add(RunMcapDataLoaderBackfillSparse(sparseFixture));
-            results.Add(RunMcapRecordAttachmentSummary());
-            results.Add(RunCameraBackpressurePolicyMicro());
-            results.Add(RunTransportQueueMicro());
+            var previous = _activeThresholds;
+            _activeThresholds = thresholds ?? CreateDefaultThresholds(mode);
+            try
+            {
+                results.Add(RunPublishJsonFanout(warmup, topics, clients, messages));
+                results.Add(RunPublishProtoFanout(warmup, topics, clients, messages));
+                results.Add(RunMcapRecord(warmup, topics, messages, "", "McapRecordNone"));
+                results.Add(RunMcapRecord(warmup, topics, messages, "lz4", "McapRecordLz4"));
+                results.Add(RunMcapRecord(warmup, topics, messages, "zstd", "McapRecordZstd"));
+                results.Add(RunMcapRecordNonePrebuiltPayload(warmup, topics, messages));
+                results.Add(RunMcapReplayTick(warmup, topics, messages, isFull));
+                var dataLoaderMessages = isFull ? Math.Min(messages, 10000) : Math.Min(messages, 1000);
+                var dataLoaderInitializeIterations = isFull ? 20 : 5;
+                var indexedFixture = CreateDataLoaderIndexedFixture(topics, dataLoaderMessages);
+                var directFixture = CreateDataLoaderDirectFixture(topics, dataLoaderMessages);
+                var sparseFixture = CreateDataLoaderSparseFixture();
+                results.Add(RunMcapDataLoaderInitializeIndexed(indexedFixture, dataLoaderInitializeIterations));
+                results.Add(RunMcapDataLoaderInitializeDirect(directFixture, dataLoaderInitializeIterations));
+                results.Add(RunMcapDataLoaderIterateAllIndexed(indexedFixture));
+                results.Add(RunMcapDataLoaderIterateTopicFilterIndexed(indexedFixture));
+                results.Add(RunMcapDataLoaderIterateTimeWindowIndexed(indexedFixture));
+                results.Add(RunMcapDataLoaderIterateAllDirect(directFixture));
+                results.Add(RunMcapDataLoaderBackfillIndexed(indexedFixture));
+                results.Add(RunMcapDataLoaderBackfillSparse(sparseFixture));
+                results.Add(RunMcapRecordAttachmentSummary());
+                results.Add(RunCameraBackpressurePolicyMicro());
+                results.Add(RunTransportQueueMicro());
 
-            return results;
+                return results;
+            }
+            finally
+            {
+                _activeThresholds = previous;
+            }
         }
 
         // Helpers
@@ -133,7 +212,7 @@ namespace Unity.FoxgloveSDK.Performance
                 msgCount, out var allocTotal, out var allocThread, out var allocPerMsg,
                 out var gen0, out var gen1, out var gen2, out var allocNotes);
 
-            return new PerformanceScenarioResult
+            var result = new PerformanceScenarioResult
             {
                 name = name,
                 warmupMessageCount = warmupCount,
@@ -149,6 +228,67 @@ namespace Unity.FoxgloveSDK.Performance
                 allocationNotes = allocNotes,
                 passed = true
             };
+            ApplyThresholds(result);
+            return result;
+        }
+
+        private static PerformanceScenarioThreshold ResolveThreshold(string scenarioName)
+        {
+            var config = _activeThresholds;
+            if (config == null || !config.enabled)
+                return null;
+
+            PerformanceScenarioThreshold scenario = null;
+            config.scenarios?.TryGetValue(scenarioName, out scenario);
+            if (config.defaults == null && scenario == null)
+                return null;
+
+            return new PerformanceScenarioThreshold
+            {
+                maxElapsedMs = scenario?.maxElapsedMs ?? config.defaults?.maxElapsedMs,
+                minMessagesPerSecond = scenario?.minMessagesPerSecond ?? config.defaults?.minMessagesPerSecond,
+                maxAllocatedBytesPerMessage = scenario?.maxAllocatedBytesPerMessage ?? config.defaults?.maxAllocatedBytesPerMessage,
+                maxAllocatedBytesTotal = scenario?.maxAllocatedBytesTotal ?? config.defaults?.maxAllocatedBytesTotal,
+                maxGen0Collections = scenario?.maxGen0Collections ?? config.defaults?.maxGen0Collections,
+                maxGen1Collections = scenario?.maxGen1Collections ?? config.defaults?.maxGen1Collections,
+                maxGen2Collections = scenario?.maxGen2Collections ?? config.defaults?.maxGen2Collections
+            };
+        }
+
+        private static void ApplyThresholds(PerformanceScenarioResult result)
+        {
+            var threshold = ResolveThreshold(result.name);
+            if (threshold == null)
+                return;
+
+            var failures = new List<string>();
+            if (threshold.maxElapsedMs.HasValue && result.elapsedMs > threshold.maxElapsedMs.Value)
+                failures.Add($"elapsedMs {result.elapsedMs} > max {threshold.maxElapsedMs.Value}");
+            if (threshold.minMessagesPerSecond.HasValue
+                && result.messageCount > 0
+                && result.messagesPerSecond < threshold.minMessagesPerSecond.Value)
+                failures.Add($"messagesPerSecond {result.messagesPerSecond:F3} < min {threshold.minMessagesPerSecond.Value:F3}");
+            if (threshold.maxAllocatedBytesPerMessage.HasValue
+                && result.allocatedBytesPerMessage > threshold.maxAllocatedBytesPerMessage.Value)
+                failures.Add($"allocatedBytesPerMessage {result.allocatedBytesPerMessage:F3} > max {threshold.maxAllocatedBytesPerMessage.Value:F3}");
+            if (threshold.maxAllocatedBytesTotal.HasValue && result.allocatedBytesTotal > threshold.maxAllocatedBytesTotal.Value)
+                failures.Add($"allocatedBytesTotal {result.allocatedBytesTotal} > max {threshold.maxAllocatedBytesTotal.Value}");
+            if (threshold.maxGen0Collections.HasValue && result.gen0Collections > threshold.maxGen0Collections.Value)
+                failures.Add($"gen0Collections {result.gen0Collections} > max {threshold.maxGen0Collections.Value}");
+            if (threshold.maxGen1Collections.HasValue && result.gen1Collections > threshold.maxGen1Collections.Value)
+                failures.Add($"gen1Collections {result.gen1Collections} > max {threshold.maxGen1Collections.Value}");
+            if (threshold.maxGen2Collections.HasValue && result.gen2Collections > threshold.maxGen2Collections.Value)
+                failures.Add($"gen2Collections {result.gen2Collections} > max {threshold.maxGen2Collections.Value}");
+
+            result.thresholdsEvaluated = true;
+            if (failures.Count == 0)
+            {
+                result.thresholdNotes = "thresholds passed";
+                return;
+            }
+
+            result.passed = false;
+            result.thresholdNotes = string.Join("; ", failures);
         }
 
         private static byte[] MakeJsonPayload(int topicIdx, int msgIdx)
@@ -411,7 +551,7 @@ namespace Unity.FoxgloveSDK.Performance
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateAllIndexed",
                 fixture,
-                new McapDataLoaderQuery(),
+                new McapDataLoaderQuery { MaxMessages = 0 },
                 fixture.TotalMessageCount,
                 fixture.ChannelCount,
                 0,
@@ -454,7 +594,7 @@ namespace Unity.FoxgloveSDK.Performance
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateAllDirect",
                 fixture,
-                new McapDataLoaderQuery(),
+                new McapDataLoaderQuery { MaxMessages = 0 },
                 fixture.TotalMessageCount,
                 fixture.ChannelCount,
                 0,
@@ -922,7 +1062,7 @@ namespace Unity.FoxgloveSDK.Performance
                 && allowedCount > 0
                 && r.NextDropCount == currentDrop;
 
-            return new PerformanceScenarioResult
+            var result = new PerformanceScenarioResult
             {
                 name = "CameraBackpressurePolicyMicro",
                 warmupMessageCount = 0,
@@ -936,6 +1076,8 @@ namespace Unity.FoxgloveSDK.Performance
                     + $"pressure={pressureCount}, blocked={blockedCount}, allowed={allowedCount}",
                 passed = passed
             };
+            ApplyThresholds(result);
+            return result;
         }
 
         private static PerformanceScenarioResult RunTransportQueueMicro()
