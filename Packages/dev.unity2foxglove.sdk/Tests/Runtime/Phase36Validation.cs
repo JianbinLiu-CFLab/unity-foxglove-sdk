@@ -141,7 +141,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestDisconnectedClientDropsRetained()
         {
             var port = GetFreeTcpPort();
-            using var runtime = new FoxgloveRuntime();
+            var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                MaxQueuedFramesPerClient = 4,
+                MaxQueuedBytesPerClient = 128 * 1024
+            });
+            using var runtime = new FoxgloveRuntime(backend, new SystemClock(), new DefaultSchemaRegistry());
             runtime.Start("phase36-retained-drops", "127.0.0.1", port);
             runtime.RegisterChannel(new AdvertiseChannel
             {
@@ -158,6 +163,8 @@ namespace Unity.FoxgloveSDK.Tests
                 client = ConnectSubscribedRawClient(port, channelId: 1, subscriptionId: 7001);
                 Check(WaitFor(() => runtime.GetTransportStatsSnapshot().ActiveClientCount == 1, 2000),
                     "36B-7: raw subscribed client connected");
+                Check(WaitFor(() => runtime.HasChannelDemand(1), 2000),
+                    "36B-7a: raw client subscription registered");
 
                 var payload = new byte[256 * 1024];
                 for (var i = 0; i < payload.Length; i++)
@@ -175,7 +182,7 @@ namespace Unity.FoxgloveSDK.Tests
                         break;
                 }
 
-                Check(droppedBeforeDisconnect > 0, "36B-7b: slow client triggered data drops");
+                Check(droppedBeforeDisconnect > 0, "36B-7b: bounded client queue triggered data drops");
 
                 client.Close();
                 client.Dispose();
