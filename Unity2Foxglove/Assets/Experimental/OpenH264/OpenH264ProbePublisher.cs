@@ -26,8 +26,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     [Header("OpenH264 Probe")]
     [SerializeField] private string _helperExecutablePath = "";
     [SerializeField] private string _frameId = "unity_camera_openh264_probe";
-    [SerializeField, Min(2)] private int _width = 640;
-    [SerializeField, Min(2)] private int _height = 480;
+    [SerializeField, Range(2, OpenH264ProbeSidecarOptions.MaxDimension)] private int _width = 640;
+    [SerializeField, Range(2, OpenH264ProbeSidecarOptions.MaxDimension)] private int _height = 480;
     [SerializeField, Min(1)] private int _targetFrameRate = 30;
     [SerializeField, Min(1)] private int _bitrateKbps = 4000;
     [SerializeField, Min(1)] private int _keyframeInterval = 30;
@@ -52,6 +52,10 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     private OpenH264ProbeSidecar _sidecar;
     private int _pendingRequests;
     private bool _destroyed;
+    private int _captureGeneration;
+    private bool _cleanupWhenReadbacksDrain;
+    private int _sidecarWidth;
+    private int _sidecarHeight;
     private bool _warnedUnavailable;
     private bool _warnedConversionFailure;
 
@@ -70,6 +74,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     {
         base.OnEnable();
         _destroyed = false;
+        _cleanupWhenReadbacksDrain = false;
+        _captureGeneration++;
         _warnedUnavailable = false;
         _warnedConversionFailure = false;
         if (string.IsNullOrEmpty(_topic))
@@ -77,21 +83,30 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
 
         _encodingOverride = PublisherEncodingOverride.Protobuf;
         _sourceCamera = GetComponent<Camera>();
-        EnsureCaptureResources();
+        if (TryGetProbeFrameLayout(out var width, out var height, out _, out var error))
+            EnsureCaptureResources(width, height);
+        else
+            LogUnavailable(error);
     }
 
     protected override void OnDisable()
     {
         base.OnDisable();
+        _captureGeneration++;
+        _cleanupWhenReadbacksDrain = _pendingRequests > 0;
         StopSidecar();
+        if (_pendingRequests == 0)
+            CleanupResources();
     }
 
     private void OnDestroy()
     {
         _destroyed = true;
-        AsyncGPUReadback.WaitAllRequests();
+        _captureGeneration++;
         StopSidecar();
-        CleanupResources();
+        _cleanupWhenReadbacksDrain = _pendingRequests > 0;
+        if (_pendingRequests == 0)
+            CleanupResources();
     }
 
     private void LateUpdate()
@@ -117,23 +132,30 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         if (!ShouldPreparePublishPayload(PublisherEffectiveEncoding.Protobuf))
             return;
 
-        if (!ValidateProbeConfig())
+        if (!ValidateProbeConfig(out var width, out var height, out var i420Bytes))
             return;
 
-        if (!EnsureSidecarStarted())
+        if (!EnsureSidecarStarted(width, height))
             return;
 
-        EnsureCaptureResources();
+        EnsureCaptureResources(width, height);
         _captureCamera.Render();
+        var generation = _captureGeneration;
         _pendingRequests++;
-        AsyncGPUReadback.Request(_captureTexture, 0, TextureFormat.RGB24, OnReadbackComplete);
+        AsyncGPUReadback.Request(_captureTexture, 0, TextureFormat.RGB24,
+            request => OnReadbackComplete(request, generation, width, height, i420Bytes));
     }
 
-    private void OnReadbackComplete(AsyncGPUReadbackRequest request)
+    private void OnReadbackComplete(
+        AsyncGPUReadbackRequest request,
+        int generation,
+        int width,
+        int height,
+        int i420Bytes)
     {
-        _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
+        CompletePendingReadback();
 
-        if (_destroyed || !isActiveAndEnabled)
+        if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration)
             return;
 
         if (request.hasError)
@@ -142,11 +164,9 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return;
         }
 
-        var width = PositiveDimension(_width);
-        var height = PositiveDimension(_height);
         var rgb = request.GetData<byte>().ToArray();
-        var i420 = new byte[width * height * 3 / 2];
-        if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb, width, height, i420, flipVertical: true, out var error))
+        var i420 = new byte[i420Bytes];
+        if (!TryConvertRgb24ToI420(rgb, width, height, i420, out var error))
         {
             LogConversionFailure(error);
             return;
@@ -171,17 +191,17 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         DrainAccessUnits();
     }
 
-    private bool EnsureSidecarStarted()
+    private bool EnsureSidecarStarted(int width, int height)
     {
-        if (_sidecar != null && _sidecar.IsRunning)
+        if (_sidecar != null && _sidecar.IsRunning && _sidecarWidth == width && _sidecarHeight == height)
             return true;
 
         StopSidecar();
         var options = new OpenH264ProbeSidecarOptions
         {
             HelperExecutablePath = _helperExecutablePath,
-            Width = PositiveDimension(_width),
-            Height = PositiveDimension(_height),
+            Width = width,
+            Height = height,
             FrameRate = Math.Max(1, _targetFrameRate),
             BitrateKbps = Math.Max(1, _bitrateKbps),
             KeyframeInterval = Math.Max(1, _keyframeInterval),
@@ -192,6 +212,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         _sidecar = new OpenH264ProbeSidecar();
         if (_sidecar.Start(options))
         {
+            _sidecarWidth = width;
+            _sidecarHeight = height;
             _warnedUnavailable = false;
             return true;
         }
@@ -248,8 +270,17 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return false;
         }
 
-        var rgbBytes = width * height * 3;
-        var i420Bytes = width * height * 3 / 2;
+        if (!OpenH264ProbeSidecarOptions.TryComputeFrameByteCount(width, height, out var i420Bytes, out error))
+            return false;
+
+        var rgbBytesLong = (long)width * height * 3;
+        if (rgbBytesLong > int.MaxValue)
+        {
+            error = "RGB24 input buffer length exceeds Int32.MaxValue.";
+            return false;
+        }
+
+        var rgbBytes = (int)rgbBytesLong;
         if (rgb24 == null || rgb24.Length != rgbBytes)
         {
             error = "RGB24 input buffer length does not match width * height * 3.";
@@ -331,11 +362,9 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         return (byte)value;
     }
 
-    private void EnsureCaptureResources()
+    private void EnsureCaptureResources(int width, int height)
     {
         _sourceCamera = _sourceCamera != null ? _sourceCamera : GetComponent<Camera>();
-        var width = PositiveDimension(_width);
-        var height = PositiveDimension(_height);
 
         if (_captureTexture == null || _captureTexture.width != width || _captureTexture.height != height)
         {
@@ -357,6 +386,16 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         _captureCamera.CopyFrom(_sourceCamera);
         _captureCamera.targetTexture = _captureTexture;
         _captureCamera.enabled = false;
+    }
+
+    private void CompletePendingReadback()
+    {
+        _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
+        if (_pendingRequests == 0 && _cleanupWhenReadbacksDrain)
+        {
+            _cleanupWhenReadbacksDrain = false;
+            CleanupResources();
+        }
     }
 
     private void CleanupResources()
@@ -382,6 +421,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
 
         _sidecar.Dispose();
         _sidecar = null;
+        _sidecarWidth = 0;
+        _sidecarHeight = 0;
     }
 
     private void LogUnavailable(string message)
@@ -404,8 +445,12 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         Debug.LogWarning("[Foxglove] OpenH264 probe conversion failed: " + _lastHelperError);
     }
 
-    private bool ValidateProbeConfig()
+    private bool ValidateProbeConfig(out int width, out int height, out int i420Bytes)
     {
+        width = 0;
+        height = 0;
+        i420Bytes = 0;
+
         if (string.IsNullOrWhiteSpace(_helperExecutablePath))
         {
             LogUnavailable("OpenH264 helper executable path is empty.");
@@ -418,7 +463,20 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return false;
         }
 
+        if (!TryGetProbeFrameLayout(out width, out height, out i420Bytes, out var error))
+        {
+            LogUnavailable(error);
+            return false;
+        }
+
         return true;
+    }
+
+    private bool TryGetProbeFrameLayout(out int width, out int height, out int i420Bytes, out string error)
+    {
+        width = PositiveDimension(_width);
+        height = PositiveDimension(_height);
+        return OpenH264ProbeSidecarOptions.TryComputeFrameByteCount(width, height, out i420Bytes, out error);
     }
 
     private static int PositiveDimension(int value)

@@ -377,6 +377,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
 public sealed class OpenH264ProbeSidecarOptions
 {
+    public const int MaxDimension = 4096;
+    public const int MaxFrameBytes = 32 * 1024 * 1024;
+
     public string HelperExecutablePath = "";
     public int Width = 640;
     public int Height = 480;
@@ -386,7 +389,15 @@ public sealed class OpenH264ProbeSidecarOptions
     public int MaxInputQueue = 2;
     public int MaxOutputQueue = 4;
 
-    public int FrameByteCount => Width > 0 && Height > 0 ? Width * Height * 3 / 2 : 0;
+    public int FrameByteCount
+    {
+        get
+        {
+            return TryComputeFrameByteCount(Width, Height, out var frameByteCount, out _)
+                ? frameByteCount
+                : 0;
+        }
+    }
 
     public bool Validate(out string error)
     {
@@ -408,12 +419,43 @@ public sealed class OpenH264ProbeSidecarOptions
             return false;
         }
 
+        if (!TryComputeFrameByteCount(Width, Height, out _, out error))
+            return false;
+
         if (FrameRate <= 0 || BitrateKbps <= 0 || KeyframeInterval <= 0)
         {
             error = "OpenH264 helper requires positive frame rate, bitrate, and keyframe interval.";
             return false;
         }
 
+        error = "";
+        return true;
+    }
+
+    public static bool TryComputeFrameByteCount(int width, int height, out int frameByteCount, out string error)
+    {
+        frameByteCount = 0;
+        if (width <= 0 || height <= 0 || (width % 2) != 0 || (height % 2) != 0)
+        {
+            error = "OpenH264 helper requires positive even width and height.";
+            return false;
+        }
+
+        if (width > MaxDimension || height > MaxDimension)
+        {
+            error = $"OpenH264 probe dimensions must be <= {MaxDimension}x{MaxDimension}.";
+            return false;
+        }
+
+        var pixels = (long)width * height;
+        var bytes = pixels * 3 / 2;
+        if (bytes > MaxFrameBytes)
+        {
+            error = $"OpenH264 probe I420 frame budget exceeded ({bytes} bytes > {MaxFrameBytes} bytes).";
+            return false;
+        }
+
+        frameByteCount = (int)bytes;
         error = "";
         return true;
     }
