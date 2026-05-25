@@ -140,6 +140,7 @@ namespace Unity.FoxgloveSDK.Components
         private FoxgloveCertificateDistributor _certificateDistributor;
         private int _nextChannelId = FirstAutoChannelId;
         private bool _warnedNotRunning;
+        private string _lastInvalidPublishTopicWarningKey;
         private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
         private readonly BoundedEventQueue<ClientEvent> _clientEvents =

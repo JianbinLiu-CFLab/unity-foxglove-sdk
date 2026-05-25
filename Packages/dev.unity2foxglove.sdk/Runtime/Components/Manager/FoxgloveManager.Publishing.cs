@@ -51,6 +51,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic, schema, and encoding.</returns>
         public uint GetOrRegisterSchemaChannel(string topic, string schemaName, string encoding = JsonEncoding)
         {
+            if (!IsValidPublishTopic(topic))
+                throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
+
             var key = (topic, schemaName, encoding, "");
             if (_channelCache.TryGetValue(key, out var id))
             {
@@ -72,6 +75,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic, schema, cdr, and ros2msg.</returns>
         public uint GetOrRegisterRos2MsgSchemaChannel(string topic, string schemaName)
         {
+            if (!IsValidPublishTopic(topic))
+                throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
+
             if (string.IsNullOrWhiteSpace(schemaName))
                 throw new System.InvalidOperationException("ROS2 schema channels require a schema name.");
 
@@ -115,6 +121,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!IsRunning)
                 return false;
 
+            if (!TryValidatePublishTopic(topic, "prepare schema publish"))
+                return false;
+
             var messageEncoding = string.IsNullOrEmpty(encoding) ? JsonEncoding : encoding;
             channelId = string.IsNullOrEmpty(schemaName)
                 ? GetOrRegisterChannel(topic, messageEncoding)
@@ -143,6 +152,9 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
 
             if (!IsRunning)
+                return false;
+
+            if (!TryValidatePublishTopic(topic, "prepare ROS2 publish"))
                 return false;
 
             channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
@@ -273,6 +285,9 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            if (!TryValidatePublishTopic(topic, "publish JSON"))
+                return;
+
             var channelId = string.IsNullOrEmpty(schemaName)
                 ? GetOrRegisterChannel(topic, JsonEncoding)
                 : GetOrRegisterSchemaChannel(topic, schemaName, JsonEncoding);
@@ -303,6 +318,9 @@ namespace Unity.FoxgloveSDK.Components
 
                 return;
             }
+
+            if (!TryValidatePublishTopic(topic, "publish Protobuf"))
+                return;
 
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName, ProtobufEncoding);
             _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
@@ -343,8 +361,29 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            if (!TryValidatePublishTopic(topic, "publish ROS2"))
+                return;
+
             var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
+        }
+
+        private static bool IsValidPublishTopic(string topic)
+            => !string.IsNullOrWhiteSpace(topic);
+
+        private bool TryValidatePublishTopic(string topic, string operation)
+        {
+            if (IsValidPublishTopic(topic))
+                return true;
+
+            var key = "invalid-topic:" + operation;
+            if (_lastInvalidPublishTopicWarningKey != key)
+            {
+                _lastInvalidPublishTopicWarningKey = key;
+                Debug.LogWarning($"[Foxglove] Cannot {operation}: publisher topic is empty.");
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -397,6 +436,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>The channel identifier associated with the topic and encoding.</returns>
         private uint GetOrRegisterChannel(string topic, string encoding)
         {
+            if (!IsValidPublishTopic(topic))
+                throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
+
             var key = (topic, EmptySchemaName, encoding, "");
             if (_channelCache.TryGetValue(key, out var id))
             {

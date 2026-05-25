@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Editor
             var encodingOverride = serializedObject.FindProperty("_encodingOverride");
             var bridgeOverride = serializedObject.FindProperty("_ros2BridgeOutput");
             var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
+            var topic = serializedObject.FindProperty("_topic");
             var prop = serializedObject.GetIterator();
             if (prop.NextVisible(true))
             {
@@ -84,6 +85,13 @@ namespace Unity.FoxgloveSDK.Editor
             var publisher = (Components.FoxglovePublisherBase)target;
             var resolution = publisher.EncodingResolution;
             var bridgeResolution = publisher.BridgeOutputResolution;
+
+            if (topic != null && !Components.FoxglovePublisherBase.HasValidPublisherTopic(topic.stringValue))
+            {
+                EditorGUILayout.HelpBox(
+                    "Topic is required. Blank publisher topics are not advertised or published.",
+                    MessageType.Error);
+            }
 
             EditorGUILayout.Space();
             using (new EditorGUI.DisabledScope(true))
