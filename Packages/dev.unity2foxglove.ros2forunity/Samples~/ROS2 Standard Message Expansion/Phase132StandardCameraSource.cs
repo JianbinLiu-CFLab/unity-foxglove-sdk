@@ -71,16 +71,13 @@ public sealed class Phase132StandardCameraSource : MonoBehaviour
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(r, 9, "CameraInfo.r[9]");
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(p, 12, "CameraInfo.p[12]");
 
-        return new sensor_msgs.msg.CameraInfo
+        var message = new sensor_msgs.msg.CameraInfo
         {
             Header = Phase132StandardMessagesCommon.CreateHeader(FrameId, sec, nanosec),
             Height = checked((uint)height),
             Width = checked((uint)width),
             Distortion_model = string.IsNullOrWhiteSpace(_distortionModel) ? "plumb_bob" : _distortionModel.Trim(),
             D = Array.Empty<double>(),
-            K = k,
-            R = r,
-            P = p,
             Binning_x = 0u,
             Binning_y = 0u,
             Roi = new sensor_msgs.msg.RegionOfInterest
@@ -92,6 +89,10 @@ public sealed class Phase132StandardCameraSource : MonoBehaviour
                 Do_rectify = false
             }
         };
+        Array.Copy(k, message.K, k.Length);
+        Array.Copy(r, message.R, r.Length);
+        Array.Copy(p, message.P, p.Length);
+        return message;
     }
 
     public sensor_msgs.msg.Image CreateImage(int sec, uint nanosec, int frameIndex)

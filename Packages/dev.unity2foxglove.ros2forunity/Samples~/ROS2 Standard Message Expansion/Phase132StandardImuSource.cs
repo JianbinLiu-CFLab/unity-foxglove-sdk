@@ -4,6 +4,7 @@
 // Module: Ros2ForUnity.Sample
 // Purpose: Owns synthetic IMU sample data for Phase132.
 
+using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -46,16 +47,17 @@ public sealed class Phase132StandardImuSource : MonoBehaviour
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(angularCovariance, 9, "IMU angular_velocity covariance double[9]");
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(linearCovariance, 9, "IMU linear_acceleration covariance double[9]");
 
-        return new sensor_msgs.msg.Imu
+        var message = new sensor_msgs.msg.Imu
         {
             Header = Phase132StandardMessagesCommon.CreateHeader(FrameId, sec, nanosec),
             Orientation = Phase132StandardMessagesCommon.IdentityRotation(),
-            Orientation_covariance = orientationCovariance,
             Angular_velocity = Phase132StandardMessagesCommon.CreateVector3(_angularVelocityRadPerSecond),
-            Angular_velocity_covariance = angularCovariance,
-            Linear_acceleration = Phase132StandardMessagesCommon.CreateVector3(_linearAccelerationMetersPerSecondSquared),
-            Linear_acceleration_covariance = linearCovariance
+            Linear_acceleration = Phase132StandardMessagesCommon.CreateVector3(_linearAccelerationMetersPerSecondSquared)
         };
+        Array.Copy(orientationCovariance, message.Orientation_covariance, orientationCovariance.Length);
+        Array.Copy(angularCovariance, message.Angular_velocity_covariance, angularCovariance.Length);
+        Array.Copy(linearCovariance, message.Linear_acceleration_covariance, linearCovariance.Length);
+        return message;
     }
 #endif
 }

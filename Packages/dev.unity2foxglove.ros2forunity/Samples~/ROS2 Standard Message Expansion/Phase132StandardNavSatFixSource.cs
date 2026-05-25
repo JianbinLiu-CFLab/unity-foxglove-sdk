@@ -4,6 +4,7 @@
 // Module: Ros2ForUnity.Sample
 // Purpose: Owns explicit synthetic NavSatFix sample data for Phase132.
 
+using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -53,7 +54,7 @@ public sealed class Phase132StandardNavSatFixSource : MonoBehaviour
         var covariance = new[] { 2.5d, 0d, 0d, 0d, 2.5d, 0d, 0d, 0d, 5.0d };
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(covariance, 9, "NavSatFix position covariance double[9]");
 
-        return new sensor_msgs.msg.NavSatFix
+        var message = new sensor_msgs.msg.NavSatFix
         {
             Header = Phase132StandardMessagesCommon.CreateHeader(FrameId, sec, nanosec),
             Status = new sensor_msgs.msg.NavSatStatus
@@ -64,9 +65,10 @@ public sealed class Phase132StandardNavSatFixSource : MonoBehaviour
             Latitude = _latitudeDegrees,
             Longitude = _longitudeDegrees,
             Altitude = _altitudeMeters,
-            Position_covariance = covariance,
             Position_covariance_type = sensor_msgs.msg.NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
         };
+        Array.Copy(covariance, message.Position_covariance, covariance.Length);
+        return message;
     }
 #endif
 }

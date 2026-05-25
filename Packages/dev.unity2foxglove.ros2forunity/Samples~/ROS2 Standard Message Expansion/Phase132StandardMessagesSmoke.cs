@@ -454,7 +454,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _ownsRos2UnityComponent = false;
     }
 
-    private void RemovePublisherIfPresent<T>(IPublisher<T> publisher)
+    private void RemovePublisherIfPresent<T>(IPublisher<T> publisher) where T : ROS2.Message
     {
         if (_node == null || publisher == null)
             return;

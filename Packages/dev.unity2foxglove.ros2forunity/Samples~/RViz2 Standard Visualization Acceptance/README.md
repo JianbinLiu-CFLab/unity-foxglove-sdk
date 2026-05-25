@@ -31,10 +31,8 @@ RViz2 should use `map` as the fixed frame.
 
 Run Unity first, then execute:
 
-```powershell
-python Scripts\smoke\phase128_rviz2_acceptance.py `
-  --ros2-root C:\ros2_jazzy\ros2-windows `
-  --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
+```text
+python Scripts\smoke\phase128_rviz2_acceptance.py
 ```
 
 The helper uses:
@@ -43,13 +41,19 @@ The helper uses:
 <ros2-root>\.pixi\envs\default\python.exe <ros2-root>\Scripts\ros2-script.py
 ```
 
-It checks the `unity2foxglove_phase128_rviz2` node, publisher endpoints for `/tf` and `/scan`, one TF echo, and one LaserScan echo. Add `--launch-rviz` to open RViz2 with the included config after the CLI checks pass. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting.
+It opens RViz2 with the included config first, then checks the `unity2foxglove_phase128_rviz2` node, publisher endpoints for `/tf` and `/scan`, one TF echo, and one LaserScan echo. Add `--no-launch-rviz` only when you want CLI checks without RViz2. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting.
 Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for the canonical same-machine acceptance path unless you are deliberately debugging discovery behavior.
+
+If your ROS2 root or sample path differs from the default, override them explicitly:
+
+```text
+python Scripts\smoke\phase128_rviz2_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
+```
 
 To launch only RViz2 after Unity is already publishing, use the Python launcher:
 
 ```text
-python Scripts\smoke\launch_phase128_rviz2.py
+python Scripts\smoke\launch_phase128_rviz2.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
 ```
 
 The launcher uses direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces.

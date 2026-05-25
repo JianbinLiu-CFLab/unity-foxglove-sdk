@@ -37,7 +37,7 @@ Marker IDs are deterministic positive 31-bit values produced from stable marker 
 Run Unity first, then execute this canonical command from the repository root:
 
 ```text
-python Scripts\smoke\phase130_markerarray_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 MarkerArray Acceptance\rviz2_phase130_markerarray.rviz" --launch-rviz
+python Scripts\smoke\phase130_markerarray_acceptance.py
 ```
 
 The helper uses:
@@ -46,10 +46,20 @@ The helper uses:
 <ros2-root>\.pixi\envs\default\python.exe <ros2-root>\Scripts\ros2-script.py
 ```
 
-It checks the `unity2foxglove_phase130_markerarray` node, the `/tf` and `/markers` publisher endpoints, one bounded TF echo, and one bounded MarkerArray echo. Add `--launch-rviz` to open RViz2 with the included config after the CLI checks pass. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting.
+It opens RViz2 with the included config first, then checks the `unity2foxglove_phase130_markerarray` node, the `/tf` and `/markers` publisher endpoints, one bounded TF echo, and one bounded MarkerArray echo. Add `--no-launch-rviz` only when you want CLI checks without RViz2. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting.
 Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for the canonical same-machine acceptance path unless you are deliberately debugging discovery behavior.
 
-When `--launch-rviz` is used, the helper launches direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces. RViz2 can still open slowly on Windows during cold starts, Defender scanning, or concurrent ROS2/colcon builds; the helper's `GREEN` line proves the ROS2 `/markers` data path before the manual RViz2 visual check.
+If your ROS2 root or sample path differs from the default, override them explicitly:
+
+```text
+python Scripts\smoke\phase130_markerarray_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 MarkerArray Acceptance\rviz2_phase130_markerarray.rviz"
+```
+
+By default, the helper launches direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces. RViz2 can still open slowly on Windows during cold starts, Defender scanning, or concurrent ROS2/colcon builds, and the helper prints timestamped launch diagnostics. To launch only RViz2 after Unity is already publishing, use:
+
+```text
+python Scripts\smoke\launch_phase130_rviz2.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 MarkerArray Acceptance\rviz2_phase130_markerarray.rviz"
+```
 
 ## Secondary Manual Commands
 
@@ -60,7 +70,7 @@ $ ros2 topic info -v /tf
 $ ros2 topic info -v /markers
 $ ros2 topic echo --once /tf tf2_msgs/msg/TFMessage
 $ ros2 topic echo --once /markers visualization_msgs/msg/MarkerArray
-$ python Scripts\smoke\phase130_markerarray_acceptance.py --launch-rviz
+$ python Scripts\smoke\launch_phase130_rviz2.py
 ```
 
 ## PASS Criteria

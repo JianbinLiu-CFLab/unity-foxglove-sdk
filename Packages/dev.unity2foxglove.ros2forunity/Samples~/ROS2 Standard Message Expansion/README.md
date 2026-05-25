@@ -57,6 +57,8 @@ This sample uses R2FU default QoS. It does not claim ROS2 `sensor_data` QoS prof
 
 This sample does not publish `/tf`. Optional RViz2 checks must either set Fixed Frame to the message frame under inspection or run alongside an external TF tree. RViz2 can report "No transform" for frames such as `camera_optical_frame`, `odom`, `base_link`, and `gps_link` when no TF owner is present.
 
+The included `rviz2_phase132_standard_messages.rviz` is a lightweight visual helper, not the pass/fail gate. It opens Grid, PoseStamped `/pose`, and Image `/camera/image_raw` displays with reliable QoS so the helper can bring up RViz2 consistently before the CLI echo checks.
+
 The default topic names are ROS conventions and can collide with Nav2, real drivers, or other samples:
 
 ```text
@@ -84,7 +86,13 @@ The helper uses:
 <ros2-root>\.pixi\envs\default\python.exe <ros2-root>\Scripts\ros2-script.py
 ```
 
-It checks publisher endpoints and bounded echoes for all six topics. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting. Use `--domain-id` or `--discovery-range LOCALHOST` only when matching the Unity runtime environment.
+It uses `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` for same-machine Unity acceptance, collects one message from all six topics as the pass/fail gate, and launches RViz2 by default afterward as the visual helper. Add `--no-launch-rviz` for CLI-only diagnostics. Add `--graph-diagnostics` when you need slower `ros2 node/topic` graph probes. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting. Use `--domain-id` or another `--discovery-range` only when matching a different Unity runtime environment.
+
+To launch only the visual helper without the six-topic CLI checks:
+
+```text
+python Scripts\smoke\launch_phase132_rviz2.py
+```
 
 ## Secondary Diagnostics
 

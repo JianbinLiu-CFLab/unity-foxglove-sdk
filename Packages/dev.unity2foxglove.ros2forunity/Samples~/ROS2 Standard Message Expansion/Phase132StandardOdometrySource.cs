@@ -4,6 +4,7 @@
 // Module: Ros2ForUnity.Sample
 // Purpose: Owns synthetic Odometry sample data for Phase132.
 
+using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -46,24 +47,28 @@ public sealed class Phase132StandardOdometrySource : MonoBehaviour
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(poseCovariance, 36, "Odometry pose covariance double[36]");
         Phase132StandardMessagesCommon.ValidateFixedArrayLength(twistCovariance, 36, "Odometry twist covariance double[36]");
 
+        var pose = new geometry_msgs.msg.PoseWithCovariance
+        {
+            Pose = Phase132StandardMessagesCommon.CreatePose(_positionMeters)
+        };
+        Array.Copy(poseCovariance, pose.Covariance, poseCovariance.Length);
+
+        var twist = new geometry_msgs.msg.TwistWithCovariance
+        {
+            Twist = new geometry_msgs.msg.Twist
+            {
+                Linear = Phase132StandardMessagesCommon.CreateVector3(_linearVelocityMetersPerSecond),
+                Angular = Phase132StandardMessagesCommon.CreateVector3(_angularVelocityRadPerSecond)
+            }
+        };
+        Array.Copy(twistCovariance, twist.Covariance, twistCovariance.Length);
+
         return new nav_msgs.msg.Odometry
         {
             Header = Phase132StandardMessagesCommon.CreateHeader(FrameId, sec, nanosec),
             Child_frame_id = ChildFrameId,
-            Pose = new geometry_msgs.msg.PoseWithCovariance
-            {
-                Pose = Phase132StandardMessagesCommon.CreatePose(_positionMeters),
-                Covariance = poseCovariance
-            },
-            Twist = new geometry_msgs.msg.TwistWithCovariance
-            {
-                Twist = new geometry_msgs.msg.Twist
-                {
-                    Linear = Phase132StandardMessagesCommon.CreateVector3(_linearVelocityMetersPerSecond),
-                    Angular = Phase132StandardMessagesCommon.CreateVector3(_angularVelocityRadPerSecond)
-                },
-                Covariance = twistCovariance
-            }
+            Pose = pose,
+            Twist = twist
         };
     }
 
