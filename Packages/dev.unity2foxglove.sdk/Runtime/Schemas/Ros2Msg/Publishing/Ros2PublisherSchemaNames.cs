@@ -12,12 +12,12 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     public static class Ros2PublisherSchemaNames
     {
         /// <summary>Official foxglove_msgs schema name for transform publisher output.</summary>
-        public const string FrameTransform = "foxglove_msgs/msg/FrameTransform";
-        public const string SceneUpdate = "foxglove_msgs/msg/SceneUpdate";
-        public const string CompressedImage = "foxglove_msgs/msg/CompressedImage";
-        public const string CameraCalibration = "foxglove_msgs/msg/CameraCalibration";
-        public const string LaserScan = "foxglove_msgs/msg/LaserScan";
-        public const string PointCloud = "foxglove_msgs/msg/PointCloud";
-        public const string CompressedPointCloud = "foxglove_msgs/msg/CompressedPointCloud";
+        public const string FrameTransform = Ros2CdrFrameTransformBuilder.SchemaName;
+        public const string SceneUpdate = Ros2CdrSceneUpdateBuilder.SchemaName;
+        public const string CompressedImage = Ros2CdrCompressedImageBuilder.SchemaName;
+        public const string CameraCalibration = Ros2CdrCameraCalibrationBuilder.SchemaName;
+        public const string LaserScan = Ros2CdrLaserScanBuilder.SchemaName;
+        public const string PointCloud = Ros2CdrPointCloudBuilder.SchemaName;
+        public const string CompressedPointCloud = Ros2CdrCompressedPointCloudBuilder.SchemaName;
     }
 }

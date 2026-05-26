@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(128 + ((rangeList.Count + intensityList.Count) * sizeof(double)));
             Ros2CdrGeometryWriter.WriteTime(writer, unixNs);
             writer.WriteString(frameId);
             Ros2CdrGeometryWriter.WriteIdentityPose(writer);

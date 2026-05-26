@@ -22,8 +22,10 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 throw new ArgumentNullException(nameof(frame));
             if (compressedPayload == null || compressedPayload.Length == 0)
                 throw new ArgumentException("Compressed point-cloud payload must be non-empty.", nameof(compressedPayload));
+            if (string.IsNullOrWhiteSpace(format))
+                throw new ArgumentException("Compressed point-cloud format must be non-empty.", nameof(format));
 
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(160 + compressedPayload.Length);
             Ros2CdrGeometryWriter.WriteTime(writer, frame.UnixNs);
             writer.WriteString(frame.FrameId);
             Ros2CdrGeometryWriter.WriteIdentityPose(writer);

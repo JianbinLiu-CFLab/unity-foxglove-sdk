@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 throw new ArgumentNullException(nameof(frame));
 
             var packed = PointCloudPackedDataBuilder.Build(frame);
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(160 + packed.Data.Length + (packed.Fields.Count * 32));
             Ros2CdrGeometryWriter.WriteTime(writer, frame.UnixNs);
             writer.WriteString(frame.FrameId);
             Ros2CdrGeometryWriter.WriteIdentityPose(writer);
@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 var field = packed.Fields[i];
                 writer.WriteString(field.Name);
                 writer.WriteUInt32(field.Offset);
-                writer.WriteUInt8((byte)field.Type);
+                writer.WriteUInt8(checked((byte)field.Type));
             }
             writer.WriteByteArray(packed.Data);
             return writer.ToArray();

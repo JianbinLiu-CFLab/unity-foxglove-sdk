@@ -18,11 +18,18 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     public sealed class Ros2CdrWriter
     {
         private const int AlignmentOrigin = 4;
-        private readonly List<byte> _buffer = new List<byte>();
+        private readonly List<byte> _buffer;
 
         /// <summary>Create a writer initialized with a little-endian CDR encapsulation header.</summary>
         public Ros2CdrWriter()
+            : this(AlignmentOrigin)
         {
+        }
+
+        /// <summary>Create a writer with an approximate output capacity hint.</summary>
+        public Ros2CdrWriter(int capacityBytes)
+        {
+            _buffer = new List<byte>(Math.Max(AlignmentOrigin, capacityBytes));
             _buffer.Add(0x00);
             _buffer.Add(0x01);
             _buffer.Add(0x00);
@@ -86,7 +93,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             WriteLittleEndian(BitConverter.GetBytes(value));
         }
 
-        /// <summary>Write a ROS 2 string, encoded as uint32 length including trailing NUL.</summary>
+        /// <summary>Write a ROS 2 string, encoded as uint32 length including trailing NUL. Null strings are encoded as empty strings.</summary>
         public void WriteString(string value)
         {
             var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
@@ -95,7 +102,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             _buffer.Add(0x00);
         }
 
-        /// <summary>Write a uint8 sequence.</summary>
+        /// <summary>Write a uint8 sequence. Null arrays are encoded as empty sequences; builders must reject null when the field is required.</summary>
         public void WriteByteArray(byte[] value)
         {
             value ??= Array.Empty<byte>();
@@ -103,7 +110,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             _buffer.AddRange(value);
         }
 
-        /// <summary>Write a float64 sequence.</summary>
+        /// <summary>Write a float64 sequence. Null lists are encoded as empty sequences; builders must reject null when the field is required.</summary>
         public void WriteFloat64Sequence(IReadOnlyList<double> values)
         {
             values ??= Array.Empty<double>();
@@ -112,7 +119,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 WriteFloat64(values[i]);
         }
 
-        /// <summary>Write a uint32 sequence.</summary>
+        /// <summary>Write a uint32 sequence. Null lists are encoded as empty sequences; builders must reject null when the field is required.</summary>
         public void WriteUInt32Sequence(IReadOnlyList<uint> values)
         {
             values ??= Array.Empty<uint>();

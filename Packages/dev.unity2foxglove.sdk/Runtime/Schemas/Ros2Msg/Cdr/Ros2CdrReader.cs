@@ -181,6 +181,10 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (length < 0)
                 throw new ArgumentOutOfRangeException(nameof(length), "Fixed array length cannot be negative.");
 
+            Align(8);
+            if (length > 0 && (long)length * 8 > _data.Length - _offset)
+                throw new InvalidDataException("ROS2 CDR fixed float64 array length exceeds the remaining payload bytes.");
+
             var value = new double[length];
             for (var i = 0; i < length; i++)
                 value[i] = ReadFloat64();

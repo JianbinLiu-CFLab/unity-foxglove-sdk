@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Ros2Msg
 // Purpose: Convenience bootstrap for registering bundled Foxglove ROS 2 .msg schemas.
 
+using System;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
@@ -21,6 +22,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// </summary>
         public static void RegisterSchemas(ISchemaRegistry schemaRegistry)
         {
+            if (schemaRegistry == null)
+                throw new ArgumentNullException(nameof(schemaRegistry));
+
             FoxgloveRos2MsgSchemaCatalog.RegisterSchemas(schemaRegistry);
         }
     }
