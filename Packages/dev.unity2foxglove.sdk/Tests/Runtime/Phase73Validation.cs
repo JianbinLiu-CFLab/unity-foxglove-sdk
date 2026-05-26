@@ -245,8 +245,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var genericSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisher.cs");
             var genericUpdate = Slice(genericSource, "protected virtual void Update()", "    }\r\n}");
-            CheckOrdered(genericUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73F-1: generic publisher preflights after cadence");
-            CheckOrdered(genericUpdate, "ShouldPreparePublishPayload()", "CreateMessage()", "73F-2: generic publisher preflights before message creation");
+            CheckOrdered(genericUpdate, "ShouldPublishNow()", "TryPreparePublishPayload", "73F-1: generic publisher preflights after cadence");
+            CheckOrdered(genericUpdate, "TryPreparePublishPayload", "CreateMessage()", "73F-2: generic publisher preflights before message creation");
 
             var protoSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/ProtobufPublisher.cs");
             var protoUpdate = Slice(protoSource, "protected virtual void Update()", "    }\r\n}");

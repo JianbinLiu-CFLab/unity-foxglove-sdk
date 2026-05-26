@@ -181,7 +181,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             ResetLoadedState(disposeStream: true);
 
-            _stream = File.OpenRead(filePath);
+            _stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             try
             {
                 _reader = new McapReader(_stream);

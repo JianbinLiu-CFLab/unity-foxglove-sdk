@@ -80,10 +80,10 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteString(chunkData, ""); // compression
             McapWriter.WriteU64(chunkData, (ulong)chunkMs.Length); // compSize
             chunkMs.Position = 0; chunkMs.CopyTo(chunkData);
-            WriteRecord(ms, 0x06, chunkData);
+            var chunkRecordLength = WriteRecord(ms, 0x06, chunkData);
             // MessageIndex after chunk
             var miStart = (ulong)ms.Position;
-            WriteRecord(ms, 0x07, miMs);
+            var messageIndexRecordLength = WriteRecord(ms, 0x07, miMs);
             // DataEnd
             var de = new MemoryStream();
             McapWriter.WriteU32(de, 0);
@@ -113,10 +113,10 @@ namespace Unity.FoxgloveSDK.Tests
             var cix = new MemoryStream();
             McapWriter.WriteU64(cix, 1000); McapWriter.WriteU64(cix, 2000);
             McapWriter.WriteU64(cix, chunkOff);
-            McapWriter.WriteU64(cix, (ulong)chunkData.Length);
+            McapWriter.WriteU64(cix, chunkRecordLength);
             McapWriter.WriteU32(cix, 10); // 1 * 10
             McapWriter.WriteU16(cix, 1); McapWriter.WriteU64(cix, miStart);
-            McapWriter.WriteU64(cix, (ulong)miMs.Length);
+            McapWriter.WriteU64(cix, messageIndexRecordLength);
             McapWriter.WriteString(cix, "");
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
@@ -135,12 +135,13 @@ namespace Unity.FoxgloveSDK.Tests
             return ms.ToArray();
         }
 
-        static void WriteRecord(Stream s, byte opcode, MemoryStream content)
+        static ulong WriteRecord(Stream s, byte opcode, MemoryStream content)
         {
             s.WriteByte(opcode);
             var data = content.ToArray();
             McapWriter.WriteU64(s, (ulong)data.Length);
             s.Write(data, 0, data.Length);
+            return 1UL + 8UL + (ulong)data.Length;
         }
 
         static void WriteMcapMessage(Stream s, ushort ch, uint seq, ulong log, ulong pub, byte[] d)
