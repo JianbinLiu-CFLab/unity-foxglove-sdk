@@ -24,10 +24,10 @@ namespace Foxglove.Schemas
         private readonly Dictionary<string, byte[]> _descriptors = new();
         private readonly ISchemaRegistry _schemaRegistry;
 
-        /// <summary>Schema encoding identifier for protobuf.</summary>
+        /// <summary>Schema encoding identifier for protobuf FileDescriptorSet channel schema bytes.</summary>
         public const string SchemaEncoding = "protobuf";
 
-        /// <summary>Message encoding identifier for protobuf.</summary>
+        /// <summary>Message encoding identifier for protobuf serialized message payload bytes.</summary>
         public const string MessageEncoding = "protobuf";
 
         /// <summary>
@@ -135,7 +135,9 @@ namespace Foxglove.Schemas
                 // Map each top-level message to this FileDescriptorSet.
                 foreach (var msg in file.MessageType)
                 {
-                    var fullName = $"{file.Package}.{msg.Name}";
+                    var fullName = string.IsNullOrEmpty(file.Package)
+                        ? msg.Name
+                        : $"{file.Package}.{msg.Name}";
                     _descriptors[fullName] = subsetBytes;
                 }
             }

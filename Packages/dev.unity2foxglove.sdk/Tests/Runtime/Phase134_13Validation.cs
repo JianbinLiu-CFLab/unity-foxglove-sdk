@@ -24,6 +24,13 @@ namespace Unity.FoxgloveSDK.Tests
             HugeDimensionsFailClosed();
             SidecarStartRejectsInvalidFfmpegDimensionsBeforeProcessLaunch();
             SidecarSourcesRejectInvalidExpectedByteCounts();
+            FfmpegPresetValidationRejectsControlCharacters();
+            SidecarSourcesGuardQueueCountersAndDiagnostics();
+            FfmpegExecutableCheckDrainsPipesBeforeWaitingForExit();
+            MediaFoundationOutputQueueUsesAtomicLockAndNv12Fallback();
+            PacketizersAvoidPerNalListGetRangeCopies();
+            H264NormalizerDoesNotPreallocateSkippedEmptyNals();
+            VideoSidecarContractsDocumentRawInputFormats();
 
             Console.WriteLine($"Phase 134-13: {_passed} checks passed.");
         }
@@ -144,12 +151,185 @@ namespace Unity.FoxgloveSDK.Tests
                 "Media Foundation encoder dimensions produce an invalid RGB24 frame size");
         }
 
+        private static void FfmpegPresetValidationRejectsControlCharacters()
+        {
+            var h264 = new FfmpegH264EncoderOptions { Preset = "ultra\nfast" };
+            Check(!h264.Validate(out var h264Error) && h264Error.Contains("control characters"),
+                "134-13E-1: FFmpeg H.264 preset validation rejects control characters");
+
+            var h265 = new FfmpegH265EncoderOptions { Preset = "ultra\u007ffast" };
+            Check(!h265.Validate(out var h265Error) && h265Error.Contains("control characters"),
+                "134-13E-2: FFmpeg H.265 preset validation rejects DEL/control characters");
+
+            Check(new FfmpegH264EncoderOptions { Preset = "ultrafast" }.Validate(out _),
+                "134-13E-3: FFmpeg H.264 preset validation accepts normal presets");
+            Check(new FfmpegH265EncoderOptions { Preset = "veryfast" }.Validate(out _),
+                "134-13E-4: FFmpeg H.265 preset validation accepts normal presets");
+        }
+
+        private static void SidecarSourcesGuardQueueCountersAndDiagnostics()
+        {
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs",
+                "134-13F-1: FFmpeg H.264 input queue count is guarded by one lock",
+                "private readonly object _inputLock",
+                "lock (_inputLock)",
+                "TryDequeueInputFrame",
+                "_inputCount--",
+                "_inputCount++");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs",
+                "134-13F-2: FFmpeg H.265 input queue count is guarded by one lock",
+                "private readonly object _inputLock",
+                "lock (_inputLock)",
+                "TryDequeueInputFrame",
+                "_inputCount--",
+                "_inputCount++");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs",
+                "134-13F-3: OpenH264 input queue count is guarded by one lock",
+                "private readonly object _inputLock",
+                "lock (_inputLock)",
+                "TryDequeueInputFrame",
+                "_inputCount--",
+                "_inputCount++");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs",
+                "134-13F-4: FFmpeg H.264 cross-thread diagnostics use volatile backing fields",
+                "Volatile.Read(ref _lastStderrLine)",
+                "Volatile.Write(ref _lastStderrLine",
+                "Volatile.Read(ref _lastError)",
+                "Volatile.Write(ref _lastError");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs",
+                "134-13F-5: FFmpeg H.265 cross-thread diagnostics use volatile backing fields",
+                "Volatile.Read(ref _lastStderrLine)",
+                "Volatile.Write(ref _lastStderrLine",
+                "Volatile.Read(ref _lastError)",
+                "Volatile.Write(ref _lastError");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs",
+                "134-13F-6: OpenH264 cross-thread diagnostics use volatile backing fields",
+                "Volatile.Read(ref _lastDiagnosticLine)",
+                "Volatile.Write(ref _lastDiagnosticLine",
+                "Volatile.Read(ref _lastError)",
+                "Volatile.Write(ref _lastError");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs",
+                "134-13F-7: FFmpeg H.264 shutdown waits use a single deadline and task diagnostics",
+                "ShutdownTimeoutMs",
+                "RemainingMilliseconds",
+                "shutdown timed out waiting for the");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs",
+                "134-13F-8: FFmpeg H.265 shutdown waits use a single deadline and task diagnostics",
+                "ShutdownTimeoutMs",
+                "RemainingMilliseconds",
+                "shutdown timed out waiting for the");
+        }
+
+        private static void FfmpegExecutableCheckDrainsPipesBeforeWaitingForExit()
+        {
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegExecutableCheck.cs",
+                "134-13G-1: FFmpeg executable check starts async pipe reads before WaitForExit",
+                "ReadToEndAsync",
+                "WaitForReaderTasks",
+                "CompletedText");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegExecutableCheck.cs",
+                "134-13G-2: FFmpeg PATH resolver reads one canonical PATH value per Windows target",
+                "FirstNonEmpty(",
+                "EnvironmentVariableTarget.User",
+                "EnvironmentVariableTarget.Machine",
+                "yield break");
+        }
+
+        private static void MediaFoundationOutputQueueUsesAtomicLockAndNv12Fallback()
+        {
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
+                "134-13H-1: Media Foundation output queue count is guarded by one lock",
+                "private readonly object _outputLock",
+                "lock (_outputLock)",
+                "_outputCount--",
+                "_outputCount++");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
+                "134-13H-2: Media Foundation fallback output buffer uses NV12 frame size",
+                "Math.Max(info.cbSize, Math.Max(1, _options.Nv12FrameByteCount))");
+        }
+
+        private static void PacketizersAvoidPerNalListGetRangeCopies()
+        {
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AnnexBAccessUnitPacketizer.cs",
+                "134-13I-1: H.264 packetizer uses a read offset instead of per-NAL GetRange copies",
+                "private int _bufferStart",
+                "CopyBufferRange",
+                "CompactBufferIfNeeded");
+            DoesNotContain(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AnnexBAccessUnitPacketizer.cs",
+                "134-13I-2: H.264 packetizer no longer allocates List.GetRange per NAL",
+                ".GetRange(");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H265AnnexBAccessUnitPacketizer.cs",
+                "134-13I-3: H.265 packetizer uses a read offset instead of per-NAL GetRange copies",
+                "private int _bufferStart",
+                "CopyBufferRange",
+                "CompactBufferIfNeeded");
+            DoesNotContain(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H265AnnexBAccessUnitPacketizer.cs",
+                "134-13I-4: H.265 packetizer no longer allocates List.GetRange per NAL",
+                ".GetRange(");
+        }
+
+        private static void H264NormalizerDoesNotPreallocateSkippedEmptyNals()
+        {
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AccessUnitNormalizer.cs",
+                "134-13J-1: H.264 normalizer only counts non-empty NALs when preallocating Annex B output",
+                "nal != null && nal.Length > 0 ? 4 + nal.Length : 0");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AccessUnitNormalizer.cs",
+                "134-13J-2: H.264 normalizer documents single SPS/PPS cache boundary",
+                "caches the latest SPS and PPS only");
+        }
+
+        private static void VideoSidecarContractsDocumentRawInputFormats()
+        {
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/ICameraVideoEncoderSidecar.cs",
+                "134-13K-1: sidecar interface documents implementation-specific input pixel format",
+                "input pixel format is implementation-specific",
+                "RGB24 for FFmpeg",
+                "I420 for the OpenH264 helper");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderOptions.cs",
+                "134-13K-2: OpenH264 frame byte count is documented as I420",
+                "I420/YUV420 byte count");
+            ContainsAll(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderOptions.cs",
+                "134-13K-3: Media Foundation frame byte counts distinguish RGB24 input and NV12 conversion",
+                "RGB24 byte count",
+                "NV12 byte count");
+        }
+
         private static void ContainsAll(string path, string label, params string[] tokens)
         {
             var source = File.ReadAllText(path);
             foreach (var token in tokens)
                 if (!source.Contains(token))
                     throw new Exception("[FAIL] " + label + " missing token: " + token);
+
+            Check(true, label);
+        }
+
+        private static void DoesNotContain(string path, string label, string token)
+        {
+            var source = File.ReadAllText(path);
+            if (source.Contains(token))
+                throw new Exception("[FAIL] " + label + " unexpected token: " + token);
 
             Check(true, label);
         }

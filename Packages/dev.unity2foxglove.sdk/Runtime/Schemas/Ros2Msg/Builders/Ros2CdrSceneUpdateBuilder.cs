@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             {
                 var deletion = deletions[i] ?? new SceneEntityDeletion();
                 Ros2CdrGeometryWriter.WriteTime(writer, deletion.Timestamp);
-                writer.WriteUInt8((byte)deletion.Type);
+                writer.WriteUInt8(checked((byte)deletion.Type));
                 writer.WriteString(deletion.Id);
             }
         }
@@ -99,10 +99,10 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             }
         }
 
-        private static void EnsureUnsupportedEmpty(ICollection<object> values, string fieldName)
+        private static void EnsureUnsupportedEmpty<T>(ICollection<T> values, string fieldName)
         {
             if (values != null && values.Count != 0)
-                throw new NotSupportedException($"SceneUpdate {fieldName} are not supported by the Phase 91 CDR smoke builder.");
+                throw new NotSupportedException($"SceneUpdate {fieldName} serialization is not supported by this CDR builder.");
         }
     }
 }

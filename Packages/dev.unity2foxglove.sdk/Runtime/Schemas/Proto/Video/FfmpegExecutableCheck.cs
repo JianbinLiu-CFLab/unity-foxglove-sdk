@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Foxglove.Schemas.Video
 {
@@ -77,9 +78,13 @@ namespace Foxglove.Schemas.Video
                             "FFmpeg process did not start.");
                     }
 
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+
                     if (!process.WaitForExit(Math.Max(100, timeoutMs)))
                     {
                         TryKill(process);
+                        WaitForReaderTasks(stdoutTask, stderrTask, 100);
                         return new FfmpegExecutableCheckResult(
                             FfmpegExecutableStatus.Invalid,
                             executable,
@@ -87,8 +92,9 @@ namespace Foxglove.Schemas.Video
                             "FFmpeg check timed out.");
                     }
 
-                    var stdout = process.StandardOutput.ReadToEnd();
-                    var stderr = process.StandardError.ReadToEnd();
+                    WaitForReaderTasks(stdoutTask, stderrTask, Math.Max(100, timeoutMs));
+                    var stdout = CompletedText(stdoutTask);
+                    var stderr = CompletedText(stderrTask);
                     var combined = (stdout ?? "") + "\n" + (stderr ?? "");
                     var versionLine = FirstLineContaining(combined, "ffmpeg version");
                     if (process.ExitCode == 0 && !string.IsNullOrEmpty(versionLine))
@@ -161,6 +167,30 @@ namespace Foxglove.Schemas.Video
             catch
             {
                 // Best effort cleanup only.
+            }
+        }
+
+        private static void WaitForReaderTasks(Task<string> stdoutTask, Task<string> stderrTask, int timeoutMs)
+        {
+            try
+            {
+                Task.WaitAll(new Task[] { stdoutTask, stderrTask }, Math.Max(100, timeoutMs));
+            }
+            catch
+            {
+                // Best effort pipe drain only.
+            }
+        }
+
+        private static string CompletedText(Task<string> task)
+        {
+            try
+            {
+                return task != null && task.IsCompleted ? task.Result ?? "" : "";
+            }
+            catch
+            {
+                return "";
             }
         }
     }
@@ -267,12 +297,28 @@ namespace Foxglove.Schemas.Video
 
         private static IEnumerable<string> PathEnvironmentValues()
         {
+            if (IsWindows())
+            {
+                yield return FirstNonEmpty(
+                    Environment.GetEnvironmentVariable("Path"),
+                    Environment.GetEnvironmentVariable("PATH"));
+                yield return FirstNonEmpty(
+                    SafeGetEnvironmentVariable("Path", EnvironmentVariableTarget.User),
+                    SafeGetEnvironmentVariable("PATH", EnvironmentVariableTarget.User));
+                yield return FirstNonEmpty(
+                    SafeGetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine),
+                    SafeGetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine));
+                yield break;
+            }
+
             yield return Environment.GetEnvironmentVariable("PATH");
-            yield return Environment.GetEnvironmentVariable("Path");
-            yield return SafeGetEnvironmentVariable("Path", EnvironmentVariableTarget.User);
-            yield return SafeGetEnvironmentVariable("PATH", EnvironmentVariableTarget.User);
-            yield return SafeGetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine);
-            yield return SafeGetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine);
+        }
+
+        private static string FirstNonEmpty(string primary, string secondary)
+        {
+            if (!string.IsNullOrWhiteSpace(primary))
+                return primary;
+            return secondary;
         }
 
         private static string SafeGetEnvironmentVariable(string variable, EnvironmentVariableTarget target)

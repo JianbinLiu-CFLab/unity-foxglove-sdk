@@ -79,6 +79,17 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("z")] public double Z { get; set; }
     }
 
+    /// <summary>3D point.</summary>
+    public class FoxglovePoint3
+    {
+        /// <summary>X coordinate.</summary>
+        [JsonProperty("x")] public double X { get; set; }
+        /// <summary>Y coordinate.</summary>
+        [JsonProperty("y")] public double Y { get; set; }
+        /// <summary>Z coordinate.</summary>
+        [JsonProperty("z")] public double Z { get; set; }
+    }
+
     /// <summary>Quaternion orientation.</summary>
     public class FoxgloveQuaternion
     {
@@ -187,23 +198,39 @@ namespace Unity.FoxgloveSDK.Schemas
         /// <summary>User-provided metadata key-value pairs.</summary>
         [JsonProperty("metadata")] public List<FoxgloveKeyValuePair> Metadata { get; set; } = new List<FoxgloveKeyValuePair>();
 
-        // Phase 3: only CubePrimitive is typed; all others are empty arrays
         /// <summary>Arrow primitives.</summary>
-        [JsonProperty("arrows")] public List<object> Arrows { get; set; } = new List<object>();
+        [JsonProperty("arrows")] public List<ArrowPrimitive> Arrows { get; set; } = new List<ArrowPrimitive>();
         /// <summary>Cube or rectangular prism primitives.</summary>
         [JsonProperty("cubes")] public List<CubePrimitive> Cubes { get; set; } = new List<CubePrimitive>();
         /// <summary>Sphere primitives.</summary>
-        [JsonProperty("spheres")] public List<object> Spheres { get; set; } = new List<object>();
+        [JsonProperty("spheres")] public List<SpherePrimitive> Spheres { get; set; } = new List<SpherePrimitive>();
         /// <summary>Cylinder primitives.</summary>
-        [JsonProperty("cylinders")] public List<object> Cylinders { get; set; } = new List<object>();
+        [JsonProperty("cylinders")] public List<CylinderPrimitive> Cylinders { get; set; } = new List<CylinderPrimitive>();
         /// <summary>Line primitives.</summary>
-        [JsonProperty("lines")] public List<object> Lines { get; set; } = new List<object>();
+        [JsonProperty("lines")] public List<LinePrimitive> Lines { get; set; } = new List<LinePrimitive>();
         /// <summary>Triangle list primitives.</summary>
-        [JsonProperty("triangles")] public List<object> Triangles { get; set; } = new List<object>();
+        [JsonProperty("triangles")] public List<TriangleListPrimitive> Triangles { get; set; } = new List<TriangleListPrimitive>();
         /// <summary>Text primitives.</summary>
-        [JsonProperty("texts")] public List<object> Texts { get; set; } = new List<object>();
+        [JsonProperty("texts")] public List<TextPrimitive> Texts { get; set; } = new List<TextPrimitive>();
         /// <summary>Model primitives.</summary>
-        [JsonProperty("models")] public List<object> Models { get; set; } = new List<object>();
+        [JsonProperty("models")] public List<ModelPrimitive> Models { get; set; } = new List<ModelPrimitive>();
+    }
+
+    /// <summary>Arrow primitive.</summary>
+    public class ArrowPrimitive
+    {
+        /// <summary>Tail pose and orientation.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Length of the arrow shaft.</summary>
+        [JsonProperty("shaft_length")] public double ShaftLength { get; set; }
+        /// <summary>Diameter of the arrow shaft.</summary>
+        [JsonProperty("shaft_diameter")] public double ShaftDiameter { get; set; }
+        /// <summary>Length of the arrow head.</summary>
+        [JsonProperty("head_length")] public double HeadLength { get; set; }
+        /// <summary>Diameter of the arrow head.</summary>
+        [JsonProperty("head_diameter")] public double HeadDiameter { get; set; }
+        /// <summary>Arrow color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
     }
 
     /// <summary>Cube or rectangular prism primitive.</summary>
@@ -215,5 +242,111 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("size")] public FoxgloveVector3 Size { get; set; }
         /// <summary>Color of the cube.</summary>
         [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+    }
+
+    /// <summary>Sphere or ellipsoid primitive.</summary>
+    public class SpherePrimitive
+    {
+        /// <summary>Center pose and orientation.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Diameter along each axis.</summary>
+        [JsonProperty("size")] public FoxgloveVector3 Size { get; set; }
+        /// <summary>Sphere color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+    }
+
+    /// <summary>Cylinder, elliptic cylinder, or truncated cone primitive.</summary>
+    public class CylinderPrimitive
+    {
+        /// <summary>Center pose and orientation.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Bounding box size.</summary>
+        [JsonProperty("size")] public FoxgloveVector3 Size { get; set; }
+        /// <summary>Bottom face scale.</summary>
+        [JsonProperty("bottom_scale")] public double BottomScale { get; set; }
+        /// <summary>Top face scale.</summary>
+        [JsonProperty("top_scale")] public double TopScale { get; set; }
+        /// <summary>Cylinder color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+    }
+
+    /// <summary>Line primitive point interpretation.</summary>
+    public enum LinePrimitiveType
+    {
+        LineStrip = 0,
+        LineLoop = 1,
+        LineList = 2
+    }
+
+    /// <summary>Line primitive.</summary>
+    public class LinePrimitive
+    {
+        /// <summary>How points are connected.</summary>
+        [JsonProperty("type")] public LinePrimitiveType Type { get; set; }
+        /// <summary>Origin of line points relative to the reference frame.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Line thickness.</summary>
+        [JsonProperty("thickness")] public double Thickness { get; set; }
+        /// <summary>Whether thickness is fixed in screen pixels.</summary>
+        [JsonProperty("scale_invariant")] public bool ScaleInvariant { get; set; }
+        /// <summary>Line vertices.</summary>
+        [JsonProperty("points")] public List<FoxglovePoint3> Points { get; set; } = new List<FoxglovePoint3>();
+        /// <summary>Fallback line color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+        /// <summary>Per-point colors.</summary>
+        [JsonProperty("colors")] public List<FoxgloveColor> Colors { get; set; } = new List<FoxgloveColor>();
+        /// <summary>Optional point indices.</summary>
+        [JsonProperty("indices")] public List<uint> Indices { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Triangle list primitive.</summary>
+    public class TriangleListPrimitive
+    {
+        /// <summary>Origin of triangle points relative to the reference frame.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Triangle vertices.</summary>
+        [JsonProperty("points")] public List<FoxglovePoint3> Points { get; set; } = new List<FoxglovePoint3>();
+        /// <summary>Fallback triangle color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+        /// <summary>Per-vertex colors.</summary>
+        [JsonProperty("colors")] public List<FoxgloveColor> Colors { get; set; } = new List<FoxgloveColor>();
+        /// <summary>Optional point indices.</summary>
+        [JsonProperty("indices")] public List<uint> Indices { get; set; } = new List<uint>();
+    }
+
+    /// <summary>Text label primitive.</summary>
+    public class TextPrimitive
+    {
+        /// <summary>Text box pose.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Whether text always faces the camera.</summary>
+        [JsonProperty("billboard")] public bool Billboard { get; set; }
+        /// <summary>Font size.</summary>
+        [JsonProperty("font_size")] public double FontSize { get; set; }
+        /// <summary>Whether font size is fixed in screen pixels.</summary>
+        [JsonProperty("scale_invariant")] public bool ScaleInvariant { get; set; }
+        /// <summary>Text color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+        /// <summary>Text content.</summary>
+        [JsonProperty("text")] public string Text { get; set; }
+    }
+
+    /// <summary>3D model primitive.</summary>
+    public class ModelPrimitive
+    {
+        /// <summary>Model pose.</summary>
+        [JsonProperty("pose")] public FoxglovePose Pose { get; set; }
+        /// <summary>Model scale.</summary>
+        [JsonProperty("scale")] public FoxgloveVector3 Scale { get; set; }
+        /// <summary>Override color.</summary>
+        [JsonProperty("color")] public FoxgloveColor Color { get; set; }
+        /// <summary>Whether to override embedded model colors.</summary>
+        [JsonProperty("override_color")] public bool OverrideColor { get; set; }
+        /// <summary>Model URL.</summary>
+        [JsonProperty("url")] public string Url { get; set; }
+        /// <summary>Embedded model media type.</summary>
+        [JsonProperty("media_type")] public string MediaType { get; set; }
+        /// <summary>Embedded model bytes.</summary>
+        [JsonProperty("data")] public byte[] Data { get; set; }
     }
 }

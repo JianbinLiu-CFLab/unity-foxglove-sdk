@@ -18,10 +18,14 @@ namespace Foxglove.Schemas.Video
     /// Encodes RGB24 frames through an external FFmpeg process and exposes completed
     /// H.264 Annex B access units through a thread-safe bounded output queue.
     /// </summary>
-    public sealed class FfmpegH264EncoderSidecar : IFfmpegVideoEncoderSidecar
+    public sealed class FfmpegH264EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
-        private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
-        private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
+        private const int ShutdownTimeoutMs = 500;
+
+        private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
+        private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
+        private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+        private readonly object _inputLock = new object();
         private readonly object _outputLock = new object();
         private Process _process;
         private CancellationTokenSource _stop;
@@ -35,6 +39,8 @@ namespace Foxglove.Schemas.Video
         private long _framesSubmitted;
         private long _accessUnitsProduced;
         private long _accessUnitsDropped;
+        private string _lastStderrLine;
+        private string _lastError;
 
         public bool IsRunning
         {
@@ -58,9 +64,17 @@ namespace Foxglove.Schemas.Video
         public long FramesSubmitted => Interlocked.Read(ref _framesSubmitted);
         public long AccessUnitsProduced => Interlocked.Read(ref _accessUnitsProduced);
         public long AccessUnitsDropped => Interlocked.Read(ref _accessUnitsDropped);
-        public string LastStderrLine { get; private set; }
-        public string LastDiagnosticLine => LastStderrLine;
-        public string LastError { get; private set; }
+        public string LastStderrLine
+        {
+            get => Volatile.Read(ref _lastStderrLine);
+            private set => Volatile.Write(ref _lastStderrLine, value);
+        }
+        public string LastDiagnosticLine => LastStderrLine ?? LastError;
+        public string LastError
+        {
+            get => Volatile.Read(ref _lastError);
+            private set => Volatile.Write(ref _lastError, value);
+        }
 
         /// <summary>Starts FFmpeg if it is not already running.</summary>
         public bool Start(FfmpegH264EncoderOptions options)
@@ -146,6 +160,9 @@ namespace Foxglove.Schemas.Video
         /// Old input frames are dropped if the queue is already full.
         /// </summary>
         public bool TrySubmitFrame(byte[] rgb24Frame)
+            => TrySubmitFrame(rgb24Frame, 0UL);
+
+        public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
         {
             if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsRunning)
                 return false;
@@ -163,20 +180,37 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
-            while (Volatile.Read(ref _inputCount) >= capacity && _inputFrames.TryDequeue(out _))
-                Interlocked.Decrement(ref _inputCount);
-
             var copy = new byte[rgb24Frame.Length];
             Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
-            _inputFrames.Enqueue(copy);
-            Interlocked.Increment(ref _inputCount);
+
+            lock (_inputLock)
+            {
+                var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
+                while (_inputCount >= capacity && _inputFrames.TryDequeue(out _))
+                    _inputCount--;
+
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
+                _inputCount++;
+            }
+
             Interlocked.Increment(ref _framesSubmitted);
             return true;
         }
 
         /// <summary>Dequeues a completed H.264 access unit, if available.</summary>
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
+        {
+            if (TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit timestamped))
+            {
+                accessUnit = timestamped.Data;
+                return true;
+            }
+
+            accessUnit = null;
+            return false;
+        }
+
+        public bool TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit)
         {
             lock (_outputLock)
             {
@@ -223,18 +257,19 @@ namespace Foxglove.Schemas.Video
                     // Process may already have exited.
                 }
 
+                var deadlineUtc = DateTime.UtcNow.AddMilliseconds(ShutdownTimeoutMs);
                 try
                 {
-                    process.WaitForExit(200);
+                    process.WaitForExit(RemainingMilliseconds(deadlineUtc));
                 }
                 catch
                 {
                     // Ignore wait failures during best-effort shutdown.
                 }
 
-                WaitForTask(_stdinTask, 200);
-                WaitForTask(_stdoutTask, 200);
-                WaitForTask(_stderrTask, 200);
+                WaitForTask(_stdinTask, "stdin", deadlineUtc);
+                WaitForTask(_stdoutTask, "stdout", deadlineUtc);
+                WaitForTask(_stderrTask, "stderr", deadlineUtc);
                 process.Dispose();
             }
 
@@ -261,10 +296,10 @@ namespace Foxglove.Schemas.Video
                 var stream = process.StandardInput.BaseStream;
                 while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
-                    if (_inputFrames.TryDequeue(out var frame))
+                    if (TryDequeueInputFrame(out var frame))
                     {
-                        Interlocked.Decrement(ref _inputCount);
-                        await stream.WriteAsync(frame, 0, frame.Length, token).ConfigureAwait(false);
+                        _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
+                        await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                         await stream.FlushAsync(token).ConfigureAwait(false);
                     }
                     else
@@ -353,7 +388,8 @@ namespace Foxglove.Schemas.Video
                     Interlocked.Increment(ref _accessUnitsDropped);
                 }
 
-                _outputAccessUnits.Enqueue(accessUnit);
+                var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
+                _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 Interlocked.Increment(ref _outputCount);
                 Interlocked.Increment(ref _accessUnitsProduced);
             }
@@ -361,11 +397,31 @@ namespace Foxglove.Schemas.Video
 
         private void DrainInputQueue()
         {
-            while (_inputFrames.TryDequeue(out _))
+            lock (_inputLock)
             {
+                while (_inputFrames.TryDequeue(out _))
+                {
+                }
+
+                _inputCount = 0;
             }
 
-            Volatile.Write(ref _inputCount, 0);
+            while (_encodedFrameTimestamps.TryDequeue(out _))
+            {
+            }
+        }
+
+        private bool TryDequeueInputFrame(out QueuedVideoFrame frame)
+        {
+            lock (_inputLock)
+            {
+                if (!_inputFrames.TryDequeue(out frame))
+                    return false;
+
+                if (_inputCount > 0)
+                    _inputCount--;
+                return true;
+            }
         }
 
         private void DrainOutputQueue()
@@ -395,19 +451,27 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static void WaitForTask(Task task, int timeoutMs)
+        private void WaitForTask(Task task, string taskName, DateTime deadlineUtc)
         {
             if (task == null || task.IsCompleted)
                 return;
 
             try
             {
-                task.Wait(timeoutMs);
+                var timeoutMs = RemainingMilliseconds(deadlineUtc);
+                if (timeoutMs > 0)
+                    task.Wait(timeoutMs);
             }
             catch
             {
                 // Best-effort task shutdown.
             }
+
+            if (!task.IsCompleted)
+                LastError = "FFmpeg H.264 shutdown timed out waiting for the " + taskName + " task.";
         }
+
+        private static int RemainingMilliseconds(DateTime deadlineUtc)
+            => Math.Max(0, (int)(deadlineUtc - DateTime.UtcNow).TotalMilliseconds);
     }
 }

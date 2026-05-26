@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Schemas
     /// </summary>
     public static class FoxgloveTimeUtil
     {
+        private const long UnixEpochTicks = 621355968000000000L;
+
         private static readonly long AnchorTicks;  // Stopwatch.GetTimestamp() at init
         private static readonly long AnchorUnixNs;  // Unix epoch ns at init
         private static readonly double TicksToNs;   // Stopwatch tick → ns conversion
@@ -22,7 +24,7 @@ namespace Unity.FoxgloveSDK.Schemas
         static FoxgloveTimeUtil()
         {
             AnchorTicks = Stopwatch.GetTimestamp();
-            AnchorUnixNs = (long)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000L;
+            AnchorUnixNs = checked((DateTimeOffset.UtcNow.Ticks - UnixEpochTicks) * 100L);
             TicksToNs = 1_000_000_000.0 / Stopwatch.Frequency;
         }
 

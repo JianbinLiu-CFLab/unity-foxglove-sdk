@@ -24,8 +24,9 @@ namespace Foxglove.Schemas
             IEnumerable<double> ranges,
             IEnumerable<double> intensities = null)
         {
-            var rangeList = ToListOrEmpty(ranges);
-            var intensityList = ToListOrEmpty(intensities);
+            var rangeList = ToRequiredReadOnlyList(ranges, nameof(ranges));
+            var intensityList = ToReadOnlyListOrEmpty(intensities);
+            ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
             return new LaserScanMessage
@@ -35,8 +36,8 @@ namespace Foxglove.Schemas
                 Pose = FoxgloveProtoBuilderUtil.JsonIdentityPose(),
                 StartAngle = startAngle,
                 EndAngle = endAngle,
-                Ranges = rangeList,
-                Intensities = intensityList
+                Ranges = ToMutableList(rangeList),
+                Intensities = ToMutableList(intensityList)
             };
         }
 
@@ -49,8 +50,9 @@ namespace Foxglove.Schemas
             IEnumerable<double> ranges,
             IEnumerable<double> intensities = null)
         {
-            var rangeList = ToListOrEmpty(ranges);
+            var rangeList = ToRequiredList(ranges, nameof(ranges));
             var intensityList = ToListOrEmpty(intensities);
+            ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
             var message = new Foxglove.LaserScan
@@ -83,10 +85,46 @@ namespace Foxglove.Schemas
             return values == null ? new List<double>() : values.ToList();
         }
 
-        private static void ValidateIntensities(List<double> ranges, List<double> intensities)
+        private static List<double> ToRequiredList(IEnumerable<double> values, string parameterName)
+        {
+            if (values == null)
+                throw new ArgumentNullException(parameterName);
+
+            return values.ToList();
+        }
+
+        private static IReadOnlyList<double> ToReadOnlyListOrEmpty(IEnumerable<double> values)
+        {
+            if (values == null)
+                return Array.Empty<double>();
+            return values as IReadOnlyList<double> ?? values.ToArray();
+        }
+
+        private static IReadOnlyList<double> ToRequiredReadOnlyList(IEnumerable<double> values, string parameterName)
+        {
+            if (values == null)
+                throw new ArgumentNullException(parameterName);
+
+            return values as IReadOnlyList<double> ?? values.ToArray();
+        }
+
+        private static List<double> ToMutableList(IReadOnlyList<double> values)
+        {
+            return values as List<double> ?? values.ToList();
+        }
+
+        private static void ValidateIntensities(IReadOnlyList<double> ranges, IReadOnlyList<double> intensities)
         {
             if (intensities.Count != 0 && intensities.Count != ranges.Count)
                 throw new ArgumentException("LaserScan intensities must be empty or have the same length as ranges.", nameof(intensities));
+        }
+
+        private static void ValidateAngles(double startAngle, double endAngle)
+        {
+            if (double.IsNaN(startAngle) || double.IsInfinity(startAngle))
+                throw new ArgumentOutOfRangeException(nameof(startAngle), "LaserScan startAngle must be finite.");
+            if (double.IsNaN(endAngle) || double.IsInfinity(endAngle))
+                throw new ArgumentOutOfRangeException(nameof(endAngle), "LaserScan endAngle must be finite.");
         }
     }
 }

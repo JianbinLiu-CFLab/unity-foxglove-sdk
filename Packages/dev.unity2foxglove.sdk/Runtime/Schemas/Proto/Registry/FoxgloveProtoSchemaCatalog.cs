@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.FoxgloveSDK.Schemas;
 
 namespace Foxglove.Schemas
 {
@@ -49,15 +50,15 @@ namespace Foxglove.Schemas
         private static readonly FoxgloveProtoSchemaCatalogEntry[] EntriesArray =
         {
             Entry("foxglove.ArrowPrimitive", typeof(Foxglove.ArrowPrimitive), "visualization", false, "Scene primitive."),
-            Entry("foxglove.CameraCalibration", typeof(Foxglove.CameraCalibration), "image", true, "Dedicated camera calibration publisher supports JSON and protobuf."),
+            Entry(FoxgloveSchemaDefinitions.CameraCalibrationSchemaName, typeof(Foxglove.CameraCalibration), "image", true, "Dedicated camera calibration publisher supports JSON and protobuf."),
             Entry("foxglove.CircleAnnotation", typeof(Foxglove.CircleAnnotation), "annotation", false, "Image annotation primitive."),
             Entry("foxglove.Color", typeof(Foxglove.Color), "geometry", false, "Shared RGBA color primitive."),
-            Entry("foxglove.CompressedImage", typeof(Foxglove.CompressedImage), "image", true, "Dedicated camera publisher supports JSON and protobuf."),
+            Entry(FoxgloveSchemaDefinitions.CompressedImageSchemaName, typeof(Foxglove.CompressedImage), "image", true, "Dedicated camera publisher supports JSON and protobuf."),
             Entry("foxglove.CompressedPointCloud", typeof(Foxglove.CompressedPointCloud), "point cloud", false, "Compressed point cloud payload."),
             Entry("foxglove.CompressedVideo", typeof(Foxglove.CompressedVideo), "image", false, "Compressed video payload."),
             Entry("foxglove.CubePrimitive", typeof(Foxglove.CubePrimitive), "visualization", false, "Scene primitive."),
             Entry("foxglove.CylinderPrimitive", typeof(Foxglove.CylinderPrimitive), "visualization", false, "Scene primitive."),
-            Entry("foxglove.FrameTransform", typeof(Foxglove.FrameTransform), "transform", true, "Dedicated transform publisher supports JSON and protobuf."),
+            Entry(FoxgloveSchemaDefinitions.FrameTransformSchemaName, typeof(Foxglove.FrameTransform), "transform", true, "Dedicated transform publisher supports JSON and protobuf."),
             Entry("foxglove.FrameTransforms", typeof(Foxglove.FrameTransforms), "transform", false, "Batch transform message."),
             Entry("foxglove.GeoJSON", typeof(Foxglove.GeoJSON), "location", false, "GeoJSON overlay payload."),
             Entry("foxglove.Grid", typeof(Foxglove.Grid), "grid", false, "2D grid payload."),
@@ -65,18 +66,18 @@ namespace Foxglove.Schemas
             Entry("foxglove.JointState", typeof(Foxglove.JointState), "robot state", false, "Single joint state."),
             Entry("foxglove.JointStates", typeof(Foxglove.JointStates), "robot state", false, "Batch joint state message."),
             Entry("foxglove.KeyValuePair", typeof(Foxglove.KeyValuePair), "metadata", false, "Shared metadata key/value primitive."),
-            Entry("foxglove.LaserScan", typeof(Foxglove.LaserScan), "range", true, "Dedicated laser scan publisher supports JSON and protobuf."),
+            Entry(FoxgloveSchemaDefinitions.LaserScanSchemaName, typeof(Foxglove.LaserScan), "range", true, "Dedicated laser scan publisher supports JSON and protobuf."),
             Entry("foxglove.LinePrimitive", typeof(Foxglove.LinePrimitive), "visualization", false, "Scene primitive."),
             Entry("foxglove.LocationFix", typeof(Foxglove.LocationFix), "location", false, "Single geospatial fix."),
             Entry("foxglove.LocationFixes", typeof(Foxglove.LocationFixes), "location", false, "Batch geospatial fix message."),
-            Entry("foxglove.Log", typeof(Foxglove.Log), "debug", true, "Used by client log and FoxRun debug logging paths."),
+            Entry(FoxgloveSchemaDefinitions.LogSchemaName, typeof(Foxglove.Log), "debug", true, "Used by client log and FoxRun debug logging paths."),
             Entry("foxglove.ModelPrimitive", typeof(Foxglove.ModelPrimitive), "visualization", false, "Scene primitive for mesh/model references or inline data."),
             Entry("foxglove.Odometry", typeof(Foxglove.Odometry), "robot state", false, "Pose and velocity estimate."),
             Entry("foxglove.PackedElementField", typeof(Foxglove.PackedElementField), "layout", false, "Packed binary field descriptor."),
             Entry("foxglove.Point2", typeof(Foxglove.Point2), "geometry", false, "2D point primitive."),
             Entry("foxglove.Point3", typeof(Foxglove.Point3), "geometry", false, "3D point primitive."),
             Entry("foxglove.Point3InFrame", typeof(Foxglove.Point3InFrame), "geometry", false, "3D point with frame and timestamp."),
-            Entry("foxglove.PointCloud", typeof(Foxglove.PointCloud), "point cloud", true, "Dedicated Ouster-ready point cloud publisher supports JSON and protobuf."),
+            Entry(FoxgloveSchemaDefinitions.PointCloudSchemaName, typeof(Foxglove.PointCloud), "point cloud", true, "Dedicated Ouster-ready point cloud publisher supports JSON and protobuf."),
             Entry("foxglove.PointsAnnotation", typeof(Foxglove.PointsAnnotation), "annotation", false, "Image annotation primitive."),
             Entry("foxglove.Pose", typeof(Foxglove.Pose), "geometry", false, "Position and orientation primitive."),
             Entry("foxglove.PoseInFrame", typeof(Foxglove.PoseInFrame), "geometry", false, "Pose with frame and timestamp."),
@@ -86,7 +87,7 @@ namespace Foxglove.Schemas
             Entry("foxglove.RawImage", typeof(Foxglove.RawImage), "image", false, "Raw image payload."),
             Entry("foxglove.SceneEntity", typeof(Foxglove.SceneEntity), "visualization", false, "Scene entity with primitives."),
             Entry("foxglove.SceneEntityDeletion", typeof(Foxglove.SceneEntityDeletion), "visualization", false, "Scene deletion command."),
-            Entry("foxglove.SceneUpdate", typeof(Foxglove.SceneUpdate), "visualization", true, "Dedicated scene cube publisher supports JSON and protobuf."),
+            Entry(FoxgloveSchemaDefinitions.SceneUpdateSchemaName, typeof(Foxglove.SceneUpdate), "visualization", true, "Dedicated scene cube publisher supports JSON and protobuf."),
             Entry("foxglove.SpherePrimitive", typeof(Foxglove.SpherePrimitive), "visualization", false, "Scene primitive."),
             Entry("foxglove.TextAnnotation", typeof(Foxglove.TextAnnotation), "annotation", false, "Image annotation primitive."),
             Entry("foxglove.TextPrimitive", typeof(Foxglove.TextPrimitive), "visualization", false, "Scene primitive."),
@@ -96,28 +97,35 @@ namespace Foxglove.Schemas
             Entry("foxglove.VoxelGrid", typeof(Foxglove.VoxelGrid), "grid", false, "3D voxel grid payload.")
         };
 
+        private static readonly Dictionary<string, FoxgloveProtoSchemaCatalogEntry> EntriesBySchemaName =
+            BuildEntriesBySchemaName();
+
         /// <summary>Read-only list of all bundled official protobuf schemas.</summary>
         public static IReadOnlyList<FoxgloveProtoSchemaCatalogEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
 
         /// <summary>Find a catalog entry by schema name.</summary>
         public static bool TryGet(string schemaName, out FoxgloveProtoSchemaCatalogEntry entry)
         {
-            foreach (var candidate in EntriesArray)
+            if (schemaName == null)
             {
-                if (string.Equals(candidate.SchemaName, schemaName, StringComparison.Ordinal))
-                {
-                    entry = candidate;
-                    return true;
-                }
+                entry = null;
+                return false;
             }
 
-            entry = null;
-            return false;
+            return EntriesBySchemaName.TryGetValue(schemaName, out entry);
         }
 
         private static FoxgloveProtoSchemaCatalogEntry Entry(string schemaName, Type clrType, string category, bool hasDedicatedUnityPublisher, string note)
         {
             return new FoxgloveProtoSchemaCatalogEntry(schemaName, clrType, category, hasDedicatedUnityPublisher, note);
+        }
+
+        private static Dictionary<string, FoxgloveProtoSchemaCatalogEntry> BuildEntriesBySchemaName()
+        {
+            var result = new Dictionary<string, FoxgloveProtoSchemaCatalogEntry>(EntriesArray.Length, StringComparer.Ordinal);
+            foreach (var entry in EntriesArray)
+                result[entry.SchemaName] = entry;
+            return result;
         }
     }
 }

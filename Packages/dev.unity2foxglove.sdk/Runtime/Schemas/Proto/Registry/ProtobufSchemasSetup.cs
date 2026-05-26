@@ -5,6 +5,7 @@
 // Purpose: Convenience bootstrap for registering bundled Foxglove protobuf
 // schemas and enabling protobuf message encoding support.
 
+using System;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Foxglove.Schemas
@@ -23,7 +24,11 @@ namespace Foxglove.Schemas
         /// </summary>
         public static void Initialize(ISchemaRegistry schemaRegistry, Unity.FoxgloveSDK.Core.FoxgloveSession session)
         {
-            if (schemaRegistry == null || session == null) return;
+            if (schemaRegistry == null)
+                throw new ArgumentNullException(nameof(schemaRegistry));
+            if (session == null)
+                throw new ArgumentNullException(nameof(session));
+
             RegisterSchemas(schemaRegistry);
             session.EnableProtobuf();
         }
@@ -35,7 +40,9 @@ namespace Foxglove.Schemas
         /// </summary>
         public static void RegisterSchemas(ISchemaRegistry schemaRegistry)
         {
-            if (schemaRegistry == null) return;
+            if (schemaRegistry == null)
+                throw new ArgumentNullException(nameof(schemaRegistry));
+
             ProtobufSchemaRegistryLoader.FromDefault(schemaRegistry).RegisterAll();
         }
     }

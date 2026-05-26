@@ -25,6 +25,7 @@ namespace Foxglove.Schemas.Video
         private readonly List<byte> _buffer = new List<byte>();
         private readonly List<byte> _currentAccessUnit = new List<byte>();
         private readonly Queue<byte[]> _completedAccessUnits = new Queue<byte[]>();
+        private int _bufferStart;
         private bool _currentHasVcl;
 
         /// <summary>
@@ -66,6 +67,7 @@ namespace Foxglove.Schemas.Video
             _currentAccessUnit.Clear();
             _currentHasVcl = false;
             _buffer.Clear();
+            _bufferStart = 0;
 
             return TryDequeueAccessUnit(out accessUnit);
         }
@@ -105,40 +107,41 @@ namespace Foxglove.Schemas.Video
 
         private void ParseBufferedBytes(bool flush)
         {
-            while (_buffer.Count > 0)
+            while (AvailableBufferBytes > 0)
             {
-                if (!FindStartCode(_buffer, 0, out var start, out var startLength))
+                if (!FindStartCode(_buffer, _bufferStart, out var start, out var startLength))
                 {
                     TrimNonAnnexBTail();
                     return;
                 }
 
-                if (start > 0)
-                    _buffer.RemoveRange(0, start);
+                _bufferStart = start;
 
-                if (!FindStartCode(_buffer, startLength, out var nextStart, out _))
+                if (!FindStartCode(_buffer, _bufferStart + startLength, out var nextStart, out _))
                 {
                     if (TryProcessTrailingAudBoundary(startLength))
                         continue;
 
-                    if (flush && _buffer.Count > startLength)
+                    if (flush && AvailableBufferBytes > startLength)
                     {
-                        ProcessNal(_buffer.ToArray(), startLength);
+                        ProcessNal(CopyBufferRange(_bufferStart, AvailableBufferBytes), startLength);
                         _buffer.Clear();
+                        _bufferStart = 0;
                     }
 
                     return;
                 }
 
-                var nal = _buffer.GetRange(0, nextStart).ToArray();
+                var nal = CopyBufferRange(_bufferStart, nextStart - _bufferStart);
                 ProcessNal(nal, startLength);
-                _buffer.RemoveRange(0, nextStart);
+                _bufferStart = nextStart;
+                CompactBufferIfNeeded();
             }
         }
 
         private bool TryProcessTrailingAudBoundary(int startLength)
         {
-            var headerIndex = startLength;
+            var headerIndex = _bufferStart + startLength;
             if (_buffer.Count <= headerIndex)
                 return false;
 
@@ -146,8 +149,9 @@ namespace Foxglove.Schemas.Video
             if (type != AccessUnitDelimiter)
                 return false;
 
-            ProcessNal(_buffer.ToArray(), startLength);
+            ProcessNal(CopyBufferRange(_bufferStart, AvailableBufferBytes), startLength);
             _buffer.Clear();
+            _bufferStart = 0;
             return true;
         }
 
@@ -182,10 +186,43 @@ namespace Foxglove.Schemas.Video
         private void TrimNonAnnexBTail()
         {
             const int MaxStartCodeTail = 3;
-            if (_buffer.Count <= MaxStartCodeTail)
+            if (AvailableBufferBytes <= MaxStartCodeTail)
                 return;
 
-            _buffer.RemoveRange(0, _buffer.Count - MaxStartCodeTail);
+            var keep = Math.Min(MaxStartCodeTail, AvailableBufferBytes);
+            var tail = CopyBufferRange(_buffer.Count - keep, keep);
+            _buffer.Clear();
+            _buffer.AddRange(tail);
+            _bufferStart = 0;
+        }
+
+        private int AvailableBufferBytes => _buffer.Count - _bufferStart;
+
+        private byte[] CopyBufferRange(int offset, int count)
+        {
+            var copy = new byte[Math.Max(0, count)];
+            for (var i = 0; i < copy.Length; i++)
+                copy[i] = _buffer[offset + i];
+            return copy;
+        }
+
+        private void CompactBufferIfNeeded()
+        {
+            if (_bufferStart <= 0)
+                return;
+
+            if (_bufferStart >= _buffer.Count)
+            {
+                _buffer.Clear();
+                _bufferStart = 0;
+                return;
+            }
+
+            if (_bufferStart < 4096 || _bufferStart < _buffer.Count / 2)
+                return;
+
+            _buffer.RemoveRange(0, _bufferStart);
+            _bufferStart = 0;
         }
 
         private static bool ContainsNalType(byte[] data, byte type)

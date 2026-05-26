@@ -82,13 +82,14 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPreparePublishPayload()) return;
             if (!EnsureSidecarStarted()) return;
 
+            var renderUnixNs = CurrentLogTimeNs;
             _captureCam.Render();
             var generation = _captureGeneration;
             _pendingRequests++;
-            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation));
+            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs));
         }
 
-        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation)
+        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs)
         {
             CompletePendingReadback();
 
@@ -107,7 +108,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var frameBytes = req.GetData<byte>().ToArray();
-            if (!sidecar.TrySubmitFrame(frameBytes))
+            if (!sidecar.TrySubmitFrame(frameBytes, renderUnixNs))
                 LogEncoderUnavailable(sidecar.LastError ?? "FFmpeg encoder refused the frame.");
         }
 
@@ -204,13 +205,13 @@ namespace Unity.FoxgloveSDK.Components
             if (sidecar == null)
                 return;
 
-            while (sidecar.TryDequeueAccessUnit(out var accessUnit))
+            while (sidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
             {
-                var unixNs = CurrentLogTimeNs;
+                var unixNs = accessUnit.TimestampNs == 0UL ? CurrentLogTimeNs : accessUnit.TimestampNs;
                 var payload = CameraCompressedVideoBuilder.Serialize(
                     unixNs,
                     _frameId,
-                    accessUnit,
+                    accessUnit.Data,
                     CameraCompressedVideoBuilder.H264Format);
                 PublishProto(payload, unixNs);
             }

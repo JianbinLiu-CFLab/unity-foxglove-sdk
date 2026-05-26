@@ -6,7 +6,6 @@
 // protobuf camera payloads.
 
 using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 
 namespace Foxglove.Schemas
 {
@@ -33,11 +32,7 @@ namespace Foxglove.Schemas
         {
             return new Foxglove.CompressedVideo
             {
-                Timestamp = new Timestamp
-                {
-                    Seconds = (long)(unixNs / 1_000_000_000UL),
-                    Nanos = (int)(unixNs % 1_000_000_000UL)
-                },
+                Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
                 FrameId = frameId ?? "",
                 Data = ByteString.CopyFrom(h264AccessUnit ?? new byte[0]),
                 Format = string.IsNullOrEmpty(format) ? H264Format : format

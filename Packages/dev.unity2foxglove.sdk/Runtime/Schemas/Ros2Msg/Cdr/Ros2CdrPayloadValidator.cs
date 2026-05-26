@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         public static void Validate(byte[] payload, string parameterName = "payload")
         {
             if (payload == null)
-                throw new ArgumentException("ROS 2 CDR payload must be non-null.", parameterName);
+                throw new ArgumentNullException(parameterName, "ROS 2 CDR payload must be non-null.");
             if (payload.Length == 0)
                 throw new ArgumentException("ROS 2 CDR payload must be non-empty.", parameterName);
             if (payload.Length < 4)

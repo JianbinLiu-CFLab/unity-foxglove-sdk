@@ -334,7 +334,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && reader.ReadUInt32() == 0,
                 "91D-11: SceneUpdate deletion/entity/cube CDR order matches ROS2 msg");
 
-            update.Entities[0].Spheres.Add(new object());
+            update.Entities[0].Spheres.Add(new SpherePrimitive());
             Check(Throws<NotSupportedException>(() => Ros2CdrSceneUpdateBuilder.Serialize(update)),
                 "91D-12: SceneUpdate builder rejects unsupported primitive arrays when non-empty");
         }
