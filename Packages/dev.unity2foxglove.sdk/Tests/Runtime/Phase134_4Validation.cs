@@ -129,6 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyParameterTypeDefaultsAndValidation()
         {
             var component = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Parameters/FoxgloveParameterComponent.cs");
+            var storeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/FoxgloveParameterStore.cs");
             Check(component.Contains("FoxgloveParameterStore.DefaultValueForType(p.Type)", StringComparison.Ordinal)
                   && component.Contains("TryNormalizeValueForType(p.Type", StringComparison.Ordinal),
                 "134-4F-1: parameter component derives empty defaults from declared type and validates parsed values");
@@ -158,6 +159,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-4F-7: unregistered parameters are removed from the wire snapshot");
             Check(!store.TrySetFromClient("/b", JToken.FromObject(true)),
                 "134-4F-8: unregistered parameters cannot be written by clients");
+
+            var logger = new CaptureLogger();
+            var warningStore = new FoxgloveParameterStore(logger);
+            warningStore.Register("/bad", JToken.FromObject(1), "boolean", writable: true);
+            Check(logger.WarningCount == 1
+                  && logger.LastWarning.Contains("/bad", StringComparison.Ordinal)
+                  && logger.LastWarning.Contains("boolean", StringComparison.Ordinal)
+                  && warningStore.GetWireParameter("/bad").Value.Type == JTokenType.Boolean,
+                "134-4F-9: mismatched registered parameter values warn before falling back to the type default");
+            Check(storeSource.Contains("public FoxgloveParameterStore(IFoxgloveLogger logger = null)", StringComparison.Ordinal)
+                  && storeSource.Contains("_logger?.LogWarning", StringComparison.Ordinal),
+                "134-4F-10: parameter store exposes optional logger-backed normalization warnings");
         }
 
         private static void VerifyQuaternionCoordinateRoundTrip()
@@ -192,9 +205,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(publisherBase.Contains("_warnedManagerMissing = false;", StringComparison.Ordinal),
                 "134-4I-1: publisher manager-missing warning latch resets on enable");
-            Check(publisherBase.Contains("_supportedEncodingSummary ??= BuildSupportedEncodingSummary()", StringComparison.Ordinal)
+            Check(!publisherBase.Contains("_supportedEncodingSummary", StringComparison.Ordinal)
+                  && publisherBase.Contains("get { return BuildSupportedEncodingSummary(); }", StringComparison.Ordinal)
                   && !publisherBase.Contains("new System.Collections.Generic.List<string>(3)", StringComparison.Ordinal),
-                "134-4I-2: supported encoding summary is cached and avoids per-access list allocation");
+                "134-4I-2: supported encoding summary recomputes from current publisher capabilities without list allocation");
         }
 
         private static void AssertQuaternionRoundTrip(TestQuaternion unity, string message)
@@ -249,6 +263,20 @@ namespace Unity.FoxgloveSDK.Tests
                 this.z = z;
                 this.w = w;
             }
+        }
+
+        private sealed class CaptureLogger : IFoxgloveLogger
+        {
+            public int WarningCount;
+            public string LastWarning = string.Empty;
+
+            public void LogWarning(string message)
+            {
+                WarningCount++;
+                LastWarning = message ?? string.Empty;
+            }
+
+            public void LogError(string message) { }
         }
 
         private static string ReadRepoText(string relativePath)

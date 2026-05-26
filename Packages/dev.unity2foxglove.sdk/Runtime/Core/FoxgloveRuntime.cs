@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Core
         // Runtime-owned definitions survive Stop/Start cycles so
         // parameters and services are re-advertised on restart.
         /// <summary>Runtime-owned parameter store; survives Stop/Start cycles.</summary>
-        private readonly FoxgloveParameterStore _parameters = new();
+        private readonly FoxgloveParameterStore _parameters;
         /// <summary>Runtime-owned service registry; survives Stop/Start cycles.</summary>
         private readonly FoxgloveServiceRegistry _services = new();
         /// <summary>Runtime-owned asset registry for fetchAsset capability.</summary>
@@ -100,6 +100,7 @@ namespace Unity.FoxgloveSDK.Core
             _playbackClock = new PlaybackClock(_wallClock);
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
             _logger = logger ?? new ConsoleLogger();
+            _parameters = new FoxgloveParameterStore(_logger);
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
             TryRegisterRos2MsgSchemas();

@@ -124,7 +124,7 @@ namespace Unity.FoxgloveSDK.Core
             _clock = clock ?? new SystemClock();
             _schemaRegistry = schemaRegistry ?? new DefaultSchemaRegistry();
             _logger = logger ?? new ConsoleLogger();
-            _parameters = paramStore ?? new FoxgloveParameterStore();
+            _parameters = paramStore ?? new FoxgloveParameterStore(_logger);
             _services = serviceRegistry ?? new FoxgloveServiceRegistry();
             _sessionId = Guid.NewGuid().ToString();
             _graph = new SessionGraphHandler(_transport, _logger, () => Volatile.Read(ref _recorder));

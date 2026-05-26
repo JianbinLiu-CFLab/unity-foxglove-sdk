@@ -206,9 +206,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && assetRegistry.Contains("FileShare.ReadWrite | FileShare.Delete", StringComparison.Ordinal)
                   && !assetRegistry.Contains("return File.ReadAllBytes(path);", StringComparison.Ordinal),
                 "134-2F-1: fetchAsset uses bounded read-time enforcement instead of naked File.ReadAllBytes");
-            Check(graphHandler.Contains("Interlocked.Exchange(ref _dirty, 0)", StringComparison.Ordinal)
-                  && graphHandler.Contains("Volatile.Write(ref _dirty, 1)", StringComparison.Ordinal),
-                "134-2F-2: connection graph dirty state uses atomic exchange/write boundaries");
+            Check(graphHandler.Contains("Interlocked.CompareExchange(ref _dirty, 0, 1)", StringComparison.Ordinal)
+                  && graphHandler.Contains("Volatile.Write(ref _dirty, 1)", StringComparison.Ordinal)
+                  && graphHandler.Contains("will retry after the next graph broadcast", StringComparison.Ordinal),
+                "134-2F-2: connection graph metadata dirty state is only cleared for a write attempt and is restored on write failure");
             Check(!serviceRegistry.Contains("var id = Register(descriptor);", StringComparison.Ordinal)
                   && serviceRegistry.Contains("if (handler != null)", StringComparison.Ordinal),
                 "134-2F-3: service descriptor and handler registration share a single critical section");

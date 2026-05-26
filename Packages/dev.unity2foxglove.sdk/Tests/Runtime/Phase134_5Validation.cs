@@ -122,8 +122,10 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(FoxRunHubPath);
             Check(source.Contains("PendingRegistrations", StringComparison.Ordinal)
                   && source.Contains("PendingRegistrations.Add(source)", StringComparison.Ordinal)
+                  && source.Contains("PendingRegistrationsGate", StringComparison.Ordinal)
+                  && source.Contains("lock (PendingRegistrationsGate)", StringComparison.Ordinal)
                   && source.Contains("DrainPendingRegistrations();", StringComparison.Ordinal),
-                "134-5B-7: FoxRun hub preserves early source registrations until singleton creation");
+                "134-5B-7: FoxRun hub preserves early source registrations behind a locked pending list until singleton creation");
             Check(source.Contains("[SerializeField] private bool _enableFallbackSceneScan = true;", StringComparison.Ordinal)
                   && source.Contains("if (_enableFallbackSceneScan)", StringComparison.Ordinal)
                   && source.Contains("Scan();", StringComparison.Ordinal),
@@ -151,6 +153,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(registry.Contains("internal static void ClearForTests()", StringComparison.Ordinal)
                   && !registry.Contains("public static void ClearForTests()", StringComparison.Ordinal),
                 "134-5C-2: schema registry test clear hook is no longer public runtime API");
+            Check(!RuntimeOrEditorCodeCallsClearForTests(),
+                "134-5C-3: no runtime/editor code depends on the internal schema registry test clear hook");
 
             var first = CreateManifest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
             var same = CreateManifest(first.GlobalManifestHash);
@@ -164,7 +168,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo
                   && FoxRunSchemaInfoRegistry.Current != null
                   && FoxRunSchemaInfoRegistry.HasConflict,
-                "134-5C-3: schema registry remains readable under concurrent registration");
+                "134-5C-4: schema registry remains readable under concurrent registration");
             FoxRunSchemaInfoRegistry.ClearForTests();
 
             var metadata = ReadRepoText(SchemaMcapMetadataPath);
@@ -172,7 +176,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && metadata.Contains("ex is FormatException", StringComparison.Ordinal)
                   && metadata.Contains("ex is OverflowException", StringComparison.Ordinal)
                   && metadata.Contains("ex is InvalidCastException", StringComparison.Ordinal),
-                "134-5C-4: FoxRun schema metadata parse failures cover non-fatal conversion errors");
+                "134-5C-5: FoxRun schema metadata parse failures cover non-fatal conversion errors");
         }
 
         private static void VerifyContractPolicyNormalization()
@@ -229,6 +233,26 @@ namespace Unity.FoxgloveSDK.Tests
                                 Array.Empty<FoxRunSchemaFieldInfo>())
                         })
                 });
+        }
+
+        private static bool RuntimeOrEditorCodeCallsClearForTests()
+        {
+            var root = FindRepoRoot();
+            var packageRoot = Path.Combine(root, "Packages", "dev.unity2foxglove.sdk");
+            foreach (var file in Directory.EnumerateFiles(packageRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                var normalized = file.Replace('\\', '/');
+                if (normalized.Contains("/Tests/", StringComparison.Ordinal)
+                    || normalized.EndsWith("/Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (File.ReadAllText(file).Contains("ClearForTests(", StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
         }
 
         private static string Slice(string source, string startToken, string endToken)

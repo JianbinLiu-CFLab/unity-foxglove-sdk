@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Unreleased
+
+### Changed
+
+- FoxgloveManager-generated MCAP recording file names now use UTC timestamps with fractional ticks (`yyyyMMdd_HHmmss_fffffffZ`) instead of local-time second precision. External scripts that parse recording names should not assume the older `yyyyMMdd_HHmmss.mcap` suffix.
+- Console logger warning and error output now includes severity labels such as `[Foxglove][Warning]` and `[Foxglove][Error]`.
+
 ## 1.9.3 - 2026-05-24
 
 ### Added

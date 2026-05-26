@@ -42,7 +42,6 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastEncodingWarningKey;
         private string _lastBridgeWarningKey;
         private string _lastTopicWarningKey;
-        private string _supportedEncodingSummary;
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
@@ -173,7 +172,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public string SupportedEncodingSummary
         {
-            get { return _supportedEncodingSummary ??= BuildSupportedEncodingSummary(); }
+            get { return BuildSupportedEncodingSummary(); }
         }
 
         protected virtual void Reset()

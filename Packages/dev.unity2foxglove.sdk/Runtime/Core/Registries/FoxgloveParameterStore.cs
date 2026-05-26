@@ -20,6 +20,12 @@ namespace Unity.FoxgloveSDK.Core
     {
         private readonly Dictionary<string, ParameterEntry> _params = new();
         private readonly object _lock = new();
+        private readonly IFoxgloveLogger _logger;
+
+        public FoxgloveParameterStore(IFoxgloveLogger logger = null)
+        {
+            _logger = logger;
+        }
 
         /// <summary>Fired when a parameter value changes (name, new value, type).</summary>
         public event Action<string, JToken, string> OnParameterChanged;
@@ -29,7 +35,11 @@ namespace Unity.FoxgloveSDK.Core
         {
             var normalizedType = NormalizeParameterType(type);
             if (!TryNormalizeValueForType(normalizedType, value, out var normalizedValue))
+            {
+                _logger?.LogWarning(
+                    $"Parameter '{name}' value does not match declared type '{normalizedType}'; using the type default.");
                 normalizedValue = DefaultValueForType(normalizedType);
+            }
 
             lock (_lock)
             {

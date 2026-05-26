@@ -161,12 +161,15 @@ namespace Unity.FoxgloveSDK.Tests
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
 
             Check(manager.Contains("_lastRos2BridgePublishWarningKey", StringComparison.Ordinal)
-                  && manager.Contains("_lastRos2BridgePublishWarningTicks", StringComparison.Ordinal),
-                "134-1H-1: manager tracks ROS2 bridge warning throttle state");
+                  && manager.Contains("_lastRos2BridgePublishWarningTicks", StringComparison.Ordinal)
+                  && manager.Contains("_ros2BridgePublishWarningGate", StringComparison.Ordinal),
+                "134-1H-1: manager tracks ROS2 bridge warning throttle state behind a single gate");
             Check(publishing.Contains("WarnRos2BridgePublishSkipped(reason)", StringComparison.Ordinal)
                   && publishing.Contains("WarnRos2BridgePublishSkipped(enqueueReason)", StringComparison.Ordinal)
-                  && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal),
-                "134-1H-2: ROS2 bridge publish failures use a bounded warning path");
+                  && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
+                  && publishing.Contains("lock (_ros2BridgePublishWarningGate)", StringComparison.Ordinal)
+                  && !publishing.Contains("Interlocked.Read(ref _lastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
+                "134-1H-2: ROS2 bridge publish failures use an atomic bounded warning path");
         }
 
         private static void VerifyLoggerSeverityPrefixes()
@@ -187,11 +190,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(setup.Contains("DateTime.UtcNow.ToString(RecordingTimestampFormat", StringComparison.Ordinal)
                   && setup.Contains("yyyyMMdd_HHmmss_fffffff'Z'", StringComparison.Ordinal),
                 "134-1J-1: generated recording names use high-precision UTC timestamps");
+            var changelog = ReadRepoText("CHANGELOG.md");
+            Check(changelog.Contains("yyyyMMdd_HHmmss_fffffffZ", StringComparison.Ordinal)
+                  && changelog.Contains("yyyyMMdd_HHmmss.mcap", StringComparison.Ordinal)
+                  && changelog.Contains("[Foxglove][Warning]", StringComparison.Ordinal),
+                "134-1J-2: changelog documents recording timestamp and logger prefix behavior changes");
             Check(manager.Contains("public long MaxBytesOrDefault", StringComparison.Ordinal)
                   && setup.Contains("RegisterAssetRoot(ar.uriPrefix, absRoot, ar.MaxBytesOrDefault)", StringComparison.Ordinal),
-                "134-1J-2: asset root byte budgets avoid float-to-long truncation at registration");
+                "134-1J-3: asset root byte budgets avoid float-to-long truncation at registration");
             Check(!runtime.Contains("using System.Linq;", StringComparison.Ordinal),
-                "134-1J-3: FoxgloveRuntime no longer carries unused System.Linq import");
+                "134-1J-4: FoxgloveRuntime no longer carries unused System.Linq import");
         }
 
         private static void VerifySerializedSecretsAreNotCommitted()

@@ -82,6 +82,7 @@ namespace Unity.FoxgloveSDK.Components
         // Internal state
         /// <summary>Singleton instance.</summary>
         private static FoxgloveLogHub _instance;
+        private static readonly object PendingRegistrationsGate = new();
         private static readonly List<IFoxgloveLogSource> PendingRegistrations = new();
         /// <summary>Cached reference to the FoxgloveManager.</summary>
         private FoxgloveManager _mgr;
@@ -109,14 +110,11 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 return;
 
-            if (_instance != null)
+            lock (PendingRegistrationsGate)
             {
-                _instance.AddSource(source);
-                return;
+                if (!PendingRegistrations.Contains(source))
+                    PendingRegistrations.Add(source);
             }
-
-            if (!PendingRegistrations.Contains(source))
-                PendingRegistrations.Add(source);
         }
 
         /// <summary>Unregister a generated FoxRun source from the hub cache.</summary>
@@ -125,10 +123,13 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 return;
 
+            lock (PendingRegistrationsGate)
+            {
+                PendingRegistrations.Remove(source);
+            }
+
             if (_instance != null)
                 _instance.RemoveSource(source);
-            else
-                PendingRegistrations.Remove(source);
         }
 
         /// <summary>
@@ -153,7 +154,10 @@ namespace Unity.FoxgloveSDK.Components
         private static void ResetStaticState()
         {
             _instance = null;
-            PendingRegistrations.Clear();
+            lock (PendingRegistrationsGate)
+            {
+                PendingRegistrations.Clear();
+            }
         }
 
         /// <summary>
@@ -207,6 +211,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 if (_mgr == null) return;
             }
+            DrainPendingRegistrations();
             if (!_mgr.IsRunning) return;
             if (_mgr.SuppressLivePublishersForReplay) return;
 
@@ -373,12 +378,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainPendingRegistrations()
         {
-            if (PendingRegistrations.Count == 0)
-                return;
+            IFoxgloveLogSource[] pending;
+            lock (PendingRegistrationsGate)
+            {
+                if (PendingRegistrations.Count == 0)
+                    return;
 
-            foreach (var source in PendingRegistrations)
+                pending = PendingRegistrations.ToArray();
+                PendingRegistrations.Clear();
+            }
+
+            foreach (var source in pending)
                 AddSource(source);
-            PendingRegistrations.Clear();
         }
 
         private bool TriggerSource(IFoxgloveLogSource source, int topicIndex)

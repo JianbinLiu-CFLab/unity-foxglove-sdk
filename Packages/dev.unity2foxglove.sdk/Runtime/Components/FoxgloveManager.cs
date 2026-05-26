@@ -148,6 +148,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastInvalidPublishTopicWarningKey;
         private string _lastRos2BridgePublishWarningKey;
         private long _lastRos2BridgePublishWarningTicks;
+        private readonly object _ros2BridgePublishWarningGate = new();
         private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
         private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =

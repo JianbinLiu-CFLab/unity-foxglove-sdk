@@ -135,14 +135,33 @@ namespace Unity.FoxgloveSDK.Core
 
         private void FlushMetadataSnapshotIfDirty(string json)
         {
-            if (Interlocked.Exchange(ref _dirty, 0) == 0)
+            if (Interlocked.CompareExchange(ref _dirty, 0, 1) != 1)
                 return;
 
             var recorder = _recorderProvider();
-            recorder?.WriteMetadata(GraphMetadataName, json);
+            if (recorder == null)
+                return;
+
+            try
+            {
+                recorder.WriteMetadata(GraphMetadataName, json);
+            }
+            catch (Exception ex) when (IsRecoverableMetadataException(ex))
+            {
+                Volatile.Write(ref _dirty, 1);
+                _logger.LogWarning($"Connection graph metadata write failed; will retry after the next graph broadcast: {ex.Message}");
+            }
         }
 
         private void MarkDirty() => Volatile.Write(ref _dirty, 1);
+
+        private static bool IsRecoverableMetadataException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
+        }
 
         private static string ClientChannelId(uint clientId, uint channelId) => $"client:{clientId}:{channelId}";
 

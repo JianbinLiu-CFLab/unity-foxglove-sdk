@@ -433,15 +433,17 @@ namespace Unity.FoxgloveSDK.Components
             reason = string.IsNullOrWhiteSpace(reason) ? "unknown reason" : reason;
             var nowTicks = System.DateTime.UtcNow.Ticks;
             var key = "ros2-bridge:" + reason;
-            if (_lastRos2BridgePublishWarningKey == key
-                && nowTicks - System.Threading.Interlocked.Read(ref _lastRos2BridgePublishWarningTicks)
-                    < ClientEventOverflowWarningIntervalTicks)
+            lock (_ros2BridgePublishWarningGate)
             {
-                return;
-            }
+                if (_lastRos2BridgePublishWarningKey == key
+                    && nowTicks - _lastRos2BridgePublishWarningTicks < ClientEventOverflowWarningIntervalTicks)
+                {
+                    return;
+                }
 
-            _lastRos2BridgePublishWarningKey = key;
-            System.Threading.Interlocked.Exchange(ref _lastRos2BridgePublishWarningTicks, nowTicks);
+                _lastRos2BridgePublishWarningKey = key;
+                _lastRos2BridgePublishWarningTicks = nowTicks;
+            }
             Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
         }
 
