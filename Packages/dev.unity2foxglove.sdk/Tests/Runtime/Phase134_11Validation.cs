@@ -7,7 +7,10 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Foxglove.Schemas;
+using Google.Protobuf;
+using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -26,6 +29,13 @@ namespace Unity.FoxgloveSDK.Tests
             RegisteredProtobufRawContentReturnsCopies();
             DefaultRegistryClonesRawContentOnRegister();
             DefaultRegistryCloneHelperDocumentsRawContentScope();
+            EmptyPackageDescriptorNamesAreMapped();
+            ProtobufSetupRejectsNullInputs();
+            ProtobufLoaderRejectsNullAssembly();
+            ProtoCatalogUsesSharedSchemaNamesAndNullSafeLookup();
+            ScenePrimitiveListsAreStronglyTyped();
+            SceneCdrBuilderUnsupportedMessageIsGeneric();
+            FoxgloveTimeUtilUsesTickPrecisionAnchor();
 
             Console.WriteLine($"Phase 134-11: {_passed} checks passed.");
         }
@@ -96,6 +106,107 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("CloneEntryWithRawContentSnapshot", StringComparison.Ordinal)
                   && source.Contains("RawContent is the only mutable field", StringComparison.Ordinal),
                 "134-11D-1: schema clone helper name and comments document its RawContent-only deep copy scope");
+        }
+
+        private static void EmptyPackageDescriptorNamesAreMapped()
+        {
+            var descriptorSet = new FileDescriptorSet();
+            var file = new FileDescriptorProto
+            {
+                Name = "phase134_empty_package.proto",
+                Syntax = "proto3"
+            };
+            file.MessageType.Add(new DescriptorProto { Name = "EmptyPackageMessage" });
+            descriptorSet.File.Add(file);
+
+            var registry = new ProtobufSchemaRegistry(descriptorSet.ToByteArray(), new DefaultSchemaRegistry());
+
+            Check(registry.GetFileDescriptorSet("EmptyPackageMessage") != null,
+                "134-11E-1: protobuf descriptor map supports package-less message names");
+            Check(registry.GetFileDescriptorSet(".EmptyPackageMessage") == null,
+                "134-11E-2: protobuf descriptor map does not create leading-dot package-less names");
+        }
+
+        private static void ProtobufSetupRejectsNullInputs()
+        {
+            Check(Throws<ArgumentNullException>(() => ProtobufSchemasSetup.RegisterSchemas(null)),
+                "134-11F-1: protobuf schema setup rejects null schema registry");
+        }
+
+        private static void ProtobufLoaderRejectsNullAssembly()
+        {
+            Check(Throws<ArgumentNullException>(() => ProtobufSchemaRegistryLoader.FromEmbeddedResource((Assembly)null, new DefaultSchemaRegistry())),
+                "134-11G-1: protobuf embedded-resource loader rejects null assembly");
+        }
+
+        private static void ProtoCatalogUsesSharedSchemaNamesAndNullSafeLookup()
+        {
+            Check(FoxgloveProtoSchemaCatalog.TryGet(FoxgloveSchemaDefinitions.FrameTransformSchemaName, out var entry)
+                  && entry.SchemaName == FoxgloveSchemaDefinitions.FrameTransformSchemaName,
+                "134-11H-1: protobuf catalog resolves shared schema definition names");
+
+            Check(!FoxgloveProtoSchemaCatalog.TryGet(null, out var nullEntry) && nullEntry == null,
+                "134-11H-2: protobuf catalog null lookup is a safe miss");
+        }
+
+        private static void ScenePrimitiveListsAreStronglyTyped()
+        {
+            var entity = new SceneEntity();
+            entity.Arrows.Add(new ArrowPrimitive());
+            entity.Spheres.Add(new SpherePrimitive());
+            entity.Cylinders.Add(new CylinderPrimitive());
+            entity.Lines.Add(new LinePrimitive { Type = LinePrimitiveType.LineList });
+            entity.Triangles.Add(new TriangleListPrimitive());
+            entity.Texts.Add(new TextPrimitive());
+            entity.Models.Add(new ModelPrimitive { Data = new byte[] { 1, 2, 3 } });
+
+            Check(entity.Arrows.Count == 1
+                  && entity.Spheres.Count == 1
+                  && entity.Cylinders.Count == 1
+                  && entity.Lines.Count == 1
+                  && entity.Triangles.Count == 1
+                  && entity.Texts.Count == 1
+                  && entity.Models.Count == 1,
+                "134-11I-1: SceneEntity exposes concrete primitive DTO lists");
+
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MessageDefinitions/FoxgloveVisualMessages.cs");
+            Check(!source.Contains("List<object> Arrows", StringComparison.Ordinal)
+                  && !source.Contains("List<object> Spheres", StringComparison.Ordinal)
+                  && !source.Contains("List<object> Cylinders", StringComparison.Ordinal)
+                  && !source.Contains("List<object> Lines", StringComparison.Ordinal)
+                  && !source.Contains("List<object> Triangles", StringComparison.Ordinal)
+                  && !source.Contains("List<object> Texts", StringComparison.Ordinal)
+                  && !source.Contains("List<object> Models", StringComparison.Ordinal),
+                "134-11I-2: SceneEntity visual primitive lists no longer use List<object>");
+        }
+
+        private static void SceneCdrBuilderUnsupportedMessageIsGeneric()
+        {
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
+            Check(source.Contains("EnsureUnsupportedEmpty<T>", StringComparison.Ordinal)
+                  && !source.Contains("Phase 91 CDR smoke builder", StringComparison.Ordinal),
+                "134-11J-1: SceneUpdate CDR unsupported primitive guard is generic and not phase-specific");
+        }
+
+        private static void FoxgloveTimeUtilUsesTickPrecisionAnchor()
+        {
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MessageDefinitions/FoxgloveTimeUtil.cs");
+            Check(source.Contains("UnixEpochTicks", StringComparison.Ordinal)
+                  && !source.Contains("ToUnixTimeMilliseconds", StringComparison.Ordinal),
+                "134-11K-1: FoxgloveTimeUtil anchors wall clock at tick precision instead of millisecond precision");
+        }
+
+        private static bool Throws<T>(Action action) where T : Exception
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (T)
+            {
+                return true;
+            }
         }
 
         private static void Check(bool condition, string label)

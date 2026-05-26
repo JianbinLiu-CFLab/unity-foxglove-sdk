@@ -70,12 +70,15 @@ namespace Unity.FoxgloveSDK.Schemas
         public static readonly string CompressedImageSchema =
             Encoding.UTF8.GetString(Convert.FromBase64String(CompressedImageSchemaB64));
 
+        /// <summary>Decoded PointCloud JSON Schema text.</summary>
         public static readonly string PointCloudSchema =
             Encoding.UTF8.GetString(Convert.FromBase64String(PointCloudSchemaB64));
 
+        /// <summary>Decoded LaserScan JSON Schema text.</summary>
         public static readonly string LaserScanSchema =
             Encoding.UTF8.GetString(Convert.FromBase64String(LaserScanSchemaB64));
 
+        /// <summary>Decoded CameraCalibration JSON Schema text.</summary>
         public static readonly string CameraCalibrationSchema =
             Encoding.UTF8.GetString(Convert.FromBase64String(CameraCalibrationSchemaB64));
 

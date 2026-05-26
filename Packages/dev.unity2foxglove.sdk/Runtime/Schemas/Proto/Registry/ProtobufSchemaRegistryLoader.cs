@@ -5,6 +5,7 @@
 // Purpose: Factory helpers for creating ProtobufSchemaRegistry from bundled,
 // in-memory, file, or embedded-resource descriptor data.
 
+using System;
 using System.IO;
 using System.Reflection;
 using Unity.FoxgloveSDK.Schemas;
@@ -48,12 +49,30 @@ namespace Foxglove.Schemas
         /// <summary>
         /// Create a registry from an embedded resource in the calling assembly.
         /// Useful for standalone .NET scenarios where the .pb is an EmbeddedResource.
-        /// For Unity, prefer <see cref="FromDefault"/>.
+        /// This overload relies on <see cref="Assembly.GetCallingAssembly"/>, which can be
+        /// brittle under wrapper methods, trimming, or IL2CPP. For Unity, prefer
+        /// <see cref="FromDefault"/>. For standalone callers, prefer
+        /// <see cref="FromEmbeddedResource(Assembly, ISchemaRegistry, string)"/> when the
+        /// resource assembly is known.
         /// </summary>
         public static ProtobufSchemaRegistry FromEmbeddedResource(ISchemaRegistry schemaRegistry,
             string resourceName = "Foxglove.Schemas.foxglove_schemas.pb")
         {
             var assembly = Assembly.GetCallingAssembly();
+            return FromEmbeddedResource(assembly, schemaRegistry, resourceName);
+        }
+
+        /// <summary>
+        /// Create a registry from an embedded resource in the specified assembly.
+        /// This avoids the calling-assembly ambiguity of <see cref="FromEmbeddedResource(ISchemaRegistry, string)"/>.
+        /// </summary>
+        public static ProtobufSchemaRegistry FromEmbeddedResource(Assembly assembly,
+            ISchemaRegistry schemaRegistry,
+            string resourceName = "Foxglove.Schemas.foxglove_schemas.pb")
+        {
+            if (assembly == null)
+                throw new ArgumentNullException(nameof(assembly));
+
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)
                 throw new FileNotFoundException(
