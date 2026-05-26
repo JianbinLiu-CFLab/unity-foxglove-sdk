@@ -266,9 +266,9 @@ namespace Foxglove.Schemas.Video
                 {
                     if (TryDequeueInputFrame(out var frame))
                     {
+                        _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                         await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                         await stream.FlushAsync(token).ConfigureAwait(false);
-                        _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                     }
                     else
                     {

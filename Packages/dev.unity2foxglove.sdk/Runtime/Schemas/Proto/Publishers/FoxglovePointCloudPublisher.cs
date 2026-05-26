@@ -5,6 +5,7 @@
 // Purpose: Publishes foxglove.PointCloud messages from decoded frames or Unity transforms.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
@@ -23,6 +24,8 @@ namespace Unity.FoxgloveSDK.Components
     public class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
         private const int DracoFailureWarningIntervalFrames = 120;
+        private const int MaxCompletedDracoEncodeResults = 8;
+        private const int DracoWorkerStopWaitMs = 5000;
 
         [Header("Point Cloud Output")]
         [SerializeField] private PointCloudOutputMode _outputMode = PointCloudOutputMode.Raw;
@@ -48,10 +51,14 @@ namespace Unity.FoxgloveSDK.Components
         private bool _preparedPublishBridge;
         private int _dracoFailureCount;
         private bool _warnedDracoBacklog;
+        private bool _warnedDracoWorkerShutdown;
         private readonly object _dracoEncodeGate = new object();
+        private readonly Queue<DracoEncodeResult> _completedDracoEncodes = new Queue<DracoEncodeResult>();
+        private readonly ManualResetEventSlim _dracoEncodeWorkerIdle = new ManualResetEventSlim(true);
         private DracoEncodeRequest _pendingDracoEncode;
-        private DracoEncodeResult _completedDracoEncode;
+        private int _droppedCompletedDracoEncodeCount;
         private bool _dracoEncodeWorkerRunning;
+        private bool _stopDracoEncodeWorker;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -73,6 +80,17 @@ namespace Unity.FoxgloveSDK.Components
         {
             base.Reset();
             _samplingMode = PointCloudSamplingMode.UniformStride;
+        }
+
+        protected override void OnDisable()
+        {
+            StopDracoEncodeWorker(clearCompleted: true);
+            base.OnDisable();
+        }
+
+        private void OnDestroy()
+        {
+            StopDracoEncodeWorker(clearCompleted: true);
         }
 
         /// <summary>
@@ -211,7 +229,9 @@ namespace Unity.FoxgloveSDK.Components
                 _pendingDracoEncode = request;
                 if (!_dracoEncodeWorkerRunning)
                 {
+                    _stopDracoEncodeWorker = false;
                     _dracoEncodeWorkerRunning = true;
+                    _dracoEncodeWorkerIdle.Reset();
                     startWorker = true;
                 }
             }
@@ -228,6 +248,7 @@ namespace Unity.FoxgloveSDK.Components
                 lock (_dracoEncodeGate)
                 {
                     _dracoEncodeWorkerRunning = false;
+                    _dracoEncodeWorkerIdle.Set();
                 }
                 LogDracoFailure("Unable to queue background Draco encode: " + ex.Message);
             }
@@ -235,51 +256,121 @@ namespace Unity.FoxgloveSDK.Components
 
         private void RunDracoEncodeWorker()
         {
-            while (true)
+            try
             {
-                DracoEncodeRequest request;
-                lock (_dracoEncodeGate)
+                while (true)
                 {
-                    request = _pendingDracoEncode;
-                    _pendingDracoEncode = null;
-                    if (request == null)
+                    DracoEncodeRequest request;
+                    lock (_dracoEncodeGate)
                     {
-                        _dracoEncodeWorkerRunning = false;
-                        return;
+                        if (_stopDracoEncodeWorker)
+                        {
+                            _dracoEncodeWorkerRunning = false;
+                            return;
+                        }
+
+                        request = _pendingDracoEncode;
+                        _pendingDracoEncode = null;
+                        if (request == null)
+                        {
+                            _dracoEncodeWorkerRunning = false;
+                            return;
+                        }
+                    }
+
+                    var success = DracoPointCloudNativeEncoder.TryEncode(request.Frame, out var dracoPayload, out var encodeError);
+                    var result = new DracoEncodeResult(request, success, dracoPayload, encodeError);
+                    lock (_dracoEncodeGate)
+                    {
+                        if (_stopDracoEncodeWorker)
+                            continue;
+
+                        while (_completedDracoEncodes.Count >= MaxCompletedDracoEncodeResults)
+                        {
+                            _completedDracoEncodes.Dequeue();
+                            _droppedCompletedDracoEncodeCount++;
+                        }
+
+                        _completedDracoEncodes.Enqueue(result);
                     }
                 }
-
-                var success = DracoPointCloudNativeEncoder.TryEncode(request.Frame, out var dracoPayload, out var encodeError);
-                var result = new DracoEncodeResult(request, success, dracoPayload, encodeError);
+            }
+            finally
+            {
                 lock (_dracoEncodeGate)
                 {
-                    _completedDracoEncode = result;
+                    _dracoEncodeWorkerRunning = false;
                 }
+
+                _dracoEncodeWorkerIdle.Set();
             }
         }
 
         private void DrainCompletedDracoEncode()
         {
-            DracoEncodeResult result;
+            List<DracoEncodeResult> results = null;
+            int droppedCompletedResults;
             lock (_dracoEncodeGate)
             {
-                result = _completedDracoEncode;
-                _completedDracoEncode = null;
+                droppedCompletedResults = _droppedCompletedDracoEncodeCount;
+                _droppedCompletedDracoEncodeCount = 0;
+                if (_completedDracoEncodes.Count > 0)
+                {
+                    results = new List<DracoEncodeResult>(_completedDracoEncodes);
+                    _completedDracoEncodes.Clear();
+                }
             }
 
-            if (result == null)
+            if (droppedCompletedResults > 0 && _logQosDrops)
+                Debug.LogWarning($"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {droppedCompletedResults}.");
+
+            if (results == null || results.Count == 0)
                 return;
 
-            if (!result.Success)
+            foreach (var result in results)
             {
-                LogDracoFailure((string.IsNullOrWhiteSpace(result.Error) ? "Native Draco encode failed." : result.Error) + " Draco mode publishes nothing.");
+                if (!result.Success)
+                {
+                    LogDracoFailure((string.IsNullOrWhiteSpace(result.Error) ? "Native Draco encode failed." : result.Error) + " Draco mode publishes nothing.");
+                    continue;
+                }
+
+                _warnedDracoFailure = false;
+                _dracoFailureCount = 0;
+                _warnedDracoBacklog = false;
+                PublishDracoPayload(result.Request.Frame, result.Request.UnixNs, result.Payload, result.Request.PublishWebSocket, result.Request.PublishBridge);
+            }
+        }
+
+        private void StopDracoEncodeWorker(bool clearCompleted)
+        {
+            var shouldWait = false;
+            lock (_dracoEncodeGate)
+            {
+                _stopDracoEncodeWorker = true;
+                _pendingDracoEncode = null;
+                shouldWait = _dracoEncodeWorkerRunning;
+                if (clearCompleted)
+                {
+                    _completedDracoEncodes.Clear();
+                    _droppedCompletedDracoEncodeCount = 0;
+                }
+            }
+
+            if (!shouldWait)
+                return;
+
+            if (_dracoEncodeWorkerIdle.Wait(DracoWorkerStopWaitMs))
+            {
+                _warnedDracoWorkerShutdown = false;
                 return;
             }
 
-            _warnedDracoFailure = false;
-            _dracoFailureCount = 0;
-            _warnedDracoBacklog = false;
-            PublishDracoPayload(result.Request.Frame, result.Request.UnixNs, result.Payload, result.Request.PublishWebSocket, result.Request.PublishBridge);
+            if (!_warnedDracoWorkerShutdown)
+            {
+                Debug.LogWarning("[Foxglove] Draco point-cloud encode worker is still stopping; native encode will be ignored when it returns.");
+                _warnedDracoWorkerShutdown = true;
+            }
         }
 
         private void PublishDracoPayload(PointCloudFrame frame, ulong unixNs, byte[] dracoPayload, bool publishWebSocket, bool publishBridge)

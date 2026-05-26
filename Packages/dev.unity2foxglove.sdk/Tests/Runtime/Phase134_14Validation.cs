@@ -28,8 +28,8 @@ namespace Unity.FoxgloveSDK.Tests
             NativeDracoBudgetRejectsOversizedScratchBeforeAllocation();
             NativeDracoTryEncodeChecksBudgetBeforeScratchAllocation();
             PointCloudBuildersAvoidUnnecessaryDualPayloads();
-            LaserScanBuildersRejectMissingRangesAndInvalidAngles();
-            PointCloudProfilesFailFastForUnknownModes();
+            LaserScanBuildersRejectMissingRangesAndAcceptFlexibleAngles();
+            PointCloudProfilesFallbackForUnknownModes();
             LegacyCompressedPointCloudPublisherIsMarkedObsolete();
             DracoSidecarDiagnosticsUseVolatileAndTotalDeadline();
             NativeDracoOutputBufferUsesArrayPool();
@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-14D-6: point-cloud build result byte ownership is documented");
         }
 
-        private static void LaserScanBuildersRejectMissingRangesAndInvalidAngles()
+        private static void LaserScanBuildersRejectMissingRangesAndAcceptFlexibleAngles()
         {
             CheckThrows<ArgumentNullException>(
                 () => LaserScanMessageBuilder.CreateJson(1UL, "laser", 0.0, 1.0, null),
@@ -128,13 +128,19 @@ namespace Unity.FoxgloveSDK.Tests
             var scan = LaserScanMessageBuilder.CreateJson(1UL, "laser", 0.0, 1.0, new[] { 1.0 }, null);
             Check(scan.Intensities.Count == 0,
                 "134-14E-6: LaserScan null intensities remain a valid empty list");
+            Check(LaserScanMessageBuilder.CreateJson(1UL, "laser", 0.0, 0.0, new[] { 1.0 }).Ranges.Count == 1,
+                "134-14E-7: protobuf LaserScan builder accepts single-beam equal angles");
+            Check(Ros2CdrLaserScanBuilder.Serialize(1UL, "laser", 1.0, -1.0, new[] { 1.0 }).Length > 0,
+                "134-14E-8: ROS2 CDR LaserScan builder accepts reverse or wrapped angle ranges");
         }
 
-        private static void PointCloudProfilesFailFastForUnknownModes()
+        private static void PointCloudProfilesFallbackForUnknownModes()
         {
-            CheckThrows<ArgumentOutOfRangeException>(
-                () => PointCloudOutputProfile.ForMode((PointCloudOutputMode)999),
-                "134-14F-1: unknown point-cloud output modes fail fast");
+            var profile = PointCloudOutputProfile.ForMode((PointCloudOutputMode)999);
+            Check(profile.Mode == PointCloudOutputMode.Raw
+                  && profile.SchemaName == PointCloudOutputModeDefaults.RawSchema
+                  && profile.DefaultTopic == PointCloudOutputModeDefaults.RawTopic,
+                "134-14F-1: unknown serialized point-cloud output modes fall back to Raw for scene compatibility");
         }
 
         private static void LegacyCompressedPointCloudPublisherIsMarkedObsolete()
@@ -191,6 +197,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-14J-5: background encode result is published through a main-thread drain path");
             Check(source.Contains("DracoFailureWarningIntervalFrames"),
                 "134-14J-6: repeated Draco failures are throttled");
+            Check(source.Contains("Queue<DracoEncodeResult> _completedDracoEncodes")
+                  && source.Contains("MaxCompletedDracoEncodeResults"),
+                "134-14J-7: completed Draco encode results use a bounded queue instead of a single overwrite slot");
+            Check(source.Contains("StopDracoEncodeWorker(clearCompleted: true)")
+                  && source.Contains("ManualResetEventSlim"),
+                "134-14J-8: Draco worker has an explicit disable/destroy shutdown path");
         }
 
         private static void LaserScanPublisherExposesProgrammaticPublishPath()
@@ -204,6 +216,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-14K-2: LaserScan intensity mismatch warning recovers after valid data");
             Check(source.Contains("_syntheticRangesMeters != _syntheticRangeMeters"),
                 "134-14K-3: synthetic range cache uses direct equality instead of double.Epsilon");
+            Check(source.Contains("ConcurrentQueue<QueuedLaserScanFrame>")
+                  && source.Contains("IsUnityMainThread()"),
+                "134-14K-4: LaserScan PublishFrame marshals worker-thread calls to Update");
+            Check(source.Contains("TryPublishScan(")
+                  && source.Contains("LaserScan publish failed; skipping until valid data is provided"),
+                "134-14K-5: LaserScan publisher catches recoverable builder failures without per-frame exception spam");
         }
 
         private static void CheckThrows<TException>(Action action, string label)

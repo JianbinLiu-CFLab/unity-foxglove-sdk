@@ -24,8 +24,8 @@ namespace Foxglove.Schemas
             IEnumerable<double> ranges,
             IEnumerable<double> intensities = null)
         {
-            var rangeList = ToRequiredList(ranges, nameof(ranges));
-            var intensityList = ToListOrEmpty(intensities);
+            var rangeList = ToRequiredReadOnlyList(ranges, nameof(ranges));
+            var intensityList = ToReadOnlyListOrEmpty(intensities);
             ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
@@ -93,7 +93,22 @@ namespace Foxglove.Schemas
             return values.ToList();
         }
 
-        private static void ValidateIntensities(List<double> ranges, List<double> intensities)
+        private static IReadOnlyList<double> ToReadOnlyListOrEmpty(IEnumerable<double> values)
+        {
+            if (values == null)
+                return Array.Empty<double>();
+            return values as IReadOnlyList<double> ?? values.ToArray();
+        }
+
+        private static IReadOnlyList<double> ToRequiredReadOnlyList(IEnumerable<double> values, string parameterName)
+        {
+            if (values == null)
+                throw new ArgumentNullException(parameterName);
+
+            return values as IReadOnlyList<double> ?? values.ToArray();
+        }
+
+        private static void ValidateIntensities(IReadOnlyList<double> ranges, IReadOnlyList<double> intensities)
         {
             if (intensities.Count != 0 && intensities.Count != ranges.Count)
                 throw new ArgumentException("LaserScan intensities must be empty or have the same length as ranges.", nameof(intensities));
@@ -105,8 +120,6 @@ namespace Foxglove.Schemas
                 throw new ArgumentOutOfRangeException(nameof(startAngle), "LaserScan startAngle must be finite.");
             if (double.IsNaN(endAngle) || double.IsInfinity(endAngle))
                 throw new ArgumentOutOfRangeException(nameof(endAngle), "LaserScan endAngle must be finite.");
-            if (!(endAngle > startAngle))
-                throw new ArgumentException("LaserScan endAngle must be greater than startAngle.", nameof(endAngle));
         }
     }
 }

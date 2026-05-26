@@ -316,13 +316,25 @@ namespace Foxglove.Schemas.PointCloud
             try
             {
                 if (!task.Wait(RemainingMilliseconds(deadlineUtc)))
+                {
+                    ObserveFaultedTask(task);
                     return false;
+                }
                 return task.Exception == null;
             }
             catch
             {
                 return false;
             }
+        }
+
+        private static void ObserveFaultedTask(Task task)
+        {
+            task.ContinueWith(
+                completed => { _ = completed.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private static int RemainingMilliseconds(DateTime deadlineUtc)

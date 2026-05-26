@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -38,12 +39,15 @@ namespace Foxglove.Schemas.Video
         private const int MftMessageNotifyEndOfStream = 0x10000003;
         private const int MfVideoInterlaceProgressive = 2;
         private const int H264BaselineProfile = 66;
+        private const int MaxTrackedSampleTimestamps = 256;
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+        private readonly Dictionary<long, ulong> _sampleTimestampNsByTime = new Dictionary<long, ulong>();
         private readonly object _outputLock = new object();
         private readonly H264AccessUnitNormalizer _normalizer = new H264AccessUnitNormalizer();
         private MediaFoundationH264EncoderOptions _options;
         private IMFTransform _transform;
+        private byte[] _nv12Scratch;
         private long _nextSampleTime;
         private long _sampleDuration;
         private int _outputCount;
@@ -120,9 +124,10 @@ namespace Foxglove.Schemas.Video
 
             try
             {
-                var nv12Frame = ConvertRgb24ToNv12(rgb24Frame, _options.Width, _options.Height);
+                var nv12Frame = EnsureNv12Scratch();
+                ConvertRgb24ToNv12(rgb24Frame, _options.Width, _options.Height, nv12Frame);
                 ProcessInputFrame(nv12Frame, timestampNs);
-                DrainEncoderOutput(timestampNs);
+                DrainEncoderOutput();
                 return true;
             }
             catch (Exception ex)
@@ -184,8 +189,10 @@ namespace Foxglove.Schemas.Video
             }
 
             _options = null;
+            _nv12Scratch = null;
             _nextSampleTime = 0;
             _sampleDuration = 0;
+            ClearSampleTimestampMap();
 
             if (_mfStarted)
             {
@@ -370,17 +377,19 @@ namespace Foxglove.Schemas.Video
 
         private void ProcessInputFrame(byte[] nv12Frame, ulong timestampNs)
         {
-            var sample = CreateSample(nv12Frame, _nextSampleTime, _sampleDuration);
+            var sampleTime = _nextSampleTime;
+            var sample = CreateSample(nv12Frame, sampleTime, _sampleDuration);
             try
             {
                 var hr = _transform.ProcessInput(0, sample, 0);
                 if (hr == MfENotAccepting)
                 {
-                    DrainEncoderOutput(timestampNs);
+                    DrainEncoderOutput();
                     hr = _transform.ProcessInput(0, sample, 0);
                 }
 
                 ThrowForHr(hr, "Media Foundation H.264 ProcessInput failed.");
+                RegisterSampleTimestamp(sampleTime, timestampNs);
                 _nextSampleTime += _sampleDuration;
             }
             finally
@@ -415,7 +424,7 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void DrainEncoderOutput(ulong timestampNs)
+        private void DrainEncoderOutput()
         {
             while (true)
             {
@@ -473,7 +482,7 @@ namespace Foxglove.Schemas.Video
                         }
                     }
 
-                    ExtractOutputSample(outputSample ?? sample, timestampNs);
+                    ExtractOutputSample(outputSample ?? sample);
                 }
                 finally
                 {
@@ -493,7 +502,7 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void ExtractOutputSample(IMFSample sample, ulong timestampNs)
+        private void ExtractOutputSample(IMFSample sample)
         {
             if (sample == null)
                 return;
@@ -504,6 +513,7 @@ namespace Foxglove.Schemas.Video
                 var hr = sample.ConvertToContiguousBuffer(out buffer);
                 ThrowForHr(hr, "ConvertToContiguousBuffer failed.");
                 var bytes = ReadBuffer(buffer);
+                var timestampNs = ResolveOutputTimestamp(sample);
                 if (_normalizer.TryNormalizeSample(bytes, out var accessUnit))
                     EnqueueAccessUnit(accessUnit, timestampNs);
             }
@@ -554,13 +564,61 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static byte[] ConvertRgb24ToNv12(byte[] rgb24Frame, int width, int height)
+        private byte[] EnsureNv12Scratch()
+        {
+            var expectedBytes = _options != null ? _options.Nv12FrameByteCount : 0;
+            if (expectedBytes <= 0)
+                throw new InvalidOperationException("Media Foundation H.264 NV12 frame byte count is invalid.");
+
+            if (_nv12Scratch == null || _nv12Scratch.Length != expectedBytes)
+                _nv12Scratch = new byte[expectedBytes];
+
+            return _nv12Scratch;
+        }
+
+        private void RegisterSampleTimestamp(long sampleTime, ulong timestampNs)
+        {
+            lock (_outputLock)
+            {
+                if (_sampleTimestampNsByTime.Count >= MaxTrackedSampleTimestamps)
+                    _sampleTimestampNsByTime.Clear();
+
+                _sampleTimestampNsByTime[sampleTime] = timestampNs;
+            }
+        }
+
+        private ulong ResolveOutputTimestamp(IMFSample sample)
+        {
+            var hr = sample.GetSampleTime(out var sampleTime);
+            if (hr < 0)
+                return 0UL;
+
+            lock (_outputLock)
+            {
+                if (!_sampleTimestampNsByTime.TryGetValue(sampleTime, out var timestampNs))
+                    return 0UL;
+
+                _sampleTimestampNsByTime.Remove(sampleTime);
+                return timestampNs;
+            }
+        }
+
+        private void ClearSampleTimestampMap()
+        {
+            lock (_outputLock)
+            {
+                _sampleTimestampNsByTime.Clear();
+            }
+        }
+
+        private static void ConvertRgb24ToNv12(byte[] rgb24Frame, int width, int height, byte[] nv12)
         {
             if (!CameraVideoFrameGeometry.TryGetYuv420FrameByteCount(width, height, out var nv12Length))
                 throw new InvalidOperationException("Media Foundation H.264 NV12 frame byte count is invalid.");
+            if (nv12 == null || nv12.Length < nv12Length)
+                throw new ArgumentException("NV12 scratch buffer is too small.", nameof(nv12));
 
             var yPlaneLength = checked(width * height);
-            var nv12 = new byte[nv12Length];
 
             for (var y = 0; y < height; y++)
             {
@@ -593,8 +651,6 @@ namespace Foxglove.Schemas.Video
                     nv12[uv + 1] = ClampByte(v / 4);
                 }
             }
-
-            return nv12;
         }
 
         private static void AccumulateChroma(byte[] rgb24Frame, int width, int y, int x, ref int u, ref int v)

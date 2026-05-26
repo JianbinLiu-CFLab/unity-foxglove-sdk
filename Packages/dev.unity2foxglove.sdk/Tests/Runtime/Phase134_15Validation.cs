@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             CdrReaderPreflightsFixedArraysBeforeAllocation();
             CompressedBuildersRejectMissingRequiredPayloadFields();
-            LaserScanCdrBuilderKeepsRequiredRangeAndFiniteAngleGuards();
+            LaserScanCdrBuilderKeepsRequiredRangeAndFlexibleAngleGuards();
             PublisherSchemaNamesUseBuilderConstants();
             Ros2SchemaSetupFailsFastForNullRegistry();
             CdrPayloadValidatorUsesArgumentNullForNullPayload();
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-15B-7: compressed point cloud default Draco format remains usable");
         }
 
-        private static void LaserScanCdrBuilderKeepsRequiredRangeAndFiniteAngleGuards()
+        private static void LaserScanCdrBuilderKeepsRequiredRangeAndFlexibleAngleGuards()
         {
             Check(Throws<ArgumentNullException>(() => Ros2CdrLaserScanBuilder.Serialize(0, "laser", -1, 1, null)),
                 "134-15C-1: CDR LaserScan rejects null ranges");
@@ -74,8 +74,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-15C-2: CDR LaserScan rejects NaN start angles");
             Check(Throws<ArgumentOutOfRangeException>(() => Ros2CdrLaserScanBuilder.Serialize(0, "laser", -1, double.PositiveInfinity, new[] { 1.0 })),
                 "134-15C-3: CDR LaserScan rejects infinite end angles");
-            Check(Throws<ArgumentException>(() => Ros2CdrLaserScanBuilder.Serialize(0, "laser", 1, 1, new[] { 1.0 })),
-                "134-15C-4: CDR LaserScan rejects non-increasing angle ranges");
+            Check(Ros2CdrLaserScanBuilder.Serialize(0, "laser", 1, 1, new[] { 1.0 }).Length > 0,
+                "134-15C-4: CDR LaserScan accepts single-beam equal angles");
+            Check(Ros2CdrLaserScanBuilder.Serialize(0, "laser", 1, -1, new[] { 1.0 }).Length > 0,
+                "134-15C-5: CDR LaserScan accepts reverse or wrapped angle ranges");
 
             var payload = Ros2CdrLaserScanBuilder.Serialize(0, "laser", -1, 1, new[] { 1.0 }, null);
             var reader = new Ros2CdrReader(payload);
@@ -87,7 +89,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && reader.ReadFloat64() == 1
                   && reader.ReadFloat64Sequence().SequenceEqual(new[] { 1.0 })
                   && reader.ReadFloat64Sequence().Length == 0,
-                "134-15C-5: CDR LaserScan still accepts null intensities as an empty optional sequence");
+                "134-15C-6: CDR LaserScan still accepts null intensities as an empty optional sequence");
         }
 
         private static void PublisherSchemaNamesUseBuilderConstants()

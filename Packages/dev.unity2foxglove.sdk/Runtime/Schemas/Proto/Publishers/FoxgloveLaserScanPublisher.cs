@@ -5,7 +5,10 @@
 // Purpose: Publishes foxglove.LaserScan messages with JSON/protobuf encoding.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
@@ -19,6 +22,8 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class FoxgloveLaserScanPublisher : FoxglovePublisherBase
     {
+        private const int MaxQueuedPublishFrames = 8;
+
         [Header("Laser Scan")]
         [SerializeField] private string _frameId = "laser";
         [SerializeField] private double _startAngleDegrees = -45;
@@ -29,9 +34,16 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private double _syntheticRangeMeters = 2.0;
 
         private bool _warnedIntensityMismatch;
+        private bool _warnedPublishFailure;
+        private bool _warnedOffMainThreadPublishFrame;
         private double[] _syntheticRanges;
         private int _syntheticRangesCount;
         private double _syntheticRangesMeters;
+        private readonly ConcurrentQueue<QueuedLaserScanFrame> _queuedPublishFrames = new ConcurrentQueue<QueuedLaserScanFrame>();
+        private int _queuedPublishFrameCount;
+        private int _queuedOffMainThreadPublishFrameCount;
+        private int _droppedQueuedPublishFrameCount;
+        private int _unityThreadId;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.LaserScanSchemaName;
         public override bool SupportsProtobufEncoding => true;
@@ -41,10 +53,19 @@ namespace Unity.FoxgloveSDK.Components
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/unity/laser_scan";
+            _unityThreadId = Thread.CurrentThread.ManagedThreadId;
+        }
+
+        protected override void OnEnable()
+        {
+            base.OnEnable();
+            _unityThreadId = Thread.CurrentThread.ManagedThreadId;
         }
 
         /// <summary>
         /// Publish one event-driven scan immediately, bypassing the regular Update cadence.
+        /// Calls from worker threads are copied into a bounded queue and published on
+        /// the next Unity main-thread update.
         /// </summary>
         public void PublishFrame(
             ulong logTimeNs,
@@ -54,22 +75,38 @@ namespace Unity.FoxgloveSDK.Components
             IEnumerable<double> ranges,
             IEnumerable<double> intensities = null)
         {
+            if (!IsUnityMainThread())
+            {
+                QueuePublishFrame(logTimeNs, frameId, startAngleRadians, endAngleRadians, ranges, intensities);
+                return;
+            }
+
+            PublishFrameOnMainThread(logTimeNs, frameId, startAngleRadians, endAngleRadians, ranges, intensities);
+        }
+
+        private void PublishFrameOnMainThread(
+            ulong logTimeNs,
+            string frameId,
+            double startAngleRadians,
+            double endAngleRadians,
+            IEnumerable<double> ranges,
+            IEnumerable<double> intensities)
+        {
             ResolveManager();
             if (_manager == null) return;
             if (!ShouldPrepareAnyPublishPayload()) return;
 
-            PublishScan(logTimeNs, frameId, startAngleRadians, endAngleRadians, ranges, intensities ?? Array.Empty<double>());
+            TryPublishScan(logTimeNs, frameId, startAngleRadians, endAngleRadians, ranges, intensities ?? Array.Empty<double>());
         }
 
         private void Update()
         {
             if (_manager == null) return;
-            if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
+            DrainQueuedPublishFrames();
+            if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             if (!ShouldPrepareAnyPublishPayload()) return;
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
 
             var ranges = ResolveRanges();
             var intensities = _intensities ?? Array.Empty<double>();
@@ -87,7 +124,33 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = CurrentLogTimeNs;
             var startRad = _startAngleDegrees * Math.PI / 180.0;
             var endRad = _endAngleDegrees * Math.PI / 180.0;
-            PublishScan(unixNs, _frameId, startRad, endRad, ranges, intensities);
+            TryPublishScan(unixNs, _frameId, startRad, endRad, ranges, intensities);
+        }
+
+        private bool TryPublishScan(
+            ulong unixNs,
+            string frameId,
+            double startRad,
+            double endRad,
+            IEnumerable<double> ranges,
+            IEnumerable<double> intensities)
+        {
+            try
+            {
+                PublishScan(unixNs, frameId, startRad, endRad, ranges, intensities);
+                _warnedPublishFailure = false;
+                return true;
+            }
+            catch (Exception ex) when (IsRecoverablePublishException(ex))
+            {
+                if (!_warnedPublishFailure)
+                {
+                    Debug.LogWarning($"[Foxglove] LaserScan publish failed; skipping until valid data is provided. {ex.Message}");
+                    _warnedPublishFailure = true;
+                }
+
+                return false;
+            }
         }
 
         private void PublishScan(
@@ -125,6 +188,87 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private void QueuePublishFrame(
+            ulong logTimeNs,
+            string frameId,
+            double startAngleRadians,
+            double endAngleRadians,
+            IEnumerable<double> ranges,
+            IEnumerable<double> intensities)
+        {
+            var rangeCopy = CopyRequiredValues(ranges, nameof(ranges));
+            var intensityCopy = CopyOptionalValues(intensities);
+            var queuedCount = Interlocked.Increment(ref _queuedPublishFrameCount);
+            if (queuedCount > MaxQueuedPublishFrames)
+            {
+                Interlocked.Decrement(ref _queuedPublishFrameCount);
+                Interlocked.Increment(ref _droppedQueuedPublishFrameCount);
+                return;
+            }
+
+            _queuedPublishFrames.Enqueue(new QueuedLaserScanFrame(
+                logTimeNs,
+                frameId,
+                startAngleRadians,
+                endAngleRadians,
+                rangeCopy,
+                intensityCopy));
+            Interlocked.Increment(ref _queuedOffMainThreadPublishFrameCount);
+        }
+
+        private void DrainQueuedPublishFrames()
+        {
+            var queuedFromWorker = Interlocked.Exchange(ref _queuedOffMainThreadPublishFrameCount, 0);
+            if (queuedFromWorker > 0 && !_warnedOffMainThreadPublishFrame)
+            {
+                Debug.LogWarning("[Foxglove] LaserScan PublishFrame was called off the Unity main thread; frames are queued and published during Update.");
+                _warnedOffMainThreadPublishFrame = true;
+            }
+
+            var dropped = Interlocked.Exchange(ref _droppedQueuedPublishFrameCount, 0);
+            if (dropped > 0)
+                Debug.LogWarning($"[Foxglove] LaserScan dropped {dropped} queued PublishFrame request(s) because the main-thread queue is full.");
+
+            while (_queuedPublishFrames.TryDequeue(out var frame))
+            {
+                Interlocked.Decrement(ref _queuedPublishFrameCount);
+                PublishFrameOnMainThread(
+                    frame.LogTimeNs,
+                    frame.FrameId,
+                    frame.StartAngleRadians,
+                    frame.EndAngleRadians,
+                    frame.Ranges,
+                    frame.Intensities);
+            }
+        }
+
+        private bool IsUnityMainThread()
+        {
+            return _unityThreadId != 0 && Thread.CurrentThread.ManagedThreadId == _unityThreadId;
+        }
+
+        private static double[] CopyRequiredValues(IEnumerable<double> values, string parameterName)
+        {
+            if (values == null)
+                throw new ArgumentNullException(parameterName);
+            return values is double[] array ? (double[])array.Clone() : values.ToArray();
+        }
+
+        private static double[] CopyOptionalValues(IEnumerable<double> values)
+        {
+            if (values == null)
+                return Array.Empty<double>();
+            return values is double[] array ? (double[])array.Clone() : values.ToArray();
+        }
+
+        private static bool IsRecoverablePublishException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
+        }
+
         private double[] ResolveRanges()
         {
             if (_ranges != null && _ranges.Length > 0)
@@ -147,6 +291,32 @@ namespace Unity.FoxgloveSDK.Components
                     _syntheticRanges[i] = _syntheticRangeMeters;
             }
             return _syntheticRanges;
+        }
+
+        private sealed class QueuedLaserScanFrame
+        {
+            public QueuedLaserScanFrame(
+                ulong logTimeNs,
+                string frameId,
+                double startAngleRadians,
+                double endAngleRadians,
+                double[] ranges,
+                double[] intensities)
+            {
+                LogTimeNs = logTimeNs;
+                FrameId = frameId;
+                StartAngleRadians = startAngleRadians;
+                EndAngleRadians = endAngleRadians;
+                Ranges = ranges;
+                Intensities = intensities;
+            }
+
+            public ulong LogTimeNs { get; }
+            public string FrameId { get; }
+            public double StartAngleRadians { get; }
+            public double EndAngleRadians { get; }
+            public double[] Ranges { get; }
+            public double[] Intensities { get; }
         }
     }
 }
