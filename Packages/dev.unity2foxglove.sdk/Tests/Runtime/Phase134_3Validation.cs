@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyReplayRuntimeEventsAreExceptionIsolated();
             VerifyReplayDispatchLeavesPlaybackLockBeforeUserCallbacks();
             VerifyControllerDirectReplayEventsAreExceptionIsolated();
+            VerifyReplayCallbackQueueIsBounded();
+            VerifyReplayTestHooksUseQueuedDrainPath();
 
             Console.WriteLine($"Phase 134-3: {_passed} checks passed.");
         }
@@ -126,6 +128,32 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-3D-1: replay controller invokes later context listeners after an earlier listener throws");
             Check(logger.Warnings.Any(message => message.Contains("context boom", StringComparison.Ordinal)),
                 "134-3D-2: replay controller logs context listener failures");
+        }
+
+        private static void VerifyReplayCallbackQueueIsBounded()
+        {
+            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+
+            Check(replaySource.Contains("MaxPendingReplayCallbacks", StringComparison.Ordinal)
+                  && replaySource.Contains("MaxPendingReplayCallbackPayloadBytes", StringComparison.Ordinal)
+                  && replaySource.Contains("BoundedEventQueue<ReplayCallbackDispatch>", StringComparison.Ordinal),
+                "134-3E-1: replay callback dispatch queue has frame and byte budgets");
+            Check(replaySource.Contains("TryQueueReplayCallback", StringComparison.Ordinal)
+                  && replaySource.Contains("WarnReplayCallbackQueueOverflow", StringComparison.Ordinal),
+                "134-3E-2: replay callback overflow path rejects and warns instead of growing without bound");
+        }
+
+        private static void VerifyReplayTestHooksUseQueuedDrainPath()
+        {
+            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+
+            Check(replaySource.Contains("FireForTests(string topic, byte[] data)", StringComparison.Ordinal)
+                  && replaySource.Contains("FireContextForTests(ReplayMessageContext context)", StringComparison.Ordinal)
+                  && replaySource.Contains("FireBatchCompletedForTests(ReplayBatchContext context)", StringComparison.Ordinal)
+                  && replaySource.Contains("TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage", StringComparison.Ordinal)
+                  && replaySource.Contains("TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch", StringComparison.Ordinal)
+                  && replaySource.Contains("DrainReplayCallbacks();", StringComparison.Ordinal),
+                "134-3F-1: replay test hooks exercise the same queued callback drain path as runtime replay");
         }
 
         private static string CreateTempMcap()

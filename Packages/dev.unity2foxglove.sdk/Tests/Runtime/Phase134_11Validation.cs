@@ -5,6 +5,7 @@
 // Purpose: Phase 134-11 regression coverage for schema descriptor immutability.
 
 using System;
+using System.IO;
 using System.Linq;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Schemas;
@@ -24,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
             ProtobufDescriptorLookupReturnsCopies();
             RegisteredProtobufRawContentReturnsCopies();
             DefaultRegistryClonesRawContentOnRegister();
+            DefaultRegistryCloneHelperDocumentsRawContentScope();
 
             Console.WriteLine($"Phase 134-11: {_passed} checks passed.");
         }
@@ -85,6 +87,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-11C-1: directly registered schema is lookupable");
             Check(entry.RawContent != null && entry.RawContent.SequenceEqual(new byte[] { 1, 2, 3, 4 }),
                 "134-11C-2: mutating caller-owned RawContent after Register does not corrupt registry state");
+        }
+
+        private static void DefaultRegistryCloneHelperDocumentsRawContentScope()
+        {
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Registry/ISchemaRegistry.cs");
+
+            Check(source.Contains("CloneEntryWithRawContentSnapshot", StringComparison.Ordinal)
+                  && source.Contains("RawContent is the only mutable field", StringComparison.Ordinal),
+                "134-11D-1: schema clone helper name and comments document its RawContent-only deep copy scope");
         }
 
         private static void Check(bool condition, string label)

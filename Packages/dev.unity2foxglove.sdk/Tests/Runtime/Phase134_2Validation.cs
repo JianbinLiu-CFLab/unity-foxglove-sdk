@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyNamedParameterUnsubscribeRemovesEmptyClient();
             VerifyReregisterChannelRemovesStaleGraphTopic();
             VerifySourceDeclaresBudgetPolicies();
+            VerifyAtomicBudgetRejectionIsDocumented();
 
             Console.WriteLine($"Phase 134-2: {_passed} checks passed.");
         }
@@ -170,6 +171,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-2E-2: subscription registry declares bounded batch subscription API");
             Check(sessionConnection.Contains("WarnSubscriptionBudgetRejected", StringComparison.Ordinal),
                 "134-2E-3: subscribe overflow path emits a bounded warning instead of partial state");
+        }
+
+        private static void VerifyAtomicBudgetRejectionIsDocumented()
+        {
+            var architecture = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/10_Architecture.md");
+
+            Check(architecture.Contains("all-or-nothing", StringComparison.OrdinalIgnoreCase)
+                  && architecture.Contains("subscribe", StringComparison.OrdinalIgnoreCase)
+                  && architecture.Contains("client advertise", StringComparison.OrdinalIgnoreCase)
+                  && architecture.Contains("budget", StringComparison.OrdinalIgnoreCase),
+                "134-2F-1: architecture docs surface all-or-nothing subscribe and client advertise budget rejection");
         }
 
         private static byte[] BuildClientMessageFrame(uint channelId, string payload)

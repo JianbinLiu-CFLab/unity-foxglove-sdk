@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
             PublicPayloadViewCannotMutateSerializedFrame();
             PublicPayloadViewReturnsFreshDefensiveCopies();
             WriterAndRuntimeUseOwnedPayloadSnapshot();
+            PublicPayloadGetterDocumentsCopyCost();
 
             Console.WriteLine($"Phase 134-16: {_passed} checks passed.");
         }
@@ -76,6 +77,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(runtimeSource.Contains("frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal)
                   && !runtimeSource.Contains("frame.Payload.Length > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal),
                 "134-16C-3: runtime queue size checks use the owned snapshot length");
+        }
+
+        private static void PublicPayloadGetterDocumentsCopyCost()
+        {
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+
+            Check(frameSource.Contains("[Obsolete(", StringComparison.Ordinal)
+                  && frameSource.Contains("PayloadLength", StringComparison.Ordinal)
+                  && frameSource.Contains("WritePayloadTo", StringComparison.Ordinal),
+                "134-16D-1: public Payload getter warns callers about per-call clone cost");
         }
 
         private static Ros2BridgeFrame CreateFrame(byte[] payload)

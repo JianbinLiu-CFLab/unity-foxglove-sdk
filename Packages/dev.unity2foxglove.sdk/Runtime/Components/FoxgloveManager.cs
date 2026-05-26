@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Components
         /// First channel identifier assigned by manager-owned manual publishing APIs.
         /// </summary>
         private const int FirstAutoChannelId = 1;
+        private const int MaxQueuedClientLifecycleEvents = 4096;
         private const int MaxQueuedClientEvents = 4096;
         private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
         private const long ClientEventOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
@@ -143,7 +144,9 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastInvalidPublishTopicWarningKey;
         private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
-        private readonly BoundedEventQueue<ClientEvent> _clientEvents =
+        private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =
+            new(MaxQueuedClientLifecycleEvents, 0, MeasureClientEventPayloadBytes);
+        private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
             new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
 
         /// <summary>Current nanosecond timestamp for publish calls.</summary>
@@ -341,18 +344,28 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         /// <param name="id">Connected Foxglove client identifier.</param>
         private void EnqueueConnect(uint id) =>
-            EnqueueClientEvent(new ClientEvent { ClientId = id, IsConnect = true });
+            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = true });
 
         /// <summary>
         /// Queues a transport disconnect event for main-thread delivery.
         /// </summary>
         /// <param name="id">Disconnected Foxglove client identifier.</param>
         private void EnqueueDisconnect(uint id) =>
-            EnqueueClientEvent(new ClientEvent { ClientId = id, IsConnect = false });
+            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = false });
 
-        private void EnqueueClientEvent(ClientEvent evt)
+        private void EnqueueClientLifecycleEvent(ClientEvent evt)
         {
-            if (_clientEvents.TryEnqueue(evt, out var overflow))
+            if (_clientLifecycleEvents.TryEnqueue(evt, out var overflow))
+            {
+                return;
+            }
+
+            WarnClientEventQueueOverflow(evt, overflow);
+        }
+
+        private void EnqueueClientMessageEvent(ClientEvent evt)
+        {
+            if (_clientMessageEvents.TryEnqueue(evt, out var overflow))
             {
                 return;
             }
@@ -391,9 +404,9 @@ namespace Unity.FoxgloveSDK.Components
                 + " droppedPayloadBytes="
                 + overflow.DroppedBytes
                 + " limits="
-                + MaxQueuedClientEvents
+                + (evt.IsMessage ? MaxQueuedClientEvents : MaxQueuedClientLifecycleEvents)
                 + "/"
-                + MaxQueuedClientEventPayloadBytes
+                + (evt.IsMessage ? MaxQueuedClientEventPayloadBytes : 0)
                 + " bytes.");
         }
 
@@ -421,7 +434,13 @@ namespace Unity.FoxgloveSDK.Components
         private void Update()
         {
             _runtime?.Tick();
-            while (_clientEvents.TryDequeue(out var evt))
+            DrainClientEventQueue(_clientLifecycleEvents);
+            DrainClientEventQueue(_clientMessageEvents);
+        }
+
+        private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
+        {
+            while (queue.TryDequeue(out var evt))
             {
                 if (evt.IsMessage)
                 {

@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Schemas
         {
             if (_schemas.TryGetValue(name, out entry))
             {
-                entry = CloneEntry(entry);
+                entry = CloneEntryWithRawContentSnapshot(entry);
                 return true;
             }
 
@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Schemas
         {
             if (_schemasByEncoding.TryGetValue(MakeKey(name, NormalizeEncoding(encoding)), out entry))
             {
-                entry = CloneEntry(entry);
+                entry = CloneEntryWithRawContentSnapshot(entry);
                 return true;
             }
 
@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Schemas
             if (string.IsNullOrEmpty(entry.Name))
                 throw new ArgumentException("Schema name is required", nameof(entry));
 
-            entry = CloneEntry(entry);
+            entry = CloneEntryWithRawContentSnapshot(entry);
             entry.Encoding = NormalizeEncoding(entry.Encoding);
             _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
 
@@ -120,8 +120,9 @@ namespace Unity.FoxgloveSDK.Schemas
             return !string.Equals(existingEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static SchemaEntry CloneEntry(SchemaEntry entry)
+        private static SchemaEntry CloneEntryWithRawContentSnapshot(SchemaEntry entry)
         {
+            // RawContent is the only mutable field on SchemaEntry; strings are immutable snapshots.
             if (entry.RawContent != null)
                 entry.RawContent = (byte[])entry.RawContent.Clone();
             return entry;

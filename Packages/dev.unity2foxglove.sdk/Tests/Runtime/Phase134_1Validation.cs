@@ -21,6 +21,8 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             TestBoundedEventQueueRejectsOverflow();
+            TestBoundedEventQueueUsesEnqueuedByteSnapshot();
+            TestBoundedEventQueueZeroByteBudgetMeansUnlimitedBytes();
             VerifyFoxgloveManagerUsesBoundedClientEventQueue();
             VerifyClientEventQueueOverflowWarning();
 
@@ -50,6 +52,36 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.TryEnqueue(new byte[4], out _), "134-1A-9: queue still accepts payloads that exactly fill byte budget");
             queue.Clear();
             Check(queue.Count == 0 && queue.QueuedBytes == 0, "134-1A-10: queue clear releases retained payload accounting");
+            Check(queue.DroppedCount == 2 && queue.DroppedBytes == 6,
+                "134-1A-11: queue exposes cumulative drop counters for monitoring");
+        }
+
+        private static void TestBoundedEventQueueUsesEnqueuedByteSnapshot()
+        {
+            var first = new MutablePayload { Size = 4 };
+            var second = new MutablePayload { Size = 4 };
+            var queue = new BoundedEventQueue<MutablePayload>(maxFrames: 3, maxBytes: 10, measureBytes: payload => payload.Size);
+
+            Check(queue.TryEnqueue(first, out _), "134-1D-1: mutable payload queue accepts first item");
+            Check(queue.TryEnqueue(second, out _), "134-1D-2: mutable payload queue accepts second item");
+            first.Size = 100;
+            Check(queue.TryDequeue(out _), "134-1D-3: mutable payload queue drains first item");
+            Check(queue.QueuedBytes == 4,
+                "134-1D-4: dequeue subtracts the byte size captured at enqueue time");
+        }
+
+        private static void TestBoundedEventQueueZeroByteBudgetMeansUnlimitedBytes()
+        {
+            var queue = new BoundedEventQueue<byte[]>(maxFrames: 2, maxBytes: 0, measureBytes: payload => payload?.Length ?? 0);
+
+            Check(queue.TryEnqueue(new byte[1024], out _),
+                "134-1E-1: zero maxBytes disables the byte budget for non-empty payloads");
+            Check(queue.TryEnqueue(new byte[2048], out _),
+                "134-1E-2: zero maxBytes still honors the frame budget only");
+            Check(!queue.TryEnqueue(new byte[1], out var overflow)
+                  && overflow.QueuedFrames == 2
+                  && overflow.RejectedBytes == 1,
+                "134-1E-3: zero maxBytes queue still rejects frame-count overflow");
         }
 
         private static void VerifyFoxgloveManagerUsesBoundedClientEventQueue()
@@ -59,13 +91,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(manager.Contains("MaxQueuedClientEvents", StringComparison.Ordinal)
                   && manager.Contains("MaxQueuedClientEventPayloadBytes", StringComparison.Ordinal)
+                  && manager.Contains("MaxQueuedClientLifecycleEvents", StringComparison.Ordinal)
                   && manager.Contains("BoundedEventQueue<ClientEvent>", StringComparison.Ordinal),
-                "134-1B-1: FoxgloveManager declares bounded client event queue budgets");
+                "134-1B-1: FoxgloveManager declares bounded message and lifecycle event queue budgets");
             Check(!manager.Contains("ConcurrentQueue<ClientEvent>", StringComparison.Ordinal),
                 "134-1B-2: FoxgloveManager no longer uses an unbounded ConcurrentQueue for client events");
-            Check(manager.Contains("EnqueueClientEvent(new ClientEvent", StringComparison.Ordinal)
-                  && server.Contains("EnqueueClientEvent(new ClientEvent", StringComparison.Ordinal),
-                "134-1B-3: connect/disconnect/message events share bounded enqueue path");
+            Check(manager.Contains("EnqueueClientLifecycleEvent(new ClientEvent", StringComparison.Ordinal)
+                  && server.Contains("EnqueueClientMessageEvent(new ClientEvent", StringComparison.Ordinal),
+                "134-1B-3: connect/disconnect use a lifecycle queue separate from payload message events");
             Check(manager.Contains("evt.IsMessage ? evt.Payload?.Length ?? 0 : 0", StringComparison.Ordinal),
                 "134-1B-4: only message payload bytes count against the byte budget");
         }
@@ -101,6 +134,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        }
+
+        private sealed class MutablePayload
+        {
+            public int Size { get; set; }
         }
     }
 }
