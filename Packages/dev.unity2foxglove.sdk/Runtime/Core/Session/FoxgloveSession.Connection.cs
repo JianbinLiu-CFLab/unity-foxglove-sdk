@@ -63,7 +63,8 @@ namespace Unity.FoxgloveSDK.Core
         private void WarnSubscriptionBudgetRejected(uint clientId, string error)
         {
             if (_subscriptionBudgetWarnedClients.Add(clientId))
-                _logger.LogWarning($"subscribe rejected from client {clientId}: {error}");
+                _logger.LogWarning(
+                    $"subscribe batch rejected atomically from client {clientId}; no subscriptions from this batch were applied: {error}");
         }
 
         /// <summary>

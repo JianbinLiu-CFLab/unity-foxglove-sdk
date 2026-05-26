@@ -166,10 +166,24 @@ namespace Unity.FoxgloveSDK.Performance
                 return PerformanceRunner.CreateDefaultThresholds(mode);
 
             var fullPath = Path.GetFullPath(path);
-            var config = JsonConvert.DeserializeObject<PerformanceThresholdConfig>(File.ReadAllText(fullPath))
-                         ?? PerformanceRunner.CreateDefaultThresholds(mode);
-            resolvedThresholdPath = fullPath;
-            return config;
+            try
+            {
+                var config = JsonConvert.DeserializeObject<PerformanceThresholdConfig>(File.ReadAllText(fullPath))
+                             ?? PerformanceRunner.CreateDefaultThresholds(mode);
+                resolvedThresholdPath = fullPath;
+                return PerformanceRunner.ResolveThresholdConfigForMode(config, mode);
+            }
+            catch (Exception ex) when (
+                ex is IOException
+                || ex is UnauthorizedAccessException
+                || ex is JsonException
+                || ex is ArgumentException
+                || ex is NotSupportedException)
+            {
+                Console.Error.WriteLine(
+                    $"Performance threshold config '{fullPath}' could not be loaded; using built-in {mode} defaults. {ex.GetType().Name}: {ex.Message}");
+                return PerformanceRunner.CreateDefaultThresholds(mode);
+            }
         }
     }
 }

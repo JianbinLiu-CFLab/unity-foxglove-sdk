@@ -681,12 +681,13 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private void TryQueueReplayCallback(ReplayCallbackDispatch dispatch)
+        private bool TryQueueReplayCallback(ReplayCallbackDispatch dispatch)
         {
             if (_pendingReplayCallbacks.TryEnqueue(dispatch, out var overflow))
-                return;
+                return true;
 
             WarnReplayCallbackQueueOverflow(overflow);
+            return false;
         }
 
         private void WarnReplayCallbackQueueOverflow(BoundedEventQueueOverflow overflow)
@@ -703,7 +704,7 @@ namespace Unity.FoxgloveSDK.Core
                 return;
 
             _logger?.LogWarning(
-                "Dropped replay callback because the deferred replay callback queue is full. queuedCallbacks="
+                "Dropped replay scene callback because the deferred replay callback queue is full. queuedCallbacks="
                 + overflow.QueuedFrames
                 + " queuedPayloadBytes="
                 + overflow.QueuedBytes

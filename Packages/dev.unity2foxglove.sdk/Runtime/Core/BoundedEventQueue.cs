@@ -12,7 +12,9 @@ namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Thread-safe FIFO queue that rejects new items when frame or byte budgets
-    /// would be exceeded.
+    /// would be exceeded. A byte budget of zero or less disables byte-budget
+    /// checks; byte usage is measured once at enqueue time so later external
+    /// mutations of reference-type items cannot skew queue accounting.
     /// </summary>
     internal sealed class BoundedEventQueue<T>
     {
