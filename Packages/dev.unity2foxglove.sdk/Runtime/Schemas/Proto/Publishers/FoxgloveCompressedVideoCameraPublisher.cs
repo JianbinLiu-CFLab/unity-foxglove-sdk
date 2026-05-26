@@ -125,10 +125,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             _destroyed = true;
             _captureGeneration++;
-            AsyncGPUReadback.WaitAllRequests();
             StopSidecar();
-            _cleanupWhenReadbacksDrain = false;
-            CleanupResources();
+            _cleanupWhenReadbacksDrain = _pendingRequests > 0;
+            if (_pendingRequests == 0)
+                CleanupResources();
         }
 
         private void CompletePendingReadback()

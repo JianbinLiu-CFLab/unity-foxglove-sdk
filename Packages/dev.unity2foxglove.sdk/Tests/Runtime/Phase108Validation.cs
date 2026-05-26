@@ -9,8 +9,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Newtonsoft.Json.Linq;
-using Unity2Foxglove.Ros2ForUnity;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -85,36 +85,51 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyUnavailableBehavior()
         {
-            var context = Unity2FoxgloveRos2ContextFactory.Create();
+            var factory = FindType("Unity2Foxglove.Ros2ForUnity.Unity2FoxgloveRos2ContextFactory");
+            if (factory == null)
+            {
+                Check(true,
+                    "108-B0: unavailable facade runtime behavior is skipped unless IncludeRos2ForUnityAdapter=true");
+                return;
+            }
+
+            Check(true,
+                "108-B0: unavailable facade runtime types are loaded when adapter validation is selected");
+
+            var context = factory.GetMethod("Create", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
             Check(context != null, "108-B1: factory returns a context");
-            Check(!context.IsAvailable
-                  && context.Status == Unity2FoxgloveRos2Status.Unavailable
-                  && context.StatusMessage.Contains("not bundled", StringComparison.OrdinalIgnoreCase),
+            Check(GetBoolProperty(context, "IsAvailable") == false
+                  && string.Equals(GetProperty(context, "Status")?.ToString(), "Unavailable", StringComparison.Ordinal)
+                  && GetStringProperty(context, "StatusMessage").Contains("not bundled", StringComparison.OrdinalIgnoreCase),
                 "108-B2: default context reports unavailable with actionable message");
 
-            var node = context.CreateNode("unity2foxglove_phase108");
-            Check(node != null && node.Name == "unity2foxglove_phase108",
+            var node = Invoke(context, "CreateNode", "unity2foxglove_phase108");
+            Check(node != null && GetStringProperty(node, "Name") == "unity2foxglove_phase108",
                 "108-B3: unavailable context returns an inspectable no-op node");
 
-            var publisher = node.CreatePublisher<string>("/unity2foxglove/phase108/out");
-            Check(publisher.Topic == "/unity2foxglove/phase108/out",
+            var publisher = InvokeGeneric(node, "CreatePublisher", typeof(string), "/unity2foxglove/phase108/out");
+            Check(GetStringProperty(publisher, "Topic") == "/unity2foxglove/phase108/out",
                 "108-B4: unavailable publisher preserves topic");
-            Check(!publisher.TryPublish("hello", out var error) && !string.IsNullOrWhiteSpace(error),
+            var tryPublish = publisher.GetType().GetMethod("TryPublish", new[] { typeof(string), typeof(string).MakeByRefType() });
+            var publishArgs = new object[] { "hello", null };
+            var published = (bool)tryPublish.Invoke(publisher, publishArgs);
+            Check(!published && !string.IsNullOrWhiteSpace((string)publishArgs[1]),
                 "108-B5: unavailable publisher TryPublish returns false with error");
 
             var received = false;
-            var subscription = node.CreateSubscription<string>("/unity2foxglove/phase108/in", _ => received = true);
-            Check(subscription.Topic == "/unity2foxglove/phase108/in" && !received,
+            var subscription = InvokeGeneric(
+                node,
+                "CreateSubscription",
+                typeof(string),
+                "/unity2foxglove/phase108/in",
+                new Action<string>(_ => received = true));
+            Check(GetStringProperty(subscription, "Topic") == "/unity2foxglove/phase108/in" && !received,
                 "108-B6: unavailable subscription preserves topic without invoking callback");
 
-            publisher.Dispose();
-            publisher.Dispose();
-            subscription.Dispose();
-            subscription.Dispose();
-            node.Dispose();
-            node.Dispose();
-            context.Dispose();
-            context.Dispose();
+            DisposeTwice(publisher);
+            DisposeTwice(subscription);
+            DisposeTwice(node);
+            DisposeTwice(context);
             Check(true, "108-B7: unavailable facade Dispose methods are idempotent");
         }
 
@@ -169,8 +184,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && program.Contains("Phase108Validation.Validate()", StringComparison.Ordinal),
                 "108-D1: Program.cs wires --phase108");
             Check(project.Contains("Phase108Validation.cs", StringComparison.Ordinal)
-                  && project.Contains("../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs", StringComparison.Ordinal),
-                "108-D2: test project compiles Phase108Validation and optional Runtime facade sources");
+                  && project.Contains("../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs", StringComparison.Ordinal)
+                  && project.Contains("IncludeRos2ForUnityAdapter", StringComparison.Ordinal),
+                "108-D2: test project compiles Phase108Validation and gates optional Runtime facade sources");
             Check(phase107.Contains("VerifyOptionalRuntimeBoundary", StringComparison.Ordinal)
                   && !phase107.Contains("!RepoDirectoryExists(OptionalPackage + \"/Runtime\")", StringComparison.Ordinal),
                 "108-D3: Phase107 validation allows facade-only Runtime after Phase108");
@@ -324,6 +340,68 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase108 file: " + relativePath, path);
             return File.ReadAllText(path);
+        }
+
+        private static Type FindType(string fullName)
+        {
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType(fullName, throwOnError: false))
+                .FirstOrDefault(type => type != null);
+        }
+
+        private static object GetProperty(object target, string name)
+        {
+            return target.GetType()
+                .GetProperty(name, BindingFlags.Instance | BindingFlags.Public)
+                ?.GetValue(target);
+        }
+
+        private static bool GetBoolProperty(object target, string name)
+        {
+            return GetProperty(target, name) is bool value && value;
+        }
+
+        private static string GetStringProperty(object target, string name)
+        {
+            return GetProperty(target, name) as string ?? string.Empty;
+        }
+
+        private static object Invoke(object target, string methodName, params object[] args)
+        {
+            var method = target.GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .FirstOrDefault(candidate =>
+                    candidate.Name == methodName
+                    && !candidate.IsGenericMethodDefinition
+                    && candidate.GetParameters().Length == args.Length);
+            if (method == null)
+                throw new MissingMethodException(target.GetType().FullName, methodName);
+
+            return method.Invoke(target, args);
+        }
+
+        private static object InvokeGeneric(object target, string methodName, Type genericType, params object[] args)
+        {
+            var method = target.GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .FirstOrDefault(candidate =>
+                    candidate.Name == methodName
+                    && candidate.IsGenericMethodDefinition
+                    && candidate.GetGenericArguments().Length == 1
+                    && candidate.GetParameters().Length == args.Length);
+            if (method == null)
+                throw new MissingMethodException(target.GetType().FullName, methodName);
+
+            return method.MakeGenericMethod(genericType).Invoke(target, args);
+        }
+
+        private static void DisposeTwice(object target)
+        {
+            if (target is not IDisposable disposable)
+                throw new InvalidOperationException("Target is not disposable: " + target.GetType().FullName);
+
+            disposable.Dispose();
+            disposable.Dispose();
         }
 
         private static void Check(bool condition, string message)

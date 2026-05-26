@@ -8,6 +8,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Foxglove.Schemas.PointCloud
 {
@@ -15,6 +16,9 @@ namespace Foxglove.Schemas.PointCloud
     public static class DracoPointCloudNativeEncoder
     {
         public const string NativeLibraryName = "Unity2FoxgloveDracoNative";
+        public const int XyzBytesPerPoint = 3 * sizeof(float);
+        public const int MaxInputBytes = PointCloudPackedDataBuilder.MaxPackedDataBytes;
+        public const int MaxInputPoints = MaxInputBytes / XyzBytesPerPoint;
 
         private const int MaxPayloadBytes = 64 * 1024 * 1024;
         private const int OutputOverheadBytes = 1024;
@@ -77,12 +81,32 @@ namespace Foxglove.Schemas.PointCloud
                 return false;
             }
 
+            if (!ValidateInputBudget(frame.Points.Count, out error))
+                return false;
+
             var xyz = BuildXyzArray(frame);
             var initialCapacity = checked(Math.Min(
                 MaxPayloadBytes,
                 Math.Max(4096, xyz.Length * sizeof(float) + OutputOverheadBytes)));
 
             return TryEncodeWithCapacity(xyz, frame.Points.Count, initialCapacity, out dracoPayload, out error);
+        }
+
+        internal static bool ValidateInputBudget(int pointCount, out string error)
+        {
+            var inputBytes = (long)pointCount * XyzBytesPerPoint;
+            if (pointCount > MaxInputPoints || inputBytes > MaxInputBytes)
+            {
+                error = "Draco point-cloud XYZ input exceeds "
+                    + MaxInputBytes
+                    + " bytes ("
+                    + inputBytes
+                    + " requested).";
+                return false;
+            }
+
+            error = "";
+            return true;
         }
 
         private static bool TryEncodeWithCapacity(

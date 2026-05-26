@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Components
                 transport.OnClientConnected += EnqueueConnect;
                 transport.OnClientDisconnected += EnqueueDisconnect;
                 _clientMessageForwarder = (cid, chId, topic, payload) =>
-                    _clientEvents.Enqueue(new ClientEvent
+                    EnqueueClientMessageEvent(new ClientEvent
                     {
                         ClientId = cid,
                         ChannelId = chId,
@@ -220,9 +220,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ClearClientEvents()
         {
-            while (_clientEvents.TryDequeue(out _))
-            {
-            }
+            _clientLifecycleEvents.Clear();
+            _clientMessageEvents.Clear();
         }
     }
 }

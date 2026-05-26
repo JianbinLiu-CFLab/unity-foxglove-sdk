@@ -585,6 +585,8 @@ namespace Unity.FoxgloveSDK.Editor
             File.WriteAllText(configPath, sb.ToString(), Encoding.ASCII);
         }
 
+        private const int OpenSslToolTimeoutMs = 120000;
+
         /// <summary>Run an external certificate tool and surface stderr/stdout when it fails.</summary>
         private static void RunTool(string executable, string arguments, string workingDirectory)
         {
@@ -592,24 +594,15 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 FileName = executable,
                 Arguments = arguments,
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
+                WorkingDirectory = workingDirectory
             };
 
-            using (var process = Process.Start(psi))
-            {
-                if (process == null)
-                    throw new InvalidOperationException($"Failed to start {Path.GetFileName(executable)}.");
+            var result = FoxgloveEditorProcessRunner.Run(psi, OpenSslToolTimeoutMs);
+            if (result.TimedOut)
+                throw new InvalidOperationException($"{Path.GetFileName(executable)} timed out after {OpenSslToolTimeoutMs} ms: {result.Stderr}{result.Stdout}");
 
-                var stdout = process.StandardOutput.ReadToEnd();
-                var stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                    throw new InvalidOperationException($"{Path.GetFileName(executable)} exited with code {process.ExitCode}: {stderr}{stdout}");
-            }
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException($"{Path.GetFileName(executable)} exited with code {result.ExitCode}: {result.Stderr}{result.Stdout}");
         }
 
         /// <summary>Quote a process argument for the simple command lines passed to local certificate tools.</summary>

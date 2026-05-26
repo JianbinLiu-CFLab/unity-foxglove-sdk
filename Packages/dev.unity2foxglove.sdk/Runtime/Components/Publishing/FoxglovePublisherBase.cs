@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedManagerMissing;
         private string _lastEncodingWarningKey;
         private string _lastBridgeWarningKey;
+        private string _lastTopicWarningKey;
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
@@ -91,6 +92,22 @@ namespace Unity.FoxgloveSDK.Components
         /// Publisher override selected in the Inspector.
         /// </summary>
         public PublisherEncodingOverride EncodingOverride => _encodingOverride;
+
+        /// <summary>
+        /// Configured Foxglove topic for this publisher.
+        /// </summary>
+        public string Topic => _topic;
+
+        /// <summary>
+        /// True when the configured topic can be advertised to Foxglove.
+        /// </summary>
+        public bool HasValidTopic => HasValidPublisherTopic(_topic);
+
+        /// <summary>
+        /// Return whether a publisher topic is valid for channel registration.
+        /// </summary>
+        public static bool HasValidPublisherTopic(string topic)
+            => !string.IsNullOrWhiteSpace(topic);
 
         /// <summary>
         /// Publisher ROS2 Bridge override selected in the Inspector.
@@ -231,6 +248,7 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEffectiveEncoding attemptedEncoding)
         {
             if (_manager == null) return false;
+            if (!ValidateConfiguredTopic("publish")) return false;
 
             WarnIfEncodingFallback(resolution);
             if (!resolution.IsSupported) return false;
@@ -262,6 +280,7 @@ namespace Unity.FoxgloveSDK.Components
         protected bool ShouldPrepareRos2BridgePayload()
         {
             if (_manager == null) return false;
+            if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return false;
 
             var resolution = ResolveRos2BridgeOutput();
             WarnIfRos2BridgeFallback(resolution);
@@ -296,6 +315,7 @@ namespace Unity.FoxgloveSDK.Components
         protected void Publish(object message, ulong logTimeNs)
         {
             if (_manager == null) return;
+            if (!ValidateConfiguredTopic("publish")) return;
 
             var resolution = ResolvePublisherEncoding();
             WarnIfEncodingFallback(resolution);
@@ -313,6 +333,7 @@ namespace Unity.FoxgloveSDK.Components
         protected void PublishProto(byte[] payload, ulong logTimeNs)
         {
             if (_manager == null) return;
+            if (!ValidateConfiguredTopic("publish")) return;
 
             var resolution = ResolvePublisherEncoding();
             WarnIfEncodingFallback(resolution);
@@ -330,6 +351,7 @@ namespace Unity.FoxgloveSDK.Components
         protected void PublishRos2(byte[] payload, ulong logTimeNs)
         {
             if (_manager == null) return;
+            if (!ValidateConfiguredTopic("publish")) return;
 
             var resolution = ResolvePublisherEncoding();
             WarnIfEncodingFallback(resolution);
@@ -353,6 +375,7 @@ namespace Unity.FoxgloveSDK.Components
         protected void PublishRos2Bridge(byte[] payload, ulong logTimeNs)
         {
             if (_manager == null) return;
+            if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return;
 
             var resolution = ResolveRos2BridgeOutput();
             WarnIfRos2BridgeFallback(resolution);
@@ -424,6 +447,22 @@ namespace Unity.FoxgloveSDK.Components
 
             Debug.LogWarning(
                 $"[Foxglove] {GetType().Name} does not support {resolution.RequestedLabel}; publishing {resolution.EffectiveLabel}.");
+        }
+
+        private bool ValidateConfiguredTopic(string operation)
+        {
+            if (HasValidPublisherTopic(_topic))
+                return true;
+
+            var key = "invalid-topic:" + operation;
+            if (_lastTopicWarningKey != key)
+            {
+                _lastTopicWarningKey = key;
+                Debug.LogWarning(
+                    $"[Foxglove] {GetType().Name} cannot {operation}: Topic is empty. Configure a non-empty topic before publishing.");
+            }
+
+            return false;
         }
 
         private void WarnEncodingMismatch(PublisherEncodingResolution resolution, string attemptedEncoding)

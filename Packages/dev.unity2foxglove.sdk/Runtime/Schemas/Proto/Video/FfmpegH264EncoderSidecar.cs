@@ -74,6 +74,12 @@ namespace Foxglove.Schemas.Video
             _packetizer = new H264AnnexBAccessUnitPacketizer();
             LastError = null;
 
+            if (!_options.Validate(out var validationError))
+            {
+                LastError = validationError;
+                return false;
+            }
+
             try
             {
                 _process = new Process
@@ -145,7 +151,13 @@ namespace Foxglove.Schemas.Video
                 return false;
 
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
-            if (expectedBytes > 0 && rgb24Frame.Length != expectedBytes)
+            if (expectedBytes <= 0)
+            {
+                LastError = "FFmpeg H.264 encoder dimensions produce an invalid RGB24 frame size.";
+                return false;
+            }
+
+            if (rgb24Frame.Length != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match encoder dimensions.";
                 return false;

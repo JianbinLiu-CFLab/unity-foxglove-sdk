@@ -102,7 +102,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 reason = "ROS2 Bridge frame is null.";
                 return false;
             }
-            if (frame.Payload.Length > Ros2BridgeFrameWriter.MaxPayloadBytes)
+            if (frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes)
             {
                 reason = "ROS2 Bridge payload exceeds the maximum size.";
                 return false;

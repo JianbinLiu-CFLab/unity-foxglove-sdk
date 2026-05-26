@@ -45,9 +45,11 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Allowed browser origins for Cross-Site WebSocket Hijacking protection. Empty collection rejects all browser-origin clients.</summary>
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _allowedOriginsLock = new object();
+        private readonly object _clientAdmissionLock = new object();
 
         // Aggregate health counters
         private long _totalAcceptedClients;
+        private long _totalRejectedClients;
         private long _totalDisconnectedClients;
         private long _totalControlOverflowDisconnects;
         private long _totalDroppedDataFrames;
@@ -193,11 +195,13 @@ namespace Unity.FoxgloveSDK.Transport
                 IsRunning = IsRunning,
                 ActiveClientCount = clientList.Count,
                 TotalAcceptedClients = Interlocked.Read(ref _totalAcceptedClients),
+                TotalRejectedClients = Interlocked.Read(ref _totalRejectedClients),
                 TotalDisconnectedClients = Interlocked.Read(ref _totalDisconnectedClients),
                 TotalDroppedDataFrames = totalDropped,
                 ControlOverflowDisconnects = Interlocked.Read(ref _totalControlOverflowDisconnects),
                 TotalQueuedFrames = totalQueuedFrames,
                 TotalQueuedBytes = totalQueuedBytes,
+                MaxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients),
                 MaxQueuedFramesPerClient = ManagedWebSocketOptions.NormalizeMaxQueuedFrames(_options.MaxQueuedFramesPerClient),
                 MaxQueuedBytesPerClient = ManagedWebSocketOptions.NormalizeMaxQueuedBytes(_options.MaxQueuedBytesPerClient),
                 Clients = clientList.AsReadOnly()
@@ -275,7 +279,7 @@ namespace Unity.FoxgloveSDK.Transport
                 stream = CreateClientStream(tcpClient);
                 ConfigureStreamTimeouts(stream, 5000, 5000);
 
-                var (accepted, _) = _handshakeHandler.Handshake(stream);
+                var (accepted, _) = _handshakeHandler.Handshake(stream, HasClientCapacityForHandshake);
                 if (!accepted)
                 {
                     try { stream?.Close(); } catch { }
@@ -291,13 +295,19 @@ namespace Unity.FoxgloveSDK.Transport
                     stream.WriteTimeout = Timeout.Infinite;
                 }
 
-                clientId = AllocateClientId();
                 conn = new WsConnection(
                     tcpClient,
                     stream,
                     _options.MaxQueuedFramesPerClient,
                     _options.MaxQueuedBytesPerClient);
-                _clients[clientId] = conn;
+                if (!TryRegisterClient(conn, out clientId))
+                {
+                    RejectClientAtCapacity(conn);
+                    conn = null;
+                    stream = null;
+                    return;
+                }
+
                 registeredClient = true;
                 conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
 
@@ -337,6 +347,45 @@ namespace Unity.FoxgloveSDK.Transport
         protected virtual Stream CreateClientStream(TcpClient tcpClient)
         {
             return tcpClient.GetStream();
+        }
+
+        private bool HasClientCapacityForHandshake()
+        {
+            var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
+            lock (_clientAdmissionLock)
+            {
+                if (_clients.Count < maxClients)
+                    return true;
+            }
+
+            Interlocked.Increment(ref _totalRejectedClients);
+            _logger.LogWarning($"Rejected WebSocket client because active client limit {maxClients} is reached.");
+            return false;
+        }
+
+        private bool TryRegisterClient(WsConnection conn, out uint clientId)
+        {
+            lock (_clientAdmissionLock)
+            {
+                var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
+                if (_clients.Count >= maxClients)
+                {
+                    clientId = 0;
+                    return false;
+                }
+
+                clientId = AllocateClientId();
+                _clients[clientId] = conn;
+                return true;
+            }
+        }
+
+        private void RejectClientAtCapacity(WsConnection conn)
+        {
+            Interlocked.Increment(ref _totalRejectedClients);
+            _logger.LogWarning(
+                $"Rejected WebSocket client because active client limit {ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients)} is reached.");
+            try { conn?.Dispose(); } catch { }
         }
 
         private static bool IsPreWebSocketHandshakeClientFailure(Exception ex)

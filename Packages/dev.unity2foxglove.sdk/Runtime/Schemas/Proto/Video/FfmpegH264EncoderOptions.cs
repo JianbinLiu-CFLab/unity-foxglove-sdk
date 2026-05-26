@@ -26,7 +26,15 @@ namespace Foxglove.Schemas.Video
         public int MaxOutputQueue = 4;
 
         /// <summary>Returns the expected RGB24 byte count for one raw input frame.</summary>
-        public int FrameByteCount => Positive(Width, 640) * Positive(Height, 480) * 3;
+        public int FrameByteCount
+            => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
+
+        public bool Validate(out string error)
+            => CameraVideoFrameGeometry.ValidateRgb24Dimensions(
+                Positive(Width, 640),
+                Positive(Height, 480),
+                "FFmpeg H.264 RGB24",
+                out error);
 
         /// <summary>Builds the FFmpeg process start info without invoking a shell.</summary>
         public ProcessStartInfo CreateStartInfo()

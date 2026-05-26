@@ -513,7 +513,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public static readonly DiagnosticDescriptor NonAbsoluteTopic = new DiagnosticDescriptor(
                 "FOXRUN008", "FoxRun topic must be absolute",
                 "{0}: FoxRun topic must start with '/'",
-                "FoxRun", DiagnosticSeverity.Warning, true);
+                "FoxRun", DiagnosticSeverity.Error, true);
 
             public static readonly DiagnosticDescriptor DisabledRate = new DiagnosticDescriptor(
                 "FOXRUN009", "FoxRun scheduled publishing disabled",

@@ -39,6 +39,9 @@ namespace Unity.FoxgloveSDK.Core
         internal const int ScrubHistoryQueueReserveBytes = 512 * 1024;
         /// <summary>Approximate binary MessageData framing overhead used for replay history byte budgeting.</summary>
         private const int MessageDataFrameOverheadBytes = 32;
+        private const int MaxPendingReplayCallbacks = 8192;
+        private const long MaxPendingReplayCallbackPayloadBytes = 64L * 1024L * 1024L;
+        private const long ReplayCallbackOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
 
         /// <summary>Active replay engine, or null when not replaying.</summary>
         private McapReplayEngine _replayEngine;
@@ -72,6 +75,9 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private readonly object _replayEngineLock = new();
         private readonly IFoxgloveLogger _logger;
+        private readonly BoundedEventQueue<ReplayCallbackDispatch> _pendingReplayCallbacks =
+            new(MaxPendingReplayCallbacks, MaxPendingReplayCallbackPayloadBytes, MeasureReplayCallbackPayloadBytes);
+        private long _lastReplayCallbackOverflowWarningTicks;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => _replayEnabled;
@@ -101,13 +107,33 @@ namespace Unity.FoxgloveSDK.Core
         public event Action<ReplayBatchContext> OnReplayBatchCompleted;
 
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
-        internal void FireForTests(string topic, byte[] data) => OnReplayMessage?.Invoke(topic, data);
+        internal void FireForTests(string topic, byte[] data)
+        {
+            TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(new ReplayMessageContext(
+                0,
+                topic,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                0UL,
+                0UL,
+                data ?? Array.Empty<byte>())));
+            DrainReplayCallbacks();
+        }
 
         /// <summary>Test-only hook to fire a context-rich replay message without loading an MCAP file.</summary>
-        internal void FireContextForTests(ReplayMessageContext context) => OnReplayMessageContext?.Invoke(context);
+        internal void FireContextForTests(ReplayMessageContext context)
+        {
+            TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
+            DrainReplayCallbacks();
+        }
 
         /// <summary>Test-only hook to fire a replay batch boundary without loading an MCAP file.</summary>
-        internal void FireBatchCompletedForTests(ReplayBatchContext context) => OnReplayBatchCompleted?.Invoke(context);
+        internal void FireBatchCompletedForTests(ReplayBatchContext context)
+        {
+            TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch(context));
+            DrainReplayCallbacks();
+        }
 
         /// <summary>
         /// Creates a replay controller using the provided logger for warnings and
@@ -333,6 +359,7 @@ namespace Unity.FoxgloveSDK.Core
                 _panelHistoryParkTimeNs = 0;
                 _hasPanelHistoryTime = false;
                 _lastPanelHistoryTimeNs = 0;
+                _pendingReplayCallbacks.Clear();
             }
         }
 
@@ -374,6 +401,13 @@ namespace Unity.FoxgloveSDK.Core
         /// <para>Broadcasts replay time before message frames so seek-induced time jumps are observed before data.</para>
         /// </summary>
         public void Tick(FoxgloveSession session, ulong nowNs)
+            => Tick(session, nowNs, deferCallbacks: false);
+
+        /// <summary>
+        /// Tick the replay engine with optional deferred scene callback draining.
+        /// Runtime ticks defer callbacks until after playback control locks are released.
+        /// </summary>
+        public void Tick(FoxgloveSession session, ulong nowNs, bool deferCallbacks)
         {
             lock (_replayEngineLock)
             {
@@ -382,6 +416,9 @@ namespace Unity.FoxgloveSDK.Core
                 if (messages == null || messages.Count == 0) return;
                 PublishMessages(session, messages, nowNs, "Tick", forwardToScene: true);
             }
+
+            if (!deferCallbacks)
+                DrainReplayCallbacks();
         }
 
         /// <summary>
@@ -524,6 +561,12 @@ namespace Unity.FoxgloveSDK.Core
         /// relying on the separate Foxglove panel snapshot stream.
         /// </summary>
         public void ApplySnapshotToScene(ulong timeNs)
+            => ApplySnapshotToScene(timeNs, deferCallbacks: false);
+
+        /// <summary>
+        /// Apply replay snapshot messages with optional deferred scene callback draining.
+        /// </summary>
+        public void ApplySnapshotToScene(ulong timeNs, bool deferCallbacks)
         {
             lock (_replayEngineLock)
             {
@@ -537,6 +580,9 @@ namespace Unity.FoxgloveSDK.Core
 
                 FireReplayBatchCompleted(messages, timeNs, "Snapshot");
             }
+
+            if (!deferCallbacks)
+                DrainReplayCallbacks();
         }
 
         private void PublishMessages(FoxgloveSession session, IReadOnlyList<McapMessage> messages, ulong? broadcastTimeNs, string source, bool forwardToScene)
@@ -580,8 +626,7 @@ namespace Unity.FoxgloveSDK.Core
         private void ForwardReplayMessageToScene(McapMessage message)
         {
             var context = CreateReplayMessageContext(message);
-            OnReplayMessageContext?.Invoke(context);
-            OnReplayMessage?.Invoke(context.Topic, context.Payload);
+            TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
         }
 
         private void FireReplayBatchCompleted(IReadOnlyList<McapMessage> messages, ulong batchLogTimeNs, string source)
@@ -589,11 +634,146 @@ namespace Unity.FoxgloveSDK.Core
             if (messages == null || messages.Count == 0)
                 return;
 
-            OnReplayBatchCompleted?.Invoke(new ReplayBatchContext(
+            TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch(new ReplayBatchContext(
                 batchLogTimeNs,
                 _replayEngine?.StartTimeNs ?? 0UL,
                 messages.Count,
-                source));
+                source)));
+        }
+
+        /// <summary>
+        /// Drain replay callbacks outside replay/playback locks so scene listeners
+        /// cannot stall cursor mutation or abort the owning replay tick.
+        /// </summary>
+        public void DrainReplayCallbacks()
+        {
+            List<ReplayCallbackDispatch> callbacks;
+            lock (_replayEngineLock)
+            {
+                if (_pendingReplayCallbacks.Count == 0)
+                    return;
+
+                callbacks = new List<ReplayCallbackDispatch>(_pendingReplayCallbacks.Count);
+                while (_pendingReplayCallbacks.TryDequeue(out var callback))
+                    callbacks.Add(callback);
+            }
+
+            foreach (var callback in callbacks)
+            {
+                if (callback.IsBatch)
+                {
+                    InvokeReplayBatchCompleted(callback.BatchContext.Value);
+                    continue;
+                }
+
+                var context = callback.MessageContext.Value;
+                InvokeReplayMessageContext(context);
+                InvokeReplayMessage(context.Topic, context.Payload);
+            }
+        }
+
+        private void TryQueueReplayCallback(ReplayCallbackDispatch dispatch)
+        {
+            if (_pendingReplayCallbacks.TryEnqueue(dispatch, out var overflow))
+                return;
+
+            WarnReplayCallbackQueueOverflow(overflow);
+        }
+
+        private void WarnReplayCallbackQueueOverflow(BoundedEventQueueOverflow overflow)
+        {
+            var nowTicks = DateTime.UtcNow.Ticks;
+            var previousTicks = System.Threading.Interlocked.Read(ref _lastReplayCallbackOverflowWarningTicks);
+            if (nowTicks - previousTicks < ReplayCallbackOverflowWarningIntervalTicks)
+                return;
+
+            if (System.Threading.Interlocked.CompareExchange(
+                    ref _lastReplayCallbackOverflowWarningTicks,
+                    nowTicks,
+                    previousTicks) != previousTicks)
+                return;
+
+            _logger?.LogWarning(
+                "Dropped replay callback because the deferred replay callback queue is full. queuedCallbacks="
+                + overflow.QueuedFrames
+                + " queuedPayloadBytes="
+                + overflow.QueuedBytes
+                + " rejectedPayloadBytes="
+                + overflow.RejectedBytes
+                + " droppedCallbacks="
+                + overflow.DroppedCount
+                + " droppedPayloadBytes="
+                + overflow.DroppedBytes
+                + " limits="
+                + MaxPendingReplayCallbacks
+                + "/"
+                + MaxPendingReplayCallbackPayloadBytes
+                + " bytes.");
+        }
+
+        private static int MeasureReplayCallbackPayloadBytes(ReplayCallbackDispatch dispatch)
+        {
+            if (dispatch.IsBatch || !dispatch.MessageContext.HasValue)
+                return 0;
+
+            return dispatch.MessageContext.Value.Payload?.Length ?? 0;
+        }
+
+        private void InvokeReplayMessage(string topic, byte[] data)
+        {
+            var handlers = OnReplayMessage;
+            if (handlers == null)
+                return;
+
+            foreach (Action<string, byte[]> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(topic, data);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Replay message listener failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void InvokeReplayMessageContext(ReplayMessageContext context)
+        {
+            var handlers = OnReplayMessageContext;
+            if (handlers == null)
+                return;
+
+            foreach (Action<ReplayMessageContext> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(context);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Replay message context listener failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void InvokeReplayBatchCompleted(ReplayBatchContext context)
+        {
+            var handlers = OnReplayBatchCompleted;
+            if (handlers == null)
+                return;
+
+            foreach (Action<ReplayBatchContext> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(context);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Replay batch listener failed: {ex.Message}");
+                }
+            }
         }
 
         private ReplayMessageContext CreateReplayMessageContext(McapMessage message)
@@ -653,5 +833,25 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Dispose the replay engine and all associated resources.</summary>
         public void Dispose() => Disable();
+
+        private readonly struct ReplayCallbackDispatch
+        {
+            private ReplayCallbackDispatch(ReplayMessageContext? messageContext, ReplayBatchContext? batchContext, bool isBatch)
+            {
+                MessageContext = messageContext;
+                BatchContext = batchContext;
+                IsBatch = isBatch;
+            }
+
+            public ReplayMessageContext? MessageContext { get; }
+            public ReplayBatchContext? BatchContext { get; }
+            public bool IsBatch { get; }
+
+            public static ReplayCallbackDispatch ForMessage(ReplayMessageContext context)
+                => new ReplayCallbackDispatch(context, null, isBatch: false);
+
+            public static ReplayCallbackDispatch ForBatch(ReplayBatchContext context)
+                => new ReplayCallbackDispatch(null, context, isBatch: true);
+        }
     }
 }

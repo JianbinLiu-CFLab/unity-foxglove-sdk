@@ -69,6 +69,12 @@ Generated files are meant to be build artifacts, not hand-edited source.
 
 If a control frame still cannot fit after stale data is dropped, the slow client is disconnected. Queue size is an internal default in this phase, not an Inspector setting.
 
+Client-originated subscribe and client advertise requests are also budgeted. A subscribe batch is applied all-or-nothing: if the batch would exceed the per-client or total subscription budget, none of the requested subscriptions are added. A client advertise batch is likewise all-or-nothing: if any advertised channel is invalid, too large, or would exceed the client/global channel budget, none of the channels in that batch are registered. The Foxglove WebSocket protocol does not provide a per-item rejection acknowledgement for these messages, so Unity logs the budget rejection and leaves the previous session state untouched.
+
+Replay callbacks are collected while the replay cursor is locked and drained after the lock is released. Listener exceptions are isolated per handler: a failing listener is logged and later listeners still run. This differs from the default C# multicast delegate behavior and is intentional so one scene listener cannot stall replay delivery.
+
+Several public APIs return defensive copies to protect runtime state. Protobuf descriptor lookups clone descriptor bytes, and `Ros2BridgeFrame.Payload` returns a fresh payload copy on every call. Hot-path bridge internals use `PayloadLength` and `WritePayloadTo`; external callers that need repeated inspection should cache one `Payload` result instead of repeatedly reading the property.
+
 ## 10. Secure WebSocket Mode
 
 `FoxgloveManager` can run either plain `ws://` or secure `wss://` for one manager instance. The default remains plain `ws://127.0.0.1:8765` for existing scenes. Selecting `SecureWebSocket` constructs `ManagedWssBackend` and injects it into `FoxgloveRuntime`; it does not rely on the runtime default constructor.

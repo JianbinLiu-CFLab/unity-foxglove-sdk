@@ -20,6 +20,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
     private const string NodeName = "unity2foxglove_ros2forunity_string_smoke";
     private const string LogPrefix = "[Ros2ForUnityStringSmoke] ";
+    private const int MaxDirectReceived = 32;
 
     [SerializeField, Min(0.1f)] private float _publishIntervalSeconds = 1f;
     [SerializeField, FormerlySerializedAs("_useDirectR2fu"), InspectorName("Use Direct Runtime")]
@@ -296,7 +297,11 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private void QueueDirectStringReceived(std_msgs.msg.String message)
     {
         lock (_directReceiveGate)
+        {
+            while (_directReceived.Count >= MaxDirectReceived)
+                _directReceived.Dequeue();
             _directReceived.Enqueue(message.Data);
+        }
     }
 
     private void DrainDirectReceived()

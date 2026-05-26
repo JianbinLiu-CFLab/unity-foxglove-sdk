@@ -5,6 +5,7 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
@@ -148,13 +149,44 @@
     <Compile Include="Phase130Validation.cs" />
     <Compile Include="Phase131Validation.cs" />
     <Compile Include="Phase132Validation.cs" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" />
+    <Compile Include="Phase134_1Validation.cs" />
+    <Compile Include="Phase134_2Validation.cs" />
+    <Compile Include="Phase134_3Validation.cs" />
+    <Compile Include="Phase134_4Validation.cs" />
+    <Compile Include="Phase134_5Validation.cs" />
+    <Compile Include="Phase134_6Validation.cs" />
+    <Compile Include="Phase134_7Validation.cs" />
+    <Compile Include="Phase134_8Validation.cs" />
+    <Compile Include="Phase134_9Validation.cs" />
+    <Compile Include="Phase134_10Validation.cs" />
+    <Compile Include="Phase134_11Validation.cs" />
+    <Compile Include="Phase134_12Validation.cs" />
+    <Compile Include="Phase134_13Validation.cs" />
+    <Compile Include="Phase134_14Validation.cs" />
+    <Compile Include="Phase134_16Validation.cs" />
+    <Compile Include="Phase134_17Validation.cs" />
+    <Compile Include="Phase134_18Validation.cs" />
+    <Compile Include="Phase134_19Validation.cs" />
+    <Compile Include="Phase134_20Validation.cs" />
+    <Compile Include="Phase134_21Validation.cs" />
+    <Compile Include="Phase134_22Validation.cs" />
+    <Compile Include="Phase134_23Validation.cs" />
+    <Compile Include="Phase134_24Validation.cs" />
+    <Compile Include="Phase134_25Validation.cs" />
+    <Compile Include="Phase134_26Validation.cs" />
+    <Compile Include="Phase134_28Validation.cs" />
+    <Compile Include="Phase134_30Validation.cs" />
+    <Compile Include="Phase134_32Validation.cs" />
+    <Compile Include="Phase134_35Validation.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs" Link="SourceGenerators/FoxgloveLogSourceGenerator.cs" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs" Link="SourceGenerators/FoxRunRoslynGenerationModelLowerer.cs" />
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
     <Compile Include="../../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="../../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />
+    <Compile Include="../../Editor/Shared/Process/**/*.cs" LinkBase="Shared/Process" />
     <Compile Include="../../Editor/Shared/SchemaManifest/**/*.cs" LinkBase="Shared/SchemaManifest" />
     <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />

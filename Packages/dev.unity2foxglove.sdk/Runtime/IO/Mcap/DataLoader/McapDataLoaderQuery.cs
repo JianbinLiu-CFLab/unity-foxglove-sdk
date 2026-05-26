@@ -11,6 +11,9 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Filter options for deterministic local MCAP message iteration.</summary>
     public sealed class McapDataLoaderQuery
     {
+        /// <summary>Default retained message count for iterator queries.</summary>
+        public const int DefaultMaxMessages = 4096;
+
         /// <summary>Inclusive lower log-time bound in nanoseconds.</summary>
         public ulong StartTimeNs = 0;
 
@@ -23,7 +26,10 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Optional topic filter; empty means all topics.</summary>
         public List<string> Topics = new List<string>();
 
-        /// <summary>Optional latest-message cap; zero means unlimited.</summary>
-        public int MaxMessages = 0;
+        /// <summary>
+        /// Latest-message cap. Defaults to <see cref="DefaultMaxMessages"/> to avoid materializing very large
+        /// query results by accident; set to zero to opt in to an unlimited query.
+        /// </summary>
+        public int MaxMessages = DefaultMaxMessages;
     }
 }

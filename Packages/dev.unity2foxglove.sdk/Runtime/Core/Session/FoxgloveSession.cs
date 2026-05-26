@@ -63,6 +63,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SessionPlaybackHandler _playback;
         private readonly SessionClientPublishHandler _clientPublish;
         private readonly SessionAssetHandler _assets;
+        private readonly HashSet<uint> _subscriptionBudgetWarnedClients = new();
         /// <summary>Maximum queued playback control requests awaiting the runtime owner tick.</summary>
         internal const int MaxPendingPlaybackControls = SessionPlaybackHandler.MaxPendingPlaybackControls;
         /// <summary>Raised when a client-published binary message is received.</summary>
@@ -163,6 +164,7 @@ namespace Unity.FoxgloveSDK.Core
             _graph.Clear();
             _playback.Clear();
             _clientPublish.Clear();
+            _subscriptionBudgetWarnedClients.Clear();
         }
 
         /// <summary>Stop the transport and detach all event handlers.</summary>
@@ -231,6 +233,10 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void RegisterChannel(AdvertiseChannel channel)
         {
+            var previous = _channels.Get(channel.Id);
+            if (previous != null && !string.Equals(previous.Topic, channel.Topic, StringComparison.Ordinal))
+                _graph.RemoveUnityPublishedTopic(previous.Topic);
+
             _channels.Register(channel);
             _graph.SetUnityPublishedTopic(channel.Topic);
             var recorder = Volatile.Read(ref _recorder);
@@ -725,6 +731,7 @@ namespace Unity.FoxgloveSDK.Core
             _paramSubs.RemoveClient(clientId);
             _services.RemoveClientCalls(clientId);
             _clientPublish.RemoveClient(clientId);
+            _subscriptionBudgetWarnedClients.Remove(clientId);
 
             _graph.RemoveClient(clientId);
             _graph.BroadcastUpdate();

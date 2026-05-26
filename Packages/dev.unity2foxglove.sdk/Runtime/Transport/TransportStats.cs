@@ -36,6 +36,8 @@ namespace Unity.FoxgloveSDK.Transport
         public int ActiveClientCount { get; init; }
         /// <summary>Lifetime count of clients that completed a WebSocket handshake.</summary>
         public long TotalAcceptedClients { get; init; }
+        /// <summary>Lifetime count of clients rejected before becoming active.</summary>
+        public long TotalRejectedClients { get; init; }
         /// <summary>Lifetime count of clients that disconnected or were removed.</summary>
         public long TotalDisconnectedClients { get; init; }
         /// <summary>Lifetime count of stale data frames dropped under backpressure.</summary>
@@ -50,6 +52,8 @@ namespace Unity.FoxgloveSDK.Transport
         public int MaxQueuedFramesPerClient { get; init; }
         /// <summary>Configured per-client queued-byte capacity for this transport.</summary>
         public int MaxQueuedBytesPerClient { get; init; }
+        /// <summary>Configured active client capacity for this transport.</summary>
+        public int MaxClients { get; init; }
         /// <summary>Per-client health details, one entry per connected client.</summary>
         public IReadOnlyList<TransportClientStats> Clients { get; init; }
 

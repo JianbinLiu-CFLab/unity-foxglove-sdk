@@ -29,16 +29,33 @@ namespace Unity.FoxgloveSDK.Performance
         {
             var mode = "quick";
             string outputDir = null;
+            string thresholdPath = null;
+            var thresholdsEnabled = true;
+            var thresholdSelfTest = false;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
                 {
                     case "--quick": mode = "quick"; break;
                     case "--full": mode = "full"; break;
+                    case "--no-thresholds": thresholdsEnabled = false; break;
+                    case "--threshold-self-test": thresholdSelfTest = true; break;
                     case "--output":
                         if (i + 1 < args.Length) outputDir = args[++i];
                         break;
+                    case "--thresholds":
+                        if (i + 1 < args.Length) thresholdPath = args[++i];
+                        break;
                 }
+            }
+
+            if (thresholdSelfTest)
+            {
+                var ok = PerformanceRunner.RunThresholdSelfTest();
+                Console.WriteLine(ok
+                    ? "Performance threshold self-test passed."
+                    : "Performance threshold self-test failed.");
+                return ok ? 0 : 1;
             }
 
             if (outputDir == null)
@@ -62,7 +79,25 @@ namespace Unity.FoxgloveSDK.Performance
             catch { }
 
             var runId = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-            var results = PerformanceRunner.RunAll(mode);
+            string resolvedThresholdPath;
+            PerformanceThresholdConfig thresholds;
+            if (thresholdsEnabled)
+            {
+                thresholds = LoadThresholds(mode, thresholdPath, out resolvedThresholdPath);
+            }
+            else
+            {
+                resolvedThresholdPath = null;
+                thresholds = new PerformanceThresholdConfig { enabled = false };
+            }
+            if (thresholds.enabled)
+                Console.WriteLine(string.IsNullOrEmpty(resolvedThresholdPath)
+                    ? "Performance thresholds: built-in defaults"
+                    : $"Performance thresholds: {resolvedThresholdPath}");
+            else
+                Console.WriteLine("Performance thresholds: disabled");
+
+            var results = PerformanceRunner.RunAll(mode, thresholds);
 
             var output = new
             {
@@ -72,6 +107,8 @@ namespace Unity.FoxgloveSDK.Performance
                 machine = Environment.MachineName,
                 dotnetVersion = Environment.Version.ToString(),
                 commit,
+                thresholdsEnabled = thresholds.enabled,
+                thresholdPath = resolvedThresholdPath,
                 scenarios = results
             };
 
@@ -87,7 +124,8 @@ namespace Unity.FoxgloveSDK.Performance
             foreach (var r in results)
             {
                 var status = r.passed ? "PASS" : "FAIL";
-                Console.WriteLine($"[{status}] {r.name} - {r.messageCount} msgs, {r.elapsedMs}ms, {r.messagesPerSecond:F0} msg/s, {r.allocatedBytesPerMessage:F1} B/msg");
+                var thresholdSuffix = r.thresholdsEvaluated ? $", thresholds: {r.thresholdNotes}" : "";
+                Console.WriteLine($"[{status}] {r.name} - {r.messageCount} msgs, {r.elapsedMs}ms, {r.messagesPerSecond:F0} msg/s, {r.allocatedBytesPerMessage:F1} B/msg{thresholdSuffix}");
             }
 
             bool allPassed = true;
@@ -102,6 +140,36 @@ namespace Unity.FoxgloveSDK.Performance
 
             Console.WriteLine("Performance baseline complete");
             return 0;
+        }
+
+        private static PerformanceThresholdConfig LoadThresholds(
+            string mode,
+            string thresholdPath,
+            out string resolvedThresholdPath)
+        {
+            resolvedThresholdPath = null;
+            var path = thresholdPath;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                var defaultPath = Path.Combine(
+                    RepoRoot,
+                    "Packages",
+                    "dev.unity2foxglove.sdk",
+                    "Tests",
+                    "Performance",
+                    "performance-thresholds.json");
+                if (File.Exists(defaultPath))
+                    path = defaultPath;
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+                return PerformanceRunner.CreateDefaultThresholds(mode);
+
+            var fullPath = Path.GetFullPath(path);
+            var config = JsonConvert.DeserializeObject<PerformanceThresholdConfig>(File.ReadAllText(fullPath))
+                         ?? PerformanceRunner.CreateDefaultThresholds(mode);
+            resolvedThresholdPath = fullPath;
+            return config;
         }
     }
 }

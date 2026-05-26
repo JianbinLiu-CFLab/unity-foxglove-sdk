@@ -6,6 +6,7 @@
 // ConnectionGraph, ClientPublish, PlaybackControl, and Assets/fetchAsset.
 
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -26,19 +27,43 @@ namespace Unity.FoxgloveSDK.Core
                 var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
                 if (msg?.Subscriptions != null)
                 {
+                    var requested = new List<(uint subscriptionId, uint channelId)>();
                     foreach (var sub in msg.Subscriptions)
                     {
                         var ch = _channels.Get(sub.ChannelId);
                         if (ch != null)
+                            requested.Add((sub.Id, sub.ChannelId));
+                    }
+
+                    if (!_subscriptions.TryAddSubscriptions(clientId, requested, out var changes, out var error))
+                    {
+                        WarnSubscriptionBudgetRejected(clientId, error);
+                        return;
+                    }
+
+                    foreach (var change in changes)
+                    {
+                        if (change.HadPrevious && change.PreviousChannelId != change.ChannelId)
                         {
-                            _subscriptions.AddSubscription(clientId, sub.Id, sub.ChannelId);
-                            _graph.AddSubscribedTopic(clientId, sub.Id, ch.Topic);
+                            var previous = _channels.Get(change.PreviousChannelId);
+                            if (previous != null)
+                                _graph.RemoveSubscribedTopic(clientId, change.SubscriptionId, previous.Topic);
                         }
+
+                        var ch = _channels.Get(change.ChannelId);
+                        if (ch != null)
+                            _graph.AddSubscribedTopic(clientId, change.SubscriptionId, ch.Topic);
                     }
                 }
                 _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning($"subscribe error: {ex.Message}"); }
+        }
+
+        private void WarnSubscriptionBudgetRejected(uint clientId, string error)
+        {
+            if (_subscriptionBudgetWarnedClients.Add(clientId))
+                _logger.LogWarning($"subscribe rejected from client {clientId}: {error}");
         }
 
         /// <summary>

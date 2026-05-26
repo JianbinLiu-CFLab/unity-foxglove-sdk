@@ -43,10 +43,10 @@ namespace Unity.FoxgloveSDK.IO
         public static string ReadString(byte[] buf, ref int off)
         {
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated string length at offset {off}");
-            var len = ReadU32LE(buf, ref off);
-            if (off + (int)len > buf.Length) throw new InvalidDataException($"Truncated string data at offset {off}");
-            var s = Encoding.UTF8.GetString(buf, off, (int)len);
-            off += (int)len;
+            var len = ReadSupportedLength(buf, ref off, "string");
+            EnsureAvailable(buf, off, len, "string data");
+            var s = Encoding.UTF8.GetString(buf, off, len);
+            off += len;
             return s;
         }
 
@@ -54,11 +54,11 @@ namespace Unity.FoxgloveSDK.IO
         public static byte[] ReadPrefixed(byte[] buf, ref int off)
         {
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated prefixed length at offset {off}");
-            var len = ReadU32LE(buf, ref off);
-            if (off + (int)len > buf.Length) throw new InvalidDataException($"Truncated prefixed data at offset {off}");
+            var len = ReadSupportedLength(buf, ref off, "prefixed");
+            EnsureAvailable(buf, off, len, "prefixed data");
             var data = new byte[len];
-            System.Buffer.BlockCopy(buf, off, data, 0, (int)len);
-            off += (int)len;
+            System.Buffer.BlockCopy(buf, off, data, 0, len);
+            off += len;
             return data;
         }
 
@@ -67,9 +67,9 @@ namespace Unity.FoxgloveSDK.IO
         {
             var map = new Dictionary<string, string>();
             if (off + 4 > buf.Length) throw new InvalidDataException($"Truncated map length at offset {off}");
-            var totalBytes = ReadU32LE(buf, ref off);
-            if (off + (int)totalBytes > buf.Length) throw new InvalidDataException($"Truncated map data at offset {off}");
-            var end = off + (int)totalBytes;
+            var totalBytes = ReadSupportedLength(buf, ref off, "map");
+            EnsureAvailable(buf, off, totalBytes, "map data");
+            var end = off + totalBytes;
             while (off < end)
             {
                 var k = ReadString(buf, ref off);
@@ -77,6 +77,20 @@ namespace Unity.FoxgloveSDK.IO
                 map[k] = v;
             }
             return map;
+        }
+
+        private static int ReadSupportedLength(byte[] buf, ref int off, string valueName)
+        {
+            var len = ReadU32LE(buf, ref off);
+            if (len > int.MaxValue)
+                throw new InvalidDataException($"{valueName} length exceeds supported size.");
+            return (int)len;
+        }
+
+        private static void EnsureAvailable(byte[] buf, int off, int len, string valueName)
+        {
+            if (len > buf.Length - off)
+                throw new InvalidDataException($"Truncated {valueName} at offset {off}");
         }
 
         /// <summary>Check whether the bytes at <c>off</c> match the MCAP magic bytes.</summary>

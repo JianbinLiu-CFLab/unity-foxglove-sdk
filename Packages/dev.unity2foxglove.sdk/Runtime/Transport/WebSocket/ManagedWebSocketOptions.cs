@@ -22,7 +22,13 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Default per-client send queue byte cap (8 MiB).</summary>
         public const int DefaultMaxQueuedBytes = 8 * 1024 * 1024;
 
+        /// <summary>Default active WebSocket client cap.</summary>
+        public const int DefaultMaxClients = 64;
+
         private string _sharedToken = string.Empty;
+
+        /// <summary>Maximum active WebSocket clients accepted by the managed backend.</summary>
+        public int MaxClients { get; set; } = DefaultMaxClients;
 
         /// <summary>Maximum queued frames per client before drop/disconnect policy applies.</summary>
         public int MaxQueuedFramesPerClient { get; set; } = DefaultMaxQueuedFrames;
@@ -32,6 +38,10 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>Normalize frame capacity so a misconfigured value cannot disable protocol traffic.</summary>
         internal static int NormalizeMaxQueuedFrames(int value) => Math.Max(1, value);
+
+        /// <summary>Normalize client capacity so zero/negative values fall back to the usable default.</summary>
+        internal static int NormalizeMaxClients(int value) =>
+            value > 0 ? value : DefaultMaxClients;
 
         /// <summary>Normalize byte capacity so zero/negative values fall back to the usable default.</summary>
         internal static int NormalizeMaxQueuedBytes(int value) =>

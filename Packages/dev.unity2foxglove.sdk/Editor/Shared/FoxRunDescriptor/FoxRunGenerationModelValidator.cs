@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN007", target, member.MemberName, "Generic FoxRun member type may be unsafe for IL2CPP contract governance."));
 
             if (string.IsNullOrEmpty(member.Topic) || !member.Topic.StartsWith("/", StringComparison.Ordinal))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN008", target, member.MemberName, "FoxRun topic must be absolute and start with '/'."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN008", target, member.MemberName, "FoxRun topic must be absolute and start with '/'."));
 
             if (member.RateHz <= 0f && member.PublishMode != 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz <= 0 disables scheduled publishing; use OnTrigger or a positive rate for periodic output."));

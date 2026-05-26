@@ -714,6 +714,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.LabelField("Source", OpenH264OfficialBinaryManifest.DownloadUrl);
                 EditorGUILayout.LabelField("Release", OpenH264OfficialBinaryManifest.Version);
                 EditorGUILayout.LabelField("Approximate Size", OpenH264OfficialBinaryManifest.ApproximateSizeLabel);
+                EditorGUILayout.LabelField("Compressed SHA256", OpenH264OfficialBinaryManifest.CompressedAssetSha256);
+                EditorGUILayout.LabelField("DLL SHA256", OpenH264OfficialBinaryManifest.DllSha256);
                 EditorGUILayout.HelpBox(
                     OpenH264OfficialBinaryManifest.Attribution + "\nConfirm Cisco's binary license is appropriate for your project before installing.",
                     MessageType.Warning);

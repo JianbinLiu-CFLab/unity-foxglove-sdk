@@ -73,7 +73,8 @@ jobs:
           if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME|TBD|Pasted image|Scripts[\\/]build[_]unity[_]il2cpp\\.py" "${files[@]}" \
             -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
             -g "!Scripts/release/validate_package.py" \
-            -g "!Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"; then
+            -g "!Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py" \
+            -g "!Scripts/tests/test_phase138b_build_defaults.py"; then
             echo "Forbidden local path, placeholder, or Obsidian-only embed found in public docs."
             exit 1
           fi

@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Parse and complete the opening handshake per RFC 6455.</summary>
-        public (bool accepted, string subprotocol) Handshake(Stream stream)
+        public (bool accepted, string subprotocol) Handshake(Stream stream, Func<bool> canAcceptClient = null)
         {
             string requestLine;
             try { requestLine = ReadLineRaw(stream, MaxHandshakeLineBytes); }
@@ -118,6 +118,12 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 _logger.LogError("Client connected without accepted subprotocol, closing.");
                 WriteResponse(stream, "HTTP/1.1 400 Bad Request\r\n\r\n");
+                return (false, null);
+            }
+
+            if (canAcceptClient != null && !canAcceptClient())
+            {
+                WriteResponse(stream, "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
                 return (false, null);
             }
 

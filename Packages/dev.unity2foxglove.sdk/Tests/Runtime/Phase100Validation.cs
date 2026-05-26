@@ -131,11 +131,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRos2BridgeFrameImmutabilityDecision()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            Check(source.Contains("Payload = (byte[])payload.Clone()"),
-                "100F-1: bridge frame keeps defensive payload clone unless a measured immutable alternative replaces it");
+            Check(source.Contains("private readonly byte[] _payload")
+                  && source.Contains("_payload = (byte[])payload.Clone()")
+                  && source.Contains("public byte[] Payload => (byte[])_payload.Clone()"),
+                "100F-1: bridge frame keeps a private immutable payload snapshot and returns defensive copies");
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            Check(writer.Contains("frame.Payload.Length") && writer.Contains("stream.Write(frame.Payload"),
-                "100F-2: bridge writer keeps explicit frame payload ownership boundary");
+            Check(writer.Contains("frame.PayloadLength") && writer.Contains("frame.WritePayloadTo(stream)")
+                  && !writer.Contains("stream.Write(frame.Payload"),
+                "100F-2: bridge writer serializes the owned payload snapshot without using the public clone");
         }
 
         private static void VerifyPlaybackClockJumpCap()
