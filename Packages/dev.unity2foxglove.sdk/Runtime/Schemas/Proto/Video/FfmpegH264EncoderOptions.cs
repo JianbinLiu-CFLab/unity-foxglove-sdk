@@ -30,11 +30,16 @@ namespace Foxglove.Schemas.Video
             => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
 
         public bool Validate(out string error)
-            => CameraVideoFrameGeometry.ValidateRgb24Dimensions(
+        {
+            if (!ValidatePreset(Preset, out error))
+                return false;
+
+            return CameraVideoFrameGeometry.ValidateRgb24Dimensions(
                 Positive(Width, 640),
                 Positive(Height, 480),
                 "FFmpeg H.264 RGB24",
                 out error);
+        }
 
         /// <summary>Builds the FFmpeg process start info without invoking a shell.</summary>
         public ProcessStartInfo CreateStartInfo()
@@ -92,6 +97,22 @@ namespace Foxglove.Schemas.Video
             return value.IndexOfAny(new[] { ' ', '\t', '"' }) < 0
                 ? value
                 : "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static bool ValidatePreset(string value, out string error)
+        {
+            var preset = string.IsNullOrWhiteSpace(value) ? "ultrafast" : value.Trim();
+            foreach (var c in preset)
+            {
+                if (c < ' ' || c == '\u007f')
+                {
+                    error = "FFmpeg H.264 preset contains control characters.";
+                    return false;
+                }
+            }
+
+            error = "";
+            return true;
         }
     }
 }

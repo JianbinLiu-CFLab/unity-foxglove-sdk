@@ -21,8 +21,10 @@ namespace Foxglove.Schemas.Video
         public int MaxInputQueue = 1;
         public int MaxOutputQueue = 4;
 
+        /// <summary>Returns the expected RGB24 byte count for one raw sidecar input frame.</summary>
         public int Rgb24FrameByteCount
             => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
+        /// <summary>Returns the expected NV12 byte count after the managed RGB24 conversion step.</summary>
         public int Nv12FrameByteCount
             => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
         public int BitrateBitsPerSecond => (int)((long)Positive(BitrateKbps, 1) * 1000L);

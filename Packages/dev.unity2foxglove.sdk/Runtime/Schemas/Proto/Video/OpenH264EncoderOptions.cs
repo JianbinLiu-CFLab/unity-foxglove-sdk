@@ -26,6 +26,7 @@ namespace Foxglove.Schemas.Video
         public int MaxInputQueue = 2;
         public int MaxOutputQueue = 4;
 
+        /// <summary>Returns the expected I420/YUV420 byte count for one raw helper input frame.</summary>
         public int FrameByteCount => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Width, Height);
 
         public bool Validate(out string error)

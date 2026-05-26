@@ -13,6 +13,9 @@ namespace Foxglove.Schemas.Video
     /// <summary>
     /// Converts H.264 samples from Annex B or length-prefixed NAL containers
     /// into one Annex B access unit suitable for foxglove.CompressedVideo.
+    /// This lightweight normalizer caches the latest SPS and PPS only; streams
+    /// with multiple simultaneous parameter-set ids should use a full decoder
+    /// aware normalizer before publishing.
     /// </summary>
     public sealed class H264AccessUnitNormalizer
     {
@@ -158,7 +161,7 @@ namespace Foxglove.Schemas.Video
 
         private static byte[] BuildAnnexB(IReadOnlyList<byte[]> nals)
         {
-            var length = nals.Sum(nal => 4 + (nal?.Length ?? 0));
+            var length = nals.Sum(nal => nal != null && nal.Length > 0 ? 4 + nal.Length : 0);
             var result = new byte[length];
             var offset = 0;
             foreach (var nal in nals)

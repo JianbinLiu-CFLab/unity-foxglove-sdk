@@ -40,6 +40,7 @@ namespace Foxglove.Schemas.Video
         private const int H264BaselineProfile = 66;
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+        private readonly object _outputLock = new object();
         private readonly H264AccessUnitNormalizer _normalizer = new H264AccessUnitNormalizer();
         private MediaFoundationH264EncoderOptions _options;
         private IMFTransform _transform;
@@ -147,11 +148,14 @@ namespace Foxglove.Schemas.Video
 
         public bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)
         {
-            if (!_outputAccessUnits.TryDequeue(out accessUnit))
-                return false;
+            lock (_outputLock)
+            {
+                if (!_outputAccessUnits.TryDequeue(out accessUnit))
+                    return false;
 
-            Interlocked.Decrement(ref _outputCount);
-            return true;
+                _outputCount--;
+                return true;
+            }
         }
 
         public void Dispose()
@@ -201,8 +205,11 @@ namespace Foxglove.Schemas.Video
 
         private void DrainOutputQueue()
         {
-            while (_outputAccessUnits.TryDequeue(out _)) { }
-            Interlocked.Exchange(ref _outputCount, 0);
+            lock (_outputLock)
+            {
+                while (_outputAccessUnits.TryDequeue(out _)) { }
+                _outputCount = 0;
+            }
         }
 
         private void InitializeMediaFoundation()
@@ -425,7 +432,7 @@ namespace Foxglove.Schemas.Video
                 {
                     if ((info.dwFlags & MftOutputStreamProvidesSamples) == 0)
                     {
-                        var size = Math.Max(info.cbSize, Math.Max(1, _options.Width * _options.Height));
+                        var size = Math.Max(info.cbSize, Math.Max(1, _options.Nv12FrameByteCount));
                         hr = NativeMethods.MFCreateMemoryBuffer(size, out buffer);
                         ThrowForHr(hr, "MFCreateMemoryBuffer output failed.");
                         hr = NativeMethods.MFCreateSample(out sample);
@@ -536,12 +543,15 @@ namespace Foxglove.Schemas.Video
             if (accessUnit == null || accessUnit.Length == 0)
                 return;
 
-            var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
-            while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
-                Interlocked.Decrement(ref _outputCount);
+            lock (_outputLock)
+            {
+                var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
+                while (_outputCount >= capacity && _outputAccessUnits.TryDequeue(out _))
+                    _outputCount--;
 
-            _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
-            Interlocked.Increment(ref _outputCount);
+                _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
+                _outputCount++;
+            }
         }
 
         private static byte[] ConvertRgb24ToNv12(byte[] rgb24Frame, int width, int height)

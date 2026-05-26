@@ -21,10 +21,12 @@ namespace Foxglove.Schemas.Video
     public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
         private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
+        private const int ShutdownTimeoutMs = 500;
 
         private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
         private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+        private readonly object _inputLock = new object();
         private readonly object _outputLock = new object();
         private Process _process;
         private CancellationTokenSource _stop;
@@ -37,6 +39,8 @@ namespace Foxglove.Schemas.Video
         private long _framesSubmitted;
         private long _accessUnitsReceived;
         private long _droppedInputFrames;
+        private string _lastDiagnosticLine;
+        private string _lastError;
 
         public bool IsRunning
         {
@@ -60,8 +64,16 @@ namespace Foxglove.Schemas.Video
         public long FramesSubmitted => Interlocked.Read(ref _framesSubmitted);
         public long AccessUnitsReceived => Interlocked.Read(ref _accessUnitsReceived);
         public long DroppedInputFrames => Interlocked.Read(ref _droppedInputFrames);
-        public string LastDiagnosticLine { get; private set; }
-        public string LastError { get; private set; }
+        public string LastDiagnosticLine
+        {
+            get => Volatile.Read(ref _lastDiagnosticLine);
+            private set => Volatile.Write(ref _lastDiagnosticLine, value);
+        }
+        public string LastError
+        {
+            get => Volatile.Read(ref _lastError);
+            private set => Volatile.Write(ref _lastError, value);
+        }
 
         public bool Start(OpenH264EncoderOptions options)
         {
@@ -138,17 +150,22 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
-            while (Volatile.Read(ref _inputCount) >= capacity && _inputFrames.TryDequeue(out _))
-            {
-                Interlocked.Decrement(ref _inputCount);
-                Interlocked.Increment(ref _droppedInputFrames);
-            }
-
             var copy = new byte[frame.Length];
             Buffer.BlockCopy(frame, 0, copy, 0, frame.Length);
-            _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
-            Interlocked.Increment(ref _inputCount);
+
+            lock (_inputLock)
+            {
+                var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
+                while (_inputCount >= capacity && _inputFrames.TryDequeue(out _))
+                {
+                    _inputCount--;
+                    Interlocked.Increment(ref _droppedInputFrames);
+                }
+
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
+                _inputCount++;
+            }
+
             Interlocked.Increment(ref _framesSubmitted);
             return true;
         }
@@ -209,17 +226,18 @@ namespace Foxglove.Schemas.Video
                 {
                 }
 
+                var deadlineUtc = DateTime.UtcNow.AddMilliseconds(ShutdownTimeoutMs);
                 try
                 {
-                    process.WaitForExit(200);
+                    process.WaitForExit(RemainingMilliseconds(deadlineUtc));
                 }
                 catch
                 {
                 }
 
-                WaitForTask(_stdinTask, 200);
-                WaitForTask(_stdoutTask, 200);
-                WaitForTask(_stderrTask, 200);
+                WaitForTask(_stdinTask, "stdin", deadlineUtc);
+                WaitForTask(_stdoutTask, "stdout", deadlineUtc);
+                WaitForTask(_stderrTask, "stderr", deadlineUtc);
                 process.Dispose();
             }
 
@@ -246,9 +264,8 @@ namespace Foxglove.Schemas.Video
                 var stream = process.StandardInput.BaseStream;
                 while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
-                    if (_inputFrames.TryDequeue(out var frame))
+                    if (TryDequeueInputFrame(out var frame))
                     {
-                        Interlocked.Decrement(ref _inputCount);
                         await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                         await stream.FlushAsync(token).ConfigureAwait(false);
                         _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
@@ -373,9 +390,26 @@ namespace Foxglove.Schemas.Video
 
         private void DrainInputQueue()
         {
-            while (_inputFrames.TryDequeue(out _)) { }
+            lock (_inputLock)
+            {
+                while (_inputFrames.TryDequeue(out _)) { }
+                _inputCount = 0;
+            }
+
             while (_encodedFrameTimestamps.TryDequeue(out _)) { }
-            Interlocked.Exchange(ref _inputCount, 0);
+        }
+
+        private bool TryDequeueInputFrame(out QueuedVideoFrame frame)
+        {
+            lock (_inputLock)
+            {
+                if (!_inputFrames.TryDequeue(out frame))
+                    return false;
+
+                if (_inputCount > 0)
+                    _inputCount--;
+                return true;
+            }
         }
 
         private void DrainOutputQueue()
@@ -415,20 +449,28 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static void WaitForTask(Task task, int timeoutMs)
+        private void WaitForTask(Task task, string taskName, DateTime deadlineUtc)
         {
             if (task == null || task.IsCompleted)
                 return;
 
             try
             {
-                task.Wait(timeoutMs);
+                var timeoutMs = RemainingMilliseconds(deadlineUtc);
+                if (timeoutMs > 0)
+                    task.Wait(timeoutMs);
             }
             catch
             {
                 // Best-effort task shutdown.
             }
+
+            if (!task.IsCompleted)
+                LastError = "OpenH264 shutdown timed out waiting for the " + taskName + " task.";
         }
+
+        private static int RemainingMilliseconds(DateTime deadlineUtc)
+            => Math.Max(0, (int)(deadlineUtc - DateTime.UtcNow).TotalMilliseconds);
 
         private readonly struct LengthReadResult
         {
