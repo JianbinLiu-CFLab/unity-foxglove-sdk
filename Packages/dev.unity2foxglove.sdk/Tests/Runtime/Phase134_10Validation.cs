@@ -27,8 +27,8 @@ namespace Unity.FoxgloveSDK.Tests
             DefaultQueryAppliesMessageBudget();
             ExplicitQueryCapStillWins();
             ExplicitUnlimitedQueryRemainsAvailable();
-            ReplayTickBudgetClampsToOne();
-            ReplayChunkCrcPolicyFailsClosedByDefault();
+            ReplayTickBudgetPreservesUnlimitedZero();
+            ReplayChunkCrcPolicyUsesWithWarningByDefault();
             ReplayChunkIndexesAreSortedOnLoad();
             TryDecodeMessageReusesDecoderRegistry();
             EmptyJsonPayloadHasExplicitDiagnostic();
@@ -76,25 +76,27 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-10C-1: explicit MaxMessages=0 remains an opt-in unlimited query");
         }
 
-        private static void ReplayTickBudgetClampsToOne()
+        private static void ReplayTickBudgetPreservesUnlimitedZero()
         {
             var engine = new McapReplayEngine { MaxMessagesPerTick = 0 };
-            Check(engine.MaxMessagesPerTick == 1,
-                "134-10D-1: replay tick budget clamps zero to one");
+            Check(engine.MaxMessagesPerTick == 0,
+                "134-10D-1: replay tick budget preserves zero as unlimited");
             engine.MaxMessagesPerTick = -10;
             Check(engine.MaxMessagesPerTick == 1,
-                "134-10D-2: replay tick budget clamps negative values to one");
+                "134-10D-2: replay tick budget still clamps negative values to one");
 
             var messages = new List<McapMessage>
             {
                 new McapMessage { LogTime = 1 },
                 new McapMessage { LogTime = 2 }
             };
-            Check(McapReplayEngine.CountTickResultPrefixPreservingLogTimeGroup(messages, 0) == 1,
-                "134-10D-3: replay tick cap helper no longer treats zero as unlimited");
+            Check(McapReplayEngine.CountTickResultPrefixPreservingLogTimeGroup(messages, 0) == 2,
+                "134-10D-3: replay tick cap helper treats zero as unlimited");
+            Check(McapReplayEngine.CountTickResultPrefixPreservingLogTimeGroup(messages, -1) == 1,
+                "134-10D-4: replay tick cap helper clamps negative values to one");
         }
 
-        private static void ReplayChunkCrcPolicyFailsClosedByDefault()
+        private static void ReplayChunkCrcPolicyUsesWithWarningByDefault()
         {
             var path = TempMcapPath();
             try
@@ -105,19 +107,19 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     engine.Load(path);
                     var result = engine.Snapshot(100, new List<McapMessage>());
-                    Check(result.Count == 0,
-                        "134-10E-1: replay skips corrupt chunks by default");
+                    Check(result.Count == 1,
+                        "134-10E-1: replay preserves legacy corrupt-chunk reads by default");
                 }
 
-                using (var permissive = new McapReplayEngine
+                using (var strict = new McapReplayEngine
                        {
-                           CrcMismatchPolicy = McapReplayEngine.CorruptChunkPolicy.UseWithWarning
+                           CrcMismatchPolicy = McapReplayEngine.CorruptChunkPolicy.Skip
                        })
                 {
-                    permissive.Load(path);
-                    var result = permissive.Snapshot(100, new List<McapMessage>());
-                    Check(result.Count == 1,
-                        "134-10E-2: replay can opt into permissive corrupt-chunk reads");
+                    strict.Load(path);
+                    var result = strict.Snapshot(100, new List<McapMessage>());
+                    Check(result.Count == 0,
+                        "134-10E-2: replay can opt into strict corrupt-chunk skip");
                 }
             }
             finally
@@ -162,6 +164,20 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-10G-2: repeated custom decode succeeds");
             Check(factory.TryCreateCount == 1,
                 "134-10G-3: TryDecodeMessage reuses per-loader decoder cache");
+
+            var mutableOptions = new McapDecodeOptions
+            {
+                UseBuiltInDecoders = false,
+                DecoderFactories = new List<IMcapMessageDecoderFactory> { new NullDecoderFactory() }
+            };
+            Check(!loader.TryDecodeMessage(raw, mutableOptions, out _),
+                "134-10G-4: unsupported mutable decoder options fail before mutation");
+            var addedFactory = new CountingDecoderFactory();
+            mutableOptions.DecoderFactories.Add(addedFactory);
+            Check(loader.TryDecodeMessage(raw, mutableOptions, out _),
+                "134-10G-5: decoder cache refreshes after mutable options change");
+            Check(addedFactory.TryCreateCount == 1,
+                "134-10G-6: refreshed decoder registry observes newly added factory");
         }
 
         private static void EmptyJsonPayloadHasExplicitDiagnostic()
@@ -364,6 +380,12 @@ namespace Unity.FoxgloveSDK.Tests
                 TryCreateCount++;
                 return new CountingDecoder();
             }
+        }
+
+        private sealed class NullDecoderFactory : IMcapMessageDecoderFactory
+        {
+            public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
+                => null;
         }
 
         private sealed class CountingDecoder : IMcapMessageDecoder

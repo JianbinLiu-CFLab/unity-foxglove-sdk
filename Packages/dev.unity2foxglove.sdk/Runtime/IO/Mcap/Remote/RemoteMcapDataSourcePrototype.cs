@@ -181,16 +181,31 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     return CloneManifest(_cachedManifest);
                 }
+            }
 
-                using var loader = new McapDataLoader(_mcapPath);
-                var manifest = RemoteMcapManifestMapper.FromInitialization(
-                    loader.Initialize(),
-                    _manifestName,
-                    _sourceId,
-                    _dataRoute);
+            using var loader = new McapDataLoader(_mcapPath);
+            var manifest = RemoteMcapManifestMapper.FromInitialization(
+                loader.Initialize(),
+                _manifestName,
+                _sourceId,
+                _dataRoute);
+
+            info.Refresh();
+            var cacheLength = info.Exists ? info.Length : 0L;
+            var cacheLastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue;
+
+            lock (_manifestCacheGate)
+            {
+                if (_cachedManifest != null
+                    && _cachedManifestLength == cacheLength
+                    && _cachedManifestLastWriteUtc == cacheLastWriteUtc)
+                {
+                    return CloneManifest(_cachedManifest);
+                }
+
                 _cachedManifest = CloneManifest(manifest);
-                _cachedManifestLength = info.Length;
-                _cachedManifestLastWriteUtc = info.LastWriteTimeUtc;
+                _cachedManifestLength = cacheLength;
+                _cachedManifestLastWriteUtc = cacheLastWriteUtc;
                 return CloneManifest(manifest);
             }
         }

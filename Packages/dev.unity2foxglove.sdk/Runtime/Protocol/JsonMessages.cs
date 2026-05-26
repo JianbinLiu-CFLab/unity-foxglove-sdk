@@ -528,17 +528,23 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("sec")]
         public ulong Sec { get; set; }
 
-        /// <summary>Sub-second nanoseconds component (0-999999999).</summary>
+        /// <summary>Sub-second nanoseconds component. Values above one second are normalized into <see cref="Sec"/>.</summary>
         [JsonProperty("nsec")]
         public uint Nsec
         {
             get => _nsec;
             set
             {
-                if (value >= 1_000_000_000U)
-                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds must be less than 1,000,000,000.");
+                var carry = value / 1_000_000_000U;
+                if (carry != 0)
+                {
+                    if (Sec > ulong.MaxValue - carry)
+                        throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
 
-                _nsec = value;
+                    Sec += carry;
+                }
+
+                _nsec = value % 1_000_000_000U;
             }
         }
     }

@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.IO
@@ -27,6 +28,7 @@ namespace Unity.FoxgloveSDK.IO
         private HashSet<ushort> _knownChannelIds;
         private bool _hasCachedDecodeRegistry;
         private McapDecodeOptions _cachedDecodeOptions;
+        private int _cachedDecodeOptionsFingerprint;
         private McapDecodeRegistry _cachedDecodeRegistry;
         private bool _disposed;
 
@@ -597,13 +599,38 @@ namespace Unity.FoxgloveSDK.IO
 
         private McapDecodeRegistry GetDecodeRegistry(McapDecodeOptions options)
         {
-            if (_hasCachedDecodeRegistry && ReferenceEquals(_cachedDecodeOptions, options))
+            var fingerprint = ComputeDecodeOptionsFingerprint(options);
+            if (_hasCachedDecodeRegistry
+                && ReferenceEquals(_cachedDecodeOptions, options)
+                && _cachedDecodeOptionsFingerprint == fingerprint)
                 return _cachedDecodeRegistry;
 
             _cachedDecodeRegistry = CreateDecodeRegistry(options);
             _cachedDecodeOptions = options;
+            _cachedDecodeOptionsFingerprint = fingerprint;
             _hasCachedDecodeRegistry = true;
             return _cachedDecodeRegistry;
+        }
+
+        private static int ComputeDecodeOptionsFingerprint(McapDecodeOptions options)
+        {
+            if (options == null)
+                return 0;
+
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + (options.UseBuiltInDecoders ? 1 : 0);
+                hash = hash * 31 + (int)options.FailurePolicy;
+                var factories = options.DecoderFactories;
+                if (factories == null)
+                    return hash * 31;
+
+                hash = hash * 31 + factories.Count;
+                for (var i = 0; i < factories.Count; i++)
+                    hash = hash * 31 + (factories[i] == null ? 0 : RuntimeHelpers.GetHashCode(factories[i]));
+                return hash;
+            }
         }
 
         private static McapReadOptions ToReadOptions(McapDataLoaderQuery query)

@@ -72,6 +72,7 @@ namespace Unity.FoxgloveSDK.IO
         public const ulong ReplayChannelIdBase = 0x80000000UL;
         /// <summary>
         /// Best-effort maximum number of messages emitted per Tick call.
+        /// Set to <c>0</c> to preserve the legacy unlimited-per-tick behavior.
         /// A single log-time group may exceed this soft cap so logically
         /// simultaneous scene and transform messages are not split across ticks.
         /// </summary>
@@ -80,7 +81,7 @@ namespace Unity.FoxgloveSDK.IO
         public int MaxMessagesPerTick
         {
             get => _maxMessagesPerTick;
-            set => _maxMessagesPerTick = Math.Max(1, value);
+            set => _maxMessagesPerTick = value < 0 ? 1 : value;
         }
 
         /// <summary>
@@ -157,7 +158,7 @@ namespace Unity.FoxgloveSDK.IO
             Throw
         }
 
-        public CorruptChunkPolicy CrcMismatchPolicy { get; set; } = CorruptChunkPolicy.Skip;
+        public CorruptChunkPolicy CrcMismatchPolicy { get; set; } = CorruptChunkPolicy.UseWithWarning;
         /// <summary>
         /// Current replay engine state.
         /// </summary>
@@ -711,7 +712,11 @@ namespace Unity.FoxgloveSDK.IO
             if (result == null) throw new ArgumentNullException(nameof(result));
             if (result.Count == 0)
                 return 0;
-            maxMessagesPerTick = Math.Max(1, maxMessagesPerTick);
+            if (maxMessagesPerTick == 0)
+                return result.Count;
+            if (maxMessagesPerTick < 0)
+                maxMessagesPerTick = 1;
+
             if (result.Count <= maxMessagesPerTick)
                 return result.Count;
 

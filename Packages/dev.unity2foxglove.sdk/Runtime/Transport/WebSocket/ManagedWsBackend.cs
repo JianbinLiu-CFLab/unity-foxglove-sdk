@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Transport
     {
         private const int CloseDrainTimeoutMs = 250;
         private const int StopDisconnectWaitMs = 2000;
+        private const int StopForcedCloseWaitMs = 1000;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -102,14 +103,35 @@ namespace Unity.FoxgloveSDK.Transport
             try { _listener?.Stop(); } catch { }
             _listener = null;
 
-            var disconnects = _clients
-                .ToArray()
+            var clients = _clients.ToArray();
+            var disconnects = clients
                 .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
                 .ToArray();
             if (disconnects.Length > 0)
             {
-                try { Task.WaitAll(disconnects, StopDisconnectWaitMs); }
+                bool completed = false;
+                try { completed = Task.WaitAll(disconnects, StopDisconnectWaitMs); }
                 catch (AggregateException ex) { _logger.LogError($"Client disconnect error during stop: {FormatExceptionChain(ex)}"); }
+
+                if (!completed)
+                {
+                    _logger.LogWarning(
+                        $"Client disconnect did not complete within {StopDisconnectWaitMs}ms during stop; forcing network close for remaining clients.");
+                    foreach (var pair in clients)
+                    {
+                        try { pair.Value.Dispose(); } catch { }
+                    }
+
+                    try { completed = Task.WaitAll(disconnects, StopForcedCloseWaitMs); }
+                    catch (AggregateException ex) { _logger.LogError($"Client disconnect error during forced stop: {FormatExceptionChain(ex)}"); }
+                }
+
+                if (!completed)
+                {
+                    _logger.LogWarning(
+                        "Client disconnect callbacks are still running after forced stop; deferring cancellation token disposal.");
+                    return;
+                }
             }
 
             cts?.Dispose();

@@ -493,7 +493,7 @@ namespace Unity.FoxgloveSDK.Core
         private float NormalizePlaybackSpeedForCommand(float speed)
         {
             var normalized = PlaybackClock.NormalizeSpeed(speed);
-            if (normalized != speed || float.IsNaN(speed))
+            if (normalized != speed)
                 _logger.LogWarning($"Invalid playback speed {speed}; using 1.0.");
 
             return normalized;

@@ -132,8 +132,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && certSource.Contains("headerCount > MaxRequestHeaders", StringComparison.Ordinal),
                 "134-6C-4: certificate distributor bounds HTTP header count");
             Check(backendSource.Contains("StopDisconnectWaitMs", StringComparison.Ordinal)
-                  && backendSource.Contains("Task.WaitAll(disconnects, StopDisconnectWaitMs)", StringComparison.Ordinal),
-                "134-6C-5: managed WebSocket Stop uses a global disconnect wait cap");
+                  && backendSource.Contains("StopForcedCloseWaitMs", StringComparison.Ordinal)
+                  && backendSource.Contains("forcing network close", StringComparison.Ordinal),
+                "134-6C-5: managed WebSocket Stop bounds disconnect wait and forces network close on timeout");
             Check(connectionSource.Contains("_connectedAtMs", StringComparison.Ordinal)
                   && connectionSource.Contains("nowMs - _connectedAtMs", StringComparison.Ordinal),
                 "134-6C-6: connection duration uses monotonic time instead of wall-clock deltas");

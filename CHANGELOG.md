@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - FoxgloveManager-generated MCAP recording file names now use UTC timestamps with fractional ticks (`yyyyMMdd_HHmmss_fffffffZ`) instead of local-time second precision. External scripts that parse recording names should not assume the older `yyyyMMdd_HHmmss.mcap` suffix.
 - Console logger warning and error output now includes severity labels such as `[Foxglove][Warning]` and `[Foxglove][Error]`.
+- MCAP LZ4 writer defaults now favor real-time recording throughput; set `McapWriterOptions.Lz4CompressionLevel` explicitly when smallest-file compression is more important.
+- Replay keeps the legacy behavior for CRC-mismatched chunks by default (`UseWithWarning`), with `Skip` and `Throw` available for strict tools.
+- `McapReplayEngine.MaxMessagesPerTick = 0` remains the unlimited-per-tick replay mode; negative values clamp to `1`.
+- JSON timestamp DTOs normalize inbound `nsec >= 1_000_000_000` into whole seconds while continuing to emit normalized values.
 
 ## 1.9.3 - 2026-05-24
 
