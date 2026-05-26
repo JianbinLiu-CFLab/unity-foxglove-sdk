@@ -130,6 +130,7 @@ namespace Unity.FoxgloveSDK.Protocol
         /// <summary>Write a 32-bit unsigned integer in little-endian byte order.</summary>
         public static void WriteU32LE(byte[] buf, int offset, uint value)
         {
+            ValidateBufferRange(buf, offset, 4);
             buf[offset] = (byte)(value & 0xFF);
             buf[offset + 1] = (byte)((value >> 8) & 0xFF);
             buf[offset + 2] = (byte)((value >> 16) & 0xFF);
@@ -139,6 +140,7 @@ namespace Unity.FoxgloveSDK.Protocol
         /// <summary>Write a 64-bit unsigned integer in little-endian byte order.</summary>
         public static void WriteU64LE(byte[] buf, int offset, ulong value)
         {
+            ValidateBufferRange(buf, offset, 8);
             buf[offset] = (byte)(value & 0xFF);
             buf[offset + 1] = (byte)((value >> 8) & 0xFF);
             buf[offset + 2] = (byte)((value >> 16) & 0xFF);
@@ -152,12 +154,14 @@ namespace Unity.FoxgloveSDK.Protocol
         /// <summary>Read a 32-bit unsigned integer in little-endian byte order.</summary>
         public static uint ReadU32LE(byte[] buf, int offset)
         {
+            ValidateBufferRange(buf, offset, 4);
             return (uint)(buf[offset] | (buf[offset + 1] << 8) | (buf[offset + 2] << 16) | (buf[offset + 3] << 24));
         }
 
         /// <summary>Read a 64-bit unsigned integer in little-endian byte order.</summary>
         public static ulong ReadU64LE(byte[] buf, int offset)
         {
+            ValidateBufferRange(buf, offset, 8);
             return (ulong)buf[offset]
                  | ((ulong)buf[offset + 1] << 8)
                  | ((ulong)buf[offset + 2] << 16)
@@ -204,18 +208,13 @@ namespace Unity.FoxgloveSDK.Protocol
         /// <summary>Write a 32-bit float in little-endian byte order.</summary>
         public static void WriteF32LE(byte[] buf, int offset, float value)
         {
-            var bytes = BitConverter.GetBytes(value);
-            if (!BitConverter.IsLittleEndian) Array.Reverse(bytes);
-            Buffer.BlockCopy(bytes, 0, buf, offset, 4);
+            WriteU32LE(buf, offset, unchecked((uint)BitConverter.SingleToInt32Bits(value)));
         }
 
         /// <summary>Read a 32-bit float in little-endian byte order.</summary>
         public static float ReadF32LE(byte[] buf, int offset)
         {
-            var bytes = new byte[4];
-            Buffer.BlockCopy(buf, offset, bytes, 0, 4);
-            if (!BitConverter.IsLittleEndian) Array.Reverse(bytes);
-            return BitConverter.ToSingle(bytes, 0);
+            return BitConverter.Int32BitsToSingle(unchecked((int)ReadU32LE(buf, offset)));
         }
 
         /// <summary>Decode a PlaybackControlRequest binary frame.</summary>
@@ -242,7 +241,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public static byte[] EncodePlaybackState(byte status, ulong currentTimeNs, float speed,
             bool didSeek, string requestId)
         {
-            var idBytes = requestId != null ? System.Text.Encoding.UTF8.GetBytes(requestId) : new byte[0];
+            var idBytes = requestId != null ? System.Text.Encoding.UTF8.GetBytes(requestId) : Array.Empty<byte>();
             var frame = new byte[1 + 1 + 8 + 4 + 1 + 4 + idBytes.Length];
             frame[0] = ServerOpcode.PlaybackState;
             frame[1] = status;
@@ -252,6 +251,17 @@ namespace Unity.FoxgloveSDK.Protocol
             WriteU32LE(frame, 15, (uint)idBytes.Length);
             Buffer.BlockCopy(idBytes, 0, frame, 19, idBytes.Length);
             return frame;
+        }
+
+        private static void ValidateBufferRange(byte[] buf, int offset, int byteCount)
+        {
+            if (buf == null)
+                throw new ArgumentNullException(nameof(buf));
+
+            if (offset < 0 || byteCount < 0 || offset > buf.Length - byteCount)
+                throw new ArgumentOutOfRangeException(
+                    nameof(offset),
+                    $"Buffer length {buf.Length} cannot fit {byteCount} bytes at offset {offset}.");
         }
     }
 }

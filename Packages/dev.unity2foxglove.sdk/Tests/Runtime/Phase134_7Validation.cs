@@ -11,7 +11,9 @@ using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -31,6 +33,10 @@ namespace Unity.FoxgloveSDK.Tests
             PlaybackControlRequestIdAtAndBelowCapDecodes();
             PlaybackControlRequestIdAboveCapIsRejected();
             OversizedPlaybackControlFrameDoesNotReachRuntimeQueue();
+            LittleEndianHelpersValidateRangesAndAvoidFloatScratchBuffers();
+            TimestampNanosecondsRejectInvalidValues();
+            CameraBackpressureHandlesResetCounters();
+            UtilityPoliciesRejectInvalidOrNullInputs();
 
             Console.WriteLine($"Phase 134-7: {_passed} checks passed.");
         }
@@ -75,6 +81,96 @@ namespace Unity.FoxgloveSDK.Tests
             Check(DecodePlaybackStateRequestId(transport.BinariesFor(ClientId).Single()).Length
                   == ExpectedMaxPlaybackRequestIdBytes,
                 "134-7C-4: capped request id is echoed in PlaybackState");
+        }
+
+        private static void LittleEndianHelpersValidateRangesAndAvoidFloatScratchBuffers()
+        {
+            CheckThrows<ArgumentNullException>(
+                () => BinaryEncoding.WriteU32LE(null, 0, 1U),
+                "134-7D-1: WriteU32LE rejects null buffers explicitly");
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => BinaryEncoding.WriteU64LE(new byte[7], 0, 1UL),
+                "134-7D-2: WriteU64LE rejects short buffers explicitly");
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => BinaryEncoding.ReadU32LE(new byte[4], 1),
+                "134-7D-3: ReadU32LE rejects out-of-range offsets explicitly");
+
+            var buffer = new byte[4];
+            BinaryEncoding.WriteF32LE(buffer, 0, -12.5f);
+            Check(Math.Abs(BinaryEncoding.ReadF32LE(buffer, 0) - -12.5f) < 0.0001f,
+                "134-7D-4: float little-endian helpers roundtrip without scratch arrays");
+        }
+
+        private static void TimestampNanosecondsRejectInvalidValues()
+        {
+            new DataTimestamp { Sec = 1UL, Nsec = 999_999_999U };
+            new FoxgloveTime { Sec = 1UL, Nsec = 999_999_999U };
+            new FoxgloveDuration { Sec = -1L, Nsec = 999_999_999U };
+
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => new DataTimestamp { Nsec = 1_000_000_000U },
+                "134-7E-1: protocol timestamp rejects invalid nsec");
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => new FoxgloveTime { Nsec = 1_000_000_000U },
+                "134-7E-2: foxglove time rejects invalid nsec");
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => new FoxgloveDuration { Nsec = 1_000_000_000U },
+                "134-7E-3: foxglove duration rejects invalid nsec");
+        }
+
+        private static void CameraBackpressureHandlesResetCounters()
+        {
+            var result = CameraBackpressurePolicy.Evaluate(
+                enabled: true,
+                currentTimeSec: 10d,
+                cooldownSec: 1d,
+                previousDropCount: 100,
+                currentDropCount: 2,
+                currentCooldownUntilSec: 0d);
+
+            Check(result.AllowCapture, "134-7F-1: reset drop counters do not create false pressure");
+            Check(!result.PressureObserved, "134-7F-2: reset drop counters are not treated as pressure");
+            Check(result.NextDropCount == 2, "134-7F-3: reset drop counters update stored baseline");
+
+            result = CameraBackpressurePolicy.Evaluate(
+                enabled: false,
+                currentTimeSec: 10d,
+                cooldownSec: 1d,
+                previousDropCount: 100,
+                currentDropCount: 3,
+                currentCooldownUntilSec: 20d);
+
+            Check(result.NextDropCount == 3, "134-7F-4: disabled policy still tracks latest drop baseline");
+        }
+
+        private static void UtilityPoliciesRejectInvalidOrNullInputs()
+        {
+            CheckThrows<ArgumentException>(
+                () => new FoxgloveSchemaAttribute(" "),
+                "134-7G-1: blank schema names are rejected");
+
+            Check(!FoxRunPublishPolicy.ShouldPublish(
+                    (Unity.FoxgloveSDK.Components.FoxRunPublishMode)999,
+                    nowSec: 10d,
+                    hasPreviousValue: true,
+                    valueChanged: true,
+                    lastPublishSec: 9d,
+                    forceIntervalSec: 1d),
+                "134-7G-2: unknown FoxRun publish modes fail closed");
+
+            var frame = new PointCloudFrame();
+            frame.Points.Add(new PointCloudPoint(0f, 0f, 0f));
+            frame.Points.Add(null);
+            frame.Points.Add(new PointCloudPoint(0.01f, 0.01f, 0.01f));
+            frame.Points.Add(new PointCloudPoint(1f, 1f, 1f));
+
+            var voxelIndices = PointCloudQoS.BuildVoxelSampleIndices(frame, 0.5f);
+            Check(voxelIndices.SequenceEqual(new[] { 0, 3 }),
+                "134-7G-3: voxel sampling skips null points and keeps first voxel representatives");
+
+            var allNonNull = PointCloudQoS.BuildVoxelSampleIndices(frame, 0f);
+            Check(allNonNull.SequenceEqual(new[] { 0, 2, 3 }),
+                "134-7G-4: non-positive voxel size returns all non-null point indices");
         }
 
         private static FoxgloveSession CreatePlaybackSession(
@@ -137,6 +233,22 @@ namespace Unity.FoxgloveSDK.Tests
 
             _passed++;
             Console.WriteLine("[PASS] " + label);
+        }
+
+        private static void CheckThrows<TException>(Action action, string label)
+            where TException : Exception
+        {
+            try
+            {
+                action();
+            }
+            catch (TException)
+            {
+                Check(true, label);
+                return;
+            }
+
+            throw new Exception("[FAIL] " + label);
         }
 
         private sealed class Phase134_7RuntimeContext : IRuntimeContext

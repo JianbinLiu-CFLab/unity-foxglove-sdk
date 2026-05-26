@@ -5,6 +5,7 @@
 // Purpose: Foxglove visual schema DTOs — FrameTransform, SceneUpdate,
 // and related geometry types for 3D visualization.
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -14,19 +15,45 @@ namespace Unity.FoxgloveSDK.Schemas
     /// <summary>Foxglove time: { sec, nsec }.</summary>
     public class FoxgloveTime
     {
+        private uint _nsec;
+
         /// <summary>Whole seconds.</summary>
         [JsonProperty("sec")] public ulong Sec { get; set; }
         /// <summary>Nanoseconds fraction (0-999999999).</summary>
-        [JsonProperty("nsec")] public uint Nsec { get; set; }
+        [JsonProperty("nsec")]
+        public uint Nsec
+        {
+            get => _nsec;
+            set
+            {
+                if (value >= 1_000_000_000U)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds must be less than 1,000,000,000.");
+
+                _nsec = value;
+            }
+        }
     }
 
     /// <summary>Foxglove duration: { sec, nsec }.</summary>
     public class FoxgloveDuration
     {
+        private uint _nsec;
+
         /// <summary>Whole seconds.</summary>
         [JsonProperty("sec")] public long Sec { get; set; }
         /// <summary>Nanoseconds fraction (0-999999999).</summary>
-        [JsonProperty("nsec")] public uint Nsec { get; set; }
+        [JsonProperty("nsec")]
+        public uint Nsec
+        {
+            get => _nsec;
+            set
+            {
+                if (value >= 1_000_000_000U)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds must be less than 1,000,000,000.");
+
+                _nsec = value;
+            }
+        }
     }
 
     /// <summary>3D vector.</summary>

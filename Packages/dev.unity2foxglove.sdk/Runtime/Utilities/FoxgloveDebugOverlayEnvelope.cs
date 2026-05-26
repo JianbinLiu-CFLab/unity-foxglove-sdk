@@ -85,7 +85,7 @@ namespace Unity.FoxgloveSDK.Util
                 envelope = new FoxgloveDebugOverlayEnvelope(source, label, values);
                 return true;
             }
-            catch
+            catch (Exception ex) when (IsRecoverableEnvelopeException(ex))
             {
                 envelope = null;
                 return false;
@@ -210,6 +210,14 @@ namespace Unity.FoxgloveSDK.Util
                    || value is ReadOnlyMemory<byte>
                    || value is Stream
                    || value is IEnumerable<byte>;
+        }
+
+        private static bool IsRecoverableEnvelopeException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
         }
     }
 }

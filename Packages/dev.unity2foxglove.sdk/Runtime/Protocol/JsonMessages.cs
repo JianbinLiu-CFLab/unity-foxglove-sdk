@@ -5,6 +5,7 @@
 // Purpose: Foxglove WebSocket JSON message DTOs — serverInfo, advertise,
 // subscribe, parameters, services, connection graph, and protocol constants.
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -521,12 +522,24 @@ namespace Unity.FoxgloveSDK.Protocol
     [JsonObject(MemberSerialization.OptIn)]
     public class DataTimestamp
     {
+        private uint _nsec;
+
         /// <summary>Whole seconds since epoch.</summary>
         [JsonProperty("sec")]
         public ulong Sec { get; set; }
 
         /// <summary>Sub-second nanoseconds component (0-999999999).</summary>
         [JsonProperty("nsec")]
-        public uint Nsec { get; set; }
+        public uint Nsec
+        {
+            get => _nsec;
+            set
+            {
+                if (value >= 1_000_000_000U)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds must be less than 1,000,000,000.");
+
+                _nsec = value;
+            }
+        }
     }
 }

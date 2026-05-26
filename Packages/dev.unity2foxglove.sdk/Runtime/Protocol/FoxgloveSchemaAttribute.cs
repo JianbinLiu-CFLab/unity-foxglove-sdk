@@ -20,6 +20,12 @@ namespace Unity.FoxgloveSDK.Protocol
         public string SchemaName { get; }
 
         /// <summary>Create the attribute with the given schema name.</summary>
-        public FoxgloveSchemaAttribute(string schemaName) => SchemaName = schemaName;
+        public FoxgloveSchemaAttribute(string schemaName)
+        {
+            if (string.IsNullOrWhiteSpace(schemaName))
+                throw new ArgumentException("Schema name must be non-empty.", nameof(schemaName));
+
+            SchemaName = schemaName;
+        }
     }
 }
