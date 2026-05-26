@@ -45,6 +45,22 @@ namespace Unity.FoxgloveSDK.IO
             Stream stream,
             bool leaveOpen,
             McapSequentialReadLimits sequentialReadLimits)
+            : this(stream, leaveOpen, sequentialReadLimits, null)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new indexed reader with explicit memory and summary scan options.
+        /// </summary>
+        /// <param name="stream">Seekable MCAP stream.</param>
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open when disposed.</param>
+        /// <param name="sequentialReadLimits">Memory limits for no-index sequential fallback.</param>
+        /// <param name="readOptions">Options used while reading summaryless inventories.</param>
+        public McapIndexedReader(
+            Stream stream,
+            bool leaveOpen,
+            McapSequentialReadLimits sequentialReadLimits,
+            McapReadOptions readOptions)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
             if (!_stream.CanSeek)
@@ -54,7 +70,10 @@ namespace Unity.FoxgloveSDK.IO
             _sequentialReadLimits = sequentialReadLimits ?? McapSequentialReadLimits.Default;
             _sequentialReadLimits.Validate();
             _reader = new McapReader(_stream);
-            _summary = _reader.ReadSummary();
+            var summaryOptions = readOptions ?? new McapReadOptions();
+            _summary = _reader.ReadSummary(
+                validateCrcs: summaryOptions.ValidateCrcs,
+                chunkUncompressedSizeLimit: summaryOptions.ChunkUncompressedSizeLimit);
         }
 
         /// <summary>
@@ -75,11 +94,24 @@ namespace Unity.FoxgloveSDK.IO
         public static McapIndexedReader OpenRead(
             string filePath,
             McapSequentialReadLimits sequentialReadLimits)
+            => OpenRead(filePath, sequentialReadLimits, null);
+
+        /// <summary>
+        /// Opens a file-backed indexed reader with explicit memory and summary scan options.
+        /// </summary>
+        /// <param name="filePath">Path to a local MCAP file.</param>
+        /// <param name="sequentialReadLimits">Memory limits for no-index sequential fallback.</param>
+        /// <param name="readOptions">Options used while reading summaryless inventories.</param>
+        /// <returns>An indexed reader for the file.</returns>
+        public static McapIndexedReader OpenRead(
+            string filePath,
+            McapSequentialReadLimits sequentialReadLimits,
+            McapReadOptions readOptions)
         {
             var stream = File.OpenRead(filePath);
             try
             {
-                return new McapIndexedReader(stream, false, sequentialReadLimits);
+                return new McapIndexedReader(stream, false, sequentialReadLimits, readOptions);
             }
             catch
             {
@@ -91,27 +123,62 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Gets the cached MCAP file summary.
         /// </summary>
-        public McapFileSummary Summary => _summary;
+        public McapFileSummary Summary
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _summary;
+            }
+        }
 
         /// <summary>
         /// Gets schemas from the cached summary.
         /// </summary>
-        public IReadOnlyList<McapSchema> Schemas => _summary.Schemas;
+        public IReadOnlyList<McapSchema> Schemas
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _summary.Schemas;
+            }
+        }
 
         /// <summary>
         /// Gets channels from the cached summary.
         /// </summary>
-        public IReadOnlyList<McapChannel> Channels => _summary.Channels;
+        public IReadOnlyList<McapChannel> Channels
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _summary.Channels;
+            }
+        }
 
         /// <summary>
         /// Gets metadata indexes from the cached summary.
         /// </summary>
-        public IReadOnlyList<McapMetadataIndex> MetadataIndexes => _summary.MetadataIndexes;
+        public IReadOnlyList<McapMetadataIndex> MetadataIndexes
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _summary.MetadataIndexes;
+            }
+        }
 
         /// <summary>
         /// Gets attachment indexes from the cached summary.
         /// </summary>
-        public IReadOnlyList<McapAttachmentIndex> AttachmentIndexes => _summary.AttachmentIndexes;
+        public IReadOnlyList<McapAttachmentIndex> AttachmentIndexes
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _summary.AttachmentIndexes;
+            }
+        }
 
         /// <summary>
         /// Reads messages matching the supplied options into a result list.
@@ -121,6 +188,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <returns>The filled result list.</returns>
         public List<McapMessage> ReadMessages(McapReadOptions options = null, List<McapMessage> result = null)
         {
+            ThrowIfDisposed();
             options = options ?? new McapReadOptions();
             if (result == null)
                 result = new List<McapMessage>();
@@ -156,7 +224,8 @@ namespace Unity.FoxgloveSDK.IO
                 var uncompressed = _reader.ReadChunkRecords(
                     chunkIndex.ChunkStartOffset,
                     chunkIndex.ChunkLength,
-                    out var crcValid);
+                    out var crcValid,
+                    options.ChunkUncompressedSizeLimit);
                 if (!crcValid && options.ValidateCrcs)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
@@ -210,6 +279,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <returns>One latest-at message per matched channel, ordered by channel ID.</returns>
         public List<McapMessage> ReadLatestBefore(McapReadOptions options = null, List<McapMessage> result = null)
         {
+            ThrowIfDisposed();
             options = options ?? new McapReadOptions();
             if (result == null)
                 result = new List<McapMessage>();
@@ -270,7 +340,8 @@ namespace Unity.FoxgloveSDK.IO
                 var uncompressed = _reader.ReadChunkRecords(
                     chunkIndex.ChunkStartOffset,
                     chunkIndex.ChunkLength,
-                    out var crcValid);
+                    out var crcValid,
+                    options.ChunkUncompressedSizeLimit);
                 if (!crcValid && options.ValidateCrcs)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
@@ -316,7 +387,8 @@ namespace Unity.FoxgloveSDK.IO
                     MaxMessages = 0,
                     Order = McapReadOrder.FileOrder,
                     AllowLinearFallback = true,
-                    ValidateCrcs = options.ValidateCrcs
+                    ValidateCrcs = options.ValidateCrcs,
+                    ChunkUncompressedSizeLimit = options.ChunkUncompressedSizeLimit
                 };
 
                 _stream.Seek(0, SeekOrigin.Begin);
@@ -335,6 +407,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <returns>The decoded attachment.</returns>
         public McapAttachment ReadAttachment(McapAttachmentIndex index)
         {
+            ThrowIfDisposed();
             if (index == null)
                 throw new ArgumentNullException(nameof(index));
 
@@ -348,6 +421,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <returns>The decoded metadata.</returns>
         public McapMetadata ReadMetadata(McapMetadataIndex index)
         {
+            ThrowIfDisposed();
             if (index == null)
                 throw new ArgumentNullException(nameof(index));
 
@@ -365,6 +439,12 @@ namespace Unity.FoxgloveSDK.IO
             _disposed = true;
             if (_ownsStream)
                 _stream.Dispose();
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(McapIndexedReader));
         }
 
         private HashSet<ushort> ResolveSelectedChannelIds(McapReadOptions options)
@@ -533,7 +613,8 @@ namespace Unity.FoxgloveSDK.IO
                 Order = source.Order,
                 UseOfficialEndTimeSemantics = source.UseOfficialEndTimeSemantics,
                 AllowLinearFallback = source.AllowLinearFallback,
-                ValidateCrcs = source.ValidateCrcs
+                ValidateCrcs = source.ValidateCrcs,
+                ChunkUncompressedSizeLimit = source.ChunkUncompressedSizeLimit
             };
         }
 
@@ -554,7 +635,7 @@ namespace Unity.FoxgloveSDK.IO
             if (options.MaxMessages <= 0 || result.Count <= options.MaxMessages)
                 return;
 
-            if (options.Order == McapReadOrder.LogTimeDescending)
+            if (options.Order == McapReadOrder.LogTimeDescending || options.Order == McapReadOrder.FileOrder)
                 result.RemoveRange(options.MaxMessages, result.Count - options.MaxMessages);
             else
                 result.RemoveRange(0, result.Count - options.MaxMessages);

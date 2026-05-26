@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -20,6 +21,10 @@ namespace Unity.FoxgloveSDK.IO
         private readonly string _requiredBearerToken;
         private readonly string _dataRoute;
         private readonly long _maxInMemoryDataBytes;
+        private readonly object _manifestCacheGate = new object();
+        private RemoteMcapManifest _cachedManifest;
+        private DateTime _cachedManifestLastWriteUtc;
+        private long _cachedManifestLength = -1L;
 
         public RemoteMcapDataSourcePrototype(
             string mcapPath,
@@ -52,13 +57,11 @@ namespace Unity.FoxgloveSDK.IO
                 return denied;
             }
 
-            using var loader = new McapDataLoader(_mcapPath);
-            var init = loader.Initialize();
             return new RemoteMcapManifestResponse
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                Manifest = RemoteMcapManifestMapper.FromInitialization(init, _manifestName, _sourceId, _dataRoute)
+                Manifest = GetCachedManifest()
             };
         }
 
@@ -145,9 +148,66 @@ namespace Unity.FoxgloveSDK.IO
             if (token.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
                 token = token.Substring(bearerPrefix.Length);
 
-            return string.Equals(token, _requiredBearerToken, StringComparison.Ordinal)
+            return ManagedWebSocketOptions.FixedTimeEqualsUtf8(_requiredBearerToken, token)
                 ? RemoteMcapAuthorizationResult.Allow()
                 : RemoteMcapAuthorizationResult.Deny("Bearer token rejected.");
+        }
+
+        private RemoteMcapManifest GetCachedManifest()
+        {
+            var info = new FileInfo(_mcapPath);
+            if (!info.Exists)
+            {
+                var missing = new RemoteMcapManifest { Name = _manifestName };
+                var source = new RemoteMcapSource
+                {
+                    Id = _sourceId,
+                    Name = _manifestName,
+                    DataUrl = _dataRoute
+                };
+                source.Problems.Add(new RemoteMcapProblem(
+                    RemoteMcapProblemSeverity.Error,
+                    "SourceFileNotFound",
+                    "Requested MCAP source file is not available on disk."));
+                missing.Sources.Add(source);
+                return missing;
+            }
+
+            lock (_manifestCacheGate)
+            {
+                if (_cachedManifest != null
+                    && _cachedManifestLength == info.Length
+                    && _cachedManifestLastWriteUtc == info.LastWriteTimeUtc)
+                {
+                    return CloneManifest(_cachedManifest);
+                }
+            }
+
+            using var loader = new McapDataLoader(_mcapPath);
+            var manifest = RemoteMcapManifestMapper.FromInitialization(
+                loader.Initialize(),
+                _manifestName,
+                _sourceId,
+                _dataRoute);
+
+            info.Refresh();
+            var cacheLength = info.Exists ? info.Length : 0L;
+            var cacheLastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue;
+
+            lock (_manifestCacheGate)
+            {
+                if (_cachedManifest != null
+                    && _cachedManifestLength == cacheLength
+                    && _cachedManifestLastWriteUtc == cacheLastWriteUtc)
+                {
+                    return CloneManifest(_cachedManifest);
+                }
+
+                _cachedManifest = CloneManifest(manifest);
+                _cachedManifestLength = cacheLength;
+                _cachedManifestLastWriteUtc = cacheLastWriteUtc;
+                return CloneManifest(manifest);
+            }
         }
 
         private static bool IsUnsupportedMultiSource(RemoteMcapRequest request)
@@ -162,7 +222,7 @@ namespace Unity.FoxgloveSDK.IO
             string message)
         {
             var response = new RemoteMcapManifestResponse { Status = status };
-            response.Problems.Add(new RemoteMcapProblem(status.ToString(), code, message));
+            response.Problems.Add(new RemoteMcapProblem(ToProblemSeverity(status), code, message));
             return response;
         }
 
@@ -172,7 +232,7 @@ namespace Unity.FoxgloveSDK.IO
             string message)
         {
             var response = new RemoteMcapDataResponse { Status = status };
-            response.Problems.Add(new RemoteMcapProblem(status.ToString(), code, message));
+            response.Problems.Add(new RemoteMcapProblem(ToProblemSeverity(status), code, message));
             return response;
         }
 
@@ -182,8 +242,84 @@ namespace Unity.FoxgloveSDK.IO
             string message)
         {
             var response = new RemoteMcapDataStreamResponse { Status = status };
-            response.Problems.Add(new RemoteMcapProblem(status.ToString(), code, message));
+            response.Problems.Add(new RemoteMcapProblem(ToProblemSeverity(status), code, message));
             return response;
+        }
+
+        private static RemoteMcapProblemSeverity ToProblemSeverity(RemoteMcapResponseStatus status)
+        {
+            return status == RemoteMcapResponseStatus.Ok
+                ? RemoteMcapProblemSeverity.Info
+                : status == RemoteMcapResponseStatus.Unsupported
+                    ? RemoteMcapProblemSeverity.Warning
+                    : RemoteMcapProblemSeverity.Error;
+        }
+
+        private static RemoteMcapManifest CloneManifest(RemoteMcapManifest source)
+        {
+            var clone = new RemoteMcapManifest { Name = source?.Name ?? string.Empty };
+            if (source?.Sources == null)
+                return clone;
+
+            for (var i = 0; i < source.Sources.Count; i++)
+                clone.Sources.Add(CloneSource(source.Sources[i]));
+            return clone;
+        }
+
+        private static RemoteMcapSource CloneSource(RemoteMcapSource source)
+        {
+            var clone = new RemoteMcapSource
+            {
+                Id = source?.Id ?? string.Empty,
+                Name = source?.Name ?? string.Empty,
+                DataUrl = source?.DataUrl ?? string.Empty,
+                HasTimeRange = source?.HasTimeRange ?? false,
+                StartTimeNs = source?.StartTimeNs ?? 0UL,
+                EndTimeNs = source?.EndTimeNs ?? 0UL
+            };
+
+            if (source?.Topics != null)
+                for (var i = 0; i < source.Topics.Count; i++)
+                    clone.Topics.Add(CloneTopic(source.Topics[i]));
+            if (source?.Schemas != null)
+                for (var i = 0; i < source.Schemas.Count; i++)
+                    clone.Schemas.Add(CloneSchema(source.Schemas[i]));
+            if (source?.Problems != null)
+                for (var i = 0; i < source.Problems.Count; i++)
+                    clone.Problems.Add(CloneProblem(source.Problems[i]));
+            return clone;
+        }
+
+        private static RemoteMcapTopic CloneTopic(RemoteMcapTopic topic)
+        {
+            return new RemoteMcapTopic
+            {
+                ChannelId = topic?.ChannelId ?? 0,
+                Name = topic?.Name ?? string.Empty,
+                MessageEncoding = topic?.MessageEncoding ?? string.Empty,
+                SchemaId = topic?.SchemaId ?? 0
+            };
+        }
+
+        private static RemoteMcapSchema CloneSchema(RemoteMcapSchema schema)
+        {
+            return new RemoteMcapSchema
+            {
+                Id = schema?.Id ?? 0,
+                Name = schema?.Name ?? string.Empty,
+                Encoding = schema?.Encoding ?? string.Empty,
+                DataBase64 = schema?.DataBase64 ?? string.Empty,
+                DataLength = schema?.DataLength ?? 0
+            };
+        }
+
+        private static RemoteMcapProblem CloneProblem(RemoteMcapProblem problem)
+        {
+            return new RemoteMcapProblem(
+                problem?.Severity ?? RemoteMcapProblemSeverity.Info,
+                problem?.Code ?? string.Empty,
+                problem?.Message ?? string.Empty,
+                problem?.Tip ?? string.Empty);
         }
     }
 }

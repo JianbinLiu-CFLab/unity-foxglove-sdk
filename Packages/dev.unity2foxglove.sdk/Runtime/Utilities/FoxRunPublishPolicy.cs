@@ -24,6 +24,9 @@ namespace Unity.FoxgloveSDK.Components
     }
 }
 
+// The public enum stays in Components because generated MonoBehaviour-facing
+// FoxRun sources expose it in inspectors, while the stateless policy helper
+// remains Unity-free under Util for runtime tests and generated code reuse.
 namespace Unity.FoxgloveSDK.Util
 {
     using Components;
@@ -70,7 +73,7 @@ namespace Unity.FoxgloveSDK.Util
                     return false;
 
                 default:
-                    return true;
+                    return false;
             }
         }
     }

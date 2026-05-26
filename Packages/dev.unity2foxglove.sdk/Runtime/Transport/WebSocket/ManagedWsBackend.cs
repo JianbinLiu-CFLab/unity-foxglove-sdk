@@ -28,6 +28,8 @@ namespace Unity.FoxgloveSDK.Transport
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
+        private const int StopDisconnectWaitMs = 2000;
+        private const int StopForcedCloseWaitMs = 1000;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -82,11 +84,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (_listener != null)
                 throw new InvalidOperationException("Server already started");
 
-            var addr = host switch
-            {
-                "0.0.0.0" => IPAddress.Any,
-                _ => IPAddress.Parse(host)
-            };
+            var addr = TransportHostResolver.ResolveBindAddress(host);
 
             _listener = new TcpListener(addr, port);
             _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
@@ -102,11 +100,40 @@ namespace Unity.FoxgloveSDK.Transport
             var cts = _cts;
             _cts = null;
             cts?.Cancel();
-            foreach (var (id, conn) in _clients.ToArray())
-                DisconnectClient(id, conn);
-
             try { _listener?.Stop(); } catch { }
             _listener = null;
+
+            var clients = _clients.ToArray();
+            var disconnects = clients
+                .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
+                .ToArray();
+            if (disconnects.Length > 0)
+            {
+                bool completed = false;
+                try { completed = Task.WaitAll(disconnects, StopDisconnectWaitMs); }
+                catch (AggregateException ex) { _logger.LogError($"Client disconnect error during stop: {FormatExceptionChain(ex)}"); }
+
+                if (!completed)
+                {
+                    _logger.LogWarning(
+                        $"Client disconnect did not complete within {StopDisconnectWaitMs}ms during stop; forcing network close for remaining clients.");
+                    foreach (var pair in clients)
+                    {
+                        try { pair.Value.Dispose(); } catch { }
+                    }
+
+                    try { completed = Task.WaitAll(disconnects, StopForcedCloseWaitMs); }
+                    catch (AggregateException ex) { _logger.LogError($"Client disconnect error during forced stop: {FormatExceptionChain(ex)}"); }
+                }
+
+                if (!completed)
+                {
+                    _logger.LogWarning(
+                        "Client disconnect callbacks are still running after forced stop; deferring cancellation token disposal.");
+                    return;
+                }
+            }
+
             cts?.Dispose();
         }
 
@@ -163,8 +190,6 @@ namespace Unity.FoxgloveSDK.Transport
         public virtual void Dispose()
         {
             Stop();
-            _cts?.Dispose();
-            _cts = null;
         }
 
         // Transport health

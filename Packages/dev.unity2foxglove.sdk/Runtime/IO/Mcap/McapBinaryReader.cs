@@ -72,11 +72,25 @@ namespace Unity.FoxgloveSDK.IO
             var end = off + totalBytes;
             while (off < end)
             {
-                var k = ReadString(buf, ref off);
-                var v = ReadString(buf, ref off);
+                var k = ReadStringWithin(buf, ref off, end, "map key");
+                var v = ReadStringWithin(buf, ref off, end, "map value");
                 map[k] = v;
             }
+
+            if (off != end)
+                throw new InvalidDataException("Map reader ended outside declared map length.");
+
             return map;
+        }
+
+        private static string ReadStringWithin(byte[] buf, ref int off, int end, string valueName)
+        {
+            EnsureAvailableWithin(buf, off, 4, end, valueName + " length");
+            var len = ReadSupportedLength(buf, ref off, valueName);
+            EnsureAvailableWithin(buf, off, len, end, valueName + " data");
+            var value = Encoding.UTF8.GetString(buf, off, len);
+            off += len;
+            return value;
         }
 
         private static int ReadSupportedLength(byte[] buf, ref int off, string valueName)
@@ -93,10 +107,16 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException($"Truncated {valueName} at offset {off}");
         }
 
+        private static void EnsureAvailableWithin(byte[] buf, int off, int len, int end, string valueName)
+        {
+            if (off < 0 || end < off || end > buf.Length || len > end - off)
+                throw new InvalidDataException($"Truncated {valueName} at offset {off}");
+        }
+
         /// <summary>Check whether the bytes at <c>off</c> match the MCAP magic bytes.</summary>
         public static bool MatchesMagic(byte[] buf, int off)
         {
-            var magic = McapWriter.MagicSpan;
+            var magic = McapConstants.MagicSpan;
             if (buf == null || off < 0 || off > buf.Length - magic.Length) return false;
             for (var i = 0; i < magic.Length; i++)
                 if (buf[off + i] != magic[i]) return false;

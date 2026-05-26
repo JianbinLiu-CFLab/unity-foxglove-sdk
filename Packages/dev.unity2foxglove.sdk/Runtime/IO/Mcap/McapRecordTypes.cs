@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.IO
         public string Compression;
         /// <summary>Compressed byte size of the chunk records payload.</summary>
         public ulong CompressedSize;
-        /// <summary>Raw compressed or uncompressed record bytes.</summary>
+        /// <summary>Raw compressed or uncompressed chunk record payload bytes.</summary>
         public byte[] Records;
     }
 
@@ -85,7 +85,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         /// <summary>Channel ID this index covers.</summary>
         public ushort ChannelId;
-        /// <summary>List of (timestamp, file offset) pairs for rapid seeking.</summary>
+        /// <summary>List of (timestamp, file offset) pairs carried by the Message Index record.</summary>
         public List<(ulong timestamp, ulong offset)> Records = new();
     }
 
@@ -182,7 +182,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>CRC32 of the attachment record content before the CRC field.</summary>
         public uint Crc;
         /// <summary>Whether the CRC was non-zero and matched the recomputed checksum.</summary>
-        public bool CrcValid;
+        public bool CrcValid { get; internal set; }
     }
 
     /// <summary>MCAP Attachment Index record — offset and metadata for an attachment in the file.</summary>
@@ -223,7 +223,11 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Absolute byte offset where the data section ends.</summary>
         public ulong DataSectionEndOffset;
 
-        /// <summary>Messages retained by an explicit sequential fallback query when no chunk index is available.</summary>
+        /// <summary>
+        /// Messages retained by an explicit sequential fallback query when no
+        /// chunk index is available. Remains <c>null</c> when sequential
+        /// fallback was not requested or no fallback messages were retained.
+        /// </summary>
         public List<McapMessage> SequentialMessages;
     }
 }

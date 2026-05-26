@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             // file:// origins come from non-browser environments such as Foxglove Desktop.
             if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
-                && !origin.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                && !IsAllowedFileOrigin(origin)
                 && !IsOriginAllowed(origin))
             {
                 _logger.LogWarning(
@@ -160,6 +160,11 @@ namespace Unity.FoxgloveSDK.Transport
         private bool IsOriginAllowed(string origin)
         {
             lock (_allowedOriginsLock) return _allowedOrigins.Contains(origin);
+        }
+
+        private static bool IsAllowedFileOrigin(string origin)
+        {
+            return string.Equals(origin, "file://", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>Compute the Sec-WebSocket-Accept response value per RFC 6455 section 4.2.2.</summary>

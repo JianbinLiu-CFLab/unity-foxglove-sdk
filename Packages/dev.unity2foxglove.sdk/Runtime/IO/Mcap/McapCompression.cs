@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using K4os.Compression.LZ4;
 using K4os.Compression.LZ4.Streams;
 using ZstdSharp;
 
@@ -20,6 +21,9 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Decompress MCAP chunk data using the specified compression algorithm.</summary>
         public static byte[] Decompress(string compression, byte[] data, int uncompressedSize)
         {
+            if (uncompressedSize < 0)
+                throw new InvalidDataException("Uncompressed chunk size cannot be negative.");
+
             switch (compression)
             {
                 case "":
@@ -28,6 +32,8 @@ namespace Unity.FoxgloveSDK.IO
                             $"Uncompressed chunk size mismatch: expected {uncompressedSize}, got {data?.Length ?? 0}");
                     return data ?? Array.Empty<byte>();
                 case "lz4":
+                    if (data == null)
+                        throw new InvalidDataException("LZ4 chunk data is null.");
                     using (var ms = new MemoryStream(data))
                     using (var lz4 = LZ4Stream.Decode(ms, leaveOpen: false))
                     {
@@ -44,6 +50,8 @@ namespace Unity.FoxgloveSDK.IO
                         return buf;
                     }
                 case "zstd":
+                    if (data == null)
+                        throw new InvalidDataException("Zstd chunk data is null.");
                     using (var decompressor = new Decompressor())
                     {
                         var span = decompressor.Unwrap(data, uncompressedSize);
@@ -71,24 +79,34 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Compress raw bytes from an existing segment, preserving no-op chunks without copying.</summary>
         public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data)
+            => Compress(compression, data, McapWriterOptions.DefaultLz4CompressionLevel);
+
+        /// <summary>Compress raw bytes from an existing segment with an explicit LZ4 level.</summary>
+        public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level)
         {
+            var sourceArray = data.Array ?? Array.Empty<byte>();
+            var sourceOffset = data.Array == null ? 0 : data.Offset;
+            var sourceCount = data.Array == null ? 0 : data.Count;
+
             switch (compression)
             {
                 case "":
-                    return data;
+                    return data.Array == null
+                        ? new ArraySegment<byte>(Array.Empty<byte>())
+                        : data;
                 case "lz4":
                     using (var ms = new MemoryStream())
                     {
-                        using (var lz4 = LZ4Stream.Encode(ms, K4os.Compression.LZ4.LZ4Level.L12_MAX, leaveOpen: true))
-                            lz4.Write(data.Array, data.Offset, data.Count);
+                        using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
+                            lz4.Write(sourceArray, sourceOffset, sourceCount);
                         return new ArraySegment<byte>(ms.ToArray());
                     }
                 case "zstd":
                     using (var compressor = new Compressor())
                     {
-                        var copy = new byte[data.Count];
-                        if (data.Array != null && data.Count > 0)
-                            Buffer.BlockCopy(data.Array, data.Offset, copy, 0, data.Count);
+                        var copy = new byte[sourceCount];
+                        if (sourceCount > 0)
+                            Buffer.BlockCopy(sourceArray, sourceOffset, copy, 0, sourceCount);
                         return new ArraySegment<byte>(compressor.Wrap(copy).ToArray());
                     }
                 default:

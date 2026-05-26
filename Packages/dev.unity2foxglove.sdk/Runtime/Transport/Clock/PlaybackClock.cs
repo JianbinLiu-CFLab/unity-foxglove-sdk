@@ -11,6 +11,8 @@ namespace Unity.FoxgloveSDK.Transport
     /// <summary>
     /// IFoxgloveClock with playback control support (play/pause/seek/speed).
     /// Live mode by default. EnableRange() activates playback control.
+    /// This clock is not internally synchronized; runtime owners must serialize
+    /// Tick, Apply, and state reads through their playback-control lock.
     /// </summary>
     public class PlaybackClock : IFoxgloveClock
     {
@@ -58,6 +60,12 @@ namespace Unity.FoxgloveSDK.Transport
         public ulong StartNs => _startNs;
         /// <summary>The end of the playback range in nanoseconds.</summary>
         public ulong EndNs => _endNs;
+
+        /// <summary>Normalize invalid playback speeds to the protocol fallback speed.</summary>
+        internal static float NormalizeSpeed(float speed)
+        {
+            return speed > 0f && !float.IsNaN(speed) && !float.IsInfinity(speed) ? speed : 1f;
+        }
 
         /// <summary>
         /// Current time in nanoseconds. This property is a pure read.
@@ -136,7 +144,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (!_enabled) return;
 
-            _speed = speed > 0 ? speed : 1f;
+            _speed = NormalizeSpeed(speed);
 
             switch (command)
             {

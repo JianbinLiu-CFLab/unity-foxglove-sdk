@@ -20,6 +20,13 @@ namespace Unity.FoxgloveSDK.IO
         Error
     }
 
+    public enum RemoteMcapProblemSeverity
+    {
+        Info,
+        Warning,
+        Error
+    }
+
     /// <summary>Authorization decision supplied to the prototype manifest/data endpoints.</summary>
     public sealed class RemoteMcapAuthorizationResult
     {
@@ -195,22 +202,22 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Boundary-level problem surfaced by manifest or data operations.</summary>
     public sealed class RemoteMcapProblem
     {
-        public string Severity;
+        public RemoteMcapProblemSeverity Severity;
         public string Code;
         public string Message;
         public string Tip;
 
         public RemoteMcapProblem()
         {
-            Severity = string.Empty;
+            Severity = RemoteMcapProblemSeverity.Info;
             Code = string.Empty;
             Message = string.Empty;
             Tip = string.Empty;
         }
 
-        public RemoteMcapProblem(string severity, string code, string message, string tip = "")
+        public RemoteMcapProblem(RemoteMcapProblemSeverity severity, string code, string message, string tip = "")
         {
-            Severity = severity ?? string.Empty;
+            Severity = severity;
             Code = code ?? string.Empty;
             Message = message ?? string.Empty;
             Tip = tip ?? string.Empty;

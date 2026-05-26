@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         // Health counters
         private readonly DateTime _connectedAtUtc = DateTime.UtcNow;
+        private readonly long _connectedAtMs;
         private long _lastActivityMs;
         private long _sentFrames;
         private long _sentBytes;
@@ -55,7 +56,8 @@ namespace Unity.FoxgloveSDK.Transport
             _tcpClient = tcpClient;
             _stream = stream;
             _sendQueue = new WsSendQueue(maxQueuedFrames, maxQueuedBytes);
-            _lastActivityMs = MonotonicMilliseconds();
+            _connectedAtMs = MonotonicMilliseconds();
+            _lastActivityMs = _connectedAtMs;
         }
 
         public long DroppedDataFrames => _sendQueue.DroppedDataFramesSnapshot;
@@ -63,13 +65,12 @@ namespace Unity.FoxgloveSDK.Transport
         public TransportClientStats GetClientStats(uint clientId)
         {
             var snap = _sendQueue.GetSnapshot();
-            var nowTicks = DateTime.UtcNow.Ticks;
             var nowMs = MonotonicMilliseconds();
             return new TransportClientStats
             {
                 ClientId = clientId,
                 ConnectedAtUtc = _connectedAtUtc,
-                ConnectedDurationMs = (long)(new DateTime(nowTicks) - _connectedAtUtc).TotalMilliseconds,
+                ConnectedDurationMs = Math.Max(0L, nowMs - _connectedAtMs),
                 LastActivityAgeMs = nowMs - Interlocked.Read(ref _lastActivityMs),
                 QueuedFrames = snap.QueuedFrames,
                 QueuedControlFrames = snap.QueuedControlFrames,

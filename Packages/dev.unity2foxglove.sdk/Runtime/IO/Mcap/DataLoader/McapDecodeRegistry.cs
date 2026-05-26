@@ -17,12 +17,24 @@ namespace Unity.FoxgloveSDK.IO
     {
         private static readonly Lazy<List<IMcapMessageDecoderFactory>> BuiltInFactories =
             new Lazy<List<IMcapMessageDecoderFactory>>(BuildBuiltInFactories);
+        private static readonly object FactoryDiagnosticsGate = new object();
+        private static readonly List<string> FactoryDiagnostics = new List<string>();
 
         private readonly McapDecodeOptions _options;
         private readonly Dictionary<ushort, McapSchema> _schemas;
         private readonly Dictionary<ushort, McapChannel> _channels;
         private readonly List<IMcapMessageDecoderFactory> _factories;
         private readonly Dictionary<ushort, IMcapMessageDecoder> _decoderCache = new Dictionary<ushort, IMcapMessageDecoder>();
+
+        internal static IReadOnlyList<string> OptionalFactoryDiagnostics
+        {
+            get
+            {
+                _ = BuiltInFactories.Value;
+                lock (FactoryDiagnosticsGate)
+                    return new List<string>(FactoryDiagnostics);
+            }
+        }
 
         public McapDecodeRegistry(
             McapDecodeOptions options,
@@ -195,17 +207,44 @@ namespace Unity.FoxgloveSDK.IO
 
         private static IMcapMessageDecoderFactory TryCreateAssemblyFactory(string typeName)
         {
-            var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto", throwOnError: false);
-            if (type == null)
+            try
             {
-                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                for (var i = 0; i < assemblies.Length && type == null; i++)
-                    type = assemblies[i].GetType(typeName, throwOnError: false);
-            }
+                var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto", throwOnError: false);
+                if (type == null)
+                {
+                    var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                    for (var i = 0; i < assemblies.Length && type == null; i++)
+                        type = assemblies[i].GetType(typeName, throwOnError: false);
+                }
 
-            if (type == null || !typeof(IMcapMessageDecoderFactory).IsAssignableFrom(type))
+                if (type == null)
+                {
+                    AddFactoryDiagnostic(typeName + " was not found in loaded assemblies.");
+                    return null;
+                }
+
+                if (!typeof(IMcapMessageDecoderFactory).IsAssignableFrom(type))
+                {
+                    AddFactoryDiagnostic(typeName + " does not implement IMcapMessageDecoderFactory.");
+                    return null;
+                }
+
+                var factory = Activator.CreateInstance(type) as IMcapMessageDecoderFactory;
+                if (factory == null)
+                    AddFactoryDiagnostic(typeName + " could not be constructed as IMcapMessageDecoderFactory.");
+                return factory;
+            }
+            catch (Exception ex)
+            {
+                AddFactoryDiagnostic(typeName + " failed to load: " + ex.GetType().Name + ": " + ex.Message);
                 return null;
-            return Activator.CreateInstance(type) as IMcapMessageDecoderFactory;
+            }
+        }
+
+        private static void AddFactoryDiagnostic(string message)
+        {
+            lock (FactoryDiagnosticsGate)
+                FactoryDiagnostics.Add(message ?? string.Empty);
         }
 
         private bool TryDecodeRos2CdrDiagnosticFallback(
@@ -273,6 +312,8 @@ namespace Unity.FoxgloveSDK.IO
         public McapDecodedPayload Decode(McapDataLoaderMessage message)
         {
             var raw = message?.Data ?? new byte[0];
+            if (raw.Length == 0)
+                throw new InvalidDataException("JSON payload is empty.");
             var json = Encoding.UTF8.GetString(raw);
             var token = JToken.Parse(json);
             return new McapDecodedPayload

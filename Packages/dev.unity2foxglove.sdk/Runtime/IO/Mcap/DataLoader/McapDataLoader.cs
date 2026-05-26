@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.IO
@@ -25,6 +26,10 @@ namespace Unity.FoxgloveSDK.IO
         private Dictionary<ushort, McapChannel> _channelMap;
         private Dictionary<string, List<ushort>> _topicChannelMap;
         private HashSet<ushort> _knownChannelIds;
+        private bool _hasCachedDecodeRegistry;
+        private McapDecodeOptions _cachedDecodeOptions;
+        private int _cachedDecodeOptionsFingerprint;
+        private McapDecodeRegistry _cachedDecodeRegistry;
         private bool _disposed;
 
         /// <summary>Opens a local MCAP file and owns the file stream.</summary>
@@ -39,9 +44,9 @@ namespace Unity.FoxgloveSDK.IO
             if (path == null)
                 throw new ArgumentNullException(nameof(path));
 
-            _sourceLengthBytes = File.Exists(path) ? new FileInfo(path).Length : -1L;
             _sequentialReadLimits = sequentialReadLimits ?? McapSequentialReadLimits.Default;
             var stream = File.OpenRead(path);
+            _sourceLengthBytes = stream.CanSeek ? stream.Length : -1L;
             try
             {
                 _reader = new McapIndexedReader(stream, false, _sequentialReadLimits);
@@ -93,7 +98,11 @@ namespace Unity.FoxgloveSDK.IO
             return _initialization;
         }
 
-        /// <summary>Creates a deterministic log-time ordered iterator over matching raw messages.</summary>
+        /// <summary>
+        /// Creates a deterministic log-time ordered iterator over matching raw messages.
+        /// This is an eager snapshot API: matching messages are materialized before the
+        /// returned enumerable is exposed, not streamed lazily from the MCAP reader.
+        /// </summary>
         public IEnumerable<McapDataLoaderMessage> CreateIterator(McapDataLoaderQuery query)
         {
             ThrowIfDisposed();
@@ -111,6 +120,8 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Creates an opt-in decoded iterator over matching messages while
         /// preserving each raw MCAP payload as the source of truth.
+        /// Like <see cref="CreateIterator"/>, this materializes the raw result set
+        /// before returning the decoded enumerable.
         /// </summary>
         public IEnumerable<McapDecodedMessage> CreateDecodedIterator(
             McapDataLoaderQuery query,
@@ -137,7 +148,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             ThrowIfDisposed();
             Initialize();
-            return CreateDecodeRegistry(options).TryDecode(message, out decoded);
+            return GetDecodeRegistry(options).TryDecode(message, out decoded);
         }
 
         /// <summary>Gets the latest message per selected channel at or before the requested time.</summary>
@@ -169,6 +180,9 @@ namespace Unity.FoxgloveSDK.IO
                 return;
 
             _disposed = true;
+            _cachedDecodeRegistry = null;
+            _cachedDecodeOptions = null;
+            _hasCachedDecodeRegistry = false;
             _reader.Dispose();
         }
 
@@ -581,6 +595,42 @@ namespace Unity.FoxgloveSDK.IO
                 options ?? new McapDecodeOptions(),
                 _schemaMap,
                 _channelMap);
+        }
+
+        private McapDecodeRegistry GetDecodeRegistry(McapDecodeOptions options)
+        {
+            var fingerprint = ComputeDecodeOptionsFingerprint(options);
+            if (_hasCachedDecodeRegistry
+                && ReferenceEquals(_cachedDecodeOptions, options)
+                && _cachedDecodeOptionsFingerprint == fingerprint)
+                return _cachedDecodeRegistry;
+
+            _cachedDecodeRegistry = CreateDecodeRegistry(options);
+            _cachedDecodeOptions = options;
+            _cachedDecodeOptionsFingerprint = fingerprint;
+            _hasCachedDecodeRegistry = true;
+            return _cachedDecodeRegistry;
+        }
+
+        private static int ComputeDecodeOptionsFingerprint(McapDecodeOptions options)
+        {
+            if (options == null)
+                return 0;
+
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + (options.UseBuiltInDecoders ? 1 : 0);
+                hash = hash * 31 + (int)options.FailurePolicy;
+                var factories = options.DecoderFactories;
+                if (factories == null)
+                    return hash * 31;
+
+                hash = hash * 31 + factories.Count;
+                for (var i = 0; i < factories.Count; i++)
+                    hash = hash * 31 + (factories[i] == null ? 0 : RuntimeHelpers.GetHashCode(factories[i]));
+                return hash;
+            }
         }
 
         private static McapReadOptions ToReadOptions(McapDataLoaderQuery query)

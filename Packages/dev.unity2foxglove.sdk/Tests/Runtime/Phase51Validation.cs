@@ -425,7 +425,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("FlushMetadataSnapshotIfDirty"),
                 "51B-29: SessionGraphHandler separates websocket broadcast from MCAP metadata flush");
             var flush = ExtractMethodBody(source, "FlushMetadataSnapshotIfDirty");
-            Check(flush.Contains("if (!_dirty)") && flush.Contains("WriteMetadata") && flush.Contains("_dirty = false"),
+            Check(flush.Contains("Interlocked.CompareExchange(ref _dirty, 0, 1)")
+                  && flush.Contains("WriteMetadata")
+                  && flush.Contains("Volatile.Write(ref _dirty, 1)"),
                 "51B-30: graph metadata writes remain dirty-gated");
         }
 

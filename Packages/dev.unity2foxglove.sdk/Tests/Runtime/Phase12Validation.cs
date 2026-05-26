@@ -46,12 +46,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── Helpers ──
 
-        static void WriteRecord(Stream s, byte opcode, MemoryStream content)
+        static ulong WriteRecord(Stream s, byte opcode, MemoryStream content)
         {
             s.WriteByte(opcode);
             var data = content.ToArray();
             McapWriter.WriteU64(s, (ulong)data.Length);
             s.Write(data, 0, data.Length);
+            return 1UL + 8UL + (ulong)data.Length;
         }
 
         static MemoryStream BuildMinimalHeader(Stream ms)
@@ -149,7 +150,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteString(chunkData, "lz4");
             McapWriter.WriteU64(chunkData, (ulong)compressed.Length);
             chunkData.Write(compressed, 0, compressed.Length);
-            WriteRecord(ms, 0x06, chunkData);
+            var chunkRecordLength = WriteRecord(ms, 0x06, chunkData);
 
             // MessageIndex
             var mi = new MemoryStream();
@@ -157,7 +158,7 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU32(mi, 16); // 1 entry * 16 bytes
             McapWriter.WriteU64(mi, 1000); McapWriter.WriteU64(mi, 0);
             var miStart = (ulong)ms.Position;
-            WriteRecord(ms, 0x07, mi);
+            var messageIndexRecordLength = WriteRecord(ms, 0x07, mi);
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
             WriteRecord(ms, 0x0F, de);
@@ -177,9 +178,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var cix = new MemoryStream();
             McapWriter.WriteU64(cix, 1000); McapWriter.WriteU64(cix, 2000);
-            McapWriter.WriteU64(cix, chunkOff); McapWriter.WriteU64(cix, (ulong)chunkData.Length);
+            McapWriter.WriteU64(cix, chunkOff); McapWriter.WriteU64(cix, chunkRecordLength);
             McapWriter.WriteU32(cix, 10); McapWriter.WriteU16(cix, 1); McapWriter.WriteU64(cix, miStart);
-            McapWriter.WriteU64(cix, (ulong)mi.Length);
+            McapWriter.WriteU64(cix, messageIndexRecordLength);
             McapWriter.WriteString(cix, "lz4");
             McapWriter.WriteU64(cix, (ulong)compressed.Length);
             McapWriter.WriteU64(cix, (ulong)raw.Length);
@@ -395,14 +396,14 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteString(chunkData, "");
             McapWriter.WriteU64(chunkData, (ulong)chunkMs.Length);
             chunkMs.Position = 0; chunkMs.CopyTo(chunkData);
-            WriteRecord(ms, 0x06, chunkData);
+            var chunkRecordLength = WriteRecord(ms, 0x06, chunkData);
 
             var mi = new MemoryStream();
             McapWriter.WriteU16(mi, cid);
             McapWriter.WriteU32(mi, 16);
             McapWriter.WriteU64(mi, 5000); McapWriter.WriteU64(mi, 0);
             var miStart = (ulong)ms.Position;
-            WriteRecord(ms, 0x07, mi);
+            var messageIndexRecordLength = WriteRecord(ms, 0x07, mi);
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
             WriteRecord(ms, 0x0F, de);
@@ -421,9 +422,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var cix = new MemoryStream();
             McapWriter.WriteU64(cix, 5000); McapWriter.WriteU64(cix, 5000);
-            McapWriter.WriteU64(cix, chunkOff); McapWriter.WriteU64(cix, (ulong)chunkData.Length);
+            McapWriter.WriteU64(cix, chunkOff); McapWriter.WriteU64(cix, chunkRecordLength);
             McapWriter.WriteU32(cix, 10); McapWriter.WriteU16(cix, cid); McapWriter.WriteU64(cix, miStart);
-            McapWriter.WriteU64(cix, (ulong)mi.Length);
+            McapWriter.WriteU64(cix, messageIndexRecordLength);
             McapWriter.WriteString(cix, "");
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);

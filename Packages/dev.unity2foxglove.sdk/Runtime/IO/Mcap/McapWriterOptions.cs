@@ -6,6 +6,7 @@
 // conformance tooling.
 
 using System;
+using K4os.Compression.LZ4;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -32,15 +33,26 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>
     /// Advanced MCAP writer options aligned with the core official writer
     /// knobs. Unity's Inspector recording path keeps using default values.
+    /// Instances are mutable DTOs; recorder entry points call
+    /// <see cref="Normalize"/> and keep a defensive copy.
     /// </summary>
     public sealed class McapWriterOptions
     {
         /// <summary>Default chunk size in bytes (1 MiB).</summary>
         public const int DefaultChunkSizeBytes = 1024 * 1024;
+        /// <summary>Maximum accepted chunk size in bytes (64 MiB) after option normalization.</summary>
+        public const int MaxChunkSizeBytes = 64 * 1024 * 1024;
+        /// <summary>Default LZ4 level chosen for realtime recording throughput.</summary>
+        public const LZ4Level DefaultLz4CompressionLevel = LZ4Level.L00_FAST;
         /// <summary>Maximum uncompressed chunk payload size in bytes.</summary>
         public int ChunkSizeBytes = DefaultChunkSizeBytes;
         /// <summary>Chunk compression algorithm: empty, "lz4", or "zstd".</summary>
         public string Compression = "";
+        /// <summary>
+        /// LZ4 compression level used when <see cref="Compression"/> is <c>"lz4"</c>.
+        /// The default favors realtime recording throughput over maximum ratio.
+        /// </summary>
+        public LZ4Level Lz4CompressionLevel = DefaultLz4CompressionLevel;
         /// <summary>Write messages into Chunk records when true, or directly into the data section when false.</summary>
         public bool UseChunking = true;
         /// <summary>Index groups to emit. Message and Chunk indexes only apply when chunking is enabled.</summary>
@@ -55,7 +67,11 @@ namespace Unity.FoxgloveSDK.IO
         public bool UseSummaryOffsets = true;
         /// <summary>Compute chunk, attachment, and summary CRC fields.</summary>
         public bool EnableCrcs = true;
-        /// <summary>Compute DataEnd.data_section_crc. Defaults off for the historical Unity recording layout.</summary>
+        /// <summary>
+        /// Compute DataEnd.data_section_crc. Defaults off for the historical
+        /// Unity recording layout. When enabled, close performs a synchronous
+        /// seek-and-read CRC pass over all bytes written so far.
+        /// </summary>
         public bool EnableDataCrcs = false;
 
         /// <summary>
@@ -69,6 +85,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 copy.ChunkSizeBytes = source.ChunkSizeBytes;
                 copy.Compression = source.Compression;
+                copy.Lz4CompressionLevel = source.Lz4CompressionLevel;
                 copy.UseChunking = source.UseChunking;
                 copy.IndexTypes = source.IndexTypes;
                 copy.RepeatChannels = source.RepeatChannels;
@@ -80,7 +97,7 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             copy.ChunkSizeBytes = copy.ChunkSizeBytes > 0
-                ? copy.ChunkSizeBytes
+                ? Math.Min(copy.ChunkSizeBytes, MaxChunkSizeBytes)
                 : DefaultChunkSizeBytes;
             copy.Compression = copy.Compression ?? "";
             switch (copy.Compression)

@@ -28,11 +28,14 @@ namespace Unity.FoxgloveSDK.Transport
         private const int MaxCertificateFileBytes = 1024 * 1024;
         /// <summary>Maximum HTTP request-line length accepted by the tiny local distributor.</summary>
         private const int MaxRequestLineBytes = 4096;
+        /// <summary>Maximum HTTP headers accepted before the local distributor rejects the request.</summary>
+        private const int MaxRequestHeaders = 100;
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
         private readonly IFoxgloveLogger _logger;
         private TcpListener _listener;
         private CancellationTokenSource _cts;
+        private string _rootCaSha256Fingerprint;
 
         public FoxgloveCertificateDistributor(string rootCaPath, string rootCaPemPath = null, IFoxgloveLogger logger = null)
         {
@@ -45,7 +48,8 @@ namespace Unity.FoxgloveSDK.Transport
         public bool IsRunning => _listener != null;
 
         /// <summary>SHA-256 fingerprint of the configured root CA file.</summary>
-        public string RootCaSha256Fingerprint => ComputeSha256Fingerprint(_rootCaPath);
+        public string RootCaSha256Fingerprint =>
+            _rootCaSha256Fingerprint ??= ComputeSha256Fingerprint(_rootCaPath);
 
         /// <summary>Start serving the configured root CA file.</summary>
         public void Start(string host, int port)
@@ -56,7 +60,8 @@ namespace Unity.FoxgloveSDK.Transport
             if (string.IsNullOrWhiteSpace(_rootCaPath) || !File.Exists(_rootCaPath))
                 throw new InvalidOperationException("Root CA file is required for certificate distribution.");
 
-            var address = ResolveBindAddress(host);
+            _rootCaSha256Fingerprint = ComputeSha256Fingerprint(_rootCaPath);
+            var address = TransportHostResolver.ResolveBindAddress(host);
             _listener = new TcpListener(address, port);
             _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _cts = new CancellationTokenSource();
@@ -213,30 +218,18 @@ namespace Unity.FoxgloveSDK.Transport
             stream.Write(header, 0, header.Length);
         }
 
-        /// <summary>Resolve the configured bind host without using DNS for loopback aliases.</summary>
-        private static IPAddress ResolveBindAddress(string host)
-        {
-            if (string.IsNullOrWhiteSpace(host) ||
-                string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(host, "127.0.0.1", StringComparison.Ordinal))
-                return IPAddress.Loopback;
-
-            if (string.Equals(host, "0.0.0.0", StringComparison.Ordinal))
-                return IPAddress.Any;
-
-            if (string.Equals(host, "::", StringComparison.Ordinal))
-                return IPAddress.IPv6Any;
-
-            return IPAddress.Parse(host);
-        }
-
         private static void DrainHeaders(Stream stream)
         {
+            var headerCount = 0;
             while (true)
             {
                 var line = ReadLine(stream, MaxRequestLineBytes);
                 if (string.IsNullOrEmpty(line))
                     return;
+
+                headerCount++;
+                if (headerCount > MaxRequestHeaders)
+                    throw new InvalidDataException("HTTP request contains too many headers.");
             }
         }
 

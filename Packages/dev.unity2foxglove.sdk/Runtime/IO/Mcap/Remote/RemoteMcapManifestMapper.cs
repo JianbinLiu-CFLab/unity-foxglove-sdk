@@ -98,10 +98,23 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
 
                 source.Problems.Add(new RemoteMcapProblem(
-                    problem.Severity.ToString(),
+                    ToRemoteSeverity(problem.Severity),
                     problem.Code,
                     problem.Message,
                     problem.Tip));
+            }
+        }
+
+        private static RemoteMcapProblemSeverity ToRemoteSeverity(McapDataLoaderProblemSeverity severity)
+        {
+            switch (severity)
+            {
+                case McapDataLoaderProblemSeverity.Error:
+                    return RemoteMcapProblemSeverity.Error;
+                case McapDataLoaderProblemSeverity.Warning:
+                    return RemoteMcapProblemSeverity.Warning;
+                default:
+                    return RemoteMcapProblemSeverity.Info;
             }
         }
 

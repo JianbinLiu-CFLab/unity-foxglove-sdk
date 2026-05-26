@@ -48,6 +48,10 @@ namespace Unity.FoxgloveSDK.Util
             long currentDropCount,
             double currentCooldownUntilSec)
         {
+            var effectiveCooldown = cooldownSec > 0 ? cooldownSec : 0;
+            var normalizedCurrentDropCount = currentDropCount > 0 ? currentDropCount : 0;
+            var normalizedPreviousDropCount = previousDropCount > 0 ? previousDropCount : 0;
+
             if (!enabled)
             {
                 return new CameraBackpressureResult
@@ -55,13 +59,12 @@ namespace Unity.FoxgloveSDK.Util
                     AllowCapture = true,
                     SkippedByCooldown = false,
                     PressureObserved = false,
-                    NextDropCount = previousDropCount,
+                    NextDropCount = normalizedCurrentDropCount,
                     NextCooldownUntilSec = currentCooldownUntilSec
                 };
             }
 
-            var effectiveCooldown = cooldownSec > 0 ? cooldownSec : 0;
-            var dropIncreased = currentDropCount > previousDropCount;
+            var dropIncreased = normalizedCurrentDropCount > normalizedPreviousDropCount;
 
             if (dropIncreased)
             {
@@ -71,7 +74,7 @@ namespace Unity.FoxgloveSDK.Util
                     AllowCapture = effectiveCooldown <= 0,
                     SkippedByCooldown = effectiveCooldown > 0,
                     PressureObserved = true,
-                    NextDropCount = currentDropCount,
+                    NextDropCount = normalizedCurrentDropCount,
                     NextCooldownUntilSec = nextUntil
                 };
             }
@@ -83,7 +86,7 @@ namespace Unity.FoxgloveSDK.Util
                     AllowCapture = false,
                     SkippedByCooldown = true,
                     PressureObserved = false,
-                    NextDropCount = previousDropCount,
+                    NextDropCount = normalizedCurrentDropCount,
                     NextCooldownUntilSec = currentCooldownUntilSec
                 };
             }
@@ -93,7 +96,7 @@ namespace Unity.FoxgloveSDK.Util
                 AllowCapture = true,
                 SkippedByCooldown = false,
                 PressureObserved = false,
-                NextDropCount = previousDropCount,
+                NextDropCount = normalizedCurrentDropCount,
                 NextCooldownUntilSec = currentTimeSec
             };
         }

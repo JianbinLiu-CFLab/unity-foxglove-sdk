@@ -5,6 +5,7 @@
 // Purpose: Foxglove visual schema DTOs — FrameTransform, SceneUpdate,
 // and related geometry types for 3D visualization.
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -14,19 +15,57 @@ namespace Unity.FoxgloveSDK.Schemas
     /// <summary>Foxglove time: { sec, nsec }.</summary>
     public class FoxgloveTime
     {
+        private uint _nsec;
+
         /// <summary>Whole seconds.</summary>
         [JsonProperty("sec")] public ulong Sec { get; set; }
-        /// <summary>Nanoseconds fraction (0-999999999).</summary>
-        [JsonProperty("nsec")] public uint Nsec { get; set; }
+        /// <summary>Nanoseconds fraction. Values above one second are normalized into <see cref="Sec"/>.</summary>
+        [JsonProperty("nsec")]
+        public uint Nsec
+        {
+            get => _nsec;
+            set
+            {
+                var carry = value / 1_000_000_000U;
+                if (carry != 0)
+                {
+                    if (Sec > ulong.MaxValue - carry)
+                        throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
+
+                    Sec += carry;
+                }
+
+                _nsec = value % 1_000_000_000U;
+            }
+        }
     }
 
     /// <summary>Foxglove duration: { sec, nsec }.</summary>
     public class FoxgloveDuration
     {
+        private uint _nsec;
+
         /// <summary>Whole seconds.</summary>
         [JsonProperty("sec")] public long Sec { get; set; }
-        /// <summary>Nanoseconds fraction (0-999999999).</summary>
-        [JsonProperty("nsec")] public uint Nsec { get; set; }
+        /// <summary>Nanoseconds fraction. Values above one second are normalized into <see cref="Sec"/>.</summary>
+        [JsonProperty("nsec")]
+        public uint Nsec
+        {
+            get => _nsec;
+            set
+            {
+                var carry = value / 1_000_000_000U;
+                if (carry != 0)
+                {
+                    if (Sec > long.MaxValue - carry)
+                        throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow duration seconds.");
+
+                    Sec += carry;
+                }
+
+                _nsec = value % 1_000_000_000U;
+            }
+        }
     }
 
     /// <summary>3D vector.</summary>

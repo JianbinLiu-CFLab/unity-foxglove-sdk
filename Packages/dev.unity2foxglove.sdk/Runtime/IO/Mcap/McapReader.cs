@@ -17,7 +17,9 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>
     /// Low-level MCAP binary reader. Verifies magic bytes, locates the
     /// footer and summary sections, iterates records within chunks, and
-    /// delegates chunk decompression to <see cref="McapCompression"/>.
+    /// delegates chunk decompression to <see cref="McapCompression"/>. This
+    /// reader borrows the supplied stream; callers retain ownership and are
+    /// responsible for disposing the stream.
     /// </summary>
     public class McapReader
     {
@@ -32,6 +34,9 @@ namespace Unity.FoxgloveSDK.IO
         /// Default maximum decompressed size for a single MCAP chunk, set to 64 MiB.
         /// </summary>
         public const ulong DefaultChunkUncompressedSizeLimit = 64UL * 1024 * 1024;
+        private const int MessageFixedHeaderLength =
+            sizeof(ushort) + sizeof(uint) + sizeof(ulong) + sizeof(ulong);
+        private const int U16U64PairSize = sizeof(ushort) + sizeof(ulong);
 
         public McapReader(Stream stream)
         {
@@ -41,7 +46,10 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Reads the MCAP file header, footer, and summary section, returning a parsed McapFileSummary.
         /// </summary>
-        public McapFileSummary ReadSummary(ulong recordSizeLimit = DefaultRecordSizeLimit)
+        public McapFileSummary ReadSummary(
+            ulong recordSizeLimit = DefaultRecordSizeLimit,
+            bool validateCrcs = true,
+            ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
         {
             const int minFileBytes =
                 McapWriter.MagicLength + McapWriter.RecordHeaderLength +
@@ -84,7 +92,8 @@ namespace Unity.FoxgloveSDK.IO
                     collectInventory: true,
                     collectMessages: false,
                     sequentialLimits: null,
-                    validateCrcs: true);
+                    validateCrcs: validateCrcs,
+                    chunkUncompressedSizeLimit: chunkUncompressedSizeLimit);
             if (footer.SummaryStart > footerOffset)
                 throw new InvalidDataException("Footer summary_start is past the footer record");
             if (footer.SummaryOffsetStart != 0 &&
@@ -180,7 +189,8 @@ namespace Unity.FoxgloveSDK.IO
             ulong dataSectionEndOffset,
             ulong recordSizeLimit = DefaultRecordSizeLimit,
             McapSequentialReadLimits sequentialLimits = null,
-            bool validateCrcs = true)
+            bool validateCrcs = true,
+            ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
         {
             return ScanDataSection(
                 dataSectionEndOffset,
@@ -188,7 +198,8 @@ namespace Unity.FoxgloveSDK.IO
                 collectInventory: false,
                 collectMessages: true,
                 sequentialLimits: sequentialLimits,
-                validateCrcs: validateCrcs).SequentialMessages ?? new List<McapMessage>();
+                validateCrcs: validateCrcs,
+                chunkUncompressedSizeLimit: chunkUncompressedSizeLimit).SequentialMessages ?? new List<McapMessage>();
         }
 
         /// <summary>
@@ -222,7 +233,13 @@ namespace Unity.FoxgloveSDK.IO
             ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
         {
             _stream.Seek((long)chunkStartOffset, SeekOrigin.Begin);
+            var recordStart = _stream.Position;
             var (opcode, content) = ReadOneRecord();
+            var recordEnd = _stream.Position;
+            var actualChunkLength = (ulong)(recordEnd - recordStart);
+            if (chunkLength != 0 && actualChunkLength != chunkLength)
+                throw new InvalidDataException(
+                    $"Chunk record at offset {chunkStartOffset} has length {actualChunkLength}, expected {chunkLength}.");
             if (opcode != McapWriter.OpcodeChunk)
                 throw new InvalidDataException($"Expected Chunk (0x06) at offset {chunkStartOffset}, got 0x{opcode:X2}");
 
@@ -278,7 +295,8 @@ namespace Unity.FoxgloveSDK.IO
             bool collectInventory,
             bool collectMessages,
             McapSequentialReadLimits sequentialLimits,
-            bool validateCrcs)
+            bool validateCrcs,
+            ulong chunkUncompressedSizeLimit)
         {
             if (collectMessages)
             {
@@ -321,8 +339,7 @@ namespace Unity.FoxgloveSDK.IO
                 switch (opcode)
                 {
                     case McapWriter.OpcodeHeader:
-                        DecodeHeader(content);
-                        break;
+                        throw new InvalidDataException("MCAP Header record appeared after the first data-section record.");
                     case McapWriter.OpcodeSchema:
                         if (collectInventory)
                             AddSchema(summary.Schemas, DecodeSchema(content));
@@ -359,7 +376,7 @@ namespace Unity.FoxgloveSDK.IO
                         var records = DecodeChunkRecordsContent(
                             content,
                             out var crcValid,
-                            DefaultChunkUncompressedSizeLimit);
+                            chunkUncompressedSizeLimit);
                         if (!crcValid && validateCrcs)
                             throw new InvalidDataException("MCAP chunk CRC mismatch.");
                         ScanChunkRecords(
@@ -766,12 +783,13 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapMessage DecodeMessage(byte[] buf, int off, int contentLen)
         {
-            var start = off;
+            var end = ValidateRecordSegment(buf, off, contentLen, "message");
+            EnsureSegmentBytes(off, MessageFixedHeaderLength, end, "message fixed header");
             var channelId = McapBinaryReader.ReadU16LE(buf, ref off);
             var sequence = McapBinaryReader.ReadU32LE(buf, ref off);
             var logTime = McapBinaryReader.ReadU64LE(buf, ref off);
             var publishTime = McapBinaryReader.ReadU64LE(buf, ref off);
-            var dataLen = contentLen - (off - start);
+            var dataLen = end - off;
             var data = new byte[dataLen];
             if (dataLen > 0)
                 Buffer.BlockCopy(buf, off, data, 0, dataLen);
@@ -787,13 +805,12 @@ namespace Unity.FoxgloveSDK.IO
 
         private static McapMessage DecodeMessageHeader(byte[] buf, int off, int contentLen)
         {
-            var start = off;
+            var end = ValidateRecordSegment(buf, off, contentLen, "message");
+            EnsureSegmentBytes(off, MessageFixedHeaderLength, end, "message fixed header");
             var channelId = McapBinaryReader.ReadU16LE(buf, ref off);
             var sequence = McapBinaryReader.ReadU32LE(buf, ref off);
             var logTime = McapBinaryReader.ReadU64LE(buf, ref off);
             var publishTime = McapBinaryReader.ReadU64LE(buf, ref off);
-            if (contentLen < off - start)
-                throw new InvalidDataException("MCAP message content is truncated.");
             return new McapMessage
             {
                 ChannelId = channelId,
@@ -802,6 +819,13 @@ namespace Unity.FoxgloveSDK.IO
                 PublishTime = publishTime,
                 Data = Array.Empty<byte>()
             };
+        }
+
+        private static void ValidateSizedU16U64VectorLength(uint sizeBytes, string fieldName)
+        {
+            if (sizeBytes % U16U64PairSize != 0)
+                throw new InvalidDataException(
+                    "MCAP " + fieldName + " byte length must be a multiple of " + U16U64PairSize + ".");
         }
 
         /// <summary>
@@ -818,7 +842,8 @@ namespace Unity.FoxgloveSDK.IO
                 ChunkLength = McapBinaryReader.ReadU64LE(content, ref off)
             };
             var mioSize = McapBinaryReader.ReadU32LE(content, ref off);
-            var mioCount = mioSize / 10;
+            ValidateSizedU16U64VectorLength(mioSize, "message_index_offsets");
+            var mioCount = mioSize / U16U64PairSize;
             for (var i = 0; i < mioCount; i++)
             {
                 var cid = McapBinaryReader.ReadU16LE(content, ref off);
@@ -850,7 +875,8 @@ namespace Unity.FoxgloveSDK.IO
                 MessageEndTime = McapBinaryReader.ReadU64LE(content, ref off)
             };
             var cmsSize = McapBinaryReader.ReadU32LE(content, ref off);
-            var cmsCount = cmsSize / 10;
+            ValidateSizedU16U64VectorLength(cmsSize, "channel_message_counts");
+            var cmsCount = cmsSize / U16U64PairSize;
             for (var i = 0; i < cmsCount; i++)
             {
                 var cid = McapBinaryReader.ReadU16LE(content, ref off);
@@ -879,17 +905,11 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapMetadata DecodeMetadata(byte[] content)
         {
+            var end = ValidateRecordSegment(content, 0, content?.Length ?? 0, "metadata");
             var off = 0;
-            var name = McapBinaryReader.ReadString(content, ref off);
-            var mapSize = McapBinaryReader.ReadU32LE(content, ref off);
-            var mapEnd = off + (int)mapSize;
-            var meta = new Dictionary<string, string>();
-            while (off < mapEnd)
-            {
-                var k = McapBinaryReader.ReadString(content, ref off);
-                var v = McapBinaryReader.ReadString(content, ref off);
-                meta[k] = v;
-            }
+            var name = ReadString(content, ref off, end, "metadata name");
+            var meta = ReadMap(content, ref off, end, "metadata");
+            RequireExactSegmentEnd(off, end, "metadata");
             return new McapMetadata { Name = name, Metadata = meta };
         }
 

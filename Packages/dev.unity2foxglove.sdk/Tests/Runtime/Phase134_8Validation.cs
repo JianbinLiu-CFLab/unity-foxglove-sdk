@@ -26,6 +26,12 @@ namespace Unity.FoxgloveSDK.Tests
             OversizedStringLengthPrefixesThrowInvalidDataException();
             OversizedPrefixedByteLengthsThrowInvalidDataException();
             OversizedMapLengthsThrowInvalidDataException();
+            MapReaderDoesNotEscapeDeclaredMapBounds();
+            NonSeekableRecorderStreamFailsBeforeWriting();
+            CompressionRejectsNullCompressedPayloads();
+            WriterOptionsNormalizeUpperBoundsAndLz4Policy();
+            InvalidProtobufSchemaDoesNotAllocateSchemaOrChannel();
+            AttachmentCrcValidityIsReaderOwned();
 
             Console.WriteLine($"Phase 134-8: {_passed} checks passed.");
         }
@@ -92,6 +98,69 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        private static void MapReaderDoesNotEscapeDeclaredMapBounds()
+        {
+            var body = new List<byte>();
+            body.AddRange(BuildPrefixed(Encoding.UTF8.GetBytes("k")));
+            body.AddRange(BuildPrefixed(Encoding.UTF8.GetBytes("v")));
+            var buffer = new byte[4 + body.Count];
+            WriteU32LE(buffer, 0, 5);
+            Buffer.BlockCopy(body.ToArray(), 0, buffer, 4, body.Count);
+            var offset = 0;
+            Check(ThrowsInvalidData(() => McapBinaryReader.ReadMap(buffer, ref offset)),
+                "134-8E: map key/value reads cannot consume bytes outside declared map length");
+        }
+
+        private static void NonSeekableRecorderStreamFailsBeforeWriting()
+        {
+            var stream = new NonSeekableMemoryStream();
+            Check(Throws<NotSupportedException>(() => new McapRecorder(stream)),
+                "134-8F-1: recorder rejects non-seekable streams before writing header bytes");
+            Check(stream.Length == 0,
+                "134-8F-2: rejected non-seekable stream remains untouched");
+        }
+
+        private static void CompressionRejectsNullCompressedPayloads()
+        {
+            Check(ThrowsInvalidData(() => McapCompression.Decompress("lz4", null, 0)),
+                "134-8G-1: lz4 decompression rejects null compressed data");
+            Check(ThrowsInvalidData(() => McapCompression.Decompress("zstd", null, 0)),
+                "134-8G-2: zstd decompression rejects null compressed data");
+        }
+
+        private static void WriterOptionsNormalizeUpperBoundsAndLz4Policy()
+        {
+            var oversized = McapWriterOptions.Normalize(new McapWriterOptions { ChunkSizeBytes = int.MaxValue });
+            Check(oversized.ChunkSizeBytes == McapWriterOptions.MaxChunkSizeBytes,
+                "134-8H-1: writer options clamp oversized chunk size");
+            var defaults = McapWriterOptions.Normalize(null);
+            Check(defaults.Lz4CompressionLevel == McapWriterOptions.DefaultLz4CompressionLevel,
+                "134-8H-2: writer options expose explicit default lz4 compression policy");
+        }
+
+        private static void InvalidProtobufSchemaDoesNotAllocateSchemaOrChannel()
+        {
+            using var ms = new MemoryStream();
+            using (var recorder = new McapRecorder(ms))
+            {
+                recorder.AddChannel(1, "/bad", "protobuf", "Bad", "protobuf", "not valid base64");
+                recorder.WriteMessage(1, 0, new byte[] { 1 });
+                recorder.Close();
+            }
+
+            ms.Position = 0;
+            var summary = new McapReader(ms).ReadSummary();
+            Check(summary.Schemas.Count == 0 && summary.Channels.Count == 0,
+                "134-8I: invalid protobuf schema content fails before allocating schema/channel ids");
+        }
+
+        private static void AttachmentCrcValidityIsReaderOwned()
+        {
+            var property = typeof(McapAttachment).GetProperty(nameof(McapAttachment.CrcValid));
+            Check(property != null && property.SetMethod != null && property.SetMethod.IsAssembly,
+                "134-8J: attachment CRC validity is mutable only inside the runtime assembly");
+        }
+
         private static IEnumerable<uint> BadLengths()
         {
             yield return int.MaxValue;
@@ -136,6 +205,19 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        private static bool Throws<T>(Action action) where T : Exception
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (T)
+            {
+                return true;
+            }
+        }
+
         private static void Check(bool condition, string label)
         {
             if (!condition)
@@ -143,6 +225,18 @@ namespace Unity.FoxgloveSDK.Tests
 
             _passed++;
             Console.WriteLine("[PASS] " + label);
+        }
+
+        private sealed class NonSeekableMemoryStream : MemoryStream
+        {
+            public override bool CanSeek => false;
+            public override long Position
+            {
+                get => base.Position;
+                set => throw new NotSupportedException();
+            }
+
+            public override long Seek(long offset, SeekOrigin loc) => throw new NotSupportedException();
         }
     }
 }

@@ -86,6 +86,16 @@ namespace Unity.FoxgloveSDK.IO
             Payload.Kind != McapDecodedPayloadKind.Unsupported &&
             Payload.Kind != McapDecodedPayloadKind.Failed &&
             Problems.Count == 0;
+
+        /// <summary>
+        /// True when a higher-level payload is available even if warnings were attached,
+        /// such as a diagnostic fallback after a typed decoder failure.
+        /// </summary>
+        public bool HasDecodedPayload =>
+            Payload != null &&
+            Payload.Kind != McapDecodedPayloadKind.Raw &&
+            Payload.Kind != McapDecodedPayloadKind.Unsupported &&
+            Payload.Kind != McapDecodedPayloadKind.Failed;
     }
 
     /// <summary>Decoded payload container. <see cref="RawData"/> always preserves the original payload bytes.</summary>

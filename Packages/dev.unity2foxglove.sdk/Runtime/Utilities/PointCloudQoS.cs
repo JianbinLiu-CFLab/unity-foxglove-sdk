@@ -69,6 +69,9 @@ namespace Unity.FoxgloveSDK.Util
 
         /// <summary>
         /// Computes the point count allowed by point and packed-data byte budgets.
+        /// A non-positive <paramref name="maxPoints"/> keeps the historical "at
+        /// least one point" behavior; use <paramref name="maxPackedBytes"/> to
+        /// force zero points when the packed byte budget cannot fit one point.
         /// </summary>
         public static int ComputeEffectivePointBudget(
             int pointCount,
@@ -147,7 +150,7 @@ namespace Unity.FoxgloveSDK.Util
                 return Array.Empty<int>();
 
             if (voxelSizeMeters <= 0f)
-                return BuildUniformSampleIndices(frame.Points.Count, frame.Points.Count);
+                return BuildNonNullPointIndices(frame);
 
             var seen = new HashSet<VoxelKey>();
             var indices = new List<int>();
@@ -155,10 +158,7 @@ namespace Unity.FoxgloveSDK.Util
             {
                 var point = frame.Points[i];
                 if (point == null)
-                {
-                    indices.Add(i);
                     continue;
-                }
 
                 var key = VoxelKey.From(point, voxelSizeMeters);
                 if (seen.Add(key))
@@ -166,6 +166,18 @@ namespace Unity.FoxgloveSDK.Util
             }
 
             return indices.ToArray();
+        }
+
+        private static int[] BuildNonNullPointIndices(PointCloudFrame frame)
+        {
+            var indices = new List<int>();
+            for (var i = 0; i < frame.Points.Count; i++)
+            {
+                if (frame.Points[i] != null)
+                    indices.Add(i);
+            }
+
+            return indices.Count == 0 ? Array.Empty<int>() : indices.ToArray();
         }
 
         private readonly struct VoxelKey : IEquatable<VoxelKey>

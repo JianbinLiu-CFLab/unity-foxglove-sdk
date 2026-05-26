@@ -27,6 +27,8 @@ namespace Unity.FoxgloveSDK.Util
 
         /// <summary>
         /// Returns true when one publish is due at <paramref name="nowSec"/>.
+        /// The first call for a topic, and any rate change, publishes
+        /// immediately and schedules the next due time at one interval later.
         /// Missed intervals advance the schedule without producing bursts.
         /// </summary>
         public static bool ShouldPublish(

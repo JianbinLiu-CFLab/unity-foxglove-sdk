@@ -29,20 +29,17 @@ namespace Unity.FoxgloveSDK.IO
         public long Position => _stream.Position;
         /// <summary>Whether the underlying stream supports seeking.</summary>
         public bool CanSeek => _stream.CanSeek;
-        /// <summary>MCAP magic bytes: <c>{ 0x89, M, C, A, P, 0x30, 0x0D, 0x0A }</c>.</summary>
-        private static readonly byte[] MagicBytes = { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P', 0x30, 0x0D, 0x0A };
-
         /// <summary>
         /// MCAP magic bytes. Returns a defensive copy so callers cannot mutate
         /// the process-wide writer/reader constant.
         /// </summary>
-        public static byte[] Magic => (byte[])MagicBytes.Clone();
+        public static byte[] Magic => McapConstants.MagicCopy();
 
         /// <summary>Internal non-allocating view of the immutable magic bytes.</summary>
-        internal static ReadOnlySpan<byte> MagicSpan => MagicBytes;
+        internal static ReadOnlySpan<byte> MagicSpan => McapConstants.MagicSpan;
 
         /// <summary>Length of the MCAP magic prefix/suffix in bytes.</summary>
-        internal const int MagicLength = 8;
+        internal const int MagicLength = McapConstants.MagicLength;
         /// <summary>Length of an MCAP record header: opcode byte plus uint64 content length.</summary>
         internal const int RecordHeaderLength = 1 + 8;
         /// <summary>Length of the Footer record content: summary_start, summary_offset_start, summary_crc.</summary>
@@ -73,7 +70,7 @@ namespace Unity.FoxgloveSDK.IO
         public McapWriter(Stream stream, bool leaveOpen = false) { _stream = stream; _leaveOpen = leaveOpen; }
 
         /// <summary>Write the MCAP magic bytes at the start of the file.</summary>
-        public void WriteMagic() => _stream.Write(MagicBytes, 0, MagicBytes.Length);
+        public void WriteMagic() => _stream.Write(McapConstants.MagicBytes, 0, McapConstants.MagicBytes.Length);
 
         /// <summary>Write a raw MCAP record: 1-byte opcode, 8-byte LE length prefix, then the content payload.</summary>
         public void WriteRecord(byte opcode, byte[] content)
@@ -334,11 +331,29 @@ namespace Unity.FoxgloveSDK.IO
             if (_disposed)
                 return;
 
-            _disposed = true;
-            _stream.Flush();
-            _recordBuffer.Dispose();
-            if (!_leaveOpen)
-                _stream.Dispose();
+            try
+            {
+                _stream.Flush();
+            }
+            finally
+            {
+                try
+                {
+                    _recordBuffer.Dispose();
+                }
+                finally
+                {
+                    try
+                    {
+                        if (!_leaveOpen)
+                            _stream.Dispose();
+                    }
+                    finally
+                    {
+                        _disposed = true;
+                    }
+                }
+            }
         }
 
         // Static helpers used by recorder, reader, and tests.
