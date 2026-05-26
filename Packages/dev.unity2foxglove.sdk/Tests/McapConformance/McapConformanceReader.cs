@@ -34,36 +34,24 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
 
         public static IndexedReadResult ReadIndexed(string filePath)
         {
+            var result = new IndexedReadResult();
             using (var indexed = McapIndexedReader.OpenRead(filePath, McapSequentialReadLimits.UnlimitedForTests))
             {
-                indexed.ReadMessages(new McapReadOptions { AllowLinearFallback = false, ValidateCrcs = true });
-            }
+                for (var i = 0; i < indexed.Summary.Schemas.Count; i++)
+                    result.Schemas.Add(ToRecord(indexed.Summary.Schemas[i]));
+                for (var i = 0; i < indexed.Summary.Channels.Count; i++)
+                    result.Channels.Add(ToRecord(indexed.Summary.Channels[i]));
+                if (indexed.Summary.Statistics != null)
+                    result.Statistics.Add(ToRecord(indexed.Summary.Statistics));
 
-            var streamed = ReadStreamed(filePath);
-            var result = new IndexedReadResult();
-            var schemaIds = new HashSet<string>(StringComparer.Ordinal);
-            var channelIds = new HashSet<string>(StringComparer.Ordinal);
-
-            for (var i = 0; i < streamed.Count; i++)
-            {
-                var record = streamed[i];
-                switch (record.Type)
+                var messages = indexed.ReadMessages(new McapReadOptions
                 {
-                    case "Schema":
-                        if (schemaIds.Add(FindField(record, "id")))
-                            result.Schemas.Add(record);
-                        break;
-                    case "Channel":
-                        if (channelIds.Add(FindField(record, "id")))
-                            result.Channels.Add(record);
-                        break;
-                    case "Message":
-                        result.Messages.Add(record);
-                        break;
-                    case "Statistics":
-                        result.Statistics.Add(record);
-                        break;
-                }
+                    AllowLinearFallback = false,
+                    ValidateCrcs = true,
+                    Order = McapReadOrder.LogTimeAscending
+                });
+                for (var i = 0; i < messages.Count; i++)
+                    result.Messages.Add(ToRecord(messages[i]));
             }
 
             result.Schemas.Sort((left, right) => CompareNumberField(left, right, "id"));

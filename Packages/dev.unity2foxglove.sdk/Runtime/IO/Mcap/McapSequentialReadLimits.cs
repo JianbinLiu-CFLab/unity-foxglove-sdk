@@ -8,7 +8,11 @@ using System;
 
 namespace Unity.FoxgloveSDK.IO
 {
-    /// <summary>Memory guardrails for unindexed MCAP sequential fallback queries.</summary>
+    /// <summary>
+    /// Memory guardrails for unindexed MCAP sequential fallback queries.
+    /// Exceeding either guard throws <see cref="InvalidOperationException"/>
+    /// before more messages are retained.
+    /// </summary>
     public sealed class McapSequentialReadLimits
     {
         /// <summary>Default retained message count limit for no-index sequential fallback.</summary>

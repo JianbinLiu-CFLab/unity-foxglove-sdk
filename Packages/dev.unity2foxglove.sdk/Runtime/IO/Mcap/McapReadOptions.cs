@@ -37,20 +37,27 @@ namespace Unity.FoxgloveSDK.IO
         public ulong EndTimeNs = ulong.MaxValue;
 
         /// <summary>
-        /// Topic names to include. Empty means all topics unless channel IDs
-        /// are provided.
+        /// Topic names to include. <c>null</c> and empty lists both mean this
+        /// dimension is not filtered. When <see cref="Topics"/> and
+        /// <see cref="ChannelIds"/> are both provided, a message may match
+        /// either filter.
         /// </summary>
         public List<string> Topics = new List<string>();
 
         /// <summary>
-        /// Channel IDs to include. Empty means all channels unless topics are
-        /// provided.
+        /// Channel IDs to include. <c>null</c> and empty lists both mean this
+        /// dimension is not filtered. When <see cref="Topics"/> and
+        /// <see cref="ChannelIds"/> are both provided, a message may match
+        /// either filter.
         /// </summary>
         public List<ushort> ChannelIds = new List<ushort>();
 
         /// <summary>
-        /// Maximum number of latest matching messages to keep. Values less
-        /// than or equal to zero mean unlimited.
+        /// Maximum number of matching messages to keep. Values less than or
+        /// equal to zero mean unlimited. <see cref="McapReadOrder.FileOrder"/>
+        /// keeps the first matching messages encountered in the file;
+        /// log-time orders keep the latest or earliest messages according to
+        /// their sort direction.
         /// </summary>
         public int MaxMessages = 0;
 
@@ -77,5 +84,11 @@ namespace Unity.FoxgloveSDK.IO
         /// streaming DataEnd records.
         /// </summary>
         public bool ValidateCrcs = true;
+
+        /// <summary>
+        /// Maximum decompressed size accepted for a single chunk. A value of
+        /// zero disables this chunk decompression guard.
+        /// </summary>
+        public ulong ChunkUncompressedSizeLimit = McapReader.DefaultChunkUncompressedSizeLimit;
     }
 }

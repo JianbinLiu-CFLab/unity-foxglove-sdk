@@ -58,6 +58,7 @@ namespace Unity.FoxgloveSDK.IO
             if (options.EndTimeNs < options.StartTimeNs)
                 return result;
 
+            var filter = new StreamingReadFilter(options);
             var dataCrc = Crc32Helper.Initialize();
             var leadingMagic = ReadExact(McapWriter.MagicLength);
             ValidateMagic(leadingMagic, "leading");
@@ -82,6 +83,7 @@ namespace Unity.FoxgloveSDK.IO
                 ProcessRecord(
                     result,
                     options,
+                    filter,
                     opcode,
                     content,
                     (ulong)recordStart,
@@ -98,6 +100,7 @@ namespace Unity.FoxgloveSDK.IO
         private void ProcessRecord(
             McapStreamingReadResult result,
             McapReadOptions options,
+            StreamingReadFilter filter,
             byte opcode,
             byte[] content,
             ulong recordStart,
@@ -115,10 +118,14 @@ namespace Unity.FoxgloveSDK.IO
                     AddSchema(result.Summary.Schemas, McapReader.DecodeSchema(content));
                     break;
                 case McapWriter.OpcodeChannel:
-                    AddChannel(result.Summary.Channels, McapReader.DecodeChannel(content));
+                {
+                    var channel = McapReader.DecodeChannel(content);
+                    AddChannel(result.Summary.Channels, channel);
+                    filter.AddChannel(channel);
                     break;
+                }
                 case McapWriter.OpcodeMessage:
-                    AddMessage(result, options, McapReader.DecodeMessage(content, 0, content.Length), ref retainedPayloadBytes);
+                    AddMessage(result, options, filter, McapReader.DecodeMessage(content, 0, content.Length), ref retainedPayloadBytes);
                     break;
                 case McapWriter.OpcodeChunk:
                     result.Summary.Statistics ??= new McapStatistics();
@@ -126,10 +133,10 @@ namespace Unity.FoxgloveSDK.IO
                     var records = McapReader.DecodeChunkRecordsContent(
                         content,
                         out var crcValid,
-                        McapReader.DefaultChunkUncompressedSizeLimit);
+                        options.ChunkUncompressedSizeLimit);
                     if (!crcValid && options.ValidateCrcs)
                         throw new InvalidDataException("MCAP chunk CRC mismatch.");
-                    ProcessChunkRecords(result, options, records, ref retainedPayloadBytes);
+                    ProcessChunkRecords(result, options, filter, records, ref retainedPayloadBytes);
                     break;
                 case McapWriter.OpcodeAttachment:
                     var attachment = McapReader.DecodeAttachment(content);
@@ -186,6 +193,7 @@ namespace Unity.FoxgloveSDK.IO
         private void ProcessChunkRecords(
             McapStreamingReadResult result,
             McapReadOptions options,
+            StreamingReadFilter filter,
             byte[] uncompressedRecords,
             ref long retainedPayloadBytes)
         {
@@ -209,10 +217,14 @@ namespace Unity.FoxgloveSDK.IO
                         AddSchema(result.Summary.Schemas, McapReader.DecodeSchema(uncompressedRecords, off, recordLength));
                         break;
                     case McapWriter.OpcodeChannel:
-                        AddChannel(result.Summary.Channels, McapReader.DecodeChannel(uncompressedRecords, off, recordLength));
+                    {
+                        var channel = McapReader.DecodeChannel(uncompressedRecords, off, recordLength);
+                        AddChannel(result.Summary.Channels, channel);
+                        filter.AddChannel(channel);
                         break;
+                    }
                     case McapWriter.OpcodeMessage:
-                        AddMessage(result, options, McapReader.DecodeMessage(uncompressedRecords, off, recordLength), ref retainedPayloadBytes);
+                        AddMessage(result, options, filter, McapReader.DecodeMessage(uncompressedRecords, off, recordLength), ref retainedPayloadBytes);
                         break;
                     case McapWriter.OpcodeMetadata:
                     {
@@ -238,11 +250,12 @@ namespace Unity.FoxgloveSDK.IO
         private void AddMessage(
             McapStreamingReadResult result,
             McapReadOptions options,
+            StreamingReadFilter filter,
             McapMessage message,
             ref long retainedPayloadBytes)
         {
             UpdateStatistics(result.Summary, message);
-            if (!MatchesMessage(result.Summary, message, options))
+            if (!filter.Matches(message))
                 return;
 
             var payloadBytes = message.Data?.LongLength ?? 0;
@@ -255,40 +268,6 @@ namespace Unity.FoxgloveSDK.IO
             retainedPayloadBytes += payloadBytes;
         }
 
-        private static bool MatchesMessage(McapFileSummary summary, McapMessage message, McapReadOptions options)
-        {
-            if (message.LogTime < options.StartTimeNs)
-                return false;
-            if (options.UseOfficialEndTimeSemantics)
-            {
-                if (message.LogTime >= options.EndTimeNs)
-                    return false;
-            }
-            else if (message.LogTime > options.EndTimeNs)
-            {
-                return false;
-            }
-
-            var hasChannelIds = options.ChannelIds != null && options.ChannelIds.Count > 0;
-            var hasTopics = options.Topics != null && options.Topics.Count > 0;
-            if (!hasChannelIds && !hasTopics)
-                return true;
-
-            if (hasChannelIds && options.ChannelIds.Contains(message.ChannelId))
-                return true;
-            if (!hasTopics)
-                return false;
-
-            for (var i = 0; i < summary.Channels.Count; i++)
-            {
-                var channel = summary.Channels[i];
-                if (channel.Id == message.ChannelId && options.Topics.Contains(channel.Topic))
-                    return true;
-            }
-
-            return false;
-        }
-
         private static void ApplyOrderingAndLimit(List<McapMessage> messages, McapReadOptions options)
         {
             if (options.Order == McapReadOrder.LogTimeAscending)
@@ -299,10 +278,58 @@ namespace Unity.FoxgloveSDK.IO
             if (options.MaxMessages <= 0 || messages.Count <= options.MaxMessages)
                 return;
 
-            if (options.Order == McapReadOrder.LogTimeDescending)
+            if (options.Order == McapReadOrder.LogTimeDescending || options.Order == McapReadOrder.FileOrder)
                 messages.RemoveRange(options.MaxMessages, messages.Count - options.MaxMessages);
             else
                 messages.RemoveRange(0, messages.Count - options.MaxMessages);
+        }
+
+        private sealed class StreamingReadFilter
+        {
+            private readonly McapReadOptions _options;
+            private readonly HashSet<ushort> _channelIds;
+            private readonly HashSet<string> _topics;
+            private readonly Dictionary<ushort, string> _channelTopics = new Dictionary<ushort, string>();
+
+            public StreamingReadFilter(McapReadOptions options)
+            {
+                _options = options ?? throw new ArgumentNullException(nameof(options));
+                if (options.ChannelIds != null && options.ChannelIds.Count > 0)
+                    _channelIds = new HashSet<ushort>(options.ChannelIds);
+                if (options.Topics != null && options.Topics.Count > 0)
+                    _topics = new HashSet<string>(options.Topics, StringComparer.Ordinal);
+            }
+
+            public void AddChannel(McapChannel channel)
+            {
+                if (channel != null)
+                    _channelTopics[channel.Id] = channel.Topic ?? string.Empty;
+            }
+
+            public bool Matches(McapMessage message)
+            {
+                if (message.LogTime < _options.StartTimeNs)
+                    return false;
+                if (_options.UseOfficialEndTimeSemantics)
+                {
+                    if (message.LogTime >= _options.EndTimeNs)
+                        return false;
+                }
+                else if (message.LogTime > _options.EndTimeNs)
+                {
+                    return false;
+                }
+
+                if (_channelIds == null && _topics == null)
+                    return true;
+                if (_channelIds != null && _channelIds.Contains(message.ChannelId))
+                    return true;
+                if (_topics == null)
+                    return false;
+
+                return _channelTopics.TryGetValue(message.ChannelId, out var topic) &&
+                       _topics.Contains(topic);
+            }
         }
 
         private static void UpdateStatistics(McapFileSummary summary, McapMessage message)
