@@ -36,6 +36,9 @@ namespace Unity.FoxgloveSDK.Components
         public string ResolvedChildFrameId =>
             SanitizeFrameId(_childFrameId, gameObject.name);
 
+        public string ResolvedParentFrameId =>
+            SanitizeFrameId(_parentFrameId, "unity_world");
+
         protected override void Update()
         {
             if (_manager == null) return;
@@ -79,18 +82,12 @@ namespace Unity.FoxgloveSDK.Components
         {
             var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
 
-            UVector3 pos = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
-                ? CoordinateConverter.UnityToFoxglovePosition(transform.position)
-                : transform.position;
-
-            UQuaternion rot = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
-                ? CoordinateConverter.UnityToFoxgloveRotation(transform.rotation)
-                : transform.rotation;
+            ResolveTransform(out var pos, out var rot);
 
             return new FrameTransformMessage
             {
                 Timestamp = time,
-                ParentFrameId = _parentFrameId,
+                ParentFrameId = ResolvedParentFrameId,
                 ChildFrameId = ResolvedChildFrameId,
                 Translation = new FoxgloveVector3 { X = pos.x, Y = pos.y, Z = pos.z },
                 Rotation = new FoxgloveQuaternion { X = rot.x, Y = rot.y, Z = rot.z, W = rot.w }
@@ -99,28 +96,31 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishProtobufTransform(ulong unixNs)
         {
-            UVector3 pos = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
-                ? CoordinateConverter.UnityToFoxglovePosition(transform.position)
-                : transform.position;
-
-            UQuaternion rot = Manager?.ActiveCoordinateMode == CoordinateMode.RightHand
-                ? CoordinateConverter.UnityToFoxgloveRotation(transform.rotation)
-                : transform.rotation;
+            ResolveTransform(out var pos, out var rot);
 
             var protoFt = new Foxglove.FrameTransform
             {
-                Timestamp = new Google.Protobuf.WellKnownTypes.Timestamp
-                {
-                    Seconds = (long)(unixNs / 1_000_000_000UL),
-                    Nanos = (int)(unixNs % 1_000_000_000UL)
-                },
-                ParentFrameId = _parentFrameId,
+                Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
+                ParentFrameId = ResolvedParentFrameId,
                 ChildFrameId = ResolvedChildFrameId,
                 Translation = new Foxglove.Vector3 { X = (double)pos.x, Y = (double)pos.y, Z = (double)pos.z },
                 Rotation = new Foxglove.Quaternion { X = (double)rot.x, Y = (double)rot.y, Z = (double)rot.z, W = (double)rot.w }
             };
 
             PublishProto(protoFt.ToByteArray(), unixNs);
+        }
+
+        private void ResolveTransform(out UVector3 position, out UQuaternion rotation)
+        {
+            if (Manager?.ActiveCoordinateMode == CoordinateMode.RightHand)
+            {
+                position = CoordinateConverter.UnityToFoxglovePosition(transform.position);
+                rotation = CoordinateConverter.UnityToFoxgloveRotation(transform.rotation);
+                return;
+            }
+
+            position = transform.position;
+            rotation = transform.rotation;
         }
     }
 }

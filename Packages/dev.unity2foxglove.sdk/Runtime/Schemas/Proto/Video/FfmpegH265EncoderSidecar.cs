@@ -18,10 +18,11 @@ namespace Foxglove.Schemas.Video
     /// Encodes RGB24 frames through an external FFmpeg process and exposes completed
     /// HEVC Annex B access units through a thread-safe bounded output queue.
     /// </summary>
-    public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar
+    public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
-        private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
-        private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
+        private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
+        private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
+        private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly object _outputLock = new object();
         private Process _process;
         private CancellationTokenSource _stop;
@@ -146,6 +147,9 @@ namespace Foxglove.Schemas.Video
         /// Old input frames are dropped if the queue is already full.
         /// </summary>
         public bool TrySubmitFrame(byte[] rgb24Frame)
+            => TrySubmitFrame(rgb24Frame, 0UL);
+
+        public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
         {
             if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsRunning)
                 return false;
@@ -169,7 +173,7 @@ namespace Foxglove.Schemas.Video
 
             var copy = new byte[rgb24Frame.Length];
             Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
-            _inputFrames.Enqueue(copy);
+            _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
             Interlocked.Increment(ref _inputCount);
             Interlocked.Increment(ref _framesSubmitted);
             return true;
@@ -177,6 +181,18 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Dequeues a completed HEVC access unit, if available.</summary>
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
+        {
+            if (TryDequeueAccessUnit(out EncodedVideoAccessUnit timestamped))
+            {
+                accessUnit = timestamped.Data;
+                return true;
+            }
+
+            accessUnit = null;
+            return false;
+        }
+
+        public bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)
         {
             lock (_outputLock)
             {
@@ -264,8 +280,9 @@ namespace Foxglove.Schemas.Video
                     if (_inputFrames.TryDequeue(out var frame))
                     {
                         Interlocked.Decrement(ref _inputCount);
-                        await stream.WriteAsync(frame, 0, frame.Length, token).ConfigureAwait(false);
+                        await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                         await stream.FlushAsync(token).ConfigureAwait(false);
+                        _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                     }
                     else
                     {
@@ -353,7 +370,8 @@ namespace Foxglove.Schemas.Video
                     Interlocked.Increment(ref _accessUnitsDropped);
                 }
 
-                _outputAccessUnits.Enqueue(accessUnit);
+                var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
+                _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 Interlocked.Increment(ref _outputCount);
                 Interlocked.Increment(ref _accessUnitsProduced);
             }
@@ -362,6 +380,9 @@ namespace Foxglove.Schemas.Video
         private void DrainInputQueue()
         {
             while (_inputFrames.TryDequeue(out _))
+            {
+            }
+            while (_encodedFrameTimestamps.TryDequeue(out _))
             {
             }
 

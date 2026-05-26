@@ -19,4 +19,15 @@ namespace Foxglove.Schemas.Video
         bool TrySubmitFrame(byte[] frame);
         bool TryDequeueAccessUnit(out byte[] accessUnit);
     }
+
+    /// <summary>
+    /// Optional timestamp-preserving video encoder surface. Implementations
+    /// should pair each encoded access unit with the render timestamp of its
+    /// source frame.
+    /// </summary>
+    public interface ITimestampedCameraVideoEncoderSidecar : ICameraVideoEncoderSidecar
+    {
+        bool TrySubmitFrame(byte[] frame, ulong timestampNs);
+        bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit);
+    }
 }

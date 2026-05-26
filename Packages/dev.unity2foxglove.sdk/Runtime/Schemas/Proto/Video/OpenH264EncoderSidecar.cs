@@ -18,12 +18,13 @@ namespace Foxglove.Schemas.Video
     /// Encodes I420 frames through an external OpenH264 helper process and
     /// exposes completed H.264 Annex B access units.
     /// </summary>
-    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar
+    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
         private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
 
-        private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
-        private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
+        private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
+        private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
+        private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly object _outputLock = new object();
         private Process _process;
         private CancellationTokenSource _stop;
@@ -117,6 +118,9 @@ namespace Foxglove.Schemas.Video
         }
 
         public bool TrySubmitFrame(byte[] frame)
+            => TrySubmitFrame(frame, 0UL);
+
+        public bool TrySubmitFrame(byte[] frame, ulong timestampNs)
         {
             if (frame == null || frame.Length == 0 || !IsRunning)
                 return false;
@@ -143,13 +147,25 @@ namespace Foxglove.Schemas.Video
 
             var copy = new byte[frame.Length];
             Buffer.BlockCopy(frame, 0, copy, 0, frame.Length);
-            _inputFrames.Enqueue(copy);
+            _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
             Interlocked.Increment(ref _inputCount);
             Interlocked.Increment(ref _framesSubmitted);
             return true;
         }
 
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
+        {
+            if (TryDequeueAccessUnit(out EncodedVideoAccessUnit timestamped))
+            {
+                accessUnit = timestamped.Data;
+                return true;
+            }
+
+            accessUnit = null;
+            return false;
+        }
+
+        public bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)
         {
             lock (_outputLock)
             {
@@ -233,8 +249,9 @@ namespace Foxglove.Schemas.Video
                     if (_inputFrames.TryDequeue(out var frame))
                     {
                         Interlocked.Decrement(ref _inputCount);
-                        await stream.WriteAsync(frame, 0, frame.Length, token).ConfigureAwait(false);
+                        await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                         await stream.FlushAsync(token).ConfigureAwait(false);
+                        _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                     }
                     else
                     {
@@ -319,7 +336,8 @@ namespace Foxglove.Schemas.Video
                 while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
                     Interlocked.Decrement(ref _outputCount);
 
-                _outputAccessUnits.Enqueue(accessUnit);
+                var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
+                _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 Interlocked.Increment(ref _outputCount);
                 Interlocked.Increment(ref _accessUnitsReceived);
             }
@@ -356,6 +374,7 @@ namespace Foxglove.Schemas.Video
         private void DrainInputQueue()
         {
             while (_inputFrames.TryDequeue(out _)) { }
+            while (_encodedFrameTimestamps.TryDequeue(out _)) { }
             Interlocked.Exchange(ref _inputCount, 0);
         }
 

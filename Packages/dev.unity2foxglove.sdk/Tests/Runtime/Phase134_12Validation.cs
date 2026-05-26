@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 134-12 regression coverage for camera readback teardown policy.
+// Purpose: Phase 134-12 regression coverage for protobuf builders and typed publishers.
 
 using System;
 using System.IO;
+using Foxglove.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -25,13 +26,21 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDoesNotUseGlobalReadbackWait(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedVideoCameraPublisher.cs",
                 "legacy compressed video publisher");
+            CameraPublisherLocksRuntimeOutputMode();
+            CameraPublisherCarriesRenderTimestamp();
+            TimestampedVideoSidecarContractIsWired();
+            CompressedCameraBuildersUseTimestampHelper();
+            LaserScanRejectsInvalidAngles();
+            PointCloudPendingFrameIsThreadSafe();
+            TransformPublisherSanitizesAndSharesConversion();
+            SceneCubePublisherReusesRos2Payload();
 
             Console.WriteLine($"Phase 134-12: {_passed} checks passed.");
         }
 
         private static void CameraPublisherDoesNotUseGlobalReadbackWait(string path, string label)
         {
-            var source = File.ReadAllText(path);
+            var source = Read(path);
             Check(!source.Contains("AsyncGPUReadback.WaitAllRequests()"),
                 $"134-12A-1: {label} destroy path does not wait for global AsyncGPUReadback requests");
             Check(source.Contains("_cleanupWhenReadbacksDrain = _pendingRequests > 0;"),
@@ -40,6 +49,149 @@ namespace Unity.FoxgloveSDK.Tests
                 $"134-12A-3: {label} still cleans resources immediately when no local readback is pending");
             Check(source.Contains("generation != _captureGeneration"),
                 $"134-12A-4: {label} keeps generation guard for stale callbacks");
+        }
+
+        private static void CameraPublisherLocksRuntimeOutputMode()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            Check(source.Contains("private CameraOutputMode _runtimeOutputMode"),
+                "134-12B-1: camera publisher tracks the Play Mode output mode");
+            Check(source.Contains("Application.isPlaying && _runtimeOutputModeInitialized"),
+                "134-12B-2: camera schema resolves through the locked Play Mode mode");
+            Check(source.Contains("LockRuntimeOutputMode();") && source.IndexOf("LockRuntimeOutputMode();", StringComparison.Ordinal) < source.IndexOf("base.OnEnable();", StringComparison.Ordinal),
+                "134-12B-3: camera locks output mode before base registration can advertise schema");
+            Check(source.Contains("Camera output mode changes during Play Mode are ignored"),
+                "134-12B-4: camera surfaces a clear warning for runtime mode switches");
+        }
+
+        private static void CameraPublisherCarriesRenderTimestamp()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            Check(camera.Contains("var renderUnixNs = CurrentLogTimeNs;") && camera.Contains("OnReadbackComplete(req, generation, renderUnixNs)"),
+                "134-12C-1: primary camera captures timestamp at render and passes it into readback callback");
+            Check(camera.Contains("PublishJpegFrame(req, renderUnixNs)") && camera.Contains("SubmitVideoFrame(req, renderUnixNs)"),
+                "134-12C-2: primary camera uses render timestamp for JPEG and video frame submission");
+            Check(camera.Contains("ITimestampedCameraVideoEncoderSidecar timestampedSidecar") && camera.Contains("TrySubmitFrame(frameBytes, renderUnixNs)"),
+                "134-12C-3: primary camera submits video frames with render timestamps when sidecar supports it");
+            Check(camera.Contains("PublishVideoAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat)"),
+                "134-12C-4: primary camera publishes encoded video with queued frame timestamp");
+
+            var legacy = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedVideoCameraPublisher.cs");
+            Check(legacy.Contains("var renderUnixNs = CurrentLogTimeNs;") && legacy.Contains("TrySubmitFrame(frameBytes, renderUnixNs)"),
+                "134-12C-5: legacy compressed video publisher carries render timestamp into the sidecar");
+            Check(legacy.Contains("accessUnit.TimestampNs == 0UL ? CurrentLogTimeNs : accessUnit.TimestampNs"),
+                "134-12C-6: legacy compressed video publisher drains timestamped access units");
+        }
+
+        private static void TimestampedVideoSidecarContractIsWired()
+        {
+            var contract = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/ICameraVideoEncoderSidecar.cs");
+            Check(contract.Contains("interface ITimestampedCameraVideoEncoderSidecar : ICameraVideoEncoderSidecar"),
+                "134-12D-1: video sidecar contract exposes timestamped frame submission");
+            Check(contract.Contains("TrySubmitFrame(byte[] frame, ulong timestampNs)") && contract.Contains("TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)"),
+                "134-12D-2: timestamped sidecar contract carries timestamps through dequeue");
+
+            var accessUnit = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/EncodedVideoAccessUnit.cs");
+            Check(accessUnit.Contains("public readonly struct EncodedVideoAccessUnit") && accessUnit.Contains("public ulong TimestampNs { get; }"),
+                "134-12D-3: encoded video access units expose the render timestamp");
+
+            foreach (var file in new[]
+                     {
+                         "FfmpegH264EncoderSidecar.cs",
+                         "FfmpegH265EncoderSidecar.cs",
+                         "OpenH264EncoderSidecar.cs",
+                         "MediaFoundationH264EncoderSidecar.cs"
+                     })
+            {
+                var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/" + file);
+                Check(source.Contains("ITimestampedCameraVideoEncoderSidecar"),
+                    $"134-12D-4: {file} implements timestamped sidecar contract");
+                Check(source.Contains("new EncodedVideoAccessUnit") && source.Contains("timestampNs"),
+                    $"134-12D-5: {file} enqueues encoded access units with timestamps");
+            }
+        }
+
+        private static void CompressedCameraBuildersUseTimestampHelper()
+        {
+            foreach (var path in new[]
+                     {
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/CameraCompressedImageBuilder.cs",
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/CameraCompressedVideoBuilder.cs"
+                     })
+            {
+                var source = Read(path);
+                Check(source.Contains("Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs)"),
+                    $"134-12E-1: {Path.GetFileName(path)} uses shared timestamp helper");
+                Check(!source.Contains("unixNs / 1_000_000_000UL"),
+                    $"134-12E-2: {Path.GetFileName(path)} no longer inlines timestamp conversion");
+            }
+        }
+
+        private static void LaserScanRejectsInvalidAngles()
+        {
+            ThrowsArgument(() => LaserScanMessageBuilder.CreateJson(1UL, "laser", 1.0, 0.5, new[] { 1.0 }),
+                "134-12F-1: JSON LaserScan rejects endAngle <= startAngle");
+            ThrowsArgument(() => LaserScanMessageBuilder.CreateProtobuf(1UL, "laser", 1.0, 1.0, new[] { 1.0 }),
+                "134-12F-2: protobuf LaserScan rejects zero-width scans");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/LaserScanMessageBuilder.cs");
+            Check(source.Contains("ValidateAngles(startAngle, endAngle)"),
+                "134-12F-3: LaserScan builder validates angles in both creation paths");
+        }
+
+        private static void PointCloudPendingFrameIsThreadSafe()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            Check(source.Contains("using System.Threading;"),
+                "134-12G-1: point cloud publisher imports synchronization primitives");
+            Check(source.Contains("Interlocked.Exchange(ref _pendingFrame, frame)"),
+                "134-12G-2: SetFrame publishes pending frame with a memory barrier");
+            Check(source.Contains("Interlocked.Exchange(ref _pendingFrame, null)"),
+                "134-12G-3: Update consumes and clears pending frame atomically");
+        }
+
+        private static void TransformPublisherSanitizesAndSharesConversion()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs");
+            Check(source.Contains("ResolvedParentFrameId") && source.Contains("SanitizeFrameId(_parentFrameId"),
+                "134-12H-1: transform publisher sanitizes parent frame id");
+            Check(source.Contains("ParentFrameId = ResolvedParentFrameId"),
+                "134-12H-2: transform JSON/protobuf paths use sanitized parent frame id");
+            Check(source.Contains("private void ResolveTransform(out UVector3 position, out UQuaternion rotation)"),
+                "134-12H-3: transform publisher shares coordinate conversion helper");
+            Check(source.Contains("Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs)"),
+                "134-12H-4: transform protobuf path uses shared timestamp helper");
+            Check(!source.Contains("ParentFrameId = _parentFrameId") && !source.Contains("unixNs / 1_000_000_000UL"),
+                "134-12H-5: transform publisher no longer uses raw parent frame id or inline timestamp conversion");
+        }
+
+        private static void SceneCubePublisherReusesRos2Payload()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
+            Check(!source.Contains("PublishRos2SceneUpdate("),
+                "134-12I-1: scene cube publisher removes private unused ROS2 helper");
+            Check(source.Contains("ros2Payload != null || TryBuildRos2SceneUpdate(message, out ros2Payload)"),
+                "134-12I-2: scene cube publisher reuses the existing ROS2 payload for bridge output");
+            Check(source.Contains("Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs)"),
+                "134-12I-3: scene cube protobuf path uses shared timestamp helper");
+            Check(!source.Contains("unixNs / 1_000_000_000UL"),
+                "134-12I-4: scene cube publisher no longer inlines timestamp conversion");
+        }
+
+        private static string Read(string path) => File.ReadAllText(path);
+
+        private static void ThrowsArgument(Action action, string label)
+        {
+            try
+            {
+                action();
+            }
+            catch (ArgumentException)
+            {
+                Check(true, label);
+                return;
+            }
+
+            throw new Exception("[FAIL] " + label);
         }
 
         private static void Check(bool condition, string label)

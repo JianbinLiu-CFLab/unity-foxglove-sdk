@@ -26,6 +26,7 @@ namespace Foxglove.Schemas
         {
             var rangeList = ToListOrEmpty(ranges);
             var intensityList = ToListOrEmpty(intensities);
+            ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
             return new LaserScanMessage
@@ -51,6 +52,7 @@ namespace Foxglove.Schemas
         {
             var rangeList = ToListOrEmpty(ranges);
             var intensityList = ToListOrEmpty(intensities);
+            ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
             var message = new Foxglove.LaserScan
@@ -87,6 +89,12 @@ namespace Foxglove.Schemas
         {
             if (intensities.Count != 0 && intensities.Count != ranges.Count)
                 throw new ArgumentException("LaserScan intensities must be empty or have the same length as ranges.", nameof(intensities));
+        }
+
+        private static void ValidateAngles(double startAngle, double endAngle)
+        {
+            if (!(endAngle > startAngle))
+                throw new ArgumentException("LaserScan endAngle must be greater than startAngle.", nameof(endAngle));
         }
     }
 }

@@ -15,7 +15,7 @@ namespace Foxglove.Schemas.Video
     /// Experimental Media Foundation H.264 encoder sidecar. Phase 78 keeps the
     /// boundary explicit so unsupported Windows encoder states fail clearly.
     /// </summary>
-    public sealed class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar
+    public sealed class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
         private const int SOk = 0;
         private const int SFalse = 1;
@@ -39,7 +39,7 @@ namespace Foxglove.Schemas.Video
         private const int MfVideoInterlaceProgressive = 2;
         private const int H264BaselineProfile = 66;
 
-        private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
+        private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly H264AccessUnitNormalizer _normalizer = new H264AccessUnitNormalizer();
         private MediaFoundationH264EncoderOptions _options;
         private IMFTransform _transform;
@@ -94,6 +94,9 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Submits an RGB24 frame without blocking the caller.</summary>
         public bool TrySubmitFrame(byte[] rgb24Frame)
+            => TrySubmitFrame(rgb24Frame, 0UL);
+
+        public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
         {
             if (!IsRunning)
             {
@@ -117,8 +120,8 @@ namespace Foxglove.Schemas.Video
             try
             {
                 var nv12Frame = ConvertRgb24ToNv12(rgb24Frame, _options.Width, _options.Height);
-                ProcessInputFrame(nv12Frame);
-                DrainEncoderOutput();
+                ProcessInputFrame(nv12Frame, timestampNs);
+                DrainEncoderOutput(timestampNs);
                 return true;
             }
             catch (Exception ex)
@@ -131,6 +134,18 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Dequeues a completed H.264 access unit, if available.</summary>
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
+        {
+            if (TryDequeueAccessUnit(out EncodedVideoAccessUnit timestamped))
+            {
+                accessUnit = timestamped.Data;
+                return true;
+            }
+
+            accessUnit = null;
+            return false;
+        }
+
+        public bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)
         {
             if (!_outputAccessUnits.TryDequeue(out accessUnit))
                 return false;
@@ -346,7 +361,7 @@ namespace Foxglove.Schemas.Video
             return mediaType;
         }
 
-        private void ProcessInputFrame(byte[] nv12Frame)
+        private void ProcessInputFrame(byte[] nv12Frame, ulong timestampNs)
         {
             var sample = CreateSample(nv12Frame, _nextSampleTime, _sampleDuration);
             try
@@ -354,7 +369,7 @@ namespace Foxglove.Schemas.Video
                 var hr = _transform.ProcessInput(0, sample, 0);
                 if (hr == MfENotAccepting)
                 {
-                    DrainEncoderOutput();
+                    DrainEncoderOutput(timestampNs);
                     hr = _transform.ProcessInput(0, sample, 0);
                 }
 
@@ -393,7 +408,7 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void DrainEncoderOutput()
+        private void DrainEncoderOutput(ulong timestampNs)
         {
             while (true)
             {
@@ -451,7 +466,7 @@ namespace Foxglove.Schemas.Video
                         }
                     }
 
-                    ExtractOutputSample(outputSample ?? sample);
+                    ExtractOutputSample(outputSample ?? sample, timestampNs);
                 }
                 finally
                 {
@@ -471,7 +486,7 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void ExtractOutputSample(IMFSample sample)
+        private void ExtractOutputSample(IMFSample sample, ulong timestampNs)
         {
             if (sample == null)
                 return;
@@ -483,7 +498,7 @@ namespace Foxglove.Schemas.Video
                 ThrowForHr(hr, "ConvertToContiguousBuffer failed.");
                 var bytes = ReadBuffer(buffer);
                 if (_normalizer.TryNormalizeSample(bytes, out var accessUnit))
-                    EnqueueAccessUnit(accessUnit);
+                    EnqueueAccessUnit(accessUnit, timestampNs);
             }
             finally
             {
@@ -516,7 +531,7 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void EnqueueAccessUnit(byte[] accessUnit)
+        private void EnqueueAccessUnit(byte[] accessUnit, ulong timestampNs)
         {
             if (accessUnit == null || accessUnit.Length == 0)
                 return;
@@ -525,7 +540,7 @@ namespace Foxglove.Schemas.Video
             while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
                 Interlocked.Decrement(ref _outputCount);
 
-            _outputAccessUnits.Enqueue(accessUnit);
+            _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
             Interlocked.Increment(ref _outputCount);
         }
 

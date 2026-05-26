@@ -146,9 +146,10 @@ namespace Unity.FoxgloveSDK.Components
                 Publish(message, unixNs);
             }
 
-            if (publishBridge && TryBuildRos2SceneUpdate(message, out var bridgePayload))
+            if (publishBridge)
             {
-                PublishRos2Bridge(ros2Payload ?? bridgePayload, unixNs);
+                if (ros2Payload != null || TryBuildRos2SceneUpdate(message, out ros2Payload))
+                    PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 
@@ -185,12 +186,6 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private void PublishRos2SceneUpdate(ulong unixNs)
-        {
-            if (TryBuildRos2SceneUpdate(CreateMessage(unixNs), out var payload))
-                PublishRos2(payload, unixNs);
-        }
-
         private bool TryBuildRos2SceneUpdate(SceneUpdateMessage message, out byte[] payload)
         {
             payload = null;
@@ -216,11 +211,7 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         Id = ResolvedEntityId,
                         FrameId = ResolvedFrameId,
-                        Timestamp = new Timestamp
-                        {
-                            Seconds = (long)(unixNs / 1_000_000_000UL),
-                            Nanos = (int)(unixNs % 1_000_000_000UL)
-                        },
+                        Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
                         Lifetime = new Duration(),
                         Cubes =
                         {

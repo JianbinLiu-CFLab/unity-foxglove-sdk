@@ -5,6 +5,7 @@
 // Purpose: Publishes foxglove.PointCloud messages from decoded frames or Unity transforms.
 
 using System;
+using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
@@ -72,13 +73,12 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void SetFrame(PointCloudFrame frame)
         {
-            if (_pendingFrame != null && frame != null && _logQosDrops && !_warnedPendingDrop)
+            var previous = Interlocked.Exchange(ref _pendingFrame, frame);
+            if (previous != null && frame != null && _logQosDrops && !_warnedPendingDrop)
             {
                 Debug.LogWarning("[Foxglove] PointCloud pending frame replaced; stale pending frame dropped.");
                 _warnedPendingDrop = true;
             }
-
-            _pendingFrame = frame;
         }
 
         /// <summary>
@@ -116,8 +116,8 @@ namespace Unity.FoxgloveSDK.Components
             if (!publishWebSocket && !publishBridge) return;
 
             var unixNs = CurrentLogTimeNs;
-            var frame = _pendingFrame != null ? PrepareFrameForQoS(_pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
-            _pendingFrame = null;
+            var pendingFrame = Interlocked.Exchange(ref _pendingFrame, null);
+            var frame = pendingFrame != null ? PrepareFrameForQoS(pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
             _warnedPendingDrop = false;
             if (frame == null || frame.Points.Count == 0) return;
 

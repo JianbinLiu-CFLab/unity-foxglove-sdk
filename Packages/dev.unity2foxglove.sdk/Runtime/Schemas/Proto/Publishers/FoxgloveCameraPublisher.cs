@@ -62,7 +62,26 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Log a warning each time a capture is skipped by backpressure.")]
         [SerializeField] private bool _logBackpressureSkips;
 
-        private CameraVideoOutputProfile ActiveProfile => CameraVideoOutputProfile.ForMode(_outputMode);
+        private CameraOutputMode _runtimeOutputMode;
+        private bool _runtimeOutputModeInitialized;
+        private bool _warnedRuntimeOutputModeSwitch;
+
+        private CameraOutputMode ResolvedOutputMode
+        {
+            get
+            {
+                if (Application.isPlaying && _runtimeOutputModeInitialized)
+                {
+                    if (_outputMode != _runtimeOutputMode)
+                        WarnRuntimeOutputModeSwitch();
+                    return _runtimeOutputMode;
+                }
+
+                return _outputMode;
+            }
+        }
+
+        private CameraVideoOutputProfile ActiveProfile => CameraVideoOutputProfile.ForMode(ResolvedOutputMode);
 
         protected override string SchemaName => ActiveProfile.SchemaName;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
@@ -103,6 +122,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override void OnEnable()
         {
+            LockRuntimeOutputMode();
             base.OnEnable();
             _destroyed = false;
             _cleanupWhenReadbacksDrain = false;
@@ -136,13 +156,14 @@ namespace Unity.FoxgloveSDK.Components
             if (profile.IsVideo && !EnsureVideoSidecarStarted(profile)) return;
 
             EnsureCaptureResources();
+            var renderUnixNs = CurrentLogTimeNs;
             _captureCam.Render();
             var generation = _captureGeneration;
             _pendingRequests++;
-            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation));
+            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs));
         }
 
-        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation)
+        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs)
         {
             CompletePendingReadback();
 
@@ -157,11 +178,11 @@ namespace Unity.FoxgloveSDK.Components
             var profile = ActiveProfile;
             if (profile.IsVideo)
             {
-                SubmitVideoFrame(req);
+                SubmitVideoFrame(req, renderUnixNs);
                 return;
             }
 
-            PublishJpegFrame(req);
+            PublishJpegFrame(req, renderUnixNs);
         }
 
         protected override void OnDisable()
@@ -172,6 +193,7 @@ namespace Unity.FoxgloveSDK.Components
             StopVideoSidecar();
             if (_pendingRequests == 0)
                 CleanupResources();
+            UnlockRuntimeOutputMode();
         }
 
         private void OnDestroy()
@@ -182,6 +204,7 @@ namespace Unity.FoxgloveSDK.Components
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             if (_pendingRequests == 0)
                 CleanupResources();
+            UnlockRuntimeOutputMode();
         }
 
         private void CompletePendingReadback()
@@ -194,7 +217,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void PublishJpegFrame(AsyncGPUReadbackRequest req)
+        private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs)
         {
             if (_texture2D == null)
                 return;
@@ -213,7 +236,6 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            var unixNs = CurrentLogTimeNs;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             byte[] ros2Payload = null;
@@ -252,7 +274,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void SubmitVideoFrame(AsyncGPUReadbackRequest req)
+        private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs)
         {
             var sidecar = _videoSidecar;
             if (sidecar == null)
@@ -286,7 +308,10 @@ namespace Unity.FoxgloveSDK.Components
                 frameBytes = i420;
             }
 
-            if (!sidecar.TrySubmitFrame(frameBytes))
+            var submitted = sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar
+                ? timestampedSidecar.TrySubmitFrame(frameBytes, renderUnixNs)
+                : sidecar.TrySubmitFrame(frameBytes);
+            if (!submitted)
             {
                 LogVideoEncoderUnavailable(ActiveProfile, DescribeVideoEncoderFailure(sidecar, "Video encoder refused the frame."));
                 return;
@@ -414,18 +439,33 @@ namespace Unity.FoxgloveSDK.Components
                 : profile.Codec == CameraVideoCodec.H265
                     ? CameraCompressedVideoBuilder.H265Format
                     : profile.VideoFormat;
-            while (sidecar.TryDequeueAccessUnit(out var accessUnit))
+            if (sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar)
             {
-                var unixNs = CurrentLogTimeNs;
-                var payload = CameraCompressedVideoBuilder.Serialize(
-                    unixNs,
-                    _frameId,
-                    accessUnit,
-                    videoFormat);
-                PublishProto(payload, unixNs);
+                while (timestampedSidecar.TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit))
+                    PublishVideoAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat);
+            }
+            else
+            {
+                while (sidecar.TryDequeueAccessUnit(out var accessUnit))
+                    PublishVideoAccessUnit(accessUnit, CurrentLogTimeNs, videoFormat);
             }
 
             LogEncoderStderrIfNeeded(sidecar);
+        }
+
+        private void PublishVideoAccessUnit(byte[] accessUnit, ulong unixNs, string videoFormat)
+        {
+            if (accessUnit == null || accessUnit.Length == 0)
+                return;
+
+            if (unixNs == 0UL)
+                unixNs = CurrentLogTimeNs;
+            var payload = CameraCompressedVideoBuilder.Serialize(
+                unixNs,
+                _frameId,
+                accessUnit,
+                videoFormat);
+            PublishProto(payload, unixNs);
         }
 
         private void StopVideoSidecar()
@@ -581,6 +621,32 @@ namespace Unity.FoxgloveSDK.Components
 
             _warnedVideoEncoderUnavailable = true;
             Debug.LogWarning("[Foxglove] " + profile.DisplayName + " camera video disabled: " + reason);
+        }
+
+        private void LockRuntimeOutputMode()
+        {
+            _runtimeOutputMode = _outputMode;
+            _runtimeOutputModeInitialized = true;
+            _warnedRuntimeOutputModeSwitch = false;
+        }
+
+        private void UnlockRuntimeOutputMode()
+        {
+            _runtimeOutputModeInitialized = false;
+            _warnedRuntimeOutputModeSwitch = false;
+        }
+
+        private void WarnRuntimeOutputModeSwitch()
+        {
+            if (_warnedRuntimeOutputModeSwitch)
+                return;
+
+            _warnedRuntimeOutputModeSwitch = true;
+            var active = CameraVideoOutputProfile.ForMode(_runtimeOutputMode).DisplayName;
+            var requested = CameraVideoOutputProfile.ForMode(_outputMode).DisplayName;
+            Debug.LogWarning(
+                "[Foxglove] Camera output mode changes during Play Mode are ignored to avoid stale channel advertisements. " +
+                $"Restart Play Mode to switch from {active} to {requested}.");
         }
 
         private static string DescribeVideoEncoderFailure(ICameraVideoEncoderSidecar sidecar, string fallback)
