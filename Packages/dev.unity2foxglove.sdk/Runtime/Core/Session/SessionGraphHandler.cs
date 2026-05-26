@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -23,7 +24,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private readonly Func<McapRecorder> _recorderProvider;
         private readonly ConnectionGraphRegistry _graph = new();
-        private bool _dirty;
+        private int _dirty;
 
         public SessionGraphHandler(
             IFoxgloveTransport transport,
@@ -38,7 +39,7 @@ namespace Unity.FoxgloveSDK.Core
         public void Clear()
         {
             _graph.Clear();
-            _dirty = false;
+            Volatile.Write(ref _dirty, 0);
         }
 
         public void Subscribe(uint clientId)
@@ -55,49 +56,49 @@ namespace Unity.FoxgloveSDK.Core
         public void SetUnityPublishedTopic(string topic)
         {
             _graph.SetPublishedTopic(topic, UnityPublisherId);
-            _dirty = true;
+            MarkDirty();
         }
 
         public void RemoveUnityPublishedTopic(string topic)
         {
             _graph.RemovePublishedTopic(topic, UnityPublisherId);
-            _dirty = true;
+            MarkDirty();
         }
 
         public void AddClientPublishedTopic(uint clientId, uint channelId, string topic)
         {
             _graph.AddPublishedTopic(topic, ClientChannelId(clientId, channelId));
-            _dirty = true;
+            MarkDirty();
         }
 
         public void RemoveClientPublishedTopic(uint clientId, uint channelId, string topic)
         {
             _graph.RemovePublishedTopic(topic, ClientChannelId(clientId, channelId));
-            _dirty = true;
+            MarkDirty();
         }
 
         public void AddSubscribedTopic(uint clientId, uint subscriptionId, string topic)
         {
             _graph.AddSubscribedTopic(topic, ClientSubscriptionId(clientId, subscriptionId));
-            _dirty = true;
+            MarkDirty();
         }
 
         public void RemoveSubscribedTopic(uint clientId, uint subscriptionId, string topic)
         {
             _graph.RemoveSubscribedTopic(topic, ClientSubscriptionId(clientId, subscriptionId));
-            _dirty = true;
+            MarkDirty();
         }
 
         public void AddAdvertisedService(string name)
         {
             _graph.AddAdvertisedService(name, UnityPublisherId);
-            _dirty = true;
+            MarkDirty();
         }
 
         public void RemoveAdvertisedService(string name)
         {
             _graph.RemoveAdvertisedService(name, UnityPublisherId);
-            _dirty = true;
+            MarkDirty();
         }
 
         public void SeedUnityState(IReadOnlyCollection<AdvertiseChannel> channels, IReadOnlyCollection<ServiceDescriptor> services)
@@ -114,13 +115,13 @@ namespace Unity.FoxgloveSDK.Core
                     _graph.AddAdvertisedService(svc.Name, UnityPublisherId);
             }
 
-            _dirty = true;
+            MarkDirty();
         }
 
         public void RemoveClient(uint clientId)
         {
             _graph.RemoveClient(clientId);
-            _dirty = true;
+            MarkDirty();
         }
 
         public void BroadcastUpdate()
@@ -134,13 +135,14 @@ namespace Unity.FoxgloveSDK.Core
 
         private void FlushMetadataSnapshotIfDirty(string json)
         {
-            if (!_dirty)
+            if (Interlocked.Exchange(ref _dirty, 0) == 0)
                 return;
 
             var recorder = _recorderProvider();
             recorder?.WriteMetadata(GraphMetadataName, json);
-            _dirty = false;
         }
+
+        private void MarkDirty() => Volatile.Write(ref _dirty, 1);
 
         private static string ClientChannelId(uint clientId, uint channelId) => $"client:{clientId}:{channelId}";
 

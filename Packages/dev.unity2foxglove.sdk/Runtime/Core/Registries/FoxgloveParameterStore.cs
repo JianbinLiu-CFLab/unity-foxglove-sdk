@@ -82,17 +82,25 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Get a set of parameters matching the given names. Empty/null names returns all.</summary>
         public List<Parameter> GetWireParameters(IEnumerable<string> names)
         {
+            List<string> requestedNames = null;
+            if (names != null)
+            {
+                requestedNames = new List<string>();
+                foreach (var name in names)
+                    requestedNames.Add(name);
+            }
+
             lock (_lock)
             {
                 var result = new List<Parameter>();
-                if (names == null)
+                if (requestedNames == null)
                 {
                     foreach (var (n, e) in _params)
                         result.Add(new Parameter { Name = n, Value = e.Value, Type = e.Type });
                 }
                 else
                 {
-                    foreach (var n in names)
+                    foreach (var n in requestedNames)
                     {
                         if (_params.TryGetValue(n, out var entry))
                             result.Add(new Parameter { Name = n, Value = entry.Value, Type = entry.Type });

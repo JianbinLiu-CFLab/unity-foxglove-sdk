@@ -668,17 +668,26 @@ namespace Unity.FoxgloveSDK.Core
                 new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
         }
 
-        private void SendSessionSnapshot(uint clientId)
+        private void SendSessionSnapshot(
+            uint clientId,
+            IReadOnlyCollection<AdvertiseChannel> channels = null,
+            IReadOnlyCollection<ServiceDescriptor> services = null)
         {
             _transport.SendText(clientId, SerializeServerInfo(CreateServerInfo()));
 
-            var chs = _channels.GetAll();
+            var chs = channels ?? _channels.GetAll();
             if (chs.Count > 0)
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new Advertise { Channels = chs }));
+                _transport.SendText(clientId, JsonConvert.SerializeObject(new Advertise
+                {
+                    Channels = chs as List<AdvertiseChannel> ?? new List<AdvertiseChannel>(chs)
+                }));
 
-            var svcs = _services.GetAll();
+            var svcs = services ?? _services.GetAll();
             if (svcs.Count > 0)
-                _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
+                _transport.SendText(clientId, JsonConvert.SerializeObject(new AdvertiseServices
+                {
+                    Services = svcs as List<ServiceDescriptor> ?? new List<ServiceDescriptor>(svcs)
+                }));
         }
 
         private void BroadcastSessionSnapshot()
@@ -704,10 +713,10 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientConnected(uint clientId)
         {
-            SendSessionSnapshot(clientId);
             var chs = _channels.GetAll();
             var svcs = _services.GetAll();
 
+            SendSessionSnapshot(clientId, chs, svcs);
             _graph.SeedUnityState(chs, svcs);
         }
 

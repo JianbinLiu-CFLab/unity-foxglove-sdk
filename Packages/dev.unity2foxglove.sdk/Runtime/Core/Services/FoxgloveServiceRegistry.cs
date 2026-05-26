@@ -28,22 +28,22 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Register a service. Returns the assigned service ID.</summary>
         public uint Register(ServiceDescriptor descriptor)
+            => Register(descriptor, handler: null);
+
+        /// <summary>Register a service with a handler delegate.</summary>
+        public uint Register(ServiceDescriptor descriptor, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
         {
+            if (descriptor == null) throw new ArgumentNullException(nameof(descriptor));
+
             lock (_lock)
             {
                 var id = _nextServiceId++;
                 descriptor.Id = id;
                 _services[id] = descriptor;
+                if (handler != null)
+                    _handlers[id] = handler;
                 return id;
             }
-        }
-
-        /// <summary>Register a service with a handler delegate.</summary>
-        public uint Register(ServiceDescriptor descriptor, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
-        {
-            var id = Register(descriptor);
-            lock (_lock) { _handlers[id] = handler; }
-            return id;
         }
 
         /// <summary>Get the handler delegate for a service.</summary>
