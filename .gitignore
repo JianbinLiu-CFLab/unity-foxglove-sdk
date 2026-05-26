@@ -15,7 +15,7 @@ obj/
 build/
 
 # Python cache from local build scripts
-Scripts/__pycache__/
+__pycache__/
 
 # Unity generated folders
 Library/
