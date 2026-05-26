@@ -25,6 +25,12 @@ namespace Unity.FoxgloveSDK.Tests
             TestBoundedEventQueueZeroByteBudgetMeansUnlimitedBytes();
             VerifyFoxgloveManagerUsesBoundedClientEventQueue();
             VerifyClientEventQueueOverflowWarning();
+            VerifyReplayEmptyPathRestoresLivePublishers();
+            VerifyManagerInspectorAndRuntimeBounds();
+            VerifyRos2BridgeWarningThrottling();
+            VerifyLoggerSeverityPrefixes();
+            VerifyRecordingAndAssetBudgetHardening();
+            VerifySerializedSecretsAreNotCommitted();
 
             Console.WriteLine($"Phase 134-1: {_passed} checks passed.");
         }
@@ -115,6 +121,121 @@ namespace Unity.FoxgloveSDK.Tests
                   && manager.Contains("droppedPayloadBytes=", StringComparison.Ordinal)
                   && manager.Contains("queuedPayloadBytes=", StringComparison.Ordinal),
                 "134-1C-2: overflow warning includes retained and dropped queue diagnostics");
+        }
+
+        private static void VerifyReplayEmptyPathRestoresLivePublishers()
+        {
+            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
+            var normalized = setup.Replace("\r\n", "\n");
+
+            Check(normalized.Contains("if (string.IsNullOrEmpty(_replayFilePath))", StringComparison.Ordinal)
+                  && normalized.Contains("RestoreLivePublishers();\n                return true;", StringComparison.Ordinal),
+                "134-1F-1: empty replay path restores publishers disabled during Awake");
+        }
+
+        private static void VerifyManagerInspectorAndRuntimeBounds()
+        {
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var normalizedManager = manager.Replace("\r\n", "\n");
+            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
+
+            Check(normalizedManager.Contains("[Range(1, 65535)]\n        [SerializeField] private int _port", StringComparison.Ordinal)
+                  && normalizedManager.Contains("[Range(1, 65535)]\n        [SerializeField] private int _rootCaDistributorPort", StringComparison.Ordinal),
+                "134-1G-1: public server and Root CA ports have Inspector range guards");
+            Check(manager.Contains("private void OnValidate()", StringComparison.Ordinal)
+                  && manager.Contains("_port = Mathf.Clamp(_port, 1, 65535);", StringComparison.Ordinal)
+                  && manager.Contains("_rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);", StringComparison.Ordinal),
+                "134-1G-2: manager clamps port fields during Unity validation");
+            Check(server.Contains("IsValidTcpPort(_port)", StringComparison.Ordinal)
+                  && server.Contains("IsValidTcpPort(_rootCaDistributorPort)", StringComparison.Ordinal),
+                "134-1G-3: runtime startup rejects invalid TCP ports before starting transports");
+            Check(manager.Contains("[Range(1, MaxRecordingChunkSizeKB)]", StringComparison.Ordinal)
+                  && setup.Contains("Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB)", StringComparison.Ordinal),
+                "134-1G-4: recording chunk size is guarded in Inspector and runtime setup");
+        }
+
+        private static void VerifyRos2BridgeWarningThrottling()
+        {
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+
+            Check(manager.Contains("_lastRos2BridgePublishWarningKey", StringComparison.Ordinal)
+                  && manager.Contains("_lastRos2BridgePublishWarningTicks", StringComparison.Ordinal),
+                "134-1H-1: manager tracks ROS2 bridge warning throttle state");
+            Check(publishing.Contains("WarnRos2BridgePublishSkipped(reason)", StringComparison.Ordinal)
+                  && publishing.Contains("WarnRos2BridgePublishSkipped(enqueueReason)", StringComparison.Ordinal)
+                  && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal),
+                "134-1H-2: ROS2 bridge publish failures use a bounded warning path");
+        }
+
+        private static void VerifyLoggerSeverityPrefixes()
+        {
+            var logger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/IFoxgloveLogger.cs");
+
+            Check(logger.Contains("[Foxglove][Warning]", StringComparison.Ordinal)
+                  && logger.Contains("[Foxglove][Error]", StringComparison.Ordinal),
+                "134-1I-1: ConsoleLogger distinguishes warning and error severity");
+        }
+
+        private static void VerifyRecordingAndAssetBudgetHardening()
+        {
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+
+            Check(setup.Contains("DateTime.UtcNow.ToString(RecordingTimestampFormat", StringComparison.Ordinal)
+                  && setup.Contains("yyyyMMdd_HHmmss_fffffff'Z'", StringComparison.Ordinal),
+                "134-1J-1: generated recording names use high-precision UTC timestamps");
+            Check(manager.Contains("public long MaxBytesOrDefault", StringComparison.Ordinal)
+                  && setup.Contains("RegisterAssetRoot(ar.uriPrefix, absRoot, ar.MaxBytesOrDefault)", StringComparison.Ordinal),
+                "134-1J-2: asset root byte budgets avoid float-to-long truncation at registration");
+            Check(!runtime.Contains("using System.Linq;", StringComparison.Ordinal),
+                "134-1J-3: FoxgloveRuntime no longer carries unused System.Linq import");
+        }
+
+        private static void VerifySerializedSecretsAreNotCommitted()
+        {
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new InvalidOperationException("Could not find repository root.");
+            var serializedExtensions = new[] { ".unity", ".prefab", ".asset" };
+            var searchRoots = new[]
+            {
+                Path.Combine(root, "Assets"),
+                Path.Combine(root, "Packages"),
+                Path.Combine(root, "ProjectSettings")
+            };
+            var checkedAny = false;
+            foreach (var searchRoot in searchRoots)
+            {
+                if (!Directory.Exists(searchRoot))
+                    continue;
+
+                foreach (var file in Directory.EnumerateFiles(searchRoot, "*.*", SearchOption.AllDirectories))
+                {
+                    var extension = Path.GetExtension(file);
+                    if (Array.IndexOf(serializedExtensions, extension) < 0)
+                        continue;
+
+                    checkedAny = true;
+                    var text = File.ReadAllText(file);
+                    foreach (var field in new[] { "_certificatePassword", "_sharedToken" })
+                    {
+                        foreach (var line in text.Split('\n'))
+                        {
+                            var trimmed = line.Trim();
+                            if (!trimmed.StartsWith(field + ":", StringComparison.Ordinal))
+                                continue;
+
+                            var value = trimmed.Substring(field.Length + 1).Trim();
+                            Check(string.IsNullOrEmpty(value) || value == "\"\"",
+                                "134-1K-1: serialized scenes, prefabs, and assets do not commit plaintext manager secrets");
+                        }
+                    }
+                }
+            }
+
+            Check(checkedAny, "134-1K-2: serialized Unity assets were scanned for committed manager secrets");
         }
 
         private static void Check(bool condition, string name)

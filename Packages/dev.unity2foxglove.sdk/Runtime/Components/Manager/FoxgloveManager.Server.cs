@@ -120,6 +120,18 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>True when the configured transport can be started.</returns>
         private bool ValidateTransportConfiguration()
         {
+            if (!IsValidTcpPort(_port))
+            {
+                Debug.LogError($"[Foxglove] Server port must be between 1 and 65535. Current value: {_port}");
+                return false;
+            }
+
+            if (_rootCaDistributorEnabled && !IsValidTcpPort(_rootCaDistributorPort))
+            {
+                Debug.LogError($"[Foxglove] Root CA distributor port must be between 1 and 65535. Current value: {_rootCaDistributorPort}");
+                return false;
+            }
+
             if (_transportMode != FoxgloveTransportMode.SecureWebSocket)
             {
                 return true;
@@ -140,6 +152,9 @@ namespace Unity.FoxgloveSDK.Components
 
             return true;
         }
+
+        private static bool IsValidTcpPort(int port)
+            => port >= 1 && port <= 65535;
 
         /// <summary>
         /// Builds the browser connection URL for the current manager settings.

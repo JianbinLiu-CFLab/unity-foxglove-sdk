@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Components
         /// First channel identifier assigned by manager-owned manual publishing APIs.
         /// </summary>
         private const int FirstAutoChannelId = 1;
+        private const int MaxRecordingChunkSizeKB = int.MaxValue / 1024;
         private const int MaxQueuedClientLifecycleEvents = 4096;
         private const int MaxQueuedClientEvents = 4096;
         private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
@@ -59,6 +60,7 @@ namespace Unity.FoxgloveSDK.Components
         [Header("General")]
         [SerializeField] private string _serverName = "Unity Foxglove SDK";
         [SerializeField] private string _host = "127.0.0.1";
+        [Range(1, 65535)]
         [SerializeField] private int _port = 8765;
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
@@ -105,6 +107,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _recordingPrefix = "foxglove";
         [Tooltip("Leave empty to save in <project>/Recordings/ . Shown path is the resolved default at runtime.")]
         [SerializeField] private string _recordingDirectory = "";
+        [Range(1, MaxRecordingChunkSizeKB)]
         [SerializeField] private int _recordingChunkSizeKB = 1024;
         [SerializeField] private McapCompressionMode _recordingCompression = McapCompressionMode.None;
 
@@ -130,6 +133,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _certificatePassword = "";
         [SerializeField] private bool _rootCaDistributorEnabled;
         [SerializeField] private string _rootCaDistributorHost = "127.0.0.1";
+        [Range(1, 65535)]
         [SerializeField] private int _rootCaDistributorPort = 8766;
         [SerializeField] private string _rootCaFilePath = "";
         [SerializeField] private string _sharedToken = "";
@@ -142,6 +146,8 @@ namespace Unity.FoxgloveSDK.Components
         private int _nextChannelId = FirstAutoChannelId;
         private bool _warnedNotRunning;
         private string _lastInvalidPublishTopicWarningKey;
+        private string _lastRos2BridgePublishWarningKey;
+        private long _lastRos2BridgePublishWarningTicks;
         private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
         private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =
@@ -415,6 +421,18 @@ namespace Unity.FoxgloveSDK.Components
             return evt.IsMessage ? evt.Payload?.Length ?? 0 : 0;
         }
 
+        private void OnValidate()
+        {
+            _port = Mathf.Clamp(_port, 1, 65535);
+            _rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);
+            _recordingChunkSizeKB = Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB);
+            _ros2BridgePort = Mathf.Clamp(_ros2BridgePort, 1, 65535);
+            _ros2BridgeCustomDepth = Mathf.Max(1, _ros2BridgeCustomDepth);
+            _ros2BridgeQueueCapacity = Mathf.Max(1, _ros2BridgeQueueCapacity);
+            _ros2BridgeReconnectIntervalMs = Mathf.Max(1, _ros2BridgeReconnectIntervalMs);
+            _ros2BridgeSendTimeoutMs = Mathf.Max(1, _ros2BridgeSendTimeoutMs);
+        }
+
         /// <summary>
         /// Starts the server automatically when configured to start on enable.
         /// </summary>
@@ -574,17 +592,17 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Default maximum fetchable asset size in megabytes.
         /// </summary>
-        private const float DefaultMaxMegabytes = 16f;
+        private const double DefaultMaxMegabytes = 16d;
 
         /// <summary>
         /// Converts megabytes to kilobytes.
         /// </summary>
-        private const float KilobytesPerMegabyte = 1024f;
+        private const double KilobytesPerMegabyte = 1024d;
 
         /// <summary>
         /// Converts kilobytes to bytes.
         /// </summary>
-        private const float BytesPerKilobyte = 1024f;
+        private const double BytesPerKilobyte = 1024d;
 
         /// <summary>
         /// URI prefix associated with this asset root.
@@ -607,7 +625,18 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Maximum fetchable file size in bytes.
         /// </summary>
-        public float MaxBytesOrDefault => (maxMB > 0 ? maxMB : DefaultMaxMegabytes) * KilobytesPerMegabyte * BytesPerKilobyte;
+        public long MaxBytesOrDefault
+        {
+            get
+            {
+                var megabytes = maxMB > 0 ? maxMB : DefaultMaxMegabytes;
+                var bytes = megabytes * KilobytesPerMegabyte * BytesPerKilobyte;
+                if (bytes >= long.MaxValue)
+                    return long.MaxValue;
+
+                return bytes <= 0 ? 0 : (long)bytes;
+            }
+        }
     }
 
     /// <summary>

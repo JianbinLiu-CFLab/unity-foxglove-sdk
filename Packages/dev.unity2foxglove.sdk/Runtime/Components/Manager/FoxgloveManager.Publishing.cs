@@ -409,7 +409,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!TryPrepareRos2BridgePublish(topic, topicOverride, schemaName, out var effectiveTopic, out var qos, out var reason))
             {
                 if (!string.IsNullOrWhiteSpace(reason))
-                    Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
+                    WarnRos2BridgePublishSkipped(reason);
                 return;
             }
 
@@ -425,7 +425,24 @@ namespace Unity.FoxgloveSDK.Components
                 qos);
 
             if (!_ros2BridgeRuntime.TryEnqueue(frame, out var enqueueReason))
-                Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + enqueueReason);
+                WarnRos2BridgePublishSkipped(enqueueReason);
+        }
+
+        private void WarnRos2BridgePublishSkipped(string reason)
+        {
+            reason = string.IsNullOrWhiteSpace(reason) ? "unknown reason" : reason;
+            var nowTicks = System.DateTime.UtcNow.Ticks;
+            var key = "ros2-bridge:" + reason;
+            if (_lastRos2BridgePublishWarningKey == key
+                && nowTicks - System.Threading.Interlocked.Read(ref _lastRos2BridgePublishWarningTicks)
+                    < ClientEventOverflowWarningIntervalTicks)
+            {
+                return;
+            }
+
+            _lastRos2BridgePublishWarningKey = key;
+            System.Threading.Interlocked.Exchange(ref _lastRos2BridgePublishWarningTicks, nowTicks);
+            Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
         }
 
         /// <summary>

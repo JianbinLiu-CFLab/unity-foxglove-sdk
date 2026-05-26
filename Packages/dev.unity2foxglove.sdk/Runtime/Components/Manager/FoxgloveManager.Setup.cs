@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Timestamp format appended to generated recording file names.
         /// </summary>
-        private const string RecordingTimestampFormat = "yyyyMMdd_HHmmss";
+        private const string RecordingTimestampFormat = "yyyyMMdd_HHmmss_fffffff'Z'";
 
         /// <summary>
         /// MCAP compression string for LZ4 output.
@@ -96,7 +96,7 @@ namespace Unity.FoxgloveSDK.Components
                 var absRoot = Path.IsPathRooted(ar.localRoot)
                     ? ar.localRoot
                     : Path.GetFullPath(Path.Combine(Application.dataPath, "..", ar.localRoot));
-                _runtime.RegisterAssetRoot(ar.uriPrefix, absRoot, (long)ar.MaxBytesOrDefault);
+                _runtime.RegisterAssetRoot(ar.uriPrefix, absRoot, ar.MaxBytesOrDefault);
             }
         }
 
@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.Components
                 ? Path.Combine(ProjectRoot, DefaultRecordingDirectoryName)
                 : ResolveProjectPath(_recordingDirectory);
             Directory.CreateDirectory(dir);
-            var timestamp = System.DateTime.Now.ToString(RecordingTimestampFormat);
+            var timestamp = System.DateTime.UtcNow.ToString(RecordingTimestampFormat, System.Globalization.CultureInfo.InvariantCulture);
             var path = Path.Combine(dir, $"{_recordingPrefix}_{timestamp}.mcap");
             var identityMode = EffectiveSchemaIdentityMode;
             if (identityMode != SchemaIdentityMode.Off)
@@ -168,7 +168,8 @@ namespace Unity.FoxgloveSDK.Components
             var coord = _coordinateMode == CoordinateMode.RightHand ? RightHandCoordinateModeName : LeftHandCoordinateModeName;
             try
             {
-                _runtime.EnableRecording(path, _recordingChunkSizeKB * RecordingBytesPerKilobyte, comp, coord);
+                var chunkSizeBytes = checked(Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB) * RecordingBytesPerKilobyte);
+                _runtime.EnableRecording(path, chunkSizeBytes, comp, coord);
             }
             catch
             {
@@ -211,8 +212,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private bool SetupReplay()
         {
-            if (!_enableReplay || string.IsNullOrEmpty(_replayFilePath))
+            if (!_enableReplay)
             {
+                return true;
+            }
+
+            if (string.IsNullOrEmpty(_replayFilePath))
+            {
+                RestoreLivePublishers();
                 return true;
             }
 
