@@ -75,7 +75,13 @@ namespace Unity.FoxgloveSDK.IO
         /// A single log-time group may exceed this soft cap so logically
         /// simultaneous scene and transform messages are not split across ticks.
         /// </summary>
-        public int MaxMessagesPerTick = 8;
+        private int _maxMessagesPerTick = 8;
+
+        public int MaxMessagesPerTick
+        {
+            get => _maxMessagesPerTick;
+            set => _maxMessagesPerTick = Math.Max(1, value);
+        }
 
         /// <summary>
         /// Whether a file has been loaded successfully.
@@ -143,6 +149,15 @@ namespace Unity.FoxgloveSDK.IO
             /// <summary>All messages have been emitted.</summary>
             Ended
         }
+
+        public enum CorruptChunkPolicy
+        {
+            Skip,
+            UseWithWarning,
+            Throw
+        }
+
+        public CorruptChunkPolicy CrcMismatchPolicy { get; set; } = CorruptChunkPolicy.Skip;
         /// <summary>
         /// Current replay engine state.
         /// </summary>
@@ -170,6 +185,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 _reader = new McapReader(_stream);
                 _summary = _reader.ReadSummary();
+                SortChunkIndexes(_summary?.ChunkIndexes);
                 CanSeek = _summary.Statistics != null && _summary.ChunkIndexes.Count > 0;
                 StartTimeNs = _summary.Statistics?.MessageStartTime ?? 0;
                 EndTimeNs = _summary.Statistics?.MessageEndTime ?? 0;
@@ -323,8 +339,8 @@ namespace Unity.FoxgloveSDK.IO
                     break;
 
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
-                if (!crcValid)
-                    LogCrcWarning("Snapshot chunk");
+                if (!ShouldUseChunkRecords("Snapshot chunk", crcValid))
+                    continue;
 
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
@@ -407,8 +423,8 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
 
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
-                if (!crcValid)
-                    LogCrcWarning("History chunk");
+                if (!ShouldUseChunkRecords("History chunk", crcValid))
+                    continue;
 
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
@@ -560,8 +576,8 @@ namespace Unity.FoxgloveSDK.IO
 
             var ci = _summary.ChunkIndexes[_currentChunkIdx];
             _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength, out var crcValid);
-            if (!crcValid)
-                LogCrcWarning($"Chunk {_currentChunkIdx}");
+            if (!ShouldUseChunkRecords($"Chunk {_currentChunkIdx}", crcValid))
+                _currentUncompressed = Array.Empty<byte>();
             _readOffset = 0;
             return true;
         }
@@ -652,6 +668,20 @@ namespace Unity.FoxgloveSDK.IO
             _logger.LogWarning($"[McapReplayEngine] {scope} CRC mismatch; data may be corrupted.");
         }
 
+        private bool ShouldUseChunkRecords(string scope, bool crcValid)
+        {
+            if (crcValid)
+                return true;
+
+            var message = $"[McapReplayEngine] {scope} CRC mismatch; data may be corrupted.";
+            _logger.LogWarning(message);
+
+            if (CrcMismatchPolicy == CorruptChunkPolicy.Throw)
+                throw new InvalidDataException(message);
+
+            return CrcMismatchPolicy == CorruptChunkPolicy.UseWithWarning;
+        }
+
         private List<McapMessage> FinishTickResult(List<McapMessage> result)
         {
             if (result.Count <= 0)
@@ -681,7 +711,8 @@ namespace Unity.FoxgloveSDK.IO
             if (result == null) throw new ArgumentNullException(nameof(result));
             if (result.Count == 0)
                 return 0;
-            if (maxMessagesPerTick <= 0 || result.Count <= maxMessagesPerTick)
+            maxMessagesPerTick = Math.Max(1, maxMessagesPerTick);
+            if (result.Count <= maxMessagesPerTick)
                 return result.Count;
 
             var takeCount = maxMessagesPerTick;
@@ -700,6 +731,20 @@ namespace Unity.FoxgloveSDK.IO
             cmp = a.Sequence.CompareTo(b.Sequence);
             if (cmp != 0) return cmp;
             return a.PublishTime.CompareTo(b.PublishTime);
+        }
+
+        private static void SortChunkIndexes(List<McapChunkIndex> chunkIndexes)
+        {
+            chunkIndexes?.Sort(CompareChunkIndexes);
+        }
+
+        private static int CompareChunkIndexes(McapChunkIndex a, McapChunkIndex b)
+        {
+            var cmp = a.MessageStartTime.CompareTo(b.MessageStartTime);
+            if (cmp != 0) return cmp;
+            cmp = a.MessageEndTime.CompareTo(b.MessageEndTime);
+            if (cmp != 0) return cmp;
+            return a.ChunkStartOffset.CompareTo(b.ChunkStartOffset);
         }
     }
 }
