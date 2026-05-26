@@ -79,8 +79,6 @@ namespace Unity.FoxgloveSDK.Components
         private readonly HashSet<string> _warnedEntities = new();
         /// <summary>Suppresses duplicate warnings for unparseable topics.</summary>
         private readonly HashSet<string> _warnedTopics = new();
-        /// <summary>Reserved for future auto-lookup warnings.</summary>
-        private readonly HashSet<string> _warnedAuto = new();
         /// <summary>Reusable MaterialPropertyBlock for colour application.</summary>
         private MaterialPropertyBlock _propBlock;
         /// <summary>Whether this adapter is currently subscribed to replay messages.</summary>
@@ -89,6 +87,7 @@ namespace Unity.FoxgloveSDK.Components
         private ulong _activeReplayStartTimeNs;
         /// <summary>Disabled trace hook used only for manual before/after replay pose investigations.</summary>
         private const bool ReplayPoseTraceEnabled = false;
+        private const int MaxReplayJsonPayloadBytes = 4 * 1024 * 1024;
 
         /// <summary>
         /// Resolves the FoxgloveManager and loads manual FrameMapping and
@@ -197,7 +196,7 @@ namespace Unity.FoxgloveSDK.Components
                 else if (protobufBehavior == ReplayChannelBehavior.ScenePrimitivePose && _driveScene)
                     HandleSceneUpdate(ParseProtobuf("Foxglove.SceneUpdate", context.Payload), context);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsRecoverableReplayException(ex))
             {
                 var warningKey = string.IsNullOrEmpty(context.Topic) ? context.SchemaName : context.Topic;
                 if (_warnedTopics.Add(warningKey ?? string.Empty))
@@ -255,6 +254,9 @@ namespace Unity.FoxgloveSDK.Components
             _poseArbiter.Reset();
             _transformByPoseKey.Clear();
             _channelBehaviorOverrides.Clear();
+            _warnedFrames.Clear();
+            _warnedEntities.Clear();
+            _warnedTopics.Clear();
             _hasReplaySession = false;
             _activeReplayStartTimeNs = 0;
         }
@@ -305,6 +307,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             obj = null;
             if (!LooksLikeJsonObject(payload)) return false;
+            if (payload.Length > MaxReplayJsonPayloadBytes)
+                throw new InvalidOperationException(
+                    $"Replay JSON payload exceeds {MaxReplayJsonPayloadBytes} bytes.");
 
             var json = Encoding.UTF8.GetString(payload);
             obj = JObject.Parse(json);
@@ -786,6 +791,14 @@ namespace Unity.FoxgloveSDK.Components
         {
             var value = GetPropertyValue(source, propertyName);
             return value == null ? 0f : Convert.ToSingle(value);
+        }
+
+        private static bool IsRecoverableReplayException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
         }
 
         private static object GetFirstItem(object collection)

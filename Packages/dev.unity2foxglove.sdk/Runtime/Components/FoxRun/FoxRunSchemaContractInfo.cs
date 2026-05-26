@@ -48,9 +48,12 @@ namespace Unity.FoxgloveSDK.Components
             PolicyHash = policyHash ?? string.Empty;
             Mode = mode ?? string.Empty;
             RateHz = rateHz;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
+            ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
             Fields = new List<FoxRunSchemaFieldInfo>(fields ?? Array.Empty<FoxRunSchemaFieldInfo>()).AsReadOnly();
         }
+
+        private static float NormalizeNonNegative(float value)
+            => float.IsNaN(value) || value < 0f ? 0f : value;
     }
 }

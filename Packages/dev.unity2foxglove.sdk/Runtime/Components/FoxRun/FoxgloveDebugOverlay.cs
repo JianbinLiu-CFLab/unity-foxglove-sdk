@@ -4,6 +4,7 @@
 // Module: Runtime/Components/FoxRun
 // Purpose: Explicit helper for schemaless FoxRun debug overlay topics.
 
+using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Util;
 
@@ -27,17 +28,17 @@ namespace Unity.FoxgloveSDK.Components
                 if (manager == null)
                     return false;
 
-                if (!FoxgloveDebugOverlayEnvelope.TryCreate(topic, source, values, label, out var envelope))
+                if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
                     return false;
 
-                if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
+                if (!FoxgloveDebugOverlayEnvelope.TryCreate(topic, source, values, label, out var envelope))
                     return false;
 
                 var timestamp = logTimeNs ?? manager.NowNs;
                 manager.PublishJson(topic, "", envelope, timestamp);
                 return true;
             }
-            catch
+            catch (Exception ex) when (IsRecoverablePublishException(ex))
             {
                 return false;
             }
@@ -57,20 +58,28 @@ namespace Unity.FoxgloveSDK.Components
                 if (manager == null)
                     return false;
 
-                if (!FoxgloveDebugOverlayEnvelope.TryCreateValue(topic, source, key, value, label, out var envelope))
+                if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
                     return false;
 
-                if (manager.SuppressLivePublishersForReplay || !manager.IsRunning)
+                if (!FoxgloveDebugOverlayEnvelope.TryCreateValue(topic, source, key, value, label, out var envelope))
                     return false;
 
                 var timestamp = logTimeNs ?? manager.NowNs;
                 manager.PublishJson(topic, "", envelope, timestamp);
                 return true;
             }
-            catch
+            catch (Exception ex) when (IsRecoverablePublishException(ex))
             {
                 return false;
             }
+        }
+
+        private static bool IsRecoverablePublishException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
         }
     }
 }

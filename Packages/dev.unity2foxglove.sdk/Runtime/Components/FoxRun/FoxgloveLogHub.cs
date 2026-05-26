@@ -82,8 +82,10 @@ namespace Unity.FoxgloveSDK.Components
         // Internal state
         /// <summary>Singleton instance.</summary>
         private static FoxgloveLogHub _instance;
+        private static readonly List<IFoxgloveLogSource> PendingRegistrations = new();
         /// <summary>Cached reference to the FoxgloveManager.</summary>
         private FoxgloveManager _mgr;
+        [SerializeField] private bool _enableFallbackSceneScan = true;
         /// <summary>Per-source scheduler state for rate throttling.</summary>
         private readonly Dictionary<IFoxgloveLogSource, FixedRatePublishState[]> _timers = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
@@ -104,15 +106,29 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>
         public static void RegisterSource(IFoxgloveLogSource source)
         {
+            if (source == null)
+                return;
+
             if (_instance != null)
+            {
                 _instance.AddSource(source);
+                return;
+            }
+
+            if (!PendingRegistrations.Contains(source))
+                PendingRegistrations.Add(source);
         }
 
         /// <summary>Unregister a generated FoxRun source from the hub cache.</summary>
         public static void UnregisterSource(IFoxgloveLogSource source)
         {
-            if (_instance != null && source != null)
+            if (source == null)
+                return;
+
+            if (_instance != null)
                 _instance.RemoveSource(source);
+            else
+                PendingRegistrations.Remove(source);
         }
 
         /// <summary>
@@ -137,6 +153,7 @@ namespace Unity.FoxgloveSDK.Components
         private static void ResetStaticState()
         {
             _instance = null;
+            PendingRegistrations.Clear();
         }
 
         /// <summary>
@@ -159,6 +176,7 @@ namespace Unity.FoxgloveSDK.Components
                 else
                 {
                     _instance = existing;
+                    _instance.DrainPendingRegistrations();
                     return;
                 }
             }
@@ -167,6 +185,7 @@ namespace Unity.FoxgloveSDK.Components
             DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
             _instance = go.AddComponent<FoxgloveLogHub>();
+            _instance.DrainPendingRegistrations();
         }
 
         /// <summary>
@@ -191,11 +210,14 @@ namespace Unity.FoxgloveSDK.Components
             if (!_mgr.IsRunning) return;
             if (_mgr.SuppressLivePublishersForReplay) return;
 
-            _scanTimer -= Time.deltaTime;
-            if (_scanTimer <= 0f)
+            if (_enableFallbackSceneScan)
             {
-                _scanTimer = ScanIntervalSeconds;
-                Scan();
+                _scanTimer -= Time.deltaTime;
+                if (_scanTimer <= 0f)
+                {
+                    _scanTimer = ScanIntervalSeconds;
+                    Scan();
+                }
             }
 
             var nowNs = _mgr.NowNs;
@@ -251,7 +273,7 @@ namespace Unity.FoxgloveSDK.Components
                 policySource?.FoxgloveLog_MarkPublished(topicIndex, nowSec);
                 return true;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsRecoverableSourceException(ex))
             {
                 LogSourceFailure(source, topicIndex, "scheduled publish", ex);
                 return false;
@@ -267,7 +289,7 @@ namespace Unity.FoxgloveSDK.Components
                     policySource.FoxgloveLog_MarkPublished(topicIndex, nowSec);
                 return true;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsRecoverableSourceException(ex))
             {
                 LogSourceFailure(source, topicIndex, "trigger publish", ex);
                 return false;
@@ -349,6 +371,16 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private void DrainPendingRegistrations()
+        {
+            if (PendingRegistrations.Count == 0)
+                return;
+
+            foreach (var source in PendingRegistrations)
+                AddSource(source);
+            PendingRegistrations.Clear();
+        }
+
         private bool TriggerSource(IFoxgloveLogSource source, int topicIndex)
         {
             if (source == null)
@@ -363,6 +395,14 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
 
             return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs, Time.realtimeSinceStartupAsDouble);
+        }
+
+        private static bool IsRecoverableSourceException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
         }
 
         /// <summary>Clears all timers and nulls the singleton reference.</summary>

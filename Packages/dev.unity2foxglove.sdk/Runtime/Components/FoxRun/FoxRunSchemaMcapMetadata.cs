@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 record = JsonConvert.DeserializeObject<FoxRunSchemaMcapMetadataRecord>(json);
             }
-            catch (Exception ex) when (ex is JsonException || ex is ArgumentException)
+            catch (Exception ex) when (IsRecoverableJsonParseException(ex))
             {
                 error = ex.Message;
                 return false;
@@ -321,6 +321,15 @@ namespace Unity.FoxgloveSDK.Components
                 return compare;
 
             return string.Compare(left?.Encoding, right?.Encoding, StringComparison.Ordinal);
+        }
+
+        private static bool IsRecoverableJsonParseException(Exception ex)
+        {
+            return ex is JsonException
+                   || ex is ArgumentException
+                   || ex is FormatException
+                   || ex is OverflowException
+                   || ex is InvalidCastException;
         }
     }
 }
