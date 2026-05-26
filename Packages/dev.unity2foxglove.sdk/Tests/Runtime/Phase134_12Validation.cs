@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
             var contract = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/ICameraVideoEncoderSidecar.cs");
             Check(contract.Contains("interface ITimestampedCameraVideoEncoderSidecar : ICameraVideoEncoderSidecar"),
                 "134-12D-1: video sidecar contract exposes timestamped frame submission");
-            Check(contract.Contains("TrySubmitFrame(byte[] frame, ulong timestampNs)") && contract.Contains("TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)"),
+            Check(contract.Contains("TrySubmitFrame(byte[] frame, ulong timestampNs)") && contract.Contains("TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit)"),
                 "134-12D-2: timestamped sidecar contract carries timestamps through dequeue");
 
             var accessUnit = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/EncodedVideoAccessUnit.cs");
@@ -129,24 +129,24 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void LaserScanRejectsInvalidAngles()
         {
-            ThrowsArgument(() => LaserScanMessageBuilder.CreateJson(1UL, "laser", 1.0, 0.5, new[] { 1.0 }),
-                "134-12F-1: JSON LaserScan rejects endAngle <= startAngle");
-            ThrowsArgument(() => LaserScanMessageBuilder.CreateProtobuf(1UL, "laser", 1.0, 1.0, new[] { 1.0 }),
-                "134-12F-2: protobuf LaserScan rejects zero-width scans");
+            ThrowsArgument(() => LaserScanMessageBuilder.CreateJson(1UL, "laser", double.NaN, 0.5, new[] { 1.0 }),
+                "134-12F-1: JSON LaserScan rejects non-finite start angles");
+            ThrowsArgument(() => LaserScanMessageBuilder.CreateProtobuf(1UL, "laser", 1.0, double.PositiveInfinity, new[] { 1.0 }),
+                "134-12F-2: protobuf LaserScan rejects non-finite end angles");
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/LaserScanMessageBuilder.cs");
             Check(source.Contains("ValidateAngles(startAngle, endAngle)"),
-                "134-12F-3: LaserScan builder validates angles in both creation paths");
+                "134-12F-3: LaserScan builder validates finite angles in both creation paths");
         }
 
         private static void PointCloudPendingFrameIsThreadSafe()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            Check(source.Contains("using System.Threading;"),
-                "134-12G-1: point cloud publisher imports synchronization primitives");
-            Check(source.Contains("Interlocked.Exchange(ref _pendingFrame, frame)"),
-                "134-12G-2: SetFrame publishes pending frame with a memory barrier");
-            Check(source.Contains("Interlocked.Exchange(ref _pendingFrame, null)"),
-                "134-12G-3: Update consumes and clears pending frame atomically");
+            Check(source.Contains("private readonly object _pendingFrameGate = new object();"),
+                "134-12G-1: point cloud publisher protects pending frames with an explicit gate");
+            Check(source.Contains("lock (_pendingFrameGate)") && source.Contains("_pendingFrame = frame;"),
+                "134-12G-2: SetFrame publishes pending frame under the gate");
+            Check(source.Contains("pendingFrame = _pendingFrame;") && source.Contains("_pendingFrame = null;"),
+                "134-12G-3: Update consumes and clears pending frame after demand gating");
         }
 
         private static void TransformPublisherSanitizesAndSharesConversion()

@@ -37,6 +37,6 @@ namespace Foxglove.Schemas.Video
         /// format follows the same implementation-specific contract as TrySubmitFrame.
         /// </summary>
         bool TrySubmitFrame(byte[] frame, ulong timestampNs);
-        bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit);
+        bool TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit);
     }
 }

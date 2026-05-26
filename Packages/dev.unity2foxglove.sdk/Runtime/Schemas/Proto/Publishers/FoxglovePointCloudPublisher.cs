@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _includeSyntheticIntensity;
 
         private PointCloudFrame _pendingFrame;
+        private readonly object _pendingFrameGate = new object();
         private bool _warnedPointCloudBudget;
         private bool _warnedPendingDrop;
         private bool _warnedDracoFailure;
@@ -99,8 +100,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void SetFrame(PointCloudFrame frame)
         {
-            var previous = Interlocked.Exchange(ref _pendingFrame, frame);
-            if (previous != null && frame != null && _logQosDrops && !_warnedPendingDrop)
+            bool hadPendingFrame;
+            lock (_pendingFrameGate)
+            {
+                hadPendingFrame = _pendingFrame != null;
+                _pendingFrame = frame;
+            }
+
+            if (hadPendingFrame && frame != null && _logQosDrops && !_warnedPendingDrop)
             {
                 Debug.LogWarning("[Foxglove] PointCloud pending frame replaced; stale pending frame dropped.");
                 _warnedPendingDrop = true;
@@ -143,7 +150,13 @@ namespace Unity.FoxgloveSDK.Components
             if (!publishWebSocket && !publishBridge) return;
 
             var unixNs = CurrentLogTimeNs;
-            var pendingFrame = Interlocked.Exchange(ref _pendingFrame, null);
+            PointCloudFrame pendingFrame;
+            lock (_pendingFrameGate)
+            {
+                pendingFrame = _pendingFrame;
+                _pendingFrame = null;
+            }
+
             var frame = pendingFrame != null ? PrepareFrameForQoS(pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
             _warnedPendingDrop = false;
             if (frame == null || frame.Points.Count == 0) return;

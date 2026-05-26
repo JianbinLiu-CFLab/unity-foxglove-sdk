@@ -205,7 +205,7 @@ namespace Unity.FoxgloveSDK.Components
             if (sidecar == null)
                 return;
 
-            while (sidecar.TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit))
+            while (sidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
             {
                 var unixNs = accessUnit.TimestampNs == 0UL ? CurrentLogTimeNs : accessUnit.TimestampNs;
                 var payload = CameraCompressedVideoBuilder.Serialize(

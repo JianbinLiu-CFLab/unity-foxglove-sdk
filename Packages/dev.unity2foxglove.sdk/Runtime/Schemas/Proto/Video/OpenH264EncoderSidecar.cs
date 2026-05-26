@@ -172,7 +172,7 @@ namespace Foxglove.Schemas.Video
 
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
         {
-            if (TryDequeueAccessUnit(out EncodedVideoAccessUnit timestamped))
+            if (TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit timestamped))
             {
                 accessUnit = timestamped.Data;
                 return true;
@@ -182,7 +182,7 @@ namespace Foxglove.Schemas.Video
             return false;
         }
 
-        public bool TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit)
+        public bool TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit)
         {
             lock (_outputLock)
             {

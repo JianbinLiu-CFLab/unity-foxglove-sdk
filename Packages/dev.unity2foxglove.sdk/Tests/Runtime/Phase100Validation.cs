@@ -81,7 +81,8 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(relativePath);
             Check(source.Contains("_captureGeneration") && source.Contains("_cleanupWhenReadbacksDrain"),
                 "100C-1: " + label + " tracks capture generation and deferred cleanup");
-            Check(source.Contains("OnReadbackComplete(req, generation)") || source.Contains("OnReadbackComplete(request, generation)"),
+            Check(source.Contains("OnReadbackComplete(req, generation")
+                  || source.Contains("OnReadbackComplete(request, generation"),
                 "100C-2: " + label + " passes generation into AsyncGPUReadback callback");
             Check(source.Contains("CompletePendingReadback()"),
                 "100C-3: " + label + " centralizes pending readback decrement and drain cleanup");

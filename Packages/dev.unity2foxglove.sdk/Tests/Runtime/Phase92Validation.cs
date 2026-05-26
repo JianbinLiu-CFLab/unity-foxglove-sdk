@@ -179,8 +179,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPublisherIntegration()
         {
             var schemaNames = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Publishing/Ros2PublisherSchemaNames.cs");
-            foreach (var expected in ProductSchemaNames())
-                Check(schemaNames.Contains(expected), "92D-1: schema mapping contains " + expected);
+            foreach (var mapping in ProductSchemaMappings())
+                Check(schemaNames.Contains(mapping.sourceToken),
+                    "92D-1: schema mapping contains " + mapping.schemaName);
 
             CheckPublisher(
                 "FoxgloveTransformPublisher.cs",
@@ -426,6 +427,24 @@ namespace Unity.FoxgloveSDK.Tests
             yield return Ros2PublisherSchemaNames.LaserScan;
             yield return Ros2PublisherSchemaNames.PointCloud;
             yield return Ros2PublisherSchemaNames.CompressedPointCloud;
+        }
+
+        private static IEnumerable<(string schemaName, string sourceToken)> ProductSchemaMappings()
+        {
+            yield return (Ros2PublisherSchemaNames.FrameTransform,
+                "FrameTransform = Ros2CdrFrameTransformBuilder.SchemaName");
+            yield return (Ros2PublisherSchemaNames.SceneUpdate,
+                "SceneUpdate = Ros2CdrSceneUpdateBuilder.SchemaName");
+            yield return (Ros2PublisherSchemaNames.CompressedImage,
+                "CompressedImage = Ros2CdrCompressedImageBuilder.SchemaName");
+            yield return (Ros2PublisherSchemaNames.CameraCalibration,
+                "CameraCalibration = Ros2CdrCameraCalibrationBuilder.SchemaName");
+            yield return (Ros2PublisherSchemaNames.LaserScan,
+                "LaserScan = Ros2CdrLaserScanBuilder.SchemaName");
+            yield return (Ros2PublisherSchemaNames.PointCloud,
+                "PointCloud = Ros2CdrPointCloudBuilder.SchemaName");
+            yield return (Ros2PublisherSchemaNames.CompressedPointCloud,
+                "CompressedPointCloud = Ros2CdrCompressedPointCloudBuilder.SchemaName");
         }
 
         private static string ReadPublisher(string fileName)

@@ -441,7 +441,7 @@ namespace Unity.FoxgloveSDK.Components
                     : profile.VideoFormat;
             if (sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar)
             {
-                while (timestampedSidecar.TryDequeueAccessUnit(out EncodedVideoAccessUnit accessUnit))
+                while (timestampedSidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
                     PublishVideoAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat);
             }
             else

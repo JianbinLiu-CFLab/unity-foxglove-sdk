@@ -94,9 +94,19 @@ namespace Unity.FoxgloveSDK.Components
         {
             ResolveManager();
             if (_manager == null) return;
-            if (!ShouldPrepareAnyPublishPayload()) return;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge) return;
 
-            TryPublishScan(logTimeNs, frameId, startAngleRadians, endAngleRadians, ranges, intensities ?? Array.Empty<double>());
+            TryPublishScan(
+                logTimeNs,
+                frameId,
+                startAngleRadians,
+                endAngleRadians,
+                ranges,
+                intensities ?? Array.Empty<double>(),
+                publishWebSocket,
+                publishBridge);
         }
 
         private void Update()
@@ -106,7 +116,9 @@ namespace Unity.FoxgloveSDK.Components
             DrainQueuedPublishFrames();
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPrepareAnyPublishPayload()) return;
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge) return;
 
             var ranges = ResolveRanges();
             var intensities = _intensities ?? Array.Empty<double>();
@@ -124,7 +136,7 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = CurrentLogTimeNs;
             var startRad = _startAngleDegrees * Math.PI / 180.0;
             var endRad = _endAngleDegrees * Math.PI / 180.0;
-            TryPublishScan(unixNs, _frameId, startRad, endRad, ranges, intensities);
+            TryPublishScan(unixNs, _frameId, startRad, endRad, ranges, intensities, publishWebSocket, publishBridge);
         }
 
         private bool TryPublishScan(
@@ -133,11 +145,13 @@ namespace Unity.FoxgloveSDK.Components
             double startRad,
             double endRad,
             IEnumerable<double> ranges,
-            IEnumerable<double> intensities)
+            IEnumerable<double> intensities,
+            bool publishWebSocket,
+            bool publishBridge)
         {
             try
             {
-                PublishScan(unixNs, frameId, startRad, endRad, ranges, intensities);
+                PublishScan(unixNs, frameId, startRad, endRad, ranges, intensities, publishWebSocket, publishBridge);
                 _warnedPublishFailure = false;
                 return true;
             }
@@ -159,10 +173,10 @@ namespace Unity.FoxgloveSDK.Components
             double startRad,
             double endRad,
             IEnumerable<double> ranges,
-            IEnumerable<double> intensities)
+            IEnumerable<double> intensities,
+            bool publishWebSocket,
+            bool publishBridge)
         {
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
             byte[] ros2Payload = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
