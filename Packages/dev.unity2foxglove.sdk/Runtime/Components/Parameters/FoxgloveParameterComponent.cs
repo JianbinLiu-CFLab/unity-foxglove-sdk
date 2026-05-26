@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Core;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -42,6 +43,8 @@ namespace Unity.FoxgloveSDK.Components
         // ── Serialized fields ──
         /// <summary>List of parameter definitions to register on enable.</summary>
         [SerializeField] private List<ParameterDefinition> _parameters = new();
+        private readonly List<string> _registeredNames = new();
+        private FoxgloveManager _registeredManager;
 
         /// <summary>
         /// Registers all defined parameters with the FoxgloveManager on this GameObject.
@@ -49,6 +52,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnEnable()
         {
+            UnregisterRegisteredParameters();
+
             var manager = GetComponent<FoxgloveManager>();
             if (manager == null)
             {
@@ -56,21 +61,55 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            _registeredManager = manager;
             foreach (var p in _parameters)
             {
                 if (string.IsNullOrEmpty(p.Name)) continue;
                 try
                 {
                     var value = string.IsNullOrEmpty(p.DefaultValue)
-                        ? JToken.FromObject(0)
+                        ? FoxgloveParameterStore.DefaultValueForType(p.Type)
                         : JToken.Parse(p.DefaultValue);
-                    manager.RegisterParameter(p.Name, value, p.Type, p.Writable);
+                    if (!FoxgloveParameterStore.TryNormalizeValueForType(p.Type, value, out var normalizedValue))
+                    {
+                        Debug.LogWarning($"[Foxglove] Failed to register parameter '{p.Name}': default value does not match type '{p.Type}'.");
+                        continue;
+                    }
+
+                    manager.RegisterParameter(
+                        p.Name,
+                        normalizedValue,
+                        FoxgloveParameterStore.NormalizeParameterType(p.Type),
+                        p.Writable);
+                    _registeredNames.Add(p.Name);
                 }
                 catch (Exception ex)
                 {
                     Debug.LogWarning($"[Foxglove] Failed to register parameter '{p.Name}': {ex.Message}");
                 }
             }
+        }
+
+        private void OnDisable()
+        {
+            UnregisterRegisteredParameters();
+        }
+
+        private void OnDestroy()
+        {
+            UnregisterRegisteredParameters();
+        }
+
+        private void UnregisterRegisteredParameters()
+        {
+            if (_registeredManager != null)
+            {
+                foreach (var name in _registeredNames)
+                    _registeredManager.UnregisterParameter(name);
+            }
+
+            _registeredNames.Clear();
+            _registeredManager = null;
         }
     }
 }

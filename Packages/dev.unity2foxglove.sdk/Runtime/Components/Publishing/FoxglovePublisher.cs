@@ -43,13 +43,13 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPreparePublishPayload()) return;
+            if (!TryPreparePublishPayload(out var resolution)) return;
 
             var message = CreateMessage();
             if (message == null) return;
 
             var unixNs = CurrentLogTimeNs;
-            Publish(message, unixNs);
+            Publish(message, unixNs, resolution);
         }
     }
 }

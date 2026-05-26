@@ -42,6 +42,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastEncodingWarningKey;
         private string _lastBridgeWarningKey;
         private string _lastTopicWarningKey;
+        private string _supportedEncodingSummary;
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
@@ -172,15 +173,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public string SupportedEncodingSummary
         {
-            get
-            {
-                var labels = new System.Collections.Generic.List<string>(3);
-                if (SupportsJsonEncoding) labels.Add("JSON");
-                if (SupportsProtobufEncoding) labels.Add("Protobuf");
-                if (SupportsRos2Encoding) labels.Add("ROS2");
-                if (labels.Count != 0) return string.Join(", ", labels);
-                return "none";
-            }
+            get { return _supportedEncodingSummary ??= BuildSupportedEncodingSummary(); }
         }
 
         protected virtual void Reset()
@@ -190,6 +183,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void OnEnable()
         {
+            _warnedManagerMissing = false;
             ResolveManager();
         }
 
@@ -230,8 +224,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPreparePublishPayload()
         {
-            var resolution = ResolvePublisherEncoding();
-            return ShouldPreparePublishPayload(resolution, resolution.Effective);
+            return TryPreparePublishPayload(out _);
         }
 
         /// <summary>
@@ -241,6 +234,12 @@ namespace Unity.FoxgloveSDK.Components
         {
             var resolution = ResolvePublisherEncoding();
             return ShouldPreparePublishPayload(resolution, effectiveEncoding);
+        }
+
+        protected bool TryPreparePublishPayload(out PublisherEncodingResolution resolution)
+        {
+            resolution = ResolvePublisherEncoding();
+            return ShouldPreparePublishPayload(resolution, resolution.Effective);
         }
 
         private bool ShouldPreparePublishPayload(
@@ -314,10 +313,16 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish a message through the manager. Safe no-op if manager is null.</summary>
         protected void Publish(object message, ulong logTimeNs)
         {
+            var resolution = ResolvePublisherEncoding();
+            Publish(message, logTimeNs, resolution);
+        }
+
+        /// <summary>Publish a message using a previously resolved encoding. Safe no-op if manager is null.</summary>
+        protected void Publish(object message, ulong logTimeNs, PublisherEncodingResolution resolution)
+        {
             if (_manager == null) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
-            var resolution = ResolvePublisherEncoding();
             WarnIfEncodingFallback(resolution);
             if (!resolution.IsSupported) return;
             if (resolution.Effective != PublisherEffectiveEncoding.Json)
@@ -429,6 +434,22 @@ namespace Unity.FoxgloveSDK.Components
                 manager != null ? manager.DefaultPublishRateHz : _publishRateHz,
                 _publishRateHz,
                 manager != null);
+        }
+
+        private string BuildSupportedEncodingSummary()
+        {
+            var json = SupportsJsonEncoding;
+            var protobuf = SupportsProtobufEncoding;
+            var ros2 = SupportsRos2Encoding;
+
+            if (json && protobuf && ros2) return "JSON, Protobuf, ROS2";
+            if (json && protobuf) return "JSON, Protobuf";
+            if (json && ros2) return "JSON, ROS2";
+            if (protobuf && ros2) return "Protobuf, ROS2";
+            if (json) return "JSON";
+            if (protobuf) return "Protobuf";
+            if (ros2) return "ROS2";
+            return "none";
         }
 
         private void WarnIfEncodingFallback(PublisherEncodingResolution resolution)

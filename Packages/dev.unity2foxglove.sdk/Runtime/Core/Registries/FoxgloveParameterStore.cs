@@ -27,12 +27,16 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Register a parameter. Overwrites if already exists. Fires OnParameterChanged.</summary>
         public void Register(string name, JToken value, string type, bool writable)
         {
+            var normalizedType = NormalizeParameterType(type);
+            if (!TryNormalizeValueForType(normalizedType, value, out var normalizedValue))
+                normalizedValue = DefaultValueForType(normalizedType);
+
             lock (_lock)
             {
-                _params[name] = new ParameterEntry { Value = value, Type = type, Writable = writable };
+                _params[name] = new ParameterEntry { Value = normalizedValue, Type = normalizedType, Writable = writable };
             }
             var handler = OnParameterChanged;
-            handler?.Invoke(name, value, type);
+            handler?.Invoke(name, normalizedValue, normalizedType);
         }
 
         /// <summary>Unregister a parameter.</summary>
@@ -45,16 +49,86 @@ namespace Unity.FoxgloveSDK.Core
         public bool TrySetFromClient(string name, JToken value)
         {
             string type;
+            JToken normalizedValue;
             lock (_lock)
             {
                 if (!_params.TryGetValue(name, out var entry) || !entry.Writable)
                     return false;
-                entry.Value = value;
+                if (!TryNormalizeValueForType(entry.Type, value, out normalizedValue))
+                    return false;
+                entry.Value = normalizedValue;
                 type = entry.Type;
             }
             var handler = OnParameterChanged;
-            handler?.Invoke(name, value, type);
+            handler?.Invoke(name, normalizedValue, type);
             return true;
+        }
+
+        public static string NormalizeParameterType(string type)
+            => string.IsNullOrWhiteSpace(type) ? "number" : type.Trim();
+
+        public static JToken DefaultValueForType(string type)
+        {
+            switch (NormalizeParameterType(type))
+            {
+                case "string":
+                    return JValue.CreateString(string.Empty);
+                case "boolean":
+                    return new JValue(false);
+                case "number[]":
+                    return new JArray();
+                case "number":
+                default:
+                    return new JValue(0);
+            }
+        }
+
+        public static bool TryNormalizeValueForType(string type, JToken value, out JToken normalized)
+        {
+            normalized = null;
+            value ??= DefaultValueForType(type);
+            switch (NormalizeParameterType(type))
+            {
+                case "number":
+                    if (value.Type == JTokenType.Integer || value.Type == JTokenType.Float)
+                    {
+                        normalized = value.DeepClone();
+                        return true;
+                    }
+                    return false;
+                case "string":
+                    if (value.Type == JTokenType.String)
+                    {
+                        normalized = value.DeepClone();
+                        return true;
+                    }
+                    return false;
+                case "boolean":
+                    if (value.Type == JTokenType.Boolean)
+                    {
+                        normalized = value.DeepClone();
+                        return true;
+                    }
+                    return false;
+                case "number[]":
+                    if (value is JArray array)
+                    {
+                        var copy = new JArray();
+                        foreach (var item in array)
+                        {
+                            if (item.Type != JTokenType.Integer && item.Type != JTokenType.Float)
+                                return false;
+                            copy.Add(item.DeepClone());
+                        }
+
+                        normalized = copy;
+                        return true;
+                    }
+                    return false;
+                default:
+                    normalized = value.DeepClone();
+                    return true;
+            }
         }
 
         /// <summary>Get a single parameter as a wire Parameter DTO, or null.</summary>

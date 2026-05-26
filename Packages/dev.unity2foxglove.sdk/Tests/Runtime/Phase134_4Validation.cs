@@ -6,6 +6,8 @@
 
 using System;
 using System.IO;
+using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -32,6 +34,11 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyPublisherBaseRejectsInvalidTopics();
             VerifyManagerRejectsInvalidTopicsBeforeRegistration();
             VerifyInspectorWarnsForInvalidTopics();
+            VerifyParameterLifecycleFacadesAndComponentUnregister();
+            VerifyParameterTypeDefaultsAndValidation();
+            VerifyQuaternionCoordinateRoundTrip();
+            VerifyPublisherEncodingResolutionReuse();
+            VerifyPublisherInspectorHelpersAvoidHotPathAllocations();
 
             Console.WriteLine($"Phase 134-4: {_passed} checks passed.");
         }
@@ -98,6 +105,150 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("Blank publisher topics are not advertised or published.", StringComparison.Ordinal)
                   && editor.Contains("MessageType.Error", StringComparison.Ordinal),
                 "134-4D-2: publisher Inspector surfaces blank topics as an error");
+        }
+
+        private static void VerifyParameterLifecycleFacadesAndComponentUnregister()
+        {
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var component = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Parameters/FoxgloveParameterComponent.cs");
+
+            Check(runtime.Contains("public bool UnregisterParameter(string name)", StringComparison.Ordinal)
+                  && runtime.Contains("_parameters.Unregister(name)", StringComparison.Ordinal),
+                "134-4E-1: runtime exposes parameter unregister facade");
+            Check(manager.Contains("public bool UnregisterParameter(string name)", StringComparison.Ordinal)
+                  && manager.Contains("_runtime?.UnregisterParameter(name) ?? false", StringComparison.Ordinal),
+                "134-4E-2: manager exposes parameter unregister facade");
+            Check(component.Contains("private void OnDisable()", StringComparison.Ordinal)
+                  && component.Contains("private void OnDestroy()", StringComparison.Ordinal)
+                  && component.Contains("UnregisterRegisteredParameters()", StringComparison.Ordinal)
+                  && component.Contains("_registeredManager.UnregisterParameter(name)", StringComparison.Ordinal),
+                "134-4E-3: parameter component unregisters names on disable and destroy");
+        }
+
+        private static void VerifyParameterTypeDefaultsAndValidation()
+        {
+            var component = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Parameters/FoxgloveParameterComponent.cs");
+            Check(component.Contains("FoxgloveParameterStore.DefaultValueForType(p.Type)", StringComparison.Ordinal)
+                  && component.Contains("TryNormalizeValueForType(p.Type", StringComparison.Ordinal),
+                "134-4F-1: parameter component derives empty defaults from declared type and validates parsed values");
+
+            var store = new FoxgloveParameterStore();
+            store.Register("/n", null, "number", writable: true);
+            store.Register("/s", null, "string", writable: true);
+            store.Register("/b", null, "boolean", writable: true);
+            store.Register("/a", null, "number[]", writable: true);
+
+            Check(store.GetWireParameter("/n").Value.Type == JTokenType.Integer
+                  && (int)store.GetWireParameter("/n").Value == 0,
+                "134-4F-2: number parameters default to numeric zero");
+            Check(store.GetWireParameter("/s").Value.Type == JTokenType.String
+                  && (string)store.GetWireParameter("/s").Value == string.Empty,
+                "134-4F-3: string parameters default to empty string");
+            Check(store.GetWireParameter("/b").Value.Type == JTokenType.Boolean
+                  && (bool)store.GetWireParameter("/b").Value == false,
+                "134-4F-4: boolean parameters default to false");
+            Check(store.GetWireParameter("/a").Value.Type == JTokenType.Array
+                  && !store.GetWireParameter("/a").Value.HasValues,
+                "134-4F-5: number array parameters default to an empty array");
+
+            Check(!store.TrySetFromClient("/b", JToken.FromObject(1)),
+                "134-4F-6: writable parameters reject client values that do not match their declared type");
+            Check(store.Unregister("/b") && store.GetWireParameter("/b") == null,
+                "134-4F-7: unregistered parameters are removed from the wire snapshot");
+            Check(!store.TrySetFromClient("/b", JToken.FromObject(true)),
+                "134-4F-8: unregistered parameters cannot be written by clients");
+        }
+
+        private static void VerifyQuaternionCoordinateRoundTrip()
+        {
+            var converter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/CoordinateConverter.cs");
+            Check(converter.Contains("new UnityEngine.Quaternion(-q.z, q.x, -q.y, q.w)", StringComparison.Ordinal)
+                  && converter.Contains("new UnityEngine.Quaternion(q.y, -q.z, -q.x, q.w)", StringComparison.Ordinal),
+                "134-4G-1: coordinate converter keeps the reviewed quaternion mapping formulas");
+
+            AssertQuaternionRoundTrip(Normalize(new TestQuaternion(0.2f, -0.3f, 0.4f, 0.8f)), "134-4G-2: arbitrary quaternion round-trips");
+            AssertQuaternionRoundTrip(AxisAngle(1, 0, 0, 90), "134-4G-3: X-axis basis rotation round-trips");
+            AssertQuaternionRoundTrip(AxisAngle(0, 1, 0, 90), "134-4G-4: Y-axis basis rotation round-trips");
+            AssertQuaternionRoundTrip(AxisAngle(0, 0, 1, 90), "134-4G-5: Z-axis basis rotation round-trips");
+        }
+
+        private static void VerifyPublisherEncodingResolutionReuse()
+        {
+            var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisher.cs");
+            var publisherBase = ReadRepoText(PublisherBasePath);
+
+            Check(publisherBase.Contains("protected bool TryPreparePublishPayload(out PublisherEncodingResolution resolution)", StringComparison.Ordinal)
+                  && publisherBase.Contains("protected void Publish(object message, ulong logTimeNs, PublisherEncodingResolution resolution)", StringComparison.Ordinal),
+                "134-4H-1: publisher base can reuse a preflight encoding resolution for publish");
+            Check(publisher.Contains("TryPreparePublishPayload(out var resolution)", StringComparison.Ordinal)
+                  && publisher.Contains("Publish(message, unixNs, resolution)", StringComparison.Ordinal),
+                "134-4H-2: generic publisher update path avoids resolving encoding twice on successful publish");
+        }
+
+        private static void VerifyPublisherInspectorHelpersAvoidHotPathAllocations()
+        {
+            var publisherBase = ReadRepoText(PublisherBasePath);
+
+            Check(publisherBase.Contains("_warnedManagerMissing = false;", StringComparison.Ordinal),
+                "134-4I-1: publisher manager-missing warning latch resets on enable");
+            Check(publisherBase.Contains("_supportedEncodingSummary ??= BuildSupportedEncodingSummary()", StringComparison.Ordinal)
+                  && !publisherBase.Contains("new System.Collections.Generic.List<string>(3)", StringComparison.Ordinal),
+                "134-4I-2: supported encoding summary is cached and avoids per-access list allocation");
+        }
+
+        private static void AssertQuaternionRoundTrip(TestQuaternion unity, string message)
+        {
+            var foxglove = UnityToFoxgloveRotation(unity);
+            var roundTrip = FoxgloveToUnityRotation(foxglove);
+            Check(Approximately(unity.x, roundTrip.x)
+                  && Approximately(unity.y, roundTrip.y)
+                  && Approximately(unity.z, roundTrip.z)
+                  && Approximately(unity.w, roundTrip.w),
+                message);
+        }
+
+        private static TestQuaternion UnityToFoxgloveRotation(TestQuaternion q)
+            => new TestQuaternion(-q.z, q.x, -q.y, q.w);
+
+        private static TestQuaternion FoxgloveToUnityRotation(TestQuaternion q)
+            => new TestQuaternion(q.y, -q.z, -q.x, q.w);
+
+        private static TestQuaternion AxisAngle(float x, float y, float z, float degrees)
+        {
+            var radians = degrees * Math.PI / 180.0;
+            var s = (float)Math.Sin(radians / 2.0);
+            var c = (float)Math.Cos(radians / 2.0);
+            return Normalize(new TestQuaternion(x * s, y * s, z * s, c));
+        }
+
+        private static TestQuaternion Normalize(TestQuaternion q)
+        {
+            var magnitude = Math.Sqrt((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w));
+            return new TestQuaternion(
+                (float)(q.x / magnitude),
+                (float)(q.y / magnitude),
+                (float)(q.z / magnitude),
+                (float)(q.w / magnitude));
+        }
+
+        private static bool Approximately(float a, float b)
+            => Math.Abs(a - b) <= 0.0001f;
+
+        private readonly struct TestQuaternion
+        {
+            public readonly float x;
+            public readonly float y;
+            public readonly float z;
+            public readonly float w;
+
+            public TestQuaternion(float x, float y, float z, float w)
+            {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.w = w;
+            }
         }
 
         private static string ReadRepoText(string relativePath)

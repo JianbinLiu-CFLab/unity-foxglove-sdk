@@ -531,6 +531,16 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Unregisters a runtime parameter.
+        /// </summary>
+        /// <param name="name">Parameter path, for example "/cube/color".</param>
+        /// <returns>True when a parameter was removed.</returns>
+        public bool UnregisterParameter(string name)
+        {
+            return _runtime?.UnregisterParameter(name) ?? false;
+        }
+
+        /// <summary>
         /// Registers a service.
         /// </summary>
         /// <param name="descriptor">Service descriptor with name, type, request schemas, and response schemas.</param>
