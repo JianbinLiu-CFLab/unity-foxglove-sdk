@@ -89,6 +89,8 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public sealed class ReplayPoseOwnershipArbiter
     {
+        private const int MaxReportedContentions = 4096;
+
         private readonly Dictionary<int, OwnerState> _owners = new();
         private readonly Dictionary<int, HeldPoseState> _held = new();
         private readonly HashSet<ContentionKey> _reportedContentions = new();
@@ -118,8 +120,7 @@ namespace Unity.FoxgloveSDK.Core
                     return Apply(transformKey, channelId, channelId, behavior, pose);
                 }
 
-                var contentionKey = new ContentionKey(transformKey, channelId);
-                var shouldReport = _reportedContentions.Add(contentionKey);
+                var shouldReport = TryReportContention(new ContentionKey(transformKey, channelId));
                 return new ReplayPoseOwnershipDecision(
                     ReplayPoseOwnershipDecisionKind.Skip,
                     transformKey,
@@ -170,7 +171,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             _resolvedHeld.Clear();
             if (!IsDeferralActive)
-                return _resolvedHeld;
+                return Array.Empty<ReplayPoseOwnershipDecision>();
 
             IsDeferralActive = false;
             foreach (var pair in _held)
@@ -181,7 +182,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _held.Clear();
-            return _resolvedHeld;
+            return _resolvedHeld.ToArray();
         }
 
         public void Reset()
@@ -191,6 +192,14 @@ namespace Unity.FoxgloveSDK.Core
             _reportedContentions.Clear();
             _resolvedHeld.Clear();
             IsDeferralActive = true;
+        }
+
+        private bool TryReportContention(ContentionKey key)
+        {
+            if (_reportedContentions.Count >= MaxReportedContentions)
+                _reportedContentions.Clear();
+
+            return _reportedContentions.Add(key);
         }
 
         private void RecordHeldPose(

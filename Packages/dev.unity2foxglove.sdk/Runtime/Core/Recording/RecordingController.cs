@@ -29,14 +29,10 @@ namespace Unity.FoxgloveSDK.Core
         private McapRecorder _recorder;
         /// <summary>Target file path for the recording.</summary>
         private string _recordingPath;
-        /// <summary>Compression scheme for the MCAP file (e.g. "zstd").</summary>
-        private string _recordingCompression = "";
         /// <summary>Advanced MCAP writer options for the next recorder.</summary>
         private McapWriterOptions _writerOptions = McapWriterOptions.Normalize(null);
         /// <summary>Coordinate mode for spatial transforms (e.g. "ros" or "unity").</summary>
         private string _coordinateMode = "";
-        /// <summary>Chunk size in bytes for MCAP chunk boundaries.</summary>
-        private int _recordingChunkSize = McapRecorder.DefaultChunkSizeBytes;
         /// <summary>Whether recording has been enabled (attached on next session start).</summary>
         private bool _recordingEnabled;
         private readonly IFoxgloveLogger _logger;
@@ -70,9 +66,7 @@ namespace Unity.FoxgloveSDK.Core
             var normalized = McapWriterOptions.Normalize(options);
             _recordingEnabled = true;
             _recordingPath = filePath;
-            _recordingCompression = normalized.Compression;
             _coordinateMode = coordinateMode ?? "";
-            _recordingChunkSize = normalized.ChunkSizeBytes;
             _writerOptions = normalized;
         }
 
@@ -188,9 +182,16 @@ namespace Unity.FoxgloveSDK.Core
             if (recorder == null)
                 return;
 
-            var timestamp = _playbackClock.NowNs;
-            var entry = JsonConvert.SerializeObject(new { name, type, value, timestamp });
-            recorder.WriteMetadata("foxglove.parameters", entry);
+            try
+            {
+                var timestamp = _playbackClock?.NowNs ?? 0UL;
+                var entry = JsonConvert.SerializeObject(new { name, type, value, timestamp });
+                recorder.WriteMetadata("foxglove.parameters", entry);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning($"MCAP parameter metadata write failed; continuing: {ex.Message}");
+            }
         }
 
         /// <summary>Detach and dispose all resources.</summary>

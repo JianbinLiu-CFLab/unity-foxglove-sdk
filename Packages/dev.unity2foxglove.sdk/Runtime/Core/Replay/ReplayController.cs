@@ -9,7 +9,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -87,8 +86,18 @@ namespace Unity.FoxgloveSDK.Core
         public bool LastEnableBlockedBySchemaMismatch => _lastEnableBlockedBySchemaMismatch;
         /// <summary>Message from the most recent failed replay enable attempt, or an empty string.</summary>
         public string LastEnableFailureMessage => _lastEnableFailureMessage;
-        /// <summary>Active replay engine instance; null when not replaying.</summary>
-        public McapReplayEngine Engine => _replayEngine;
+        /// <summary>
+        /// Active replay engine instance; null when not replaying.
+        /// <para>The returned engine is a short-lived snapshot. Do not retain it across runtime ticks.</para>
+        /// </summary>
+        public McapReplayEngine Engine
+        {
+            get
+            {
+                lock (_replayEngineLock)
+                    return _replayEngine;
+            }
+        }
 
         /// <summary>
         /// Fires when the replay engine outputs a message.
@@ -210,7 +219,7 @@ namespace Unity.FoxgloveSDK.Core
                     {
                         foreach (var ch in summary.Channels)
                         {
-                    if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
+                            if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
                                 && !string.IsNullOrEmpty(mcapMode))
                             {
                                 if (mcapMode != currentCoordinateMode)

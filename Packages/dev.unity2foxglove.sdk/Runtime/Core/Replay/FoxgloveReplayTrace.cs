@@ -11,7 +11,13 @@ namespace Unity.FoxgloveSDK.Core
     /// <summary>Temporary replay diagnostics for seek/playback ordering.</summary>
     internal static class FoxgloveReplayTrace
     {
-        internal static bool Enabled = false;
+        private static int _enabled;
+
+        internal static bool Enabled
+        {
+            get => Volatile.Read(ref _enabled) != 0;
+            set => Volatile.Write(ref _enabled, value ? 1 : 0);
+        }
 
         /// <summary>Maximum trace lines emitted per budget reset to keep debug logging bounded.</summary>
         private const int MaxLines = 512;
@@ -70,10 +76,10 @@ namespace Unity.FoxgloveSDK.Core
         {
             suffix = "";
             var line = Interlocked.Increment(ref _lines);
-            if (line <= MaxLines)
+            if (line < MaxLines)
                 return true;
 
-            if (line == MaxLines + 1)
+            if (line == MaxLines)
             {
                 suffix = " (trace limit reached; later lines suppressed)";
                 return true;

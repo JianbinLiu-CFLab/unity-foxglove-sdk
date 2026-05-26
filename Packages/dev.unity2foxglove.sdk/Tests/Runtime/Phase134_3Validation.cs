@@ -33,6 +33,11 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyControllerDirectReplayEventsAreExceptionIsolated();
             VerifyReplayCallbackQueueIsBounded();
             VerifyReplayTestHooksUseQueuedDrainPath();
+            VerifyParameterMetadataWriteIsExceptionIsolated();
+            VerifyReplayEngineGetterUsesLock();
+            VerifyReplayTraceBudgetAndThreadVisibility();
+            VerifyPoseArbiterSnapshotsAndContentionBound();
+            VerifyRecordingReplaySourceCleanups();
 
             Console.WriteLine($"Phase 134-3: {_passed} checks passed.");
         }
@@ -154,6 +159,111 @@ namespace Unity.FoxgloveSDK.Tests
                   && replaySource.Contains("TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch", StringComparison.Ordinal)
                   && replaySource.Contains("DrainReplayCallbacks();", StringComparison.Ordinal),
                 "134-3F-1: replay test hooks exercise the same queued callback drain path as runtime replay");
+        }
+
+        private static void VerifyParameterMetadataWriteIsExceptionIsolated()
+        {
+            var recordingSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
+
+            Check(recordingSource.Contains("recorder.WriteMetadata(\"foxglove.parameters\"", StringComparison.Ordinal)
+                  && recordingSource.Contains("catch (Exception ex)", StringComparison.Ordinal)
+                  && recordingSource.Contains("MCAP parameter metadata write failed", StringComparison.Ordinal),
+                "134-3G-1: parameter metadata recording failures are logged and isolated");
+        }
+
+        private static void VerifyReplayEngineGetterUsesLock()
+        {
+            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+
+            Check(replaySource.Contains("public McapReplayEngine Engine", StringComparison.Ordinal)
+                  && replaySource.Contains("lock (_replayEngineLock)", StringComparison.Ordinal)
+                  && replaySource.Contains("return _replayEngine;", StringComparison.Ordinal),
+                "134-3H-1: replay engine accessor is synchronized with replay engine mutation");
+        }
+
+        private static void VerifyReplayTraceBudgetAndThreadVisibility()
+        {
+            var previous = FoxgloveReplayTrace.Enabled;
+            try
+            {
+                FoxgloveReplayTrace.Enabled = true;
+                FoxgloveReplayTrace.ResetBudget();
+                var emitted = 0;
+                string last = null;
+                for (var i = 0; i < 600; i++)
+                {
+                    if (FoxgloveReplayTrace.TryEvent("phase134", i.ToString(), out var message))
+                    {
+                        emitted++;
+                        last = message;
+                    }
+                }
+
+                Check(emitted == 512,
+                    "134-3I-1: replay trace emits at most the configured line budget including the limit line");
+                Check(last != null && last.Contains("trace limit reached", StringComparison.Ordinal),
+                    "134-3I-2: replay trace final budget line announces suppression");
+            }
+            finally
+            {
+                FoxgloveReplayTrace.Enabled = previous;
+                FoxgloveReplayTrace.ResetBudget();
+            }
+        }
+
+        private static void VerifyPoseArbiterSnapshotsAndContentionBound()
+        {
+            var arbiter = new ReplayPoseOwnershipArbiter();
+            arbiter.OfferPose(
+                transformKey: 10,
+                channelId: 1,
+                behavior: ReplayChannelBehavior.ScenePrimitivePose,
+                logTimeNs: 100,
+                pose: ReplayPoseSample.CreatePosition(1, 2, 3));
+
+            var resolved = arbiter.EndInitDeferral();
+            Check(resolved.Count == 1 && resolved[0].Kind == ReplayPoseOwnershipDecisionKind.Apply,
+                "134-3J-1: pose arbiter returns resolved held poses when init deferral ends");
+
+            arbiter.Reset();
+            Check(resolved.Count == 1,
+                "134-3J-2: pose arbiter resolved list is a snapshot and is not cleared by later reset");
+
+            arbiter.OfferPose(
+                transformKey: 20,
+                channelId: 1,
+                behavior: ReplayChannelBehavior.FrameTransformPose,
+                logTimeNs: 100,
+                pose: ReplayPoseSample.CreatePosition(0, 0, 0));
+            for (ushort channelId = 2; channelId < 5200; channelId++)
+            {
+                arbiter.OfferPose(
+                    transformKey: 20,
+                    channelId: channelId,
+                    behavior: ReplayChannelBehavior.ScenePrimitivePose,
+                    logTimeNs: 100,
+                    pose: ReplayPoseSample.CreatePosition(channelId, 0, 0));
+            }
+
+            var reported = arbiter.GetType().GetField("_reportedContentions", BindingFlags.Instance | BindingFlags.NonPublic);
+            var reportedSet = reported?.GetValue(arbiter);
+            var count = reportedSet == null
+                ? -1
+                : (int)reportedSet.GetType().GetProperty("Count").GetValue(reportedSet);
+            Check(count >= 0 && count <= 4096,
+                "134-3J-3: pose contention de-duplication set is bounded");
+        }
+
+        private static void VerifyRecordingReplaySourceCleanups()
+        {
+            var recordingSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
+            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+
+            Check(!recordingSource.Contains("_recordingCompression", StringComparison.Ordinal)
+                  && !recordingSource.Contains("_recordingChunkSize", StringComparison.Ordinal),
+                "134-3K-1: recording controller does not retain unused option mirrors");
+            Check(!replaySource.Contains("using System.Linq;", StringComparison.Ordinal),
+                "134-3K-2: replay controller removes unused using");
         }
 
         private static string CreateTempMcap()
