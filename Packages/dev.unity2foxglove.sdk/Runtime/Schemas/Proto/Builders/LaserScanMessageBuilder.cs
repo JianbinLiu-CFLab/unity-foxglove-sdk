@@ -36,8 +36,8 @@ namespace Foxglove.Schemas
                 Pose = FoxgloveProtoBuilderUtil.JsonIdentityPose(),
                 StartAngle = startAngle,
                 EndAngle = endAngle,
-                Ranges = rangeList,
-                Intensities = intensityList
+                Ranges = ToMutableList(rangeList),
+                Intensities = ToMutableList(intensityList)
             };
         }
 
@@ -106,6 +106,11 @@ namespace Foxglove.Schemas
                 throw new ArgumentNullException(parameterName);
 
             return values as IReadOnlyList<double> ?? values.ToArray();
+        }
+
+        private static List<double> ToMutableList(IReadOnlyList<double> values)
+        {
+            return values as List<double> ?? values.ToList();
         }
 
         private static void ValidateIntensities(IReadOnlyList<double> ranges, IReadOnlyList<double> intensities)
