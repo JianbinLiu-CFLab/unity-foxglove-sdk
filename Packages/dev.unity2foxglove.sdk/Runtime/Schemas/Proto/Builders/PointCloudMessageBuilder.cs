@@ -29,7 +29,10 @@ namespace Foxglove.Schemas
         public PointCloudMessage Json { get; }
         /// <summary>Official protobuf message.</summary>
         public Foxglove.PointCloud Protobuf { get; }
-        /// <summary>Packed point bytes.</summary>
+        /// <summary>
+        /// Packed point bytes owned by this result. Treat as read-only; mutating it
+        /// can invalidate the paired JSON/protobuf payloads.
+        /// </summary>
         public byte[] Data { get; }
     }
 
@@ -54,13 +57,19 @@ namespace Foxglove.Schemas
         /// <summary>Create a JSON PointCloud DTO.</summary>
         public static PointCloudMessage CreateJson(PointCloudFrame frame)
         {
-            return Build(frame).Json;
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            return CreateJson(frame, PointCloudPackedDataBuilder.Build(frame));
         }
 
         /// <summary>Create an official protobuf PointCloud message.</summary>
         public static Foxglove.PointCloud CreateProtobuf(PointCloudFrame frame)
         {
-            return Build(frame).Protobuf;
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            return CreateProtobuf(frame, PointCloudPackedDataBuilder.Build(frame));
         }
 
         /// <summary>Create and serialize an official protobuf PointCloud payload.</summary>

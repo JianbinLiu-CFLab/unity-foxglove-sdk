@@ -22,6 +22,8 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
+        private const int DracoFailureWarningIntervalFrames = 120;
+
         [Header("Point Cloud Output")]
         [SerializeField] private PointCloudOutputMode _outputMode = PointCloudOutputMode.Raw;
 
@@ -44,6 +46,12 @@ namespace Unity.FoxgloveSDK.Components
         private bool _hasPreparedPublishDemand;
         private bool _preparedPublishWebSocket;
         private bool _preparedPublishBridge;
+        private int _dracoFailureCount;
+        private bool _warnedDracoBacklog;
+        private readonly object _dracoEncodeGate = new object();
+        private DracoEncodeRequest _pendingDracoEncode;
+        private DracoEncodeResult _completedDracoEncode;
+        private bool _dracoEncodeWorkerRunning;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -108,8 +116,9 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual void Update()
         {
             if (_manager == null) return;
-            if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
+            DrainCompletedDracoEncode();
+            if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
@@ -178,18 +187,103 @@ namespace Unity.FoxgloveSDK.Components
             if (frame == null || frame.Points.Count == 0)
                 return;
 
-            if (!DracoPointCloudNativeEncoder.TryEncode(frame, out var dracoPayload, out var encodeError))
-            {
-                LogDracoFailure((string.IsNullOrWhiteSpace(encodeError) ? "Native Draco encode failed." : encodeError) + " Draco mode publishes nothing.");
-                return;
-            }
+            QueueDracoEncode(frame, unixNs);
+        }
 
-            _warnedDracoFailure = false;
+        private void QueueDracoEncode(PointCloudFrame frame, ulong unixNs)
+        {
             if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
             {
                 publishWebSocket = ShouldPreparePublishPayload();
                 publishBridge = ShouldPrepareRos2BridgePayload();
             }
+
+            var request = new DracoEncodeRequest(CloneFrameForBackgroundEncode(frame), unixNs, publishWebSocket, publishBridge);
+            var startWorker = false;
+            lock (_dracoEncodeGate)
+            {
+                if (_pendingDracoEncode != null && _logQosDrops && !_warnedDracoBacklog)
+                {
+                    Debug.LogWarning("[Foxglove] Draco point-cloud encode request replaced; stale pending encode dropped.");
+                    _warnedDracoBacklog = true;
+                }
+
+                _pendingDracoEncode = request;
+                if (!_dracoEncodeWorkerRunning)
+                {
+                    _dracoEncodeWorkerRunning = true;
+                    startWorker = true;
+                }
+            }
+
+            if (!startWorker)
+                return;
+
+            try
+            {
+                ThreadPool.QueueUserWorkItem(_ => RunDracoEncodeWorker());
+            }
+            catch (Exception ex)
+            {
+                lock (_dracoEncodeGate)
+                {
+                    _dracoEncodeWorkerRunning = false;
+                }
+                LogDracoFailure("Unable to queue background Draco encode: " + ex.Message);
+            }
+        }
+
+        private void RunDracoEncodeWorker()
+        {
+            while (true)
+            {
+                DracoEncodeRequest request;
+                lock (_dracoEncodeGate)
+                {
+                    request = _pendingDracoEncode;
+                    _pendingDracoEncode = null;
+                    if (request == null)
+                    {
+                        _dracoEncodeWorkerRunning = false;
+                        return;
+                    }
+                }
+
+                var success = DracoPointCloudNativeEncoder.TryEncode(request.Frame, out var dracoPayload, out var encodeError);
+                var result = new DracoEncodeResult(request, success, dracoPayload, encodeError);
+                lock (_dracoEncodeGate)
+                {
+                    _completedDracoEncode = result;
+                }
+            }
+        }
+
+        private void DrainCompletedDracoEncode()
+        {
+            DracoEncodeResult result;
+            lock (_dracoEncodeGate)
+            {
+                result = _completedDracoEncode;
+                _completedDracoEncode = null;
+            }
+
+            if (result == null)
+                return;
+
+            if (!result.Success)
+            {
+                LogDracoFailure((string.IsNullOrWhiteSpace(result.Error) ? "Native Draco encode failed." : result.Error) + " Draco mode publishes nothing.");
+                return;
+            }
+
+            _warnedDracoFailure = false;
+            _dracoFailureCount = 0;
+            _warnedDracoBacklog = false;
+            PublishDracoPayload(result.Request.Frame, result.Request.UnixNs, result.Payload, result.Request.PublishWebSocket, result.Request.PublishBridge);
+        }
+
+        private void PublishDracoPayload(PointCloudFrame frame, ulong unixNs, byte[] dracoPayload, bool publishWebSocket, bool publishBridge)
+        {
             byte[] ros2Payload = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
@@ -208,6 +302,28 @@ namespace Unity.FoxgloveSDK.Components
                 ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
                 PublishRos2Bridge(ros2Payload, unixNs);
             }
+        }
+
+        private static PointCloudFrame CloneFrameForBackgroundEncode(PointCloudFrame frame)
+        {
+            var copy = new PointCloudFrame
+            {
+                UnixNs = frame.UnixNs,
+                FrameId = frame.FrameId
+            };
+
+            foreach (var point in frame.Points)
+            {
+                copy.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
+                {
+                    Intensity = point.Intensity,
+                    Reflectivity = point.Reflectivity,
+                    Ring = point.Ring,
+                    TimeOffsetSeconds = point.TimeOffsetSeconds
+                });
+            }
+
+            return copy;
         }
 
         private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
@@ -233,11 +349,44 @@ namespace Unity.FoxgloveSDK.Components
 
         private void LogDracoFailure(string message)
         {
-            if (_warnedDracoFailure)
+            _dracoFailureCount++;
+            if (_warnedDracoFailure && _dracoFailureCount % DracoFailureWarningIntervalFrames != 0)
                 return;
 
             _warnedDracoFailure = true;
             Debug.LogWarning("[Foxglove] Draco point-cloud mode disabled: " + message);
+        }
+
+        private sealed class DracoEncodeRequest
+        {
+            public DracoEncodeRequest(PointCloudFrame frame, ulong unixNs, bool publishWebSocket, bool publishBridge)
+            {
+                Frame = frame;
+                UnixNs = unixNs;
+                PublishWebSocket = publishWebSocket;
+                PublishBridge = publishBridge;
+            }
+
+            public PointCloudFrame Frame { get; }
+            public ulong UnixNs { get; }
+            public bool PublishWebSocket { get; }
+            public bool PublishBridge { get; }
+        }
+
+        private sealed class DracoEncodeResult
+        {
+            public DracoEncodeResult(DracoEncodeRequest request, bool success, byte[] payload, string error)
+            {
+                Request = request;
+                Success = success;
+                Payload = payload;
+                Error = error;
+            }
+
+            public DracoEncodeRequest Request { get; }
+            public bool Success { get; }
+            public byte[] Payload { get; }
+            public string Error { get; }
         }
 
         protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)

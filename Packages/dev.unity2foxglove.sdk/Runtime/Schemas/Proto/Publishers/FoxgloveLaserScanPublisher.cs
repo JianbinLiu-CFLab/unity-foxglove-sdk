@@ -5,6 +5,7 @@
 // Purpose: Publishes foxglove.LaserScan messages with JSON/protobuf encoding.
 
 using System;
+using System.Collections.Generic;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
@@ -42,6 +43,24 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrEmpty(_topic)) _topic = "/unity/laser_scan";
         }
 
+        /// <summary>
+        /// Publish one event-driven scan immediately, bypassing the regular Update cadence.
+        /// </summary>
+        public void PublishFrame(
+            ulong logTimeNs,
+            string frameId,
+            double startAngleRadians,
+            double endAngleRadians,
+            IEnumerable<double> ranges,
+            IEnumerable<double> intensities = null)
+        {
+            ResolveManager();
+            if (_manager == null) return;
+            if (!ShouldPrepareAnyPublishPayload()) return;
+
+            PublishScan(logTimeNs, frameId, startAngleRadians, endAngleRadians, ranges, intensities ?? Array.Empty<double>());
+        }
+
         private void Update()
         {
             if (_manager == null) return;
@@ -63,31 +82,45 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 return;
             }
+            _warnedIntensityMismatch = false;
 
             var unixNs = CurrentLogTimeNs;
             var startRad = _startAngleDegrees * Math.PI / 180.0;
             var endRad = _endAngleDegrees * Math.PI / 180.0;
+            PublishScan(unixNs, _frameId, startRad, endRad, ranges, intensities);
+        }
+
+        private void PublishScan(
+            ulong unixNs,
+            string frameId,
+            double startRad,
+            double endRad,
+            IEnumerable<double> ranges,
+            IEnumerable<double> intensities)
+        {
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
             byte[] ros2Payload = null;
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
-                var payload = LaserScanMessageBuilder.SerializeProtobuf(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                var payload = LaserScanMessageBuilder.SerializeProtobuf(unixNs, frameId, startRad, endRad, ranges, intensities);
                 PublishProto(payload, unixNs);
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                ros2Payload = Ros2CdrLaserScanBuilder.Serialize(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                ros2Payload = Ros2CdrLaserScanBuilder.Serialize(unixNs, frameId, startRad, endRad, ranges, intensities);
                 PublishRos2(ros2Payload, unixNs);
             }
             else if (publishWebSocket)
             {
-                var message = LaserScanMessageBuilder.CreateJson(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                var message = LaserScanMessageBuilder.CreateJson(unixNs, frameId, startRad, endRad, ranges, intensities);
                 Publish(message, unixNs);
             }
 
             if (publishBridge)
             {
-                ros2Payload ??= Ros2CdrLaserScanBuilder.Serialize(unixNs, _frameId, startRad, endRad, ranges, intensities);
+                ros2Payload ??= Ros2CdrLaserScanBuilder.Serialize(unixNs, frameId, startRad, endRad, ranges, intensities);
                 PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
@@ -105,7 +138,7 @@ namespace Unity.FoxgloveSDK.Components
             var count = Mathf.Max(1, _syntheticSampleCount);
             if (_syntheticRanges == null
                 || _syntheticRangesCount != count
-                || Math.Abs(_syntheticRangesMeters - _syntheticRangeMeters) > double.Epsilon)
+                || _syntheticRangesMeters != _syntheticRangeMeters)
             {
                 _syntheticRanges = new double[count];
                 _syntheticRangesCount = count;

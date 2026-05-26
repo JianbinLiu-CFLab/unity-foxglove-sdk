@@ -59,7 +59,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         public uint PointStride { get; }
         /// <summary>Field descriptors.</summary>
         public IReadOnlyList<PointCloudPackedField> Fields { get; }
-        /// <summary>Raw packed point bytes.</summary>
+        /// <summary>
+        /// Raw packed point bytes owned by this value. Treat as read-only; callers
+        /// that need to retain mutable data should clone it first.
+        /// </summary>
         public byte[] Data { get; }
     }
 

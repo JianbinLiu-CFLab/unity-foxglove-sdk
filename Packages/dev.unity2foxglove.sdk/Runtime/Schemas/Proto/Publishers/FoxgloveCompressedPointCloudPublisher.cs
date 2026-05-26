@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Spike publisher for foxglove.CompressedPointCloud Draco payloads.
 
+using System;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
@@ -17,6 +18,7 @@ namespace Unity.FoxgloveSDK.Components
     /// protobuf-only <c>foxglove.CompressedPointCloud</c> topic through the bundled native Draco plugin.
     /// Prefer <see cref="FoxglovePointCloudPublisher"/> with Point Cloud Output Mode set to Draco for normal scenes.
     /// </summary>
+    [Obsolete("Use FoxglovePointCloudPublisher with PointCloudOutputMode.Draco.", false)]
     [AddComponentMenu("")]
     public class FoxgloveCompressedPointCloudPublisher : FoxglovePointCloudPublisher
     {

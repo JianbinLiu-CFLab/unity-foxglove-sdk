@@ -5,6 +5,7 @@
 // Purpose: P/Invoke wrapper for the bundled Draco point-cloud native plugin.
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
@@ -122,7 +123,7 @@ namespace Foxglove.Schemas.PointCloud
             var capacity = outputCapacity;
             for (var attempt = 0; attempt < 2; ++attempt)
             {
-                var output = new byte[capacity];
+                var output = ArrayPool<byte>.Shared.Rent(capacity);
                 var xyzHandle = default(GCHandle);
                 var outputHandle = default(GCHandle);
                 try
@@ -151,7 +152,7 @@ namespace Foxglove.Schemas.PointCloud
                     }
 
                     if (result == ResultOutputTooSmall
-                        && bytesWritten > output.Length
+                        && bytesWritten > capacity
                         && bytesWritten <= MaxPayloadBytes)
                     {
                         capacity = bytesWritten;
@@ -187,6 +188,7 @@ namespace Foxglove.Schemas.PointCloud
                         outputHandle.Free();
                     if (xyzHandle.IsAllocated)
                         xyzHandle.Free();
+                    ArrayPool<byte>.Shared.Return(output);
                 }
             }
 

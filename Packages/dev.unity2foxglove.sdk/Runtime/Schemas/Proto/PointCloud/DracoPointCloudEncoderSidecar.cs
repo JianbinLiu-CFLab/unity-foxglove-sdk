@@ -54,11 +54,13 @@ namespace Foxglove.Schemas.PointCloud
         private Process _process;
         private CancellationTokenSource _stop;
         private Task _stderrTask;
+        private string _lastDiagnosticLine;
+        private string _lastError;
 
         /// <summary>Last diagnostic line observed on helper stderr.</summary>
-        public string LastDiagnosticLine { get; private set; }
+        public string LastDiagnosticLine => Volatile.Read(ref _lastDiagnosticLine);
         /// <summary>Last startup or encode error.</summary>
-        public string LastError { get; private set; }
+        public string LastError => Volatile.Read(ref _lastError);
 
         /// <summary>True when the helper process is still running.</summary>
         public bool IsRunning
@@ -87,18 +89,18 @@ namespace Foxglove.Schemas.PointCloud
                 return true;
 
             Stop();
-            LastError = null;
-            LastDiagnosticLine = null;
+            SetLastError(null);
+            SetLastDiagnosticLine(null);
 
             if (string.IsNullOrWhiteSpace(helperExecutablePath))
             {
-                LastError = "Draco helper executable path is empty; publishes nothing on Draco topic.";
+                SetLastError("Draco helper executable path is empty; publishes nothing on Draco topic.");
                 return false;
             }
 
             if (!File.Exists(helperExecutablePath))
             {
-                LastError = "Draco helper executable does not exist: " + helperExecutablePath;
+                SetLastError("Draco helper executable does not exist: " + helperExecutablePath);
                 return false;
             }
 
@@ -120,7 +122,7 @@ namespace Foxglove.Schemas.PointCloud
 
                 if (!_process.Start())
                 {
-                    LastError = "Draco helper process failed to start.";
+                    SetLastError("Draco helper process failed to start.");
                     Stop();
                     return false;
                 }
@@ -133,13 +135,13 @@ namespace Foxglove.Schemas.PointCloud
             }
             catch (Win32Exception ex)
             {
-                LastError = "Draco helper executable could not be started: " + ex.Message;
+                SetLastError("Draco helper executable could not be started: " + ex.Message);
                 Stop();
                 return false;
             }
             catch (Exception ex)
             {
-                LastError = ex.Message;
+                SetLastError(ex.Message);
                 Stop();
                 return false;
             }
@@ -149,33 +151,34 @@ namespace Foxglove.Schemas.PointCloud
         public bool TryEncode(PointCloudFrame frame, int timeoutMs, out byte[] dracoPayload)
         {
             dracoPayload = null;
-            LastError = null;
+            SetLastError(null);
 
             if (frame == null || frame.Points.Count == 0)
             {
-                LastError = "Draco point-cloud frame is empty.";
+                SetLastError("Draco point-cloud frame is empty.");
                 return false;
             }
 
             if (!IsRunning)
             {
-                LastError = "Draco helper is not running.";
+                SetLastError("Draco helper is not running.");
                 return false;
             }
 
             var boundedTimeoutMs = Math.Max(1, timeoutMs);
+            var deadlineUtc = DateTime.UtcNow.AddMilliseconds(boundedTimeoutMs);
             var framePayload = DracoPointCloudHelperProtocol.BuildXyzFramePayload(frame);
             var process = _process;
 
             try
             {
                 var stdin = process.StandardInput.BaseStream;
-                if (!WaitForTask(stdin.WriteAsync(framePayload, 0, framePayload.Length), boundedTimeoutMs))
+                if (!WaitForTask(stdin.WriteAsync(framePayload, 0, framePayload.Length), deadlineUtc))
                     return FailAndStop("Timed out writing point-cloud frame to Draco helper.");
-                if (!WaitForTask(stdin.FlushAsync(), boundedTimeoutMs))
+                if (!WaitForTask(stdin.FlushAsync(), deadlineUtc))
                     return FailAndStop("Timed out flushing point-cloud frame to Draco helper.");
 
-                var readLength = ReadLittleEndianLength(process.StandardOutput.BaseStream, boundedTimeoutMs);
+                var readLength = ReadLittleEndianLength(process.StandardOutput.BaseStream, deadlineUtc);
                 if (!readLength.Success)
                     return FailAndStop("Draco helper stdout ended before payload length.");
 
@@ -184,7 +187,7 @@ namespace Foxglove.Schemas.PointCloud
                     return FailAndStop("Draco helper emitted an invalid payload length: " + payloadLength);
 
                 var payload = new byte[payloadLength];
-                if (!ReadExact(process.StandardOutput.BaseStream, payload, boundedTimeoutMs))
+                if (!ReadExact(process.StandardOutput.BaseStream, payload, deadlineUtc))
                     return FailAndStop("Draco helper stdout ended mid payload.");
 
                 dracoPayload = payload;
@@ -244,27 +247,37 @@ namespace Foxglove.Schemas.PointCloud
                     if (line == null)
                         break;
 
-                    LastDiagnosticLine = line;
+                    SetLastDiagnosticLine(line);
                 }
             }
             catch (Exception ex)
             {
                 if (!(ex is ObjectDisposedException))
-                    LastError = ex.Message;
+                    SetLastError(ex.Message);
             }
         }
 
         private bool FailAndStop(string error)
         {
-            LastError = error;
+            SetLastError(error);
             Stop();
             return false;
         }
 
-        private static LengthReadResult ReadLittleEndianLength(Stream stream, int timeoutMs)
+        private void SetLastDiagnosticLine(string value)
+        {
+            Volatile.Write(ref _lastDiagnosticLine, value);
+        }
+
+        private void SetLastError(string value)
+        {
+            Volatile.Write(ref _lastError, value);
+        }
+
+        private static LengthReadResult ReadLittleEndianLength(Stream stream, DateTime deadlineUtc)
         {
             var header = new byte[4];
-            if (!ReadExact(stream, header, timeoutMs))
+            if (!ReadExact(stream, header, deadlineUtc))
                 return new LengthReadResult(false, 0);
 
             var length = header[0]
@@ -274,13 +287,13 @@ namespace Foxglove.Schemas.PointCloud
             return new LengthReadResult(true, length);
         }
 
-        private static bool ReadExact(Stream stream, byte[] buffer, int timeoutMs)
+        private static bool ReadExact(Stream stream, byte[] buffer, DateTime deadlineUtc)
         {
             var offset = 0;
             while (offset < buffer.Length)
             {
                 var readTask = stream.ReadAsync(buffer, offset, buffer.Length - offset);
-                if (!WaitForTask(readTask, timeoutMs))
+                if (!WaitForTask(readTask, deadlineUtc))
                     return false;
 
                 var read = readTask.Result;
@@ -295,9 +308,14 @@ namespace Foxglove.Schemas.PointCloud
 
         private static bool WaitForTask(Task task, int timeoutMs)
         {
+            return WaitForTask(task, DateTime.UtcNow.AddMilliseconds(Math.Max(1, timeoutMs)));
+        }
+
+        private static bool WaitForTask(Task task, DateTime deadlineUtc)
+        {
             try
             {
-                if (!task.Wait(timeoutMs))
+                if (!task.Wait(RemainingMilliseconds(deadlineUtc)))
                     return false;
                 return task.Exception == null;
             }
@@ -305,6 +323,15 @@ namespace Foxglove.Schemas.PointCloud
             {
                 return false;
             }
+        }
+
+        private static int RemainingMilliseconds(DateTime deadlineUtc)
+        {
+            var remaining = deadlineUtc - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                return 0;
+
+            return Math.Max(1, (int)Math.Min(int.MaxValue, remaining.TotalMilliseconds));
         }
 
         private static void TryKillProcess(Process process)
