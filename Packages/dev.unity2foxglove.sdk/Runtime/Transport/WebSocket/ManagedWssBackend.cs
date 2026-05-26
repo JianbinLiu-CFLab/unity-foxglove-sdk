@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Transport
             sslStream.AuthenticateAsServer(
                 _serverCertificate,
                 clientCertificateRequired: false,
-                enabledSslProtocols: SslProtocols.Tls12,
+                enabledSslProtocols: SslProtocols.None,
                 checkCertificateRevocation: false);
             return sslStream;
         }

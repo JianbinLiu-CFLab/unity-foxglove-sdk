@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyManagedWebSocketClientBudgetSurface();
             VerifyManagedBackendRejectsOverBudgetClient();
+            VerifyTransportReviewHardening();
 
             Console.WriteLine($"Phase 134-6: {_passed} checks passed.");
         }
@@ -95,6 +96,58 @@ namespace Unity.FoxgloveSDK.Tests
                 try { firstClient?.Dispose(); } catch { }
                 backend.Stop();
             }
+        }
+
+        private static void VerifyTransportReviewHardening()
+        {
+            var port = GetFreeTcpPort();
+            using (var backend = new ManagedWsBackend())
+            {
+                backend.Start("localhost", port);
+                backend.Stop();
+            }
+            Check(true, "134-6C-1: managed WebSocket backend accepts localhost bind aliases");
+
+            var backendSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var wssSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWssBackend.cs");
+            var certSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/Security/FoxgloveCertificateDistributor.cs");
+            var handshakeSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsHandshakeHandler.cs");
+            var connectionSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
+            var playbackSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/Clock/PlaybackClock.cs");
+            var runtimeSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+
+            Check(backendSource.Contains("TransportHostResolver.ResolveBindAddress(host)", StringComparison.Ordinal)
+                  && certSource.Contains("TransportHostResolver.ResolveBindAddress(host)", StringComparison.Ordinal),
+                "134-6C-2: WebSocket and certificate distributor share host bind normalization");
+            Check(wssSource.Contains("enabledSslProtocols: SslProtocols.None", StringComparison.Ordinal),
+                "134-6C-3: secure WebSocket backend uses platform TLS defaults");
+            Check(certSource.Contains("MaxRequestHeaders = 100", StringComparison.Ordinal)
+                  && certSource.Contains("headerCount > MaxRequestHeaders", StringComparison.Ordinal),
+                "134-6C-4: certificate distributor bounds HTTP header count");
+            Check(backendSource.Contains("StopDisconnectWaitMs", StringComparison.Ordinal)
+                  && backendSource.Contains("Task.WaitAll(disconnects, StopDisconnectWaitMs)", StringComparison.Ordinal),
+                "134-6C-5: managed WebSocket Stop uses a global disconnect wait cap");
+            Check(connectionSource.Contains("_connectedAtMs", StringComparison.Ordinal)
+                  && connectionSource.Contains("nowMs - _connectedAtMs", StringComparison.Ordinal),
+                "134-6C-6: connection duration uses monotonic time instead of wall-clock deltas");
+            Check(certSource.Contains("_rootCaSha256Fingerprint", StringComparison.Ordinal)
+                  && certSource.Contains("??= ComputeSha256Fingerprint", StringComparison.Ordinal),
+                "134-6C-7: root CA fingerprint is cached after first computation");
+            Check(handshakeSource.Contains("IsAllowedFileOrigin", StringComparison.Ordinal)
+                  && handshakeSource.Contains("string.Equals(origin, \"file://\"", StringComparison.Ordinal)
+                  && !handshakeSource.Contains("StartsWith(\"file://\"", StringComparison.Ordinal),
+                "134-6C-8: WebSocket Origin guard only auto-allows exact file origin");
+            Check(playbackSource.Contains("not internally synchronized", StringComparison.Ordinal)
+                  && playbackSource.Contains("NormalizeSpeed", StringComparison.Ordinal)
+                  && runtimeSource.Contains("Invalid playback speed", StringComparison.Ordinal),
+                "134-6C-9: playback clock thread-safety and invalid speed fallback are explicit");
         }
 
         private static TcpClient ConnectRawWebSocketClient(int port)

@@ -444,8 +444,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Apply a playback command to the clock.</summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
         {
+            var normalizedSpeed = NormalizePlaybackSpeedForCommand(speed);
             lock (_playbackControlLock)
-                _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
+                _playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
         }
 
         /// <summary>Get a snapshot of the playback clock state for a response.</summary>
@@ -459,9 +460,10 @@ namespace Unity.FoxgloveSDK.Core
         public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
             byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
         {
+            var normalizedSpeed = NormalizePlaybackSpeedForCommand(speed);
             lock (_playbackControlLock)
             {
-                _playbackClock.Apply(cmd, speed, hasSeek, seekNs);
+                _playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
 
                 if (hasSeek)
                 {
@@ -486,6 +488,15 @@ namespace Unity.FoxgloveSDK.Core
 
                 return _playbackClock.ToState(hasSeek, requestId);
             }
+        }
+
+        private float NormalizePlaybackSpeedForCommand(float speed)
+        {
+            var normalized = PlaybackClock.NormalizeSpeed(speed);
+            if (normalized != speed || float.IsNaN(speed))
+                _logger.LogWarning($"Invalid playback speed {speed}; using 1.0.");
+
+            return normalized;
         }
 
         // ── Replay (delegated) ──

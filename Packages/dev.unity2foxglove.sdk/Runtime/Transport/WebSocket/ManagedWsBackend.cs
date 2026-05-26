@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Transport
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
+        private const int StopDisconnectWaitMs = 2000;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -82,11 +83,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (_listener != null)
                 throw new InvalidOperationException("Server already started");
 
-            var addr = host switch
-            {
-                "0.0.0.0" => IPAddress.Any,
-                _ => IPAddress.Parse(host)
-            };
+            var addr = TransportHostResolver.ResolveBindAddress(host);
 
             _listener = new TcpListener(addr, port);
             _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
@@ -102,11 +99,19 @@ namespace Unity.FoxgloveSDK.Transport
             var cts = _cts;
             _cts = null;
             cts?.Cancel();
-            foreach (var (id, conn) in _clients.ToArray())
-                DisconnectClient(id, conn);
-
             try { _listener?.Stop(); } catch { }
             _listener = null;
+
+            var disconnects = _clients
+                .ToArray()
+                .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
+                .ToArray();
+            if (disconnects.Length > 0)
+            {
+                try { Task.WaitAll(disconnects, StopDisconnectWaitMs); }
+                catch (AggregateException ex) { _logger.LogError($"Client disconnect error during stop: {FormatExceptionChain(ex)}"); }
+            }
+
             cts?.Dispose();
         }
 
@@ -163,8 +168,6 @@ namespace Unity.FoxgloveSDK.Transport
         public virtual void Dispose()
         {
             Stop();
-            _cts?.Dispose();
-            _cts = null;
         }
 
         // Transport health
