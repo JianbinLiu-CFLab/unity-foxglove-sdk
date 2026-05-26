@@ -48,6 +48,7 @@ namespace Unity.FoxgloveSDK.IO
         private ulong _msgSt = ulong.MaxValue, _msgEt;
         private ulong _msgCount, _chunkCount;
         private uint _metadataCount;
+        private bool _chunkHasMessages;
         private bool _closed, _recordingFailed, _disposed;
         private readonly int _chunkSz;
 
@@ -70,8 +71,13 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public McapRecorder(Stream stream, IFoxgloveLogger logger, McapWriterOptions options, bool leaveOpen = true)
         {
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanSeek)
+                throw new NotSupportedException("MCAP recorder requires a seekable output stream.");
+
             _options = McapWriterOptions.Normalize(options);
-            _w = new McapWriter(stream ?? throw new ArgumentNullException(nameof(stream)), leaveOpen);
+            _w = new McapWriter(stream, leaveOpen);
             _log = logger ?? new ConsoleLogger();
             _chunkSz = _options.ChunkSizeBytes;
             _compression = _options.Compression;
@@ -172,13 +178,21 @@ namespace Unity.FoxgloveSDK.IO
             var payloadLength = payload?.Length ?? 0;
             if (!_options.UseChunking)
             {
+                // MCAP publish_time intentionally mirrors log_time for Unity live recording.
                 _w.WriteMessage(map.McapId, seq, logNs, logNs, payload);
                 TrackMessageTimes(logNs);
                 return;
             }
 
-            var contentLength = 2 + 4 + 8 + 8 + payloadLength;
-            var recordLength = McapWriter.RecordHeaderLength + contentLength;
+            const int messagePrefixLength = 2 + 4 + 8 + 8;
+            if (payloadLength > int.MaxValue - messagePrefixLength - McapWriter.RecordHeaderLength)
+            {
+                Fail("Message payload is too large for a single MCAP record.");
+                return;
+            }
+
+            var contentLength = checked(messagePrefixLength + payloadLength);
+            var recordLength = checked(McapWriter.RecordHeaderLength + contentLength);
             FlushChunkBeforeLargeWriteIfNeeded(recordLength);
             var off = (ulong)_chunkBuf.Position;
             _chunkBuf.WriteByte(McapWriter.OpcodeMessage);
@@ -192,9 +206,17 @@ namespace Unity.FoxgloveSDK.IO
             map.Pending.Add((logNs, off));
             if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
             if (logNs > _msgEt) _msgEt = logNs;
-            if (_chunkSt == 0 && _chunkEt == 0) { _chunkSt = logNs; _chunkEt = logNs; }
-            if (logNs < _chunkSt) _chunkSt = logNs;
-            if (logNs > _chunkEt) _chunkEt = logNs;
+            if (!_chunkHasMessages)
+            {
+                _chunkSt = logNs;
+                _chunkEt = logNs;
+                _chunkHasMessages = true;
+            }
+            else
+            {
+                if (logNs < _chunkSt) _chunkSt = logNs;
+                if (logNs > _chunkEt) _chunkEt = logNs;
+            }
             _msgCount++;
             if (_chunkBuf.Length >= _chunkSz) FlushChunk();
         }
@@ -260,6 +282,7 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_closed) return;
+                _closed = true;
                 FlushChunk();
                 var dataSectionCrc = _options.EnableDataCrcs
                     ? _w.ComputeCrc32FromStartToCurrent()
@@ -271,7 +294,7 @@ namespace Unity.FoxgloveSDK.IO
             // Build summary + summary offset in a temporary stream so we can
             // compute summary_crc before writing to the real stream.
                 using var summaryBuilder = new MemoryStream();
-                var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
+                using var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
 
             // Schema group
                 var schemaGrpStart = (ulong)summaryBuilder.Position;
@@ -361,7 +384,6 @@ namespace Unity.FoxgloveSDK.IO
                 _w.WriteFooter(footerSummaryStart, sumOffStart, summaryCrc);
                 _w.WriteMagic();
                 _w.Flush();
-                _closed = true;
             }
         }
 
@@ -432,34 +454,52 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (!_options.UseChunking) return;
             if (_chunkBuf.Length == 0) return;
-            if (!_chunkBuf.TryGetBuffer(out var raw))
-                throw new InvalidOperationException("MCAP chunk buffer is not publicly visible.");
-            var rawCrc = _options.EnableCrcs
-                ? Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count))
-                : 0;
-            var compressed = McapCompression.Compress(_compression, raw);
-            var off = (ulong)_w.Position;
-            _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
-            _chunkBuf.SetLength(0);
-            var chunkLen = (ulong)_w.Position - off;
-            var mio = new Dictionary<ushort, ulong>();
-            ulong mioTLen = 0;
-            foreach (var map in AllChannelWriteStates())
+            try
             {
-                if (map.Pending.Count == 0) continue;
-                if (_options.HasIndex(McapIndexTypes.Message))
+                if (!_chunkBuf.TryGetBuffer(out var raw))
+                    throw new InvalidOperationException("MCAP chunk buffer is not publicly visible.");
+                var rawCrc = _options.EnableCrcs
+                    ? Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count))
+                    : 0;
+                var compressed = McapCompression.Compress(_compression, raw, _options.Lz4CompressionLevel);
+                var off = (ulong)_w.Position;
+                _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
+                var chunkLen = (ulong)_w.Position - off;
+                var mio = new Dictionary<ushort, ulong>();
+                ulong mioTLen = 0;
+                foreach (var map in AllChannelWriteStates())
                 {
-                    var start = (ulong)_w.Position;
-                    _w.WriteMessageIndex(map.McapId, map.Pending);
-                    var len = (ulong)_w.Position - start;
-                    mio[map.McapId] = start;
-                    mioTLen += len;
+                    if (map.Pending.Count == 0) continue;
+                    if (_options.HasIndex(McapIndexTypes.Message))
+                    {
+                        var start = (ulong)_w.Position;
+                        _w.WriteMessageIndex(map.McapId, map.Pending);
+                        var len = (ulong)_w.Position - start;
+                        mio[map.McapId] = start;
+                        mioTLen += len;
+                    }
                 }
-                map.Pending.Clear();
+                if (_options.HasIndex(McapIndexTypes.Chunk))
+                    _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
+                _chunkCount++;
+                ResetActiveChunkState();
             }
-            if (_options.HasIndex(McapIndexTypes.Chunk))
-                _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
-            _chunkCount++; _chunkSt = _chunkEt = 0;
+            catch (Exception ex)
+            {
+                ResetActiveChunkState();
+                Fail("Chunk flush failed: " + ex.Message);
+                throw;
+            }
+        }
+
+        private void ResetActiveChunkState()
+        {
+            _chunkBuf.SetLength(0);
+            foreach (var map in AllChannelWriteStates())
+                map.Pending.Clear();
+            _chunkSt = 0;
+            _chunkEt = 0;
+            _chunkHasMessages = false;
         }
 
         private void FlushChunkBeforeLargeWriteIfNeeded(int nextRecordLength)
@@ -489,12 +529,22 @@ namespace Unity.FoxgloveSDK.IO
             if (_sKey.TryGetValue(key, out var sid))
                 return sid;
 
+            byte[] schemaData;
+            try
+            {
+                schemaData = sEnc == "protobuf"
+                    ? Convert.FromBase64String(sContent ?? "")
+                    : Encoding.UTF8.GetBytes(sContent ?? "");
+            }
+            catch (FormatException ex)
+            {
+                Fail("Invalid protobuf schema content: " + ex.Message);
+                return 0;
+            }
+
             if (_nextSid == 0) { Fail("Schema ID overflow"); return 0; }
             sid = _nextSid++;
             _sKey[key] = sid;
-            var schemaData = sEnc == "protobuf"
-                ? Convert.FromBase64String(sContent ?? "")
-                : Encoding.UTF8.GetBytes(sContent ?? "");
             _w.WriteSchema(sid, key.Item1, key.Item2, schemaData);
             _schemas.Add(new SchemaRecordState { Id = sid, Name = key.Item1, Encoding = key.Item2, Data = schemaData });
             return sid;
