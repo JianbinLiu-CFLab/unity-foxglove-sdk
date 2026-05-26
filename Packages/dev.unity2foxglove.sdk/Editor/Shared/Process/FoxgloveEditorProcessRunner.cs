@@ -6,7 +6,7 @@
 
 using System;
 using System.Diagnostics;
-using System.Text;
+using System.Threading.Tasks;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -38,59 +38,61 @@ namespace Unity.FoxgloveSDK.Editor
             startInfo.RedirectStandardOutput = true;
             startInfo.RedirectStandardError = true;
 
-            var stdout = new StringBuilder();
-            var stderr = new StringBuilder();
-            var stdoutLock = new object();
-            var stderrLock = new object();
-
             using (var process = new Process())
             {
                 process.StartInfo = startInfo;
-                process.OutputDataReceived += (_, args) =>
-                {
-                    if (args.Data == null)
-                        return;
-
-                    lock (stdoutLock)
-                        stdout.AppendLine(args.Data);
-                };
-                process.ErrorDataReceived += (_, args) =>
-                {
-                    if (args.Data == null)
-                        return;
-
-                    lock (stderrLock)
-                        stderr.AppendLine(args.Data);
-                };
-
                 if (!process.Start())
                     throw new InvalidOperationException($"Failed to start {startInfo.FileName}.");
 
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
+                var stdout = process.StandardOutput.ReadToEndAsync();
+                var stderr = process.StandardError.ReadToEndAsync();
 
                 if (!process.WaitForExit(Math.Max(1, timeoutMs)))
                 {
                     TryKill(process);
                     process.WaitForExit(500);
-                    return new FoxgloveEditorProcessResult(-1, true, Snapshot(stdout, stdoutLock), Snapshot(stderr, stderrLock));
+                    WaitForStreamDrain(stdout, stderr, 500);
+                    return new FoxgloveEditorProcessResult(
+                        -1,
+                        true,
+                        GetCompletedOutput(stdout),
+                        GetCompletedOutput(stderr));
                 }
 
-                // WaitForExit() without timeout flushes pending async output events after
-                // the process has already exited.
                 process.WaitForExit();
+                WaitForStreamDrain(stdout, stderr, -1);
                 return new FoxgloveEditorProcessResult(
                     process.ExitCode,
                     false,
-                    Snapshot(stdout, stdoutLock),
-                    Snapshot(stderr, stderrLock));
+                    GetCompletedOutput(stdout),
+                    GetCompletedOutput(stderr));
             }
         }
 
-        private static string Snapshot(StringBuilder builder, object sync)
+        private static void WaitForStreamDrain(Task<string> stdout, Task<string> stderr, int timeoutMs)
         {
-            lock (sync)
-                return builder.ToString();
+            try
+            {
+                if (timeoutMs < 0)
+                    Task.WaitAll(stdout, stderr);
+                else
+                    Task.WaitAll(new Task[] { stdout, stderr }, timeoutMs);
+            }
+            catch
+            {
+            }
+        }
+
+        private static string GetCompletedOutput(Task<string> task)
+        {
+            try
+            {
+                return task.IsCompleted ? task.Result ?? "" : "";
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         private static void TryKill(Process process)
