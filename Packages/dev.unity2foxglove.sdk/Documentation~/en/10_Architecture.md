@@ -69,6 +69,8 @@ Generated files are meant to be build artifacts, not hand-edited source.
 
 If a control frame still cannot fit after stale data is dropped, the slow client is disconnected. Queue size is an internal default in this phase, not an Inspector setting.
 
+Subscribe and client-advertise budget checks are atomic at the batch level. If a subscribe batch would exceed the per-client or global subscription budget, none of that batch is applied. If a client-advertise batch contains an invalid channel or would exceed the client/global client-channel budget, none of that batch is applied. Both paths log an atomic rejection warning so clients can retry with a smaller valid batch.
+
 ## 10. Secure WebSocket Mode
 
 `FoxgloveManager` can run either plain `ws://` or secure `wss://` for one manager instance. The default remains plain `ws://127.0.0.1:8765` for existing scenes. Selecting `SecureWebSocket` constructs `ManagedWssBackend` and injects it into `FoxgloveRuntime`; it does not rely on the runtime default constructor.

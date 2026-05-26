@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Components
                 transport.OnClientConnected += EnqueueConnect;
                 transport.OnClientDisconnected += EnqueueDisconnect;
                 _clientMessageForwarder = (cid, chId, topic, payload) =>
-                    EnqueueClientEvent(new ClientEvent
+                    EnqueueClientMessageEvent(new ClientEvent
                     {
                         ClientId = cid,
                         ChannelId = chId,

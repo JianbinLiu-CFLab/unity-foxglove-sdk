@@ -12,15 +12,18 @@ namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Thread-safe FIFO queue that rejects new items when frame or byte budgets
-    /// would be exceeded.
+    /// would be exceeded. A byte budget of zero or less disables byte-budget
+    /// checks; byte usage is measured once at enqueue time so later external
+    /// mutations of reference-type items cannot skew queue accounting.
     /// </summary>
     internal sealed class BoundedEventQueue<T>
     {
         private readonly object _lock = new();
-        private readonly Queue<T> _queue = new();
+        private readonly Queue<QueuedItem> _queue = new();
         private readonly Func<T, int> _measureBytes;
         private readonly int _maxFrames;
         private readonly long _maxBytes;
+        private readonly bool _hasByteBudget;
         private long _queuedBytes;
         private long _droppedCount;
         private long _droppedBytes;
@@ -29,6 +32,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             _maxFrames = Math.Max(1, maxFrames);
             _maxBytes = Math.Max(0, maxBytes);
+            _hasByteBudget = maxBytes > 0;
             _measureBytes = measureBytes ?? (_ => 0);
         }
 
@@ -37,7 +41,7 @@ namespace Unity.FoxgloveSDK.Core
             var itemBytes = Math.Max(0, _measureBytes(item));
             lock (_lock)
             {
-                if (_queue.Count + 1 > _maxFrames || _queuedBytes + itemBytes > _maxBytes)
+                if (_queue.Count + 1 > _maxFrames || (_hasByteBudget && _queuedBytes + itemBytes > _maxBytes))
                 {
                     _droppedCount++;
                     _droppedBytes += itemBytes;
@@ -50,7 +54,7 @@ namespace Unity.FoxgloveSDK.Core
                     return false;
                 }
 
-                _queue.Enqueue(item);
+                _queue.Enqueue(new QueuedItem(item, itemBytes));
                 _queuedBytes += itemBytes;
                 overflow = default;
                 return true;
@@ -67,8 +71,9 @@ namespace Unity.FoxgloveSDK.Core
                     return false;
                 }
 
-                item = _queue.Dequeue();
-                _queuedBytes = Math.Max(0, _queuedBytes - Math.Max(0, _measureBytes(item)));
+                var queued = _queue.Dequeue();
+                item = queued.Item;
+                _queuedBytes = Math.Max(0, _queuedBytes - queued.SizeBytes);
                 return true;
             }
         }
@@ -98,6 +103,36 @@ namespace Unity.FoxgloveSDK.Core
                 lock (_lock)
                     return _queuedBytes;
             }
+        }
+
+        public long DroppedCount
+        {
+            get
+            {
+                lock (_lock)
+                    return _droppedCount;
+            }
+        }
+
+        public long DroppedBytes
+        {
+            get
+            {
+                lock (_lock)
+                    return _droppedBytes;
+            }
+        }
+
+        private readonly struct QueuedItem
+        {
+            public QueuedItem(T item, int sizeBytes)
+            {
+                Item = item;
+                SizeBytes = sizeBytes;
+            }
+
+            public T Item { get; }
+            public int SizeBytes { get; }
         }
     }
 

@@ -97,10 +97,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-3C-1: runtime defers replay callbacks until after playback lock scope");
             Check(replaySource.Contains("DrainReplayCallbacks", StringComparison.Ordinal)
                   && replaySource.Contains("ReplayCallbackDispatch", StringComparison.Ordinal)
+                  && replaySource.Contains("BoundedEventQueue<ReplayCallbackDispatch>", StringComparison.Ordinal)
+                  && replaySource.Contains("MaxPendingReplayCallbacks", StringComparison.Ordinal)
+                  && replaySource.Contains("TryQueueReplayCallback", StringComparison.Ordinal)
+                  && replaySource.Contains("WarnReplayCallbackQueueOverflow", StringComparison.Ordinal)
                   && !replaySource.Contains("OnReplayMessage?.Invoke", StringComparison.Ordinal)
                   && !replaySource.Contains("OnReplayMessageContext?.Invoke", StringComparison.Ordinal)
                   && !replaySource.Contains("OnReplayBatchCompleted?.Invoke", StringComparison.Ordinal),
-                "134-3C-2: replay controller queues and safely drains public callbacks");
+                "134-3C-2: replay controller bounds, queues, and safely drains public callbacks");
         }
 
         private static void VerifyControllerDirectReplayEventsAreExceptionIsolated()

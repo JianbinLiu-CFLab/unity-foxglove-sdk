@@ -50,6 +50,20 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.TryEnqueue(new byte[4], out _), "134-1A-9: queue still accepts payloads that exactly fill byte budget");
             queue.Clear();
             Check(queue.Count == 0 && queue.QueuedBytes == 0, "134-1A-10: queue clear releases retained payload accounting");
+
+            var unlimitedBytes = new BoundedEventQueue<byte[]>(maxFrames: 1, maxBytes: 0, measureBytes: payload => payload?.Length ?? 0);
+            Check(unlimitedBytes.TryEnqueue(new byte[1024], out _),
+                "134-1A-11: zero byte budget disables byte-budget rejection while retaining frame cap");
+
+            var mutable = new MutablePayload { Size = 4 };
+            var measuredOnce = new BoundedEventQueue<MutablePayload>(maxFrames: 2, maxBytes: 10, measureBytes: payload => payload?.Size ?? 0);
+            Check(measuredOnce.TryEnqueue(mutable, out _) && measuredOnce.QueuedBytes == 4,
+                "134-1A-12: queue records byte size at enqueue time");
+            mutable.Size = 100;
+            Check(measuredOnce.TryDequeue(out _) && measuredOnce.QueuedBytes == 0,
+                "134-1A-13: post-enqueue mutation does not skew queued byte accounting");
+            Check(measuredOnce.DroppedCount == 0 && measuredOnce.DroppedBytes == 0,
+                "134-1A-14: queue exposes cumulative drop counters");
         }
 
         private static void VerifyFoxgloveManagerUsesBoundedClientEventQueue()
@@ -57,15 +71,19 @@ namespace Unity.FoxgloveSDK.Tests
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
 
-            Check(manager.Contains("MaxQueuedClientEvents", StringComparison.Ordinal)
+            Check(manager.Contains("MaxQueuedClientLifecycleEvents", StringComparison.Ordinal)
+                  && manager.Contains("MaxQueuedClientEvents", StringComparison.Ordinal)
                   && manager.Contains("MaxQueuedClientEventPayloadBytes", StringComparison.Ordinal)
+                  && manager.Contains("_clientLifecycleEvents", StringComparison.Ordinal)
+                  && manager.Contains("_clientMessageEvents", StringComparison.Ordinal)
                   && manager.Contains("BoundedEventQueue<ClientEvent>", StringComparison.Ordinal),
-                "134-1B-1: FoxgloveManager declares bounded client event queue budgets");
+                "134-1B-1: FoxgloveManager declares separate bounded lifecycle and message event queue budgets");
             Check(!manager.Contains("ConcurrentQueue<ClientEvent>", StringComparison.Ordinal),
                 "134-1B-2: FoxgloveManager no longer uses an unbounded ConcurrentQueue for client events");
-            Check(manager.Contains("EnqueueClientEvent(new ClientEvent", StringComparison.Ordinal)
-                  && server.Contains("EnqueueClientEvent(new ClientEvent", StringComparison.Ordinal),
-                "134-1B-3: connect/disconnect/message events share bounded enqueue path");
+            Check(manager.Contains("EnqueueClientLifecycleEvent(new ClientEvent", StringComparison.Ordinal)
+                  && manager.Contains("EnqueueClientMessageEvent(ClientEvent evt)", StringComparison.Ordinal)
+                  && server.Contains("EnqueueClientMessageEvent(new ClientEvent", StringComparison.Ordinal),
+                "134-1B-3: connect/disconnect lifecycle events are bounded separately from message events");
             Check(manager.Contains("evt.IsMessage ? evt.Payload?.Length ?? 0 : 0", StringComparison.Ordinal),
                 "134-1B-4: only message payload bytes count against the byte budget");
         }
@@ -101,6 +119,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        }
+
+        private sealed class MutablePayload
+        {
+            public int Size;
         }
     }
 }
