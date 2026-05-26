@@ -11,6 +11,7 @@ namespace Unity.FoxgloveSDK.Performance
         public bool enabled { get; set; } = true;
         public PerformanceScenarioThreshold defaults { get; set; }
         public System.Collections.Generic.Dictionary<string, PerformanceScenarioThreshold> scenarios { get; set; }
+        public System.Collections.Generic.Dictionary<string, PerformanceThresholdConfig> modes { get; set; }
     }
 
     public sealed class PerformanceScenarioThreshold

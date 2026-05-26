@@ -4,6 +4,9 @@
     "maxElapsedMs": 120000,
     "minMessagesPerSecond": 1.0,
     "maxAllocatedBytesPerMessage": 67108864.0,
+    "maxAllocatedBytesTotal": 1099511627776.0,
+    "maxGen0Collections": 1000,
+    "maxGen1Collections": 100,
     "maxGen2Collections": 1000
   },
   "scenarios": {
@@ -11,7 +14,48 @@
       "maxElapsedMs": 10000,
       "minMessagesPerSecond": 10000.0,
       "maxAllocatedBytesPerMessage": 64.0,
+      "maxAllocatedBytesTotal": 67108864.0,
+      "maxGen0Collections": 0,
+      "maxGen1Collections": 0,
       "maxGen2Collections": 0
+    },
+    "McapRecordAttachmentSummary": {
+      "maxElapsedMs": 10000,
+      "minMessagesPerSecond": 0.0,
+      "maxAllocatedBytesPerMessage": 67108864.0,
+      "maxAllocatedBytesTotal": 67108864.0,
+      "maxGen2Collections": 0
+    }
+  },
+  "modes": {
+    "full": {
+      "defaults": {
+        "maxElapsedMs": 600000,
+        "minMessagesPerSecond": 1.0,
+        "maxAllocatedBytesPerMessage": 67108864.0,
+        "maxAllocatedBytesTotal": 1099511627776.0,
+        "maxGen0Collections": 10000,
+        "maxGen1Collections": 1000,
+        "maxGen2Collections": 1000
+      },
+      "scenarios": {
+        "CameraBackpressurePolicyMicro": {
+          "maxElapsedMs": 30000,
+          "minMessagesPerSecond": 10000.0,
+          "maxAllocatedBytesPerMessage": 64.0,
+          "maxAllocatedBytesTotal": 67108864.0,
+          "maxGen0Collections": 0,
+          "maxGen1Collections": 0,
+          "maxGen2Collections": 0
+        },
+        "McapRecordAttachmentSummary": {
+          "maxElapsedMs": 10000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 67108864.0,
+          "maxAllocatedBytesTotal": 67108864.0,
+          "maxGen2Collections": 0
+        }
+      }
     }
   }
 }

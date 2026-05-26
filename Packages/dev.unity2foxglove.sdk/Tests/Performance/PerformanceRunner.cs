@@ -44,8 +44,6 @@ namespace Unity.FoxgloveSDK.Performance
         private const int QuickMessages = 2000;
         private const int FullMessages = 50000;
 
-        private static PerformanceThresholdConfig _activeThresholds;
-
         public static PerformanceThresholdConfig CreateDefaultThresholds(string mode)
         {
             var isFull = mode == "full";
@@ -57,6 +55,8 @@ namespace Unity.FoxgloveSDK.Performance
                     maxElapsedMs = isFull ? 600000 : 120000,
                     minMessagesPerSecond = 1,
                     maxAllocatedBytesPerMessage = 64 * 1024 * 1024,
+                    maxGen0Collections = isFull ? 10000 : 1000,
+                    maxGen1Collections = isFull ? 1000 : 100,
                     maxGen2Collections = 1000
                 },
                 scenarios = new Dictionary<string, PerformanceScenarioThreshold>
@@ -66,6 +66,15 @@ namespace Unity.FoxgloveSDK.Performance
                         maxElapsedMs = isFull ? 30000 : 10000,
                         minMessagesPerSecond = 10000,
                         maxAllocatedBytesPerMessage = 64,
+                        maxGen0Collections = 0,
+                        maxGen1Collections = 0,
+                        maxGen2Collections = 0
+                    },
+                    ["McapRecordAttachmentSummary"] = new PerformanceScenarioThreshold
+                    {
+                        maxElapsedMs = 10000,
+                        minMessagesPerSecond = 0,
+                        maxAllocatedBytesPerMessage = 64 * 1024 * 1024,
                         maxGen2Collections = 0
                     }
                 }
@@ -74,44 +83,129 @@ namespace Unity.FoxgloveSDK.Performance
 
         public static bool RunThresholdSelfTest()
         {
-            var previous = _activeThresholds;
-            try
+            var failingThresholds = new PerformanceThresholdConfig
             {
-                _activeThresholds = new PerformanceThresholdConfig
+                enabled = true,
+                defaults = new PerformanceScenarioThreshold
                 {
-                    enabled = true,
-                    defaults = new PerformanceScenarioThreshold
+                    maxElapsedMs = 1,
+                    minMessagesPerSecond = 1000,
+                    maxAllocatedBytesPerMessage = 1,
+                    maxGen0Collections = 0
+                }
+            };
+
+            var failResult = new PerformanceScenarioResult
+            {
+                name = "ThresholdSelfTest",
+                messageCount = 1,
+                elapsedMs = 10,
+                messagesPerSecond = 10,
+                allocatedBytesPerMessage = 2,
+                gen0Collections = 1,
+                passed = true
+            };
+
+            ApplyThresholds(failResult, failingThresholds);
+            var failPathOk = failResult.thresholdsEvaluated
+                && !failResult.passed
+                && failResult.thresholdNotes.Contains("elapsedMs", StringComparison.Ordinal)
+                && failResult.thresholdNotes.Contains("messagesPerSecond", StringComparison.Ordinal)
+                && failResult.thresholdNotes.Contains("allocatedBytesPerMessage", StringComparison.Ordinal)
+                && failResult.thresholdNotes.Contains("gen0Collections", StringComparison.Ordinal);
+
+            var passResult = new PerformanceScenarioResult
+            {
+                name = "ThresholdSelfTest",
+                messageCount = 1,
+                elapsedMs = 0,
+                messagesPerSecond = 1000,
+                allocatedBytesPerMessage = 0,
+                gen0Collections = 0,
+                passed = true
+            };
+
+            ApplyThresholds(passResult, failingThresholds);
+            var passPathOk = passResult.thresholdsEvaluated
+                && passResult.passed
+                && string.Equals(passResult.thresholdNotes, "thresholds passed", StringComparison.Ordinal);
+
+            return failPathOk && passPathOk;
+        }
+
+        public static PerformanceThresholdConfig ResolveThresholdConfigForMode(
+            PerformanceThresholdConfig config,
+            string mode)
+        {
+            config ??= CreateDefaultThresholds(mode);
+            var resolved = CloneThresholdConfig(config);
+            if (!string.IsNullOrWhiteSpace(mode)
+                && config.modes != null
+                && config.modes.TryGetValue(mode, out var modeConfig)
+                && modeConfig != null)
+            {
+                if (modeConfig.defaults != null)
+                    resolved.defaults = MergeThresholds(resolved.defaults, modeConfig.defaults);
+
+                if (modeConfig.scenarios != null)
+                {
+                    resolved.scenarios ??= new Dictionary<string, PerformanceScenarioThreshold>();
+                    foreach (var pair in modeConfig.scenarios)
                     {
-                        maxElapsedMs = 1,
-                        minMessagesPerSecond = 1000,
-                        maxAllocatedBytesPerMessage = 1,
-                        maxGen0Collections = 0
+                        resolved.scenarios.TryGetValue(pair.Key, out var baseScenario);
+                        resolved.scenarios[pair.Key] = MergeThresholds(baseScenario, pair.Value);
                     }
-                };
+                }
 
-                var result = new PerformanceScenarioResult
-                {
-                    name = "ThresholdSelfTest",
-                    messageCount = 1,
-                    elapsedMs = 10,
-                    messagesPerSecond = 10,
-                    allocatedBytesPerMessage = 2,
-                    gen0Collections = 1,
-                    passed = true
-                };
-
-                ApplyThresholds(result);
-                return result.thresholdsEvaluated
-                    && !result.passed
-                    && result.thresholdNotes.Contains("elapsedMs", StringComparison.Ordinal)
-                    && result.thresholdNotes.Contains("messagesPerSecond", StringComparison.Ordinal)
-                    && result.thresholdNotes.Contains("allocatedBytesPerMessage", StringComparison.Ordinal)
-                    && result.thresholdNotes.Contains("gen0Collections", StringComparison.Ordinal);
+                resolved.enabled = modeConfig.enabled && config.enabled;
             }
-            finally
+
+            resolved.modes = null;
+            return resolved;
+        }
+
+        private static PerformanceThresholdConfig CloneThresholdConfig(PerformanceThresholdConfig source)
+        {
+            return new PerformanceThresholdConfig
             {
-                _activeThresholds = previous;
-            }
+                enabled = source?.enabled ?? true,
+                defaults = CloneThreshold(source?.defaults),
+                scenarios = CloneThresholdMap(source?.scenarios)
+            };
+        }
+
+        private static Dictionary<string, PerformanceScenarioThreshold> CloneThresholdMap(
+            Dictionary<string, PerformanceScenarioThreshold> source)
+        {
+            if (source == null)
+                return null;
+
+            var clone = new Dictionary<string, PerformanceScenarioThreshold>();
+            foreach (var pair in source)
+                clone[pair.Key] = CloneThreshold(pair.Value);
+            return clone;
+        }
+
+        private static PerformanceScenarioThreshold CloneThreshold(PerformanceScenarioThreshold source)
+            => source == null ? null : MergeThresholds(null, source);
+
+        private static PerformanceScenarioThreshold MergeThresholds(
+            PerformanceScenarioThreshold baseThreshold,
+            PerformanceScenarioThreshold overrideThreshold)
+        {
+            if (baseThreshold == null && overrideThreshold == null)
+                return null;
+
+            return new PerformanceScenarioThreshold
+            {
+                maxElapsedMs = overrideThreshold?.maxElapsedMs ?? baseThreshold?.maxElapsedMs,
+                minMessagesPerSecond = overrideThreshold?.minMessagesPerSecond ?? baseThreshold?.minMessagesPerSecond,
+                maxAllocatedBytesPerMessage = overrideThreshold?.maxAllocatedBytesPerMessage ?? baseThreshold?.maxAllocatedBytesPerMessage,
+                maxAllocatedBytesTotal = overrideThreshold?.maxAllocatedBytesTotal ?? baseThreshold?.maxAllocatedBytesTotal,
+                maxGen0Collections = overrideThreshold?.maxGen0Collections ?? baseThreshold?.maxGen0Collections,
+                maxGen1Collections = overrideThreshold?.maxGen1Collections ?? baseThreshold?.maxGen1Collections,
+                maxGen2Collections = overrideThreshold?.maxGen2Collections ?? baseThreshold?.maxGen2Collections
+            };
         }
 
         public static List<PerformanceScenarioResult> RunAll(string mode, PerformanceThresholdConfig thresholds = null)
@@ -123,41 +217,33 @@ namespace Unity.FoxgloveSDK.Performance
             int topics = isFull ? FullTopics : QuickTopics;
             int clients = isFull ? FullClients : QuickClients;
             int messages = isFull ? FullMessages : QuickMessages;
+            var activeThresholds = ResolveThresholdConfigForMode(thresholds ?? CreateDefaultThresholds(mode), mode);
 
-            var previous = _activeThresholds;
-            _activeThresholds = thresholds ?? CreateDefaultThresholds(mode);
-            try
-            {
-                results.Add(RunPublishJsonFanout(warmup, topics, clients, messages));
-                results.Add(RunPublishProtoFanout(warmup, topics, clients, messages));
-                results.Add(RunMcapRecord(warmup, topics, messages, "", "McapRecordNone"));
-                results.Add(RunMcapRecord(warmup, topics, messages, "lz4", "McapRecordLz4"));
-                results.Add(RunMcapRecord(warmup, topics, messages, "zstd", "McapRecordZstd"));
-                results.Add(RunMcapRecordNonePrebuiltPayload(warmup, topics, messages));
-                results.Add(RunMcapReplayTick(warmup, topics, messages, isFull));
-                var dataLoaderMessages = isFull ? Math.Min(messages, 10000) : Math.Min(messages, 1000);
-                var dataLoaderInitializeIterations = isFull ? 20 : 5;
-                var indexedFixture = CreateDataLoaderIndexedFixture(topics, dataLoaderMessages);
-                var directFixture = CreateDataLoaderDirectFixture(topics, dataLoaderMessages);
-                var sparseFixture = CreateDataLoaderSparseFixture();
-                results.Add(RunMcapDataLoaderInitializeIndexed(indexedFixture, dataLoaderInitializeIterations));
-                results.Add(RunMcapDataLoaderInitializeDirect(directFixture, dataLoaderInitializeIterations));
-                results.Add(RunMcapDataLoaderIterateAllIndexed(indexedFixture));
-                results.Add(RunMcapDataLoaderIterateTopicFilterIndexed(indexedFixture));
-                results.Add(RunMcapDataLoaderIterateTimeWindowIndexed(indexedFixture));
-                results.Add(RunMcapDataLoaderIterateAllDirect(directFixture));
-                results.Add(RunMcapDataLoaderBackfillIndexed(indexedFixture));
-                results.Add(RunMcapDataLoaderBackfillSparse(sparseFixture));
-                results.Add(RunMcapRecordAttachmentSummary());
-                results.Add(RunCameraBackpressurePolicyMicro());
-                results.Add(RunTransportQueueMicro());
+            results.Add(RunPublishJsonFanout(warmup, topics, clients, messages, activeThresholds));
+            results.Add(RunPublishProtoFanout(warmup, topics, clients, messages, activeThresholds));
+            results.Add(RunMcapRecord(warmup, topics, messages, "", "McapRecordNone", activeThresholds));
+            results.Add(RunMcapRecord(warmup, topics, messages, "lz4", "McapRecordLz4", activeThresholds));
+            results.Add(RunMcapRecord(warmup, topics, messages, "zstd", "McapRecordZstd", activeThresholds));
+            results.Add(RunMcapRecordNonePrebuiltPayload(warmup, topics, messages, activeThresholds));
+            results.Add(RunMcapReplayTick(warmup, topics, messages, isFull, activeThresholds));
+            var dataLoaderMessages = isFull ? Math.Min(messages, 10000) : Math.Min(messages, 1000);
+            var dataLoaderInitializeIterations = isFull ? 20 : 5;
+            var indexedFixture = CreateDataLoaderIndexedFixture(topics, dataLoaderMessages);
+            var directFixture = CreateDataLoaderDirectFixture(topics, dataLoaderMessages);
+            var sparseFixture = CreateDataLoaderSparseFixture();
+            results.Add(RunMcapDataLoaderInitializeIndexed(indexedFixture, dataLoaderInitializeIterations, activeThresholds));
+            results.Add(RunMcapDataLoaderInitializeDirect(directFixture, dataLoaderInitializeIterations, activeThresholds));
+            results.Add(RunMcapDataLoaderIterateAllIndexed(indexedFixture, activeThresholds));
+            results.Add(RunMcapDataLoaderIterateTopicFilterIndexed(indexedFixture, activeThresholds));
+            results.Add(RunMcapDataLoaderIterateTimeWindowIndexed(indexedFixture, activeThresholds));
+            results.Add(RunMcapDataLoaderIterateAllDirect(directFixture, activeThresholds));
+            results.Add(RunMcapDataLoaderBackfillIndexed(indexedFixture, activeThresholds));
+            results.Add(RunMcapDataLoaderBackfillSparse(sparseFixture, activeThresholds));
+            results.Add(RunMcapRecordAttachmentSummary(activeThresholds));
+            results.Add(RunCameraBackpressurePolicyMicro(activeThresholds));
+            results.Add(RunTransportQueueMicro(activeThresholds));
 
-                return results;
-            }
-            finally
-            {
-                _activeThresholds = previous;
-            }
+            return results;
         }
 
         // Helpers
@@ -193,7 +279,7 @@ namespace Unity.FoxgloveSDK.Performance
         }
 
         private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
-            Action warmup, Action<int> measured)
+            Action warmup, Action<int> measured, PerformanceThresholdConfig thresholds)
         {
             // GC before warmup
             GC.Collect();
@@ -228,13 +314,12 @@ namespace Unity.FoxgloveSDK.Performance
                 allocationNotes = allocNotes,
                 passed = true
             };
-            ApplyThresholds(result);
+            ApplyThresholds(result, thresholds);
             return result;
         }
 
-        private static PerformanceScenarioThreshold ResolveThreshold(string scenarioName)
+        private static PerformanceScenarioThreshold ResolveThreshold(string scenarioName, PerformanceThresholdConfig config)
         {
-            var config = _activeThresholds;
             if (config == null || !config.enabled)
                 return null;
 
@@ -255,9 +340,9 @@ namespace Unity.FoxgloveSDK.Performance
             };
         }
 
-        private static void ApplyThresholds(PerformanceScenarioResult result)
+        private static void ApplyThresholds(PerformanceScenarioResult result, PerformanceThresholdConfig thresholds)
         {
-            var threshold = ResolveThreshold(result.name);
+            var threshold = ResolveThreshold(result.name, thresholds);
             if (threshold == null)
                 return;
 
@@ -283,7 +368,9 @@ namespace Unity.FoxgloveSDK.Performance
             result.thresholdsEvaluated = true;
             if (failures.Count == 0)
             {
-                result.thresholdNotes = "thresholds passed";
+                result.thresholdNotes = result.passed
+                    ? "thresholds passed"
+                    : "thresholds passed; scenario result already failed";
                 return;
             }
 
@@ -511,22 +598,25 @@ namespace Unity.FoxgloveSDK.Performance
 
         private static PerformanceScenarioResult RunMcapDataLoaderInitializeIndexed(
             DataLoaderFixture fixture,
-            int iterations)
+            int iterations,
+            PerformanceThresholdConfig thresholds)
         {
-            return RunMcapDataLoaderInitialize("McapDataLoaderInitializeIndexed", fixture, iterations);
+            return RunMcapDataLoaderInitialize("McapDataLoaderInitializeIndexed", fixture, iterations, thresholds);
         }
 
         private static PerformanceScenarioResult RunMcapDataLoaderInitializeDirect(
             DataLoaderFixture fixture,
-            int iterations)
+            int iterations,
+            PerformanceThresholdConfig thresholds)
         {
-            return RunMcapDataLoaderInitialize("McapDataLoaderInitializeDirect", fixture, iterations);
+            return RunMcapDataLoaderInitialize("McapDataLoaderInitializeDirect", fixture, iterations, thresholds);
         }
 
         private static PerformanceScenarioResult RunMcapDataLoaderInitialize(
             string name,
             DataLoaderFixture fixture,
-            int iterations)
+            int iterations,
+            PerformanceThresholdConfig thresholds)
         {
             var result = TimedScenario(name, 1, iterations, () =>
             {
@@ -539,14 +629,16 @@ namespace Unity.FoxgloveSDK.Performance
                     using var loader = new McapDataLoader(fixture.Path);
                     EnsureDataLoaderInitialization(fixture, loader.Initialize());
                 }
-            });
+            }, thresholds);
 
             ApplyDataLoaderFields(result, fixture, 0, 0, null, null, 0, 0);
             result.notes = result.notes + $"; initializeIterations={iterations}";
             return result;
         }
 
-        private static PerformanceScenarioResult RunMcapDataLoaderIterateAllIndexed(DataLoaderFixture fixture)
+        private static PerformanceScenarioResult RunMcapDataLoaderIterateAllIndexed(
+            DataLoaderFixture fixture,
+            PerformanceThresholdConfig thresholds)
         {
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateAllIndexed",
@@ -556,10 +648,13 @@ namespace Unity.FoxgloveSDK.Performance
                 fixture.ChannelCount,
                 0,
                 null,
-                null);
+                null,
+                thresholds);
         }
 
-        private static PerformanceScenarioResult RunMcapDataLoaderIterateTopicFilterIndexed(DataLoaderFixture fixture)
+        private static PerformanceScenarioResult RunMcapDataLoaderIterateTopicFilterIndexed(
+            DataLoaderFixture fixture,
+            PerformanceThresholdConfig thresholds)
         {
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateTopicFilterIndexed",
@@ -569,10 +664,13 @@ namespace Unity.FoxgloveSDK.Performance
                 0,
                 1,
                 null,
-                null);
+                null,
+                thresholds);
         }
 
-        private static PerformanceScenarioResult RunMcapDataLoaderIterateTimeWindowIndexed(DataLoaderFixture fixture)
+        private static PerformanceScenarioResult RunMcapDataLoaderIterateTimeWindowIndexed(
+            DataLoaderFixture fixture,
+            PerformanceThresholdConfig thresholds)
         {
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateTimeWindowIndexed",
@@ -586,10 +684,13 @@ namespace Unity.FoxgloveSDK.Performance
                 fixture.ChannelCount,
                 0,
                 fixture.WindowStartTimeNs,
-                fixture.WindowEndTimeNs);
+                fixture.WindowEndTimeNs,
+                thresholds);
         }
 
-        private static PerformanceScenarioResult RunMcapDataLoaderIterateAllDirect(DataLoaderFixture fixture)
+        private static PerformanceScenarioResult RunMcapDataLoaderIterateAllDirect(
+            DataLoaderFixture fixture,
+            PerformanceThresholdConfig thresholds)
         {
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateAllDirect",
@@ -599,7 +700,8 @@ namespace Unity.FoxgloveSDK.Performance
                 fixture.ChannelCount,
                 0,
                 null,
-                null);
+                null,
+                thresholds);
         }
 
         private static PerformanceScenarioResult RunMcapDataLoaderIteration(
@@ -610,7 +712,8 @@ namespace Unity.FoxgloveSDK.Performance
             int selectedChannelCount,
             int selectedTopicCount,
             ulong? queryStartTimeNs,
-            ulong? queryEndTimeNs)
+            ulong? queryEndTimeNs,
+            PerformanceThresholdConfig thresholds)
         {
             var returnedMessageCount = 0;
             var result = TimedScenario(name, expectedCount, expectedCount, () =>
@@ -627,14 +730,16 @@ namespace Unity.FoxgloveSDK.Performance
                 returnedMessageCount = CountDataLoaderMessages(loader.CreateIterator(query));
                 if (returnedMessageCount != expectedCount)
                     throw new Exception($"{name}: expected {expectedCount} messages, got {returnedMessageCount}");
-            });
+            }, thresholds);
 
             ApplyDataLoaderFields(result, fixture, selectedChannelCount, selectedTopicCount,
                 queryStartTimeNs, queryEndTimeNs, returnedMessageCount, 0);
             return result;
         }
 
-        private static PerformanceScenarioResult RunMcapDataLoaderBackfillIndexed(DataLoaderFixture fixture)
+        private static PerformanceScenarioResult RunMcapDataLoaderBackfillIndexed(
+            DataLoaderFixture fixture,
+            PerformanceThresholdConfig thresholds)
         {
             var query = new McapDataLoaderBackfillQuery
             {
@@ -647,10 +752,13 @@ namespace Unity.FoxgloveSDK.Performance
                 query,
                 fixture.ChannelCount,
                 fixture.ChannelCount,
-                0);
+                0,
+                thresholds);
         }
 
-        private static PerformanceScenarioResult RunMcapDataLoaderBackfillSparse(DataLoaderFixture fixture)
+        private static PerformanceScenarioResult RunMcapDataLoaderBackfillSparse(
+            DataLoaderFixture fixture,
+            PerformanceThresholdConfig thresholds)
         {
             var query = new McapDataLoaderBackfillQuery
             {
@@ -663,7 +771,8 @@ namespace Unity.FoxgloveSDK.Performance
                 query,
                 2,
                 fixture.ChannelCount,
-                0);
+                0,
+                thresholds);
         }
 
         private static PerformanceScenarioResult RunMcapDataLoaderBackfill(
@@ -672,7 +781,8 @@ namespace Unity.FoxgloveSDK.Performance
             McapDataLoaderBackfillQuery query,
             int expectedCount,
             int selectedChannelCount,
-            int selectedTopicCount)
+            int selectedTopicCount,
+            PerformanceThresholdConfig thresholds)
         {
             var backfillHitCount = 0;
             var result = TimedScenario(name, fixture.TotalMessageCount, fixture.TotalMessageCount, () =>
@@ -689,14 +799,19 @@ namespace Unity.FoxgloveSDK.Performance
                 backfillHitCount = loader.GetBackfill(query).Count;
                 if (backfillHitCount != expectedCount)
                     throw new Exception($"{name}: expected {expectedCount} backfill hits, got {backfillHitCount}");
-            });
+            }, thresholds);
 
             ApplyDataLoaderFields(result, fixture, selectedChannelCount, selectedTopicCount,
                 null, query.TimeNs, backfillHitCount, backfillHitCount);
             return result;
         }
 
-        private static PerformanceScenarioResult RunPublishJsonFanout(int warmup, int topics, int clients, int messages)
+        private static PerformanceScenarioResult RunPublishJsonFanout(
+            int warmup,
+            int topics,
+            int clients,
+            int messages,
+            PerformanceThresholdConfig thresholds)
         {
             var registry = new DefaultSchemaRegistry();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
@@ -740,10 +855,15 @@ namespace Unity.FoxgloveSDK.Performance
                     for (int t = 0; t < channelIds.Count; t++)
                         session.Publish(channelIds[t], MakeJsonPayload(t, i));
                 }
-            });
+            }, thresholds);
         }
 
-        private static PerformanceScenarioResult RunPublishProtoFanout(int warmup, int topics, int clients, int messages)
+        private static PerformanceScenarioResult RunPublishProtoFanout(
+            int warmup,
+            int topics,
+            int clients,
+            int messages,
+            PerformanceThresholdConfig thresholds)
         {
             var registry = new DefaultSchemaRegistry();
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
@@ -792,10 +912,16 @@ namespace Unity.FoxgloveSDK.Performance
                     foreach (var chId in channelIds)
                         session.Publish(chId, protoPayload);
                 }
-            });
+            }, thresholds);
         }
 
-        private static PerformanceScenarioResult RunMcapRecord(int warmup, int topics, int messages, string compression, string name)
+        private static PerformanceScenarioResult RunMcapRecord(
+            int warmup,
+            int topics,
+            int messages,
+            string compression,
+            string name,
+            PerformanceThresholdConfig thresholds)
         {
             int warmupCount = warmup;
             long outputBytes = 0;
@@ -839,7 +965,7 @@ namespace Unity.FoxgloveSDK.Performance
                 var summary = reader.ReadSummary();
                 if (summary.Statistics.MessageCount != (ulong)count)
                     throw new Exception($"MCAP message count mismatch: expected {count}, got {summary.Statistics.MessageCount}");
-            });
+            }, thresholds);
 
             result.outputBytes = outputBytes;
             if (outputBytes > 0 && payloadBytes > 0)
@@ -852,7 +978,11 @@ namespace Unity.FoxgloveSDK.Performance
             return result;
         }
 
-        private static PerformanceScenarioResult RunMcapRecordNonePrebuiltPayload(int warmup, int topics, int messages)
+        private static PerformanceScenarioResult RunMcapRecordNonePrebuiltPayload(
+            int warmup,
+            int topics,
+            int messages,
+            PerformanceThresholdConfig thresholds)
         {
             var payload = MakeJsonPayload(0, 0);
             int warmupCount = warmup;
@@ -893,14 +1023,19 @@ namespace Unity.FoxgloveSDK.Performance
                 var summary = reader.ReadSummary();
                 if (summary.Statistics.MessageCount != (ulong)count)
                     throw new Exception($"MCAP message count mismatch: expected {count}, got {summary.Statistics.MessageCount}");
-            });
+            }, thresholds);
 
             result.outputBytes = outputBytes;
             result.notes = $"compression=none; prebuiltPayload=true; payloadBytes={payloadBytes}; fileBytes={outputBytes}; payloadBytesPerMessage={payload.Length}";
             return result;
         }
 
-        private static PerformanceScenarioResult RunMcapReplayTick(int warmup, int topics, int messages, bool isFull)
+        private static PerformanceScenarioResult RunMcapReplayTick(
+            int warmup,
+            int topics,
+            int messages,
+            bool isFull,
+            PerformanceThresholdConfig thresholds)
         {
             // Build a fixture MCAP first
             var fixtureDir = Path.Combine(RepoRoot, "build", "performance", "fixtures");
@@ -951,13 +1086,13 @@ namespace Unity.FoxgloveSDK.Performance
                 }
                 if (totalMessages != count)
                     throw new Exception($"McapReplayTick: expected {count} replay messages, got {totalMessages}");
-            });
+            }, thresholds);
 
             result.notes = $"fixturePath={fixturePath}";
             return result;
         }
 
-        private static PerformanceScenarioResult RunMcapRecordAttachmentSummary()
+        private static PerformanceScenarioResult RunMcapRecordAttachmentSummary(PerformanceThresholdConfig thresholds)
         {
             try
             {
@@ -989,7 +1124,7 @@ namespace Unity.FoxgloveSDK.Performance
                 if (footerCrc == 0)
                     throw new Exception("Footer summary_crc is zero");
 
-                return new PerformanceScenarioResult
+                var result = new PerformanceScenarioResult
                 {
                     name = "McapRecordAttachmentSummary",
                     warmupMessageCount = 0,
@@ -999,19 +1134,23 @@ namespace Unity.FoxgloveSDK.Performance
                     outputBytes = ms.Length,
                     notes = "Phase 34 regression guard: attachment index, CRC, summary_crc verified"
                 };
+                ApplyThresholds(result, thresholds);
+                return result;
             }
             catch (Exception ex)
             {
-                return new PerformanceScenarioResult
+                var result = new PerformanceScenarioResult
                 {
                     name = "McapRecordAttachmentSummary",
                     passed = false,
                     notes = ex.Message
                 };
+                ApplyThresholds(result, thresholds);
+                return result;
             }
         }
 
-        private static PerformanceScenarioResult RunCameraBackpressurePolicyMicro()
+        private static PerformanceScenarioResult RunCameraBackpressurePolicyMicro(PerformanceThresholdConfig thresholds)
         {
             // Measure policy evaluation overhead: run 100K evaluations in a
             // tight loop, while still validating the key state transitions.
@@ -1076,11 +1215,11 @@ namespace Unity.FoxgloveSDK.Performance
                     + $"pressure={pressureCount}, blocked={blockedCount}, allowed={allowedCount}",
                 passed = passed
             };
-            ApplyThresholds(result);
+            ApplyThresholds(result, thresholds);
             return result;
         }
 
-        private static PerformanceScenarioResult RunTransportQueueMicro()
+        private static PerformanceScenarioResult RunTransportQueueMicro(PerformanceThresholdConfig thresholds)
         {
             bool accepted, shouldDisc, dataDropped;
 
@@ -1116,7 +1255,7 @@ namespace Unity.FoxgloveSDK.Performance
 
             bool passed = accepted && dataDropped && shouldDisc && controlFirst && ctrlDisc && completed && drained;
 
-            return new PerformanceScenarioResult
+            var result = new PerformanceScenarioResult
             {
                 name = "TransportQueueMicro",
                 warmupMessageCount = 0,
@@ -1124,6 +1263,8 @@ namespace Unity.FoxgloveSDK.Performance
                 passed = passed,
                 notes = passed ? "Queue enqueue/drop/control/complete paths exercised" : "Queue scenario failed"
             };
+            ApplyThresholds(result, thresholds);
+            return result;
 
             static QueuedFrame D(byte b) =>
                 new QueuedFrame(WsOpcode.Binary, new[] { b }, FramePriority.Data);

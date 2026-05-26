@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Core
                         || string.IsNullOrWhiteSpace(ch.Encoding))
                     {
                         _logger.LogWarning(
-                            $"Client advertise rejected from client {clientId}: channel topic and encoding are required");
+                            $"Client advertise batch rejected atomically from client {clientId}; no channels from this batch were applied: channel topic and encoding are required");
                         return;
                     }
 
@@ -165,7 +165,8 @@ namespace Unity.FoxgloveSDK.Core
                     return;
             }
 
-            _logger.LogWarning($"Client advertise rejected from client {clientId}: {reason}");
+            _logger.LogWarning(
+                $"Client advertise batch rejected atomically from client {clientId}; no channels from this batch were applied: {reason}");
         }
 
         private static int SchemaByteCount(AdvertiseChannel channel)

@@ -154,24 +154,33 @@ namespace Unity.FoxgloveSDK.Tests
                   && runner.Contains("CreateDataLoaderSparseFixture", StringComparison.Ordinal),
                 "118-C3: performance harness creates deterministic DataLoader fixtures under build/performance/fixtures");
 
-            Check(runner.Contains("ApplyThresholds(result)", StringComparison.Ordinal)
+            Check(runner.Contains("ApplyThresholds(result, thresholds)", StringComparison.Ordinal)
                   && runner.Contains("RunThresholdSelfTest", StringComparison.Ordinal)
+                  && runner.Contains("ResolveThresholdConfigForMode", StringComparison.Ordinal)
+                  && runner.Contains("passPathOk", StringComparison.Ordinal)
+                  && !runner.Contains("_activeThresholds", StringComparison.Ordinal)
                   && runner.Contains("maxAllocatedBytesPerMessage", StringComparison.Ordinal)
                   && runner.Contains("minMessagesPerSecond", StringComparison.Ordinal),
-                "118-C4: performance harness enforces configurable regression thresholds");
+                "118-C4: performance harness enforces configurable mode-aware regression thresholds without static threshold state");
 
             var entryPoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Performance/Program.cs");
             Check(entryPoint.Contains("--thresholds", StringComparison.Ordinal)
                   && entryPoint.Contains("--threshold-self-test", StringComparison.Ordinal)
-                  && entryPoint.Contains("Performance thresholds:", StringComparison.Ordinal),
-                "118-C5: performance entry point exposes threshold config and self-test gates");
+                  && entryPoint.Contains("Performance thresholds:", StringComparison.Ordinal)
+                  && entryPoint.Contains("could not be loaded; using built-in", StringComparison.Ordinal),
+                "118-C5: performance entry point exposes threshold config, self-test gates, and bad-config fallback");
 
             var thresholds = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Performance/performance-thresholds.json");
             Check(thresholds.Contains("\"defaults\"", StringComparison.Ordinal)
                   && thresholds.Contains("\"scenarios\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"modes\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"full\"", StringComparison.Ordinal)
                   && thresholds.Contains("\"maxElapsedMs\"", StringComparison.Ordinal)
-                  && thresholds.Contains("\"minMessagesPerSecond\"", StringComparison.Ordinal),
-                "118-C6: default performance threshold file is checked in");
+                  && thresholds.Contains("\"minMessagesPerSecond\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"maxAllocatedBytesTotal\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"maxGen0Collections\"", StringComparison.Ordinal)
+                  && thresholds.Contains("\"maxGen1Collections\"", StringComparison.Ordinal),
+                "118-C6: default performance threshold file is checked in with quick/full mode coverage");
         }
 
         private static void VerifyValidationWiring()
