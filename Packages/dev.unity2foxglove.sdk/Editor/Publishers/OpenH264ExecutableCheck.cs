@@ -8,6 +8,7 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -90,6 +91,9 @@ namespace Unity.FoxgloveSDK.Editor
                         return Invalid(normalizedHelper, normalizedDll, "", "OpenH264 helper process did not start.");
                     }
 
+                    var stdoutTask = ReadAllBytesAsync(process.StandardOutput.BaseStream);
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+
                     var frame = CreateBlackI420Frame(options.Width, options.Height);
                     process.StandardInput.BaseStream.Write(frame, 0, frame.Length);
                     process.StandardInput.BaseStream.Flush();
@@ -98,15 +102,15 @@ namespace Unity.FoxgloveSDK.Editor
                     if (!process.WaitForExit(Math.Max(500, timeoutMs)))
                     {
                         TryKill(process);
+                        WaitForStreamDrain(stdoutTask, stderrTask, 500);
                         return Invalid(normalizedHelper, normalizedDll, "", "OpenH264 validation timed out.");
                     }
 
-                    var stdout = process.StandardOutput.BaseStream;
-                    var hasLengthPrefix = stdout.ReadByte() >= 0
-                        && stdout.ReadByte() >= 0
-                        && stdout.ReadByte() >= 0
-                        && stdout.ReadByte() >= 0;
-                    var stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    WaitForStreamDrain(stdoutTask, stderrTask, -1);
+                    var stdout = GetCompletedOutput(stdoutTask);
+                    var hasLengthPrefix = stdout.Length >= 4;
+                    var stderr = GetCompletedOutput(stderrTask);
                     var diagnostic = LastNonEmptyLine(stderr);
                     var compatibilityError = BuildCompatibilityError(stderr);
                     if (!string.IsNullOrEmpty(compatibilityError))
@@ -156,6 +160,54 @@ namespace Unity.FoxgloveSDK.Editor
                 dllPath,
                 diagnosticLine,
                 errorMessage);
+
+        private static Task<byte[]> ReadAllBytesAsync(Stream stream)
+            => Task.Run(() =>
+            {
+                using (var buffer = new MemoryStream())
+                {
+                    stream.CopyTo(buffer);
+                    return buffer.ToArray();
+                }
+            });
+
+        private static void WaitForStreamDrain(Task<byte[]> stdout, Task<string> stderr, int timeoutMs)
+        {
+            try
+            {
+                if (timeoutMs < 0)
+                    Task.WaitAll(stdout, stderr);
+                else
+                    Task.WaitAll(new Task[] { stdout, stderr }, timeoutMs);
+            }
+            catch
+            {
+            }
+        }
+
+        private static byte[] GetCompletedOutput(Task<byte[]> task)
+        {
+            try
+            {
+                return task.IsCompleted ? task.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
+            }
+            catch
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
+        private static string GetCompletedOutput(Task<string> task)
+        {
+            try
+            {
+                return task.IsCompleted ? task.Result ?? "" : "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
 
         private static string NormalizePath(string path)
         {

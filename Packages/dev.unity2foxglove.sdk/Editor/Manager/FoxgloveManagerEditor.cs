@@ -254,8 +254,6 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
-
             EditorGUILayout.PropertyField(source, new GUIContent("Identity Mode Source"));
             if (source.enumValueIndex == (int)SchemaIdentityModeSource.Override)
             {
@@ -974,7 +972,7 @@ namespace Unity.FoxgloveSDK.Editor
             return normAbs;
         }
 
-        private static string ResolveProjectPath(string path)
+        internal static string ResolveProjectPath(string path)
         {
             if (string.IsNullOrEmpty(path) || Path.IsPathRooted(path))
                 return path;

@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
 using UnityEditor;
@@ -33,6 +34,16 @@ namespace Unity.FoxgloveSDK.Editor
             new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
         private OpenH264ExecutableCheckResult _openH264Check =
             new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
+
+        static FoxgloveCameraPublisherEditor()
+        {
+            var enumCount = Enum.GetValues(typeof(CameraOutputMode)).Length;
+            if (CameraOutputModeLabels.Length != enumCount)
+            {
+                Debug.LogWarning(
+                    $"Camera output mode label count ({CameraOutputModeLabels.Length}) does not match CameraOutputMode count ({enumCount}).");
+            }
+        }
 
         public override void OnInspectorGUI()
         {
@@ -331,12 +342,15 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(publishRateSource, new GUIContent("Publish Rate Source"));
+            if (publishRateSource != null)
+                EditorGUILayout.PropertyField(publishRateSource, new GUIContent("Publish Rate Source"));
 
-            var usesLocalRate = publishRateSource.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
+            var usesLocalRate = publishRateSource == null
+                                || publishRateSource.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
             using (new EditorGUI.DisabledScope(!usesLocalRate))
             {
-                EditorGUILayout.PropertyField(publishRateHz, new GUIContent("Publish Rate Hz"));
+                if (publishRateHz != null)
+                    EditorGUILayout.PropertyField(publishRateHz, new GUIContent("Publish Rate Hz"));
             }
         }
 
@@ -469,12 +483,10 @@ namespace Unity.FoxgloveSDK.Editor
         private static void BrowseFfmpeg(SerializedProperty ffmpegPath)
         {
             var current = ffmpegPath.stringValue;
-            var defaultDir = "";
-            if (!string.IsNullOrWhiteSpace(current) && Path.IsPathRooted(current))
-                defaultDir = File.Exists(current) ? Path.GetDirectoryName(current) : Path.GetDirectoryName(current);
+            var defaultDir = ResolveBrowseDefaultDirectory(current);
 
             var extension = Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "";
-            var selected = EditorUtility.OpenFilePanel("Select FFmpeg Executable", defaultDir ?? "", extension);
+            var selected = EditorUtility.OpenFilePanel("Select FFmpeg Executable", defaultDir, extension);
             if (!string.IsNullOrEmpty(selected))
                 ffmpegPath.stringValue = selected;
         }
@@ -508,13 +520,28 @@ namespace Unity.FoxgloveSDK.Editor
         private static void BrowseOpenH264Path(SerializedProperty property, string dialogTitle, string extension)
         {
             var current = property.stringValue;
-            var defaultDir = "";
-            if (!string.IsNullOrWhiteSpace(current) && Path.IsPathRooted(current))
-                defaultDir = File.Exists(current) ? Path.GetDirectoryName(current) : Path.GetDirectoryName(current);
+            var defaultDir = ResolveBrowseDefaultDirectory(current);
 
-            var selected = EditorUtility.OpenFilePanel(dialogTitle, defaultDir ?? "", extension);
+            var selected = EditorUtility.OpenFilePanel(dialogTitle, defaultDir, extension);
             if (!string.IsNullOrEmpty(selected))
                 property.stringValue = selected;
+        }
+
+        private static string ResolveBrowseDefaultDirectory(string current)
+        {
+            if (!string.IsNullOrWhiteSpace(current) && Path.IsPathRooted(current))
+            {
+                if (File.Exists(current))
+                    return Path.GetDirectoryName(current) ?? FoxgloveManagerEditor.GetDefaultDir();
+                if (Directory.Exists(current))
+                    return current;
+
+                var parent = Path.GetDirectoryName(current);
+                if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+                    return parent;
+            }
+
+            return FoxgloveManagerEditor.GetDefaultDir();
         }
 
         private static bool CanRevealFfmpegFolder(string configuredPath)
@@ -687,6 +714,8 @@ namespace Unity.FoxgloveSDK.Editor
             private string _installRoot;
             private string _statusMessage;
             private MessageType _statusType;
+            private Task<OpenH264InstallResult> _installTask;
+            private string _installRootInFlight;
 
             public static void ShowWindow(Action<string, string> onInstalled)
             {
@@ -696,6 +725,14 @@ namespace Unity.FoxgloveSDK.Editor
                 window._onInstalled = onInstalled;
                 window._installRoot = OpenH264InstallLocation.GetPreferredInstallRoot();
                 window.ShowUtility();
+            }
+
+            private bool IsInstalling
+                => _installTask != null && !_installTask.IsCompleted;
+
+            private void OnDisable()
+            {
+                EditorApplication.update -= PollInstallTask;
             }
 
             private void OnGUI()
@@ -748,16 +785,25 @@ namespace Unity.FoxgloveSDK.Editor
                     if (GUILayout.Button("Manual Download"))
                         Application.OpenURL(OpenH264OfficialBinaryManifest.ReleasePageUrl);
 
-                    if (GUILayout.Button("Install OpenH264 Runtime"))
-                        Install();
+                    using (new EditorGUI.DisabledScope(IsInstalling))
+                    {
+                        if (GUILayout.Button(IsInstalling ? "Installing..." : "Install OpenH264 Runtime"))
+                            Install();
+                    }
 
-                    if (GUILayout.Button("Cancel"))
-                        Close();
+                    using (new EditorGUI.DisabledScope(IsInstalling))
+                    {
+                        if (GUILayout.Button("Cancel"))
+                            Close();
+                    }
                 }
             }
 
             private void Install()
             {
+                if (IsInstalling)
+                    return;
+
                 if (!OpenH264InstallLocation.IsAllowedInstallRoot(_installRoot, out var reason))
                 {
                     _statusMessage = reason;
@@ -765,10 +811,41 @@ namespace Unity.FoxgloveSDK.Editor
                     return;
                 }
 
-                var result = OpenH264OfficialBinaryInstaller.Install(_installRoot);
+                _installRootInFlight = _installRoot;
+                var packageRoot = OpenH264OfficialBinaryInstaller.GetPackageRoot();
+                _statusMessage = "Installing OpenH264 runtime. Unity remains responsive while download and helper build run in the background.";
+                _statusType = MessageType.Info;
+                _installTask = Task.Run(() => OpenH264OfficialBinaryInstaller.Install(_installRootInFlight, packageRoot));
+                EditorApplication.update -= PollInstallTask;
+                EditorApplication.update += PollInstallTask;
+                Repaint();
+            }
+
+            private void PollInstallTask()
+            {
+                if (_installTask == null || !_installTask.IsCompleted)
+                    return;
+
+                EditorApplication.update -= PollInstallTask;
+                var task = _installTask;
+                _installTask = null;
+
+                OpenH264InstallResult result;
+                try
+                {
+                    result = task.GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _statusMessage = ex.Message;
+                    _statusType = MessageType.Error;
+                    Repaint();
+                    return;
+                }
+
                 if (result.Success)
                 {
-                    OpenH264InstallLocation.SavePreferredInstallRoot(_installRoot);
+                    OpenH264InstallLocation.SavePreferredInstallRoot(_installRootInFlight);
                     _onInstalled?.Invoke(result.HelperPath, result.DllPath);
                     _statusMessage = "Installed OpenH264 runtime:\nHelper: " + result.HelperPath + "\nDLL: " + result.DllPath;
                     _statusType = MessageType.Info;
@@ -778,6 +855,7 @@ namespace Unity.FoxgloveSDK.Editor
 
                 _statusMessage = result.ErrorMessage;
                 _statusType = MessageType.Error;
+                Repaint();
             }
         }
 

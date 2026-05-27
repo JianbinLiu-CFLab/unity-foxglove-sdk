@@ -8,7 +8,7 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
+using System.Net.Http;
 using UnityEditor.PackageManager;
 using UnityEngine;
 
@@ -33,6 +33,9 @@ namespace Unity.FoxgloveSDK.Editor
     public static class OpenH264OfficialBinaryInstaller
     {
         public static OpenH264InstallResult Install(string installRoot)
+            => Install(installRoot, GetPackageRoot());
+
+        internal static OpenH264InstallResult Install(string installRoot, string packageRoot)
         {
             if (!OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out var reason))
                 return Fail(reason);
@@ -94,9 +97,10 @@ namespace Unity.FoxgloveSDK.Editor
 
                 File.Move(tempDll, finalDllPath);
 
-                if (!BuildHelperExecutable(versionDir, finalHelperPath, out var buildError))
+                if (!BuildHelperExecutable(versionDir, finalHelperPath, packageRoot, out var buildError))
                     return Fail(buildError);
 
+                TryDelete(compressedPath);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
             }
             catch (Exception ex)
@@ -113,10 +117,18 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DownloadFile(string url, string destination)
         {
-            using (var client = new WebClient())
+            using (var client = new HttpClient())
             {
-                client.Headers[HttpRequestHeader.UserAgent] = "Unity2Foxglove OpenH264 Installer";
-                client.DownloadFile(url, destination);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Unity2Foxglove-OpenH264-Installer/1.0");
+                using (var response = client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult())
+                {
+                    response.EnsureSuccessStatusCode();
+                    using (var source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+                    using (var destinationStream = File.Create(destination))
+                    {
+                        source.CopyTo(destinationStream);
+                    }
+                }
             }
         }
 
@@ -182,16 +194,15 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static bool BuildHelperExecutable(string workingDirectory, string outputPath, out string error)
+        private static bool BuildHelperExecutable(string workingDirectory, string outputPath, string packageRoot, out string error)
         {
             error = "";
-            if (Application.platform != RuntimePlatform.WindowsEditor)
+            if (!IsWindowsEditor)
             {
                 error = "Automatic OpenH264 helper builds are currently supported only in the Windows Unity Editor.";
                 return false;
             }
 
-            var packageRoot = GetPackageRoot();
             if (string.IsNullOrEmpty(packageRoot))
             {
                 error = "Could not locate the Unity2Foxglove package root for OpenH264 helper sources.";
@@ -273,7 +284,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static string GetPackageRoot()
+        internal static string GetPackageRoot()
         {
             try
             {
@@ -299,7 +310,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             foreach (var root in CandidateVisualStudioRoots())
             {
-                foreach (var year in new[] { "2026", "2022", "2019" })
+                foreach (var year in new[] { "2022", "2019" })
                 {
                     foreach (var edition in new[] { "Community", "Professional", "Enterprise", "BuildTools" })
                     {
@@ -413,33 +424,22 @@ namespace Unity.FoxgloveSDK.Editor
             stderr = "";
             try
             {
-                using (var process = new Process())
+                var startInfo = new ProcessStartInfo
                 {
-                    process.StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        WorkingDirectory = workingDirectory ?? "",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
-
-                    if (!process.Start())
-                        return false;
-
-                    if (!process.WaitForExit(Math.Max(500, timeoutMs)))
-                    {
-                        TryKill(process);
-                        stderr = "Process timed out.";
-                        return false;
-                    }
-
-                    stdout = process.StandardOutput.ReadToEnd();
-                    stderr = process.StandardError.ReadToEnd();
-                    return process.ExitCode == 0;
+                    FileName = fileName,
+                    Arguments = arguments,
+                    WorkingDirectory = workingDirectory ?? ""
+                };
+                var result = FoxgloveEditorProcessRunner.Run(startInfo, Math.Max(500, timeoutMs));
+                stdout = result.Stdout;
+                stderr = result.Stderr;
+                if (result.TimedOut)
+                {
+                    stderr = string.IsNullOrWhiteSpace(stderr) ? "Process timed out." : "Process timed out.\n" + stderr;
+                    return false;
                 }
+
+                return result.ExitCode == 0;
             }
             catch (Win32Exception ex)
             {
@@ -472,10 +472,22 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string[] CandidateNames(string executableName)
         {
-            if (Application.platform == RuntimePlatform.WindowsEditor && string.IsNullOrEmpty(Path.GetExtension(executableName)))
+            if (IsWindowsEditor && string.IsNullOrEmpty(Path.GetExtension(executableName)))
                 return new[] { executableName, executableName + ".exe" };
 
             return new[] { executableName };
+        }
+
+        private static bool IsWindowsEditor
+        {
+            get
+            {
+#if UNITY_EDITOR_WIN
+                return true;
+#else
+                return false;
+#endif
+            }
         }
 
         private static string[] EnumeratePathDirectories()
