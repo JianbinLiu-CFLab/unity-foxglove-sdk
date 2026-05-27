@@ -1,18 +1,24 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Tests/Runtime
-// Purpose: Reads an MCAP file and prints channel metadata, statistics, and /tf /scene messages to console.
+// Module: Scripts/mcap
+// Purpose: Standalone diagnostic tool that reads an MCAP file and prints channel metadata, statistics, and /tf /scene messages.
+// Note: This file owns a Main entry point and is intentionally not compiled into the runtime test harness.
 
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
 
-class McapInspector
+internal static class McapInspector
 {
+    private const int MaxInspectorPayloadBytes = 500000;
+    private const int MaxTfMessages = 1;
+    private const int MaxSceneMessages = 3;
+
     /// <summary>
     /// Reads an MCAP file and prints channel metadata, statistics, and
     /// the first few /tf and /scene messages to the console.
@@ -55,35 +61,47 @@ class McapInspector
         // Walk chunks and print first few /tf messages
         if (summary.ChunkIndexes != null)
         {
-            int tfCount = 0;
+            var tfCount = 0;
+            var sceneCount = 0;
             foreach (var ci in summary.ChunkIndexes)
             {
                 var chunk = reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength);
                 if (chunk == null) continue;
-                int off = 0;
+                var off = 0;
                 while (off + 9 <= chunk.Length)
                 {
                     var op = chunk[off++];
                     var len = McapBinaryReader.ReadU64LE(chunk, ref off);
-                    if (off + (int)len > chunk.Length) break;
+                    if (!TryGetRecordEnd(chunk.Length, off, len, out var recordEnd)) break;
 
                     if (op == 0x05) // message
                     {
-                        int msgOff = off;
+                        var msgOff = off;
+                        if (recordEnd - msgOff < 22)
+                        {
+                            off = recordEnd;
+                            continue;
+                        }
+
                         ushort chId = McapBinaryReader.ReadU16LE(chunk, ref off);
                         uint seq = McapBinaryReader.ReadU32LE(chunk, ref off);
                         ulong logNs = McapBinaryReader.ReadU64LE(chunk, ref off);
                         ulong pubNs = McapBinaryReader.ReadU64LE(chunk, ref off);
-                        int dataLen = off + (int)len - msgOff - 2 - 4 - 8 - 8;
-                        if (dataLen > 0 && dataLen < 500000)
+                        int dataLen = recordEnd - off;
+                        if (dataLen > 0 && dataLen <= MaxInspectorPayloadBytes)
                         {
                             var payload = new byte[dataLen];
                             Buffer.BlockCopy(chunk, off, payload, 0, dataLen);
                             var json = Encoding.UTF8.GetString(payload);
 
-                            if (json.Contains("\"translation\"") && tfCount == 0)
+                            if (json.Contains("\"translation\"") && tfCount < MaxTfMessages)
                             {
-                                var j = JObject.Parse(json);
+                                if (!TryParseJson(json, out var j))
+                                {
+                                    off = recordEnd;
+                                    continue;
+                                }
+
                                 var t = j["translation"];
                                 var r = j["rotation"];
                                 string cid = (string)j["child_frame_id"] ?? "?";
@@ -92,9 +110,14 @@ class McapInspector
                                 if (r != null) Console.WriteLine($"    rotation=({(double)r["x"]:F3}, {(double)r["y"]:F3}, {(double)r["z"]:F3}, {(double)r["w"]:F3})");
                                 tfCount++;
                             }
-                            else if (json.Contains("\"entities\"") && json.Contains("\"cubes\"") && tfCount < 3)
+                            else if (json.Contains("\"entities\"") && json.Contains("\"cubes\"") && sceneCount < MaxSceneMessages)
                             {
-                                var j = JObject.Parse(json);
+                                if (!TryParseJson(json, out var j))
+                                {
+                                    off = recordEnd;
+                                    continue;
+                                }
+
                                 var ents = j["entities"] as JArray;
                                 if (ents != null && ents.Count > 0)
                                 {
@@ -111,21 +134,49 @@ class McapInspector
                                                 Console.WriteLine($"    position=({(double)pose["position"]["x"]:F3}, {(double)pose["position"]["y"]:F3}, {(double)pose["position"]["z"]:F3})");
                                             if (pose?["orientation"] != null)
                                                 Console.WriteLine($"    orientation=({(double)pose["orientation"]["x"]:F3}, {(double)pose["orientation"]["y"]:F3}, {(double)pose["orientation"]["z"]:F3}, {(double)pose["orientation"]["w"]:F3})");
-                                            tfCount++;
+                                            sceneCount++;
                                             break;
                                         }
                                     }
                                 }
                             }
                         }
-                        off = msgOff + (int)len;
+                        off = recordEnd;
                     }
                     else
                     {
-                        off += (int)len;
+                        off = recordEnd;
                     }
                 }
             }
+        }
+    }
+
+    private static bool TryGetRecordEnd(int bufferLength, int contentOffset, ulong length, out int end)
+    {
+        end = contentOffset;
+        if (length > int.MaxValue)
+            return false;
+
+        var supportedLength = (int)length;
+        if (supportedLength > bufferLength - contentOffset)
+            return false;
+
+        end = contentOffset + supportedLength;
+        return true;
+    }
+
+    private static bool TryParseJson(string json, out JObject parsed)
+    {
+        try
+        {
+            parsed = JObject.Parse(json);
+            return true;
+        }
+        catch (JsonException)
+        {
+            parsed = null;
+            return false;
         }
     }
 }

@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
@@ -120,6 +121,11 @@ namespace Unity.FoxgloveSDK.Tests
             var summary = new McapReader(ms).ReadSummary();
             Assert(summary.Channels.Count == 2,
                 "Matching schema: 2 channels (server + client)");
+            Assert(summary.Statistics.MessageCount == 3,
+                "Matching schema: exactly 3 total messages recorded");
+            Assert(summary.Statistics.ChannelMessageCounts.Values.Contains(1UL)
+                   && summary.Statistics.ChannelMessageCounts.Values.Contains(2UL),
+                "Matching schema: server/client channel message counts are 1 and 2");
         }
 
         /// <summary>

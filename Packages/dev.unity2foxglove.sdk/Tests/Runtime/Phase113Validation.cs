@@ -16,7 +16,8 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase113Validation
     {
-        private const string ExpectedFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
+        private const string ExpectedGlobalFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
+        private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string SchemaWriterPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunSchemaInfoWriter.cs";
         private const string CodeGeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs";
         private const string BuildPreprocessPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs";
@@ -45,9 +46,11 @@ namespace Unity.FoxgloveSDK.Tests
             var verification = FoxRunSchemaInfoWriter.VerifyGeneratedInfo(manifest, source);
 
             Check(verification.IsValid
-                  && verification.ActualGlobalManifestHash == ExpectedFixtureHash
-                  && verification.ActualFoxRunManifestHash == ExpectedFixtureHash,
-                "113-A1: generated schema info constants match fixture manifest hashes");
+                  && verification.ActualGlobalManifestHash == ExpectedGlobalFixtureHash
+                  && verification.ActualFoxRunManifestHash == ExpectedFoxRunFixtureHash,
+                "113-A1: generated schema info constants match fixture manifest hashes"
+                + $" (expected global {ExpectedGlobalFixtureHash}, expected foxrun {ExpectedFoxRunFixtureHash}, "
+                + $"actual global {verification.ActualGlobalManifestHash}, actual foxrun {verification.ActualFoxRunManifestHash})");
 
             Check(source.Contains("public const int TypeCount = 1;", StringComparison.Ordinal)
                   && source.Contains("public const int ContractCount = 1;", StringComparison.Ordinal)
@@ -56,7 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "113-A2: generated schema info includes counts and registration call");
 
             Check(HasBalancedGeneratedSourceDelimiters(source)
-                  && !source.Contains("}),\n", StringComparison.Ordinal),
+                  && !NormalizeNewlines(source).Contains("}),\n", StringComparison.Ordinal),
                 "113-A2b: generated schema info has balanced C# initializer delimiters");
 
             Check(!source.Contains("#if !UNITY_EDITOR", StringComparison.Ordinal)
@@ -93,7 +96,7 @@ namespace Unity.FoxgloveSDK.Tests
             FoxRunSchemaInfoRegistry.RegisterGenerated(first);
             Check(FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo
                   && FoxRunSchemaInfoRegistry.Current == first
-                  && FoxRunSchemaInfoRegistry.Current.GlobalManifestHash == ExpectedFixtureHash
+                  && FoxRunSchemaInfoRegistry.Current.GlobalManifestHash == ExpectedGlobalFixtureHash
                   && FoxRunSchemaInfoRegistry.Current.TypeCount == 1
                   && FoxRunSchemaInfoRegistry.Current.ContractCount == 1
                   && FoxRunSchemaInfoRegistry.Current.FieldCount == 1,
@@ -215,14 +218,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "113-D6c: Play Mode refresh cancels once when generated schema info source changes");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase113Validation.cs", StringComparison.Ordinal)
                   && project.Contains("Runtime/Components/FoxRun/FoxRunSchema*.cs", StringComparison.Ordinal)
                   && project.Contains("FoxRunSchemaInfoWriter.cs", StringComparison.Ordinal),
                 "113-D7: runtime validation project compiles schema registry, writer, and Phase113 tests");
-            Check(program.Contains("--phase113", StringComparison.Ordinal)
-                  && program.Contains("Phase113Validation.Validate()", StringComparison.Ordinal),
-                "113-D8: Program dispatches --phase113 and full validation includes Phase113");
+            Check(validationRegistry.Contains("--phase113", StringComparison.Ordinal)
+                  && validationRegistry.Contains("Phase113Validation.Validate", StringComparison.Ordinal),
+                "113-D8: validation registry dispatches --phase113 and full validation includes Phase113");
         }
 
         private static void VerifyDocs()
@@ -311,10 +314,47 @@ namespace Unity.FoxgloveSDK.Tests
             var brace = 0;
             var bracket = 0;
             var inString = false;
+            var inVerbatimString = false;
+            var inChar = false;
+            var inLineComment = false;
+            var inBlockComment = false;
             var escaped = false;
 
-            foreach (var c in source)
+            for (var i = 0; i < source.Length; i++)
             {
+                var c = source[i];
+                var next = i + 1 < source.Length ? source[i + 1] : '\0';
+
+                if (inLineComment)
+                {
+                    if (c == '\n')
+                        inLineComment = false;
+                    continue;
+                }
+
+                if (inBlockComment)
+                {
+                    if (c == '*' && next == '/')
+                    {
+                        inBlockComment = false;
+                        i++;
+                    }
+                    continue;
+                }
+
+                if (inVerbatimString)
+                {
+                    if (c == '"' && next == '"')
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (c == '"')
+                        inVerbatimString = false;
+                    continue;
+                }
+
                 if (inString)
                 {
                     if (escaped)
@@ -334,9 +374,62 @@ namespace Unity.FoxgloveSDK.Tests
                     continue;
                 }
 
+                if (inChar)
+                {
+                    if (escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+
+                    if (c == '\\')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+
+                    if (c == '\'')
+                        inChar = false;
+                    continue;
+                }
+
+                if (c == '/' && next == '/')
+                {
+                    inLineComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (c == '/' && next == '*')
+                {
+                    inBlockComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (c == '@' && next == '"')
+                {
+                    inVerbatimString = true;
+                    i++;
+                    continue;
+                }
+
+                if (c == '$' && next == '@' && i + 2 < source.Length && source[i + 2] == '"')
+                {
+                    inVerbatimString = true;
+                    i += 2;
+                    continue;
+                }
+
                 if (c == '"')
                 {
                     inString = true;
+                    continue;
+                }
+
+                if (c == '\'')
+                {
+                    inChar = true;
                     continue;
                 }
 
@@ -354,8 +447,17 @@ namespace Unity.FoxgloveSDK.Tests
                     return false;
             }
 
-            return !inString && paren == 0 && brace == 0 && bracket == 0;
+            return !inString
+                   && !inVerbatimString
+                   && !inChar
+                   && !inBlockComment
+                   && paren == 0
+                   && brace == 0
+                   && bracket == 0;
         }
+
+        private static string NormalizeNewlines(string value)
+            => value.Replace("\r\n", "\n").Replace("\r", "\n");
 
         private static string ReadRepoText(string relativePath)
         {

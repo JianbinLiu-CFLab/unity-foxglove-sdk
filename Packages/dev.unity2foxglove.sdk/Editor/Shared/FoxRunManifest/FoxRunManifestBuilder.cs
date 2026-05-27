@@ -27,12 +27,19 @@ namespace Unity.FoxgloveSDK.Editor
             var manifestHash = FoxRunManifestHasher.Sha256Hex(sectionHashInput);
             var section = new FoxRunManifestFoxRunSection(manifestHash, types);
             var sections = new FoxRunManifestSections(section);
+            var generator = new FoxRunManifestGenerator(GeneratorName, generatorMajorVersion);
+            var globalHash = FoxRunManifestHasher.Sha256Hex(
+                FoxRunManifestJsonWriter.WriteGlobalHashInput(
+                    manifestVersion,
+                    PackageName,
+                    generator,
+                    manifestHash));
             return new FoxRunCanonicalManifest(
                 manifestVersion,
                 PackageName,
-                new FoxRunManifestGenerator(GeneratorName, generatorMajorVersion),
+                generator,
                 sections,
-                manifestHash);
+                globalHash);
         }
 
         private static IReadOnlyList<FoxRunManifestType> BuildTypes(IReadOnlyList<FoxRunManifestMember> members)
@@ -69,8 +76,8 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(field => field.JsonName, StringComparer.Ordinal)
                 .ThenBy(field => field.MemberName, StringComparer.Ordinal)
                 .ThenBy(field => field.Type, StringComparer.Ordinal)
-                .ToList()
-                .AsReadOnly();
+                .ToList();
+            ValidateJsonFieldNames(declaringType, key, fields);
             var policy = BuildPolicy(members);
             var contractHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteContractHashInput(
@@ -95,15 +102,13 @@ namespace Unity.FoxgloveSDK.Editor
                 contractHash,
                 bindingHash,
                 policyHash,
-                fields,
+                fields.AsReadOnly(),
                 policy);
         }
 
         private static FoxRunManifestField BuildField(FoxRunManifestMember member)
         {
-            var sourceType = member.IsArray && !string.IsNullOrEmpty(member.ElementTypeName)
-                ? member.ElementTypeName
-                : member.TypeName;
+            var sourceType = ResolveFieldSourceType(member);
             var normalized = FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType);
             var nullable = member.IsArray
                            || FoxRunCanonicalTypeNormalizer.IsNullableType(member.TypeName)
@@ -116,6 +121,43 @@ namespace Unity.FoxgloveSDK.Editor
                 normalized,
                 nullable,
                 member.IsArray);
+        }
+
+        private static string ResolveFieldSourceType(FoxRunManifestMember member)
+        {
+            if (!member.IsArray)
+                return member.TypeName;
+
+            if (!string.IsNullOrEmpty(member.ElementTypeName))
+                return member.ElementTypeName;
+
+            var typeName = member.TypeName ?? string.Empty;
+            return typeName.EndsWith("[]", StringComparison.Ordinal)
+                ? typeName.Substring(0, typeName.Length - 2)
+                : typeName;
+        }
+
+        private static void ValidateJsonFieldNames(
+            string declaringType,
+            ContractKey key,
+            IReadOnlyList<FoxRunManifestField> fields)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in fields)
+            {
+                if (string.IsNullOrEmpty(field.JsonName))
+                {
+                    throw new InvalidOperationException(
+                        "FoxRun manifest field JSON name is empty for " + declaringType + "." + field.MemberName);
+                }
+
+                if (!seen.Add(field.JsonName))
+                {
+                    throw new InvalidOperationException(
+                        "FoxRun manifest field JSON name collision for " + declaringType +
+                        " topic " + key.Topic + ": " + field.JsonName);
+                }
+            }
         }
 
         private static FoxRunManifestPolicy BuildPolicy(IReadOnlyList<FoxRunManifestMember> members)

@@ -4,6 +4,7 @@
 // Module: Tests/Runtime
 // Purpose: Central registry for CI-safe, local-evidence, and explicit phase validations.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -149,14 +150,30 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase134-24", "Phase 134-24", Phase134_24Validation.Validate),
             Ci("--phase134-25", "Phase 134-25", Phase134_25Validation.Validate),
             Ci("--phase134-26", "Phase 134-26", Phase134_26Validation.Validate),
+            Ci("--phase134-27", "Phase 134-27", Phase134_27Validation.Validate),
             Ci("--phase134-28", "Phase 134-28", Phase134_28Validation.Validate),
+            Ci("--phase134-29", "Phase 134-29", Phase134_29Validation.Validate),
             Ci("--phase134-30", "Phase 134-30", Phase134_30Validation.Validate),
+            Ci("--phase134-31", "Phase 134-31", Phase134_31Validation.Validate),
             Ci("--phase134-32", "Phase 134-32", Phase134_32Validation.Validate),
+            Ci("--phase134-33", "Phase 134-33", Phase134_33Validation.Validate),
+            Ci("--phase134-34", "Phase 134-34", Phase134_34Validation.Validate),
             Ci("--phase134-35", "Phase 134-35", Phase134_35Validation.Validate),
             Local("--phase137", "Phase 137", Phase137Validation.Validate, "--phase136"),
             Local("--phase138", "Phase 138", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B", Phase138BValidation.Validate, "--phase137b"),
         };
+
+        static PhaseValidationRegistry()
+        {
+            var duplicate = All
+                .SelectMany(item => item.AllFlags())
+                .GroupBy(flag => flag, StringComparer.Ordinal)
+                .FirstOrDefault(group => group.Count() > 1);
+
+            if (duplicate != null)
+                throw new InvalidOperationException("Duplicate validation flag registered: " + duplicate.Key);
+        }
 
         public static IEnumerable<PhaseValidationCase> DefaultValidations(bool includeLocalEvidence)
         {

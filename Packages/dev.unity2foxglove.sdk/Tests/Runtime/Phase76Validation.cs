@@ -327,7 +327,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            if (!File.Exists(full))
+                throw new FileNotFoundException("Required validation source file was not found.", full);
+
+            return File.ReadAllText(full);
         }
 
         private static string FindRepoRoot()
@@ -347,10 +350,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new Exception("[FAIL] " + name);
 
             _passed++;
-            Console.WriteLine("[OK] " + name);
+            Console.WriteLine("[PASS] " + name);
         }
     }
 }

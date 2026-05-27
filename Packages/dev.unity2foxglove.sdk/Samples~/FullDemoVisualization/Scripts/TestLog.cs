@@ -46,5 +46,6 @@ public partial class TestLog : MonoBehaviour
         var trackedPosition = _trackedCube != null ? _trackedCube.position : transform.position;
         _pos = trackedPosition;
         position = trackedPosition;
+        _health = 95f + Mathf.Sin(Time.time * 0.75f) * 5f;
     }
 }

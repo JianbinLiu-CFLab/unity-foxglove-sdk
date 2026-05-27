@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 4 Tests ---");
+            _passCount = 0;
 
             TestCompressedImageSchemaRegistered();
             TestCompressedImageMessageFields();

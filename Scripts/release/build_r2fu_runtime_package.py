@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import shutil
@@ -196,7 +197,7 @@ def reset_package_dir(package: Path) -> None:
         last_error: Exception | None = None
         for _ in range(5):
             try:
-                shutil.rmtree(windows_long_path(package), onerror=make_writable)
+                rmtree_with_writable_retry(package)
                 break
             except OSError as exc:
                 last_error = exc
@@ -208,7 +209,23 @@ def reset_package_dir(package: Path) -> None:
     package.mkdir(parents=True)
 
 
-def make_writable(function, path: str, exc_info) -> None:
+def rmtree_with_writable_retry(path: Path) -> None:
+    """Remove a tree, retrying read-only paths across Python shutil APIs."""
+    raw_path = windows_long_path(path)
+    if "onexc" in inspect.signature(shutil.rmtree).parameters:
+        shutil.rmtree(raw_path, onexc=make_writable_onexc)
+    else:
+        shutil.rmtree(raw_path, onerror=make_writable_onerror)
+
+
+def make_writable_onerror(function, path: str, exc_info) -> None:
+    """Clear a read-only bit and retry a failed removal operation."""
+
+    os.chmod(path, os.stat(path).st_mode | 0o200)
+    function(path)
+
+
+def make_writable_onexc(function, path: str, exc: BaseException) -> None:
     """Clear a read-only bit and retry a failed removal operation."""
 
     os.chmod(path, os.stat(path).st_mode | 0o200)
@@ -272,7 +289,7 @@ def runtime_asmdef() -> dict[str, object]:
         "name": "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64",
         "rootNamespace": "",
         "references": [],
-        "includePlatforms": [],
+        "includePlatforms": ["Editor", "WindowsStandalone64"],
         "excludePlatforms": [],
         "allowUnsafeCode": False,
         "overrideReferences": False,
@@ -333,7 +350,7 @@ def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
 def deterministic_guid(relative_path: str) -> str:
     """Return a deterministic Unity GUID for generated metadata."""
     seed = f"{PACKAGE_NAME}:{relative_path.replace(chr(92), '/')}"
-    return hashlib.md5(seed.encode("utf-8")).hexdigest()
+    return hashlib.md5(seed.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def meta_importer_for(path: Path) -> str:
@@ -626,7 +643,7 @@ def patch_ros2_for_unity(package: Path) -> None:
         "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n",
         1,
     )
-    source.write_text(text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK), encoding="utf-8")
+    write_text(source, text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK))
 
 
 def write_package_files(paths: BuildPaths, inventory: dict[str, object]) -> None:

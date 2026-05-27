@@ -126,11 +126,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(GetStringProperty(subscription, "Topic") == "/unity2foxglove/phase108/in" && !received,
                 "108-B6: unavailable subscription preserves topic without invoking callback");
 
-            DisposeTwice(publisher);
-            DisposeTwice(subscription);
-            DisposeTwice(node);
-            DisposeTwice(context);
-            Check(true, "108-B7: unavailable facade Dispose methods are idempotent");
+            try
+            {
+                DisposeTwice(publisher);
+                DisposeTwice(subscription);
+                DisposeTwice(node);
+                DisposeTwice(context);
+                Check(true, "108-B7: unavailable facade Dispose methods are idempotent");
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("108-B7: unavailable facade Dispose methods are idempotent", ex);
+            }
         }
 
         private static void VerifyPackageBoundaries()
@@ -145,9 +152,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "108-C2: core SDK package still does not depend on optional R2FU package");
 
             var offenders = RuntimeTextFiles()
-                .SelectMany(path => ForbiddenRuntimeTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return ForbiddenRuntimeTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token);
+                })
                 .ToList();
 
             Check(offenders.Count == 0,
@@ -174,15 +185,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var phase107 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs");
             var validator = ReadRepoText(OptionalPackageValidator);
 
-            Check(program.Contains("--phase108", StringComparison.Ordinal)
-                  && program.Contains("RunPhase108Only", StringComparison.Ordinal)
-                  && program.Contains("Phase108Validation.Validate()", StringComparison.Ordinal),
-                "108-D1: Program.cs wires --phase108");
+            Check(registry.Contains("--phase108", StringComparison.Ordinal)
+                  && registry.Contains("Phase108Validation.Validate", StringComparison.Ordinal),
+                "108-D1: registry wires --phase108");
             Check(project.Contains("Phase108Validation.cs", StringComparison.Ordinal)
                   && project.Contains("../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs", StringComparison.Ordinal)
                   && project.Contains("IncludeRos2ForUnityAdapter", StringComparison.Ordinal),
@@ -252,13 +262,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {
-            if (path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/", StringComparison.Ordinal))
-                return false;
-
-            return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+            return PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(
+                path,
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64");
         }
 
         private static bool IsOptionalPackageRuntimeBinary(string path)

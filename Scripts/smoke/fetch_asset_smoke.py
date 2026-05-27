@@ -49,6 +49,7 @@ ERROR_LENGTH_START = 6
 ERROR_LENGTH_END = 10
 PAYLOAD_START = 10
 STATUS_OK = 0
+MIN_FETCH_ASSET_RESPONSE_BYTES = PAYLOAD_START
 
 # Process exit codes returned by this smoke script.
 EXIT_SUCCESS = 0
@@ -95,6 +96,9 @@ async def drain_startup_messages(ws, attempts: int, timeout_seconds: float) -> N
 
 def parse_fetch_asset_response(data: bytes) -> tuple[int, int, int, bytes]:
     """Parse a binary fetchAsset response into opcode, request ID, status, and payload."""
+    if len(data) < MIN_FETCH_ASSET_RESPONSE_BYTES:
+        raise ValueError(f"FetchAsset response too short: {len(data)} byte(s).")
+
     opcode = data[OPCODE_OFFSET]
     request_id = struct.unpack("<I", data[REQUEST_ID_START:REQUEST_ID_END])[STRUCT_UNPACK_VALUE_INDEX]
     status = data[STATUS_OFFSET]
@@ -132,7 +136,11 @@ async def run(args: argparse.Namespace) -> int:
                 print(f"Text (draining): {msg[:args.preview_chars]}")
                 continue
 
-            opcode, request_id, status, payload = parse_fetch_asset_response(msg)
+            try:
+                opcode, request_id, status, payload = parse_fetch_asset_response(msg)
+            except ValueError as exc:
+                print(f"[FAIL] Invalid fetchAsset response: {exc}")
+                return EXIT_FAILURE
             print(f"Binary: opcode={opcode} requestId={request_id} status={status} payloadBytes={len(payload)}")
             if opcode != FETCH_ASSET_RESPONSE_OPCODE:
                 print(f"[FAIL] Unexpected binary opcode: {opcode}")

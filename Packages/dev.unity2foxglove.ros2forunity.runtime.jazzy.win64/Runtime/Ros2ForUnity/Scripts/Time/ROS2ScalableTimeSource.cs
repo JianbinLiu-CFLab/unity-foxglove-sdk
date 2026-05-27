@@ -27,7 +27,9 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
 {
   private Thread mainThread;
   private double lastReadingSecs;
+  private double lastTimeScale;
   private ROS2.Clock clock;
+  private readonly object _lock = new object();
   private double initialTime = 0;
   private double initialTimeScale = 0;
   private bool initialTimeAcquired = false;
@@ -37,6 +39,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   public ROS2ScalableTimeSource()
   {
     mainThread = Thread.CurrentThread;
+    RefreshUnityTimeCache();
   }
 
   public void GetTime(out int seconds, out uint nanoseconds)
@@ -54,18 +57,21 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
       clock = new ROS2.Clock();
     }
 
+    if (mainThread.Equals(Thread.CurrentThread))
+    {
+      RefreshUnityTimeCache();
+    }
+
     if (!initialTimeScaleAcquired)
     {
       initialTimeScaleAcquired = true;
-      initialTimeScale = Time.timeScale;
+      initialTimeScale = lastTimeScale;
     }
 
-    if (initialTimeScale != Time.timeScale)
+    if (initialTimeScale != lastTimeScale)
     {
       timeScaleChanged = true;
     }
-
-    lastReadingSecs = mainThread.Equals(Thread.CurrentThread) ? Time.timeAsDouble : lastReadingSecs;
 
     if (initialTimeScale == 1.0 && !timeScaleChanged)
     {
@@ -73,13 +79,28 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     }
     else
     {
-      if (!initialTimeAcquired)
+      // U2F-LOCAL-PATCH: double-checked lock — write initialTime BEFORE flipping the
+      // acquired flag, and publish the flag via Volatile.Write so readers that exit
+      // the outer check via Volatile.Read see a fully-initialized initialTime.
+      if (!Volatile.Read(ref initialTimeAcquired))
       {
-        initialTimeAcquired = true;
-        initialTime = clock.Now.Seconds - Time.timeAsDouble;
+        lock (_lock)
+        {
+          if (!initialTimeAcquired)
+          {
+            initialTime = clock.Now.Seconds - lastReadingSecs;
+            Volatile.Write(ref initialTimeAcquired, true);
+          }
+        }
       }
       TimeUtils.TimeFromTotalSeconds(lastReadingSecs + initialTime, out seconds, out nanoseconds);
     }
+  }
+
+  private void RefreshUnityTimeCache()
+  {
+    lastReadingSecs = Time.timeAsDouble;
+    lastTimeScale = Time.timeScale;
   }
 
   public void Dispose()

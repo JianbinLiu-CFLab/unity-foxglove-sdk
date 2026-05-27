@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Scripts/native/draco_probe
-// Purpose: Spike-only Draco POINT_CLOUD encoder helper for Phase 87.
+// Purpose: Draco POINT_CLOUD probe encoder helper.
 
 #include <cstdint>
 #include <cstring>
@@ -93,9 +93,16 @@ bool ProcessOneFrame() {
     return false;
   }
 
-  if (point_count == 0 || point_count > kMaxPointCount) {
+  if (point_count > kMaxPointCount) {
     std::cerr << "invalid point_count: " << point_count << std::endl;
     return false;
+  }
+
+  if (point_count == 0) {
+    std::cerr << "warning: zero-point frame; writing empty payload" << std::endl;
+    WriteUint32(0);
+    std::cout.flush();
+    return true;
   }
 
   const size_t float_count = static_cast<size_t>(point_count) * 3;

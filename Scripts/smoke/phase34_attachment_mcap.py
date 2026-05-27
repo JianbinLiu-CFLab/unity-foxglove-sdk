@@ -61,6 +61,7 @@ OP_DATA_END = 0x0F
 # Stable identifiers for the single schema/channel/message in this fixture.
 SCHEMA_ID = 1
 CHANNEL_ID = 1
+assert CHANNEL_ID == 1, "fixture stability: CHANNEL_ID is encoded in chunk_index and statistics records"
 MESSAGE_SEQUENCE = 1
 MESSAGE_COUNT = 1
 CHANNEL_COUNT = 1
@@ -87,18 +88,17 @@ DATA_END_NO_DATA_SECTION_CRC = 0
 # Initial byte offset used by the compact binary readers below.
 ZERO_OFFSET = 0
 
-# MessageIndex offset for the deterministic single-message chunk body.
-MESSAGE_RECORD_OFFSET_IN_CHUNK = 16
+# Byte length of the single MessageIndex records vector for this fixture.
+MESSAGE_INDEX_RECORDS_BYTE_LENGTH = 16
 
 # The single message starts at the first indexed payload offset for this fixture.
 MESSAGE_INDEX_MESSAGE_OFFSET = ZERO_OFFSET
 
 # Summary/statistics fixture sizes that are asserted by downstream readers.
 SUMMARY_OFFSET_GROUP_COUNT = 10
-SUMMARY_OFFSET_ENTRY_COUNT = 1
 MIN_SMOKE_MCAP_BYTES = 64
 FOOTER_CONTENT_LENGTH_BYTES = 20
-NONZERO_CRC_SENTINEL = 0
+ZERO_CRC_SENTINEL = 0
 
 
 def crc32(data: bytes) -> int:
@@ -176,7 +176,7 @@ def message_content() -> bytes:
 
 def message_index_content() -> bytes:
     """Build the single-entry MCAP MessageIndex content."""
-    return u16(CHANNEL_ID) + u32(MESSAGE_RECORD_OFFSET_IN_CHUNK) + u64(MESSAGE_TIME_NS) + u64(MESSAGE_INDEX_MESSAGE_OFFSET)
+    return u16(CHANNEL_ID) + u32(MESSAGE_INDEX_RECORDS_BYTE_LENGTH) + u64(MESSAGE_TIME_NS) + u64(MESSAGE_INDEX_MESSAGE_OFFSET)
 
 
 def chunk_content(records: bytes) -> bytes:
@@ -207,7 +207,7 @@ def chunk_index_content(
         + u64(chunk_offset)
         + u64(chunk_length)
         + u32(SUMMARY_OFFSET_GROUP_COUNT)
-        + u16(SUMMARY_OFFSET_ENTRY_COUNT)
+        + u16(CHANNEL_ID)
         + u64(message_index_offset)
         + u64(message_index_length)
         + string_field(NO_COMPRESSION)
@@ -259,7 +259,7 @@ def statistics_content() -> bytes:
         + u64(MESSAGE_TIME_NS)
         + u64(MESSAGE_TIME_NS)
         + u32(SUMMARY_OFFSET_GROUP_COUNT)
-        + u16(SUMMARY_OFFSET_ENTRY_COUNT)
+        + u16(CHANNEL_ID)
         + u64(MESSAGE_COUNT)
     )
 
@@ -413,7 +413,7 @@ def self_check(path: Path, expected_attachment_data: bytes) -> None:
     summary_crc, offset = read_u32(data, offset)
     require(summary_start > ZERO_OFFSET, "summary_start is zero")
     require(summary_offset_start > summary_start, "summary_offset_start is not after summary_start")
-    require(summary_crc != NONZERO_CRC_SENTINEL, "summary_crc is zero")
+    require(summary_crc != ZERO_CRC_SENTINEL, "summary_crc is zero")
 
     summary_bytes = data[summary_start:footer_offset]
     computed_summary_crc = crc32(summary_bytes + footer_prefix(summary_start, summary_offset_start))

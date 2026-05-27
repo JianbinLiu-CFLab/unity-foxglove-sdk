@@ -357,7 +357,10 @@ namespace Unity.FoxgloveSDK.Tests
             // Corrupt a byte in the summary section
             var allBytes = ms.ToArray();
             // Find the footer (opcode 0x02 near end, before trailing magic)
-            var footerIdx = allBytes.Length - 8 - 9 - 20; // trailing magic (8) + footer record (1+8+20)
+            var footerIdx = allBytes.Length
+                - McapWriter.MagicLength
+                - McapWriter.RecordHeaderLength
+                - McapWriter.FooterContentLength;
             var footer = new McapFooter
             {
                 SummaryStart = allBytes[footerIdx + 1 + 8 + 0] | ((ulong)allBytes[footerIdx + 1 + 8 + 1] << 8)
@@ -433,7 +436,10 @@ namespace Unity.FoxgloveSDK.Tests
             writer.Flush();
 
             var allBytes = ms.ToArray();
-            var footerIdx = allBytes.Length - 8 - 9 - 20;
+            var footerIdx = allBytes.Length
+                - McapWriter.MagicLength
+                - McapWriter.RecordHeaderLength
+                - McapWriter.FooterContentLength;
             var invalidSummaryStart = (ulong)(allBytes.Length - 1);
             WriteU64LE(allBytes, footerIdx + 1 + 8, invalidSummaryStart);
 

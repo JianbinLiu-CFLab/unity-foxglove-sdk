@@ -22,6 +22,12 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyOptionalAdapterCompileGate();
             VerifyAdapterFacadeValidationsUseReflection();
             VerifyValidationWiring();
+            VerifyProgramRegistryDispatchIsAuthoritative();
+            VerifyRuntimeTestHarnessCleanup();
+            VerifyDescriptorReaderParity();
+            VerifyRegistryAndValidationStateBounds();
+            VerifyProtoSampleFactoryContracts();
+            VerifyStandaloneMcapInspectorOwnership();
 
             Console.WriteLine($"Phase 134-32: {_passed} checks passed.");
         }
@@ -67,6 +73,88 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-32C-1: Phase134_32Validation is compiled by the runtime test project");
             Check(registry.Contains("Ci(\"--phase134-32\", \"Phase 134-32\", Phase134_32Validation.Validate)", StringComparison.Ordinal),
                 "134-32C-2: Phase134_32Validation is wired into the validation registry");
+        }
+
+        private static void VerifyProgramRegistryDispatchIsAuthoritative()
+        {
+            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+
+            Check(!program.Contains("RunPhase50Only", StringComparison.Ordinal)
+                  && !program.Contains("RunPhase136Only", StringComparison.Ordinal)
+                  && !program.Contains("RunPhase82NativeSmoke", StringComparison.Ordinal),
+                "134-32D-1: legacy registered-validation wrapper methods are removed from Program");
+            Check(!program.Contains("argList.Contains(\"--phase50\")", StringComparison.Ordinal)
+                  && !program.Contains("argList.Contains(\"--phase136\")", StringComparison.Ordinal)
+                  && !program.Contains("argList.Contains(\"--phase13\")", StringComparison.Ordinal),
+                "134-32D-2: Program no longer has duplicate registered flag branches");
+            Check(program.Contains("--phase98-sample-send-all", StringComparison.Ordinal)
+                  && program.Contains("--phase97-health", StringComparison.Ordinal)
+                  && program.Contains("--phase44-all-schemas-mcap", StringComparison.Ordinal),
+                "134-32D-3: Program still keeps non-registry operational subcommands");
+            Check(program.Contains("Console.Error.WriteLine($\"\\n[FAIL] {validation.Name}: {ex.Message}\")", StringComparison.Ordinal),
+                "134-32D-4: registry validation failures are written to stderr");
+        }
+
+        private static void VerifyRuntimeTestHarnessCleanup()
+        {
+            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+
+            Check(program.Contains("finally", StringComparison.Ordinal)
+                  && program.Contains("heartbeat?.Dispose();", StringComparison.Ordinal)
+                  && program.Contains("sceneTimer?.Dispose();", StringComparison.Ordinal)
+                  && program.Contains("runtime.Dispose();", StringComparison.Ordinal),
+                "134-32E-1: manual server mode disposes timers and runtime in a finally block");
+        }
+
+        private static void VerifyDescriptorReaderParity()
+        {
+            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunGenerationDescriptorJsonReader.cs");
+
+            Check(reader.Contains("isValueType: BoolValue(member, \"isValueType\")", StringComparison.Ordinal),
+                "134-32F-1: descriptor JSON reader preserves isValueType");
+            Check(reader.Contains("FoxRunPublishMode.OnChange", StringComparison.Ordinal)
+                  && !reader.Contains("case \"OnChange\": return 1;", StringComparison.Ordinal),
+                "134-32F-2: descriptor JSON reader maps publish modes through the runtime enum");
+        }
+
+        private static void VerifyRegistryAndValidationStateBounds()
+        {
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var category = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/ValidationCategory.cs");
+            var skeleton = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/SkeletonValidation.cs");
+
+            Check(registry.Contains("Duplicate validation flag registered", StringComparison.Ordinal)
+                  && registry.Contains("StringComparer.Ordinal", StringComparison.Ordinal),
+                "134-32G-1: validation registry rejects duplicate flags deterministically");
+            Check(!category.Contains("OptionalTooling", StringComparison.Ordinal),
+                "134-32G-2: unused OptionalTooling validation category is removed");
+            Check(skeleton.Contains("internal static class SkeletonValidation", StringComparison.Ordinal)
+                  && skeleton.Contains("_passCount = 0;", StringComparison.Ordinal),
+                "134-32G-3: skeleton validation is internal and resets pass state per run");
+        }
+
+        private static void VerifyProtoSampleFactoryContracts()
+        {
+            var factory = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveProtoSampleFactory.cs");
+
+            Check(factory.Contains("Map payloads are optional", StringComparison.Ordinal)
+                  && factory.Contains("if (field.IsMap)", StringComparison.Ordinal),
+                "134-32H-1: protobuf sample factory documents intentional map-field skips");
+            Check(factory.Contains("Enum.GetUnderlyingType(propertyType) != typeof(int)", StringComparison.Ordinal)
+                  && factory.Contains("non-int32 enum backing type", StringComparison.Ordinal),
+                "134-32H-2: protobuf sample factory guards enum int32 assumptions");
+        }
+
+        private static void VerifyStandaloneMcapInspectorOwnership()
+        {
+            var oldPath = Path.Combine(RepoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/McapInspector.cs".Replace('/', Path.DirectorySeparatorChar));
+            var inspector = ReadRepoText("Scripts/mcap/McapInspector.cs");
+
+            Check(!File.Exists(oldPath),
+                "134-32I-1: standalone McapInspector no longer lives in runtime test source folder");
+            Check(inspector.Contains("Standalone diagnostic tool", StringComparison.Ordinal)
+                  && inspector.Contains("intentionally not compiled into the runtime test harness", StringComparison.Ordinal),
+                "134-32I-2: standalone McapInspector ownership is documented");
         }
 
         private static string ReadRepoText(string relativePath)

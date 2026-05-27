@@ -167,7 +167,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPackageSample()
         {
             var packageJsonPath = RepoPath("Packages/dev.unity2foxglove.sdk/package.json");
-            var packageJson = JObject.Parse(File.ReadAllText(packageJsonPath));
+            Check(File.Exists(packageJsonPath), "98A-0: package manifest exists");
+            var packageJson = ParseJsonObject(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"),
+                "98A-0b: package manifest is valid JSON");
             var samples = packageJson["samples"]?.Children<JObject>().ToList() ?? new List<JObject>();
             Check(samples.Count == 3, "98A-1: package manifest exposes three samples");
             Check(samples.Any(sample =>
@@ -240,7 +242,8 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var layoutText = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/FoxgloveRos2BridgeLayout.json");
-            Check(JToken.Parse(layoutText) != null, "98B-6: Foxglove layout is valid JSON");
+            Check(ParseJson(layoutText, "98B-6: Foxglove layout is valid JSON") != null,
+                "98B-6: Foxglove layout is valid JSON");
             foreach (var topic in LayoutTopics)
             {
                 Check(layoutText.Contains(topic.Topic) && layoutText.Contains(topic.SchemaName),
@@ -278,9 +281,12 @@ namespace Unity.FoxgloveSDK.Tests
             var ps1 = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.ps1");
             foreach (var schema in RequiredProductTopics.Select(t => t.SchemaName).Concat(new[] { OptionalDracoTopic.SchemaName }))
             {
-                Check(bash.Contains("ros2 interface show") && bash.Contains(schema),
+                Check(bash.Contains("ros2 interface show", StringComparison.Ordinal)
+                      && bash.Contains(schema, StringComparison.Ordinal),
                     "98C-5: bash preflight checks " + schema);
-                Check(ps1.Contains("ros2 interface show") && ps1.Contains(schema),
+                Check((ps1.Contains("Invoke-Ros2Checked", StringComparison.Ordinal)
+                       || ps1.Contains("ros2 interface show", StringComparison.Ordinal))
+                      && ps1.Contains(schema, StringComparison.Ordinal),
                     "98C-6: PowerShell preflight checks " + schema);
             }
 
@@ -354,16 +360,18 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCliWiring()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var csproj = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("--phase98") && program.Contains("RunPhase98Only"),
+            Check(registry.Contains("\"--phase98\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase98Validation.Validate", StringComparison.Ordinal),
                 "98G-1: Program dispatches --phase98");
             Check(program.Contains("--phase98-sample-send-all") && program.Contains("RunPhase98SampleSendAll"),
                 "98G-2: Program dispatches all-schema sample sender");
             Check(program.Contains("--phase98-live") && program.Contains("--json")
                   && program.Contains("--host") && program.Contains("--port") && program.Contains("--ros2"),
                 "98G-3: Program dispatches live sample evidence with explicit overrides");
-            Check(program.Contains("Phase98Validation.Validate()"),
+            Check(registry.Contains("Phase98Validation.Validate", StringComparison.Ordinal),
                 "98G-4: full validation includes Phase98");
             Check(csproj.Contains("Phase98Validation.cs"),
                 "98G-5: Phase98 validation is included in test project");
@@ -541,19 +549,49 @@ namespace Unity.FoxgloveSDK.Tests
         private static void WriteEvidence(string fullPath, Phase98LiveEvidence evidence)
             => File.WriteAllText(fullPath, JsonConvert.SerializeObject(evidence, Formatting.Indented), Encoding.UTF8);
 
+        private static bool AnyLineContainsAll(string text, params string[] tokens)
+        {
+            return text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .Any(line => tokens.All(token => line.Contains(token)));
+        }
+
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
         }
 
+        private static JObject ParseJsonObject(string text, string name)
+        {
+            var token = ParseJson(text, name);
+            if (token is JObject obj)
+                return obj;
+
+            throw new InvalidOperationException("[FAIL] " + name + " (expected object)");
+        }
+
+        private static JToken ParseJson(string text, string name)
+        {
+            try
+            {
+                return JToken.Parse(text);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException("[FAIL] " + name, ex);
+            }
+        }
+
         private static string ReadRepoText(string relativePath)
         {
             var path = RepoPath(relativePath);
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private static string RepoPath(string relativePath)

@@ -66,6 +66,11 @@ namespace Unity.FoxgloveSDK.Editor
             serializedObject.ApplyModifiedProperties();
         }
 
+        private void OnDisable()
+        {
+            _ros2BridgeHealthDrawer.Dispose();
+        }
+
         private void DrawScriptProperty()
         {
             var script = serializedObject.FindProperty("m_Script");
@@ -253,8 +258,6 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUI.indentLevel--;
                 return;
             }
-
-            Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
 
             EditorGUILayout.PropertyField(source, new GUIContent("Identity Mode Source"));
             if (source.enumValueIndex == (int)SchemaIdentityModeSource.Override)
@@ -974,7 +977,7 @@ namespace Unity.FoxgloveSDK.Editor
             return normAbs;
         }
 
-        private static string ResolveProjectPath(string path)
+        internal static string ResolveProjectPath(string path)
         {
             if (string.IsNullOrEmpty(path) || Path.IsPathRooted(path))
                 return path;

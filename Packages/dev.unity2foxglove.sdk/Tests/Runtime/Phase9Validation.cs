@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 9 Tests ---");
+            _passCount = 0;
 
             TestAssetsCapabilityOffByDefault();
             TestAssetsCapabilityOn();
@@ -230,6 +231,7 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
             public System.Collections.Generic.Dictionary<uint, System.Collections.Generic.List<string>> SentTexts = new();
+            public System.Collections.Generic.Dictionary<uint, System.Collections.Generic.List<byte[]>> SentBinaries = new();
             public void Start(string host, int port) { }
             public void Stop() { }
             public void Dispose() { }
@@ -238,11 +240,17 @@ namespace Unity.FoxgloveSDK.Tests
                 if (!SentTexts.ContainsKey(id)) SentTexts[id] = new();
                 SentTexts[id].Add(json);
             }
-            public void SendBinary(uint id, byte[] data) { }
+            public void SendBinary(uint id, byte[] data)
+            {
+                if (!SentBinaries.ContainsKey(id)) SentBinaries[id] = new();
+                SentBinaries[id].Add(data);
+            }
             public void BroadcastText(string json) { }
             public void BroadcastBinary(byte[] data) { }
             public void SimulateConnect(uint id) => OnClientConnected?.Invoke(id);
             public void SimulateText(uint id, string json) => OnTextReceived?.Invoke(id, json);
+            public System.Collections.Generic.IReadOnlyList<byte[]> SentBinaryFrames(uint id) =>
+                SentBinaries.TryGetValue(id, out var frames) ? frames : Array.Empty<byte[]>();
         }
 
         // ── Additional test methods ──
@@ -314,7 +322,40 @@ namespace Unity.FoxgloveSDK.Tests
 
             // fetchAsset sends error response via binary (no text broadcast)
             fake.SimulateText(1, "{\"op\":\"fetchAsset\",\"requestId\":1,\"uri\":\"http://somewhere/file\"}");
-            Assert(true, "fetchAsset routing sends binary error response (route verified)");
+            var frames = fake.SentBinaryFrames(1);
+            Assert(frames.Count == 1, "fetchAsset routing sends exactly one binary response");
+            Assert(TryDecodeFetchAssetResponse(frames[0], out var requestId, out var status, out var data),
+                "fetchAsset response frame decodes");
+            Assert(requestId == 1, "fetchAsset response preserves requestId");
+            Assert(status == 1, "fetchAsset response reports error status for unsupported URI");
+            Assert(System.Text.Encoding.UTF8.GetString(data).Contains("No asset root", StringComparison.OrdinalIgnoreCase)
+                || System.Text.Encoding.UTF8.GetString(data).Contains("Asset", StringComparison.OrdinalIgnoreCase),
+                "fetchAsset response carries an error payload");
+        }
+
+        private static bool TryDecodeFetchAssetResponse(
+            byte[] frame,
+            out uint requestId,
+            out byte status,
+            out byte[] payloadOrError)
+        {
+            requestId = 0;
+            status = 0;
+            payloadOrError = Array.Empty<byte>();
+
+            if (frame == null || frame.Length < 10 || frame[0] != ServerOpcode.FetchAssetResponse)
+                return false;
+
+            requestId = BinaryEncoding.ReadU32LE(frame, 1);
+            status = frame[5];
+            var errorLength = BinaryEncoding.ReadU32LE(frame, 6);
+            if (errorLength > frame.Length - 10)
+                return false;
+
+            var length = status == 0 ? frame.Length - 10 : (int)errorLength;
+            payloadOrError = new byte[length];
+            Buffer.BlockCopy(frame, 10, payloadOrError, 0, length);
+            return true;
         }
     }
 }

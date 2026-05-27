@@ -203,8 +203,12 @@ def main() -> int:
     print(f"[phase68] size: {size} bytes", flush=True)
     print(f"[phase68] required topics: {', '.join(topics)}", flush=True)
 
-    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache())
+    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True)
     if result.returncode != EXIT_SUCCESS:
+        if result.stdout:
+            print(result.stdout, file=sys.stderr, end="")
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="")
         print(f"[phase68] dotnet process exited with code {result.returncode}", file=sys.stderr)
         return result.returncode
 

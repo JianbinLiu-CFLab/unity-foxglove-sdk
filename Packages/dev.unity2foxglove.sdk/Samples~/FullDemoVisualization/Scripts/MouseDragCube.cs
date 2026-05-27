@@ -5,7 +5,9 @@
 // Purpose: Mouse-driven cube control demo — drag to rotate/pan, scroll to scale, synced to Foxglove parameters.
 
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+#endif
 
 /// <summary>
 /// Mouse-driven cube control for demo.
@@ -43,12 +45,9 @@ public class MouseDragCube : MonoBehaviour
         var cam = Camera.main;
         if (cam == null) return;
 
-        var mouse = Mouse.current;
-        if (mouse == null) return;
+        if (!TryReadMouse(out var pos, out var leftPressed, out var rightPressed, out var scroll))
+            return;
 
-        var pos = mouse.position.ReadValue();
-        var leftPressed = mouse.leftButton.isPressed;
-        var rightPressed = mouse.rightButton.isPressed;
         var dragging = leftPressed || rightPressed;
 
         if (!dragging)
@@ -85,7 +84,6 @@ public class MouseDragCube : MonoBehaviour
             transform.position += right + up;
         }
 
-        var scroll = mouse.scroll.ReadValue().y;
         if (scroll != 0)
         {
             var s = Mathf.Clamp(transform.localScale.x + scroll * _scaleSpeed, _minScale, _maxScale);
@@ -95,5 +93,38 @@ public class MouseDragCube : MonoBehaviour
             if (_demo != null)
                 _demo.SyncScaleToParameter(s);
         }
+    }
+
+    private static bool TryReadMouse(out Vector2 position, out bool leftPressed, out bool rightPressed, out float scroll)
+    {
+#if ENABLE_INPUT_SYSTEM
+        var mouse = Mouse.current;
+        if (mouse == null)
+        {
+            position = default;
+            leftPressed = false;
+            rightPressed = false;
+            scroll = 0f;
+            return false;
+        }
+
+        position = mouse.position.ReadValue();
+        leftPressed = mouse.leftButton.isPressed;
+        rightPressed = mouse.rightButton.isPressed;
+        scroll = mouse.scroll.ReadValue().y;
+        return true;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+        position = Input.mousePosition;
+        leftPressed = Input.GetMouseButton(0);
+        rightPressed = Input.GetMouseButton(1);
+        scroll = Input.mouseScrollDelta.y;
+        return true;
+#else
+        position = default;
+        leftPressed = false;
+        rightPressed = false;
+        scroll = 0f;
+        return false;
+#endif
     }
 }

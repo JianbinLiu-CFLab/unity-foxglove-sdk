@@ -1116,10 +1116,16 @@ namespace Unity.FoxgloveSDK.Performance
                 if (summary.Statistics.AttachmentCount != 1)
                     throw new Exception("Statistics.AttachmentCount != 1");
 
-                // Verify Footer summary_crc is non-zero
+                // Verify Footer summary_crc is non-zero using the MCAP footer layout constants.
                 var rawBytes = ms.ToArray();
-                var footerIdx = rawBytes.Length - 8 - 1 - 8 - 20; // trailing magic + footer record
-                var summaryCrcOffset = footerIdx + 1 + 8 + 8 + 8; // opcode + length + sumStart + sumOffStart
+                var footerIdx = rawBytes.Length
+                                - McapWriter.MagicLength
+                                - McapWriter.RecordHeaderLength
+                                - McapWriter.FooterContentLength;
+                var summaryCrcOffset = footerIdx
+                                       + McapWriter.RecordHeaderLength
+                                       + McapWriter.FooterContentLength
+                                       - McapWriter.Crc32SizeBytes;
                 var footerCrc = BitConverter.ToUInt32(rawBytes, summaryCrcOffset);
                 if (footerCrc == 0)
                     throw new Exception("Footer summary_crc is zero");

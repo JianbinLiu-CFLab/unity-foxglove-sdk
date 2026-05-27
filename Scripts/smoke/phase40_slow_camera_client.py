@@ -80,6 +80,7 @@ NO_HOLD_SECONDS = 0.0
 # Socket reads one byte at a time while waiting for the HTTP header terminator.
 HTTP_HEADER_TERMINATOR = b"\r\n\r\n"
 HANDSHAKE_READ_BYTES = 1
+MAX_HANDSHAKE_RESPONSE_BYTES = 8192
 
 
 def read_exact(sock: socket.socket, count: int) -> bytes:
@@ -126,6 +127,16 @@ def find_channel_id_in_advertise_text(text: str, topic: str) -> int | None:
     if not text:
         return None
 
+    try:
+        message = json.loads(text)
+    except json.JSONDecodeError:
+        message = None
+
+    if isinstance(message, dict) and message.get("op") == "advertise":
+        channel_id = find_channel_id_in_advertise_message(message, topic)
+        if channel_id is not None:
+            return channel_id
+
     escaped_topic = re.escape(topic)
     id_before_topic = re.search(r'\{[^{}]*"id"\s*:\s*(\d+)[^{}]*"topic"\s*:\s*"' + escaped_topic + r'"', text)
     if id_before_topic:
@@ -135,6 +146,20 @@ def find_channel_id_in_advertise_text(text: str, topic: str) -> int | None:
     if topic_before_id:
         return int(topic_before_id.group(REGEX_CHANNEL_ID_GROUP))
 
+    return None
+
+
+def find_channel_id_in_advertise_message(message: dict, topic: str) -> int | None:
+    """Find a channel ID by parsing an advertise JSON object."""
+    for raw_channel in message.get("channels", []):
+        if not isinstance(raw_channel, dict):
+            continue
+        if raw_channel.get("topic") != topic:
+            continue
+        try:
+            return int(raw_channel.get("id"))
+        except (TypeError, ValueError):
+            return None
     return None
 
 
@@ -164,6 +189,8 @@ def read_handshake_response(sock: socket.socket) -> str:
     """Read the HTTP upgrade response through the header terminator."""
     response = bytearray()
     while HTTP_HEADER_TERMINATOR not in response:
+        if len(response) >= MAX_HANDSHAKE_RESPONSE_BYTES:
+            raise ValueError(f"Handshake response exceeded {MAX_HANDSHAKE_RESPONSE_BYTES} bytes.")
         byte = sock.recv(HANDSHAKE_READ_BYTES)
         if not byte:
             raise ConnectionError("Socket closed during handshake.")
@@ -228,6 +255,16 @@ def run(args: argparse.Namespace) -> int:
 
             if opcode not in (WEBSOCKET_CONTINUATION_OPCODE, WEBSOCKET_TEXT_OPCODE) or not text:
                 continue
+
+            try:
+                message = json.loads(text)
+            except json.JSONDecodeError:
+                message = None
+
+            if isinstance(message, dict):
+                camera_channel_id = find_channel_id_in_advertise_message(message, CAMERA_TOPIC)
+                if camera_channel_id is not None:
+                    break
 
             advertise_text += text
             camera_channel_id = find_channel_id_in_advertise_text(advertise_text, CAMERA_TOPIC)

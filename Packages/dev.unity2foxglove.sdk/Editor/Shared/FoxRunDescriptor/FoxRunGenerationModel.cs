@@ -229,7 +229,9 @@ namespace Unity.FoxgloveSDK.Editor
             EmissionTypeName = FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(emissionTypeName);
             IsValueType = isValueType;
             IsArray = isArray;
-            ElementTypeName = elementTypeName ?? string.Empty;
+            ElementTypeName = string.IsNullOrEmpty(elementTypeName)
+                ? string.Empty
+                : FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(elementTypeName);
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             Encoding = FoxRunGenerationDescriptorConstants.JsonEncoding;
@@ -243,7 +245,7 @@ namespace Unity.FoxgloveSDK.Editor
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
             CanonicalType = string.IsNullOrEmpty(canonicalType)
                 ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(SelectCanonicalSourceType())
-                : canonicalType;
+                : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
         }
 
         private string SelectCanonicalSourceType()

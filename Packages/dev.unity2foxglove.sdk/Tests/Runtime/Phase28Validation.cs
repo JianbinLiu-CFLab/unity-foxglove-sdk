@@ -49,7 +49,8 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestNoOriginAllowed()
         {
             var backend = new ManagedWsBackend();
-            backend.Start("127.0.0.1", 18791);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
 
             try
             {
@@ -57,7 +58,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ws.Options.AddSubProtocol("foxglove.sdk.v1");
                 // ClientWebSocket does not send Origin by default — this is correct
                 var cts = new CancellationTokenSource(5000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18791/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "No Origin: connection accepted");
                 CloseClientWebSocketForCleanup(ws);
             }
@@ -79,7 +80,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var backend = new ManagedWsBackend();
             backend.AddAllowedOrigin("http://localhost:3000");
-            backend.Start("127.0.0.1", 18792);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
 
             try
             {
@@ -87,7 +89,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ws.Options.AddSubProtocol("foxglove.sdk.v1");
                 ws.Options.SetRequestHeader("Origin", "http://localhost:3000");
                 var cts = new CancellationTokenSource(5000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18792/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "Allowed Origin: connection accepted");
                 CloseClientWebSocketForCleanup(ws);
             }
@@ -110,7 +112,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var backend = new ManagedWsBackend();
             backend.AddAllowedOrigin("https://app.foxglove.dev/cf-lab/p/prj_0eKcTwvTR2XowsUv/view?layoutId=lay_0eMDFZm9GZOZLDOT&ds=foxglove-websocket");
-            backend.Start("127.0.0.1", 18795);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
 
             try
             {
@@ -121,7 +124,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ws.Options.AddSubProtocol("foxglove.sdk.v1");
                 ws.Options.SetRequestHeader("Origin", "https://app.foxglove.dev");
                 var cts = new CancellationTokenSource(5000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18795/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "Full URL allowlist: origin connection accepted");
                 CloseClientWebSocketForCleanup(ws);
             }
@@ -143,19 +146,18 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var backend = new ManagedWsBackend();
             // Default allowlist is empty — all browser origins are rejected
-            backend.Start("127.0.0.1", 18793);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
 
             try
             {
-                var ws = new ClientWebSocket();
-                ws.Options.AddSubProtocol("foxglove.sdk.v1");
-                ws.Options.SetRequestHeader("Origin", "https://evil.example.com");
-                var cts = new CancellationTokenSource(5000);
                 try
                 {
-                    ws.ConnectAsync(new Uri("ws://127.0.0.1:18793/"), cts.Token).GetAwaiter().GetResult();
-                    // If we get here, the server accepted the connection — that's a failure
-                    Assert(false, "Disallowed Origin: connection should have been rejected");
+                    var response = SendRawHandshake(port, "https://evil.example.com");
+                    Assert(response.StartsWith("HTTP/1.1 403", StringComparison.Ordinal),
+                        "Disallowed Origin: raw handshake receives HTTP 403");
+                    Assert(response.Contains("403 Forbidden", StringComparison.Ordinal),
+                        "Disallowed Origin: response names 403 Forbidden");
                 }
                 catch (WebSocketException)
                 {
@@ -178,7 +180,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var backend = new ManagedWsBackend();
             // Default allowlist is empty — but file:// should bypass the guard
-            backend.Start("127.0.0.1", 18794);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
 
             try
             {
@@ -186,7 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ws.Options.AddSubProtocol("foxglove.sdk.v1");
                 ws.Options.SetRequestHeader("Origin", "file://");
                 var cts = new CancellationTokenSource(5000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18794/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "File Origin: connection accepted");
                 CloseClientWebSocketForCleanup(ws);
             }
@@ -198,6 +201,48 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 backend.Dispose();
             }
+        }
+
+        private static int GetFreeTcpPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
+        }
+
+        private static string SendRawHandshake(int port, string origin)
+        {
+            using var tcp = new TcpClient();
+            tcp.ReceiveTimeout = 5000;
+            tcp.SendTimeout = 5000;
+            tcp.Connect(IPAddress.Loopback, port);
+
+            using var stream = tcp.GetStream();
+            var key = Convert.ToBase64String(new byte[]
+            {
+                0x31, 0x32, 0x33, 0x34,
+                0x35, 0x36, 0x37, 0x38,
+                0x39, 0x30, 0x31, 0x32,
+                0x33, 0x34, 0x35, 0x36
+            });
+            var request =
+                "GET / HTTP/1.1\r\n" +
+                $"Host: 127.0.0.1:{port}\r\n" +
+                "Upgrade: websocket\r\n" +
+                "Connection: Upgrade\r\n" +
+                "Sec-WebSocket-Version: 13\r\n" +
+                $"Sec-WebSocket-Key: {key}\r\n" +
+                "Sec-WebSocket-Protocol: foxglove.sdk.v1\r\n" +
+                $"Origin: {origin}\r\n\r\n";
+
+            var requestBytes = Encoding.ASCII.GetBytes(request);
+            stream.Write(requestBytes, 0, requestBytes.Length);
+
+            var responseBytes = new byte[1024];
+            var read = stream.Read(responseBytes, 0, responseBytes.Length);
+            return Encoding.ASCII.GetString(responseBytes, 0, read);
         }
 
         private static void CloseClientWebSocketForCleanup(ClientWebSocket ws)

@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    public static class SkeletonValidation
+    internal static class SkeletonValidation
     {
         private static int _passCount;
 
@@ -41,6 +41,8 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         public static void Validate()
         {
+            _passCount = 0;
+
             // 1. Can create a runtime with defaults
             using var runtime = new FoxgloveRuntime();
             Assert(runtime != null, "FoxgloveRuntime created");

@@ -90,7 +90,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             foreach (var field in message.Descriptor.Fields.InFieldNumberOrder())
             {
-                if (field.IsMap) continue;
+                // Map payloads are optional for the construct/serialize smoke and
+                // have generated collection APIs that differ from repeated fields.
+                if (field.IsMap)
+                    continue;
 
                 if (field.IsRepeated)
                 {
@@ -169,6 +172,8 @@ namespace Unity.FoxgloveSDK.Tests
             var propertyType = field.ContainingType.ClrType.GetProperty(field.PropertyName)?.PropertyType;
             if (propertyType == null || !propertyType.IsEnum)
                 return 0;
+            if (System.Enum.GetUnderlyingType(propertyType) != typeof(int))
+                throw new InvalidOperationException($"{field.ContainingType.FullName}.{field.Name} uses a non-int32 enum backing type.");
 
             var values = System.Enum.GetValues(propertyType);
             foreach (var value in values)

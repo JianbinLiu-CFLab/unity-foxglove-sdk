@@ -223,10 +223,25 @@ namespace Unity.FoxgloveSDK.Editor
                     throw new InvalidOperationException("SDK publisher catalog references unknown protobuf schema: " + entry.FoxgloveSchemaName);
                 }
 
+                if ((entry.SupportsJson || entry.SupportsProtobuf)
+                    && string.IsNullOrEmpty(entry.FoxgloveSchemaName))
+                {
+                    throw new InvalidOperationException(
+                        "SDK publisher catalog entry declares Foxglove encoding support without a Foxglove schema name: " +
+                        entry.PublisherTypeFullName);
+                }
+
                 if (!string.IsNullOrEmpty(entry.Ros2SchemaName)
                     && !FoxgloveRos2MsgSchemaCatalog.TryGet(entry.Ros2SchemaName, out _))
                 {
                     throw new InvalidOperationException("SDK publisher catalog references unknown ROS2 schema: " + entry.Ros2SchemaName);
+                }
+
+                if (entry.SupportsRos2 && string.IsNullOrEmpty(entry.Ros2SchemaName))
+                {
+                    throw new InvalidOperationException(
+                        "SDK publisher catalog entry declares ROS2 support without a ROS2 schema name: " +
+                        entry.PublisherTypeFullName);
                 }
             }
         }

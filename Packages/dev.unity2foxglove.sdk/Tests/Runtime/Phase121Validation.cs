@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyValidationWiring();
             VerifyConformanceConsole();
             VerifyHarnessOverlay();
-            VerifyEvidenceNote();
+            VerifyReportContract();
 
             Console.WriteLine($"Phase 121: {_passed} checks passed.");
         }
@@ -34,30 +34,36 @@ namespace Unity.FoxgloveSDK.Tests
             Validate();
 
             var script = RepoPath("Scripts/mcap/conformance/run_phase121_conformance.py");
+            var reportPath = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-phase121-" + Guid.NewGuid().ToString("N") + ".json");
+            var python = FindPython();
+            Check(!string.IsNullOrEmpty(python),
+                "121-E0: Python executable is available for phase121 conformance");
             var result = RunProcess(
-                "python",
-                Quote(script));
+                python,
+                Quote(script) + " --report-path " + Quote(reportPath));
 
             Check(result.ExitCode == 0,
                 "121-E1: phase121 conformance wrapper exits successfully");
 
-            var report = ReadRepoText("build/mcap-conformance/phase121-conformance-report.json");
+            var report = File.ReadAllText(reportPath, Encoding.UTF8);
             Check(report.Contains("\"externalToolingStatus\"", StringComparison.Ordinal)
                   && report.Contains("\"runners\"", StringComparison.Ordinal)
                   && report.Contains("\"verdict\"", StringComparison.Ordinal),
                 "121-E2: phase121 conformance report is written with required schema");
+            try { File.Delete(reportPath); } catch { /* best effort cleanup */ }
         }
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase121", StringComparison.Ordinal)
-                  && program.Contains("--phase121-conformance", StringComparison.Ordinal)
-                  && program.Contains("RunPhase121Only", StringComparison.Ordinal)
-                  && program.Contains("RunPhase121ConformanceOnly", StringComparison.Ordinal)
-                  && program.Contains("Phase121Validation.Validate()", StringComparison.Ordinal),
-                "121-A1: Program.cs wires --phase121 and --phase121-conformance");
+            Check(registry.Contains("--phase121", StringComparison.Ordinal)
+                  && registry.Contains("--phase121-conformance", StringComparison.Ordinal)
+                  && registry.Contains("Phase121Validation.Validate", StringComparison.Ordinal)
+                  && registry.Contains("Phase121Validation.ValidateConformance", StringComparison.Ordinal),
+                "121-A1: PhaseValidationRegistry wires --phase121 and --phase121-conformance");
             Check(project.Contains("Phase121Validation.cs", StringComparison.Ordinal),
                 "121-A2: runtime test project compiles Phase121Validation");
         }
@@ -105,9 +111,10 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 "third-party/mcap",
                 "build/mcap-conformance",
+                "--report-path",
                 "phase121-conformance-report.json",
                 "externalToolingStatus",
-                "c3cab6bd3ce79199e362766daec3a4689f3a0335",
+                "EXPECTED_OBSERVED_COMMIT",
                 "write_skipped_report",
                 "Scripts/mcap/conformance/csharp-runners"
             })
@@ -134,24 +141,58 @@ namespace Unity.FoxgloveSDK.Tests
                 "121-C3: wrapper does not require editing tracked upstream runner index in place");
         }
 
-        private static void VerifyEvidenceNote()
+        private static void VerifyReportContract()
         {
-            var note = ReadRepoText("Developer/106 Phase121 MCAP CSharp Conformance Baseline.md");
+            var script = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
+            var observedCommit = ExpectedObservedCommit();
             foreach (var required in new[]
             {
-                "v1.9.1 Baseline",
                 "externalToolingStatus",
                 "phase121-conformance-report.json",
-                "PASS WITH MEASURED BASELINE",
-                "Phase 122",
-                "Phase 123",
-                "does not claim full official MCAP conformance",
-                "c3cab6bd3ce79199e362766daec3a4689f3a0335"
+                "write_skipped_report",
+                "EXPECTED_OBSERVED_COMMIT",
+                observedCommit
             })
             {
-                Check(note.Contains(required, StringComparison.Ordinal),
-                    "121-D1: evidence note contains " + required);
+                Check(script.Contains(required, StringComparison.Ordinal),
+                    "121-D1: conformance wrapper records " + required);
             }
+
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
+            Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
+                  && writer.Contains("Unsupported", StringComparison.Ordinal),
+                "121-D2: conformance writer keeps feature support explicit");
+        }
+
+        private static string ExpectedObservedCommit()
+        {
+            var script = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
+            const string prefix = "EXPECTED_OBSERVED_COMMIT = \"";
+            var start = script.IndexOf(prefix, StringComparison.Ordinal);
+            if (start < 0)
+                throw new InvalidOperationException("Phase121 conformance wrapper does not declare EXPECTED_OBSERVED_COMMIT.");
+
+            start += prefix.Length;
+            var end = script.IndexOf('"', start);
+            if (end < 0)
+                throw new InvalidOperationException("Phase121 EXPECTED_OBSERVED_COMMIT declaration is malformed.");
+
+            return script.Substring(start, end - start);
+        }
+
+        /// <summary>Maximum time to wait for the full external conformance wrapper before killing it.</summary>
+        private const int SubprocessTimeoutMs = 1_500_000;
+
+        private static string FindPython()
+        {
+            foreach (var candidate in new[] { "python", "python3", "py" })
+            {
+                var result = RunProcess(candidate, "--version");
+                if (result.ExitCode == 0)
+                    return candidate;
+            }
+
+            return string.Empty;
         }
 
         private static ProcessResult RunProcess(string fileName, string arguments)
@@ -167,10 +208,21 @@ namespace Unity.FoxgloveSDK.Tests
                     WorkingDirectory = RepoRoot()
                 };
                 using var process = Process.Start(psi);
-                var stdout = process?.StandardOutput.ReadToEnd() ?? string.Empty;
-                var stderr = process?.StandardError.ReadToEnd() ?? string.Empty;
-                process?.WaitForExit();
-                return new ProcessResult(process?.ExitCode ?? -1, stdout, stderr);
+                if (process == null)
+                    return new ProcessResult(-1, string.Empty, "Failed to start process.");
+
+                // Drain stdout and stderr concurrently to prevent pipe deadlock.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+
+                if (!process.WaitForExit(SubprocessTimeoutMs))
+                {
+                    try { process.Kill(); } catch { /* best effort */ }
+                    return new ProcessResult(-1, stdoutTask.Result,
+                        stderrTask.Result + "\nProcess timed out after " + SubprocessTimeoutMs + "ms.");
+                }
+
+                return new ProcessResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
             }
             catch (Exception ex)
             {
@@ -194,23 +246,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

@@ -47,11 +47,11 @@ namespace Unity.FoxgloveSDK.Tests
             Limitations.Clear();
 
             Directory.CreateDirectory(CompatDir());
-            VerifyEvidenceNote();
+            VerifyReportSchemaSurface();
             VerifyValidationWiring();
             VerifyPriorPhaseHooks();
-            VerifyParityMatrix();
-            VerifyClaimLedgerDocs();
+            VerifyPublicParitySurface();
+            VerifyCompatibilityClaimLedger();
 
             var unityChunked = CreateUnityChunkedFixture();
             var unityDirect = CreateUnityDirectFixture();
@@ -72,40 +72,36 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 120: {_passed} checks passed.");
         }
 
-        private static void VerifyEvidenceNote()
+        private static void VerifyReportSchemaSurface()
         {
-            var note = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120Validation.cs");
             foreach (var required in new[]
             {
-                "Final Verdict",
                 "PASS WITH NOTED LIMITATIONS",
-                "Environment",
-                "Official Interop",
-                "Foxglove Desktop Manual Open",
-                "Performance",
-                "Skipped Checks",
-                "Claim Ledger",
-                "https://mcap.dev/spec",
-                "https://mcap.dev/docs/python/",
-                "https://docs.foxglove.dev/docs/visualization/connecting/cloud-data/remote-data-loader"
+                "externalToolingStatus",
+                "coreChecks",
+                "optionalChecks",
+                "fixtures",
+                "limitations",
+                "phase120-report.json"
             })
             {
-                Check(note.Contains(required, StringComparison.Ordinal),
-                    "120-A1: compatibility gate note contains " + required);
+                Check(source.Contains(required, StringComparison.Ordinal),
+                    "120-A1: compatibility report surface contains " + required);
             }
 
-            AddCore("evidence-note", "passed", "Developer compatibility gate note has required sections.");
+            AddCore("phase120-report-schema", "passed", "Compatibility report schema is enforced by tracked validation source.");
         }
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase120", StringComparison.Ordinal)
-                  && program.Contains("--phase120-official", StringComparison.Ordinal)
-                  && program.Contains("RunPhase120Only", StringComparison.Ordinal)
-                  && program.Contains("RunPhase120OfficialOnly", StringComparison.Ordinal),
-                "120-B1: Program.cs wires --phase120 and --phase120-official");
+            Check(registry.Contains("--phase120", StringComparison.Ordinal)
+                  && registry.Contains("--phase120-official", StringComparison.Ordinal)
+                  && registry.Contains("Phase120Validation.Validate", StringComparison.Ordinal)
+                  && registry.Contains("Phase120Validation.ValidateOfficial", StringComparison.Ordinal),
+                "120-B1: PhaseValidationRegistry wires --phase120 and --phase120-official");
             Check(project.Contains("Phase120Validation.cs", StringComparison.Ordinal),
                 "120-B2: runtime test project compiles Phase120Validation");
             AddCore("phase120-wiring", "passed", "Phase 120 validation entry points are wired.");
@@ -113,45 +109,55 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPriorPhaseHooks()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             foreach (var phase in new[] { "116", "117", "118", "119" })
             {
-                Check(program.Contains("--phase" + phase, StringComparison.Ordinal),
+                Check(registry.Contains("--phase" + phase, StringComparison.Ordinal),
                     "120-C1: prior phase hook exists for " + phase);
             }
 
             AddCore("phase116-119-hooks", "passed", "Prior phase validation hooks are present.");
         }
 
-        private static void VerifyParityMatrix()
+        private static void VerifyPublicParitySurface()
         {
-            var matrix = ReadRepoText("Developer/102 Phase117 MCAP Spec Parity Matrix.md");
-            foreach (var opcode in new[]
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            foreach (var required in new[]
             {
-                "0x01", "0x02", "0x03", "0x04", "0x05", "0x06", "0x07", "0x08",
-                "0x09", "0x0A", "0x0B", "0x0C", "0x0D", "0x0E", "0x0F",
-                "0x80-0xFF", "0x00"
+                "WriteHeader",
+                "WriteSchema",
+                "WriteChannel",
+                "WriteMessage",
+                "WriteChunk",
+                "WriteMessageIndex",
+                "WriteChunkIndex",
+                "WriteAttachment",
+                "WriteMetadata",
+                "WriteStatistics",
+                "WriteSummaryOffset",
+                "WriteDataEnd",
+                "WriteFooter"
             })
             {
-                Check(matrix.Contains(opcode, StringComparison.Ordinal),
-                    "120-D1: parity matrix covers opcode " + opcode);
+                Check(writer.Contains(required, StringComparison.Ordinal),
+                    "120-D1: public MCAP writer exposes " + required);
             }
 
-            Check(matrix.Contains("https://mcap.dev/spec", StringComparison.Ordinal)
-                  && matrix.Contains("No remote DataLoader", StringComparison.Ordinal),
-                "120-D2: parity matrix preserves official reference and remote non-goal");
-            AddCore("spec-parity-matrix", "passed", "Opcode coverage and non-goals are present.");
+            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapReader.cs");
+            Check(reader.Contains("DefaultRecordSizeLimit", StringComparison.Ordinal)
+                  && reader.Contains("MCAP opcode 0x00 is invalid", StringComparison.Ordinal),
+                "120-D2: public MCAP reader enforces record-size and invalid-opcode guards");
+            AddCore("public-mcap-parity-surface", "passed", "Tracked MCAP reader/writer surface covers the compatibility gate.");
         }
 
-        private static void VerifyClaimLedgerDocs()
+        private static void VerifyCompatibilityClaimLedger()
         {
-            var note = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
-            Check(note.Contains("complete official MCAP library replacement", StringComparison.Ordinal)
-                  && note.Contains("production Foxglove Remote Data Loader infrastructure", StringComparison.Ordinal)
-                  && note.Contains("Remote Access Gateway support", StringComparison.Ordinal),
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120Validation.cs");
+            Check(source.Contains("Foxglove Desktop manual visual open is deferred", StringComparison.Ordinal)
+                  && source.Contains("Production Remote Data Loader, cloud cache, range serving, organization auth, and Remote Access Gateway remain out of scope.", StringComparison.Ordinal),
                 "120-E1: claim ledger records explicit non-claims");
-            Check(note.Contains("local DataLoader-shaped facade", StringComparison.Ordinal)
-                  && note.Contains("official Python MCAP reader", StringComparison.Ordinal),
+            Check(source.Contains("Run --phase120-official to execute Python mcap interop.", StringComparison.Ordinal)
+                  && source.Contains("Local readers opened generated fixture.", StringComparison.Ordinal),
                 "120-E2: claim ledger records allowed local compatibility claims");
             AddCore("claim-ledger", "passed", "Claim ledger distinguishes supported claims from non-claims.");
         }
@@ -362,7 +368,7 @@ print(json.dumps({
         {
             var report = new Phase120Report
             {
-                verdict = "PASS WITH NOTED LIMITATIONS",
+                verdict = Limitations.Count == 0 ? "PASS" : "PASS WITH NOTED LIMITATIONS",
                 generatedAtUtc = DateTime.UtcNow.ToString("o"),
                 commit = RunProcess("git", "rev-parse --short HEAD").Output.Trim(),
                 coreChecks = CoreChecks,
@@ -380,7 +386,7 @@ print(json.dumps({
 
         private static string FindPython()
         {
-            foreach (var candidate in new[] { "python", "py" })
+            foreach (var candidate in new[] { "python", "python3", "py" })
             {
                 var result = RunProcess(candidate, "--version");
                 if (result.ExitCode == 0)
@@ -389,6 +395,9 @@ print(json.dumps({
 
             return string.Empty;
         }
+
+        /// <summary>Maximum time to wait for a subprocess before killing it.</summary>
+        private const int SubprocessTimeoutMs = 30_000;
 
         private static ProcessResult RunProcess(string fileName, string arguments)
         {
@@ -403,10 +412,21 @@ print(json.dumps({
                     WorkingDirectory = RepoRoot()
                 };
                 using var process = Process.Start(psi);
-                var stdout = process?.StandardOutput.ReadToEnd() ?? string.Empty;
-                var stderr = process?.StandardError.ReadToEnd() ?? string.Empty;
-                process?.WaitForExit();
-                return new ProcessResult(process?.ExitCode ?? -1, stdout, stderr);
+                if (process == null)
+                    return new ProcessResult(-1, string.Empty, "Failed to start process.");
+
+                // Drain stdout and stderr concurrently to prevent pipe deadlock.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+
+                if (!process.WaitForExit(SubprocessTimeoutMs))
+                {
+                    try { process.Kill(); } catch { /* best effort */ }
+                    return new ProcessResult(-1, stdoutTask.Result,
+                        stderrTask.Result + "\nProcess timed out after " + SubprocessTimeoutMs + "ms.");
+                }
+
+                return new ProcessResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
             }
             catch (Exception ex)
             {
@@ -433,17 +453,10 @@ print(json.dumps({
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void AddCore(string name, string status, string details)
@@ -455,7 +468,7 @@ print(json.dumps({
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

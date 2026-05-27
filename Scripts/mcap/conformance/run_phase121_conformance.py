@@ -4,7 +4,8 @@
 # Purpose: Run the Phase 121 MCAP conformance baseline through a cross-platform Python entry point.
 # Usage: python Scripts/mcap/conformance/run_phase121_conformance.py [--release-blocking]
 # Inputs: third-party/mcap checkout, C# conformance console project, and csharp runner overlay sources.
-# Outputs: build/mcap-conformance/phase121-conformance-report.json and overlay/test artifacts under build/mcap-conformance.
+# Outputs: phase121 conformance report (default under build/mcap-conformance)
+# and overlay/test artifacts under build/mcap-conformance.
 
 from __future__ import annotations
 
@@ -32,6 +33,14 @@ DATA_DIR = BUILD_ROOT / "data"
 REPORT_PATH = BUILD_ROOT / "phase121-conformance-report.json"
 PROJECT_PATH = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Tests/McapConformance/Unity2Foxglove.McapConformance.csproj"
 RUNNER_SOURCE_ROOT = REPO_ROOT / "Scripts/mcap/conformance/csharp-runners"
+RUNNER_ARRAY_DECLARATION = "const runners: readonly (IndexedReadTestRunner | StreamedReadTestRunner | WriteTestRunner)[] = ["
+CSHARP_RUNNER_INSERTION = (
+    "const runners: readonly (IndexedReadTestRunner | StreamedReadTestRunner | WriteTestRunner)[] = [\n"
+    "  new CsharpIndexedReaderTestRunner(),\n"
+    "  new CsharpStreamedReaderTestRunner(),\n"
+    "  new CsharpWriterTestRunner(),"
+)
+CSHARP_CONFORMANCE_DLL_NAME = "Unity2Foxglove.McapConformance.dll"
 
 
 @dataclass(frozen=True)
@@ -53,6 +62,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--release-blocking",
         action="store_true",
         help="Return a non-zero exit code when external tooling is skipped or measured failures exist.",
+    )
+    parser.add_argument(
+        "--report-path",
+        help="Optional report output path. Defaults to build/mcap-conformance/phase121-conformance-report.json.",
     )
     return parser.parse_args(argv)
 
@@ -147,6 +160,7 @@ def write_phase121_report(
     """Write the Phase 121 conformance baseline report."""
 
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     report = {
         "officialMcapCommit": get_official_commit(),
         "officialMcapPath": str(OFFICIAL_ROOT),
@@ -184,7 +198,7 @@ def write_skipped_report(reason: str) -> None:
             new_runner_report(
                 name="csharp-writer",
                 kind="writer",
-                skips=[{"reason": "Writer option parity is deferred to Phase 122."}],
+                skips=[{"reason": "Writer option parity requires the external conformance harness."}],
             ),
         ],
         tooling=[{"name": "external-tooling", "status": "skipped", "details": reason}],
@@ -222,19 +236,19 @@ def add_csharp_runner_overlay() -> None:
 
     index_path = runner_dest / "index.ts"
     index = index_path.read_text(encoding="utf-8")
+    if RUNNER_ARRAY_DECLARATION not in index:
+        raise RuntimeError(
+            "Unable to inject C# conformance runners: upstream runner array declaration was not found."
+        )
     imports = (
         'import CsharpIndexedReaderTestRunner from "./CsharpIndexedReaderTestRunner.ts";\n'
         'import CsharpStreamedReaderTestRunner from "./CsharpStreamedReaderTestRunner.ts";\n'
         'import CsharpWriterTestRunner from "./CsharpWriterTestRunner.ts";\n'
     )
     index = imports + "\n" + index
-    index = index.replace(
-        "const runners: readonly (IndexedReadTestRunner | StreamedReadTestRunner | WriteTestRunner)[] = [",
-        "const runners: readonly (IndexedReadTestRunner | StreamedReadTestRunner | WriteTestRunner)[] = [\n"
-        "  new CsharpIndexedReaderTestRunner(),\n"
-        "  new CsharpStreamedReaderTestRunner(),\n"
-        "  new CsharpWriterTestRunner(),",
-    )
+    index = index.replace(RUNNER_ARRAY_DECLARATION, CSHARP_RUNNER_INSERTION, 1)
+    if "new CsharpIndexedReaderTestRunner()" not in index or "new CsharpWriterTestRunner()" not in index:
+        raise RuntimeError("Unable to inject C# conformance runners: overlay output is missing C# runners.")
     index_path.write_text(index, encoding="utf-8")
 
 
@@ -244,7 +258,7 @@ def measure_runner_output(name: str, kind: str, result: CommandResult) -> dict[s
     text = result.stdout + "\n" + result.stderr
     tested = len(re.findall(r"(?m)^\s*testing\s+", text))
     skipped = len(re.findall(r"(?m)^\s*(not supported|unsupported)\s+", text))
-    errors = len(re.findall(r"(?m)^(Error:|fail\s+|\w+Error:)", text))
+    errors = len(re.findall(r"(?m)^(Error:|FAIL\b|\w+Error:)", text, re.IGNORECASE))
     if result.exit_code != 0 and errors == 0:
         errors = 1
     passed = max(0, tested - errors)
@@ -289,6 +303,38 @@ def count_generated_variants() -> int:
     return sum(1 for path in DATA_DIR.rglob("*.mcap") if path.is_file())
 
 
+def read_target_framework() -> str:
+    """Read the target framework from the C# conformance project."""
+
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(str(PROJECT_PATH))
+    root = tree.getroot()
+    tf = root.find(".//TargetFramework")
+    if tf is None:
+        tf = root.find(".//{http://schemas.microsoft.com/developer/msbuild/2003}TargetFramework")
+    if tf is not None and tf.text:
+        return tf.text.strip()
+    raise RuntimeError(f"TargetFramework was not found in {PROJECT_PATH}")
+
+
+def resolve_conformance_dll_path() -> Path:
+    """Resolve the built C# conformance DLL from the project target framework."""
+
+    target_framework = read_target_framework()
+    expected = REPO_ROOT / "build" / "McapConformance" / "Release" / target_framework / CSHARP_CONFORMANCE_DLL_NAME
+    if expected.exists():
+        return expected
+
+    candidates = sorted(
+        (REPO_ROOT / "build" / "McapConformance" / "Release").glob(f"*/{CSHARP_CONFORMANCE_DLL_NAME}")
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        raise RuntimeError("Multiple C# conformance DLL candidates found: " + ", ".join(str(path) for path in candidates))
+    return expected
+
+
 def run_conformance(release_blocking: bool) -> int:
     """Run the full Phase 121 measured conformance baseline."""
 
@@ -320,11 +366,7 @@ def run_conformance(release_blocking: bool) -> int:
     copy_directory_without_local_state(OFFICIAL_ROOT, OVERLAY_ROOT)
     add_csharp_runner_overlay()
 
-    env = {
-        "U2F_MCAP_CONFORMANCE_DLL": str(
-            REPO_ROOT / "build/McapConformance/Release/net9.0/Unity2Foxglove.McapConformance.dll"
-        )
-    }
+    env = {"U2F_MCAP_CONFORMANCE_DLL": str(resolve_conformance_dll_path())}
 
     install = run_package_manager(package_command, ["install", "--immutable"], cwd=OVERLAY_ROOT, timeout_seconds=600)
     if install.exit_code != 0:
@@ -389,7 +431,10 @@ def run_conformance(release_blocking: bool) -> int:
 def main(argv: list[str]) -> int:
     """Program entry point."""
 
+    global REPORT_PATH
     args = parse_args(argv)
+    if args.report_path:
+        REPORT_PATH = Path(args.report_path).resolve()
     return run_conformance(bool(args.release_blocking))
 
 

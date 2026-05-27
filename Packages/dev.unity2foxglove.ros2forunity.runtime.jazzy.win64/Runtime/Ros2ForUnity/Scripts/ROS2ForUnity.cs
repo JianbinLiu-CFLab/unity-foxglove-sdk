@@ -34,7 +34,7 @@ internal class ROS2ForUnity
     private static readonly object lifecycleGate = new object();
     private static bool isInitialized = false;
     private static int ownerCount = 0;
-    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";
+    private const string ros2ForUnityAssetFolderName = "Ros2ForUnity";
     private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
     private const string unity2FoxgloveRuntimePackageAssetPath =
         "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
@@ -296,8 +296,8 @@ internal class ROS2ForUnity
     }
 
     /// <summary>
-    /// Check if the ros version is supported, only applicable to non-standalone plugin versions
-    /// (i. e. without ros2 libraries included in the plugin).
+    /// Check whether the sourced ROS version is supported.
+    /// Only applies to non-standalone plugin versions that do not bundle ROS2 libraries.
     /// </summary>
     private void CheckROSSupport(string ros2Codename)
     {
@@ -384,10 +384,13 @@ internal class ROS2ForUnity
             var destructor = destructorField != null
                 ? destructorField.GetValue(null)
                 : null;
-            if (destructor != null)
+            if (destructor == null)
             {
-                GC.SuppressFinalize(destructor);
+                Debug.LogWarning("Unable to suppress Ros2cs finalizer before shutdown: private destructor field is missing or null.");
+                return;
             }
+
+            GC.SuppressFinalize(destructor);
         }
         catch (Exception exception)
         {
@@ -397,23 +400,37 @@ internal class ROS2ForUnity
 
     private string GetMetadataValue(XmlDocument doc, string valuePath)
     {
-        return doc.DocumentElement.SelectSingleNode(valuePath).InnerText;
+        if (doc == null || doc.DocumentElement == null)
+        {
+            throw new InvalidDataException("ROS2 For Unity metadata document is empty while reading " + valuePath);
+        }
+
+        XmlNode node = doc.DocumentElement.SelectSingleNode(valuePath);
+        if (node == null)
+        {
+            throw new InvalidDataException("ROS2 For Unity metadata is missing required node " + valuePath);
+        }
+
+        return node.InnerText;
     }
 
     private void LoadMetadata() 
     {
         char separator = Path.DirectorySeparatorChar;
+        string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";
+        string ros2ForUnityMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2_for_unity.xml";
         try
         {
-            ros2csMetadata.Load(GetPluginPath() + separator + "metadata_ros2cs.xml");
-            ros2ForUnityMetadata.Load(GetRos2ForUnityPath() + separator + "metadata_ros2_for_unity.xml");
+            ros2csMetadata.Load(ros2csMetadataPath);
+            ros2ForUnityMetadata.Load(ros2ForUnityMetadataPath);
         }
-        catch (System.IO.FileNotFoundException)
+        catch (Exception exception) when (exception is FileNotFoundException || exception is XmlException || exception is InvalidDataException)
         {
 #if UNITY_EDITOR
-            var errMessage = "Could not find metadata files.";
+            var errMessage = "Could not load ROS2 For Unity metadata files: " + exception.Message +
+                " (ros2cs=" + ros2csMetadataPath + ", ros2_for_unity=" + ros2ForUnityMetadataPath + ")";
             EditorApplication.isPlaying = false;
-            throw new System.IO.FileNotFoundException(errMessage);
+            throw new InvalidDataException(errMessage, exception);
 #else
             const int NO_METADATA = 1;
             Application.Quit(NO_METADATA);
@@ -429,7 +446,10 @@ internal class ROS2ForUnity
         string standalone = IsStandalone() ? "standalone" : "non-standalone";
 
         // Self checks
-        CheckROSSupport(currentRos2Version);
+        if (!IsStandalone())
+        {
+            CheckROSSupport(currentRos2Version);
+        }
         CheckIntegrity();
 
         // Library loading

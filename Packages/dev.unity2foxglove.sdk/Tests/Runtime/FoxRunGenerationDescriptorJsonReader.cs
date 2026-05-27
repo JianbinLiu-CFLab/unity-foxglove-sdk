@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -34,9 +35,9 @@ namespace Unity.FoxgloveSDK.Tests
                         StringValue(member, "rawTypeName"),
                         StringValue(member, "emissionTypeName"),
                         StringValue(member, "canonicalType"),
-                        isValueType: false,
-                        isArray: false,
-                        elementTypeName: string.Empty,
+                        isValueType: BoolValue(member, "isValueType"),
+                        isArray: BoolValue(member, "isArray"),
+                        elementTypeName: StringValue(member, "elementTypeName"),
                         topic: StringValue(member, "topic"),
                         rateHz: FloatValue(member, "rateHz"),
                         schemaName: StringValue(member, "schemaName"),
@@ -62,6 +63,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static int IntValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) ? token.Value<int>() : 0;
 
+        private static bool BoolValue(JObject obj, string name)
+            => obj.TryGetValue(name, out var token) && token.Value<bool>();
+
         private static float FloatValue(JObject obj, string name)
         {
             if (!obj.TryGetValue(name, out var token))
@@ -73,10 +77,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             switch (StringValue(member, "publishMode"))
             {
-                case "OnChange": return 1;
-                case "OnChangeOrInterval": return 2;
-                case "OnTrigger": return 3;
-                default: return 0;
+                case "OnChange": return (int)FoxRunPublishMode.OnChange;
+                case "OnChangeOrInterval": return (int)FoxRunPublishMode.OnChangeOrInterval;
+                case "OnTrigger": return (int)FoxRunPublishMode.OnTrigger;
+                default: return (int)FoxRunPublishMode.FixedRate;
             }
         }
     }

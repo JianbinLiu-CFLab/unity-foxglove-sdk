@@ -106,13 +106,12 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Scripts/smoke/phase88_draco_evidence_template.md");
             Check(!string.IsNullOrEmpty(source),
                 "88D-1: tracked Phase88 evidence template exists");
-            Check(source.Contains("Developer/51 Phase88 Compressed PointCloud Draco Evidence Gate.md")
-                  && source.Contains("Final Verdict")
+            Check(source.Contains("Final Verdict")
                   && source.Contains("GREEN")
                   && source.Contains("YELLOW")
                   && source.Contains("RED")
                   && source.Contains("BLOCKED"),
-                "88D-2: evidence template names target note and verdict states");
+                "88D-2: evidence template records verdict states without requiring a private note path");
             Check(source.Contains("git status --short --branch")
                   && source.Contains("Draco Source")
                   && source.Contains("Raw Probe Output")
@@ -157,7 +156,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -170,7 +169,9 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required repository file is missing.", path);
+            return File.ReadAllText(path);
         }
     }
 }

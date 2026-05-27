@@ -23,14 +23,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         static Ros2ForUnityRuntimeDefineInstaller()
         {
-            EditorApplication.delayCall += ReconcileCompileSymbol;
+            EditorApplication.delayCall += ReconcileCompileSymbolSafely;
         }
 
         public static void ReconcileCompileSymbolForBatch()
         {
-            ReconcileCompileSymbol();
-            AssetDatabase.SaveAssets();
-            EditorApplication.Exit(0);
+            if (!Application.isBatchMode)
+                throw new InvalidOperationException(
+                    nameof(ReconcileCompileSymbolForBatch) + " may only be invoked from Unity batch mode.");
+
+            var exitCode = 0;
+            try
+            {
+                ReconcileCompileSymbol();
+                AssetDatabase.SaveAssets();
+            }
+            catch (Exception ex)
+            {
+                exitCode = 1;
+                Debug.LogError(FormatFailureMessage("batch reconciliation", ex));
+            }
+
+            EditorApplication.Exit(exitCode);
+        }
+
+        private static void ReconcileCompileSymbolSafely()
+        {
+            try
+            {
+                ReconcileCompileSymbol();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError(FormatFailureMessage("editor delayCall reconciliation", ex));
+            }
         }
 
         private static void ReconcileCompileSymbol()
@@ -73,8 +99,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return false;
 
             var manifest = File.ReadAllText(manifestPath);
+            if (!ContainsPackageKey(manifest))
+                return false;
+
+            var lockPath = Path.Combine(projectDirectory.FullName, "Packages", "packages-lock.json");
+            if (!File.Exists(lockPath))
+            {
+                Debug.LogWarning(
+                    "Unity2Foxglove found " + RuntimePackageName
+                    + " in manifest.json, but Packages/packages-lock.json is missing. "
+                    + "Leaving " + CompileSymbol + " disabled until Unity resolves the runtime package.");
+                return false;
+            }
+
+            var lockFile = File.ReadAllText(lockPath);
+            if (ContainsPackageKey(lockFile))
+                return true;
+
+            Debug.LogWarning(
+                "Unity2Foxglove found " + RuntimePackageName
+                + " in manifest.json, but not in packages-lock.json. "
+                + "Leaving " + CompileSymbol + " disabled until the runtime package is resolved.");
+            return false;
+        }
+
+        private static bool ContainsPackageKey(string json)
+        {
             var dependencyPattern = "\"" + Regex.Escape(RuntimePackageName) + "\"\\s*:";
-            return Regex.IsMatch(manifest, dependencyPattern);
+            return Regex.IsMatch(json ?? string.Empty, dependencyPattern);
+        }
+
+        private static string FormatFailureMessage(string context, Exception ex)
+        {
+            return "Unity2Foxglove ROS2 For Unity compile symbol " + context
+                   + " failed for " + RuntimePackageName + " / " + CompileSymbol + ": "
+                   + ex.GetType().Name + ": " + ex.Message;
         }
     }
 }

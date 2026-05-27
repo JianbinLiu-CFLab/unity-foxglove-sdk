@@ -124,6 +124,11 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
     return data
 
 
+def read_optional_text(path: Path) -> str:
+    """Read UTF-8 text when present, returning an empty string for absent files."""
+    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+
+
 def check_package_metadata(results: list[CheckResult]) -> None:
     """Validate Unity package metadata."""
     add(results, "runtime package folder exists", PACKAGE.is_dir(), rel(PACKAGE))
@@ -344,7 +349,12 @@ def check_runtime_asmdef(results: list[CheckResult]) -> None:
     path = RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef"
     data = load_json(path, results, "runtime asmdef parses")
     add(results, "runtime asmdef name", data.get("name") == "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64", f"name={data.get('name')!r}")
-    add(results, "runtime asmdef not Editor-only", data.get("includePlatforms") == [], f"includePlatforms={data.get('includePlatforms')!r}")
+    add(
+        results,
+        "runtime asmdef targets Windows runtime and editor",
+        data.get("includePlatforms") == ["Editor", "WindowsStandalone64"],
+        f"includePlatforms={data.get('includePlatforms')!r}",
+    )
     add(results, "runtime asmdef auto-referenced", data.get("autoReferenced") is True, f"autoReferenced={data.get('autoReferenced')!r}")
 
 
@@ -357,12 +367,12 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         add(results, f"patched vendored file exists: {relative}", path.exists(), rel(path))
         add(results, f"patched vendored attribution: {relative}", MODIFICATIONS_COPYRIGHT in text, relative)
 
-    node = (scripts / "ROS2Node.cs").read_text(encoding="utf-8", errors="replace")
+    node = read_optional_text(scripts / "ROS2Node.cs")
     add(results, "ROS2Node implements IDisposable", "class ROS2Node : IDisposable" in node and "public void Dispose()" in node, "ROS2Node.cs")
     add(results, "ROS2Node avoids finalizer native cleanup", "~ROS2Node" not in node, "ROS2Node.cs")
     add(results, "ROS2Node removed UnityEditor using", "using UnityEditor;" not in node, "ROS2Node.cs")
 
-    component = (scripts / "ROS2UnityComponent.cs").read_text(encoding="utf-8", errors="replace")
+    component = read_optional_text(scripts / "ROS2UnityComponent.cs")
     component_join = "threadToJoin.Join(1000)" in component or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in component
     for token in ("private volatile bool quitting", "OnDestroy()", "OnApplicationQuit()", "node.Dispose()"):
         add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
@@ -375,7 +385,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "ROS2UnityComponent bounded join", component_join, "ROS2UnityComponent.cs")
     add(results, "ROS2UnityComponent does not shutdown on ordinary disable", "OnDisable()" not in component, "ROS2UnityComponent.cs")
 
-    core = (scripts / "ROS2UnityCore.cs").read_text(encoding="utf-8", errors="replace")
+    core = read_optional_text(scripts / "ROS2UnityCore.cs")
     core_join = "threadToJoin.Join(1000)" in core or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in core
     for token in ("IDisposable", "private volatile bool quitting", "public void Dispose()"):
         add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)
@@ -387,13 +397,13 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(results, "ROS2UnityCore bounded join", core_join, "ROS2UnityCore.cs")
 
-    runtime = (scripts / "ROS2ForUnity.cs").read_text(encoding="utf-8", errors="replace")
+    runtime = read_optional_text(scripts / "ROS2ForUnity.cs")
     old_lifecycle = all(token in runtime for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"))
     current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
     add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
 
-    dotnet_time = (scripts / "Time" / "DotnetTimeSource.cs").read_text(encoding="utf-8", errors="replace")
+    dotnet_time = read_optional_text(scripts / "Time" / "DotnetTimeSource.cs")
     add(
         results,
         "DotnetTimeSource converts Stopwatch duration to seconds",
@@ -402,7 +412,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "DotnetTimeSource.cs",
     )
 
-    time_utils = (scripts / "Time" / "TimeUtils.cs").read_text(encoding="utf-8", errors="replace")
+    time_utils = read_optional_text(scripts / "Time" / "TimeUtils.cs")
     add(
         results,
         "TimeUtils normalizes nanoseconds",
@@ -412,10 +422,12 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
 
-    sensor = (scripts / "Sensor.cs").read_text(encoding="utf-8", errors="replace")
+    sensor = read_optional_text(scripts / "Sensor.cs")
     add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
+    readings_guard_index = sensor.find("if (readings != null)")
+    readings_deref_index = sensor.find("readings.SetHeaderFrame")
     sensor_null_guard = (
-        ("if (readings != null)" in sensor and sensor.index("if (readings != null)") < sensor.index("readings.SetHeaderFrame"))
+        (readings_guard_index >= 0 and readings_deref_index >= 0 and readings_guard_index < readings_deref_index)
         or ("if (acquiredReading == null)" in sensor and "acquiredReading.SetHeaderFrame" in sensor)
     )
     add(results, "Sensor checks readings before dereference", sensor_null_guard, "Sensor.cs")

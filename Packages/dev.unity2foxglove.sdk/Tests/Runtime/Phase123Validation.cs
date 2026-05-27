@@ -19,19 +19,26 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine();
-            Console.WriteLine("=== Phase 123: MCAP Streaming Reader And Query Parity ===");
-            _passed = 0;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== Phase 123: MCAP Streaming Reader And Query Parity ===");
+                _passed = 0;
 
-            VerifyOptionSurface();
-            VerifyStreamingReader();
-            VerifyQuerySemantics();
-            VerifyIndexedFallbackControls();
-            VerifyMetadataAttachmentFallback();
-            VerifyCrcControls();
-            VerifyConformanceWiring();
+                VerifyOptionSurface();
+                VerifyStreamingReader();
+                VerifyQuerySemantics();
+                VerifyIndexedFallbackControls();
+                VerifyMetadataAttachmentFallback();
+                VerifyCrcControls();
+                VerifyConformanceWiring();
 
-            Console.WriteLine($"Phase 123: {_passed} checks passed.");
+                Console.WriteLine($"Phase 123: {_passed} checks passed.");
+            }
+            finally
+            {
+                TempMcapHelper.Cleanup();
+            }
         }
 
         private static void VerifyOptionSurface()
@@ -276,7 +283,7 @@ namespace Unity.FoxgloveSDK.Tests
                     bytes[offset] ^= 0x5A;
                     return;
                 }
-                offset += (int)len;
+                offset += checked((int)len);
             }
 
             throw new InvalidDataException("DataEnd record not found.");
@@ -290,7 +297,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string TempMcap(byte[] bytes)
         {
-            var path = Path.Combine(Path.GetTempPath(), "phase123-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase123");
             File.WriteAllBytes(path, bytes);
             return path;
         }
@@ -308,21 +315,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-                dir = dir.Parent;
-            }
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
             _passed++;
             Console.WriteLine("[PASS] " + name);
         }

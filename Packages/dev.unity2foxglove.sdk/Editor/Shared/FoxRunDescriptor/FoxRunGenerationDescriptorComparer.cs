@@ -16,8 +16,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var semantic = new List<string>();
             var provenance = new List<string>();
-            var leftMembers = Flatten(left);
-            var rightMembers = Flatten(right);
+            var leftMembers = Flatten(left, "left", semantic);
+            var rightMembers = Flatten(right, "right", semantic);
             var leftKeys = leftMembers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
             var rightKeys = rightMembers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
 
@@ -34,7 +34,10 @@ namespace Unity.FoxgloveSDK.Editor
             return new FoxRunGenerationDescriptorComparison(semantic, provenance);
         }
 
-        private static Dictionary<string, FoxRunGenerationMember> Flatten(FoxRunGenerationModel model)
+        private static Dictionary<string, FoxRunGenerationMember> Flatten(
+            FoxRunGenerationModel model,
+            string side,
+            List<string> semantic)
         {
             var result = new Dictionary<string, FoxRunGenerationMember>(StringComparer.Ordinal);
             foreach (var type in (model == null ? Array.Empty<FoxRunGenerationType>() : model.Types))
@@ -42,7 +45,12 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var member in type.Members)
                 {
                     var key = type.DeclaringType + "|" + member.Topic + "|" + member.MemberName + "|" + member.SchemaName;
-                    result[key] = member;
+                    if (result.ContainsKey(key))
+                    {
+                        semantic.Add("Duplicate " + side + " member key: " + key);
+                        continue;
+                    }
+                    result.Add(key, member);
                 }
             }
             return result;
@@ -58,6 +66,8 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "memberKind", left.MemberKind, right.MemberKind, semantic);
             CompareSemantic(key, "emissionTypeName", left.EmissionTypeName, right.EmissionTypeName, semantic);
             CompareSemantic(key, "canonicalType", left.CanonicalType, right.CanonicalType, semantic);
+            CompareSemantic(key, "isArray", left.IsArray ? "true" : "false", right.IsArray ? "true" : "false", semantic);
+            CompareSemantic(key, "elementTypeName", left.ElementTypeName, right.ElementTypeName, semantic);
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
             CompareSemantic(key, "rateHz", left.RateHz, right.RateHz, semantic);
             CompareSemantic(key, "publishMode", left.PublishModeName, right.PublishModeName, semantic);
@@ -100,5 +110,7 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         public bool IsSemanticEqual => SemanticDifferences.Count == 0;
+
+        public bool IsProvenanceEqual => ProvenanceDifferences.Count == 0;
     }
 }

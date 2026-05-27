@@ -190,7 +190,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRgb24ToI420Converter()
         {
-            var converter = Type.GetType("Foxglove.Schemas.Video.Rgb24ToI420Converter, FoxgloveSdk.Tests");
+            var converter = FindType("Foxglove.Schemas.Video.Rgb24ToI420Converter");
             Check(converter != null, "81G-1: RGB24-to-I420 converter type exists");
 
             var method = converter.GetMethod(
@@ -244,7 +244,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyOpenH264OptionsValidation()
         {
-            var optionsType = Type.GetType("Foxglove.Schemas.Video.OpenH264EncoderOptions, FoxgloveSdk.Tests");
+            var optionsType = FindType("Foxglove.Schemas.Video.OpenH264EncoderOptions");
             Check(optionsType != null, "81H-1: OpenH264 encoder options type exists");
 
             var tempDir = Path.Combine(Path.GetTempPath(), "unity2foxglove_phase81_" + Guid.NewGuid().ToString("N"));
@@ -336,7 +336,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine($"[PASS] {name}");
@@ -349,18 +349,22 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            if (!File.Exists(full))
+                throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
+
+            return File.ReadAllText(full);
         }
 
         private static string FindRepoRoot()
-        {
-            var dir = Directory.GetCurrentDirectory();
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
-                    return dir;
+            => Phase16Validation.FindRepoRoot();
 
-                dir = Directory.GetParent(dir)?.FullName;
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(fullName, throwOnError: false);
+                if (type != null)
+                    return type;
             }
 
             return null;

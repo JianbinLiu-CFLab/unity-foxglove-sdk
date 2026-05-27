@@ -357,13 +357,15 @@ namespace Unity.FoxgloveSDK.Editor
             if (channels == null || channels.Count == 0)
                 return topics;
 
+            var seen = new HashSet<string>();
             for (var i = 0; i < channels.Count; i++)
             {
                 var topic = channels[i].Topic;
-                if (string.IsNullOrEmpty(topic) || topics.Contains(topic))
+                if (string.IsNullOrEmpty(topic))
                     continue;
 
-                topics.Add(topic);
+                if (seen.Add(topic))
+                    topics.Add(topic);
             }
 
             return topics;
@@ -410,26 +412,12 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static string GetDefaultDir()
-        {
-            return Path.GetDirectoryName(Application.dataPath) ?? Application.dataPath;
-        }
+            => FoxgloveManagerEditor.GetDefaultDir();
 
         private static string MakeRelative(string absolute)
-        {
-            var projectRoot = Path.GetDirectoryName(Application.dataPath);
-            if (string.IsNullOrEmpty(projectRoot)) return absolute;
-            var normRoot = projectRoot.Replace('\\', '/');
-            var normAbs = absolute.Replace('\\', '/');
-            if (normAbs.StartsWith(normRoot + "/"))
-                return normAbs.Substring(normRoot.Length + 1);
-            return normAbs;
-        }
+            => FoxgloveManagerEditor.MakeRelative(absolute);
 
         private static string ResolveProjectPath(string path)
-        {
-            if (string.IsNullOrEmpty(path) || Path.IsPathRooted(path))
-                return path;
-            return Path.GetFullPath(Path.Combine(GetDefaultDir(), path));
-        }
+            => FoxgloveManagerEditor.ResolveProjectPath(path);
     }
 }

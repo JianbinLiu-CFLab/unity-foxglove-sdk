@@ -76,15 +76,15 @@ Phase 126 adds a repeatable architecture health check before the next ROS2/RViz2
 python Scripts/architecture/analyze_coupling.py --format text --output build/architecture/phase126-coupling-report.txt
 ```
 
-The report is intentionally heuristic. It measures C# file-size hotspots, namespace fan-in/fan-out, asmdef references, obvious asmdef cycles, default-test references to private workspace paths, and tracked `Developer` folders. Treat it as a refactor triage input, not a permanent quality score. Deferred candidates belong in [Architecture Backlog](architecture-backlog.md).
+The report is intentionally heuristic. It measures C# file-size hotspots, namespace fan-in/fan-out, asmdef references, and obvious asmdef cycles. Treat it as a refactor triage input, not a permanent quality score. Deferred candidates belong in [Architecture Backlog](architecture-backlog.md).
 
 Validation categories are explicit:
 
-- **CI-safe:** default `dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj` checks. These must not depend on ignored root `Plan/` or `Developer/` files.
-- **Local Evidence:** opt-in checks that may read ignored local notes or machine evidence. Run them with `--local-evidence` or a specific phase flag.
+- **CI-safe:** default `dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj` checks. These must depend only on tracked repository artifacts and runtime-generated files.
+- **Local Evidence:** opt-in checks that may require machine-local tools, generated artifacts, or external runtimes. Run them with `--local-evidence` or a specific phase flag.
 - **Manual Smoke / Optional Tooling:** commands that require live services, native tools, generated fixtures, or external runtimes.
 
-Tracked demo-only experiments should use `Experimental/`, not `Developer/`. The root `Developer/` folder remains local-only, and nested tracked `Developer/` folders are blocked so the naming does not imply private workspace material is safe to upload.
+Tracked demo-only experiments should use `Experimental/`. Validation must never require contributor-private notes.
 
 ## Restraint Rules
 

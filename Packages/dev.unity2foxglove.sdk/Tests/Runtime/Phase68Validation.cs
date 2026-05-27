@@ -356,7 +356,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             try
             {
-                Check(Throws<Exception>(() => McapIndexedReader.OpenRead(path)),
+                Check(Throws<EndOfStreamException>(() => McapIndexedReader.OpenRead(path)),
                     "68E-6: OpenRead invalid file throws");
                 File.Delete(path);
                 Check(!File.Exists(path), "68E-7: OpenRead releases invalid file handle after failure");
@@ -381,7 +381,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             clean.Position = 0;
             var summary = new McapReader(clean).ReadSummary();
-            Check(summary.ChunkIndexes.Count >= 2, "68F-0: malformed fixture has at least two chunks");
+            if (summary.ChunkIndexes.Count < 2)
+                throw new InvalidOperationException("Phase68 malformed fixture did not produce at least two chunks.");
 
             var firstChunk = summary.ChunkIndexes[0];
             var secondChunk = summary.ChunkIndexes[1];
@@ -411,7 +412,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new Exception("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

@@ -135,8 +135,8 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             {
                 summaryWriter.WriteStatistics(
                     messageCount,
-                    (ushort)schemas.Count,
-                    (uint)channels.Count,
+                    checked((ushort)schemas.Count),
+                    checked((uint)channels.Count),
                     attachmentCount,
                     metadataCount,
                     0,

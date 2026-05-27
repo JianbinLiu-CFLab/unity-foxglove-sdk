@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 6 Tests ---");
+            _passCount = 0;
 
             TestServerInfoCapabilities();
             TestDtoFieldNames();
@@ -354,11 +355,6 @@ namespace Unity.FoxgloveSDK.Tests
             });
             fake.SimulateConnect(1);
 
-            var encBytes = Encoding.UTF8.GetBytes("protobuf");
-            var frame = new byte[1 + 4 + 4 + 4 + encBytes.Length];
-            frame[0] = ClientOpcode.ServiceCallRequest;
-            frame[13 + 4 + 4 + 4 - 13 - 1] = 0; // Hmm, let me just use EncodeServerServiceCallResponse and change opcode
-            // Actually simpler: use the binary encoder but with wrong encoding
             var req = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "protobuf", new byte[] { 1 });
             req[0] = ClientOpcode.ServiceCallRequest;
             fake.SimulateBinary(1, req);

@@ -133,14 +133,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             var endIndex = text.IndexOf(end, startIndex + start.Length, StringComparison.Ordinal);
             return endIndex < 0
-                ? text.Substring(startIndex)
+                ? string.Empty
                 : text.Substring(startIndex, endIndex - startIndex);
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -153,7 +153,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, path);
+
+            return File.ReadAllText(path);
         }
     }
 }

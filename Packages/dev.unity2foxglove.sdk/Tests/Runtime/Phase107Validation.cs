@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string Manifest = OptionalPackage + "/Compliance/ros2-for-unity-adoption-manifest.json";
         private const string OptionalPackageValidator = "Scripts/release/validate_ros2forunity_package.py";
         private const string JazzyArtifactName = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip";
+        // Mirrors the adoption manifest and release-side hash sidecar; this check catches accidental artifact swaps.
         private const string JazzyArtifactSha256 = "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188";
 
         private static int _passed;
@@ -87,12 +88,14 @@ namespace Unity.FoxgloveSDK.Tests
                                && !Path.GetExtension(path).Equals(".meta", StringComparison.OrdinalIgnoreCase))
                 .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
                 .ToList();
-            var tokenHits = Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories)
-                .Where(HasTextExtension)
-                .SelectMany(path => OptionalEditorForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token))
-                .ToList();
+            var tokenHits = new List<string>();
+            foreach (var path in Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories).Where(HasTextExtension))
+            {
+                var text = File.ReadAllText(path);
+                tokenHits.AddRange(OptionalEditorForbiddenTokens()
+                    .Where(token => text.Contains(token, StringComparison.Ordinal))
+                    .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token));
+            }
             var installer = Path.Combine(editorRoot, "Ros2ForUnityRuntimeDefineInstaller.cs");
             var installerText = File.Exists(installer) ? File.ReadAllText(installer) : string.Empty;
 
@@ -184,14 +187,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "dev.unity2foxglove.ros2forunity"
             };
 
-            var hits = scanRoots
-                .Where(Directory.Exists)
-                .SelectMany(rootDir => Directory.GetFiles(rootDir, "*.*", SearchOption.AllDirectories))
-                .Where(path => HasTextExtension(path))
-                .SelectMany(path => forbidden
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Path.GetRelativePath(root, path).Replace('\\', '/') + " -> " + token))
-                .ToList();
+            var hits = new List<string>();
+            foreach (var path in scanRoots
+                         .Where(Directory.Exists)
+                         .SelectMany(rootDir => Directory.GetFiles(rootDir, "*.*", SearchOption.AllDirectories))
+                         .Where(HasTextExtension))
+            {
+                var text = File.ReadAllText(path);
+                hits.AddRange(forbidden
+                    .Where(token => text.Contains(token, StringComparison.Ordinal))
+                    .Select(token => Path.GetRelativePath(root, path).Replace('\\', '/') + " -> " + token));
+            }
 
             Check(hits.Count == 0,
                 "107-C2: core package Runtime/Editor/Samples have no hard R2FU dependency"
@@ -234,12 +240,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase107", StringComparison.Ordinal)
-                  && program.Contains("RunPhase107Only", StringComparison.Ordinal)
-                  && program.Contains("Phase107Validation.Validate()", StringComparison.Ordinal),
-                "107-E1: Program.cs wires --phase107");
+            Check(registry.Contains("--phase107", StringComparison.Ordinal)
+                  && registry.Contains("Phase107Validation.Validate", StringComparison.Ordinal),
+                "107-E1: registry wires --phase107");
             Check(project.Contains("Phase107Validation.cs", StringComparison.Ordinal),
                 "107-E2: test project compiles Phase107Validation");
             Check(RepoFileExists(OptionalPackageValidator),
@@ -327,11 +332,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {
-            return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("Ros2ForUnity_Jazzy_standalone_windows10.zip", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+            return PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(path);
         }
 
         private static bool IsOptionalPackageRuntimeBinary(string path)

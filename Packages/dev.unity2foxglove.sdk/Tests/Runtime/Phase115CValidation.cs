@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase115CValidation
     {
-        private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
+        private const string ExpectedFoxRunFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
         private const string SdkFixtureHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private static int _passed;
 
@@ -95,8 +95,10 @@ namespace Unity.FoxgloveSDK.Tests
                 var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
                 var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
                 var setupRecordingEnd = setup.IndexOf("private bool PublishPendingRecordingSidecar", StringComparison.Ordinal);
-                var setupRecordingSource = setup.Substring(0, setupRecordingEnd);
-                Check(setupRecordingSource.Contains("SchemaEvidenceSidecarWriter.StageSidecar", StringComparison.Ordinal)
+                var foundSetupRecordingBoundary = setupRecordingEnd >= 0;
+                var setupRecordingSource = foundSetupRecordingBoundary ? setup.Substring(0, setupRecordingEnd) : string.Empty;
+                Check(foundSetupRecordingBoundary
+                      && setupRecordingSource.Contains("SchemaEvidenceSidecarWriter.StageSidecar", StringComparison.Ordinal)
                       && !setupRecordingSource.Contains("SchemaEvidenceSidecarWriter.PublishStagedSidecar", StringComparison.Ordinal)
                       && server.IndexOf("_runtime.Start", StringComparison.Ordinal) <
                       server.IndexOf("PublishPendingRecordingSidecar", StringComparison.Ordinal)
@@ -149,8 +151,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
             var catchIndex = source.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
-            var detachIndex = source.IndexOf("parameters.OnParameterChanged -= OnParameterChanged;", catchIndex, StringComparison.Ordinal);
-            var clearIndex = source.IndexOf("session.SetRecorder(null);", catchIndex, StringComparison.Ordinal);
+            var detachIndex = catchIndex >= 0
+                ? source.IndexOf("parameters.OnParameterChanged -= OnParameterChanged;", catchIndex, StringComparison.Ordinal)
+                : -1;
+            var clearIndex = catchIndex >= 0
+                ? source.IndexOf("session.SetRecorder(null);", catchIndex, StringComparison.Ordinal)
+                : -1;
             Check(catchIndex >= 0 && detachIndex > catchIndex && detachIndex < clearIndex,
                 "115C-C1: recording attach failure detaches parameter change handler before clearing state");
 

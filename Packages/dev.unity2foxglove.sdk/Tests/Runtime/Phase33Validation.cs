@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestControlOverflowDropsDataAndSendsControlFirst();
             TestControlOnlyOverflowRequestsDisconnect();
             TestClearDataFramesPreservesControlFrames();
+            TestByteLimitOverflowDropsAndRejectsOversizedData();
             TestWebSocketHeaderLengths();
             TestSendQueueCompleteIsIdempotent();
             TestLivePublishUsesDataPrioritySend();
@@ -92,6 +93,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.TryDequeue(out var frame) && frame.Priority == FramePriority.Control,
                 "33A-3g: preserved control frame still dequeues");
             Check(frame.Payload[0] == 9, "33A-3h: preserved control frame payload is unchanged");
+        }
+
+        private static void TestByteLimitOverflowDropsAndRejectsOversizedData()
+        {
+            var queue = new WsSendQueue(maxFrames: 10, maxQueuedBytes: 4);
+            Check(queue.Enqueue(Data(1, length: 4)).Accepted, "33A-3i: byte-limit baseline data accepted");
+
+            var result = queue.Enqueue(Data(2, length: 5));
+            Check(!result.Accepted, "33A-3j: data larger than byte limit is rejected");
+            Check(!result.ShouldDisconnect, "33A-3k: oversized data rejection does not request disconnect");
+            Check(result.DroppedDataFrames == 2, "33A-3l: stale queued data and oversized data are both counted dropped");
+            Check(queue.Count == 0, "33A-3m: byte-limit rejection leaves queue empty");
+            Check(queue.DroppedDataFrames == 2, "33A-3n: cumulative byte-limit drop count is updated");
         }
 
         private static void TestWebSocketHeaderLengths()

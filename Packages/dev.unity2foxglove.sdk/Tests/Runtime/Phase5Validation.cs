@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 5 Tests ---");
+            _passCount = 0;
 
             TestNowUnixTimeNsMonotonic();
             TestNowUnixTimeNsInWindow();

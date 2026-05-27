@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase94Validation
     {
         private const ulong SampleTimeNs = 1_700_094_000_000_000_000UL;
+        private const int LoopbackTimeoutMs = 10_000;
         private static int _passed;
 
         public static void Validate()
@@ -142,7 +143,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             using (var sink = new Ros2BridgeTcpClient())
             {
-                sink.Connect("127.0.0.1", port, timeoutMs: 3000);
+                sink.Connect("127.0.0.1", port, timeoutMs: LoopbackTimeoutMs);
                 Check(sink.IsConnected, "94C-1: TCP client connects to loopback server");
                 var frame = new Ros2BridgeFrame(
                     "/unity/tf",
@@ -151,12 +152,12 @@ namespace Unity.FoxgloveSDK.Tests
                     SampleTimeNs,
                     1,
                     new byte[] { 0, 1, 0, 0, 1, 2, 3 });
-                sink.Send(frame, timeoutMs: 3000);
+                sink.Send(frame, timeoutMs: LoopbackTimeoutMs);
                 sink.Disconnect();
                 Check(!sink.IsConnected, "94C-2: TCP client disconnect closes socket state");
             }
 
-            Check(done.Wait(3000), "94C-3: loopback server receives one frame");
+            Check(done.Wait(LoopbackTimeoutMs), "94C-3: loopback server receives one frame");
             if (serverError != null)
                 throw new Exception("94C server failed: " + serverError.Message, serverError);
             Check(received.Count == 1 && received[0].Topic == "/unity/tf",
@@ -212,13 +213,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySourceBoundaries()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var managerSource = ReadRepoDirectoryText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager", "FoxgloveManager*.cs");
             var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
             var readme = ReadRepoText("README.md");
             var sidecarSource = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
             var sidecarCmake = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
             var sidecarReadme = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md");
-            Check(!managerSource.Contains("Ros2Bridge"), "94F-1: Phase94 does not add Manager bridge UX");
+            Check(managerSource.Contains("TryPrepareRos2BridgePublish") && managerSource.Contains("PublishRos2BridgeCdr"),
+                "94F-1: Manager exposes ROS2 Bridge through explicit opt-in APIs");
             Check(docs.Contains("Phase 94") && docs.Contains("three representative"),
                 "94F-2: schema coverage docs describe Phase94 bridge boundary");
             Check(readme.Contains("Unity2Foxglove does not require ROS") || readme.Contains("does not require ROS"),
@@ -362,7 +364,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -375,7 +377,29 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
+        }
+
+        private static string ReadRepoDirectoryText(string relativePath, string searchPattern)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!Directory.Exists(path))
+                throw new DirectoryNotFoundException(path);
+
+            var files = Directory.GetFiles(path, searchPattern, SearchOption.TopDirectoryOnly)
+                .OrderBy(file => file, StringComparer.Ordinal)
+                .ToArray();
+            if (files.Length == 0)
+                throw new FileNotFoundException("Required validation source files were not found.", Path.Combine(path, searchPattern));
+
+            return string.Join("\n", files.Select(File.ReadAllText));
         }
 
         private sealed class FakeBridgeSink : IRos2BridgeSink

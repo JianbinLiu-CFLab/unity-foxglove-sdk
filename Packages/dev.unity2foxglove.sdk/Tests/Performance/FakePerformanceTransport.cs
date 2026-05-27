@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Performance
         public void SendText(uint clientId, string json) { }
         public void BroadcastText(string json) { }
         public void SendBinary(uint clientId, byte[] data) { BinaryCount++; }
-        public void BroadcastBinary(byte[] data) { }
+        public void BroadcastBinary(byte[] data) { BinaryCount++; }
         public void SendDataBinary(uint clientId, byte[] data) { DataBinaryCount++; }
         public void BroadcastDataBinary(byte[] data) { DataBinaryCount++; }
         public void Dispose() { }

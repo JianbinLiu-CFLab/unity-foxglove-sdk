@@ -50,7 +50,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static void WriteIfChanged(string path, string content)
         {
             var bytes = Utf8NoBom.GetBytes(content ?? string.Empty);
-            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
+            if (TryReadExistingBytes(path, out var existingBytes) && existingBytes.SequenceEqual(bytes))
                 return;
 
             var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -61,9 +61,44 @@ namespace Unity.FoxgloveSDK.Editor
             }
             finally
             {
-                if (File.Exists(tempPath))
-                    File.Delete(tempPath);
+                try
+                {
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
             }
+        }
+
+        private static bool TryReadExistingBytes(string path, out byte[] bytes)
+        {
+            bytes = null;
+            if (!File.Exists(path))
+                return false;
+
+            for (var attempt = 0; attempt < ReplaceAttempts; attempt++)
+            {
+                try
+                {
+                    bytes = File.ReadAllBytes(path);
+                    return true;
+                }
+                catch (IOException)
+                {
+                    DelayBeforeRetry(attempt);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    DelayBeforeRetry(attempt);
+                }
+            }
+
+            return false;
         }
 
         private static void ReplaceFile(string tempPath, string path)
@@ -128,7 +163,9 @@ namespace Unity.FoxgloveSDK.Editor
 
             throw new IOException(
                 "Failed to replace generated SDK schema manifest artifact '" + path + "'.",
-                copyException ?? originalException);
+                copyException == null || originalException == null
+                    ? copyException ?? originalException
+                    : new AggregateException(originalException, copyException));
         }
 
         private static void ClearReadOnly(string path)

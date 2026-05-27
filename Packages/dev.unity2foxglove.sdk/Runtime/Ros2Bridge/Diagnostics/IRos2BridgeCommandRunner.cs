@@ -7,6 +7,7 @@
 using System;
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
@@ -14,6 +15,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     public interface IRos2BridgeCommandRunner
     {
         Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs);
+        Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs, CancellationToken cancellationToken);
     }
 
     /// <summary>Result of one ROS2 CLI command, including timeout and launch-error state.</summary>
@@ -55,6 +57,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     public sealed class ProcessRos2BridgeCommandRunner : IRos2BridgeCommandRunner
     {
         public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
+            => Run(executable, arguments, timeoutMs, CancellationToken.None);
+
+        public Ros2BridgeCommandResult Run(
+            string executable,
+            string arguments,
+            int timeoutMs,
+            CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             if (string.IsNullOrWhiteSpace(executable))
@@ -93,19 +102,23 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 process.Start();
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
-                if (!process.WaitForExit(Math.Max(1, timeoutMs)))
+                var timedOut = !WaitForExitOrCancellation(process, Math.Max(1, timeoutMs), cancellationToken);
+                if (timedOut || cancellationToken.IsCancellationRequested)
                 {
                     try
                     {
                         process.Kill();
+                        process.WaitForExit(Math.Max(1, timeoutMs));
+                        process.WaitForExit();
                     }
                     catch
                     {
-                        // The process may have exited between WaitForExit and Kill.
+                        // The process may have exited between WaitForExit and Kill, or rejected termination.
                     }
 
                     stopwatch.Stop();
@@ -113,8 +126,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                         -1,
                         stdout.ToString(),
                         stderr.ToString(),
-                        timedOut: true,
-                        error: string.Empty,
+                        timedOut: timedOut,
+                        error: cancellationToken.IsCancellationRequested ? "Command was cancelled." : string.Empty,
                         durationMs: stopwatch.ElapsedMilliseconds);
                 }
 
@@ -139,6 +152,26 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     error: ex.Message,
                     durationMs: stopwatch.ElapsedMilliseconds);
             }
+        }
+
+        private static bool WaitForExitOrCancellation(
+            Process process,
+            int timeoutMs,
+            CancellationToken cancellationToken)
+        {
+            var deadline = Stopwatch.StartNew();
+            while (deadline.ElapsedMilliseconds < timeoutMs)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    return true;
+                // Bound the poll interval by the remaining budget so sub-50ms
+                // timeoutMs values are not silently rounded up to 50ms.
+                var remaining = (int)Math.Max(1, timeoutMs - deadline.ElapsedMilliseconds);
+                if (process.WaitForExit(Math.Min(50, remaining)))
+                    return true;
+            }
+
+            return process.HasExited;
         }
     }
 }

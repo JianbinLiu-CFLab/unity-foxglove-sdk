@@ -105,7 +105,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def validate_markerarray_echo(output: str) -> None:
-    """Validate MarkerArray echo contains a bounded cube marker or cleanup action."""
+    """Validate MarkerArray echo contains a bounded ADD/MODIFY cube marker."""
 
     required = ["markers:", "frame_id: map", "ns: unity2foxglove", "id:", "lifetime:"]
     missing = [token for token in required if token not in output]
@@ -116,15 +116,29 @@ def validate_markerarray_echo(output: str) -> None:
     if not id_match:
         raise RuntimeError(f"MarkerArray echo did not contain a positive deterministic id.\n{output}")
 
-    if "action: 3" in output:
-        return
-
     if "type: 1" not in output:
         raise RuntimeError(f"MarkerArray echo did not contain CUBE marker type 1.\n{output}")
-    if "action: 0" not in output and "action: 2" not in output:
-        raise RuntimeError(f"MarkerArray echo did not contain ADD or DELETE action.\n{output}")
+    if "action: 0" not in output:
+        raise RuntimeError(f"MarkerArray echo did not contain an ADD/MODIFY action.\n{output}")
     if "sec: 0" not in output or "nanosec: 0" not in output:
         raise RuntimeError(f"MarkerArray echo did not contain zero marker lifetime.\n{output}")
+
+
+def echo_markerarray_until_add(
+    pixi_python: pathlib.Path,
+    ros2_script: pathlib.Path,
+    env: dict[str, str],
+    spin_seconds: float,
+    attempts: int = 4,
+) -> str:
+    """Collect bounded marker echoes until an ADD/MODIFY marker is observed."""
+
+    combined = ""
+    for _ in range(attempts):
+        combined += ros2env.echo_once(pixi_python, ros2_script, env, MARKERS_TOPIC, MARKERS_MSG_TYPE, spin_seconds) + "\n"
+        if "action: 0" in combined:
+            return combined
+    return combined
 
 
 def validate_tf_echo(output: str) -> None:
@@ -230,12 +244,10 @@ def main(argv: list[str]) -> int:
     validate_tf_echo(tf_echo)
 
     print("--- echo /markers ---")
-    markers_echo = ros2env.echo_once(
+    markers_echo = echo_markerarray_until_add(
         pixi_python,
         ros2_script,
         env,
-        MARKERS_TOPIC,
-        MARKERS_MSG_TYPE,
         args.echo_spin_seconds,
     )
     print(markers_echo.rstrip())

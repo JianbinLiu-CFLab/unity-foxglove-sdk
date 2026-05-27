@@ -45,15 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "80A-2: SDK package.json has no OpenH264 or WebRTC dependency");
 
             var cameraOutputMode = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
-            var phase81PromotionExists = File.Exists(Path.Combine(
-                FindRepoRoot() ?? "",
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Tests",
-                "Runtime",
-                "Phase81Validation.cs"));
-            Check(phase81PromotionExists || !ContainsAny(cameraOutputMode, "OpenH264", "H264OpenH264"),
-                "80A-3: production CameraOutputMode excludes OpenH264 until Phase 81 promotion");
+            Check(cameraOutputMode.Contains("H264OpenH264", StringComparison.Ordinal),
+                "80A-3: production CameraOutputMode records the promoted OpenH264 mode");
 
             Check(!HasCommittedOpenH264BinaryArtifacts(),
                 "80A-4: no OpenH264 binary artifacts are committed under package/assets paths");
@@ -62,6 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyProbeSource()
         {
             var source = ReadRepoText("Unity2Foxglove/Assets/Experimental/OpenH264/OpenH264ProbePublisher.cs");
+            var converter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/Rgb24ToI420Converter.cs");
             Check(!string.IsNullOrEmpty(source),
                 "80B-1: demo OpenH264 probe publisher exists");
             Check(source.Contains("AddComponentMenu(\"Foxglove/Experimental/OpenH264 Source Probe Publisher\")"),
@@ -79,17 +73,21 @@ namespace Unity.FoxgloveSDK.Tests
                 "80B-6: probe gates capture on demand/cadence before readback");
             Check(source.Contains("TryConvertRgb24ToI420"),
                 "80B-7: probe has dedicated RGB24-to-I420 conversion method");
-            Check(source.Contains("width % 2") && source.Contains("height % 2"),
+            Check(source.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420")
+                  && converter.Contains("width % 2")
+                  && converter.Contains("height % 2"),
                 "80B-8: conversion rejects odd dimensions");
-            Check(source.Contains("rgb24.Length") && source.Contains("i420.Length"),
+            Check(source.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420")
+                  && converter.Contains("rgb24.Length")
+                  && converter.Contains("i420.Length"),
                 "80B-9: conversion validates input and output buffer sizes");
-            Check(source.Contains("yOffset")
-                  && source.Contains("uOffset")
-                  && source.Contains("vOffset")
-                  && source.Contains("2x2"),
+            Check(converter.Contains("yOffset")
+                  && converter.Contains("uOffset")
+                  && converter.Contains("vOffset")
+                  && converter.Contains("2x2"),
                 "80B-10: conversion writes explicit Y/U/V planes with 2x2 chroma averaging");
-            Check(source.Contains("GetVerticallyFlippedRgbIndex")
-                  && source.Contains("height - 1 - y"),
+            Check(source.Contains("flipVertical: true")
+                  && converter.Contains("flipVertical ? height - 1 - y : y"),
                 "80B-11: conversion vertically flips Unity readback rows before I420 encoding");
             Check(!ContainsAny(source, "FFmpeg", "Unity.WebRTC", "RTCRtpScriptTransform"),
                 "80B-12: OpenH264 probe does not depend on FFmpeg or Unity WebRTC");
@@ -189,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine($"[PASS] {name}");
@@ -202,21 +200,13 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            if (!File.Exists(full))
+                throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
+
+            return File.ReadAllText(full);
         }
 
         private static string FindRepoRoot()
-        {
-            var dir = Directory.GetCurrentDirectory();
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
-                    return dir;
-
-                dir = Directory.GetParent(dir)?.FullName;
-            }
-
-            return null;
-        }
+            => Phase16Validation.FindRepoRoot();
     }
 }

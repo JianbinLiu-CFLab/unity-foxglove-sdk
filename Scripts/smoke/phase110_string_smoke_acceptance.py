@@ -22,14 +22,18 @@ project path. It defaults to C:\\ros2_jazzy\\ros2-windows.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
 
+try:
+    import _ros2_windows_env as ros2env
+except ImportError:
+    sys.exit("[phase110] ERROR: _ros2_windows_env module not found; run from Scripts/smoke/ directory.")
 
-DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows")
+DEFAULT_ROS2_ROOT = ros2env.DEFAULT_ROS2_ROOT
 NODE_NAME = "unity2foxglove_phase110"
 IN_TOPIC = "/unity2foxglove/ros2forunity/string/in"
 OUT_TOPIC = "/unity2foxglove/ros2forunity/string/out"
@@ -81,79 +85,30 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=1.0,
         help="Publish rate in Hz.",
     )
+    parser.add_argument(
+        "--rmw",
+        default=None,
+        help="Override RMW_IMPLEMENTATION. Omit to preserve the shell value or shared default.",
+    )
+    parser.add_argument(
+        "--discovery-range",
+        choices=("LOCALHOST", "SUBNET", "OFF", "SYSTEM_DEFAULT"),
+        default=None,
+        help="Override ROS_AUTOMATIC_DISCOVERY_RANGE. Omit to preserve the shell value or ROS2 default.",
+    )
+    parser.add_argument(
+        "--domain-id",
+        default=None,
+        help="Override ROS_DOMAIN_ID. Omit to preserve the shared default.",
+    )
     return parser.parse_args(argv)
 
 
-def build_ros_env(ros2_root: pathlib.Path) -> dict[str, str]:
-    """Build a deterministic Windows ROS2 Jazzy environment."""
+def has_positive_subscription_count(output: str) -> bool:
+    """Return whether topic info reports at least one subscription from Unity."""
 
-    pixi = ros2_root / ".pixi" / "envs" / "default"
-    env = os.environ.copy()
-    env["PATH"] = os.pathsep.join(
-        [
-            str(ros2_root / "bin"),
-            str(ros2_root / "Scripts"),
-            str(pixi),
-            str(pixi / "Library" / "bin"),
-            r"C:\Windows\system32",
-            r"C:\Windows",
-        ]
-    )
-    env["PYTHONPATH"] = str(ros2_root / "Lib" / "site-packages")
-    env["AMENT_PREFIX_PATH"] = str(ros2_root)
-    env["CMAKE_PREFIX_PATH"] = str(ros2_root)
-    env["COLCON_PREFIX_PATH"] = str(ros2_root)
-    env["ROS_VERSION"] = "2"
-    env["ROS_PYTHON_VERSION"] = "3"
-    env["ROS_DISTRO"] = "jazzy"
-    env["ROS_DOMAIN_ID"] = "0"
-    env["RMW_IMPLEMENTATION"] = "rmw_fastrtps_cpp"
-    env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = "SUBNET"
-    env.pop("ROS_LOCALHOST_ONLY", None)
-    env.pop("ROS_DISCOVERY_SERVER", None)
-    return env
-
-
-def validate_ros2_root(ros2_root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
-    """Validate ROS2 root and return python.exe plus ros2-script.py paths."""
-
-    pixi_python = ros2_root / ".pixi" / "envs" / "default" / "python.exe"
-    ros2_script = ros2_root / "Scripts" / "ros2-script.py"
-    missing = [path for path in (pixi_python, ros2_script) if not path.exists()]
-    if missing:
-        details = "\n".join(f"  missing: {path}" for path in missing)
-        raise FileNotFoundError(
-            f"Invalid ROS2 Jazzy root: {ros2_root}\n{details}\n"
-            "Pass the ROS2 root, for example: "
-            r"python Scripts\smoke\phase110_string_smoke_acceptance.py C:\ros2_jazzy\ros2-windows"
-        )
-    return pixi_python, ros2_script
-
-
-def run_ros2(
-    pixi_python: pathlib.Path,
-    ros2_script: pathlib.Path,
-    env: dict[str, str],
-    args: list[str],
-    check: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    """Run ros2-script.py with captured output."""
-
-    result = subprocess.run(
-        [str(pixi_python), str(ros2_script), *args],
-        env=env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    if check and result.returncode != 0:
-        raise RuntimeError(
-            "ROS2 command failed:\n"
-            + " ".join(["ros2", *args])
-            + f"\nexit={result.returncode}\n{result.stdout}"
-        )
-    return result
+    match = re.search(r"(?m)^Subscription count:\s*([1-9][0-9]*)\s*$", output)
+    return bool(match) and f"Node name: {NODE_NAME}" in output
 
 
 def wait_for_subscription(
@@ -167,24 +122,29 @@ def wait_for_subscription(
     deadline = time.monotonic() + timeout_seconds
     last_output = ""
     while time.monotonic() < deadline:
-        result = run_ros2(
-            pixi_python,
-            ros2_script,
-            env,
-            ["topic", "info", IN_TOPIC, "-v", "--no-daemon"],
-            check=False,
-        )
-        last_output = result.stdout
-        if "Subscription count: 1" in last_output and f"Node name: {NODE_NAME}" in last_output:
+        try:
+            result = ros2env.run_ros2(
+                pixi_python,
+                ros2_script,
+                env,
+                ["topic", "info", IN_TOPIC, "-v", "--no-daemon"],
+                check=False,
+                timeout_seconds=min(10.0, max(1.0, deadline - time.monotonic())),
+            )
+            last_output = result.stdout
+        except subprocess.TimeoutExpired as exc:
+            last_output = f"<topic info timed out after {exc.timeout:.1f}s>"
+        if has_positive_subscription_count(last_output):
             return last_output
         time.sleep(2)
 
-    topic_list = run_ros2(
+    topic_list = ros2env.run_ros2(
         pixi_python,
         ros2_script,
         env,
         ["topic", "list", "-t", "--no-daemon"],
         check=False,
+        timeout_seconds=10.0,
     ).stdout
     raise TimeoutError(
         f"Timed out waiting for Unity subscription on {IN_TOPIC}.\n"
@@ -199,12 +159,17 @@ def main(argv: list[str]) -> int:
     """Script entry point."""
 
     args = parse_args(argv)
-    ros2_root = pathlib.Path(args.ros2_root).resolve()
-    pixi_python, ros2_script = validate_ros2_root(ros2_root)
-    env = build_ros_env(ros2_root)
+    workspace_root = ros2env.find_workspace_root()
+    ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
+    pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
     payload = args.message or f"phase110 {args.mode} manual acceptance"
 
     print(f"[phase110] ROS2 root: {ros2_root}")
+    print(f"[phase110] ROS_DISTRO: {env.get('ROS_DISTRO')}")
+    print(f"[phase110] RMW_IMPLEMENTATION: {env.get('RMW_IMPLEMENTATION')}")
+    print(f"[phase110] ROS_DOMAIN_ID: {env.get('ROS_DOMAIN_ID')}")
+    print(f"[phase110] ROS_AUTOMATIC_DISCOVERY_RANGE: {env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')}")
     print(f"[phase110] Mode label: {args.mode}")
     print(f"[phase110] Waiting for Unity subscription: {IN_TOPIC}")
     info = wait_for_subscription(
@@ -217,7 +182,7 @@ def main(argv: list[str]) -> int:
     print(info.rstrip())
 
     print("--- echo /out ---")
-    echo = run_ros2(
+    echo = ros2env.run_ros2(
         pixi_python,
         ros2_script,
         env,
@@ -231,13 +196,14 @@ def main(argv: list[str]) -> int:
             str(args.echo_spin_seconds),
             "--no-daemon",
         ],
+        timeout_seconds=args.echo_spin_seconds + 10.0,
     ).stdout
     print(echo.rstrip())
     if "unity2foxglove string tick" not in echo:
         raise RuntimeError(f"Did not receive Unity String Smoke tick on {OUT_TOPIC}.\n{echo}")
 
     print("--- pub /in ---")
-    pub = run_ros2(
+    pub = ros2env.run_ros2(
         pixi_python,
         ros2_script,
         env,
@@ -258,6 +224,7 @@ def main(argv: list[str]) -> int:
             "--keep-alive",
             "3",
         ],
+        timeout_seconds=max(20.0, args.wait_seconds + args.publish_count / max(args.rate, 0.1) + 5.0),
     ).stdout
     print(pub.rstrip())
 

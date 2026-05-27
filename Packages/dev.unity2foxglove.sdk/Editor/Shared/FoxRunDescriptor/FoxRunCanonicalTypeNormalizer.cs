@@ -88,6 +88,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var name = typeName ?? string.Empty;
             return name.StartsWith("System.Nullable", StringComparison.Ordinal)
+                   || name.StartsWith("Nullable<", StringComparison.Ordinal)
                    || name.EndsWith("?", StringComparison.Ordinal);
         }
 
@@ -157,6 +158,10 @@ namespace Unity.FoxgloveSDK.Editor
             const string friendlyPrefix = "System.Nullable<";
             if (typeName.StartsWith(friendlyPrefix, StringComparison.Ordinal) && typeName.EndsWith(">", StringComparison.Ordinal))
                 return typeName.Substring(friendlyPrefix.Length, typeName.Length - friendlyPrefix.Length - 1);
+
+            const string shortFriendlyPrefix = "Nullable<";
+            if (typeName.StartsWith(shortFriendlyPrefix, StringComparison.Ordinal) && typeName.EndsWith(">", StringComparison.Ordinal))
+                return typeName.Substring(shortFriendlyPrefix.Length, typeName.Length - shortFriendlyPrefix.Length - 1);
 
             return typeName;
         }

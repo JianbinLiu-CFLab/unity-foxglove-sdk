@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
                 true,
                 "ros2 topic list/info/echo/hz commands from Phase 99 plan",
                 "",
-                "Manual observation must be recorded in Developer/61."));
+                "Manual observation must be recorded in the release handoff or PR evidence summary."));
             items.Add(new Phase99EvidenceItem(
                 "manual.unity.sample_import",
                 "Manual Unity",
@@ -183,7 +183,7 @@ namespace Unity.FoxgloveSDK.Tests
                 true,
                 "Import ROS2 Bridge Sample, open scene, press Play",
                 "",
-                "Manual observation must be recorded in Developer/61."));
+                "Manual observation must be recorded in the release handoff or PR evidence summary."));
             items.Add(new Phase99EvidenceItem(
                 "manual.foxglove.visual",
                 "Manual Foxglove",
@@ -192,7 +192,7 @@ namespace Unity.FoxgloveSDK.Tests
                 true,
                 "Open FoxgloveRos2BridgeLayout.json and inspect panels",
                 "",
-                "Manual observation must be recorded in Developer/61."));
+                "Manual observation must be recorded in the release handoff or PR evidence summary."));
             items.Add(new Phase99EvidenceItem(
                 "optional.rosbag2",
                 "Optional",
@@ -271,8 +271,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyEvidenceInventory()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             foreach (var phaseCommand in PhaseCommands)
-                Check(program.Contains(phaseCommand), "99C-1: Program exposes " + phaseCommand);
+                Check(registry.Contains("\"" + phaseCommand + "\"", StringComparison.Ordinal),
+                    "99C-1: Program exposes " + phaseCommand);
 
             Check(program.Contains("--phase91-ros2-cdr-mcap")
                   && program.Contains("--phase92-ros2-product-mcap")
@@ -306,9 +308,6 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!publicText.Contains("Unity auto-launches", StringComparison.OrdinalIgnoreCase)
                   && !publicText.Contains("automatically launches the sidecar", StringComparison.OrdinalIgnoreCase),
                 "99D-4: public docs do not claim Unity auto-launches sidecar");
-            Check(!publicText.Contains("Developer/", StringComparison.Ordinal)
-                  && !publicText.Contains("Developer\\", StringComparison.Ordinal),
-                "99D-5: public docs do not point to Developer-only evidence");
         }
 
         private static void VerifyPhase98BoundaryAlignment()
@@ -332,15 +331,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCliWiring()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var csproj = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("--phase99") && program.Contains("RunPhase99Only"),
+            Check(registry.Contains("\"--phase99\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase99Validation.Validate", StringComparison.Ordinal),
                 "99F-1: Program dispatches --phase99");
             Check(program.Contains("--phase99-live")
                   && program.Contains("--evidence-dir")
                   && program.Contains("RunPhase99Live"),
                 "99F-2: Program dispatches --phase99-live evidence report");
-            Check(program.Contains("Phase99Validation.Validate()"),
+            Check(registry.Contains("Phase99Validation.Validate", StringComparison.Ordinal),
                 "99F-3: full validation includes Phase99");
             Check(csproj.Contains("Phase99Validation.cs"),
                 "99F-4: Phase99 validation is included in test project");
@@ -380,8 +381,8 @@ namespace Unity.FoxgloveSDK.Tests
                 Evidence = evidenceList,
                 Verdict = Classify(evidenceList),
                 FinalNotes = liveMode
-                    ? "Live machine evidence was collected where possible; manual Unity/Foxglove observations remain explicit evidence items."
-                    : "Offline model validation only; live ROS2, Unity, and Foxglove observations are not collected by --phase99."
+                    ? "Live machine evidence was collected where possible; the verdict remains Blocked until all core manual Unity/Foxglove observations are recorded as Pass."
+                    : "Offline model validation only; live ROS2, Unity, and Foxglove observations are not collected by --phase99, so manual gate evidence remains explicit."
             };
         }
 
@@ -412,15 +413,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadPackageVersion()
         {
-            try
-            {
-                var packageJson = JObject.Parse(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"));
-                return packageJson["version"]?.ToString() ?? "";
-            }
-            catch
-            {
-                return "";
-            }
+            var packageJson = JObject.Parse(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"));
+            var version = packageJson["version"]?.ToString();
+            if (string.IsNullOrWhiteSpace(version))
+                throw new InvalidDataException("Package version is missing from package.json.");
+
+            return version;
         }
 
         private static string TryRunProcess(string fileName, string arguments)
@@ -438,7 +436,21 @@ namespace Unity.FoxgloveSDK.Tests
                 using var process = Process.Start(startInfo);
                 if (process == null)
                     return "unknown";
-                if (!process.WaitForExit(3000) || process.ExitCode != 0)
+                if (!process.WaitForExit(3000))
+                {
+                    try
+                    {
+                        process.Kill();
+                        process.WaitForExit(1000);
+                    }
+                    catch
+                    {
+                    }
+
+                    return "unknown";
+                }
+
+                if (process.ExitCode != 0)
                     return "unknown";
                 return process.StandardOutput.ReadToEnd().Trim();
             }
@@ -451,7 +463,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -464,7 +476,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
     }
 

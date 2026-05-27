@@ -156,8 +156,9 @@ public class ROS2Node : IDisposable
             if (Ros2cs.Ok())
                 Ros2cs.RemoveNode(node);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Debug.LogWarning("Failed to remove ROS2 node '" + name + "' during dispose: " + exception.Message);
         }
         finally
         {

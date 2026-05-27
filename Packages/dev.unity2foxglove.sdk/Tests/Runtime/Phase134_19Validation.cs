@@ -24,6 +24,10 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyManifestPinsArtifactHashes();
             VerifyInstallerChecksHashesBeforeMovingDll();
             VerifyInspectorSurfacesPinnedHashes();
+            VerifyOpenH264ProcessOutputIsDrainedBeforeWait();
+            VerifyInstallerRunsOffInspectorGuiPath();
+            VerifyCameraEditorIsNullSafeAndLabelChecked();
+            VerifyEditorCleanupFindings();
 
             Console.WriteLine($"Phase134_19Validation: PASS ({_passed} checks)");
         }
@@ -111,6 +115,63 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("Compressed SHA256", StringComparison.Ordinal)
                   && editor.Contains("DLL SHA256", StringComparison.Ordinal),
                 "134-19-D1: OpenH264 install UI surfaces pinned SHA256 values");
+        }
+
+        private static void VerifyOpenH264ProcessOutputIsDrainedBeforeWait()
+        {
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            Check(installer.Contains("FoxgloveEditorProcessRunner.Run", StringComparison.Ordinal)
+                  && !installer.Contains("process.StandardOutput.ReadToEnd();", StringComparison.Ordinal),
+                "134-19-E1: OpenH264 installer uses shared redirected process runner instead of post-wait pipe reads");
+            Check(!installer.Contains("new WebClient()", StringComparison.Ordinal)
+                  && installer.Contains("new HttpClient()", StringComparison.Ordinal),
+                "134-19-E2: OpenH264 installer uses HttpClient instead of obsolete WebClient");
+
+            var check = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264ExecutableCheck.cs");
+            var stdoutTaskIndex = check.IndexOf("var stdoutTask = ReadAllBytesAsync", StringComparison.Ordinal);
+            var waitIndex = check.IndexOf("process.WaitForExit", StringComparison.Ordinal);
+            Check(stdoutTaskIndex >= 0 && waitIndex > stdoutTaskIndex,
+                "134-19-E3: OpenH264 validation starts stdout/stderr drains before waiting for process exit");
+        }
+
+        private static void VerifyInstallerRunsOffInspectorGuiPath()
+        {
+            var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
+            Check(editor.Contains("Task<OpenH264InstallResult>", StringComparison.Ordinal)
+                  && editor.Contains("Task.Run(() => OpenH264OfficialBinaryInstaller.Install", StringComparison.Ordinal)
+                  && editor.Contains("EditorApplication.update += PollInstallTask", StringComparison.Ordinal),
+                "134-19-F1: OpenH264 install window runs install work in a background task and polls completion on the editor thread");
+            Check(editor.Contains("Installing...", StringComparison.Ordinal)
+                  && editor.Contains("new EditorGUI.DisabledScope(IsInstalling)", StringComparison.Ordinal),
+                "134-19-F2: OpenH264 install window disables duplicate install/cancel actions while work is running");
+        }
+
+        private static void VerifyCameraEditorIsNullSafeAndLabelChecked()
+        {
+            var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
+            Check(editor.Contains("publishRateSource == null", StringComparison.Ordinal)
+                  && editor.Contains("if (publishRateHz != null)", StringComparison.Ordinal),
+                "134-19-G1: camera publish-rate inspector tolerates missing serialized fields");
+            Check(editor.Contains("CameraOutputModeLabels.Length != enumCount", StringComparison.Ordinal)
+                  && editor.Contains("Debug.LogWarning", StringComparison.Ordinal),
+                "134-19-G2: camera output mode labels are checked against the enum length");
+            Check(editor.Contains("ResolveBrowseDefaultDirectory", StringComparison.Ordinal)
+                  && editor.Contains("Directory.Exists(current)", StringComparison.Ordinal),
+                "134-19-G3: camera executable browse dialogs prefer existing directories and fall back to project root");
+        }
+
+        private static void VerifyEditorCleanupFindings()
+        {
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            Check(!installer.Contains("\"2026\", \"2022\", \"2019\"", StringComparison.Ordinal)
+                  && installer.Contains("TryDelete(compressedPath, warnOnFailure: true)", StringComparison.Ordinal)
+                  && installer.Contains("Could not delete temporary OpenH264 installer file", StringComparison.Ordinal),
+                "134-19-H1: OpenH264 installer removes dead VS year probe and cleans successful download cache");
+
+            var replayDrawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
+            Check(replayDrawer.Contains("var seen = new HashSet<string>()", StringComparison.Ordinal)
+                  && replayDrawer.Contains("FoxgloveManagerEditor.ResolveProjectPath(path)", StringComparison.Ordinal),
+                "134-19-H2: replay preflight deduplicates topics with a set and reuses manager editor path helpers");
         }
 
         private static string ReadRepoText(string relativePath)

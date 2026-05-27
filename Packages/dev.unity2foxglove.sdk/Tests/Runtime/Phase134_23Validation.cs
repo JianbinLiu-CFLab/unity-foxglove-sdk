@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySampleMetaCoverage();
             VerifyReleaseValidatorKeepsSampleChecks();
             VerifySampleScriptBoundaries();
+            VerifyDeepWikiSampleFindingsAreClosed();
 
             Console.WriteLine($"Phase134_23Validation: PASS ({_passed} checks)");
         }
@@ -118,6 +119,47 @@ namespace Unity.FoxgloveSDK.Tests
             Check(updateIndex >= 0
                   && pointCloud.IndexOf("new GameObject", updateIndex, StringComparison.Ordinal) < 0,
                 "134-23-E5: ROS2 bridge point cloud helper does not allocate GameObjects in Update");
+        }
+
+        private static void VerifyDeepWikiSampleFindingsAreClosed()
+        {
+            var demoSetup = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs");
+            Check(demoSetup.Contains("_manager.OnClientMessage += OnClientMessageReceived", StringComparison.Ordinal)
+                  && demoSetup.Contains("_manager.OnClientMessage -= OnClientMessageReceived", StringComparison.Ordinal)
+                  && !demoSetup.Contains("Session.OnClientMessage += OnClientMessageReceived", StringComparison.Ordinal),
+                "134-23-F1: Full demo client-message logging uses FoxgloveManager main-thread event");
+            Check(demoSetup.Contains("ClientPayloadPreviewBytes", StringComparison.Ordinal)
+                  && demoSetup.Contains("FormatPayloadPreview", StringComparison.Ordinal)
+                  && demoSetup.Contains("bytes={payload.Length}", StringComparison.Ordinal)
+                  && !demoSetup.Contains("Encoding.UTF8.GetString(payload)", StringComparison.Ordinal),
+                "134-23-F2: Full demo client-message payload logging is bounded and binary-aware");
+            Check(demoSetup.Contains("_manager.RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor", StringComparison.Ordinal),
+                "134-23-F3: Full demo service handler registration uses the FoxgloveManager facade");
+            Check(demoSetup.Contains("WarnInvalidScaleOnce", StringComparison.Ordinal)
+                  && demoSetup.Contains("Debug.LogWarning(\"[FoxgloveDemo] Ignoring invalid /cube/scale parameter", StringComparison.Ordinal),
+                "134-23-F4: Full demo reports invalid scale parameters instead of silently swallowing them");
+            Check(demoSetup.Contains("[SerializeField] private GameObject _cube;", StringComparison.Ordinal)
+                  && demoSetup.Contains("using Player-tagged fallback object", StringComparison.Ordinal),
+                "134-23-F5: Full demo prefers explicit cube assignment and warns on Player-tag fallback");
+
+            var mouseDrag = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/MouseDragCube.cs");
+            Check(mouseDrag.Contains("#if ENABLE_INPUT_SYSTEM", StringComparison.Ordinal)
+                  && mouseDrag.Contains("#elif ENABLE_LEGACY_INPUT_MANAGER", StringComparison.Ordinal)
+                  && mouseDrag.Contains("TryReadMouse", StringComparison.Ordinal),
+                "134-23-F6: MouseDragCube compiles without a hard Input System package dependency");
+
+            var manager = ReadRepoFile(PackageRoot + "/Runtime/Components/FoxgloveManager.cs");
+            Check(manager.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler", StringComparison.Ordinal)
+                  && manager.Contains("_runtime?.RegisterService(descriptor, handler)", StringComparison.Ordinal),
+                "134-23-F7: FoxgloveManager exposes handler-based service registration facade");
+
+            var testLog = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/TestLog.cs");
+            Check(testLog.Contains("_health = 95f + Mathf.Sin", StringComparison.Ordinal),
+                "134-23-F8: Full demo FoxRun health telemetry changes over time");
+
+            var triggerSmoke = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxRunTriggerTelemetrySmoke.cs");
+            Check(triggerSmoke.Contains("public long fixedCounter;", StringComparison.Ordinal),
+                "134-23-F9: FoxRun trigger telemetry heartbeat counter is long-running safe");
         }
 
         private static void VerifySampleDeclaration(JArray samples, string displayName, string expectedPath)

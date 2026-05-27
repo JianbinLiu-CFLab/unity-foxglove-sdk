@@ -30,6 +30,7 @@ namespace ROS2
 /// anyway with more than one since the underlying library can handle multiple init and shutdown calls,
 /// and does node name uniqueness check independently.
 /// </summary>
+[DisallowMultipleComponent]
 public class ROS2UnityComponent : MonoBehaviour
 {
     private ROS2ForUnity ros2forUnity;
@@ -47,13 +48,29 @@ public class ROS2UnityComponent : MonoBehaviour
 
     public bool Ok()
     {
+        bool needsConstruct;
         lock (mutex)
         {
             if (disposed)
                 return false;
-            if (ros2forUnity == null)
+            needsConstruct = ros2forUnity == null;
+        }
+
+        if (needsConstruct)
+        {
+            try
+            {
                 LazyConstruct();
-            return (nodes != null && ros2forUnity.Ok());
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        lock (mutex)
+        {
+            return (!disposed && nodes != null && ros2forUnity != null && ros2forUnity.Ok());
         }
     }
 
@@ -175,7 +192,7 @@ public class ROS2UnityComponent : MonoBehaviour
         {
             lock (mutex)
             {
-                if (!quitting && ros2forUnity != null && nodes != null && ros2forUnity.Ok())
+                if (!quitting && !disposed && ros2forUnity != null && nodes != null && executableActions != null && ros2csNodes != null && ros2forUnity.Ok())
                 {
                     foreach (Action action in executableActions)
                     {
@@ -216,6 +233,7 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private void StartExecutor()
     {
+        Thread threadToStart = null;
         lock (mutex)
         {
             if (initialized || disposed)
@@ -227,8 +245,10 @@ public class ROS2UnityComponent : MonoBehaviour
             executorThread = new Thread(() => Tick());
             executorThread.IsBackground = true;
             initialized = true;
-            executorThread.Start();
+            threadToStart = executorThread;
         }
+
+        threadToStart.Start();
     }
 
     private bool StopExecutor()

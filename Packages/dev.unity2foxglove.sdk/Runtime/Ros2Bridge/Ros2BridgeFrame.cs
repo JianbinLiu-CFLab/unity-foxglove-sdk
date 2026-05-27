@@ -34,6 +34,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         {
             if (string.IsNullOrWhiteSpace(topic) || !topic.StartsWith("/", StringComparison.Ordinal))
                 throw new ArgumentException("ROS 2 bridge topic must be non-empty and start with '/'.", nameof(topic));
+            if (topic.IndexOf('\r') >= 0 || topic.IndexOf('\n') >= 0)
+                throw new ArgumentException("ROS 2 bridge topic must not contain newline characters.", nameof(topic));
             if (string.IsNullOrWhiteSpace(schemaName))
                 throw new ArgumentException("ROS 2 bridge schemaName must be non-empty.", nameof(schemaName));
             if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))

@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// Generates deterministic SDK schema manifest aggregate artifacts under
     /// the configured schema evidence root.
     /// </summary>
-    public static class Unity2FoxgloveSchemaManifestGenerator
+    internal static class Unity2FoxgloveSchemaManifestGenerator
     {
         /// <summary>
         /// Refreshes FoxRun manifest/schema-info artifacts first, then writes

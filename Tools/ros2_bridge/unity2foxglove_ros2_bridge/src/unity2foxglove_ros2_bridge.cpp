@@ -71,6 +71,40 @@ struct RawFrame
   std::vector<uint8_t> payload;
 };
 
+class ScopedFd
+{
+public:
+  explicit ScopedFd(int fd = -1) : fd_(fd) {}
+  ~ScopedFd()
+  {
+    reset();
+  }
+
+  ScopedFd(const ScopedFd &) = delete;
+  ScopedFd & operator=(const ScopedFd &) = delete;
+
+  int get() const
+  {
+    return fd_;
+  }
+
+  bool valid() const
+  {
+    return fd_ >= 0;
+  }
+
+  void reset(int fd = -1)
+  {
+    if (fd_ >= 0) {
+      ::close(fd_);
+    }
+    fd_ = fd;
+  }
+
+private:
+  int fd_;
+};
+
 uint16_t read_u16_le(const uint8_t * data)
 {
   return static_cast<uint16_t>(data[0]) |
@@ -105,6 +139,11 @@ bool has_prefix(const std::string & value, const std::string & prefix)
     std::equal(prefix.begin(), prefix.end(), value.begin());
 }
 
+bool contains_newline(const std::string & value)
+{
+  return value.find('\n') != std::string::npos || value.find('\r') != std::string::npos;
+}
+
 std::string qos_signature(const BridgeFrame & frame)
 {
   return frame.schema_name + "\n" + frame.reliability + "\n" + frame.durability + "\n" +
@@ -136,7 +175,7 @@ std::string resolve_loopback_ipv4(const std::string & host)
 
   in_addr addr {};
   if (inet_pton(AF_INET, host.c_str(), &addr) != 1) {
-    throw std::runtime_error("reject non-loopback host '" + host + "': Phase 94 accepts only IPv4 loopback hosts");
+    throw std::runtime_error("reject non-loopback host '" + host + "': bridge accepts only IPv4 loopback hosts");
   }
 
   const uint32_t host_order = ntohl(addr.s_addr);
@@ -166,9 +205,15 @@ Options parse_args(const std::vector<std::string> & args)
     if (arg == "--host" && i + 1 < args.size()) {
       options.host = args[++i];
     } else if (arg == "--port" && i + 1 < args.size()) {
-      options.port = std::stoi(args[++i]);
+      try {
+        options.port = std::stoi(args[++i]);
+      } catch (const std::exception &) {
+        throw std::runtime_error("--port must be an integer in 1..65535");
+      }
     } else if (arg == "--payload-format" && i + 1 < args.size()) {
       options.payload_format = parse_payload_format(args[++i]);
+    } else if (arg == "--host" || arg == "--port" || arg == "--payload-format") {
+      throw std::runtime_error("missing value for " + arg);
     } else {
       throw std::runtime_error(
               "usage: unity2foxglove_ros2_bridge --host 127.0.0.1 --port 8767 "
@@ -176,7 +221,7 @@ Options parse_args(const std::vector<std::string> & args)
     }
   }
 
-  resolve_loopback_ipv4(options.host);
+  options.host = resolve_loopback_ipv4(options.host);
   if (options.port <= 0 || options.port > 65535) {
     throw std::runtime_error("--port must be in 1..65535");
   }
@@ -264,6 +309,9 @@ bool read_exact(int fd, std::vector<uint8_t> & buffer, size_t count)
     if (received < 0) {
       if (errno == EINTR) {
         continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        throw std::runtime_error("socket read timed out");
       }
       throw std::runtime_error("socket read failed");
     }
@@ -362,7 +410,10 @@ RawFrame read_raw_frame(int fd)
 
 BridgeFrame parse_publish_frame(const RawFrame & raw)
 {
-  const auto op = raw.header.value("op", "publish");
+  if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
+    throw std::runtime_error("reject frame: missing or invalid op");
+  }
+  const auto op = raw.header.at("op").get<std::string>();
   if (op != "publish") {
     throw std::runtime_error("reject frame: unsupported op '" + op + "'");
   }
@@ -393,6 +444,9 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
 
   if (frame.topic.empty() || frame.topic[0] != '/') {
     throw std::runtime_error("reject frame: topic must start with /");
+  }
+  if (contains_newline(frame.topic)) {
+    throw std::runtime_error("reject frame: topic must not contain newline");
   }
   if (!has_prefix(frame.schema_name, "foxglove_msgs/msg/")) {
     throw std::runtime_error("reject frame: schemaName must start with foxglove_msgs/msg/");
@@ -539,12 +593,17 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
   while (rclcpp::ok()) {
     try {
       const auto raw = read_raw_frame(client_fd);
-      const auto op = raw.header.value("op", "publish");
+      if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
+        throw std::runtime_error("reject frame: missing or invalid op");
+      }
+      const auto op = raw.header.at("op").get<std::string>();
       if (op == "health_ping") {
         handle_health_ping(client_fd, raw);
-      } else {
+      } else if (op == "publish") {
         const auto frame = parse_publish_frame(raw);
         bridge.publish(frame);
+      } else {
+        throw std::runtime_error("reject frame: unsupported op '" + op + "'");
       }
       rclcpp::spin_some(node);
     } catch (const std::runtime_error & ex) {
@@ -566,8 +625,7 @@ int main(int argc, char ** argv)
 
   try {
     const auto options = parse_args(non_ros_args);
-    const int listen_fd = create_listen_socket(options.host, options.port);
-    BridgeNode bridge(node, options.payload_format);
+    ScopedFd listen_fd(create_listen_socket(options.host, options.port));
 
     RCLCPP_INFO(
       node->get_logger(),
@@ -576,19 +634,17 @@ int main(int argc, char ** argv)
       options.port);
 
     while (rclcpp::ok()) {
-      const int client_fd = accept_with_timeout(listen_fd);
-      if (client_fd < 0) {
+      ScopedFd client_fd(accept_with_timeout(listen_fd.get()));
+      if (!client_fd.valid()) {
         rclcpp::spin_some(node);
         continue;
       }
 
+      BridgeNode bridge(node, options.payload_format);
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client connected");
-      process_client(client_fd, bridge, node);
-      ::close(client_fd);
+      process_client(client_fd.get(), bridge, node);
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client disconnected");
     }
-
-    ::close(listen_fd);
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
     rclcpp::shutdown();

@@ -32,7 +32,6 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 109: ROS2 For Unity Bidirectional Topic Smoke ===");
             _passed = 0;
 
-            VerifyPrivatePlanIfPresent();
             VerifyFacadeBoundary();
             VerifyManualAdapter();
             VerifySmokeComponent();
@@ -42,22 +41,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTrackedAssetBoundary();
 
             Console.WriteLine($"Phase 109: {_passed} checks passed.");
-        }
-
-        private static void VerifyPrivatePlanIfPresent()
-        {
-            var planPath = Path.Combine(RepoRoot(), "Plan", "109_PHASE109_ROS2_FOR_UNITY_BIDIRECTIONAL_TOPIC_SMOKE_PLAN.md");
-            if (!File.Exists(planPath))
-            {
-                Check(true, "109-A1: private Phase109 plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = File.ReadAllText(planPath);
-            Check(plan.Contains("ROS2 For Unity Bidirectional Topic Smoke", StringComparison.Ordinal)
-                  && plan.Contains("Do not use WSL2 NAT as the GREEN gate", StringComparison.Ordinal)
-                  && plan.Contains("optional package Runtime facade", StringComparison.Ordinal),
-                "109-A1: private Phase109 plan records the current smoke and boundary contract");
         }
 
         private static void VerifyFacadeBoundary()
@@ -71,9 +54,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "109-B2: optional package factory remains unavailable by default");
 
             var offenders = TextFiles(OptionalRuntime)
-                .SelectMany(path => OptionalRuntimeForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return OptionalRuntimeForbiddenTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Rel(path) + " -> " + token);
+                })
                 .ToList();
 
             Check(offenders.Count == 0,
@@ -95,8 +82,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "109-C2: manual adapter exposes a demo-project host factory");
             Check(combined.Contains(Define, StringComparison.Ordinal),
                 "109-C3: manual adapter is guarded by the R2FU scripting define");
-            Check(AllR2fuReferencesAreGuarded(factory) && AllR2fuReferencesAreGuarded(context),
-                "109-C4: manual adapter R2FU references stay inside compile guard");
+            var factoryGuarded = AllR2fuReferencesAreGuarded(factory, out var factoryGuardError);
+            var contextGuarded = AllR2fuReferencesAreGuarded(context, out var contextGuardError);
+            Check(factoryGuarded && contextGuarded,
+                "109-C4: manual adapter R2FU references stay inside compile guard"
+                + FirstGuardError(factoryGuardError, contextGuardError));
             Check(combined.Contains("typeof(T) == typeof(std_msgs.msg.String)", StringComparison.Ordinal)
                   && combined.Contains("Unsupported Phase109 ROS2 message type", StringComparison.Ordinal),
                 "109-C5: manual adapter supports only std_msgs.msg.String and rejects other message types");
@@ -133,9 +123,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && text.Contains("_lastReceived", StringComparison.Ordinal)
                   && text.Contains("_statusMessage", StringComparison.Ordinal),
                 "109-D5: smoke component exposes counters and status fields");
-            Check(text.Contains(Define, StringComparison.Ordinal)
-                  && AllR2fuReferencesAreGuarded(text),
-                "109-D6: smoke component guards R2FU references behind the scripting define");
+            var smokeContainsDefine = text.Contains(Define, StringComparison.Ordinal);
+            var smokeGuarded = AllR2fuReferencesAreGuarded(text, out var smokeGuardError);
+            Check(smokeContainsDefine && smokeGuarded,
+                "109-D6: smoke component guards R2FU references behind the scripting define" + smokeGuardError);
             var subscriptionIndex = text.IndexOf("CreateSubscription<std_msgs.msg.String>", StringComparison.Ordinal);
             var publisherIndex = text.IndexOf("CreatePublisher<std_msgs.msg.String>", StringComparison.Ordinal);
             Check(subscriptionIndex >= 0 && publisherIndex >= 0 && subscriptionIndex < publisherIndex,
@@ -154,9 +145,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var coreHits = coreProductionFiles
                 .SelectMany(ExistingTextFilesOrSingleFile)
-                .SelectMany(path => CoreProductionForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return CoreProductionForbiddenTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Rel(path) + " -> " + token);
+                })
                 .ToList();
 
             Check(coreHits.Count == 0,
@@ -166,13 +161,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("--phase109", StringComparison.Ordinal)
-                  && program.Contains("RunPhase109Only", StringComparison.Ordinal)
-                  && program.Contains("Phase109Validation.Validate()", StringComparison.Ordinal),
-                "109-F1: Program.cs wires --phase109");
+            Check(registry.Contains("--phase109", StringComparison.Ordinal)
+                  && registry.Contains("Phase109Validation.Validate", StringComparison.Ordinal),
+                "109-F1: registry wires --phase109");
             Check(project.Contains("Phase109Validation.cs", StringComparison.Ordinal),
                 "109-F2: test project compiles Phase109Validation");
         }
@@ -227,7 +221,7 @@ namespace Unity.FoxgloveSDK.Tests
             };
         }
 
-        private static bool AllR2fuReferencesAreGuarded(string text)
+        private static bool AllR2fuReferencesAreGuarded(string text, out string error)
         {
             var tokens = new[]
             {
@@ -236,57 +230,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "ROS2Node",
                 "IPublisher<",
                 "ISubscription<",
-                "std_msgs.msg.String",
                 "std_msgs"
             };
 
-            var stack = new Stack<bool>();
-            var lines = text.Replace("\r\n", "\n").Split('\n');
-            for (var i = 0; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                var trimmed = line.TrimStart();
+            return PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(text, Define, tokens, out error);
+        }
 
-                if (trimmed.StartsWith("#if ", StringComparison.Ordinal))
-                {
-                    stack.Push(trimmed.Contains(Define, StringComparison.Ordinal));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#elif ", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    stack.Push(trimmed.Contains(Define, StringComparison.Ordinal));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#else", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    stack.Push(false);
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#endif", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    continue;
-                }
-
-                if (trimmed.StartsWith("//", StringComparison.Ordinal))
-                    continue;
-
-                if (tokens.Any(token => line.Contains(token, StringComparison.Ordinal))
-                    && !stack.Any(guarded => guarded))
-                {
-                    throw new InvalidOperationException("Unguarded R2FU reference on line " + (i + 1) + ": " + trimmed);
-                }
-            }
-
-            return true;
+        private static string FirstGuardError(params string[] errors)
+        {
+            return errors.FirstOrDefault(error => !string.IsNullOrEmpty(error)) ?? string.Empty;
         }
 
         private static IEnumerable<string> ExistingTextFilesOrSingleFile(string relativePath)
@@ -311,13 +263,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {
-            if (path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/", StringComparison.Ordinal))
-                return false;
-
-            return path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
-                   || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+            return PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(
+                path,
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64");
         }
 
         private static bool IsOptionalPackageRuntimeBinary(string path)

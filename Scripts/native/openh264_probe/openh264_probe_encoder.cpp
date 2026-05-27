@@ -5,11 +5,14 @@
 // Purpose: OpenH264 helper process for source-built and official-binary flows.
 
 #include "codec_api.h"
+#include "codec_ver.h"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -21,6 +24,13 @@
 
 namespace
 {
+    enum class FrameReadStatus
+    {
+        Frame,
+        EndOfStream,
+        PartialFrame
+    };
+
     struct Options
     {
         int width = 0;
@@ -33,11 +43,13 @@ namespace
 
     using WelsCreateSVCEncoderFn = int (*)(ISVCEncoder**);
     using WelsDestroySVCEncoderFn = void (*)(ISVCEncoder*);
+    using WelsGetCodecVersionFn = OpenH264Version (*)();
 
     struct OpenH264Api
     {
         WelsCreateSVCEncoderFn createEncoder = nullptr;
         WelsDestroySVCEncoderFn destroyEncoder = nullptr;
+        WelsGetCodecVersionFn getCodecVersion = nullptr;
 #ifdef _WIN32
         HMODULE module = nullptr;
 #endif
@@ -57,8 +69,13 @@ namespace
             return false;
 
         char* end = nullptr;
+        errno = 0;
         const long parsed = std::strtol(value, &end, 10);
-        if (end == value || *end != '\0')
+        if (end == value
+            || *end != '\0'
+            || errno == ERANGE
+            || parsed < static_cast<long>(std::numeric_limits<int>::min())
+            || parsed > static_cast<long>(std::numeric_limits<int>::max()))
             return false;
 
         output = static_cast<int>(parsed);
@@ -154,7 +171,8 @@ namespace
 
         api.createEncoder = reinterpret_cast<WelsCreateSVCEncoderFn>(GetProcAddress(api.module, "WelsCreateSVCEncoder"));
         api.destroyEncoder = reinterpret_cast<WelsDestroySVCEncoderFn>(GetProcAddress(api.module, "WelsDestroySVCEncoder"));
-        if (api.createEncoder == nullptr || api.destroyEncoder == nullptr)
+        api.getCodecVersion = reinterpret_cast<WelsGetCodecVersionFn>(GetProcAddress(api.module, "WelsGetCodecVersion"));
+        if (api.createEncoder == nullptr || api.destroyEncoder == nullptr || api.getCodecVersion == nullptr)
         {
             std::cerr << "GetProcAddress failed for OpenH264 encoder entry points." << std::endl;
             return false;
@@ -162,11 +180,41 @@ namespace
 
         return true;
 #else
-        (void)options;
+        if (!options.openh264Dll.empty())
+        {
+            std::cerr
+                << "--openh264-dll is ignored on non-Windows builds; "
+                << "the helper uses linked OpenH264 symbols."
+                << std::endl;
+        }
         api.createEncoder = &WelsCreateSVCEncoder;
         api.destroyEncoder = &WelsDestroySVCEncoder;
+        api.getCodecVersion = &WelsGetCodecVersion;
         return true;
 #endif
+    }
+
+    bool ValidateOpenH264Version(const OpenH264Api& api)
+    {
+        if (api.getCodecVersion == nullptr)
+            return false;
+
+        const OpenH264Version version = api.getCodecVersion();
+        if (version.uMajor == OPENH264_MAJOR
+            && version.uMinor == OPENH264_MINOR
+            && version.uRevision == OPENH264_REVISION)
+        {
+            return true;
+        }
+
+        std::cerr
+            << "Unsupported OpenH264 runtime version. expected="
+            << OPENH264_MAJOR << "." << OPENH264_MINOR << "." << OPENH264_REVISION
+            << " actual="
+            << version.uMajor << "." << version.uMinor << "." << version.uRevision
+            << "." << version.uReserved
+            << std::endl;
+        return false;
     }
 
     void WriteLittleEndianLength(uint32_t length)
@@ -181,20 +229,20 @@ namespace
         std::cout.write(reinterpret_cast<const char*>(bytes), 4);
     }
 
-    bool ReadFrame(std::vector<uint8_t>& frame)
+    FrameReadStatus ReadFrame(std::vector<uint8_t>& frame)
     {
         std::cin.read(reinterpret_cast<char*>(frame.data()), static_cast<std::streamsize>(frame.size()));
         const std::streamsize read = std::cin.gcount();
         if (read == 0 && std::cin.eof())
-            return false;
+            return FrameReadStatus::EndOfStream;
 
         if (read != static_cast<std::streamsize>(frame.size()))
         {
             std::cerr << "Partial I420 frame received before EOF. bytes=" << read << std::endl;
-            std::exit(3);
+            return FrameReadStatus::PartialFrame;
         }
 
-        return true;
+        return FrameReadStatus::Frame;
     }
 
     void AppendLayerNalUnits(const SLayerBSInfo& layer, std::vector<uint8_t>& accessUnit)
@@ -205,6 +253,13 @@ namespace
             const int length = layer.pNalLengthInByte[nal];
             if (length <= 0)
                 continue;
+
+            if (length > std::numeric_limits<int>::max() - offset
+                || accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max() - static_cast<uint32_t>(length)))
+            {
+                std::cerr << "OpenH264 access unit exceeds helper output length limit." << std::endl;
+                std::exit(7);
+            }
 
             accessUnit.insert(
                 accessUnit.end(),
@@ -232,6 +287,12 @@ namespace
         if (accessUnit.empty())
             return;
 
+        if (accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+        {
+            std::cerr << "OpenH264 access unit exceeds uint32 length prefix." << std::endl;
+            std::exit(7);
+        }
+
         WriteLittleEndianLength(static_cast<uint32_t>(accessUnit.size()));
         std::cout.write(reinterpret_cast<const char*>(accessUnit.data()), static_cast<std::streamsize>(accessUnit.size()));
         std::cout.flush();
@@ -255,6 +316,8 @@ int main(int argc, char** argv)
     OpenH264Api api;
     if (!LoadOpenH264(options, api))
         return 4;
+    if (!ValidateOpenH264Version(api))
+        return 5;
 
     ISVCEncoder* encoder = nullptr;
     if (api.createEncoder(&encoder) != 0 || encoder == nullptr)
@@ -299,9 +362,19 @@ int main(int argc, char** argv)
     const size_t frameBytes = static_cast<size_t>(options.width) * static_cast<size_t>(options.height) * 3 / 2;
     std::vector<uint8_t> frame(frameBytes);
     uint64_t framesEncoded = 0;
+    int exitCode = 0;
 
-    while (ReadFrame(frame))
+    while (true)
     {
+        const FrameReadStatus readStatus = ReadFrame(frame);
+        if (readStatus == FrameReadStatus::EndOfStream)
+            break;
+        if (readStatus == FrameReadStatus::PartialFrame)
+        {
+            exitCode = 3;
+            break;
+        }
+
         SSourcePicture picture;
         std::memset(&picture, 0, sizeof(picture));
         picture.iPicWidth = options.width;
@@ -329,8 +402,11 @@ int main(int argc, char** argv)
         ++framesEncoded;
     }
 
-    std::cerr << "OpenH264 probe helper finished. frames=" << framesEncoded << std::endl;
+    if (exitCode == 0)
+        std::cerr << "OpenH264 probe helper finished. frames=" << framesEncoded << std::endl;
+    else
+        std::cerr << "OpenH264 probe helper failed with exit " << exitCode << " frames=" << framesEncoded << std::endl;
     encoder->Uninitialize();
     api.destroyEncoder(encoder);
-    return 0;
+    return exitCode;
 }

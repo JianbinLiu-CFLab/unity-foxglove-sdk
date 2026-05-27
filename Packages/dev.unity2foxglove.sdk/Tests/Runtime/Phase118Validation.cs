@@ -185,12 +185,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase118", StringComparison.Ordinal)
-                  && program.Contains("RunPhase118Only", StringComparison.Ordinal)
-                  && program.Contains("Phase118Validation.Validate()", StringComparison.Ordinal),
-                "118-D1: Program.cs wires --phase118");
+            Check(registry.Contains("--phase118", StringComparison.Ordinal)
+                  && registry.Contains("Phase118Validation.Validate", StringComparison.Ordinal),
+                "118-D1: PhaseValidationRegistry wires --phase118");
             Check(project.Contains("Phase118Validation.cs", StringComparison.Ordinal),
                 "118-D2: runtime test project compiles Phase118Validation");
         }
@@ -279,23 +278,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

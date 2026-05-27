@@ -40,10 +40,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public Ros2BridgeHealthReport Run(Ros2BridgeHealthOptions options)
         {
             options ??= new Ros2BridgeHealthOptions();
+            ThrowIfCancellationRequested(options);
             var checks = new List<Ros2BridgeHealthCheckResult>();
             var rosDistro = string.Empty;
 
             checks.Add(CheckConfiguration(options));
+            ThrowIfCancellationRequested(options);
             if (checks.Last().Status == Ros2BridgeHealthStatus.Fail)
             {
                 return BuildReport(options, checks, rosDistro);
@@ -61,7 +63,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
 
             var executable = options.EffectiveRos2Executable;
+            ThrowIfCancellationRequested(options);
             var cli = RunRos2Command(
+                options,
                 Ros2CliId,
                 "ROS2 CLI",
                 executable,
@@ -83,7 +87,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 rosDistro = Environment.GetEnvironmentVariable("ROS_DISTRO") ?? string.Empty;
                 checks.Add(CheckRosDistro(rosDistro));
 
+                ThrowIfCancellationRequested(options);
                 var package = RunRos2Command(
+                    options,
                     FoxgloveMsgsId,
                     "foxglove_msgs",
                     executable,
@@ -100,6 +106,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
 
             checks.Add(Skipped(SidecarSelfId, "Sidecar Self Report", "Optional sidecar executable self-report is not implemented."));
+            ThrowIfCancellationRequested(options);
             checks.Add(CheckSidecarPing(options));
             return BuildReport(options, checks, rosDistro);
         }
@@ -112,10 +119,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 Ros2BridgeTcpClient.ValidateLoopbackHost(options.Host);
                 if (options.Port <= 0 || options.Port > 65535)
                     throw new ArgumentOutOfRangeException(nameof(options.Port), "ROS2 Bridge port must be in 1..65535.");
-                if (FoxgloveRos2MsgSchemaCatalog.SourceFileCount != 41
-                    || FoxgloveRos2MsgSchemaCatalog.Entries.Count != 41)
+                if (FoxgloveRos2MsgSchemaCatalog.SourceFileCount <= 0
+                    || FoxgloveRos2MsgSchemaCatalog.Entries.Count <= 0
+                    || FoxgloveRos2MsgSchemaCatalog.SourceFileCount != FoxgloveRos2MsgSchemaCatalog.Entries.Count)
                 {
-                    throw new InvalidOperationException("Bundled foxglove_msgs schema catalog must contain 41 entries.");
+                    throw new InvalidOperationException(
+                        "Bundled foxglove_msgs schema catalog source/count mismatch: sources="
+                        + FoxgloveRos2MsgSchemaCatalog.SourceFileCount
+                        + " entries="
+                        + FoxgloveRos2MsgSchemaCatalog.Entries.Count
+                        + ".");
                 }
 
                 stopwatch.Stop();
@@ -133,7 +146,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     ConfigId,
                     "Configuration",
                     Ros2BridgeHealthStatus.Fail,
-                    ex.Message,
+                    IsExpectedConfigurationException(ex)
+                        ? ex.Message
+                        : "Unexpected exception during configuration check: " + ex.GetType().Name + " — " + ex.Message,
                     "Use a loopback host such as 127.0.0.1 and a port in 1..65535.",
                     durationMs: stopwatch.ElapsedMilliseconds);
             }
@@ -166,13 +181,18 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var missing = new List<string>();
             for (var i = 0; i < entries.Count; i++)
             {
+                ThrowIfCancellationRequested(options);
                 var schemaName = entries[i].SchemaName;
                 options.Progress?.Invoke(new Ros2BridgeHealthProgress(
                     InterfacesId,
                     $"Checking interfaces {i + 1}/{entries.Count}",
                     i,
                     entries.Count));
-                var result = _commandRunner.Run(executable, "interface show " + schemaName, options.CommandTimeoutMs);
+                var result = _commandRunner.Run(
+                    executable,
+                    "interface show " + schemaName,
+                    options.CommandTimeoutMs,
+                    options.CancellationToken);
                 if (!result.Succeeded)
                     missing.Add(schemaName + " (" + CompactFailure(result) + ")");
             }
@@ -206,7 +226,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private Ros2BridgeHealthCheckResult CheckSidecarPing(Ros2BridgeHealthOptions options)
         {
-            var result = _healthProbe.Ping(options.Host, options.Port, options.SidecarTimeoutMs);
+            var result = _healthProbe.Ping(
+                options.Host,
+                options.Port,
+                options.SidecarTimeoutMs,
+                options.CancellationToken);
             if (result.Succeeded)
             {
                 var suffix = string.IsNullOrWhiteSpace(result.SidecarVersion)
@@ -231,6 +255,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         }
 
         private Ros2BridgeHealthCheckResult RunRos2Command(
+            Ros2BridgeHealthOptions options,
             string id,
             string title,
             string executable,
@@ -241,7 +266,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             string failCommand = "ros2 --help",
             bool warnOnLaunchFailure = false)
         {
-            var result = _commandRunner.Run(executable, arguments, timeoutMs);
+            timeoutMs = Math.Max(1, timeoutMs);
+            var result = _commandRunner.Run(executable, arguments, timeoutMs, options.CancellationToken);
             if (result.Succeeded)
             {
                 return new Ros2BridgeHealthCheckResult(
@@ -295,6 +321,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                && !result.TimedOut
                && result.ExitCode == -1
                && !string.IsNullOrWhiteSpace(result.Error);
+
+        private static void ThrowIfCancellationRequested(Ros2BridgeHealthOptions options)
+            => options?.CancellationToken.ThrowIfCancellationRequested();
+
+        private static bool IsExpectedConfigurationException(Exception ex)
+            => ex is ArgumentException
+               || ex is InvalidOperationException;
 
         private static string CompactFailure(Ros2BridgeCommandResult result)
         {

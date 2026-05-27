@@ -114,9 +114,6 @@ public sealed class Phase132StandardCameraSource : MonoBehaviour
             }
         }
 
-        if (data.Length != expectedLength)
-            throw new InvalidOperationException("Image data.Length must equal height * step.");
-
         return new sensor_msgs.msg.Image
         {
             Header = Phase132StandardMessagesCommon.CreateHeader(FrameId, sec, nanosec),

@@ -16,15 +16,17 @@ The repository already ignores `third-party/`, so OpenH264 source and build outp
 
 OpenH264's documented Windows source build path may require MSVC Build Tools or Visual Studio C++ workload, Cygwin `make`, and NASM. If those tools are missing, record Phase 80 as `BLOCKED` with the exact missing tool.
 
-For Phase 81 and newer, the helper dynamically loads Cisco's OpenH264 library on Windows through `--openh264-dll <path>`. The helper still needs OpenH264 headers at compile time, but it no longer needs to link against `openh264.lib` on Windows.
+For Phase 81 and newer, the helper dynamically loads Cisco's OpenH264 library on Windows through `--openh264-dll <path>`. The helper still needs the package-pinned OpenH264 v2.6.0 headers at compile time, but it no longer needs to link against `openh264.lib` on Windows.
 
-After OpenH264 source is available, compile `openh264_probe_encoder.cpp` against the local headers. The exact include path can vary by OpenH264 build route, so adjust it to the local checkout.
+On non-Windows builds the helper links against OpenH264 symbols at build time, so `--openh264-dll` is ignored there. The runtime library is still validated through `WelsGetCodecVersion` and must report OpenH264 2.6.0.
+
+After OpenH264 source is available, compile `openh264_probe_encoder.cpp` against the package-pinned headers. This keeps manual helper builds aligned with the automatic installer source path.
 
 Example shape:
 
 ```powershell
 cl /EHsc /std:c++17 `
-  /I third-party\openh264\codec\api\wels `
+  /I Packages\dev.unity2foxglove.sdk\Editor\Native\OpenH264\v2.6.0\include\wels `
   Scripts\native\openh264_probe\openh264_probe_encoder.cpp `
   /OUT:third-party\openh264_probe_encoder.exe
 ```

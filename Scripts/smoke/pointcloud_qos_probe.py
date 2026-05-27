@@ -60,6 +60,11 @@ WIRE_FIXED32 = 5
 EXIT_SUCCESS = 0
 EXIT_TOPIC_NOT_FOUND = 3
 EXIT_NO_MESSAGES = 4
+EXIT_DECODE_FAILURE = 6
+
+
+class TopicNotFoundError(RuntimeError):
+    """Raised when the requested topic is absent from advertise frames."""
 
 
 @dataclass(frozen=True)
@@ -477,8 +482,8 @@ async def run(args: argparse.Namespace) -> int:
         result = "PASS"
         exit_code = EXIT_SUCCESS
     else:
-        result = "MEASURED"
-        exit_code = EXIT_SUCCESS
+        result = "DECODE_FAILURE"
+        exit_code = EXIT_DECODE_FAILURE
 
     print_report(measurement, args, result)
     return exit_code
@@ -508,10 +513,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--advertise-timeout-seconds", type=float, default=DEFAULT_ADVERTISE_TIMEOUT_SECONDS)
     parser.add_argument("--idle-timeout-seconds", type=float, default=DEFAULT_IDLE_TIMEOUT_SECONDS)
     return parser.parse_args()
-
-
-class TopicNotFoundError(RuntimeError):
-    """Raised when the requested topic is absent from advertise frames."""
 
 
 def main() -> int:

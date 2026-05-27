@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -25,7 +26,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyPoseArbiter();
             VerifyReplayContextForwardingSource();
             VerifyAdapterArbitrationBoundarySource();
-            VerifyEvidenceNote();
 
             Console.WriteLine($"Phase 115D: {_passed} checks passed.");
         }
@@ -223,29 +223,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(adapter.Contains("Pose ownership contention skipped", StringComparison.Ordinal)
                   && adapter.Contains("Debug.Log(", StringComparison.Ordinal)
-                  && !adapter.Contains("Debug.LogWarning(\r\n                    $\"[Foxglove Replay] Pose ownership contention skipped", StringComparison.Ordinal)
+                  && !Regex.IsMatch(
+                      adapter,
+                      @"Debug\.LogWarning\s*\([\s\S]{0,200}Pose ownership contention skipped",
+                      RegexOptions.CultureInvariant)
                   && adapter.Contains("topic='{context.Topic}'", StringComparison.Ordinal)
                   && adapter.Contains("schema='{context.SchemaName}'", StringComparison.Ordinal),
                 "115D-E5: pose contention diagnostics are informational and identify the skipped source");
-        }
-
-        private static void VerifyEvidenceNote()
-        {
-            var notePath = Path.Combine(RepoRoot, "Developer", "Phase115D_Replay_Pose_Ownership_Acceptance.md");
-            if (!File.Exists(notePath))
-            {
-                Console.WriteLine("[INFO] 115D-F1: local Developer acceptance note is absent; automated behavior checks remain enforced.");
-                return;
-            }
-
-            Check(true, "115D-F1: replay pose ownership acceptance note exists");
-
-            var note = File.ReadAllText(notePath);
-            Check(note.Contains("Root-Cause Trace", StringComparison.Ordinal)
-                  && note.Contains("After-Fix Trace", StringComparison.Ordinal)
-                  && note.Contains("Manual Unity Acceptance", StringComparison.Ordinal)
-                  && note.Contains("FoxRun-only schema identity boundary", StringComparison.Ordinal),
-                "115D-F2: acceptance note records trace evidence and schema boundary");
         }
 
         private static string ReadRepoText(string relativePath)

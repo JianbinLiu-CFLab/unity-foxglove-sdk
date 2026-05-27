@@ -54,6 +54,10 @@ EXIT_TOPIC_NOT_FOUND = 3
 EXIT_NO_MESSAGES = 4
 
 
+class TopicNotFoundError(RuntimeError):
+    """Raised when the requested topic is absent from advertise frames."""
+
+
 @dataclass(frozen=True)
 class ChannelInfo:
     """Foxglove advertise metadata for one channel."""
@@ -401,10 +405,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--advertise-timeout-seconds", type=float, default=DEFAULT_ADVERTISE_TIMEOUT_SECONDS)
     parser.add_argument("--idle-timeout-seconds", type=float, default=DEFAULT_IDLE_TIMEOUT_SECONDS)
     return parser.parse_args()
-
-
-class TopicNotFoundError(RuntimeError):
-    """Raised when the requested topic is absent from advertise frames."""
 
 
 def main() -> int:

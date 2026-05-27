@@ -10,3 +10,6 @@ FOXRUN007 | FoxRun | Warning | Generic FoxRun declaring type or member type may 
 FOXRUN008 | FoxRun | Error | FoxRun topic must be absolute and start with '/'.
 FOXRUN009 | FoxRun | Warning | RateHz <= 0 disables scheduled publishing unless trigger-only.
 FOXRUN010 | FoxRun | Warning | Binary/blob values are unsupported in the FoxRun contract path.
+FOXRUN011 | FoxRun | Error | FoxRun declaring class name is required.
+FOXRUN012 | FoxRun | Error | FoxRun member name is required.
+FOXRUN013 | FoxRun | Error | FoxRun publish mode must be between 0 and 3.

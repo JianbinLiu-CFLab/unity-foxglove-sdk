@@ -20,7 +20,21 @@ if (-not (Get-Command ros2 -ErrorAction SilentlyContinue)) {
     throw "ros2 was not found. Source your ROS2 environment before running this script."
 }
 
-& ros2 pkg prefix foxglove_msgs | Out-Null
+function Invoke-Ros2Checked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Description,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    & ros2 @Arguments | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw ("{0} failed with exit code {1}: ros2 {2}" -f $Description, $LASTEXITCODE, ($Arguments -join " "))
+    }
+}
+
+Invoke-Ros2Checked -Description "foxglove_msgs package lookup" -Arguments @("pkg", "prefix", "foxglove_msgs")
 
 $schemas = @(
     "foxglove_msgs/msg/FrameTransform",
@@ -33,7 +47,7 @@ $schemas = @(
 )
 
 foreach ($schema in $schemas) {
-    & ros2 interface show $schema | Out-Null
+    Invoke-Ros2Checked -Description "ROS2 interface check for $schema" -Arguments @("interface", "show", $schema)
 }
 
 Write-Host "Preflight passed for sample schemas."
@@ -44,4 +58,7 @@ Write-Host "ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.
 
 if ($Run) {
     & ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py "host:=$HostName" "port:=$Port" "payload_format:=$PayloadFormat"
+    if ($LASTEXITCODE -ne 0) {
+        throw ("ROS2 Bridge launch failed with exit code {0}." -f $LASTEXITCODE)
+    }
 }

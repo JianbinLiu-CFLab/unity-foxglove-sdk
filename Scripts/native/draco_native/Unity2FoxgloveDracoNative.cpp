@@ -4,6 +4,10 @@
 // Module: Scripts/native/draco_native
 // Purpose: Windows native plugin entry points for Draco point-cloud encoding.
 
+#ifndef _WIN32
+#error "Unity2FoxgloveDracoNative is a Windows-only Unity native plugin build target."
+#endif
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>

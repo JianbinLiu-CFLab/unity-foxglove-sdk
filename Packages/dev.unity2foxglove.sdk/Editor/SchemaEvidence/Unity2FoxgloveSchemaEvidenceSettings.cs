@@ -109,7 +109,8 @@ namespace Unity.FoxgloveSDK.Editor
             if (!SyncSerializedManager(serialized))
                 return;
 
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Undo.RecordObject(manager, "Sync Unity2Foxglove Schema Evidence Settings");
+            serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(manager);
         }
 

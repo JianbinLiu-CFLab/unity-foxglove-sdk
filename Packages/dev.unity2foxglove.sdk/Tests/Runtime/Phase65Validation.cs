@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PlaybackControlResponseTargetsRequestingClient()
         {
             var transport = new Phase65FakeTransport();
-            var session = CreatePlaybackSession(transport);
+            using var session = CreatePlaybackSession(transport);
 
             transport.Connect(DesktopClientId);
             transport.Connect(WebClientId);
@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PlaybackControlRequestIdsDoNotCrossClients()
         {
             var transport = new Phase65FakeTransport();
-            var session = CreatePlaybackSession(transport);
+            using var session = CreatePlaybackSession(transport);
 
             transport.Connect(DesktopClientId);
             transport.Connect(WebClientId);
@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PlaybackControlBurstUsesTargetedControlFrames()
         {
             var transport = new Phase65FakeTransport();
-            var session = CreatePlaybackSession(transport);
+            using var session = CreatePlaybackSession(transport);
 
             transport.Connect(DesktopClientId);
             transport.Connect(WebClientId);
@@ -127,15 +127,23 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static byte[] BuildPlaybackControlFrame(string requestId, bool hasSeek)
         {
+            const int opcodeOffset = 0;
+            const int commandOffset = 1;
+            const int speedOffset = 2;
+            const int hasSeekOffset = 6;
+            const int seekTimeOffset = 7;
+            const int requestIdLengthOffset = 15;
+            const int requestIdPayloadOffset = 19;
+
             var id = Encoding.UTF8.GetBytes(requestId ?? string.Empty);
-            var frame = new byte[19 + id.Length];
-            frame[0] = ClientOpcode.PlaybackControlRequest;
-            frame[1] = 1;
-            BinaryEncoding.WriteF32LE(frame, 2, 1f);
-            frame[6] = hasSeek ? (byte)1 : (byte)0;
-            BinaryEncoding.WriteU64LE(frame, 7, 1_000_000UL);
-            BinaryEncoding.WriteU32LE(frame, 15, (uint)id.Length);
-            Buffer.BlockCopy(id, 0, frame, 19, id.Length);
+            var frame = new byte[requestIdPayloadOffset + id.Length];
+            frame[opcodeOffset] = ClientOpcode.PlaybackControlRequest;
+            frame[commandOffset] = 1;
+            BinaryEncoding.WriteF32LE(frame, speedOffset, 1f);
+            frame[hasSeekOffset] = hasSeek ? (byte)1 : (byte)0;
+            BinaryEncoding.WriteU64LE(frame, seekTimeOffset, 1_000_000UL);
+            BinaryEncoding.WriteU32LE(frame, requestIdLengthOffset, (uint)id.Length);
+            Buffer.BlockCopy(id, 0, frame, requestIdPayloadOffset, id.Length);
             return frame;
         }
 

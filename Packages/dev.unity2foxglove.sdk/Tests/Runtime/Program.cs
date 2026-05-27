@@ -40,131 +40,8 @@ class Program
         if (TryRunRegisteredValidation(argList, out var registeredValidationExitCode))
             return registeredValidationExitCode;
 
-        if (argList.Contains("--phase50"))
-            return RunPhase50Only();
-
-        if (argList.Contains("--phase16"))
-            return RunPhase16Only();
-
-        if (argList.Contains("--phase51"))
-            return RunPhase51Only();
-
-        if (argList.Contains("--phase53"))
-            return RunPhase53Only();
-
-        if (argList.Contains("--phase52"))
-            return RunPhase52Only();
-
-        if (argList.Contains("--phase54"))
-            return RunPhase54Only();
-
-        if (argList.Contains("--phase55"))
-            return RunPhase55Only();
-
-        if (argList.Contains("--phase56"))
-            return RunPhase56Only();
-
-        if (argList.Contains("--phase57"))
-            return RunPhase57Only();
-
-        if (argList.Contains("--phase65"))
-            return RunPhase65Only();
-
-        if (argList.Contains("--phase67"))
-            return RunPhase67Only();
-
-        if (argList.Contains("--phase68"))
-            return RunPhase68Only();
-
-        if (argList.Contains("--phase69"))
-            return RunPhase69Only();
-
-        if (argList.Contains("--phase70"))
-            return RunPhase70Only();
-
-        if (argList.Contains("--phase71"))
-            return RunPhase71Only();
-
-        if (argList.Contains("--phase72"))
-            return RunPhase72Only();
-
-        if (argList.Contains("--phase73"))
-            return RunPhase73Only();
-
-        if (argList.Contains("--phase74"))
-            return RunPhase74Only();
-
-        if (argList.Contains("--phase75"))
-            return RunPhase75Only();
-
-        if (argList.Contains("--phase76"))
-            return RunPhase76Only();
-
-        if (argList.Contains("--phase77"))
-            return RunPhase77Only();
-
-        if (argList.Contains("--phase80"))
-            return RunPhase80Only();
-
-        if (argList.Contains("--phase81"))
-            return RunPhase81Only();
-
-        if (argList.Contains("--phase82"))
-            return RunPhase82Only();
-
-        if (argList.Contains("--phase82-native-smoke"))
-            return RunPhase82NativeSmoke();
-
-        if (argList.Contains("--phase83"))
-            return RunPhase83Only();
-
-        if (argList.Contains("--phase84"))
-            return RunPhase84Only();
-
-        if (argList.Contains("--phase85"))
-            return RunPhase85Only();
-
-        if (argList.Contains("--phase86"))
-            return RunPhase86Only();
-
-        if (argList.Contains("--phase87"))
-            return RunPhase87Only();
-
-        if (argList.Contains("--phase88"))
-            return RunPhase88Only();
-
-        if (argList.Contains("--phase89"))
-            return RunPhase89Only();
-
-        if (argList.Contains("--phase90"))
-            return RunPhase90Only();
-
-        if (argList.Contains("--phase91"))
-            return RunPhase91Only();
-
-        if (argList.Contains("--phase92"))
-            return RunPhase92Only();
-
-        if (argList.Contains("--phase93"))
-            return RunPhase93Only();
-
-        if (argList.Contains("--phase94"))
-            return RunPhase94Only();
-
-        if (argList.Contains("--phase95"))
-            return RunPhase95Only();
-
-        if (argList.Contains("--phase96"))
-            return RunPhase96Only();
-
-        if (argList.Contains("--phase97"))
-            return RunPhase97Only();
-
         if (argList.Contains("--phase97-health"))
             return RunPhase97Health(argList);
-
-        if (argList.Contains("--phase98"))
-            return RunPhase98Only();
 
         var phase98SampleSendAllIdx = argList.IndexOf("--phase98-sample-send-all");
         if (phase98SampleSendAllIdx >= 0)
@@ -187,119 +64,8 @@ class Program
         if (argList.Contains("--phase98-live"))
             return RunPhase98Live(argList);
 
-        if (argList.Contains("--phase99"))
-            return RunPhase99Only();
-
         if (argList.Contains("--phase99-live"))
             return RunPhase99Live(argList);
-
-        if (argList.Contains("--phase100"))
-            return RunPhase100Only();
-
-        if (argList.Contains("--phase105"))
-            return RunPhase105Only();
-
-        if (argList.Contains("--phase106"))
-            return RunPhase106Only();
-
-        if (argList.Contains("--phase136"))
-            return RunPhase136Only();
-
-        if (argList.Contains("--phase137"))
-            return RunPhase137Only();
-
-        if (argList.Contains("--phase137b"))
-            return RunPhase137BOnly();
-
-        if (argList.Contains("--phase107"))
-            return RunPhase107Only();
-
-        if (argList.Contains("--phase108"))
-            return RunPhase108Only();
-
-        if (argList.Contains("--phase109"))
-            return RunPhase109Only();
-
-        if (argList.Contains("--phase110"))
-            return RunPhase110Only();
-
-        if (argList.Contains("--phase111f"))
-            return RunPhase111FOnly();
-
-        if (argList.Contains("--phase112"))
-            return RunPhase112Only();
-
-        if (argList.Contains("--phase112b"))
-            return RunPhase112BOnly();
-
-        if (argList.Contains("--phase113"))
-            return RunPhase113Only();
-
-        if (argList.Contains("--phase114"))
-            return RunPhase114Only();
-
-        if (argList.Contains("--phase115"))
-            return RunPhase115Only();
-
-        if (argList.Contains("--phase115b"))
-            return RunPhase115BOnly();
-
-        if (argList.Contains("--phase115c"))
-            return RunPhase115COnly();
-
-        if (argList.Contains("--phase115d"))
-            return RunPhase115DOnly();
-
-        if (argList.Contains("--phase115e"))
-            return RunPhase115EOnly();
-
-        if (argList.Contains("--phase115f"))
-            return RunPhase115FOnly();
-
-        if (argList.Contains("--phase115g"))
-            return RunPhase115GOnly();
-
-        if (argList.Contains("--phase115h"))
-            return RunPhase115HOnly();
-
-        if (argList.Contains("--phase116"))
-            return RunPhase116Only();
-
-        if (argList.Contains("--phase117"))
-            return RunPhase117Only();
-
-        if (argList.Contains("--phase118"))
-            return RunPhase118Only();
-
-        if (argList.Contains("--phase119"))
-            return RunPhase119Only();
-
-        if (argList.Contains("--phase120-official"))
-            return RunPhase120OfficialOnly();
-
-        if (argList.Contains("--phase120b"))
-            return RunPhase120BOnly();
-
-        if (argList.Contains("--phase120"))
-            return RunPhase120Only();
-
-        if (argList.Contains("--phase121-conformance"))
-            return RunPhase121ConformanceOnly();
-
-        if (argList.Contains("--phase121"))
-            return RunPhase121Only();
-
-        if (argList.Contains("--phase122"))
-            return RunPhase122Only();
-
-        if (argList.Contains("--phase123"))
-            return RunPhase123Only();
-
-        if (argList.Contains("--phase124"))
-            return RunPhase124Only();
-
-        if (argList.Contains("--phase125"))
-            return RunPhase125Only();
 
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
         if (phase94BridgeSendIdx >= 0)
@@ -371,9 +137,6 @@ class Program
         if (phase68SmokeIdx >= 0)
             return RunPhase68IndexedReaderSmoke(argList, phase68SmokeIdx);
 
-        if (argList.Contains("--phase13"))
-            return RunPhase13Only();
-
         var phase44McapIdx = argList.IndexOf("--phase44-all-schemas-mcap");
         if (phase44McapIdx >= 0)
         {
@@ -395,7 +158,6 @@ class Program
                 return 1;
             }
         }
-
         return RunTests(argList.Contains("--local-evidence"));
     }
 
@@ -436,187 +198,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase16Only()
-    {
-        try
-        {
-            Phase16Validation.Validate();
-            Console.WriteLine("\nPhase 16 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase50Only()
-    {
-        try
-        {
-            Phase50Validation.Validate();
-            Console.WriteLine("\nPhase 50 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase51Only()
-    {
-        try
-        {
-            Phase51Validation.Validate();
-            Console.WriteLine("\nPhase 51 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase53Only()
-    {
-        try
-        {
-            Phase53Validation.Validate();
-            Console.WriteLine("\nPhase 53 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase52Only()
-    {
-        try
-        {
-            Phase52Validation.Validate();
-            Console.WriteLine("\nPhase 52 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase54Only()
-    {
-        try
-        {
-            Phase54Validation.Validate();
-            Console.WriteLine("\nPhase 54 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase55Only()
-    {
-        try
-        {
-            Phase55Validation.Validate();
-            Console.WriteLine("\nPhase 55 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase56Only()
-    {
-        try
-        {
-            Phase56Validation.Validate();
-            Console.WriteLine("\nPhase 56 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase57Only()
-    {
-        try
-        {
-            Phase57Validation.Validate();
-            Console.WriteLine("\nPhase 57 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase65Only()
-    {
-        try
-        {
-            Phase65Validation.Validate();
-            Console.WriteLine("\nPhase 65 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase67Only()
-    {
-        try
-        {
-            Phase67Validation.Validate();
-            Console.WriteLine("\nPhase 67 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase68Only()
-    {
-        try
-        {
-            Phase68Validation.Validate();
-            Console.WriteLine("\nPhase 68 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            Console.Error.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
             return 1;
         }
     }
@@ -695,336 +277,6 @@ class Program
         return argList[idx + 1];
     }
 
-    private static int RunPhase69Only()
-    {
-        try
-        {
-            Phase69Validation.Validate();
-            Console.WriteLine("\nPhase 69 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase70Only()
-    {
-        try
-        {
-            Phase70Validation.Validate();
-            Console.WriteLine("\nPhase 70 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase71Only()
-    {
-        try
-        {
-            Phase71Validation.Validate();
-            Console.WriteLine("\nPhase 71 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase72Only()
-    {
-        try
-        {
-            Phase72Validation.Validate();
-            Console.WriteLine("\nPhase 72 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase73Only()
-    {
-        try
-        {
-            Phase73Validation.Validate();
-            Console.WriteLine("\nPhase 73 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase74Only()
-    {
-        try
-        {
-            Phase74Validation.Validate();
-            Console.WriteLine("\nPhase 74 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase75Only()
-    {
-        try
-        {
-            Phase75Validation.Validate();
-            Console.WriteLine("\nPhase 75 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase76Only()
-    {
-        try
-        {
-            Phase76Validation.Validate();
-            Console.WriteLine("\nPhase 76 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase77Only()
-    {
-        try
-        {
-            Phase77Validation.Validate();
-            Console.WriteLine("\nPhase 77 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase80Only()
-    {
-        try
-        {
-            Phase80Validation.Validate();
-            Console.WriteLine("\nPhase 80 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase81Only()
-    {
-        try
-        {
-            Phase81Validation.Validate();
-            Console.WriteLine("\nPhase 81 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase82Only()
-    {
-        try
-        {
-            Phase82Validation.Validate();
-            Console.WriteLine("\nPhase 82 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase82NativeSmoke()
-    {
-        try
-        {
-            Phase82Validation.RunNativeSmoke();
-            Console.WriteLine("\nPhase 82 native smoke passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase83Only()
-    {
-        try
-        {
-            Phase83Validation.Validate();
-            Console.WriteLine("\nPhase 83 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase84Only()
-    {
-        try
-        {
-            Phase84Validation.Validate();
-            Console.WriteLine("\nPhase 84 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase85Only()
-    {
-        try
-        {
-            Phase85Validation.Validate();
-            Console.WriteLine("\nPhase 85 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase86Only()
-    {
-        try
-        {
-            Phase86Validation.Validate();
-            Console.WriteLine("\nPhase 86 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase87Only()
-    {
-        try
-        {
-            Phase87Validation.Validate();
-            Console.WriteLine("\nPhase 87 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase88Only()
-    {
-        try
-        {
-            Phase88Validation.Validate();
-            Console.WriteLine("\nPhase 88 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase89Only()
-    {
-        try
-        {
-            Phase89Validation.Validate();
-            Console.WriteLine("\nPhase 89 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase90Only()
-    {
-        try
-        {
-            Phase90Validation.Validate();
-            Console.WriteLine("\nPhase 90 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase91Only()
-    {
-        try
-        {
-            Phase91Validation.Validate();
-            Console.WriteLine("\nPhase 91 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
     private static int RunPhase91Ros2CdrMcap(string outputPath)
     {
         try
@@ -1040,42 +292,12 @@ class Program
         }
     }
 
-    private static int RunPhase92Only()
-    {
-        try
-        {
-            Phase92Validation.Validate();
-            Console.WriteLine("\nPhase 92 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
     private static int RunPhase92Ros2ProductMcap(string outputPath)
     {
         try
         {
             Phase92Validation.GenerateRos2ProductMcap(outputPath);
             Console.WriteLine($"Phase 92 ROS2 product MCAP written: {outputPath}");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase93Only()
-    {
-        try
-        {
-            Phase93Validation.Validate();
-            Console.WriteLine("\nPhase 93 checks passed.");
             return 0;
         }
         catch (Exception ex)
@@ -1114,71 +336,11 @@ class Program
         }
     }
 
-    private static int RunPhase94Only()
-    {
-        try
-        {
-            Phase94Validation.Validate();
-            Console.WriteLine("\nPhase 94 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
     private static int RunPhase94BridgeSend(string host, int port)
     {
         try
         {
             Phase94Validation.RunBridgeSendSmoke(host, port);
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase95Only()
-    {
-        try
-        {
-            Phase95Validation.Validate();
-            Console.WriteLine("\nPhase 95 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase96Only()
-    {
-        try
-        {
-            Phase96Validation.Validate();
-            Console.WriteLine("\nPhase 96 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase97Only()
-    {
-        try
-        {
-            Phase97Validation.Validate();
-            Console.WriteLine("\nPhase 97 checks passed.");
             return 0;
         }
         catch (Exception ex)
@@ -1218,21 +380,6 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase98Only()
-    {
-        try
-        {
-            Phase98Validation.Validate();
-            Console.WriteLine("\nPhase 98 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -1284,21 +431,6 @@ class Program
         }
     }
 
-    private static int RunPhase99Only()
-    {
-        try
-        {
-            Phase99Validation.Validate();
-            Console.WriteLine("\nPhase 99 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
     private static int RunPhase99Live(List<string> argList)
     {
         try
@@ -1324,585 +456,6 @@ class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase100Only()
-    {
-        try
-        {
-            Phase100Validation.Validate();
-            Console.WriteLine("\nPhase 100 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase105Only()
-    {
-        try
-        {
-            Phase105Validation.Validate();
-            Console.WriteLine("\nPhase 105 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase106Only()
-    {
-        try
-        {
-            Phase106Validation.Validate();
-            Console.WriteLine("\nPhase 106 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase136Only()
-    {
-        try
-        {
-            Phase137Validation.Validate();
-            Console.WriteLine("\nPhase 136 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase137Only()
-    {
-        try
-        {
-            Phase137Validation.Validate();
-            Console.WriteLine("\nPhase 137 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase137BOnly()
-    {
-        try
-        {
-            Phase138BValidation.Validate();
-            Console.WriteLine("\nPhase 137B checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase107Only()
-    {
-        try
-        {
-            Phase107Validation.Validate();
-            Console.WriteLine("\nPhase 107 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase108Only()
-    {
-        try
-        {
-            Phase108Validation.Validate();
-            Console.WriteLine("\nPhase 108 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase109Only()
-    {
-        try
-        {
-            Phase109Validation.Validate();
-            Console.WriteLine("\nPhase 109 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase110Only()
-    {
-        try
-        {
-            Phase110Validation.Validate();
-            Console.WriteLine("\nPhase 110 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase111FOnly()
-    {
-        try
-        {
-            Phase111FValidation.Validate();
-            Console.WriteLine("\nPhase 111F checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase112Only()
-    {
-        try
-        {
-            Phase112Validation.Validate();
-            Console.WriteLine("\nPhase 112 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
-            return 1;
-        }
-    }
-
-    private static int RunPhase112BOnly()
-    {
-        try
-        {
-            Phase112BValidation.Validate();
-            Console.WriteLine("\nPhase 112B checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 112B validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase113Only()
-    {
-        try
-        {
-            Phase113Validation.Validate();
-            Console.WriteLine("\nPhase 113 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 113 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase114Only()
-    {
-        try
-        {
-            Phase114Validation.Validate();
-            Console.WriteLine("\nPhase 114 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 114 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115Only()
-    {
-        try
-        {
-            Phase115Validation.Validate();
-            Console.WriteLine("\nPhase 115 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115BOnly()
-    {
-        try
-        {
-            Phase115BValidation.Validate();
-            Console.WriteLine("\nPhase 115B checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115B validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115COnly()
-    {
-        try
-        {
-            Phase115CValidation.Validate();
-            Console.WriteLine("\nPhase 115C checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115C validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115DOnly()
-    {
-        try
-        {
-            Phase115DValidation.Validate();
-            Console.WriteLine("\nPhase 115D checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115D validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115EOnly()
-    {
-        try
-        {
-            Phase115EValidation.Validate();
-            Console.WriteLine("\nPhase 115E checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115E validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115FOnly()
-    {
-        try
-        {
-            Phase115FValidation.Validate();
-            Console.WriteLine("\nPhase 115F checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115F validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115GOnly()
-    {
-        try
-        {
-            Phase115GValidation.Validate();
-            Console.WriteLine("\nPhase 115G checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115G validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase115HOnly()
-    {
-        try
-        {
-            Phase115HValidation.Validate();
-            Console.WriteLine("\nPhase 115H checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 115H validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase116Only()
-    {
-        try
-        {
-            Phase116Validation.Validate();
-            Console.WriteLine("\nPhase 116 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 116 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase117Only()
-    {
-        try
-        {
-            Phase117Validation.Validate();
-            Console.WriteLine("\nPhase 117 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 117 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase118Only()
-    {
-        try
-        {
-            Phase118Validation.Validate();
-            Console.WriteLine("\nPhase 118 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 118 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase119Only()
-    {
-        try
-        {
-            Phase119Validation.Validate();
-            Console.WriteLine("\nPhase 119 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 119 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase120Only()
-    {
-        try
-        {
-            Phase120Validation.Validate();
-            Console.WriteLine("\nPhase 120 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 120 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase120OfficialOnly()
-    {
-        try
-        {
-            Phase120Validation.ValidateOfficial();
-            Console.WriteLine("\nPhase 120 official checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 120 official validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase120BOnly()
-    {
-        try
-        {
-            Phase120BValidation.Validate();
-            Console.WriteLine("\nPhase 120B checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 120B validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase121Only()
-    {
-        try
-        {
-            Phase121Validation.Validate();
-            Console.WriteLine("\nPhase 121 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 121 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase121ConformanceOnly()
-    {
-        try
-        {
-            Phase121Validation.ValidateConformance();
-            Console.WriteLine("\nPhase 121 conformance checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 121 conformance validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase122Only()
-    {
-        try
-        {
-            Phase122Validation.Validate();
-            Console.WriteLine("\nPhase 122 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 122 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase123Only()
-    {
-        try
-        {
-            Phase123Validation.Validate();
-            Console.WriteLine("\nPhase 123 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 123 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase124Only()
-    {
-        try
-        {
-            Phase124Validation.Validate();
-            Console.WriteLine("\nPhase 124 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 124 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase125Only()
-    {
-        try
-        {
-            Phase125Validation.Validate();
-            Console.WriteLine("\nPhase 125 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("Phase 125 validation failed: " + ex.Message);
-            Console.Error.WriteLine(ex);
-            return 1;
-        }
-    }
-
-    private static int RunPhase13Only()
-    {
-        try
-        {
-            Phase13Validation.Validate();
-            Console.WriteLine("\nPhase 13 checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -1939,118 +492,125 @@ class Program
         Console.WriteLine($"Starting on ws://127.0.0.1:{port}");
 
         var runtime = new Unity.FoxgloveSDK.Core.FoxgloveRuntime();
-        runtime.Start("Unity Foxglove SDK", "127.0.0.1", port);
-
-        Console.WriteLine($"Server running. SessionId: {runtime.Session.SessionId}");
-        Console.WriteLine("Open Foxglove -> Open connection -> ws://127.0.0.1:{0}", port);
-
         Timer heartbeat = null;
-        if (demo)
-        {
-            var ch = new AdvertiseChannel
-            {
-                Id = 1,
-                Topic = "/debug/heartbeat",
-                Encoding = "json",
-                SchemaName = "",
-                Schema = ""
-            };
-            runtime.RegisterChannel(ch);
-            Console.WriteLine("Demo: registered /debug/heartbeat (1 Hz)");
-
-            ulong seq = 0;
-            heartbeat = new Timer(_ =>
-            {
-                seq++;
-                var payload = new
-                {
-                    seq,
-                    unixTimeNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL,
-                    message = "hello foxglove"
-                };
-                var json = JsonConvert.SerializeObject(payload);
-                runtime.Publish(1, Encoding.UTF8.GetBytes(json));
-            }, null, 1000, 1000);
-        }
-
         Timer sceneTimer = null;
-        if (demo3d)
+
+        try
         {
-            runtime.RegisterSchemaChannel(1, "/tf", "foxglove.FrameTransform");
-            runtime.RegisterSchemaChannel(2, "/scene", "foxglove.SceneUpdate");
-            Console.WriteLine("Demo3D: registered /tf (FrameTransform) and /scene (SceneUpdate) at 1 Hz");
+            runtime.Start("Unity Foxglove SDK", "127.0.0.1", port);
 
-            ulong tfSeq = 0;
-            sceneTimer = new Timer(_ =>
+            Console.WriteLine($"Server running. SessionId: {runtime.Session.SessionId}");
+            Console.WriteLine("Open Foxglove -> Open connection -> ws://127.0.0.1:{0}", port);
+
+            if (demo)
             {
-                tfSeq++;
-                var unixNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL;
-                var sec = unixNs / 1_000_000_000UL;
-                var nsec = (uint)(unixNs % 1_000_000_000UL);
-
-                var tf = new FrameTransformMessage
+                var ch = new AdvertiseChannel
                 {
-                    Timestamp = new FoxgloveTime { Sec = sec, Nsec = nsec },
-                    ParentFrameId = "unity_world",
-                    ChildFrameId = "phase3_cube_frame",
-                    Translation = new FoxgloveVector3 { X = 0, Y = 0, Z = 0 },
-                    Rotation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
+                    Id = 1,
+                    Topic = "/debug/heartbeat",
+                    Encoding = "json",
+                    SchemaName = "",
+                    Schema = ""
                 };
-                runtime.PublishJson(1, tf, unixNs);
+                runtime.RegisterChannel(ch);
+                Console.WriteLine("Demo: registered /debug/heartbeat (1 Hz)");
 
-                var scene = new SceneUpdateMessage
+                ulong seq = 0;
+                heartbeat = new Timer(_ =>
                 {
-                    Entities = new System.Collections.Generic.List<SceneEntity>
+                    seq++;
+                    var payload = new
                     {
-                        new SceneEntity
+                        seq,
+                        unixTimeNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL,
+                        message = "hello foxglove"
+                    };
+                    var json = JsonConvert.SerializeObject(payload);
+                    runtime.Publish(1, Encoding.UTF8.GetBytes(json));
+                }, null, 1000, 1000);
+            }
+
+            if (demo3d)
+            {
+                runtime.RegisterSchemaChannel(1, "/tf", "foxglove.FrameTransform");
+                runtime.RegisterSchemaChannel(2, "/scene", "foxglove.SceneUpdate");
+                Console.WriteLine("Demo3D: registered /tf (FrameTransform) and /scene (SceneUpdate) at 1 Hz");
+
+                ulong tfSeq = 0;
+                sceneTimer = new Timer(_ =>
+                {
+                    tfSeq++;
+                    var unixNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL;
+                    var sec = unixNs / 1_000_000_000UL;
+                    var nsec = (uint)(unixNs % 1_000_000_000UL);
+
+                    var tf = new FrameTransformMessage
+                    {
+                        Timestamp = new FoxgloveTime { Sec = sec, Nsec = nsec },
+                        ParentFrameId = "unity_world",
+                        ChildFrameId = "phase3_cube_frame",
+                        Translation = new FoxgloveVector3 { X = 0, Y = 0, Z = 0 },
+                        Rotation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
+                    };
+                    runtime.PublishJson(1, tf, unixNs);
+
+                    var scene = new SceneUpdateMessage
+                    {
+                        Entities = new System.Collections.Generic.List<SceneEntity>
                         {
-                            Id = "phase3_cube",
-                            FrameId = "phase3_cube_frame",
-                            Timestamp = new FoxgloveTime { Sec = sec, Nsec = nsec },
-                            Lifetime = new FoxgloveDuration(),
-                            Cubes = new System.Collections.Generic.List<CubePrimitive>
+                            new SceneEntity
                             {
-                                new CubePrimitive
+                                Id = "phase3_cube",
+                                FrameId = "phase3_cube_frame",
+                                Timestamp = new FoxgloveTime { Sec = sec, Nsec = nsec },
+                                Lifetime = new FoxgloveDuration(),
+                                Cubes = new System.Collections.Generic.List<CubePrimitive>
                                 {
-                                    Pose = new FoxglovePose
+                                    new CubePrimitive
                                     {
-                                        Position = new FoxgloveVector3 { X = 0, Y = 0, Z = 0 },
-                                        Orientation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
-                                    },
-                                    Size = new FoxgloveVector3 { X = 1, Y = 1, Z = 1 },
-                                    Color = new FoxgloveColor { R = 0, G = 1, B = 0, A = 1 }
+                                        Pose = new FoxglovePose
+                                        {
+                                            Position = new FoxgloveVector3 { X = 0, Y = 0, Z = 0 },
+                                            Orientation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
+                                        },
+                                        Size = new FoxgloveVector3 { X = 1, Y = 1, Z = 1 },
+                                        Color = new FoxgloveColor { R = 0, G = 1, B = 0, A = 1 }
+                                    }
                                 }
                             }
                         }
-                    }
-                };
-                runtime.PublishJson(2, scene, unixNs);
-            }, null, 1000, 1000);
+                    };
+                    runtime.PublishJson(2, scene, unixNs);
+                }, null, 1000, 1000);
+            }
+
+            Console.WriteLine("Expected: connection succeeds, no topics listed.");
+            if (demo)
+                Console.WriteLine("Demo: /debug/heartbeat visible, subscribe to see messages.");
+            if (demo3d)
+            {
+                Console.WriteLine("Demo3D: /tf and /scene visible.");
+                Console.WriteLine("  Foxglove -> 3D panel -> select /scene -> green cube at origin.");
+            }
+            Console.WriteLine("Press Ctrl+C to stop...");
+
+            var done = new ManualResetEventSlim(false);
+            Console.CancelKeyPress += (_, e) =>
+            {
+                e.Cancel = true;
+                done.Set();
+            };
+
+            done.Wait();
+            return 0;
         }
-
-        Console.WriteLine("Expected: connection succeeds, no topics listed.");
-        if (demo)
-            Console.WriteLine("Demo: /debug/heartbeat visible, subscribe to see messages.");
-        if (demo3d)
+        finally
         {
-            Console.WriteLine("Demo3D: /tf and /scene visible.");
-            Console.WriteLine("  Foxglove -> 3D panel -> select /scene -> green cube at origin.");
+            Console.WriteLine("\nStopping...");
+            heartbeat?.Dispose();
+            sceneTimer?.Dispose();
+            runtime.Dispose();
+            Console.WriteLine("Server stopped.");
         }
-        Console.WriteLine("Press Ctrl+C to stop...");
-
-        var done = new ManualResetEventSlim(false);
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            done.Set();
-        };
-
-        done.Wait();
-        Console.WriteLine("\nStopping...");
-        heartbeat?.Dispose();
-        sceneTimer?.Dispose();
-        runtime.Dispose();
-        Console.WriteLine("Server stopped.");
-        return 0;
     }
 }

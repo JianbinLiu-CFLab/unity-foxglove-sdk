@@ -552,6 +552,19 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Registers a service with a JSON request handler.
+        /// </summary>
+        /// <param name="descriptor">Service descriptor with name, type, request schemas, and response schemas.</param>
+        /// <param name="handler">Handler invoked from the runtime tick on the Unity main thread.</param>
+        /// <returns>The service identifier, or 0 when the runtime is not available.</returns>
+        public uint RegisterService(
+            Unity.FoxgloveSDK.Protocol.ServiceDescriptor descriptor,
+            System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
+        {
+            return _runtime?.RegisterService(descriptor, handler) ?? 0;
+        }
+
+        /// <summary>
         /// Unregisters a service.
         /// </summary>
         /// <param name="serviceId">Service identifier returned by <see cref="RegisterService"/>.</param>

@@ -421,8 +421,17 @@ namespace Unity.FoxgloveSDK.Tests
             // The conversion is NOT a roundtrip quaternion-identity. It's a coordinate transform.
             // Roundtrip for position is identity by construction. Rotation involves handness flip
             // and the result won't be component-wise identical but represents equivalent rotation.
-            // Skip quaternion roundtrip test — verified via live Foxglove validation instead.
+            // Assert representative quaternion roundtrips directly; q and -q are treated as equivalent.
             Assert(true, "CoordRnd: position roundtrip passes ((1,2,3) unchanged)");
+            const double sqrtHalf = 0.7071067811865476;
+            Assert(QuaternionRoundtripEquivalent((0, 0, 0, 1)),
+                "CoordRnd: identity quaternion roundtrip is equivalent");
+            Assert(QuaternionRoundtripEquivalent((sqrtHalf, 0, 0, sqrtHalf)),
+                "CoordRnd: X-axis quaternion roundtrip is equivalent");
+            Assert(QuaternionRoundtripEquivalent((0, sqrtHalf, 0, sqrtHalf)),
+                "CoordRnd: Y-axis quaternion roundtrip is equivalent");
+            Assert(QuaternionRoundtripEquivalent((0, 0, sqrtHalf, sqrtHalf)),
+                "CoordRnd: Z-axis quaternion roundtrip is equivalent");
 
             // Basis axis verification
             // Unity (1,0,0) → Foxglove (0,-1,0) ✓ (validated via Foxglove live)
@@ -545,7 +554,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayObjectAdapterRoutesProtobufBeforeJsonParse()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
             Assert(source.Contains("OnReplayMessage(ReplayMessageContext context)", StringComparison.Ordinal)
                 && source.Contains("ResolveBehavior(context", StringComparison.Ordinal),
                 "Replay adapter routes by replay message context and behavior before protobuf parsing");
@@ -562,7 +571,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayControllerSerializesReplayCursorAccess()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Assert(source.Contains("private readonly object _replayEngineLock", StringComparison.Ordinal),
                 "Replay controller has a dedicated replay cursor synchronization lock");
@@ -572,10 +581,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestPlaybackControlRunsOnRuntimeTick()
         {
-            var sessionSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
-            var playbackHandlerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
-            var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
-            var replaySource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
+            var playbackHandlerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
                 && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
@@ -607,11 +616,13 @@ namespace Unity.FoxgloveSDK.Tests
                 transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 1_000_000UL));
                 rt.Tick();
 
-                Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(7)) == 1,
+                var requestingFrames = transport.SentBinaryFrames(7);
+                Assert(CountPlaybackStateFrames(requestingFrames) == 1,
                     "Playback seek sends didSeek PlaybackState to the requesting client");
                 Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(8)) == 0,
                     "Playback seek does not leak request-correlated PlaybackState to other clients");
-                Assert(transport.SentBinaryFrames(7)[0][14] == 1,
+                Assert(TryDecodePlaybackState(requestingFrames[0], out _, out _, out _, out var didSeek, out _)
+                    && didSeek,
                     "Targeted PlaybackState preserves didSeek=true for the requesting client");
             }
             finally
@@ -1015,6 +1026,35 @@ namespace Unity.FoxgloveSDK.Tests
             return count;
         }
 
+        static bool TryDecodePlaybackState(
+            byte[] frame,
+            out byte status,
+            out ulong currentTimeNs,
+            out float speed,
+            out bool didSeek,
+            out string requestId)
+        {
+            status = 0;
+            currentTimeNs = 0;
+            speed = 0;
+            didSeek = false;
+            requestId = string.Empty;
+
+            if (frame == null || frame.Length < 19 || frame[0] != ServerOpcode.PlaybackState)
+                return false;
+
+            status = frame[1];
+            currentTimeNs = BinaryEncoding.ReadU64LE(frame, 2);
+            speed = BinaryEncoding.ReadF32LE(frame, 10);
+            didSeek = frame[14] != 0;
+            var requestIdLength = BinaryEncoding.ReadU32LE(frame, 15);
+            if (requestIdLength > frame.Length - 19)
+                return false;
+
+            requestId = Encoding.UTF8.GetString(frame, 19, (int)requestIdLength);
+            return true;
+        }
+
         static int CountMessageFrames(IReadOnlyList<byte[]> frames)
         {
             var count = 0;
@@ -1050,6 +1090,70 @@ namespace Unity.FoxgloveSDK.Tests
                 index += value.Length;
             }
         }
+
+        static bool QuaternionRoundtripEquivalent((double X, double Y, double Z, double W) unity)
+        {
+            var foxglove = UnityToFoxgloveQuaternion(unity);
+            var roundtrip = FoxgloveToUnityQuaternion(foxglove);
+            return QuaternionsEquivalent(unity, roundtrip);
+        }
+
+        static (double X, double Y, double Z, double W) UnityToFoxgloveQuaternion(
+            (double X, double Y, double Z, double W) q)
+        {
+            return (-q.Z, q.X, -q.Y, q.W);
+        }
+
+        static (double X, double Y, double Z, double W) FoxgloveToUnityQuaternion(
+            (double X, double Y, double Z, double W) q)
+        {
+            return (q.Y, -q.Z, -q.X, q.W);
+        }
+
+        static bool QuaternionsEquivalent(
+            (double X, double Y, double Z, double W) a,
+            (double X, double Y, double Z, double W) b)
+        {
+            var an = NormalizeQuaternion(a);
+            var bn = NormalizeQuaternion(b);
+            var dot = an.X * bn.X + an.Y * bn.Y + an.Z * bn.Z + an.W * bn.W;
+            return Math.Abs(Math.Abs(dot) - 1.0) < 0.000001;
+        }
+
+        static (double X, double Y, double Z, double W) NormalizeQuaternion(
+            (double X, double Y, double Z, double W) q)
+        {
+            var length = Math.Sqrt(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W);
+            if (length <= double.Epsilon)
+                return (0, 0, 0, 1);
+
+            return (q.X / length, q.Y / length, q.Z / length, q.W / length);
+        }
+
+        static string ReadRepoText(string relativePath)
+        {
+            return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        static string RepoPath(string relativePath)
+        {
+            var root = FindRepoRoot();
+            var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+            return Path.Combine(root, localPath);
+        }
+
+        static string FindRepoRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "Packages", "dev.unity2foxglove.sdk", "package.json")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+
+            return Directory.GetCurrentDirectory();
+        }
     }
 
     /// <summary>
@@ -1057,6 +1161,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
     {
+        private readonly object _gate = new object();
         public readonly List<string> SentText = new List<string>();
         private readonly Dictionary<uint, List<byte[]>> _sentBinary = new Dictionary<uint, List<byte[]>>();
         public int ClearDataQueuesCount { get; private set; }
@@ -1071,77 +1176,106 @@ namespace Unity.FoxgloveSDK.Tests
         public void Start(string host, int port) { IsRunning = true; }
         public void Stop() { IsRunning = false; }
         public void Dispose() { Stop(); }
-        public void BroadcastText(string json) { SentText.Add(json); }
+        public void BroadcastText(string json) { lock (_gate) SentText.Add(json); }
         public void BroadcastBinary(byte[] data)
         {
-            ControlBroadcastBinaryCount++;
-            var clientIds = new List<uint>(_sentBinary.Keys);
+            List<uint> clientIds;
+            lock (_gate)
+            {
+                ControlBroadcastBinaryCount++;
+                clientIds = new List<uint>(_sentBinary.Keys);
+            }
             foreach (var clientId in clientIds)
                 SendBinary(clientId, data);
         }
-        public void SendText(uint clientId, string json) { SentText.Add(json); }
+        public void SendText(uint clientId, string json) { lock (_gate) SentText.Add(json); }
         public void SendBinary(uint clientId, byte[] data)
         {
-            ControlBinaryCount++;
-            if (!_sentBinary.TryGetValue(clientId, out var frames))
+            lock (_gate)
             {
-                frames = new List<byte[]>();
-                _sentBinary[clientId] = frames;
+                ControlBinaryCount++;
+                if (!_sentBinary.TryGetValue(clientId, out var frames))
+                {
+                    frames = new List<byte[]>();
+                    _sentBinary[clientId] = frames;
+                }
+                frames.Add(data);
             }
-            frames.Add(data);
         }
         public void BroadcastDataBinary(byte[] data)
         {
-            DataBroadcastBinaryCount++;
-            var clientIds = new List<uint>(_sentBinary.Keys);
+            List<uint> clientIds;
+            lock (_gate)
+            {
+                DataBroadcastBinaryCount++;
+                clientIds = new List<uint>(_sentBinary.Keys);
+            }
             foreach (var clientId in clientIds)
                 SendDataBinary(clientId, data);
         }
         public void SendDataBinary(uint clientId, byte[] data)
         {
-            DataBinaryCount++;
-            if (!_sentBinary.TryGetValue(clientId, out var frames))
+            lock (_gate)
             {
-                frames = new List<byte[]>();
-                _sentBinary[clientId] = frames;
+                DataBinaryCount++;
+                if (!_sentBinary.TryGetValue(clientId, out var frames))
+                {
+                    frames = new List<byte[]>();
+                    _sentBinary[clientId] = frames;
+                }
+                frames.Add(data);
             }
-            frames.Add(data);
         }
         public IReadOnlyList<byte[]> SentBinaryFrames(uint clientId)
-            => _sentBinary.TryGetValue(clientId, out var frames) ? frames : Array.Empty<byte[]>();
+        {
+            lock (_gate)
+                return _sentBinary.TryGetValue(clientId, out var frames) ? frames.ToArray() : Array.Empty<byte[]>();
+        }
         public void ClearBinary(uint clientId)
         {
-            if (_sentBinary.TryGetValue(clientId, out var frames))
-                frames.Clear();
+            lock (_gate)
+            {
+                if (_sentBinary.TryGetValue(clientId, out var frames))
+                    frames.Clear();
+            }
         }
         public void ResetPriorityCounters()
         {
-            ControlBinaryCount = 0;
-            DataBinaryCount = 0;
-            ControlBroadcastBinaryCount = 0;
-            DataBroadcastBinaryCount = 0;
+            lock (_gate)
+            {
+                ControlBinaryCount = 0;
+                DataBinaryCount = 0;
+                ControlBroadcastBinaryCount = 0;
+                DataBroadcastBinaryCount = 0;
+            }
         }
         public void SimulateConnect(uint clientId)
         {
-            if (!_sentBinary.ContainsKey(clientId))
-                _sentBinary[clientId] = new List<byte[]>();
+            lock (_gate)
+            {
+                if (!_sentBinary.ContainsKey(clientId))
+                    _sentBinary[clientId] = new List<byte[]>();
+            }
             OnClientConnected?.Invoke(clientId);
         }
-        public void ClearDataQueues() => ClearDataQueuesCount++;
+        public void ClearDataQueues() { lock (_gate) ClearDataQueuesCount++; }
         public TransportStatsSnapshot GetStatsSnapshot()
         {
             if (!StatsSupported)
                 return TransportStatsSnapshot.Unsupported;
 
             var clients = new List<TransportClientStats>();
-            foreach (var clientId in _sentBinary.Keys)
+            lock (_gate)
             {
-                clients.Add(new TransportClientStats
+                foreach (var clientId in _sentBinary.Keys)
                 {
-                    ClientId = clientId,
-                    QueuedFrames = SimulatedQueuedFrames,
-                    QueuedBytes = SimulatedQueuedBytes
-                });
+                    clients.Add(new TransportClientStats
+                    {
+                        ClientId = clientId,
+                        QueuedFrames = SimulatedQueuedFrames,
+                        QueuedBytes = SimulatedQueuedBytes
+                    });
+                }
             }
 
             return new TransportStatsSnapshot

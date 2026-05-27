@@ -5,6 +5,7 @@
 // Purpose: Phase 134-21 validation for ROS2 For Unity adapter facade behavior.
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 
@@ -20,11 +21,74 @@ namespace Unity.FoxgloveSDK.Tests
         {
             _passed = 0;
 
+            VerifyInstallerHardened();
+            VerifyAsmdefAndDocsPolicy();
+            VerifyFacadeXmlDocs();
             VerifyFactoryReturnsUnavailableSingleton();
             VerifyUnavailableFacadeIsRepeatableAndDisposable();
             VerifyUnavailableFacadeNormalizesBlankNames();
 
             Console.WriteLine($"Phase134_21Validation: PASS ({_passed} checks)");
+        }
+
+        private static void VerifyInstallerHardened()
+        {
+            var installer = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs");
+
+            Check(installer.Contains("if (!Application.isBatchMode)", StringComparison.Ordinal)
+                  && installer.Contains("EditorApplication.Exit(exitCode)", StringComparison.Ordinal),
+                "134-21-D1: batch define reconciliation is guarded by Unity batch mode");
+            Check(installer.Contains("ReconcileCompileSymbolSafely", StringComparison.Ordinal)
+                  && installer.Contains("FormatFailureMessage", StringComparison.Ordinal)
+                  && installer.Contains("Debug.LogError", StringComparison.Ordinal),
+                "134-21-D2: editor delayCall reconciliation reports contextual package failures");
+            Check(installer.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal)
+                  && installer.Contains("Leaving \" + CompileSymbol + \" disabled", StringComparison.Ordinal)
+                  && installer.Contains("ContainsPackageKey(lockFile)", StringComparison.Ordinal),
+                "134-21-D3: runtime detection cross-checks Unity package lock resolution");
+        }
+
+        private static void VerifyAsmdefAndDocsPolicy()
+        {
+            var runtimeAsmdef = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Unity2Foxglove.Ros2ForUnity.asmdef");
+            var editorAsmdef = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef");
+            var readme = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/README.md");
+
+            Check(runtimeAsmdef.Contains("\"autoReferenced\": true", StringComparison.Ordinal)
+                  && editorAsmdef.Contains("\"autoReferenced\": true", StringComparison.Ordinal)
+                  && readme.Contains("autoReferenced=true", StringComparison.Ordinal)
+                  && readme.Contains("predefined project assemblies", StringComparison.Ordinal),
+                "134-21-E1: optional asmdef auto-reference policy is intentional and documented");
+            Check(readme.Contains("Packages/packages-lock.json", StringComparison.Ordinal)
+                  && readme.Contains("Standalone build target", StringComparison.Ordinal)
+                  && readme.Contains("set the symbol manually", StringComparison.Ordinal),
+                "134-21-E2: README documents resolved-package and Standalone-only symbol behavior");
+        }
+
+        private static void VerifyFacadeXmlDocs()
+        {
+            var context = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/IUnity2FoxgloveRos2Context.cs");
+            var node = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/IUnity2FoxgloveRos2Node.cs");
+            var publisher = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/IUnity2FoxgloveRos2Publisher.cs");
+            var subscription = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/IUnity2FoxgloveRos2Subscription.cs");
+            var factory = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Unity2FoxgloveRos2ContextFactory.cs");
+            var unavailable = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Unity2FoxgloveRos2UnavailableContext.cs");
+
+            Check(context.Contains("Facade-only contexts return", StringComparison.Ordinal)
+                  && context.Contains("after disposal; the shared unavailable singleton remains", StringComparison.Ordinal)
+                  && context.Contains("Creates or returns a node boundary", StringComparison.Ordinal),
+                "134-21-F1: context interface documents availability, status, and node semantics");
+            Check(node.Contains("returned disposable intentionally remains", StringComparison.Ordinal)
+                  && publisher.Contains("return <c>false</c> with a concise", StringComparison.Ordinal)
+                  && subscription.Contains("Message type information is consumed", StringComparison.Ordinal),
+                "134-21-F2: node, publisher, and subscription interfaces document v1 asymmetry and error contract");
+            Check(factory.Contains("always returns the shared unavailable", StringComparison.Ordinal)
+                  && unavailable.Contains("intentionally keeps <see cref=\"Status\"/>", StringComparison.Ordinal)
+                  && unavailable.Contains("Unity2FoxgloveRos2UnavailableContext.NormalizeTopic", StringComparison.Ordinal),
+                "134-21-F3: factory and unavailable singleton lifecycle/readability contracts are explicit");
         }
 
         private static void VerifyFactoryReturnsUnavailableSingleton()
@@ -217,5 +281,15 @@ namespace Unity.FoxgloveSDK.Tests
             _passed++;
             Console.WriteLine(name);
         }
+
+        private static string ReadRepoText(string relativePath)
+            => File.ReadAllText(RepoPath(relativePath));
+
+        private static string RepoPath(string relativePath)
+            => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        private static string RepoRoot
+            => Phase16Validation.FindRepoRoot()
+               ?? throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
     }
 }

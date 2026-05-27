@@ -6,7 +6,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -43,6 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 3 Tests ---");
+            _passCount = 0;
 
             TestCoreSchemasRegistered();
             TestLogSchemaRegistered();
@@ -357,7 +361,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestRealWebSocketTypedAdvertise()
         {
             using var runtime = new FoxgloveRuntime();
-            runtime.Start("SchemaTest", "127.0.0.1", 18782);
+            var port = GetEphemeralTcpPort();
+            runtime.Start("SchemaTest", "127.0.0.1", port);
             runtime.RegisterSchemaChannel(1, "/tf", "foxglove.FrameTransform");
 
             ClientWebSocket ws = null;
@@ -366,7 +371,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ws = new ClientWebSocket();
                 ws.Options.AddSubProtocol(Subprotocol.SdkV1);
                 var cts = new CancellationTokenSource(5000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18782/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "Integration: connected");
 
                 var buf = new byte[8192];
@@ -402,7 +407,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestRealWebSocketPublishJsonSceneUpdate()
         {
             using var runtime = new FoxgloveRuntime();
-            runtime.Start("SceneTest", "127.0.0.1", 18783);
+            var port = GetEphemeralTcpPort();
+            runtime.Start("SceneTest", "127.0.0.1", port);
             runtime.RegisterSchemaChannel(1, "/scene", "foxglove.SceneUpdate");
 
             ClientWebSocket ws = null;
@@ -411,7 +417,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ws = new ClientWebSocket();
                 ws.Options.AddSubProtocol(Subprotocol.SdkV1);
                 var cts = new CancellationTokenSource(10000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18783/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
 
                 var buf = new byte[131072];
                 var seg = new ArraySegment<byte>(buf);
@@ -423,7 +429,8 @@ namespace Unity.FoxgloveSDK.Tests
                 // Subscribe
                 var sub = "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":1}]}";
                 ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(sub)), WebSocketMessageType.Text, true, cts.Token).GetAwaiter().GetResult();
-                Task.Delay(100).Wait();
+                Assert(SpinUntil(() => runtime.Session.HasChannelDemand(1), 2000),
+                    "Scene integration: subscribe processed before publish");
 
                 // Publish SceneUpdate via PublishJson
                 var msg = new SceneUpdateMessage
@@ -505,6 +512,33 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 ws.Dispose();
             }
+        }
+
+        private static int GetEphemeralTcpPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        private static bool SpinUntil(Func<bool> condition, int timeoutMs)
+        {
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                if (condition())
+                    return true;
+                Thread.Sleep(10);
+            }
+
+            return condition();
         }
     }
 }

@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 7 Tests ---");
+            _passCount = 0;
 
             TestServerInfoIncludesParametersSubscribe();
             TestLoggerInjectedIntoSession();

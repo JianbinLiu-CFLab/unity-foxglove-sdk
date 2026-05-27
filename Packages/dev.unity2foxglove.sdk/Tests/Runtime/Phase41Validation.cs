@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestEmitterPreservesOnChangeMode();
             TestEmitterUsesUniqueLastValueFields();
             TestEmitterUsesNaNSafeFloatComparison();
+            TestEmitterUsesConfiguredEpsilonInGeneratedSource();
 
             Console.WriteLine("Phase 41: All checks passed.");
         }
@@ -172,6 +173,21 @@ namespace Unity.FoxgloveSDK.Tests
             });
             Check(source.Contains("__foxrun_float_changed") && source.Contains("float.IsNaN"),
                 "41C-4: generated float comparison handles NaN transitions explicitly");
+        }
+
+        private static void TestEmitterUsesConfiguredEpsilonInGeneratedSource()
+        {
+            var source = FoxgloveSourceEmitter.EmitClass("", "PolicyEpsilonSource", new[]
+            {
+                new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/value", 10f, "",
+                    (int)FoxRunPublishMode.OnChange, 0.1f, 0f)
+            });
+
+            Check(source.Contains("__foxrun_float_changed", StringComparison.Ordinal)
+                  && source.Contains("this.Value", StringComparison.Ordinal)
+                  && source.Contains("__last_0_0", StringComparison.Ordinal)
+                  && source.Contains("0.100000001f", StringComparison.Ordinal),
+                "41C-5: generated source passes configured epsilon to float comparer");
         }
 
         private static void Check(bool condition, string label)

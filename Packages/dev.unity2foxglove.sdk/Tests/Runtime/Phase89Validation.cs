@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!qos.Contains("enum PointCloudOutputMode"),
                 "89A-5: output mode stays separate from PointCloudQoS sampling");
 
-            var modeType = Type.GetType("Unity.FoxgloveSDK.Components.PointCloudOutputMode, FoxgloveSdk.Tests");
+            var modeType = FindType("Unity.FoxgloveSDK.Components.PointCloudOutputMode");
             Check(modeType != null && modeType.IsEnum,
                 "89A-6: PointCloudOutputMode type is loadable");
             Check((int)Enum.Parse(modeType, "Raw") == 0 && (int)Enum.Parse(modeType, "Draco") == 1,
@@ -254,7 +254,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -267,7 +267,21 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required repository file is missing.", path);
+            return File.ReadAllText(path);
+        }
+
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(fullName, throwOnError: false);
+                if (type != null)
+                    return type;
+            }
+
+            return null;
         }
     }
 }

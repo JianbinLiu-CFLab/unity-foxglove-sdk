@@ -21,18 +21,25 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine();
-            Console.WriteLine("=== Phase 124: MCAP Decoded DataLoader v1 ===");
-            _passed = 0;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== Phase 124: MCAP Decoded DataLoader v1 ===");
+                _passed = 0;
 
-            VerifyApiSurface();
-            VerifyBuiltInDecoders();
-            VerifyFailurePolicies();
-            VerifyCustomFactoryCache();
-            VerifyRawIteratorPreserved();
-            VerifyBuiltInFactoryCache();
+                VerifyApiSurface();
+                VerifyBuiltInDecoders();
+                VerifyFailurePolicies();
+                VerifyCustomFactoryCache();
+                VerifyRawIteratorPreserved();
+                VerifyBuiltInFactoryCache();
 
-            Console.WriteLine($"Phase 124: {_passed} checks passed.");
+                Console.WriteLine($"Phase 124: {_passed} checks passed.");
+            }
+            finally
+            {
+                TempMcapHelper.Cleanup();
+            }
         }
 
         private static void VerifyApiSurface()
@@ -129,7 +136,9 @@ namespace Unity.FoxgloveSDK.Tests
                     new McapDataLoaderQuery { Topics = new List<string> { "/phase124/badjson" } },
                     new McapDecodeOptions { FailurePolicy = McapDecodeFailurePolicy.Throw }).ToList();
             }
-            catch
+            catch (Exception ex) when (
+                ex is Newtonsoft.Json.JsonReaderException
+                || ex is InvalidDataException)
             {
                 threw = true;
             }
@@ -189,7 +198,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string CreateDecodedFixture()
         {
-            var path = Path.Combine(Path.GetTempPath(), "phase124_" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase124");
             using (var fs = File.Create(path))
             using (var recorder = new McapRecorder(fs, null, new McapWriterOptions { UseChunking = false, EnableDataCrcs = true }, leaveOpen: true))
             {
@@ -231,10 +240,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = AppContext.BaseDirectory;
-            for (var i = 0; i < 8 && !File.Exists(Path.Combine(dir, "README.md")); i++)
-                dir = Directory.GetParent(dir)?.FullName ?? dir;
-            return dir;
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)

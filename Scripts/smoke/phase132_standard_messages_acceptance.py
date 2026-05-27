@@ -41,6 +41,7 @@ TOPICS = [
     ("/fix", "sensor_msgs/msg/NavSatFix"),
 ]
 PHASE132_RCLPY_PROBE_PATH = pathlib.Path(__file__).with_name("_phase132_rclpy_probe.py")
+YAML_NUMBER_RE = r"-?(?:(?:[0-9]+(?:\.[0-9]*)?)|(?:\.[0-9]+))(?:[eE][+-]?[0-9]+)?"
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -171,7 +172,7 @@ def count_yaml_array_numbers_after(output: str, field: str) -> int:
     next_top_level = re.search(r"(?m)^[a-zA-Z_][a-zA-Z0-9_]*:", section)
     if next_top_level:
         section = section[: next_top_level.start()]
-    return len(re.findall(r"(?m)^-\s*-?(?:[0-9]+(?:\.[0-9]+)?|[0-9]+)\s*$", section))
+    return len(re.findall(rf"(?m)^-\s*{YAML_NUMBER_RE}\s*$", section))
 
 
 def topic_list_has_type(output: str, topic: str, msg_type: str) -> bool:

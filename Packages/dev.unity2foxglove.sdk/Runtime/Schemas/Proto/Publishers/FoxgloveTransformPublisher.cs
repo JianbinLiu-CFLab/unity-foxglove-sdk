@@ -6,6 +6,7 @@
 // messages at a configurable rate. Supports JSON and protobuf encoding.
 
 using Google.Protobuf;
+using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;

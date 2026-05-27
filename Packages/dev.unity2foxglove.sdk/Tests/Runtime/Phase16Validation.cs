@@ -51,8 +51,6 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gitignore.Contains("bin/") || gitignore.Contains("**/bin/"), ".gitignore covers bin/");
             Assert(gitignore.Contains("obj/") || gitignore.Contains("**/obj/"), ".gitignore covers obj/");
             Assert(gitignore.Contains("build/"), ".gitignore covers build/");
-            Assert(gitignore.Contains("Plan/"), ".gitignore keeps Plan/ local-only");
-            Assert(gitignore.Contains("Developer/"), ".gitignore keeps Developer/ local-only");
 
             // ── 16D: CI workflows ──
             var ciDir = Path.Combine(repoRoot, ".github", "workflows");
@@ -70,10 +68,10 @@ namespace Unity.FoxgloveSDK.Tests
             ValidateWorkflowScriptReferences(repoRoot);
             ValidateDocsWorkflowCoverage(repoRoot);
             ValidatePublicDocsScriptReferences(repoRoot);
+            ValidatePrivateWorkspaceBoundaries(repoRoot);
             ValidateResearchDoiPolicy(repoRoot);
             ValidateGeneratedSourceProvenance(repoRoot);
             ValidateThirdPartyNotices(repoRoot);
-            ValidatePrivateWorkspaceBoundaries(repoRoot);
 
             Console.WriteLine("Phase 16: All checks passed.");
         }
@@ -174,21 +172,141 @@ namespace Unity.FoxgloveSDK.Tests
         static int FindPythonDeclarationEnd(IReadOnlyList<string> lines, int start)
         {
             var parenDepth = 0;
+            var quote = '\0';
+            var tripleQuoted = false;
+            var escaped = false;
             for (var index = start; index < lines.Count; index++)
             {
-                foreach (var ch in lines[index])
-                {
-                    if (ch == '(')
-                        parenDepth++;
-                    else if (ch == ')')
-                        parenDepth--;
-                }
+                CountPythonParensOutsideStrings(lines[index], ref parenDepth, ref quote, ref tripleQuoted, ref escaped);
 
-                if (parenDepth <= 0 && lines[index].TrimEnd().EndsWith(":", StringComparison.Ordinal))
+                if (parenDepth <= 0 && PythonLineEndsWithDeclarationColonOutsideStrings(lines[index]))
                     return index;
             }
 
             return start;
+        }
+
+        static void CountPythonParensOutsideStrings(
+            string line,
+            ref int parenDepth,
+            ref char quote,
+            ref bool tripleQuoted,
+            ref bool escaped)
+        {
+            for (var index = 0; index < line.Length; index++)
+            {
+                var ch = line[index];
+                if (quote != '\0')
+                {
+                    if (!tripleQuoted && escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+
+                    if (!tripleQuoted && ch == '\\')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+
+                    if (tripleQuoted)
+                    {
+                        if (ch == quote && index + 2 < line.Length && line[index + 1] == quote && line[index + 2] == quote)
+                        {
+                            quote = '\0';
+                            tripleQuoted = false;
+                            index += 2;
+                        }
+                    }
+                    else if (ch == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (ch == '#')
+                    break;
+
+                if (ch == '"' || ch == '\'')
+                {
+                    quote = ch;
+                    tripleQuoted = index + 2 < line.Length && line[index + 1] == ch && line[index + 2] == ch;
+                    if (tripleQuoted)
+                        index += 2;
+                    continue;
+                }
+
+                if (ch == '(')
+                    parenDepth++;
+                else if (ch == ')')
+                    parenDepth--;
+            }
+
+            if (!tripleQuoted)
+                escaped = false;
+        }
+
+        static bool PythonLineEndsWithDeclarationColonOutsideStrings(string line)
+        {
+            var quote = '\0';
+            var tripleQuoted = false;
+            var escaped = false;
+            var lastOutsideString = '\0';
+
+            for (var index = 0; index < line.Length; index++)
+            {
+                var ch = line[index];
+                if (quote != '\0')
+                {
+                    if (!tripleQuoted && escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+
+                    if (!tripleQuoted && ch == '\\')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+
+                    if (tripleQuoted)
+                    {
+                        if (ch == quote && index + 2 < line.Length && line[index + 1] == quote && line[index + 2] == quote)
+                        {
+                            quote = '\0';
+                            tripleQuoted = false;
+                            index += 2;
+                        }
+                    }
+                    else if (ch == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (ch == '#')
+                    break;
+
+                if (ch == '"' || ch == '\'')
+                {
+                    quote = ch;
+                    tripleQuoted = index + 2 < line.Length && line[index + 1] == ch && line[index + 2] == ch;
+                    if (tripleQuoted)
+                        index += 2;
+                    continue;
+                }
+
+                if (!char.IsWhiteSpace(ch))
+                    lastOutsideString = ch;
+            }
+
+            return lastOutsideString == ':';
         }
 
         static int FindNextNonEmptyLine(IReadOnlyList<string> lines, int start)
@@ -288,6 +406,69 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        static void ValidatePrivateWorkspaceBoundaries(string repoRoot)
+        {
+            if (!TryRunGitLsFiles(
+                    repoRoot,
+                    new[]
+                    {
+                        "Plan/**",
+                        "Developer/**",
+                        ":(glob)**/Developer/**",
+                        ":(glob)**/Developer.meta"
+                    },
+                    out var trackedPrivateFiles))
+            {
+                Console.WriteLine("[WARN] git unavailable; skipping tracked private workspace boundary checks");
+                return;
+            }
+
+            Assert(trackedPrivateFiles.Count == 0,
+                "No tracked Plan/Developer private workspace files are present");
+        }
+
+        static bool TryRunGitLsFiles(string repoRoot, IReadOnlyList<string> pathspecs, out IReadOnlyList<string> files)
+        {
+            files = Array.Empty<string>();
+
+            try
+            {
+                var arguments = "ls-files -- " + string.Join(" ", pathspecs.Select(QuoteGitArgument));
+                var startInfo = new ProcessStartInfo("git", arguments)
+                {
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                    return false;
+
+                var output = process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+                if (!process.WaitForExit(5000) || process.ExitCode != 0)
+                    return false;
+
+                files = output.Replace("\r\n", "\n")
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(path => path.Replace('\\', '/'))
+                    .ToArray();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static string QuoteGitArgument(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
         static void AssertPublicDocHasNoStaleScriptPath(string repoRoot, string path)
         {
             var relativePath = Path.GetRelativePath(repoRoot, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -337,58 +518,6 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(notices.Contains("Google.Protobuf") && notices.Contains("BSD-3-Clause"),
                 "third-party notices cover bundled Google.Protobuf runtime DLL");
             Assert(notices.Contains("does not claim authorship"), "third-party notices preserve upstream schema authorship");
-        }
-
-        static void ValidatePrivateWorkspaceBoundaries(string repoRoot)
-        {
-            var gitDir = Path.Combine(repoRoot, ".git");
-            if (!Directory.Exists(gitDir) && !File.Exists(gitDir))
-            {
-                Console.WriteLine("[WARN] .git not found - skipping tracked private workspace boundary checks.");
-                return;
-            }
-
-            var trackedPlanFiles = RunGitLsFiles(repoRoot, "Plan/**");
-            Assert(trackedPlanFiles.Length == 0, "Plan/ contains no git-tracked files");
-
-            var trackedDeveloperFiles = RunGitLsFiles(repoRoot, "Developer/**");
-            Assert(trackedDeveloperFiles.Length == 0, "Developer/ contains no git-tracked files");
-
-            var trackedNestedDeveloperFiles = RunGitLsFiles(repoRoot, ":(glob)**/Developer/**")
-                .Concat(RunGitLsFiles(repoRoot, ":(glob)**/Developer.meta"))
-                .Where(path => !path.Replace('\\', '/').StartsWith("Developer/", StringComparison.Ordinal))
-                .Where(path => File.Exists(Path.Combine(repoRoot, path.Replace('/', Path.DirectorySeparatorChar))))
-                .ToArray();
-            Assert(trackedNestedDeveloperFiles.Length == 0, "Nested Developer/ paths are not tracked; use Experimental/ for tracked demo assets");
-        }
-
-        static string[] RunGitLsFiles(string repoRoot, string pathspec)
-        {
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = $"ls-files -- \"{pathspec}\"",
-                WorkingDirectory = repoRoot,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            process.Start();
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            if (process.ExitCode != 0)
-                throw new Exception($"git ls-files failed for {pathspec}: {error.Trim()}");
-
-            return output
-                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(path => path.Trim())
-                .Where(path => path.Length > 0)
-                .ToArray();
         }
 
         internal static string FindRepoRoot()

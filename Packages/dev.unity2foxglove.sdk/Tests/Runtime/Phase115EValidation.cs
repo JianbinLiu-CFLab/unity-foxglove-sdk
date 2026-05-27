@@ -57,13 +57,14 @@ namespace Unity.FoxgloveSDK.Tests
             driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);
             var result = driver.GetRunResult();
             var generated = result.Results.SelectMany(r => r.GeneratedSources).ToList();
-            var foxRunSource = generated
-                .FirstOrDefault(s => s.HintName.EndsWith("_FoxRun.g.cs", StringComparison.Ordinal))
-                .SourceText
-                .ToString();
+            var foxRunGenerated = generated
+                .FirstOrDefault(s => s.HintName.EndsWith("_FoxRun.g.cs", StringComparison.Ordinal));
 
             Check(!diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error),
                 "115E-A1: Roslyn generator source harness runs without generator errors");
+            Check(foxRunGenerated.SourceText != null,
+                "115E-A2a: Roslyn generator source harness emits a FoxRun source hint");
+            var foxRunSource = foxRunGenerated.SourceText?.ToString() ?? string.Empty;
             Check(foxRunSource.Contains("FoxRun_TriggerAll", StringComparison.Ordinal),
                 "115E-A2: Roslyn generator source harness extracts generated FoxRun source");
             Check(generated.Any(s => s.HintName == "FoxRunGeneratedDescriptorInfo.g.cs"
@@ -91,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
-                var assembly = Assembly.LoadFile(outputPath);
+                var assembly = Assembly.Load(File.ReadAllBytes(outputPath));
                 var type = assembly.GetType("Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
                 var member = type?.GetMember("_value").FirstOrDefault();
                 var attr = member?.GetCustomAttributes(false).FirstOrDefault(a => a.GetType().FullName == typeof(FoxRunAttribute).FullName);
@@ -250,7 +251,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static MetadataReference[] References()
         {
-            var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
+            var trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+            if (string.IsNullOrWhiteSpace(trustedPlatformAssemblies))
+                throw new InvalidOperationException("TRUSTED_PLATFORM_ASSEMBLIES host data is required for Phase115E Roslyn reference resolution.");
+
+            var trusted = trustedPlatformAssemblies
                 .Split(Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path))
                 .Cast<MetadataReference>();
@@ -299,7 +304,7 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
-                var assembly = Assembly.LoadFile(outputPath);
+                var assembly = Assembly.Load(File.ReadAllBytes(outputPath));
                 var type = assembly.GetType("Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture")
                            ?? throw new InvalidOperationException("Missing reflection fixture type.");
                 var members = new List<FoxRunReflectionGenerationMember>();

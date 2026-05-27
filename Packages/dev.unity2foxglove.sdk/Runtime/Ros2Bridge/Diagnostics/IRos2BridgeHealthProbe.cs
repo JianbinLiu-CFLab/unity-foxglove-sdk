@@ -10,6 +10,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     public interface IRos2BridgeHealthProbe
     {
         Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs);
+        Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs, System.Threading.CancellationToken cancellationToken);
     }
 
     /// <summary>Sidecar health ping result returned to the bridge health report.</summary>

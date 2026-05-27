@@ -20,3 +20,9 @@ jobs:
 
       - name: Validate release package
         run: python3 Scripts/release/validate_package.py
+
+      - name: Validate ROS2 For Unity runtime package
+        run: python3 Scripts/release/validate_r2fu_runtime_package.py
+
+      - name: Validate ROS2 For Unity adapter package
+        run: python3 Scripts/release/validate_ros2forunity_package.py

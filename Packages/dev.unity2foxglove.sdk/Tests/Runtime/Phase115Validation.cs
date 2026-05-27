@@ -19,6 +19,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase115Validation
     {
+        private const string ExpectedGlobalFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
         private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string SharedDir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest";
         private const string GeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/SchemaManifest/Unity2FoxgloveSchemaManifestGenerator.cs";
@@ -67,7 +68,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "115-A2: aggregate sections are present in fixed order");
 
             Check((bool)sections["foxRun"]["present"]
-                  && (string)sections["foxRun"]["globalManifestHash"] == ExpectedFoxRunFixtureHash
+                  && (string)sections["foxRun"]["globalManifestHash"] == ExpectedGlobalFixtureHash
+                  && (string)sections["foxRun"]["manifestHash"] == ExpectedFoxRunFixtureHash
                   && (string)sections["foxRun"]["source"] == "generatedRegistry",
                 "115-A3: FoxRun section imports runtime schema summary without replacing the FoxRun manifest");
 
@@ -297,11 +299,11 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase115Validation.cs", StringComparison.Ordinal)
                   && project.Contains("Editor/Shared/SchemaManifest", StringComparison.Ordinal)
-                  && program.Contains("--phase115", StringComparison.Ordinal)
-                  && program.Contains("Phase115Validation.Validate()", StringComparison.Ordinal),
+                  && registry.Contains("\"--phase115\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase115Validation.Validate", StringComparison.Ordinal),
                 "115-F7: runtime validation project and runner wire --phase115");
         }
 

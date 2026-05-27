@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
@@ -295,8 +296,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             var validateStart = replay.IndexOf("private static void ValidateReplayFileForLoad", StringComparison.Ordinal);
             var validateEnd = replay.IndexOf("private static void ReadExactReplayMagic", StringComparison.Ordinal);
-            var validateBody = replay.Substring(validateStart, validateEnd - validateStart);
-            Check(!validateBody.Contains("FoxRun", StringComparison.Ordinal)
+            var foundValidateBody = validateStart >= 0 && validateEnd > validateStart;
+            var validateBody = foundValidateBody ? replay.Substring(validateStart, validateEnd - validateStart) : string.Empty;
+            Check(foundValidateBody
+                  && !validateBody.Contains("FoxRun", StringComparison.Ordinal)
                   && !validateBody.Contains(FoxRunSchemaMcapMetadata.MetadataName, StringComparison.Ordinal),
                 "114-F6: file-shape validation remains free of FoxRun schema metadata policy");
 
@@ -306,12 +309,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "114-F7: replay engine can read named summary metadata records");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase114Validation.cs", StringComparison.Ordinal),
                 "114-F8: runtime validation project compiles Phase114 tests");
-            Check(program.Contains("--phase114", StringComparison.Ordinal)
-                  && program.Contains("Phase114Validation.Validate()", StringComparison.Ordinal),
-                "114-F9: Program dispatches --phase114 and full validation includes Phase114");
+            Check(validationRegistry.Contains("--phase114", StringComparison.Ordinal)
+                  && validationRegistry.Contains("Phase114Validation.Validate", StringComparison.Ordinal),
+                "114-F9: validation registry dispatches --phase114 and full validation includes Phase114");
 
             var manager = ReadRepoText(ManagerRuntimePath);
             var server = ReadRepoText(ManagerServerPath);
@@ -328,8 +331,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && server.Contains("if (!SetupReplay())", StringComparison.Ordinal)
                   && server.Contains("return;", StringComparison.Ordinal)
                   && setup.Contains("ReplayStartBlockedBySchemaMismatch", StringComparison.Ordinal)
-                  && !setup.Contains("RestoreLivePublishers();\r\n                return;", StringComparison.Ordinal)
-                  && !setup.Contains("RestoreLivePublishers();\n                return;", StringComparison.Ordinal),
+                  && !Regex.IsMatch(
+                      setup,
+                      @"ReplayStartBlockedBySchemaMismatch[\s\S]{0,700}RestoreLivePublishers\s*\(\s*\)\s*;[\s\S]{0,200}return\s*;",
+                      RegexOptions.CultureInvariant),
                 "114-F11: confirmed replay schema mismatch hard-blocks Manager startup without live fallback");
         }
 
@@ -356,8 +361,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = TempMcapPath(label);
             using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (var recorder = new McapRecorder(fs))
             {
-                var recorder = new McapRecorder(fs);
                 recorder.AddChannel(1, "/phase114/" + label, "json", "", "", "");
                 recorder.WriteMessage(1, 10, Encoding.UTF8.GetBytes("{}"));
                 if (metadataJson != null)

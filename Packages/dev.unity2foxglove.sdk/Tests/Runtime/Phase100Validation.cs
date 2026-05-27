@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
 
@@ -46,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "100A-1: Stop closes the sink before bounded worker join to unblock blocking sends");
             Check(source.Contains("_stopRequested || !_enabled") && source.Contains("CloseSink(sink)") && source.Contains("return false"),
                 "100A-2: EnsureConnected closes late-connected sink when stop/disable wins");
-            Check(source.Contains("catch (ObjectDisposedException) when (ShouldStop())"),
+            Check(source.Contains("catch (ObjectDisposedException) when (ShouldStop("),
                 "100A-3: worker loop treats shutdown disposal as clean exit");
             Check(source.Contains("catch (Exception ex)") && source.Contains("MarkFailure(ex.Message, disconnect: true)")
                   && source.Contains("countFrameFailure: false"),
@@ -172,9 +173,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPhase100ValidationIsWired()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase100") && program.Contains("Phase100Validation.Validate()"),
+            Check(registry.Contains("--phase100", StringComparison.Ordinal)
+                  && registry.Contains("Phase100Validation.Validate", StringComparison.Ordinal),
                 "100I-1: Phase100 validation is available as a standalone test target");
             Check(project.Contains("Phase100Validation.cs"),
                 "100I-2: Phase100 validation is included in the runtime test project");
@@ -229,28 +231,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int FindMethodSignature(string source, string methodName)
         {
-            var needles = new[]
-            {
-                "private void " + methodName,
-                "protected void " + methodName,
-                "public void " + methodName,
-                "private bool " + methodName,
-                "protected bool " + methodName,
-                "public bool " + methodName,
-                "private static void " + methodName,
-                "protected static void " + methodName,
-                "public static void " + methodName
-            };
-
-            var best = -1;
-            foreach (var needle in needles)
-            {
-                var index = source.IndexOf(needle, StringComparison.Ordinal);
-                if (index >= 0 && (best < 0 || index < best))
-                    best = index;
-            }
-
-            return best;
+            var pattern = @"(?:private|protected|public|internal)\s+(?:static\s+)?[\w<>\[\],\s]+\s+"
+                          + Regex.Escape(methodName)
+                          + @"\s*\(";
+            var match = Regex.Match(source, pattern);
+            return match.Success ? match.Index : -1;
         }
 
         private static string ReadRepoText(string relativePath)
@@ -260,13 +245,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoPath(string relativePath)
         {
-            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase100 validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static void Check(bool condition, string message)
         {
             if (!condition)
-                throw new Exception(message);
+                throw new InvalidOperationException(message);
             _passed++;
             Console.WriteLine("[PASS] " + message);
         }

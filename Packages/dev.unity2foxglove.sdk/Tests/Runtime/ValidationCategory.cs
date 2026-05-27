@@ -10,7 +10,6 @@ namespace Unity.FoxgloveSDK.Tests
     {
         CiSafe,
         LocalEvidence,
-        ManualSmoke,
-        OptionalTooling
+        ManualSmoke
     }
 }

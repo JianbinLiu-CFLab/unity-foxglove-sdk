@@ -41,6 +41,7 @@ REPO_ROOT_PARENT_DEPTH = 2
 # Process exit codes returned by this build CLI.
 EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 2
+EXIT_TIMEOUT = 124
 
 # Time constants used for elapsed-time formatting and log polling.
 SECONDS_PER_HOUR = 3_600
@@ -50,6 +51,8 @@ LOG_POLL_SLEEP_SECONDS = 1
 # Keep progress heartbeats useful while avoiding console spam.
 DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
 MIN_PROGRESS_INTERVAL_SECONDS = 1
+DEFAULT_BUILD_TIMEOUT_MINUTES = 120
+UNITY_TERMINATION_WAIT_SECONDS = 30
 
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
@@ -200,12 +203,12 @@ def find_unity_from_hub() -> Optional[Path]:
 
 
 def find_unity(path: Optional[str], project_path: Path) -> Path:
-    """Resolve Unity executable, preferring explicit paths and the newest Hub install."""
+    """Resolve Unity executable, preferring the project-pinned editor before generic Hub installs."""
     unity = (
         find_unity_explicit(path)
         or find_unity_from_env()
-        or find_unity_from_hub()
         or find_unity_from_project_version(project_path)
+        or find_unity_from_hub()
     )
     if unity:
         return unity
@@ -316,10 +319,23 @@ def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str
     return new_offset, important
 
 
-def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int) -> int:
+def terminate_process(process: subprocess.Popen) -> None:
+    """Best-effort termination for a hung Unity process."""
+    try:
+        process.kill()
+    except OSError:
+        return
+    try:
+        process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int, timeout_minutes: int) -> int:
     """Run the Unity process, tailing important log lines at the given interval."""
     started = time.monotonic()
     next_heartbeat = started + interval
+    timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
     offset = INITIAL_LOG_OFFSET
 
     process = subprocess.Popen(cmd, cwd=root)
@@ -332,6 +348,19 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int)
         now = time.monotonic()
         if returncode is not None:
             break
+
+        if timeout_seconds is not None and now - started >= timeout_seconds:
+            offset, lines = read_new_important_lines(log_path, offset)
+            for line in lines:
+                print(f"[unity-log] {line}", flush=True)
+            print(
+                f"[build_unity_il2cpp] Unity timed out after {format_elapsed(now - started)}; "
+                f"terminating process. Log: {relative_to_root(log_path, root)}",
+                file=sys.stderr,
+                flush=True,
+            )
+            terminate_process(process)
+            return EXIT_TIMEOUT
 
         if now >= next_heartbeat:
             elapsed = format_elapsed(now - started)
@@ -401,6 +430,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_PROGRESS_INTERVAL_SECONDS,
         help="Seconds between progress heartbeats while Unity is running.",
     )
+    parser.add_argument(
+        "--timeout-minutes",
+        type=int,
+        default=DEFAULT_BUILD_TIMEOUT_MINUTES,
+        help="Maximum Unity build runtime before terminating. Use 0 to disable the timeout.",
+    )
     return parser.parse_args()
 
 
@@ -437,7 +472,13 @@ def main() -> int:
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
-    returncode = run_with_progress(cmd, root, log_path, max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval))
+    returncode = run_with_progress(
+        cmd,
+        root,
+        log_path,
+        max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
+        args.timeout_minutes,
+    )
     if returncode == EXIT_SUCCESS:
         print("[build_unity_il2cpp] Build command completed successfully.")
     else:

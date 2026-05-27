@@ -31,20 +31,27 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine();
-            Console.WriteLine("=== Phase 125: MCAP ROS2 CDR Typed Decode v1 ===");
-            _passed = 0;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== Phase 125: MCAP ROS2 CDR Typed Decode v1 ===");
+                _passed = 0;
 
-            VerifyApiSurface();
-            VerifyRuntimeReader();
-            VerifyGeneratedRegistryParity();
-            VerifyAllSchemaRoundTrips();
-            VerifyProductizedPayloads();
-            VerifyFailureBehavior();
-            VerifyDataLoaderIntegration();
-            VerifySourceWiring();
+                VerifyApiSurface();
+                VerifyRuntimeReader();
+                VerifyGeneratedRegistryParity();
+                VerifyAllSchemaRoundTrips();
+                VerifyProductizedPayloads();
+                VerifyFailureBehavior();
+                VerifyDataLoaderIntegration();
+                VerifySourceWiring();
 
-            Console.WriteLine($"Phase 125: {_passed} checks passed.");
+                Console.WriteLine($"Phase 125: {_passed} checks passed.");
+            }
+            finally
+            {
+                TempMcapHelper.Cleanup();
+            }
         }
 
         private static void VerifyApiSurface()
@@ -214,14 +221,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySourceWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs");
             var generator = ReadRepoText("Scripts/schema/generate_ros2_cdr_serializers.py");
 
-            Check(program.Contains("--phase125", StringComparison.Ordinal)
+            Check(validationRegistry.Contains("--phase125", StringComparison.Ordinal)
+                  && validationRegistry.Contains("Phase125Validation.Validate", StringComparison.Ordinal)
                   && project.Contains("Phase125Validation.cs", StringComparison.Ordinal),
-                "125-H1: Program.cs and test project wire --phase125");
+                "125-H1: PhaseValidationRegistry and test project wire --phase125");
             Check(registry.Contains("McapRos2CdrTypedDecoderFactory", StringComparison.Ordinal)
                   && registry.IndexOf("TryCreateRos2CdrTypedFactory", StringComparison.Ordinal) <
                   registry.IndexOf("McapRos2CdrDiagnosticDecoderFactory", StringComparison.Ordinal),
@@ -238,7 +246,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string CreateDecodedFixture()
         {
-            var path = Path.Combine(Path.GetTempPath(), "phase125_" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase125");
             using (var fs = File.Create(path))
             using (var recorder = new McapRecorder(fs, null, new McapWriterOptions { UseChunking = false, EnableDataCrcs = true }, leaveOpen: true))
             {
@@ -272,15 +280,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
         {
             var path = Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase125 file: " + relativePath, path);
             return File.ReadAllText(path);
         }
 
         private static string RepoRoot()
         {
-            var dir = AppContext.BaseDirectory;
-            for (var i = 0; i < 8 && !File.Exists(Path.Combine(dir, "README.md")); i++)
-                dir = Directory.GetParent(dir)?.FullName ?? dir;
-            return dir;
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static bool Throws<TException>(Action action) where TException : Exception

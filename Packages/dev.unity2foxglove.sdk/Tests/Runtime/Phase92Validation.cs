@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             using var stream = File.Create(outputPath);
             using var recorder = new McapRecorder(stream);
-            var session = new FoxgloveSession("phase92-mcap", new Phase92FakeTransport(), schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase92-mcap", new Phase92FakeTransport(), schemaRegistry: registry);
             session.SetRecorder(recorder);
 
             var samples = BuildProductSamples();
@@ -259,7 +259,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase92FakeTransport();
-            var session = new FoxgloveSession("phase92-session", transport, schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase92-session", transport, schemaRegistry: registry);
             session.EnableCdr();
             transport.SimulateConnect(1);
 
@@ -397,7 +397,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void WriteProductMcap(Stream stream, IReadOnlyList<Phase92Sample> samples, DefaultSchemaRegistry registry)
         {
             using var recorder = new McapRecorder(stream);
-            var session = new FoxgloveSession("phase92-mcap", new Phase92FakeTransport(), schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase92-mcap", new Phase92FakeTransport(), schemaRegistry: registry);
             session.SetRecorder(recorder);
             for (var i = 0; i < samples.Count; i++)
             {
@@ -465,8 +465,11 @@ namespace Unity.FoxgloveSDK.Tests
                 if (obj["op"]?.ToString() != "advertise")
                     continue;
 
-                foreach (var channel in (JArray)obj["channels"])
-                    result.Add((JObject)channel);
+                if (obj["channels"] is not JArray channels)
+                    continue;
+
+                foreach (var channel in channels.OfType<JObject>())
+                    result.Add(channel);
             }
 
             return result;
@@ -475,7 +478,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -488,7 +491,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private sealed class Phase92Sample

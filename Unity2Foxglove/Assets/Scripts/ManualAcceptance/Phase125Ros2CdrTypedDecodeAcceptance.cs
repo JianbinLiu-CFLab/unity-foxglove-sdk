@@ -186,7 +186,7 @@ public sealed class Phase125Ros2CdrTypedDecodeAcceptance : MonoBehaviour
             outputDirectory,
             (string.IsNullOrEmpty(filePrefix) ? "phase125_ros2_cdr_typed_manual" : filePrefix)
             + "_"
-            + DateTime.Now.ToString("yyyyMMdd_HHmmss")
+            + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fffffff'Z'")
             + ".mcap");
 
         using (var stream = File.Create(path))

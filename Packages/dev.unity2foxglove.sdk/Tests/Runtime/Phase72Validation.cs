@@ -56,6 +56,8 @@ namespace Unity.FoxgloveSDK.Tests
             var schedulerType = assembly.GetType("Unity.FoxgloveSDK.Util.FixedRatePublishScheduler");
             Check(_stateType != null && schedulerType != null,
                 "72A-7: scheduler types are compiled");
+            if (_stateType == null || schedulerType == null)
+                throw new Exception("[FAIL] 72A-7: scheduler types are compiled");
 
             _shouldPublishMethod = schedulerType.GetMethod(
                 "ShouldPublish",
@@ -65,6 +67,8 @@ namespace Unity.FoxgloveSDK.Tests
                 modifiers: null);
             Check(_shouldPublishMethod != null && _shouldPublishMethod.ReturnType == typeof(bool),
                 "72A-8: ShouldPublish signature is stable");
+            if (_shouldPublishMethod == null || _shouldPublishMethod.ReturnType != typeof(bool))
+                throw new Exception("[FAIL] 72A-8: ShouldPublish signature is stable");
 
             Check(SimulatePublishes(20f, 60d, 10d, true) == 200,
                 "72A-9: 20 Hz at exact 60 fps produces exactly 200 publishes over 10 seconds");
@@ -170,6 +174,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool InvokeShouldPublish(double nowSec, float rateHz, ref object state, bool nonPositivePublishesEveryFrame)
         {
+            if (_shouldPublishMethod == null)
+                throw new InvalidOperationException("Phase72 scheduler method was not resolved.");
+
             var args = new object[] { nowSec, rateHz, state, nonPositivePublishesEveryFrame };
             var result = (bool)_shouldPublishMethod.Invoke(null, args);
             state = args[2];
@@ -196,7 +203,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new Exception("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -209,7 +216,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private static string FindRepoRoot()
