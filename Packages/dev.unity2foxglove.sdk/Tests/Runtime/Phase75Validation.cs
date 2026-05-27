@@ -134,7 +134,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("EnvironmentVariableTarget.User") && source.Contains("EnvironmentVariableTarget.Machine"),
                 "75C-14: empty path can resolve user and machine PATH even when Unity inherited a stale PATH");
 
-            var result = check.Invoke(null, new object[] { @"Z:\definitely_missing_ffmpeg.exe", 250 });
+            var missingRoot = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-missing-ffmpeg-" + Guid.NewGuid().ToString("N"),
+                Path.DirectorySeparatorChar == '\\' ? "ffmpeg.exe" : "ffmpeg");
+            var result = check.Invoke(null, new object[] { missingRoot, 250 });
             var status = result.GetType().GetProperty("Status")?.GetValue(result);
             Check(status != null && status.ToString() == "Missing", "75C-15: rooted missing executable returns Missing");
 
@@ -252,7 +256,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            if (!File.Exists(full))
+                throw new FileNotFoundException("Required validation source file was not found.", full);
+
+            return File.ReadAllText(full);
         }
 
         private static string FindRepoRoot()
@@ -272,10 +279,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new Exception("[FAIL] " + name);
 
             _passed++;
-            Console.WriteLine("[OK] " + name);
+            Console.WriteLine("[PASS] " + name);
         }
     }
 }

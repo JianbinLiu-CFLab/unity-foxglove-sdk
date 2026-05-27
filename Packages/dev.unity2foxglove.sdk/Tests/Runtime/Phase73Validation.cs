@@ -244,12 +244,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyOrdinaryPublisherGuards()
         {
             var genericSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisher.cs");
-            var genericUpdate = Slice(genericSource, "protected virtual void Update()", "    }\r\n}");
+            var genericUpdate = ExtractMethodBody(genericSource, "protected virtual void Update()");
             CheckOrdered(genericUpdate, "ShouldPublishNow()", "TryPreparePublishPayload", "73F-1: generic publisher preflights after cadence");
             CheckOrdered(genericUpdate, "TryPreparePublishPayload", "CreateMessage()", "73F-2: generic publisher preflights before message creation");
 
             var protoSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/ProtobufPublisher.cs");
-            var protoUpdate = Slice(protoSource, "protected virtual void Update()", "    }\r\n}");
+            var protoUpdate = ExtractMethodBody(protoSource, "protected virtual void Update()");
             CheckOrdered(protoUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73F-3: protobuf publisher preflights after cadence");
             CheckOrdered(protoUpdate, "ShouldPreparePublishPayload()", "CreateMessage()", "73F-4: protobuf publisher preflights before message creation");
             CheckOrdered(protoUpdate, "ShouldPreparePublishPayload()", "ToByteArray()", "73F-5: protobuf publisher preflights before serialization");
@@ -347,7 +347,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new Exception("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -360,7 +360,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private static string FindRepoRoot()
