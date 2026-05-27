@@ -754,7 +754,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             Category = category ?? string.Empty;
             SourceFile = sourceFile ?? string.Empty;
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
-            _sampleFactory = sampleFactory ?? throw new ArgumentNullException(nameof(sampleFactory));
+            _sampleFactory = sampleFactory;
         }}
 
         public string SchemaName {{ get; }}
@@ -774,6 +774,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
         public IMessage CreateSample()
         {{
+            if (_sampleFactory == null)
+                throw new InvalidOperationException($\"Schema '{{SchemaName}}' does not have a deterministic sample factory.\");
             return _sampleFactory();
         }}
     }}

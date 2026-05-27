@@ -50,6 +50,10 @@ MISSING_METRIC_DEFAULT = 0
 
 # The sorted result list puts the latest timestamped JSON first.
 LATEST_RESULT_INDEX = 0
+DEFAULT_QUICK_TIMEOUT_MINUTES = 30
+DEFAULT_FULL_TIMEOUT_MINUTES = 180
+SECONDS_PER_MINUTE = 60
+EXIT_TIMEOUT = 124
 
 REPO_ROOT = os.path.abspath(__file__)
 for _ in range(REPO_ROOT_PARENT_DEPTH):
@@ -91,9 +95,18 @@ def main() -> int:
     parser.add_argument("--quick", action="store_true", help="Quick mode (~1 minute)")
     parser.add_argument("--full", action="store_true", help="Full mode (release candidate)")
     parser.add_argument("--output", type=str, default=None, help="Output directory for JSON results")
+    parser.add_argument(
+        "--timeout-minutes",
+        type=int,
+        default=None,
+        help="Maximum dotnet runtime before failing. Defaults are mode-specific; use 0 to disable.",
+    )
     args = parser.parse_args()
 
     mode = "full" if args.full else "quick"
+    default_timeout = DEFAULT_FULL_TIMEOUT_MINUTES if mode == "full" else DEFAULT_QUICK_TIMEOUT_MINUTES
+    timeout_minutes = default_timeout if args.timeout_minutes is None else args.timeout_minutes
+    timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
     output_dir = _resolve_output(args.output)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -122,7 +135,11 @@ def main() -> int:
     ]
     print(f"[perf-baseline] Running: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, cwd=REPO_ROOT, env=env)
+    try:
+        result = subprocess.run(cmd, cwd=REPO_ROOT, env=env, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        print(f"[perf-baseline] dotnet process timed out after {timeout_minutes} minute(s)")
+        return EXIT_TIMEOUT
     if result.returncode != EXIT_SUCCESS:
         print(f"[perf-baseline] dotnet process exited with code {result.returncode}")
         return result.returncode

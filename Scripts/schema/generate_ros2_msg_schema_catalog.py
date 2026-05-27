@@ -321,23 +321,21 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 {entries}
         }};
 
+        private static readonly Dictionary<string, FoxgloveRos2MsgSchemaCatalogEntry> BySchemaName = BuildSchemaNameMap();
+
         /// <summary>Read-only list of all generated ROS 2 .msg schemas.</summary>
         public static IReadOnlyList<FoxgloveRos2MsgSchemaCatalogEntry> Entries {{ get; }} = Array.AsReadOnly(EntriesArray);
 
         /// <summary>Find a catalog entry by ROS 2 interface schema name.</summary>
         public static bool TryGet(string schemaName, out FoxgloveRos2MsgSchemaCatalogEntry entry)
         {{
-            foreach (var candidate in EntriesArray)
+            if (schemaName == null)
             {{
-                if (string.Equals(candidate.SchemaName, schemaName, StringComparison.Ordinal))
-                {{
-                    entry = candidate;
-                    return true;
-                }}
+                entry = null;
+                return false;
             }}
 
-            entry = null;
-            return false;
+            return BySchemaName.TryGetValue(schemaName, out entry);
         }}
 
         /// <summary>Register all ROS 2 .msg schemas in the supplied registry.</summary>
@@ -373,6 +371,14 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 sourceSha256,
                 category,
                 hasDedicatedJsonOrProtobufPublisher);
+        }}
+
+        private static Dictionary<string, FoxgloveRos2MsgSchemaCatalogEntry> BuildSchemaNameMap()
+        {{
+            var map = new Dictionary<string, FoxgloveRos2MsgSchemaCatalogEntry>(StringComparer.Ordinal);
+            foreach (var entry in EntriesArray)
+                map.Add(entry.SchemaName, entry);
+            return map;
         }}
 
         private static string Decode(string base64)

@@ -213,13 +213,23 @@ def find_asmdef_cycles(metrics: list[AsmdefMetric]) -> list[list[str]]:
     """Find simple asmdef dependency cycles by assembly name."""
     graph = {metric.name: [ref for ref in metric.references if not ref.startswith("GUID:")] for metric in metrics if metric.name}
     cycles: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    def canonical_cycle(cycle: list[str]) -> tuple[str, ...]:
+        """Return a rotation-stable key for a closed cycle."""
+        body = cycle[:-1]
+        rotations = [body[index:] + body[:index] for index in range(len(body))]
+        best = min(rotations)
+        return tuple(best + [best[0]])
 
     def visit(node: str, stack: list[str]) -> None:
         """Depth-first cycle walk for one asmdef node."""
         if node in stack:
             cycle = stack[stack.index(node) :] + [node]
-            if cycle not in cycles:
-                cycles.append(cycle)
+            key = canonical_cycle(cycle)
+            if key not in seen:
+                seen.add(key)
+                cycles.append(list(key))
             return
         for child in graph.get(node, []):
             visit(child, stack + [node])
@@ -318,8 +328,8 @@ def build_report(repo_root: Path, args: argparse.Namespace) -> dict[str, object]
 def render_text(report: dict[str, object]) -> str:
     """Render a human-readable architecture report."""
     lines = [
-        "Unity2Foxglove Phase126 Architecture Coupling Report",
-        "====================================================",
+        "Unity2Foxglove Architecture Coupling Report",
+        "===========================================",
         f"repo_root: {report['repo_root']}",
         f"tracked_file_count: {report['tracked_file_count']}",
         f"csharp_file_count: {report['csharp_file_count']}",

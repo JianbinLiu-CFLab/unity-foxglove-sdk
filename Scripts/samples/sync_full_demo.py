@@ -185,7 +185,7 @@ def portable_full_demo_scene_payload(src: Path) -> bytes:
     lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
     rewritten = []
     for line in lines:
-        body = line.rstrip("\r\n").rstrip()
+        body = line.rstrip("\r\n")
         replacement = None
         for prefix, value in PORTABLE_FULL_DEMO_SCENE_OVERRIDES:
             if body.startswith(prefix):
@@ -220,13 +220,22 @@ def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:
 
 
 def validate_file_maps(pairs: list[tuple[Path, Path]]) -> list[str]:
-    """Return validation errors for configured source and destination roots."""
+    """Return validation errors for configured source and destination content."""
     errors = []
     for src, dst in pairs:
         if not src.exists():
             errors.append(f"missing source: {rel(src)}")
+            continue
         if not dst.parent.exists():
             errors.append(f"missing destination parent: {rel(dst.parent)}")
+            continue
+        if not dst.exists():
+            errors.append(f"missing destination: {rel(dst)}")
+            continue
+
+        expected = portable_full_demo_scene_payload(src) if is_demo_scene_to_sample_copy(src, dst) else src.read_bytes()
+        if dst.read_bytes() != expected:
+            errors.append(f"stale destination: {rel(dst)}")
     return errors
 
 
