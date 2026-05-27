@@ -403,7 +403,7 @@ def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: p
         if entry and not is_contaminating_python_path(entry)
     ]
     merged_path = os.pathsep.join([str(path) for path in path_entries] + filtered_existing)
-    cleaned.pop("Path", None)
+    cleaned["Path"] = merged_path
     cleaned["PATH"] = merged_path
     cleaned["COLCON_PYTHON_EXECUTABLE"] = str(python)
     cleaned["PYTHONUTF8"] = "1"

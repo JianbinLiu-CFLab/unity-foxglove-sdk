@@ -479,6 +479,8 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _runtimeRootLogged = true;
         var root = ResolveRuntimeRoot();
         _runtimeRoot = root ?? string.Empty;
+        if (string.IsNullOrEmpty(root))
+            Debug.LogWarning(LogPrefix + " Could not resolve ROS2 For Unity runtime root via reflection.");
         const string runtimePackagePrefix = "Packages/dev.unity2foxglove.ros2forunity" + ".runtime.";
         _runtimeRootIsPackage = !string.IsNullOrEmpty(root)
             && root.Replace('\\', '/').Contains(runtimePackagePrefix, StringComparison.OrdinalIgnoreCase);

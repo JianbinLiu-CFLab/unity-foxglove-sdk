@@ -40,6 +40,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             if (_disposed)
                 return false;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            TryEnsureReady();
             return !_initializationFailed && _ros2Unity != null && _ros2Unity.Ok();
 #else
             return false;

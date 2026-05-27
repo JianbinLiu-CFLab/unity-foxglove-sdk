@@ -208,6 +208,10 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
                     _directRos2Unity = gameObject.AddComponent<ROS2UnityComponent>();
                     _ownsDirectRos2Unity = true;
                 }
+                else
+                {
+                    _ownsDirectRos2Unity = true;
+                }
             }
 
             if (!_directRos2Unity.Ok())

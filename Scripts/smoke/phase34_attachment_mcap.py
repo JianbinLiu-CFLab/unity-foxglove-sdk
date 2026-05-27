@@ -61,6 +61,7 @@ OP_DATA_END = 0x0F
 # Stable identifiers for the single schema/channel/message in this fixture.
 SCHEMA_ID = 1
 CHANNEL_ID = 1
+assert CHANNEL_ID == 1, "fixture stability: CHANNEL_ID is encoded in chunk_index and statistics records"
 MESSAGE_SEQUENCE = 1
 MESSAGE_COUNT = 1
 CHANNEL_COUNT = 1

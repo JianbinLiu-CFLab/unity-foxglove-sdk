@@ -28,7 +28,10 @@ import subprocess
 import sys
 import time
 
-import _ros2_windows_env as ros2env
+try:
+    import _ros2_windows_env as ros2env
+except ImportError:
+    sys.exit("[phase110] ERROR: _ros2_windows_env module not found; run from Scripts/smoke/ directory.")
 
 DEFAULT_ROS2_ROOT = ros2env.DEFAULT_ROS2_ROOT
 NODE_NAME = "unity2foxglove_phase110"

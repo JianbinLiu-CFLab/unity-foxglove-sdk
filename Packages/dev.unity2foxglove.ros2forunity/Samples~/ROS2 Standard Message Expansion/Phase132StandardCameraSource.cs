@@ -114,6 +114,9 @@ public sealed class Phase132StandardCameraSource : MonoBehaviour
             }
         }
 
+        UnityEngine.Debug.Assert(data.Length == expectedLength,
+            "Phase132 camera source data buffer length mismatch.");
+
         return new sensor_msgs.msg.Image
         {
             Header = Phase132StandardMessagesCommon.CreateHeader(FrameId, sec, nanosec),
