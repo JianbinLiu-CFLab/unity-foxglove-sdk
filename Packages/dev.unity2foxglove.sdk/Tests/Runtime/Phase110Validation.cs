@@ -133,7 +133,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && combined.Contains(".Ok()", StringComparison.Ordinal),
                 "110-D4: sample adapter gets or adds ROS2UnityComponent and waits for Ok()");
             Check(smoke.Contains("NodeName = \"unity2foxglove_ros2forunity_string_smoke\"", StringComparison.Ordinal)
-                  && smoke.Contains("CreateNode(NormalizeTopic(_nodeName, NodeName))", StringComparison.Ordinal)
+                  && smoke.Contains("CreateNode(NormalizeName(_nodeName, NodeName))", StringComparison.Ordinal)
                   && context.Contains("_ros2Unity.CreateNode(normalizedName)", StringComparison.Ordinal),
                 "110-D5: sample adapter defaults to the string-smoke node name and passes node names through");
             Check(!combined.Contains("SpinOnce", StringComparison.Ordinal)
@@ -317,7 +317,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(batch.Contains("Phase110Ros2ForUnityStringSmoke", StringComparison.Ordinal)
                   && batch.Contains("Assets/Scenes/Phase106Acceptance.unity", StringComparison.Ordinal),
                 "110-J1: batch acceptance drives the actual Phase106Acceptance String Smoke component");
-            Check(batch.Contains("_useDirectRuntime", StringComparison.Ordinal)
+            Check(batch.Contains("_directMode", StringComparison.Ordinal)
                   && batch.Contains("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_DIRECT", StringComparison.Ordinal)
                   && batch.Contains("DIRECT_MODE=True", StringComparison.Ordinal)
                   && batch.Contains("DIRECT_MODE=False", StringComparison.Ordinal),
@@ -328,7 +328,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-J3: batch acceptance uses the same String Smoke topics and node as the Unity scene");
             Check(batch.Contains("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_GREEN", StringComparison.Ordinal)
                   && batch.Contains("received=", StringComparison.Ordinal)
-                  && batch.Contains("_receivedCount", StringComparison.Ordinal),
+                  && batch.Contains("ReceivedCount", StringComparison.Ordinal),
                 "110-J4: batch acceptance fails unless Unity records inbound String Smoke messages");
             Check(batch.Contains("UNITY2FOXGLOVE_PHASE110_INITIAL_PATH_CLEAN", StringComparison.Ordinal)
                   && batch.Contains("ContainsMachineRosPath", StringComparison.Ordinal),

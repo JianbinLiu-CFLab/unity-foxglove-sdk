@@ -65,6 +65,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
 
     private void OnEnable()
     {
+        // Acceptance samples keep Unity active while RViz2 and ROS2 CLI windows have focus.
         Application.runInBackground = true;
         _nextPublishAt = 0f;
         _publishedTfCount = 0;
@@ -98,8 +99,8 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
         if (!TryEnsureReady())
             return;
 
-        EnsureExecutorStarted();
-        EnsureEndpoints();
+        if (!TryEnsurePostReadySetup())
+            return;
         PublishIfDue();
 #else
         WarnMissingDefine();
@@ -174,6 +175,27 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             BindingFlags.Instance | BindingFlags.NonPublic);
     }
 
+    private bool TryEnsurePostReadySetup()
+    {
+        if (_initializationBlocked)
+            return false;
+
+        try
+        {
+            EnsureExecutorStarted();
+            EnsureEndpoints();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _initializationBlocked = true;
+            _lastError = ex.GetType().Name + ": " + ex.Message;
+            _statusMessage = _lastError;
+            Debug.LogWarning(LogPrefix + " ROS2 For Unity endpoint setup failed: " + _lastError);
+            return false;
+        }
+    }
+
     private bool TryEnsureReady()
     {
         if (_initializationBlocked)
@@ -212,6 +234,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             if (!_warnedMissingStartExecutor)
             {
                 _warnedMissingStartExecutor = true;
+                // R2FU has historically kept StartExecutor private; FixedUpdate may still start it.
                 Debug.LogWarning(LogPrefix + " StartExecutor reflection hook was not found; continuing without explicit executor start.");
             }
 
@@ -458,7 +481,8 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
     private static bool IsPackageRuntimeRoot(string path)
     {
         var normalized = NormalizePath(path);
-        return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/runtime/ros2forunity")
+        return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.")
+               && normalized.Contains("/runtime/ros2forunity")
                && !normalized.Contains("/unity2foxglove/assets/ros2forunity");
     }
 

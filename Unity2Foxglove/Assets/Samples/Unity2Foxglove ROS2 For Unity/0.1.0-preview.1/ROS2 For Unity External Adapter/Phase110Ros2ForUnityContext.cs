@@ -33,7 +33,19 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         _host = host;
     }
 
-    public bool IsAvailable => TryEnsureReady();
+    public bool IsAvailable
+    {
+        get
+        {
+            if (_disposed)
+                return false;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            return !_initializationFailed && _ros2Unity != null && _ros2Unity.Ok();
+#else
+            return false;
+#endif
+        }
+    }
 
     public Unity2FoxgloveRos2Status Status
     {
@@ -41,6 +53,10 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         {
             if (_disposed)
                 return Unity2FoxgloveRos2Status.Disposed;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            if (_initializationFailed)
+                return Unity2FoxgloveRos2Status.Error;
+#endif
             return IsAvailable ? Unity2FoxgloveRos2Status.Ready : Unity2FoxgloveRos2Status.Unavailable;
         }
     }
@@ -108,6 +124,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             return new UnavailableNode(NormalizeName(nodeName), _statusMessage);
 
         var normalizedName = NormalizeName(nodeName);
+        _nodes.RemoveAll(node => node.IsDisposed);
         foreach (var existing in _nodes)
         {
             if (!existing.IsDisposed && existing.Name == normalizedName)
@@ -259,17 +276,18 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         {
             if (typeof(T) == typeof(std_msgs.msg.String))
             {
+                var normalizedTopic = NormalizeTopic(topic);
                 try
                 {
                     IPublisher<std_msgs.msg.String> publisher =
-                        _ros2Node.CreatePublisher<std_msgs.msg.String>(NormalizeTopic(topic));
-                    var wrapper = new StringPublisher(_ros2Node, NormalizeTopic(topic), publisher);
+                        _ros2Node.CreatePublisher<std_msgs.msg.String>(normalizedTopic);
+                    var wrapper = new StringPublisher(_ros2Node, normalizedTopic, publisher);
                     return (IUnity2FoxgloveRos2Publisher<T>)(object)wrapper;
                 }
                 catch (Exception ex)
                 {
                     return new UnavailablePublisher<T>(
-                        NormalizeTopic(topic),
+                        normalizedTopic,
                         "ROS2 For Unity publisher creation failed: " + ex.Message);
                 }
             }
@@ -283,13 +301,14 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         {
             if (typeof(T) == typeof(std_msgs.msg.String))
             {
+                var normalizedTopic = NormalizeTopic(topic);
                 try
                 {
                     var typedCallback = (Action<std_msgs.msg.String>)(object)callback;
-                    var wrapper = new StringSubscription(_ros2Node, NormalizeTopic(topic), typedCallback);
+                    var wrapper = new StringSubscription(_ros2Node, normalizedTopic, typedCallback);
                     ISubscription<std_msgs.msg.String> subscription =
                         _ros2Node.CreateSubscription<std_msgs.msg.String>(
-                            NormalizeTopic(topic),
+                            normalizedTopic,
                             wrapper.Enqueue);
                     wrapper.Attach(subscription);
                     _subscriptions.Add(wrapper);
@@ -298,7 +317,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 catch (Exception ex)
                 {
                     Debug.LogWarning("[Ros2ForUnityContext] subscription creation failed: " + ex.Message);
-                    return new UnavailableSubscription(NormalizeTopic(topic));
+                    return new UnavailableSubscription(normalizedTopic);
                 }
             }
 
@@ -403,6 +422,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         private readonly ROS2Node _ros2Node;
         private ISubscription<std_msgs.msg.String> _subscription;
         private int _droppedCallbacks;
+        private bool _warnedDroppedCallbacks;
         private bool _disposed;
 
         public StringSubscription(
@@ -450,6 +470,13 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Drain()
         {
+            var dropped = DroppedCallbacks;
+            if (dropped > 0 && !_warnedDroppedCallbacks)
+            {
+                _warnedDroppedCallbacks = true;
+                Debug.LogWarning("[Ros2ForUnityContext] dropped " + dropped + " queued string callback(s) before Unity main-thread drain.");
+            }
+
             while (true)
             {
                 std_msgs.msg.String message;
