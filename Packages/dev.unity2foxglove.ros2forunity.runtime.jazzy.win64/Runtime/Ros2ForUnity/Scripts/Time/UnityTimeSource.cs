@@ -37,9 +37,10 @@ public class UnityTimeSource : ITimeSource
     {
       lastReadingSecs = Time.timeAsDouble;
     }
-    catch (Exception exception)
+    catch (UnityException exception)
     {
-      throw new InvalidOperationException("UnityTimeSource must be constructed on the Unity main thread.", exception);
+      throw new InvalidOperationException(
+          "UnityTimeSource must be constructed on the Unity main thread.", exception);
     }
   }
 

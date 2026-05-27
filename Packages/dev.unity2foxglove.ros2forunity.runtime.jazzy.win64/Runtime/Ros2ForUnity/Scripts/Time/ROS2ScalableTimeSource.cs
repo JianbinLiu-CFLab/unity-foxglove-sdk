@@ -29,6 +29,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   private double lastReadingSecs;
   private double lastTimeScale;
   private ROS2.Clock clock;
+  private readonly object _lock = new object();
   private double initialTime = 0;
   private double initialTimeScale = 0;
   private bool initialTimeAcquired = false;
@@ -80,8 +81,14 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     {
       if (!initialTimeAcquired)
       {
-        initialTimeAcquired = true;
-        initialTime = clock.Now.Seconds - lastReadingSecs;
+        lock (_lock)
+        {
+          if (!initialTimeAcquired)
+          {
+            initialTimeAcquired = true;
+            initialTime = clock.Now.Seconds - lastReadingSecs;
+          }
+        }
       }
       TimeUtils.TimeFromTotalSeconds(lastReadingSecs + initialTime, out seconds, out nanoseconds);
     }

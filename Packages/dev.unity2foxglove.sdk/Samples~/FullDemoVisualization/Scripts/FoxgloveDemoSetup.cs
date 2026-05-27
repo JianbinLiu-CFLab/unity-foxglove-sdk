@@ -105,15 +105,18 @@ public class FoxgloveDemoSetup : MonoBehaviour
     private void OnDestroy()
     {
         var runtime = _manager?.Runtime;
+        if (_manager != null)
+        {
+            _manager.OnClientMessage -= OnClientMessageReceived;
+        }
         if (runtime != null)
         {
             runtime.Parameters.OnParameterChanged -= OnParameterChanged;
-            _manager.OnClientMessage -= OnClientMessageReceived;
-            if (_resetSvcId != 0)
-            {
-                runtime.UnregisterService(_resetSvcId);
-                _resetSvcId = 0;
-            }
+        }
+        if (_resetSvcId != 0)
+        {
+            _manager.UnregisterService(_resetSvcId);
+            _resetSvcId = 0;
         }
         if (_scenePublisher != null)
             _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
@@ -291,7 +294,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         var count = Mathf.Min(payload.Length, ClientPayloadPreviewBytes);
         try
         {
-            var text = new UTF8Encoding(false, true).GetString(payload, 0, count);
+            var text = new UTF8Encoding(false, false).GetString(payload, 0, count);
             return payload.Length > count ? $"utf8:{text}..." : $"utf8:{text}";
         }
         catch

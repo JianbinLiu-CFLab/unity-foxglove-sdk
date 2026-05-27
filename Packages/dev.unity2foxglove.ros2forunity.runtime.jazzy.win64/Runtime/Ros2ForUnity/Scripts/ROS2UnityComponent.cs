@@ -57,7 +57,16 @@ public class ROS2UnityComponent : MonoBehaviour
         }
 
         if (needsConstruct)
-            LazyConstruct();
+        {
+            try
+            {
+                LazyConstruct();
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
 
         lock (mutex)
         {

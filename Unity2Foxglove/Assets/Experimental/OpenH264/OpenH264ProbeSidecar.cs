@@ -24,6 +24,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
     private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
     private readonly object _lifecycleLock = new object();
+    private bool _stopping;
     private readonly object _outputLock = new object();
     private Process _process;
     private CancellationTokenSource _stop;
@@ -155,6 +156,13 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
     public void Stop()
     {
+        lock (_lifecycleLock)
+        {
+            if (_stopping)
+                return;
+            _stopping = true;
+        }
+
         CancellationTokenSource stop;
         Process process;
         Task stdinTask;
@@ -223,6 +231,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
         stop?.Dispose();
         DrainQueues();
+        _stopping = false;
     }
 
     public void Dispose()

@@ -184,6 +184,7 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     /// </summary>
     void Awake()
     {
+        publishing = true;
         CalculateFrameTime();
         lastTimestamp = DateTime.UtcNow.Ticks / 1E7;
     }
