@@ -252,7 +252,7 @@ def measure_runner_output(name: str, kind: str, result: CommandResult) -> dict[s
     text = result.stdout + "\n" + result.stderr
     tested = len(re.findall(r"(?m)^\s*testing\s+", text))
     skipped = len(re.findall(r"(?m)^\s*(not supported|unsupported)\s+", text))
-    errors = len(re.findall(r"(?m)^(Error:|FAIL\b|\w+Error:)", text))
+    errors = len(re.findall(r"(?m)^(Error:|FAIL\b|\w+Error:|fail\s+)", text, re.IGNORECASE))
     if result.exit_code != 0 and errors == 0:
         errors = 1
     passed = max(0, tested - errors)
@@ -300,11 +300,15 @@ def count_generated_variants() -> int:
 def read_target_framework() -> str:
     """Read the target framework from the C# conformance project."""
 
-    text = PROJECT_PATH.read_text(encoding="utf-8")
-    match = re.search(r"<TargetFramework>\s*([^<\s]+)\s*</TargetFramework>", text)
-    if not match:
-        raise RuntimeError(f"TargetFramework was not found in {PROJECT_PATH}")
-    return match.group(1)
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(str(PROJECT_PATH))
+    root = tree.getroot()
+    tf = root.find(".//TargetFramework")
+    if tf is None:
+        tf = root.find(".//{http://schemas.microsoft.com/developer/msbuild/2003}TargetFramework")
+    if tf is not None and tf.text:
+        return tf.text.strip()
+    raise RuntimeError(f"TargetFramework was not found in {PROJECT_PATH}")
 
 
 def resolve_conformance_dll_path() -> Path:

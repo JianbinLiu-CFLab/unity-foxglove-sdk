@@ -402,7 +402,10 @@ int main(int argc, char** argv)
         ++framesEncoded;
     }
 
-    std::cerr << "OpenH264 probe helper finished. frames=" << framesEncoded << std::endl;
+    if (exitCode == 0)
+        std::cerr << "OpenH264 probe helper finished. frames=" << framesEncoded << std::endl;
+    else
+        std::cerr << "OpenH264 probe helper failed with exit " << exitCode << " frames=" << framesEncoded << std::endl;
     encoder->Uninitialize();
     api.destroyEncoder(encoder);
     return exitCode;
