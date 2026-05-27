@@ -108,7 +108,11 @@ namespace Unity.FoxgloveSDK.Tests
             var bytes = Convert.FromBase64String(roundtrip.Data);
 
             Check(roundtrip.FrameId == "unity_world", "49A-14: PointCloud JSON frame_id roundtrips");
-            Check(bytes.Length == 12 && ReadSingle(bytes, 4) == 1.5f, "49A-15: PointCloud JSON data is base64 packed bytes");
+            Check(bytes.Length == 12
+                  && ReadSingle(bytes, 0) == 0.5f
+                  && ReadSingle(bytes, 4) == 1.5f
+                  && ReadSingle(bytes, 8) == 2.5f,
+                "49A-15: PointCloud JSON data is base64 packed XYZ bytes");
         }
 
         private static void VerifyPointCloudProtobufRoundtrip()

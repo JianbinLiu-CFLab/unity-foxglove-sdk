@@ -98,12 +98,24 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         public static (ushort id, ushort schemaId, string topic, string encoding) DecodeChannel(byte[] content)
         {
+            var decoded = DecodeChannelWithMetadata(content);
+            return (decoded.id, decoded.schemaId, decoded.topic, decoded.encoding);
+        }
+
+        /// <summary>
+        /// Decodes a Channel record into id, schemaId, topic, encoding, and metadata.
+        /// </summary>
+        public static (ushort id, ushort schemaId, string topic, string encoding, Dictionary<string, string> metadata) DecodeChannelWithMetadata(byte[] content)
+        {
             var off = 0;
             var id = McapBinaryReader.ReadU16LE(content, ref off);
             var schemaId = McapBinaryReader.ReadU16LE(content, ref off);
             var topic = McapBinaryReader.ReadString(content, ref off);
             var encoding = McapBinaryReader.ReadString(content, ref off);
-            return (id, schemaId, topic, encoding);
+            var metadata = McapBinaryReader.ReadMap(content, ref off);
+            if (off != content.Length)
+                throw new InvalidDataException($"Channel record has {content.Length - off} trailing byte(s).");
+            return (id, schemaId, topic, encoding, metadata);
         }
 
         /// <summary>
@@ -136,8 +148,22 @@ namespace Unity.FoxgloveSDK.Tests
             var crc = McapBinaryReader.ReadU32LE(content, ref off);
             var comp = McapBinaryReader.ReadString(content, ref off);
             var compSize = McapBinaryReader.ReadU64LE(content, ref off);
-            var recs = new byte[content.Length - off];
-            Buffer.BlockCopy(content, off, recs, 0, recs.Length);
+            if (compSize > int.MaxValue)
+                throw new InvalidDataException(
+                    $"Chunk compressed size {compSize} exceeds the test parser limit {int.MaxValue}.");
+
+            var remaining = content.Length - off;
+            if (compSize > (ulong)remaining)
+                throw new InvalidDataException(
+                    $"Chunk compressed size {compSize} exceeds remaining record payload length {remaining}.");
+
+            var compressedLength = (int)compSize;
+            var trailing = remaining - compressedLength;
+            if (trailing != 0)
+                throw new InvalidDataException($"Chunk record has {trailing} trailing byte(s) after compressed records.");
+
+            var recs = new byte[compressedLength];
+            if (compressedLength > 0) Buffer.BlockCopy(content, off, recs, 0, compressedLength);
             return (st, et, size, crc, comp, compSize, recs);
         }
 
