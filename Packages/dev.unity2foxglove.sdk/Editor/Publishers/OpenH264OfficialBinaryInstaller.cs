@@ -310,7 +310,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             foreach (var root in CandidateVisualStudioRoots())
             {
-                foreach (var year in new[] { "2022", "2019" })
+                foreach (var year in new[] { "2026", "2022", "2019" })
                 {
                     foreach (var edition in new[] { "Community", "Professional", "Enterprise", "BuildTools" })
                     {

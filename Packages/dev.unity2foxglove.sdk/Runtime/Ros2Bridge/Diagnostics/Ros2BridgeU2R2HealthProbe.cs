@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 if (cancellationToken.IsCancellationRequested)
                     cancellationToken.ThrowIfCancellationRequested();
-                if (task.Wait(50))
+                if (task.Wait(Math.Min(50, timeoutMs)))
                     return true;
             }
 

@@ -139,14 +139,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     "ROS2 Bridge configuration is valid.",
                     durationMs: stopwatch.ElapsedMilliseconds);
             }
-            catch (Exception ex) when (IsExpectedConfigurationException(ex))
+            catch (Exception ex)
             {
                 stopwatch.Stop();
                 return new Ros2BridgeHealthCheckResult(
                     ConfigId,
                     "Configuration",
                     Ros2BridgeHealthStatus.Fail,
-                    ex.Message,
+                    IsExpectedConfigurationException(ex)
+                        ? ex.Message
+                        : "Unexpected exception during configuration check: " + ex.GetType().Name + " — " + ex.Message,
                     "Use a loopback host such as 127.0.0.1 and a port in 1..65535.",
                     durationMs: stopwatch.ElapsedMilliseconds);
             }

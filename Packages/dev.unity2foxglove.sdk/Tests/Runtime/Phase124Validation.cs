@@ -136,7 +136,9 @@ namespace Unity.FoxgloveSDK.Tests
                     new McapDataLoaderQuery { Topics = new List<string> { "/phase124/badjson" } },
                     new McapDecodeOptions { FailurePolicy = McapDecodeFailurePolicy.Throw }).ToList();
             }
-            catch (Newtonsoft.Json.JsonReaderException)
+            catch (Exception ex) when (
+                ex is Newtonsoft.Json.JsonReaderException
+                || ex is InvalidDataException)
             {
                 threw = true;
             }

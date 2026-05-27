@@ -497,7 +497,7 @@ namespace Unity.FoxgloveSDK.Editor
                 if (parameterType.IsAssignableFrom(argType))
                     continue;
 
-                if (parameterType.IsPrimitive && argType.IsPrimitive)
+                if (parameterType.IsPrimitive && argType.IsPrimitive && parameterType == argType)
                     continue;
 
                 return false;

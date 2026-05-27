@@ -633,6 +633,8 @@ int main(int argc, char ** argv)
       options.host.c_str(),
       options.port);
 
+    BridgeNode bridge(node, options.payload_format);
+
     while (rclcpp::ok()) {
       ScopedFd client_fd(accept_with_timeout(listen_fd.get()));
       if (!client_fd.valid()) {
@@ -640,7 +642,6 @@ int main(int argc, char ** argv)
         continue;
       }
 
-      BridgeNode bridge(node, options.payload_format);
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client connected");
       process_client(client_fd.get(), bridge, node);
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client disconnected");
