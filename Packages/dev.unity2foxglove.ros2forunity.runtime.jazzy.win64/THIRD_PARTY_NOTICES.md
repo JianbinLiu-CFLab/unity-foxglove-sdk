@@ -14,8 +14,8 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188` |
-| Inventory file count | `1044` |
+| SHA-256 | `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232` |
+| Inventory file count | `1053` |
 
 ## Known Upstream Components
 

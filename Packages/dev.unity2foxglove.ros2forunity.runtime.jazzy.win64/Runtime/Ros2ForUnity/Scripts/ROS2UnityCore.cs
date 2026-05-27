@@ -1,5 +1,6 @@
 // Copyright 2019-2022 Robotec.ai.
 // Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// U2F-LOCAL-PATCH: keep executor shutdown bounded and preserve nodes when the executor cannot stop cleanly.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

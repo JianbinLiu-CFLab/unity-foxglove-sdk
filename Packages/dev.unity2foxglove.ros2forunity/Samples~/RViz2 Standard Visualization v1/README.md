@@ -61,7 +61,7 @@ The helper uses:
 <ros2-root>\.pixi\envs\default\python.exe <ros2-root>\Scripts\ros2-script.py
 ```
 
-The acceptance helper launches RViz2 first, prints timestamped RViz2 startup diagnostics, then checks publisher endpoints and bounded echoes for `/tf`, `/scan`, `/points`, and `/markers`. Add `--no-launch-rviz` only when you want CLI checks without RViz2. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting. Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for canonical same-machine acceptance unless deliberately debugging discovery.
+The acceptance helper launches RViz2 first, prints timestamped RViz2 startup diagnostics, then treats `ros2 topic info` as a diagnostic and uses bounded echoes for `/tf`, `/scan`, `/points`, and `/markers` as the hard data-path gate. Add `--require-graph-info` only when you explicitly want slower graph endpoint discovery to be a hard gate. Add `--no-launch-rviz` when you want CLI checks without RViz2. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting. Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for canonical same-machine acceptance unless deliberately debugging discovery.
 
 To open only RViz2 without one-shot CLI echo checks, use this Python launcher:
 

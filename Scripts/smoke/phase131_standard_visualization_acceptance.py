@@ -10,8 +10,9 @@
 Start Unity manually first. Import the RViz2 Standard Visualization Acceptance,
 RViz2 PointCloud2 Acceptance, and RViz2 MarkerArray Acceptance publisher samples,
 then enter Play Mode. This helper uses the pinned Windows ROS2 Jazzy Python
-entry point to check /tf, /scan, /points, and /markers, then launches RViz2
-with the consolidated v1 config by default.
+entry point to launch RViz2 with the consolidated v1 config and echo /tf,
+/scan, /points, and /markers by default. ROS graph endpoint info is printed as
+diagnostics unless --require-graph-info is supplied.
 """
 
 from __future__ import annotations
@@ -24,6 +25,10 @@ import time
 
 import _ros2_windows_env as ros2env
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
 
 DEFAULT_RVIZ_CONFIG = pathlib.Path(
     r"Packages\dev.unity2foxglove.ros2forunity\Samples~"
@@ -105,6 +110,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=45.0,
         help="Seconds to wait for a visible RViz2 window after launch.",
+    )
+    parser.add_argument(
+        "--require-graph-info",
+        action="store_true",
+        help="Require ros2 topic info publisher discovery before echo checks. By default graph info is diagnostic.",
     )
     return parser.parse_args(argv)
 
@@ -236,20 +246,29 @@ def main(argv: list[str]) -> int:
         (MARKERS_TOPIC, MARKERS_MSG_TYPE, NODE_130),
     ]
     for topic, msg_type, node_name in topics:
-        print(f"--- topic info -v {topic} ---")
+        print(f"--- topic info -v {topic} (diagnostic) ---")
         stage_started = time.perf_counter()
-        ros2env.log_event("phase131", f"topic wait start topic={topic} type={msg_type}")
-        info = ros2env.wait_for_publisher(
-            pixi_python,
-            ros2_script,
-            env,
-            topic,
-            args.wait_seconds,
-            msg_type,
-            node_name,
-        )
+        ros2env.log_event("phase131", f"topic info probe start topic={topic} type={msg_type}")
+        if args.require_graph_info:
+            info = ros2env.wait_for_publisher(
+                pixi_python,
+                ros2_script,
+                env,
+                topic,
+                args.wait_seconds,
+                msg_type,
+                node_name,
+            )
+        else:
+            info = ros2env.probe_topic_info(
+                pixi_python,
+                ros2_script,
+                env,
+                topic,
+                timeout_seconds=5.0,
+            )
         print(info.rstrip())
-        ros2env.log_event("phase131", f"topic wait done topic={topic} elapsed={time.perf_counter() - stage_started:.3f}s")
+        ros2env.log_event("phase131", f"topic info probe done topic={topic} elapsed={time.perf_counter() - stage_started:.3f}s")
 
     print("--- echo /tf ---")
     stage_started = time.perf_counter()
