@@ -22,21 +22,28 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine();
-            Console.WriteLine("=== Phase 120B: MCAP DataLoader Hardening Review Closure ===");
-            _passed = 0;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== Phase 120B: MCAP DataLoader Hardening Review Closure ===");
+                _passed = 0;
 
-            VerifySequentialFallbackLimits();
-            VerifyDataLoaderWarnings();
-            VerifyBackfillLatestAt();
-            VerifySparseIndexedBackfillEarlyStop();
-            VerifyCrcHardFailConsistency();
-            VerifyRemoteStreamAndCap();
-            VerifyChunkSchemaChannelAllocationRemoval();
-            VerifySegmentDecodeBounds();
-            VerifyEvidenceAndWiring();
+                VerifySequentialFallbackLimits();
+                VerifyDataLoaderWarnings();
+                VerifyBackfillLatestAt();
+                VerifySparseIndexedBackfillEarlyStop();
+                VerifyCrcHardFailConsistency();
+                VerifyRemoteStreamAndCap();
+                VerifyChunkSchemaChannelAllocationRemoval();
+                VerifySegmentDecodeBounds();
+                VerifyEvidenceAndWiring();
 
-            Console.WriteLine($"Phase 120B: {_passed} checks passed.");
+                Console.WriteLine($"Phase 120B: {_passed} checks passed.");
+            }
+            finally
+            {
+                TempMcapHelper.Cleanup();
+            }
         }
 
         private static void VerifySequentialFallbackLimits()
@@ -174,13 +181,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var ownedStreamResponse = capped.GetDataStream(AuthorizedRequest());
             var ownedStreamResponseObject = (object)ownedStreamResponse;
-            if (ownedStreamResponseObject is IDisposable disposable)
-            {
-                var ownedStream = ownedStreamResponse.DataStream;
-                disposable.Dispose();
-                Check(ownedStream == null || !ownedStream.CanRead,
-                    "120B-F5: disposing remote stream response closes the underlying stream");
-            }
+            var disposable = (IDisposable)ownedStreamResponseObject;
+            var ownedStream = ownedStreamResponse.DataStream;
+            disposable.Dispose();
+            Check(ownedStream == null || !ownedStream.CanRead,
+                "120B-F5: disposing remote stream response closes the underlying stream");
         }
 
         private static void VerifyChunkSchemaChannelAllocationRemoval()
@@ -217,12 +222,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEvidenceAndWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase120b", StringComparison.Ordinal)
-                  && program.Contains("RunPhase120BOnly", StringComparison.Ordinal)
-                  && program.Contains("Phase120BValidation.Validate()", StringComparison.Ordinal),
-                "120B-H1: Program.cs wires --phase120b");
+            Check(registry.Contains("--phase120b", StringComparison.Ordinal)
+                  && registry.Contains("Phase120BValidation.Validate", StringComparison.Ordinal),
+                "120B-H1: PhaseValidationRegistry wires --phase120b");
             Check(project.Contains("Phase120BValidation.cs", StringComparison.Ordinal),
                 "120B-H2: runtime test project compiles Phase120BValidation");
 
@@ -346,7 +350,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string CreateRemoteFixtureFile()
         {
-            var path = Path.Combine(Path.GetTempPath(), "phase120b_remote_" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase120b_remote");
             using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
             using (var source = CreateDirectFixture())
             {
@@ -487,23 +491,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

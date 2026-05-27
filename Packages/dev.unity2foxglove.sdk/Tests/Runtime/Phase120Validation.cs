@@ -99,13 +99,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase120", StringComparison.Ordinal)
-                  && program.Contains("--phase120-official", StringComparison.Ordinal)
-                  && program.Contains("RunPhase120Only", StringComparison.Ordinal)
-                  && program.Contains("RunPhase120OfficialOnly", StringComparison.Ordinal),
-                "120-B1: Program.cs wires --phase120 and --phase120-official");
+            Check(registry.Contains("--phase120", StringComparison.Ordinal)
+                  && registry.Contains("--phase120-official", StringComparison.Ordinal)
+                  && registry.Contains("Phase120Validation.Validate", StringComparison.Ordinal)
+                  && registry.Contains("Phase120Validation.ValidateOfficial", StringComparison.Ordinal),
+                "120-B1: PhaseValidationRegistry wires --phase120 and --phase120-official");
             Check(project.Contains("Phase120Validation.cs", StringComparison.Ordinal),
                 "120-B2: runtime test project compiles Phase120Validation");
             AddCore("phase120-wiring", "passed", "Phase 120 validation entry points are wired.");
@@ -113,10 +113,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPriorPhaseHooks()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             foreach (var phase in new[] { "116", "117", "118", "119" })
             {
-                Check(program.Contains("--phase" + phase, StringComparison.Ordinal),
+                Check(registry.Contains("--phase" + phase, StringComparison.Ordinal),
                     "120-C1: prior phase hook exists for " + phase);
             }
 
@@ -362,7 +362,7 @@ print(json.dumps({
         {
             var report = new Phase120Report
             {
-                verdict = "PASS WITH NOTED LIMITATIONS",
+                verdict = Limitations.Count == 0 ? "PASS" : "PASS WITH NOTED LIMITATIONS",
                 generatedAtUtc = DateTime.UtcNow.ToString("o"),
                 commit = RunProcess("git", "rev-parse --short HEAD").Output.Trim(),
                 coreChecks = CoreChecks,
@@ -380,7 +380,7 @@ print(json.dumps({
 
         private static string FindPython()
         {
-            foreach (var candidate in new[] { "python", "py" })
+            foreach (var candidate in new[] { "python", "python3", "py" })
             {
                 var result = RunProcess(candidate, "--version");
                 if (result.ExitCode == 0)
@@ -389,6 +389,9 @@ print(json.dumps({
 
             return string.Empty;
         }
+
+        /// <summary>Maximum time to wait for a subprocess before killing it.</summary>
+        private const int SubprocessTimeoutMs = 30_000;
 
         private static ProcessResult RunProcess(string fileName, string arguments)
         {
@@ -403,10 +406,21 @@ print(json.dumps({
                     WorkingDirectory = RepoRoot()
                 };
                 using var process = Process.Start(psi);
-                var stdout = process?.StandardOutput.ReadToEnd() ?? string.Empty;
-                var stderr = process?.StandardError.ReadToEnd() ?? string.Empty;
-                process?.WaitForExit();
-                return new ProcessResult(process?.ExitCode ?? -1, stdout, stderr);
+                if (process == null)
+                    return new ProcessResult(-1, string.Empty, "Failed to start process.");
+
+                // Drain stdout and stderr concurrently to prevent pipe deadlock.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+
+                if (!process.WaitForExit(SubprocessTimeoutMs))
+                {
+                    try { process.Kill(); } catch { /* best effort */ }
+                    return new ProcessResult(-1, stdoutTask.Result,
+                        stderrTask.Result + "\nProcess timed out after " + SubprocessTimeoutMs + "ms.");
+                }
+
+                return new ProcessResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
             }
             catch (Exception ex)
             {
@@ -433,17 +447,10 @@ print(json.dumps({
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void AddCore(string name, string status, string details)
@@ -455,7 +462,7 @@ print(json.dumps({
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

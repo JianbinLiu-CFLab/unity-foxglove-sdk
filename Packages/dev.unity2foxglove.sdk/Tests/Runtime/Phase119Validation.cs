@@ -21,19 +21,26 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine();
-            Console.WriteLine("=== Phase 119: Remote MCAP Data Source Exploration ===");
-            _passed = 0;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== Phase 119: Remote MCAP Data Source Exploration ===");
+                _passed = 0;
 
-            VerifyBoundaryNote();
-            VerifyDtoSurface();
-            VerifyIndexedManifest();
-            VerifyDirectManifest();
-            VerifyAuthorizationAndUnsupportedRequests();
-            VerifyDataBytesReadableByLocalReaders();
-            VerifyValidationWiring();
+                VerifyBoundaryNote();
+                VerifyDtoSurface();
+                VerifyIndexedManifest();
+                VerifyDirectManifest();
+                VerifyAuthorizationAndUnsupportedRequests();
+                VerifyDataBytesReadableByLocalReaders();
+                VerifyValidationWiring();
 
-            Console.WriteLine($"Phase 119: {_passed} checks passed.");
+                Console.WriteLine($"Phase 119: {_passed} checks passed.");
+            }
+            finally
+            {
+                TempMcapHelper.Cleanup();
+            }
         }
 
         private static void VerifyBoundaryNote()
@@ -179,12 +186,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase119", StringComparison.Ordinal)
-                  && program.Contains("RunPhase119Only", StringComparison.Ordinal)
-                  && program.Contains("Phase119Validation.Validate()", StringComparison.Ordinal),
-                "119-G1: Program.cs wires --phase119");
+            Check(registry.Contains("--phase119", StringComparison.Ordinal)
+                  && registry.Contains("Phase119Validation.Validate", StringComparison.Ordinal),
+                "119-G1: PhaseValidationRegistry wires --phase119");
             Check(project.Contains("Phase119Validation.cs", StringComparison.Ordinal),
                 "119-G2: runtime test project compiles Phase119Validation");
         }
@@ -201,7 +207,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static RemoteMcapSource SingleSource(RemoteMcapManifestResponse response)
         {
             if (response.Manifest.Sources.Count != 1)
-                throw new Exception("Expected one manifest source, got " + response.Manifest.Sources.Count);
+                throw new InvalidOperationException("Expected one manifest source, got " + response.Manifest.Sources.Count);
             return response.Manifest.Sources[0];
         }
 
@@ -218,7 +224,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string CreateIndexedFixture(string label)
         {
-            var path = Path.Combine(Path.GetTempPath(), "phase119_" + label + "_" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase119_" + label);
             using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
             using (var recorder = new McapRecorder(fs))
             {
@@ -236,7 +242,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string CreateDirectFixture()
         {
-            var path = Path.Combine(Path.GetTempPath(), "phase119_direct_" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase119_direct");
             using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
             using (var writer = new McapWriter(fs))
             {
@@ -269,23 +275,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

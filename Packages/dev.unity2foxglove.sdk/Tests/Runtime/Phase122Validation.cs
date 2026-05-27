@@ -18,18 +18,25 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine();
-            Console.WriteLine("=== Phase 122: MCAP Writer Options Parity ===");
-            _passed = 0;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== Phase 122: MCAP Writer Options Parity ===");
+                _passed = 0;
 
-            VerifyOptionSurface();
-            VerifyDefaultLayout();
-            VerifyDirectLayout();
-            VerifySummaryAndIndexGates();
-            VerifyCrcGates();
-            VerifyConformanceWriterMapping();
+                VerifyOptionSurface();
+                VerifyDefaultLayout();
+                VerifyDirectLayout();
+                VerifySummaryAndIndexGates();
+                VerifyCrcGates();
+                VerifyConformanceWriterMapping();
 
-            Console.WriteLine($"Phase 122: {_passed} checks passed.");
+                Console.WriteLine($"Phase 122: {_passed} checks passed.");
+            }
+            finally
+            {
+                TempMcapHelper.Cleanup();
+            }
         }
 
         private static void VerifyOptionSurface()
@@ -120,7 +127,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(ReadDataEndCrc(records) != 0,
                 "122-C2: EnableDataCrcs writes non-zero DataEnd CRC");
 
-            var path = Path.Combine(Path.GetTempPath(), "phase122-direct-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var path = TempMcapHelper.CreatePath("phase122-direct");
             File.WriteAllBytes(path, bytes);
             using var reader = McapIndexedReader.OpenRead(path);
             var messages = reader.ReadMessages(new McapReadOptions { Topics = new System.Collections.Generic.List<string> { "/phase122/direct" } });
@@ -193,15 +200,17 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
             var runner = ReadRepoText("Scripts/mcap/conformance/csharp-runners/CsharpWriterTestRunner.ts");
+            // Normalize to LF for cross-platform negative pattern matching.
+            var runnerLf = runner.Replace("\r\n", "\n");
             Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
                   && writer.Contains("UseChunking = features.Contains(\"ch\")", StringComparison.Ordinal)
                   && writer.Contains("IndexTypes", StringComparison.Ordinal)
                   && writer.Contains("EnableDataCrcs = true", StringComparison.Ordinal),
                 "122-F1: C# conformance writer maps official feature flags to writer options");
-            Check(runner.Contains("TestFeatures.UseChunks", StringComparison.Ordinal)
-                  && runner.Contains("TestFeatures.AddExtraDataToRecords", StringComparison.Ordinal)
-                  && runner.Contains("return true;", StringComparison.Ordinal)
-                  && !runner.Contains("return false;\n  }\n\n  async runWriteTest", StringComparison.Ordinal),
+            Check(runnerLf.Contains("TestFeatures.UseChunks", StringComparison.Ordinal)
+                  && runnerLf.Contains("TestFeatures.AddExtraDataToRecords", StringComparison.Ordinal)
+                  && runnerLf.Contains("return true;", StringComparison.Ordinal)
+                  && !runnerLf.Contains("return false;\n  }\n\n  async runWriteTest", StringComparison.Ordinal),
                 "122-F2: writer runner supports a measured direct/no-padding subset instead of skipping all variants");
             Check(File.Exists(RepoPath("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/Unity2Foxglove.McapConformance.csproj")),
                 "122-F3: C# conformance console project remains present for writer byte checks");
@@ -222,8 +231,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static McapRecordReader.McapRecord[] Parse(byte[] data)
         {
             var parsed = McapRecordReader.Parse(data);
-            Check(parsed.hasLeadingMagic && parsed.hasTrailingMagic,
-                "122-Z: generated MCAP has leading and trailing magic");
+            if (!parsed.hasLeadingMagic || !parsed.hasTrailingMagic)
+                throw new InvalidDataException("Generated MCAP is missing leading or trailing magic.");
             return parsed.records.ToArray();
         }
 
@@ -256,21 +265,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
-                dir = dir.Parent;
-            }
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

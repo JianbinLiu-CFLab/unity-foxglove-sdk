@@ -154,6 +154,9 @@ namespace Unity.FoxgloveSDK.Tests
             return root;
         }
 
+        /// <summary>Maximum time to wait for a git subprocess before killing it.</summary>
+        private const int GitTimeoutMs = 30_000;
+
         private static string[] RunGitLsFiles(params string[] pathspecs)
         {
             var arguments = "ls-files";
@@ -173,14 +176,22 @@ namespace Unity.FoxgloveSDK.Tests
             };
 
             process.Start();
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
 
+            // Drain stdout and stderr concurrently to prevent pipe deadlock.
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+
+            if (!process.WaitForExit(GitTimeoutMs))
+            {
+                try { process.Kill(); } catch { /* best effort */ }
+                throw new InvalidOperationException("git ls-files timed out after " + GitTimeoutMs + "ms.");
+            }
+
+            var error = errorTask.Result;
             if (process.ExitCode != 0)
-                throw new Exception("git ls-files failed: " + error.Trim());
+                throw new InvalidOperationException("git ls-files failed: " + error.Trim());
 
-            return output
+            return outputTask.Result
                 .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(path => path.Trim())
                 .Where(path => path.Length > 0)
