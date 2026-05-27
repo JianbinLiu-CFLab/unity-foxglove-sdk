@@ -69,7 +69,8 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                     return (string)field[1];
             }
 
-            return "0";
+            throw new InvalidDataException(
+                "Required field '" + fieldName + "' not found in conformance record of type '" + record.Type + "'.");
         }
 
         private static int CompareNumberField(SerializableMcapRecord left, SerializableMcapRecord right, string fieldName)

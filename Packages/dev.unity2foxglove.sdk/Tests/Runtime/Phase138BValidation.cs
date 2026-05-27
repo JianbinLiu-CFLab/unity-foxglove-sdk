@@ -123,10 +123,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("libssl-3-x64.dll", StringComparison.Ordinal)
                   && script.Contains("libcrypto-3-x64.dll", StringComparison.Ordinal),
                 "138B-B12: orchestrator patches Jazzy Windows standalone OpenSSL 3 runtime DLL names");
-            Check(script.Contains("modulenotfounderror", StringComparison.Ordinal)
+            Check(script.Contains("modulenotfounderror", StringComparison.OrdinalIgnoreCase)
                   && script.Contains("anaconda3", StringComparison.OrdinalIgnoreCase)
-                  && script.IndexOf("modulenotfounderror", StringComparison.Ordinal)
-                     < script.IndexOf("system cannot find the file", StringComparison.Ordinal),
+                  && script.IndexOf("modulenotfounderror", StringComparison.OrdinalIgnoreCase)
+                     < script.IndexOf("system cannot find the file", StringComparison.OrdinalIgnoreCase),
                 "138B-B13: orchestrator classifies Python contamination before generic missing-file failures");
             Check(script.Contains("JAZZY_PIXI_RUNTIME_DLLS", StringComparison.Ordinal)
                   && script.Contains("copy_jazzy_pixi_runtime_closure", StringComparison.Ordinal)
@@ -206,16 +206,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase138b" });
+            var aliasEntry = PhaseValidationRegistry.Find(new[] { "--phase137b" });
 
-            Check(program.Contains("PhaseValidationRegistry.Find", StringComparison.Ordinal)
-                  && registry.Contains("Local(\"--phase138b\"", StringComparison.Ordinal)
-                  && registry.Contains("Phase138BValidation.Validate", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Run == (Action)Validate
+                  && aliasEntry == entry,
                 "138B-G1: validation registry wires --phase138b");
-            Check(registry.Contains("Local(\"--phase138b\"", StringComparison.Ordinal)
-                  && registry.Contains("ValidationCategory.LocalEvidence, run, includeInDefault: true", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Category == ValidationCategory.LocalEvidence
+                  && entry.IncludeInDefault,
                 "138B-G2: Phase138B is classified as local-evidence opt-in outside default CI");
             Check(project.Contains("Phase138BValidation.cs", StringComparison.Ordinal),
                 "138B-G3: test project compiles Phase138BValidation");
@@ -300,7 +301,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            return File.ReadAllText(RepoPath(relativePath));
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase138B file: " + relativePath, path);
+            return File.ReadAllText(path);
         }
 
         private static string RepoPath(string relativePath)
@@ -310,14 +314,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
-            var directory = new DirectoryInfo(AppContext.BaseDirectory);
-            while (directory != null)
-            {
-                if (Directory.Exists(Path.Combine(directory.FullName, ".git")))
-                    return directory.FullName;
-                directory = directory.Parent;
-            }
-            throw new InvalidOperationException("Could not locate repository root.");
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            return root;
         }
 
         private static void Check(bool condition, string description)

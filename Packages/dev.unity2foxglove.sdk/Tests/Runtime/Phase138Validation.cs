@@ -138,16 +138,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase138" });
 
-            Check(program.Contains("PhaseValidationRegistry.Find", StringComparison.Ordinal)
-                  && registry.Contains("Local(\"--phase138\"", StringComparison.Ordinal)
-                  && registry.Contains("Phase138Validation.Validate", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Run == (Action)Validate,
                 "138E-1: validation registry wires --phase138");
-            Check(registry.Contains("Local(\"--phase138\"", StringComparison.Ordinal)
-                  && registry.Contains("ValidationCategory.LocalEvidence, run, includeInDefault: true", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Category == ValidationCategory.LocalEvidence
+                  && entry.IncludeInDefault,
                 "138E-2: Phase138 is classified as local-evidence opt-in outside default CI");
             Check(project.Contains("Phase138Validation.cs", StringComparison.Ordinal),
                 "138E-3: test project compiles Phase138Validation");
