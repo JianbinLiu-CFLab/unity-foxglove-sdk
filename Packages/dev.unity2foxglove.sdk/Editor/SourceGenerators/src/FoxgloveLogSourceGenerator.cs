@@ -525,6 +525,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "{0}: binary/blob values are not supported in the FoxRun contract path",
                 "FoxRun", DiagnosticSeverity.Warning, true);
 
+            public static readonly DiagnosticDescriptor MissingClassName = new DiagnosticDescriptor(
+                "FOXRUN011", "FoxRun declaring class name required",
+                "{0}: FoxRun declaring class name is required",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor MissingMemberName = new DiagnosticDescriptor(
+                "FOXRUN012", "FoxRun member name required",
+                "{0}: FoxRun member name is required",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor InvalidPublishMode = new DiagnosticDescriptor(
+                "FOXRUN013", "FoxRun publish mode out of range",
+                "{0}: FoxRun publish mode must be between 0 and 3",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
             public static DiagnosticDescriptor Shared(string id)
             {
                 switch (id)
@@ -534,7 +549,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN008": return NonAbsoluteTopic;
                     case "FOXRUN009": return DisabledRate;
                     case "FOXRUN010": return BinaryType;
-                    default: return UnsupportedCanonicalType;
+                    case "FOXRUN011": return MissingClassName;
+                    case "FOXRUN012": return MissingMemberName;
+                    case "FOXRUN013": return InvalidPublishMode;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
                 }
             }
         }

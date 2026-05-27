@@ -325,7 +325,16 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public static string EmitSourceFile(MemberData[] members)
         {
+            if (members == null)
+                throw new ArgumentNullException(nameof(members));
+            if (members.Length == 0)
+                throw new ArgumentException("At least one FoxRun member is required to emit a source file.", nameof(members));
+
             var model = LowerReflectionMembers(members.Select(member => member.ToReflectionMember()).ToList());
+            ValidateGenerationModel(model);
+            if (model.Types.Count != 1)
+                throw new ArgumentException("Members must describe exactly one FoxRun declaring type.", nameof(members));
+
             return EmitSourceFile(model.Types[0]);
         }
 

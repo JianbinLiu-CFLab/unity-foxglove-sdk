@@ -98,6 +98,22 @@ namespace Unity.FoxgloveSDK.Editor
             // generated Player code still publishes without runtime reflection.
             var linkPath = Path.Combine(Application.dataPath, "FoxRun_link.xml");
             EnsureFoxRunLinkXml(linkPath);
+
+            try
+            {
+                AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            }
+            catch (Exception ex)
+            {
+                throw new BuildFailedException(
+                    "[FoxRun] generated asset refresh failed.\n" +
+                    "The build was stopped because Unity could not synchronously\n" +
+                    "import generated FoxRun source, schema info, or link.xml files\n" +
+                    "before the Player build continued.\n\n" +
+                    "Details:\n" +
+                    "  - Failed at: asset-refresh\n" +
+                    $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
+            }
         }
 
         /// <summary>

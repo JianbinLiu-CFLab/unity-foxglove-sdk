@@ -10,6 +10,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -17,7 +18,11 @@ namespace Unity.FoxgloveSDK.Editor
     {
         public const string SchemaInfoFileName = "FoxRunSchemaInfo.g.cs";
         public const string SchemaInfoMetaFileName = "FoxRunSchemaInfo.g.cs.meta";
+        // Stable Unity GUID for the generated schema-info asset. Do not randomize:
+        // downstream package imports and evidence diffs rely on this path staying stable.
         private const string StableSchemaInfoMetaGuid = "b1e4f0edc9dd4a989f26082ba9b5e113";
+        private const int ReplaceAttempts = 3;
+        private const int ReplaceRetryDelayMilliseconds = 50;
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public static FoxRunSchemaInfoVerification WriteGeneratedInfoFiles(
@@ -209,7 +214,102 @@ namespace Unity.FoxgloveSDK.Editor
             var bytes = Utf8NoBom.GetBytes(content);
             if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
                 return;
-            File.WriteAllBytes(path, bytes);
+
+            var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.WriteAllBytes(tempPath, bytes);
+                ReplaceFile(tempPath, path);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+        }
+
+        private static void ReplaceFile(string tempPath, string path)
+        {
+            if (!File.Exists(path))
+            {
+                File.Move(tempPath, path);
+                return;
+            }
+
+            Exception replaceException = null;
+            for (var attempt = 0; attempt < ReplaceAttempts; attempt++)
+            {
+                try
+                {
+                    ClearReadOnly(path);
+                    File.Replace(tempPath, path, null);
+                    return;
+                }
+                catch (PlatformNotSupportedException ex)
+                {
+                    replaceException = ex;
+                    break;
+                }
+                catch (IOException ex)
+                {
+                    replaceException = ex;
+                    DelayBeforeRetry(attempt);
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    replaceException = ex;
+                    DelayBeforeRetry(attempt);
+                }
+            }
+
+            CopyTempOverDestination(tempPath, path, replaceException);
+        }
+
+        private static void CopyTempOverDestination(string tempPath, string path, Exception originalException)
+        {
+            Exception copyException = null;
+            for (var attempt = 0; attempt < ReplaceAttempts; attempt++)
+            {
+                try
+                {
+                    ClearReadOnly(path);
+                    File.Copy(tempPath, path, overwrite: true);
+                    return;
+                }
+                catch (IOException ex)
+                {
+                    copyException = ex;
+                    DelayBeforeRetry(attempt);
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    copyException = ex;
+                    DelayBeforeRetry(attempt);
+                }
+            }
+
+            throw new IOException(
+                "Failed to replace generated FoxRun schema info artifact '" + path + "'.",
+                copyException ?? originalException);
+        }
+
+        private static void ClearReadOnly(string path)
+        {
+            if (!File.Exists(path))
+                return;
+
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+        }
+
+        private static void DelayBeforeRetry(int attempt)
+        {
+            // Build/Play-Mode hooks run on Unity's main thread; keep the retry
+            // bounded and tiny so transient antivirus/file-indexer locks can clear
+            // without hiding a real write failure.
+            if (attempt + 1 < ReplaceAttempts)
+                Thread.Sleep(ReplaceRetryDelayMilliseconds);
         }
 
         private static string StringLiteral(string value)
@@ -269,11 +369,48 @@ namespace Unity.FoxgloveSDK.Editor
             if (start < 0)
                 return string.Empty;
 
-            var end = source.IndexOf('"', start + 1);
-            if (end < 0)
-                return string.Empty;
+            var sb = new StringBuilder();
+            for (var i = start + 1; i < source.Length; i++)
+            {
+                var c = source[i];
+                if (c == '"')
+                    return sb.ToString();
 
-            return source.Substring(start + 1, end - start - 1);
+                if (c != '\\')
+                {
+                    sb.Append(c);
+                    continue;
+                }
+
+                if (++i >= source.Length)
+                    return string.Empty;
+
+                var escaped = source[i];
+                switch (escaped)
+                {
+                    case '"': sb.Append('"'); break;
+                    case '\\': sb.Append('\\'); break;
+                    case 'b': sb.Append('\b'); break;
+                    case 'f': sb.Append('\f'); break;
+                    case 'n': sb.Append('\n'); break;
+                    case 'r': sb.Append('\r'); break;
+                    case 't': sb.Append('\t'); break;
+                    case 'u':
+                        if (i + 4 >= source.Length)
+                            return string.Empty;
+                        var hex = source.Substring(i + 1, 4);
+                        if (!int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var codePoint))
+                            return string.Empty;
+                        sb.Append((char)codePoint);
+                        i += 4;
+                        break;
+                    default:
+                        sb.Append(escaped);
+                        break;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static int ExtractIntConstant(string source, string name)
