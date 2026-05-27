@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyValidationWiring();
             VerifyConformanceConsole();
             VerifyHarnessOverlay();
-            VerifyEvidenceNote();
+            VerifyReportContract();
 
             Console.WriteLine($"Phase 121: {_passed} checks passed.");
         }
@@ -34,21 +34,25 @@ namespace Unity.FoxgloveSDK.Tests
             Validate();
 
             var script = RepoPath("Scripts/mcap/conformance/run_phase121_conformance.py");
+            var reportPath = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-phase121-" + Guid.NewGuid().ToString("N") + ".json");
             var python = FindPython();
             Check(!string.IsNullOrEmpty(python),
                 "121-E0: Python executable is available for phase121 conformance");
             var result = RunProcess(
                 python,
-                Quote(script));
+                Quote(script) + " --report-path " + Quote(reportPath));
 
             Check(result.ExitCode == 0,
                 "121-E1: phase121 conformance wrapper exits successfully");
 
-            var report = ReadRepoText("build/mcap-conformance/phase121-conformance-report.json");
+            var report = File.ReadAllText(reportPath, Encoding.UTF8);
             Check(report.Contains("\"externalToolingStatus\"", StringComparison.Ordinal)
                   && report.Contains("\"runners\"", StringComparison.Ordinal)
                   && report.Contains("\"verdict\"", StringComparison.Ordinal),
                 "121-E2: phase121 conformance report is written with required schema");
+            try { File.Delete(reportPath); } catch { /* best effort cleanup */ }
         }
 
         private static void VerifyValidationWiring()
@@ -107,6 +111,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 "third-party/mcap",
                 "build/mcap-conformance",
+                "--report-path",
                 "phase121-conformance-report.json",
                 "externalToolingStatus",
                 "EXPECTED_OBSERVED_COMMIT",
@@ -136,25 +141,27 @@ namespace Unity.FoxgloveSDK.Tests
                 "121-C3: wrapper does not require editing tracked upstream runner index in place");
         }
 
-        private static void VerifyEvidenceNote()
+        private static void VerifyReportContract()
         {
-            var note = ReadRepoText("Developer/106 Phase121 MCAP CSharp Conformance Baseline.md");
+            var script = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
             var observedCommit = ExpectedObservedCommit();
             foreach (var required in new[]
             {
-                "v1.9.1 Baseline",
                 "externalToolingStatus",
                 "phase121-conformance-report.json",
-                "PASS WITH MEASURED BASELINE",
-                "Phase 122",
-                "Phase 123",
-                "does not claim full official MCAP conformance",
+                "write_skipped_report",
+                "EXPECTED_OBSERVED_COMMIT",
                 observedCommit
             })
             {
-                Check(note.Contains(required, StringComparison.Ordinal),
-                    "121-D1: evidence note contains " + required);
+                Check(script.Contains(required, StringComparison.Ordinal),
+                    "121-D1: conformance wrapper records " + required);
             }
+
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
+            Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
+                  && writer.Contains("Unsupported", StringComparison.Ordinal),
+                "121-D2: conformance writer keeps feature support explicit");
         }
 
         private static string ExpectedObservedCommit()

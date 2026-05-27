@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
                 VerifyRemoteStreamAndCap();
                 VerifyChunkSchemaChannelAllocationRemoval();
                 VerifySegmentDecodeBounds();
-                VerifyEvidenceAndWiring();
+            VerifyPublicHardeningCoverageAndWiring();
 
                 Console.WriteLine($"Phase 120B: {_passed} checks passed.");
             }
@@ -220,7 +220,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "120B-G4: DecodeChannel honors contentLen segment bounds");
         }
 
-        private static void VerifyEvidenceAndWiring()
+        private static void VerifyPublicHardeningCoverageAndWiring()
         {
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
@@ -230,16 +230,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("Phase120BValidation.cs", StringComparison.Ordinal),
                 "120B-H2: runtime test project compiles Phase120BValidation");
 
-            var note = ReadRepoText("Developer/105 Phase120B MCAP DataLoader Hardening Review Closure.md");
-            foreach (var required in new[] { "M1", "M2", "M3", "L1", "L2", "R1", "R2", "R3", "R4", "two-pass unindexed scan", "CRC hard failure", "MaxMessages", "MaxPayloadBytes" })
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120BValidation.cs");
+            foreach (var required in new[] { "VerifySequentialFallbackLimits", "CRC", "MaxMessages", "MaxPayloadBytes", "DataTooLargeForInMemoryResponse", "ReadLatestBefore" })
             {
-                Check(note.Contains(required, StringComparison.Ordinal),
-                    "120B-H3: hardening evidence records " + required);
+                Check(source.Contains(required, StringComparison.Ordinal),
+                    "120B-H3: public hardening validation covers " + required);
             }
 
-            var gate = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
-            Check(gate.Contains("Phase 120B hardening", StringComparison.Ordinal),
-                "120B-H4: Phase 120 compatibility gate references 120B hardening");
+            var dataLoader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            Check(dataLoader.Contains("UnindexedSequentialFallback", StringComparison.Ordinal)
+                  && dataLoader.Contains("ReadLatestBefore", StringComparison.Ordinal),
+                "120B-H4: public DataLoader source exposes fallback diagnostics and latest-at backfill");
         }
 
         private static MemoryStream CreateDirectFixture()

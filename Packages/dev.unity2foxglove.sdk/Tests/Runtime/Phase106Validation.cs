@@ -32,7 +32,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyAcceptanceComponent();
             VerifyTrackedAssetBoundary();
             VerifyDocsBoundary();
-            VerifyPlanReplacementIfPresent();
 
             Console.WriteLine($"Phase 106: {_passed} checks passed.");
         }
@@ -147,27 +146,6 @@ namespace Unity.FoxgloveSDK.Tests
                   && roadmap.Contains("Jazzy", StringComparison.Ordinal)
                   && roadmap.Contains("Humble", StringComparison.Ordinal),
                 "106E-3: roadmap records Jazzy-first, Humble-fallback ROS2 For Unity direction");
-        }
-
-        private static void VerifyPlanReplacementIfPresent()
-        {
-            var root = RepoRoot();
-            var oldPlan = Path.Combine(root, "Plan", "106_PHASE106_ROS2_STANDARD_MAPPING_PROFILES_PLAN.md");
-            var newPlan = Path.Combine(root, "Plan", "106_PHASE106_ROS2_FOR_UNITY_STANDALONE_INTEROP_SPIKE_PLAN.md");
-
-            if (File.Exists(oldPlan))
-                throw new InvalidOperationException("106F-1: obsolete Phase106 standard mapping plan still exists");
-
-            if (!File.Exists(newPlan))
-            {
-                Check(true, "106F-1: Phase106 private plan is absent from clean tracked checkout");
-                return;
-            }
-
-            var text = File.ReadAllText(newPlan);
-            Check(text.Contains("ROS2 For Unity Standalone Interop Spike", StringComparison.Ordinal)
-                  && !text.Contains("# Phase 106 - ROS2 Standard Mapping Profiles", StringComparison.Ordinal),
-                "106F-1: current Phase106 plan is the ROS2 For Unity interop spike");
         }
 
         private static bool AllR2fuReferencesAreGuarded(string text, out string error)

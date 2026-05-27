@@ -242,17 +242,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAnalyzerDllFreshnessGuard()
         {
             var dllPath = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll");
-            var builtPath = RepoPath("build/SourceGenerators/Release/netstandard2.0/FoxgloveLogSourceGenerator.dll");
             Check(File.Exists(dllPath),
                 "115F-E1: checked-in analyzer DLL exists");
-            if (!File.Exists(builtPath))
-            {
-                Console.WriteLine("[INFO] 115F-E2/E3/E4 skipped: ignored local Release analyzer DLL is absent. Build the source generator Release artifact to enable byte/semantic comparison.");
-                return;
-            }
-
-            Check(true, "115F-E2: freshly built Release analyzer DLL exists for byte comparison");
-            if (File.Exists(dllPath) && File.Exists(builtPath))
+            if (File.Exists(dllPath))
             {
                 var checkedIn = File.ReadAllBytes(dllPath);
                 var sourceGenerated = RunRoslynGenerator();
@@ -260,10 +252,10 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(GeneratedSourceText(sourceGenerated, "FoxRunGeneratedDescriptorInfo.g.cs")
                       == GeneratedSourceText(checkedInGenerated, "FoxRunGeneratedDescriptorInfo.g.cs")
                       && GeneratedFoxRunSource(sourceGenerated) == GeneratedFoxRunSource(checkedInGenerated),
-                    "115F-E3: checked-in analyzer DLL matches source generator semantics");
+                    "115F-E2: checked-in analyzer DLL matches source generator semantics");
 
                 Check(BytesContainText(checkedIn, "EmissionTypeName") && BytesContainText(checkedIn, "RawObservedTypeName"),
-                    "115F-E4: checked-in analyzer DLL contains 115F type-boundary artifacts");
+                    "115F-E3: checked-in analyzer DLL contains 115F type-boundary artifacts");
             }
         }
 

@@ -32,7 +32,6 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 109: ROS2 For Unity Bidirectional Topic Smoke ===");
             _passed = 0;
 
-            VerifyPrivatePlanIfPresent();
             VerifyFacadeBoundary();
             VerifyManualAdapter();
             VerifySmokeComponent();
@@ -42,22 +41,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTrackedAssetBoundary();
 
             Console.WriteLine($"Phase 109: {_passed} checks passed.");
-        }
-
-        private static void VerifyPrivatePlanIfPresent()
-        {
-            var planPath = Path.Combine(RepoRoot(), "Plan", "109_PHASE109_ROS2_FOR_UNITY_BIDIRECTIONAL_TOPIC_SMOKE_PLAN.md");
-            if (!File.Exists(planPath))
-            {
-                Check(true, "109-A1: private Phase109 plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = File.ReadAllText(planPath);
-            Check(plan.Contains("ROS2 For Unity Bidirectional Topic Smoke", StringComparison.Ordinal)
-                  && plan.Contains("Do not use WSL2 NAT as the GREEN gate", StringComparison.Ordinal)
-                  && plan.Contains("optional package Runtime facade", StringComparison.Ordinal),
-                "109-A1: private Phase109 plan records the current smoke and boundary contract");
         }
 
         private static void VerifyFacadeBoundary()

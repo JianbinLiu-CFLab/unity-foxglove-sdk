@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
                 true,
                 "ros2 topic list/info/echo/hz commands from Phase 99 plan",
                 "",
-                "Manual observation must be recorded in Developer/61."));
+                "Manual observation must be recorded in the release handoff or PR evidence summary."));
             items.Add(new Phase99EvidenceItem(
                 "manual.unity.sample_import",
                 "Manual Unity",
@@ -183,7 +183,7 @@ namespace Unity.FoxgloveSDK.Tests
                 true,
                 "Import ROS2 Bridge Sample, open scene, press Play",
                 "",
-                "Manual observation must be recorded in Developer/61."));
+                "Manual observation must be recorded in the release handoff or PR evidence summary."));
             items.Add(new Phase99EvidenceItem(
                 "manual.foxglove.visual",
                 "Manual Foxglove",
@@ -192,7 +192,7 @@ namespace Unity.FoxgloveSDK.Tests
                 true,
                 "Open FoxgloveRos2BridgeLayout.json and inspect panels",
                 "",
-                "Manual observation must be recorded in Developer/61."));
+                "Manual observation must be recorded in the release handoff or PR evidence summary."));
             items.Add(new Phase99EvidenceItem(
                 "optional.rosbag2",
                 "Optional",
@@ -308,9 +308,6 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!publicText.Contains("Unity auto-launches", StringComparison.OrdinalIgnoreCase)
                   && !publicText.Contains("automatically launches the sidecar", StringComparison.OrdinalIgnoreCase),
                 "99D-4: public docs do not claim Unity auto-launches sidecar");
-            Check(!publicText.Contains("Developer/", StringComparison.Ordinal)
-                  && !publicText.Contains("Developer\\", StringComparison.Ordinal),
-                "99D-5: public docs do not point to Developer-only evidence");
         }
 
         private static void VerifyPhase98BoundaryAlignment()

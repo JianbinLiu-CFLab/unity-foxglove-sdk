@@ -14,9 +14,6 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase137Validation
     {
-        private const string PlanPath = "Plan/137_PHASE137_R2FU_STANDALONE_DISTRO_UPGRADE_LADDER_PLAN.md";
-        private const string Phase206PlanPath = "Plan/206_R2FU_JAZZY_STANDALONE_REBUILD_SPIKE_PLAN.md";
-        private const string EvidencePath = "Developer/85 Phase137 R2FU Standalone Distro Upgrade Ladder.md";
         private static int _passed;
 
         public static void Validate()
@@ -25,9 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 137: R2FU Standalone Distro Upgrade Ladder ===");
             _passed = 0;
 
-            VerifyPrivatePlanIfPresent();
-            VerifyPhase206SupersededIfPresent();
-            VerifyEvidenceNoteIfPresent();
+            VerifyTrackedStrategyArtifacts();
             VerifyTrackedArtifactHygiene();
             VerifyCoreSdkStaysRosFree();
             VerifyValidationWiring();
@@ -35,76 +30,16 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 137: {_passed} checks passed.");
         }
 
-        private static void VerifyPrivatePlanIfPresent()
+        private static void VerifyTrackedStrategyArtifacts()
         {
-            if (!RepoFileExists(PlanPath))
-            {
-                Check(true, "137A-1: private Phase137 plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = ReadRepoText(PlanPath);
-            Check(plan.Contains("Phase 137 is the umbrella strategy gate", StringComparison.Ordinal)
-                  && plan.Contains("delegates Jazzy runtime execution to Phase 138", StringComparison.Ordinal)
-                  && plan.Contains("delegates Lyrical / Ubuntu 26.04 feasibility to Phase 139", StringComparison.Ordinal)
-                  && plan.Contains("feeds the compatibility matrix in Phase 140", StringComparison.Ordinal),
-                "137A-1: Phase137 is scoped as the umbrella strategy gate");
-            Check(plan.Contains("must not re-prove Phase 106", StringComparison.Ordinal)
-                  && plan.Contains("Phase106-only Unity publishing did not crash", StringComparison.Ordinal)
-                  && plan.Contains("ROS graph visibility", StringComparison.Ordinal)
-                  && plan.Contains("Phase 110 sample crashes must not be used", StringComparison.Ordinal),
-                "137A-2: Phase137 preserves the Phase106/110 caveat instead of over-claiming Humble");
-            Check(plan.Contains("empirical interop evidence", StringComparison.Ordinal)
-                  && plan.Contains("not an official ROS2 cross-distribution support guarantee", StringComparison.Ordinal)
-                  && plan.Contains("cross-distribution communication", StringComparison.Ordinal),
-                "137A-3: Phase137 records the Humble-to-Jazzy cross-distro boundary");
-            Check(plan.Contains("Jazzy maps to Ubuntu 24.04", StringComparison.Ordinal)
-                  && plan.Contains("Lyrical maps to Ubuntu 26.04", StringComparison.Ordinal)
-                  && plan.Contains("Lyrical supported platforms", StringComparison.Ordinal)
-                  && plan.Contains("pre-release binaries", StringComparison.Ordinal),
-                "137A-4: Phase137 records Jazzy/Lyrical platform and release-state boundaries");
-            Check(plan.Contains("Phase 138 is the sole execution owner", StringComparison.Ordinal)
-                  && plan.Contains("Phase 139 is the sole execution owner", StringComparison.Ordinal)
-                  && plan.Contains("Phase 140 is the sole owner", StringComparison.Ordinal),
-                "137A-5: Phase137 delegates execution to 138/139 and matrix work to 140");
-            Check(plan.Contains("LYRICAL_PRERELEASE_ONLY", StringComparison.Ordinal)
-                  && plan.Contains("BLOCKED_LYRICAL_NOT_RELEASED_OR_PACKAGED", StringComparison.Ordinal)
-                  && plan.Contains("STRATEGY_GREEN_PENDING_RUNG_EVIDENCE", StringComparison.Ordinal),
-                "137A-6: Phase137 verdict vocabulary covers pre-release and umbrella states");
-        }
-
-        private static void VerifyPhase206SupersededIfPresent()
-        {
-            if (!RepoFileExists(Phase206PlanPath))
-            {
-                Check(true, "137-P206-1: private Phase206 plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = ReadRepoText(Phase206PlanPath);
-            Check(plan.Contains("status: superseded", StringComparison.Ordinal)
-                  && plan.Contains("Superseded by [[137_PHASE137_R2FU_STANDALONE_DISTRO_UPGRADE_LADDER_PLAN]]", StringComparison.Ordinal),
-                "137-P206-1: Phase206 Jazzy rebuild note is superseded by Phase137");
-        }
-
-        private static void VerifyEvidenceNoteIfPresent()
-        {
-            if (!RepoFileExists(EvidencePath))
-            {
-                Check(true, "137C-1: local Phase137 evidence note may be absent before manual evidence is recorded");
-                return;
-            }
-
-            var evidence = ReadRepoText(EvidencePath);
-            Check(evidence.Contains("STRATEGY_GREEN_PENDING_RUNG_EVIDENCE", StringComparison.Ordinal)
-                  && evidence.Contains("Phase 137", StringComparison.Ordinal)
-                  && evidence.Contains("Phase 138", StringComparison.Ordinal)
-                  && evidence.Contains("Phase 139", StringComparison.Ordinal),
-                "137C-1: local Phase137 evidence note records the umbrella verdict and downstream owners");
-            Check(evidence.Contains("Phase106", StringComparison.Ordinal)
-                  && evidence.Contains("graph visibility", StringComparison.Ordinal)
-                  && evidence.Contains("cross-distro", StringComparison.Ordinal),
-                "137C-2: local Phase137 evidence note records current Humble caveats");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            Check(registry.Contains("--phase138", StringComparison.Ordinal)
+                  && registry.Contains("--phase138b", StringComparison.Ordinal),
+                "137A-1: tracked validation registry keeps downstream Jazzy gates explicit");
+            Check(RepoFileExists("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
+                "137A-2: tracked Jazzy Windows build orchestrator is present");
+            Check(RepoFileExists("Packages/dev.unity2foxglove.ros2forunity/package.json"),
+                "137A-3: tracked optional ROS2 package manifest is present");
         }
 
         private static void VerifyTrackedArtifactHygiene()

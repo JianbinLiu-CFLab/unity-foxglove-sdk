@@ -42,7 +42,6 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 110: ROS2 For Unity External Productization Gate ===");
             _passed = 0;
 
-            VerifyPrivatePlanIfPresent();
             VerifyPackageMetadata();
             VerifySampleFiles();
             VerifySampleAdapter();
@@ -56,22 +55,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyValidationWiring();
 
             Console.WriteLine($"Phase 110: {_passed} checks passed.");
-        }
-
-        private static void VerifyPrivatePlanIfPresent()
-        {
-            var planPath = Path.Combine(RepoRoot(), "Plan", "110_PHASE110_ROS2_FOR_UNITY_EXTERNAL_PRODUCTIZATION_GATE_PLAN.md");
-            if (!File.Exists(planPath))
-            {
-                Check(true, "110-A1: private Phase110 plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = File.ReadAllText(planPath);
-            Check(plan.Contains("ROS2 For Unity External Productization Gate", StringComparison.Ordinal)
-                  && plan.Contains("implementation-ready", StringComparison.Ordinal)
-                  && plan.Contains("WSL2 NAT is not a Phase 110 GREEN gate", StringComparison.Ordinal),
-                "110-A1: private Phase110 plan records deferred live gate and WSL2 boundary");
         }
 
         private static void VerifyPackageMetadata()

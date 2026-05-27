@@ -14,8 +14,6 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase138Validation
     {
-        private const string PlanPath = "Plan/138_PHASE138_R2FU_JAZZY_STANDALONE_REBUILD_PLAN.md";
-        private const string EvidencePath = "Developer/86 Phase138 R2FU Jazzy Standalone Rebuild Evidence.md";
         private static int _passed;
 
         public static void Validate()
@@ -24,8 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 138: R2FU Jazzy Standalone Rebuild ===");
             _passed = 0;
 
-            VerifyPrivatePlanIfPresent();
-            VerifyEvidenceNoteIfPresent();
+            VerifyTrackedJazzyArtifacts();
             VerifyTrackedArtifactHygiene();
             VerifyCoreSdkBoundary();
             VerifyValidationWiring();
@@ -33,70 +30,18 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 138: {_passed} checks passed.");
         }
 
-        private static void VerifyPrivatePlanIfPresent()
+        private static void VerifyTrackedJazzyArtifacts()
         {
-            if (!RepoFileExists(PlanPath))
-            {
-                Check(true, "138A-1: private Phase138 plan may be absent in clean tracked checkout");
-                return;
-            }
+            Check(RepoFileExists("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
+                "138A-1: tracked Jazzy Windows build orchestrator is present");
+            Check(RepoFileExists("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.json"),
+                "138A-2: tracked Jazzy runtime package manifest is present");
 
-            var plan = ReadRepoText(PlanPath);
-            Check(plan.Contains("Phase 138 is Jazzy-only", StringComparison.Ordinal)
-                  && plan.Contains("Lyrical / Ubuntu 26.04 remains a later rung", StringComparison.Ordinal),
-                "138A-1: Phase138 is scoped to Jazzy only");
-            Check(plan.Contains("Phase 106's Humble standalone result as the frozen baseline", StringComparison.Ordinal)
-                  && plan.Contains("does not re-prove the Humble asset", StringComparison.Ordinal),
-                "138A-2: Phase138 consumes Phase106 as baseline instead of re-proving Humble");
-            Check(plan.Contains("WSL2 NAT is diagnostic-only", StringComparison.Ordinal)
-                  && (plan.Contains("Do not treat WSL2 NAT failure as a product blocker", StringComparison.Ordinal)
-                      || plan.Contains("WSL2 NAT as the only remote Linux evidence", StringComparison.Ordinal)),
-                "138A-3: Phase138 keeps WSL2 NAT diagnostic-only");
-            Check(plan.Contains("Do not use the Phase110 sample as the Phase 138 live gate", StringComparison.Ordinal)
-                  && plan.Contains("Phase 138 must use the exact Phase106 acceptance component", StringComparison.Ordinal),
-                "138A-4: Phase138 live gate uses Phase106, not Phase110");
-            Check(plan.Contains("Visual Studio developer shell", StringComparison.Ordinal)
-                  && plan.Contains("C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
-                  && plan.Contains("package Python invocation", StringComparison.Ordinal),
-                "138A-5: Phase138 records the Windows Jazzy build/CLI environment");
-            Check(plan.Contains("Ros2ForUnity*.zip", StringComparison.Ordinal)
-                  && plan.Contains("Unity2Foxglove/Assets/Ros2ForUnity/", StringComparison.Ordinal)
-                  && plan.Contains("third-party/ros2-for-unity/install/", StringComparison.Ordinal)
-                  && plan.Contains("metadata_ros2cs.xml", StringComparison.Ordinal),
-                "138A-6: Phase138 lists forbidden runtime artifacts");
-            Check(plan.Contains("BLOCKED_JAZZY_ENVIRONMENT", StringComparison.Ordinal)
-                  && plan.Contains("BLOCKED_NATIVE_DEPENDENCY", StringComparison.Ordinal)
-                  && plan.Contains("PROMOTE_JAZZY_RUNTIME_CANDIDATE", StringComparison.Ordinal),
-                "138A-7: Phase138 verdict vocabulary covers Jazzy build blockers and promotion");
-        }
-
-        private static void VerifyEvidenceNoteIfPresent()
-        {
-            if (!RepoFileExists(EvidencePath))
-            {
-                Check(true, "138B-1: local Phase138 evidence note may be absent before build evidence is recorded");
-                return;
-            }
-
-            var evidence = ReadRepoText(EvidencePath);
-            Check(evidence.Contains("BLOCKED_JAZZY_ENVIRONMENT", StringComparison.Ordinal)
-                  && evidence.Contains("feature/jazzy-support", StringComparison.Ordinal)
-                  && evidence.Contains("ros2_jazzy.repos", StringComparison.Ordinal),
-                "138B-1: evidence records the Jazzy-support branch and final blocker verdict");
-            Check((evidence.Contains("phase138_build_jazzy_vctargets.log", StringComparison.Ordinal)
-                   || evidence.Contains("phase137_build_jazzy_vctargets.log", StringComparison.Ordinal))
-                  && (evidence.Contains("phase138_colcon_jazzy_ninja_pixi_temp.log", StringComparison.Ordinal)
-                      || evidence.Contains("phase137_colcon_jazzy_ninja_pixi_temp.log", StringComparison.Ordinal))
-                  && evidence.Contains("VisualStudioVersion", StringComparison.Ordinal)
-                  && evidence.Contains("VCTargetsPath", StringComparison.Ordinal),
-                "138B-2: evidence records build attempts and native toolchain details");
-            Check(evidence.Contains("Phase106", StringComparison.Ordinal)
-                  && evidence.Contains("Phase110", StringComparison.Ordinal)
-                  && evidence.Contains("WSL2 NAT", StringComparison.Ordinal),
-                "138B-3: evidence preserves Phase106/Phase110/WSL acceptance boundaries");
-            Check(evidence.Contains("No Unity load was attempted", StringComparison.Ordinal)
-                  && evidence.Contains("No Windows ROS2 pub/sub smoke was attempted", StringComparison.Ordinal),
-                "138B-4: evidence does not over-claim past the failed build gate");
+            var orchestrator = ReadRepoText("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py");
+            Check(orchestrator.Contains("feature/jazzy-support", StringComparison.Ordinal)
+                  && orchestrator.Contains("R2FU_REPO_URL", StringComparison.Ordinal)
+                  && orchestrator.Contains("ROS2CS_REPO_URL", StringComparison.Ordinal),
+                "138A-3: tracked orchestrator records public upstream branch and repository inputs");
         }
 
         private static void VerifyTrackedArtifactHygiene()

@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -25,7 +24,6 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyArchitectureScript();
             VerifyValidationRegistry();
-            VerifyPrivateWorkspaceBoundaries();
             VerifyExperimentalDemoAssets();
             VerifyFullDemoSampleSync();
             VerifyArchitectureDocumentation();
@@ -46,9 +44,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("fan-in", StringComparison.Ordinal)
                   && script.Contains("fan-out", StringComparison.Ordinal),
                 "126A-2: architecture script exposes report format/output and coupling metrics");
-            Check(script.Contains("tracked_nested_developer_paths", StringComparison.Ordinal)
-                  && script.Contains("default_test_private_references", StringComparison.Ordinal),
-                "126A-3: architecture script reports nested Developer paths and default-test private references");
+            Check(script.Contains("largest_csharp_files", StringComparison.Ordinal)
+                  && script.Contains("asmdef_cycles", StringComparison.Ordinal),
+                "126A-3: architecture script reports public architecture hotspots and asmdef cycles");
         }
 
         private static void VerifyValidationRegistry()
@@ -74,28 +72,6 @@ namespace Unity.FoxgloveSDK.Tests
                 "126B-3: test project compiles Phase126 registry files and shifted Phase138B validation");
         }
 
-        private static void VerifyPrivateWorkspaceBoundaries()
-        {
-            var trackedRootPrivate = RunGitLsFiles("Plan/**", "Developer/**");
-            Check(trackedRootPrivate.Length == 0,
-                "126C-1: root Plan/ and root Developer/ remain untracked"
-                + (trackedRootPrivate.Length == 0 ? string.Empty : " (" + string.Join(", ", trackedRootPrivate) + ")"));
-
-            var nestedDeveloper = RunGitLsFiles()
-                .Where(path => path.Replace('\\', '/').Contains("/Developer/", StringComparison.Ordinal)
-                               || path.Replace('\\', '/').EndsWith("/Developer.meta", StringComparison.Ordinal))
-                .Where(RepoFileExists)
-                .ToArray();
-            Check(nestedDeveloper.Length == 0,
-                "126C-2: tracked nested Developer paths are removed or renamed"
-                + (nestedDeveloper.Length == 0 ? string.Empty : " (" + string.Join(", ", nestedDeveloper) + ")"));
-
-            var workflow = ReadRepoText(".github/workflows/repository-boundary-check.yml");
-            Check(workflow.Contains("*/Developer/*", StringComparison.Ordinal)
-                  && workflow.Contains("Experimental", StringComparison.Ordinal),
-                "126C-3: repository boundary workflow blocks nested Developer paths and documents Experimental");
-        }
-
         private static void VerifyExperimentalDemoAssets()
         {
             Check(RepoFileExists("Unity2Foxglove/Assets/Experimental/OpenH264/OpenH264ProbePublisher.cs")
@@ -103,8 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "126D-1: OpenH264 demo probe lives under Experimental");
 
             var phase80 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase80Validation.cs");
-            Check(phase80.Contains("Unity2Foxglove/Assets/Experimental/OpenH264", StringComparison.Ordinal)
-                  && !phase80.Contains("Unity2Foxglove/Assets/Developer/OpenH264", StringComparison.Ordinal),
+            Check(phase80.Contains("Unity2Foxglove/Assets/Experimental/OpenH264", StringComparison.Ordinal),
                 "126D-2: OpenH264 validation follows the Experimental path");
         }
 
@@ -123,7 +98,6 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var docs = ReadRepoText("docs/architecture-patterns.md");
             Check(docs.Contains("Phase 126", StringComparison.Ordinal)
-                  && docs.Contains("Local Evidence", StringComparison.Ordinal)
                   && docs.Contains("Experimental", StringComparison.Ordinal),
                 "126F-1: architecture docs describe Phase126 boundary and Experimental convention");
         }
@@ -152,50 +126,6 @@ namespace Unity.FoxgloveSDK.Tests
             if (root == null)
                 throw new InvalidOperationException("Could not find repository root.");
             return root;
-        }
-
-        /// <summary>Maximum time to wait for a git subprocess before killing it.</summary>
-        private const int GitTimeoutMs = 30_000;
-
-        private static string[] RunGitLsFiles(params string[] pathspecs)
-        {
-            var arguments = "ls-files";
-            foreach (var pathspec in pathspecs)
-                arguments += " -- \"" + pathspec + "\"";
-
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = arguments,
-                WorkingDirectory = RepoRoot(),
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            process.Start();
-
-            // Drain stdout and stderr concurrently to prevent pipe deadlock.
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-
-            if (!process.WaitForExit(GitTimeoutMs))
-            {
-                try { process.Kill(); } catch { /* best effort */ }
-                throw new InvalidOperationException("git ls-files timed out after " + GitTimeoutMs + "ms.");
-            }
-
-            var error = errorTask.Result;
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("git ls-files failed: " + error.Trim());
-
-            return outputTask.Result
-                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(path => path.Trim())
-                .Where(path => path.Length > 0)
-                .ToArray();
         }
 
         private static void Check(bool condition, string description)

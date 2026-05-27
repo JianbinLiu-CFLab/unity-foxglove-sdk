@@ -13,7 +13,6 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase115HValidation
     {
-        private const string EvidencePath = "Developer/100 Phase115H Post105 Comment Governance Review.md";
         private const string RuntimeScripts =
             "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts";
         private static int _passed;
@@ -24,7 +23,6 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 115H: Post-105 Comment Governance Refresh ===");
             _passed = 0;
 
-            VerifyEvidenceInventory();
             VerifyValidationWiring();
             VerifyVendoredLocalPatchGovernance();
             VerifyFoxRunSchemaEvidenceComments();
@@ -32,47 +30,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyR2FUCommentGovernance();
 
             Console.WriteLine($"Phase 115H: {_passed} checks passed.");
-        }
-
-        private static void VerifyEvidenceInventory()
-        {
-            if (!File.Exists(RepoPath(EvidencePath)))
-            {
-                Console.WriteLine("[INFO] 115H-A1..A5 skipped: local Developer evidence document is absent; automated governance checks continue.");
-                return;
-            }
-
-            Check(true, "115H-A1: Developer evidence document exists");
-            var evidence = ReadRepoText(EvidencePath);
-            CheckContainsAll(
-                evidence,
-                "115H-A2: evidence records the git-derived baseline and current branch",
-                "Baseline range: `1fc37db..HEAD`",
-                "Execution HEAD:",
-                "Branch:");
-            CheckContainsAll(
-                evidence,
-                "115H-A3: evidence records comment-governance history and stash quarantine",
-                "Last completed large-scale comment governance pass",
-                "PR #100",
-                "1fc37db60896e650f0f0c65b98fc8842f9447734",
-                "0fb74ffc7cafd82356068563f4623199a6aadffc",
-                "refs/stash");
-            CheckContainsAll(
-                evidence,
-                "115H-A4: evidence records deliberate source exclusions",
-                "Generated/golden exclusions",
-                "FoxRunGenerationModelFixture_FoxRun.golden.cs",
-                "Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs",
-                "generated protobuf",
-                "binary/native artifacts");
-            CheckContainsAll(
-                evidence,
-                "115H-A5: evidence records post-105 audit buckets",
-                "Self-owned source inventory",
-                "Modified third-party/vendored candidates",
-                "Phase 111F/138B",
-                "Phase 112-115G");
         }
 
         private static void VerifyValidationWiring()

@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Console.WriteLine("=== Phase 119: Remote MCAP Data Source Exploration ===");
                 _passed = 0;
 
-                VerifyBoundaryNote();
+                VerifyBoundarySurface();
                 VerifyDtoSurface();
                 VerifyIndexedManifest();
                 VerifyDirectManifest();
@@ -43,26 +43,19 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        private static void VerifyBoundaryNote()
+        private static void VerifyBoundarySurface()
         {
-            var note = ReadRepoText("Developer/103 Phase119 MCAP Remote Data Source Boundary.md");
-            foreach (var required in new[]
-            {
-                "Remote Data Loader",
-                "manifest endpoint",
-                "data endpoint",
-                "authorization source of truth",
-                "Static/direct MCAP URL",
-                "Remote Access Gateway",
-                "https://docs.foxglove.dev/docs/visualization/connecting/cloud-data/remote-data-loader",
-                "https://docs.foxglove.dev/docs/visualization/connecting/local-data",
-                "https://docs.foxglove.dev/docs/visualization/connecting/live/remote-access",
-                "No production Foxglove Remote Data Loader deployment"
-            })
-            {
-                Check(note.Contains(required, StringComparison.Ordinal),
-                    "119-A1: boundary note records " + required);
-            }
+            var prototype = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapDataSourcePrototype.cs");
+            Check(prototype.Contains("GetManifest(RemoteMcapRequest request)", StringComparison.Ordinal)
+                  && prototype.Contains("GetData(RemoteMcapRequest request)", StringComparison.Ordinal)
+                  && prototype.Contains("GetDataStream(RemoteMcapRequest request)", StringComparison.Ordinal),
+                "119-A1: remote MCAP prototype exposes manifest, data, and stream endpoints");
+            Check(prototype.Contains("Authorize(RemoteMcapRequest request)", StringComparison.Ordinal)
+                  && prototype.Contains("Bearer token rejected", StringComparison.Ordinal),
+                "119-A2: remote MCAP prototype keeps authorization in the request boundary");
+            Check(prototype.Contains("UnsupportedMultiSource", StringComparison.Ordinal)
+                  && prototype.Contains("DataTooLargeForInMemoryResponse", StringComparison.Ordinal),
+                "119-A3: remote MCAP prototype reports unsupported multi-source and capped data responses explicitly");
         }
 
         private static void VerifyDtoSurface()

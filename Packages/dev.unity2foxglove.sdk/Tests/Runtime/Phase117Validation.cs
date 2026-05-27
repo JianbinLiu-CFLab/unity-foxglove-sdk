@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 117: MCAP Spec Parity And Direct Fallback ===");
             _passed = 0;
 
-            VerifyParityMatrix();
+            VerifyPublicParitySurface();
             VerifySummarylessDirectMessages();
             VerifySummaryPresentDirectFallback();
             VerifyUnknownPrivateAndInvalidRecords();
@@ -33,36 +33,37 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 117: {_passed} checks passed.");
         }
 
-        private static void VerifyParityMatrix()
+        private static void VerifyPublicParitySurface()
         {
-            const string matrixPath = "Developer/102 Phase117 MCAP Spec Parity Matrix.md";
-            if (!File.Exists(RepoPath(matrixPath)))
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            foreach (var required in new[]
             {
-                Console.WriteLine("[INFO] 117-A1..A4 skipped: local Developer parity matrix is absent; direct MCAP behavior checks continue.");
-                return;
-            }
-
-            var matrix = ReadRepoText(matrixPath);
-            foreach (var opcode in new[]
-            {
-                "0x01", "0x02", "0x03", "0x04", "0x05", "0x06", "0x07", "0x08",
-                "0x09", "0x0A", "0x0B", "0x0C", "0x0D", "0x0E", "0x0F",
-                "0x80-0xFF", "0x00"
+                "WriteHeader",
+                "WriteSchema",
+                "WriteChannel",
+                "WriteMessage",
+                "WriteChunk",
+                "WriteMessageIndex",
+                "WriteChunkIndex",
+                "WriteAttachment",
+                "WriteMetadata",
+                "WriteStatistics",
+                "WriteSummaryOffset",
+                "WriteDataEnd",
+                "WriteFooter"
             })
             {
-                Check(matrix.Contains(opcode, StringComparison.Ordinal),
-                    "117-A1: parity matrix covers opcode " + opcode);
+                Check(writer.Contains(required, StringComparison.Ordinal),
+                    "117-A1: public MCAP writer exposes " + required);
             }
 
-            Check(matrix.Contains("chunk_size", StringComparison.Ordinal)
-                  && matrix.Contains("compression", StringComparison.Ordinal)
-                  && matrix.Contains("enable_data_crcs", StringComparison.Ordinal),
-                "117-A2: parity matrix records official writer option stance");
-            Check(matrix.Contains("https://mcap.dev/spec", StringComparison.Ordinal)
-                  && matrix.Contains("https://mcap.dev/docs/python/mcap-apidoc/mcap.writer", StringComparison.Ordinal),
-                "117-A3: parity matrix links official MCAP references");
-            Check(matrix.Contains("No remote DataLoader", StringComparison.Ordinal),
-                "117-A4: parity matrix records non-goals");
+            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapReader.cs");
+            Check(reader.Contains("DefaultRecordSizeLimit", StringComparison.Ordinal)
+                  && reader.Contains("MCAP opcode 0x00 is invalid", StringComparison.Ordinal),
+                "117-A2: public MCAP reader enforces record-size and invalid-opcode guards");
+            Check(reader.Contains("break; // unknown, skip", StringComparison.Ordinal)
+                  && writer.Contains("WriteRecord", StringComparison.Ordinal),
+                "117-A3: public MCAP implementation can skip unknown records and construct coverage fixtures");
         }
 
         private static void VerifySummarylessDirectMessages()

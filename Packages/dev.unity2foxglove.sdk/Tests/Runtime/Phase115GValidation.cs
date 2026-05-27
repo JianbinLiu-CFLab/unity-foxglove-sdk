@@ -29,7 +29,6 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 115G: Review Fixes And Fixture Hardening ===");
             _passed = 0;
 
-            VerifyTask0Evidence();
             VerifyReplayBatchBoundaryContract();
             VerifyReplayTickDoesNotSplitLogTimeGroups();
             VerifySchemaLessTopicFallbackContract();
@@ -39,18 +38,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyAnalyzerDllRefreshEvidence();
 
             Console.WriteLine($"Phase 115G: {_passed} checks passed.");
-        }
-
-        private static void VerifyTask0Evidence()
-        {
-            var evidencePath = RepoPath("Developer/99 Phase115G Review Fixes And Fixture Hardening Report.md");
-            if (!File.Exists(evidencePath))
-            {
-                Console.WriteLine("[INFO] 115G-A1 skipped: local Developer evidence report is absent; automated behavior checks continue.");
-                return;
-            }
-
-            Check(true, "115G-A1: Developer report records dirty-patch triage and review evidence");
         }
 
         private static void VerifyReplayBatchBoundaryContract()

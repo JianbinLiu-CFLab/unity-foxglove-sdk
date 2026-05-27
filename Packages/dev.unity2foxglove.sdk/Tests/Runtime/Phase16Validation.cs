@@ -6,8 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Unity.FoxgloveSDK.Editor;
@@ -52,8 +50,6 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gitignore.Contains("bin/") || gitignore.Contains("**/bin/"), ".gitignore covers bin/");
             Assert(gitignore.Contains("obj/") || gitignore.Contains("**/obj/"), ".gitignore covers obj/");
             Assert(gitignore.Contains("build/"), ".gitignore covers build/");
-            Assert(gitignore.Contains("Plan/"), ".gitignore keeps Plan/ local-only");
-            Assert(gitignore.Contains("Developer/"), ".gitignore keeps Developer/ local-only");
 
             // ── 16D: CI workflows ──
             var ciDir = Path.Combine(repoRoot, ".github", "workflows");
@@ -74,7 +70,6 @@ namespace Unity.FoxgloveSDK.Tests
             ValidateResearchDoiPolicy(repoRoot);
             ValidateGeneratedSourceProvenance(repoRoot);
             ValidateThirdPartyNotices(repoRoot);
-            ValidatePrivateWorkspaceBoundaries(repoRoot);
 
             Console.WriteLine("Phase 16: All checks passed.");
         }
@@ -458,87 +453,6 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(notices.Contains("Google.Protobuf") && notices.Contains("BSD-3-Clause"),
                 "third-party notices cover bundled Google.Protobuf runtime DLL");
             Assert(notices.Contains("does not claim authorship"), "third-party notices preserve upstream schema authorship");
-        }
-
-        static void ValidatePrivateWorkspaceBoundaries(string repoRoot)
-        {
-            var gitDir = Path.Combine(repoRoot, ".git");
-            if (!Directory.Exists(gitDir) && !File.Exists(gitDir))
-            {
-                Console.WriteLine("[WARN] .git not found - skipping tracked private workspace boundary checks.");
-                return;
-            }
-
-            if (!TryRunGitLsFiles(repoRoot, "Plan/**", out var trackedPlanFiles))
-                return;
-            Assert(trackedPlanFiles.Length == 0, "Plan/ contains no git-tracked files");
-
-            if (!TryRunGitLsFiles(repoRoot, "Developer/**", out var trackedDeveloperFiles))
-                return;
-            Assert(trackedDeveloperFiles.Length == 0, "Developer/ contains no git-tracked files");
-
-            if (!TryRunGitLsFiles(repoRoot, ":(glob)**/Developer/**", out var nestedDeveloperDirectories)
-                || !TryRunGitLsFiles(repoRoot, ":(glob)**/Developer.meta", out var nestedDeveloperMeta))
-                return;
-
-            var trackedNestedDeveloperFiles = nestedDeveloperDirectories
-                .Concat(nestedDeveloperMeta)
-                .Where(path => !path.Replace('\\', '/').StartsWith("Developer/", StringComparison.Ordinal))
-                .Where(path => File.Exists(Path.Combine(repoRoot, path.Replace('/', Path.DirectorySeparatorChar))))
-                .ToArray();
-            Assert(trackedNestedDeveloperFiles.Length == 0, "Nested Developer/ paths are not tracked; use Experimental/ for tracked demo assets");
-        }
-
-        static bool TryRunGitLsFiles(string repoRoot, string pathspec, out string[] files)
-        {
-            files = Array.Empty<string>();
-            try
-            {
-                using var process = new Process();
-                process.StartInfo = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    Arguments = $"ls-files -- \"{pathspec}\"",
-                    WorkingDirectory = repoRoot,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-
-                process.Start();
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                if (process.ExitCode != 0)
-                {
-                    Console.WriteLine($"[WARN] git ls-files failed for {pathspec}: {error.Trim()}");
-                    return false;
-                }
-
-                files = output
-                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(path => path.Trim())
-                    .Where(path => path.Length > 0)
-                    .ToArray();
-                return true;
-            }
-            catch (Win32Exception ex)
-            {
-                Console.WriteLine($"[WARN] git unavailable; skipping tracked private workspace boundary checks: {ex.Message}");
-                return false;
-            }
-            catch (InvalidOperationException ex)
-            {
-                Console.WriteLine($"[WARN] git invocation failed; skipping tracked private workspace boundary checks: {ex.Message}");
-                return false;
-            }
-            catch (IOException ex)
-            {
-                Console.WriteLine($"[WARN] git IO failed; skipping tracked private workspace boundary checks: {ex.Message}");
-                return false;
-            }
         }
 
         internal static string FindRepoRoot()

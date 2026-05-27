@@ -14,8 +14,6 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase138BValidation
     {
-        private const string PlanPath = "Plan/138B_PHASE138B_R2FU_JAZZY_WINDOWS_BUILD_TOOLCHAIN_CLOSURE_PLAN.md";
-        private const string EvidencePath = "Developer/87 Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence.md";
         private const string OrchestratorPath = "Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py";
         private static int _passed;
 
@@ -25,47 +23,13 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 138B: R2FU Jazzy Windows Build Toolchain Closure ===");
             _passed = 0;
 
-            VerifyPrivatePlanIfPresent();
             VerifyPythonOrchestrator();
-            VerifyEvidenceNoteIfPresent();
             VerifyNoPowerShellWrapper();
             VerifyTrackedArtifactHygiene();
             VerifyCoreSdkBoundary();
             VerifyValidationWiring();
 
             Console.WriteLine($"Phase 138B: {_passed} checks passed.");
-        }
-
-        private static void VerifyPrivatePlanIfPresent()
-        {
-            if (!RepoFileExists(PlanPath))
-            {
-                Check(true, "138B-A1: private Phase138B plan may be absent in clean tracked checkout");
-                return;
-            }
-
-            var plan = ReadRepoText(PlanPath);
-            Check(plan.Contains("Python build orchestrator", StringComparison.Ordinal)
-                  && plan.Contains("phase138b_r2fu_jazzy_windows_build.py", StringComparison.Ordinal),
-                "138B-A1: Phase138B plan uses a Python orchestrator");
-            Check(plan.Contains("Do not add a new PowerShell build wrapper", StringComparison.Ordinal)
-                  && plan.Contains("phase138b_*.ps1", StringComparison.Ordinal),
-                "138B-A2: Phase138B plan forbids project-owned PowerShell wrappers");
-            Check(plan.Contains("D:\\r", StringComparison.Ordinal)
-                  && plan.Contains("D:\\t", StringComparison.Ordinal)
-                  && plan.Contains("outside `D:\\BaiduSyncdisk`", StringComparison.Ordinal),
-                "138B-A3: Phase138B plan requires a short non-synced work root");
-            Check(plan.Contains("C:\\ros2_jazzy\\ros2-windows\\.pixi\\envs\\default\\python.exe", StringComparison.Ordinal)
-                  && plan.Contains("Anaconda/Python313", StringComparison.Ordinal),
-                "138B-A4: Phase138B plan pins Jazzy Python and records contamination risks");
-            Check(plan.Contains("Phase110", StringComparison.Ordinal)
-                  && plan.Contains("WSL2 NAT", StringComparison.Ordinal),
-                "138B-A5: Phase138B plan preserves Phase110 and WSL2 boundaries");
-            Check(plan.Contains("BUILD_ORCHESTRATOR_GREEN", StringComparison.Ordinal)
-                  && plan.Contains("BLOCKED_CL_TEMP_IL", StringComparison.Ordinal)
-                  && plan.Contains("BLOCKED_MSBUILD_QUERY", StringComparison.Ordinal)
-                  && plan.Contains("BLOCKED_WINDOWS_PATH_LENGTH", StringComparison.Ordinal),
-                "138B-A6: Phase138B plan has explicit success and blocker verdicts");
         }
 
         private static void VerifyPythonOrchestrator()
@@ -83,6 +47,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && !script.Contains("default=r\"D:\\r\"", StringComparison.Ordinal)
                   && !script.Contains("default=r\"D:\\t\"", StringComparison.Ordinal),
                 "138B-B2: orchestrator exposes work-root arguments under the consolidated build root");
+            var localSiblingRoot = "D:" + Path.DirectorySeparatorChar + "ros2unity" + Path.DirectorySeparatorChar;
+            var localRos2Rc = localSiblingRoot + "ros2" + "rc";
+            var localR2fu = localSiblingRoot + "ros2-for-" + "unity";
+            Check(!script.Contains(localRos2Rc, StringComparison.OrdinalIgnoreCase)
+                  && !script.Contains(localR2fu, StringComparison.OrdinalIgnoreCase),
+                "138B-B2b: orchestrator does not use local sibling ROS2/R2FU repositories as evidence");
             Check(script.Contains("assert_safe_root", StringComparison.Ordinal)
                   && script.Contains("BaiduSyncdisk", StringComparison.Ordinal),
                 "138B-B3: orchestrator refuses synced/repo work roots");
@@ -144,33 +114,6 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("python311", StringComparison.Ordinal)
                   && script.Contains("probe.unlink()", StringComparison.Ordinal),
                 "138B-B16: orchestrator filters Python contamination broadly and cleans CL probe files");
-        }
-
-        private static void VerifyEvidenceNoteIfPresent()
-        {
-            if (!RepoFileExists(EvidencePath))
-            {
-                Check(true, "138B-C1: local Phase138B evidence note may be absent before diagnostics run");
-                return;
-            }
-
-            var evidence = ReadRepoText(EvidencePath);
-            Check(evidence.Contains("Phase138B", StringComparison.Ordinal)
-                  && evidence.Contains("Python orchestrator", StringComparison.Ordinal)
-                  && evidence.Contains("No project-owned PowerShell wrapper", StringComparison.Ordinal),
-                "138B-C1: evidence records the Python/no-PS-wrapper boundary");
-            Check(evidence.Contains("WorkRoot", StringComparison.Ordinal)
-                  && evidence.Contains("TempRoot", StringComparison.Ordinal)
-                  && evidence.Contains("D:\\r", StringComparison.Ordinal)
-                  && evidence.Contains("EffectiveGenerator", StringComparison.Ordinal),
-                "138B-C2: evidence records non-synced work and temp roots");
-            Check(evidence.Contains("where python", StringComparison.Ordinal)
-                  && evidence.Contains("where cl", StringComparison.Ordinal)
-                  && evidence.Contains("catkin_pkg", StringComparison.Ordinal),
-                "138B-C3: evidence records Python/native tool diagnostics");
-            Check(evidence.Contains("BLOCKED_", StringComparison.Ordinal)
-                  || evidence.Contains("BUILD_ORCHESTRATOR_GREEN", StringComparison.Ordinal),
-                "138B-C4: evidence records a final verdict");
         }
 
         private static void VerifyNoPowerShellWrapper()

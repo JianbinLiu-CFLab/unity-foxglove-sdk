@@ -47,11 +47,11 @@ namespace Unity.FoxgloveSDK.Tests
             Limitations.Clear();
 
             Directory.CreateDirectory(CompatDir());
-            VerifyEvidenceNote();
+            VerifyReportSchemaSurface();
             VerifyValidationWiring();
             VerifyPriorPhaseHooks();
-            VerifyParityMatrix();
-            VerifyClaimLedgerDocs();
+            VerifyPublicParitySurface();
+            VerifyCompatibilityClaimLedger();
 
             var unityChunked = CreateUnityChunkedFixture();
             var unityDirect = CreateUnityDirectFixture();
@@ -72,29 +72,25 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 120: {_passed} checks passed.");
         }
 
-        private static void VerifyEvidenceNote()
+        private static void VerifyReportSchemaSurface()
         {
-            var note = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120Validation.cs");
             foreach (var required in new[]
             {
-                "Final Verdict",
                 "PASS WITH NOTED LIMITATIONS",
-                "Environment",
-                "Official Interop",
-                "Foxglove Desktop Manual Open",
-                "Performance",
-                "Skipped Checks",
-                "Claim Ledger",
-                "https://mcap.dev/spec",
-                "https://mcap.dev/docs/python/",
-                "https://docs.foxglove.dev/docs/visualization/connecting/cloud-data/remote-data-loader"
+                "externalToolingStatus",
+                "coreChecks",
+                "optionalChecks",
+                "fixtures",
+                "limitations",
+                "phase120-report.json"
             })
             {
-                Check(note.Contains(required, StringComparison.Ordinal),
-                    "120-A1: compatibility gate note contains " + required);
+                Check(source.Contains(required, StringComparison.Ordinal),
+                    "120-A1: compatibility report surface contains " + required);
             }
 
-            AddCore("evidence-note", "passed", "Developer compatibility gate note has required sections.");
+            AddCore("phase120-report-schema", "passed", "Compatibility report schema is enforced by tracked validation source.");
         }
 
         private static void VerifyValidationWiring()
@@ -123,35 +119,45 @@ namespace Unity.FoxgloveSDK.Tests
             AddCore("phase116-119-hooks", "passed", "Prior phase validation hooks are present.");
         }
 
-        private static void VerifyParityMatrix()
+        private static void VerifyPublicParitySurface()
         {
-            var matrix = ReadRepoText("Developer/102 Phase117 MCAP Spec Parity Matrix.md");
-            foreach (var opcode in new[]
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            foreach (var required in new[]
             {
-                "0x01", "0x02", "0x03", "0x04", "0x05", "0x06", "0x07", "0x08",
-                "0x09", "0x0A", "0x0B", "0x0C", "0x0D", "0x0E", "0x0F",
-                "0x80-0xFF", "0x00"
+                "WriteHeader",
+                "WriteSchema",
+                "WriteChannel",
+                "WriteMessage",
+                "WriteChunk",
+                "WriteMessageIndex",
+                "WriteChunkIndex",
+                "WriteAttachment",
+                "WriteMetadata",
+                "WriteStatistics",
+                "WriteSummaryOffset",
+                "WriteDataEnd",
+                "WriteFooter"
             })
             {
-                Check(matrix.Contains(opcode, StringComparison.Ordinal),
-                    "120-D1: parity matrix covers opcode " + opcode);
+                Check(writer.Contains(required, StringComparison.Ordinal),
+                    "120-D1: public MCAP writer exposes " + required);
             }
 
-            Check(matrix.Contains("https://mcap.dev/spec", StringComparison.Ordinal)
-                  && matrix.Contains("No remote DataLoader", StringComparison.Ordinal),
-                "120-D2: parity matrix preserves official reference and remote non-goal");
-            AddCore("spec-parity-matrix", "passed", "Opcode coverage and non-goals are present.");
+            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapReader.cs");
+            Check(reader.Contains("DefaultRecordSizeLimit", StringComparison.Ordinal)
+                  && reader.Contains("MCAP opcode 0x00 is invalid", StringComparison.Ordinal),
+                "120-D2: public MCAP reader enforces record-size and invalid-opcode guards");
+            AddCore("public-mcap-parity-surface", "passed", "Tracked MCAP reader/writer surface covers the compatibility gate.");
         }
 
-        private static void VerifyClaimLedgerDocs()
+        private static void VerifyCompatibilityClaimLedger()
         {
-            var note = ReadRepoText("Developer/104 Phase120 MCAP Official Compatibility Gate.md");
-            Check(note.Contains("complete official MCAP library replacement", StringComparison.Ordinal)
-                  && note.Contains("production Foxglove Remote Data Loader infrastructure", StringComparison.Ordinal)
-                  && note.Contains("Remote Access Gateway support", StringComparison.Ordinal),
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120Validation.cs");
+            Check(source.Contains("Foxglove Desktop manual visual open is deferred", StringComparison.Ordinal)
+                  && source.Contains("Production Remote Data Loader, cloud cache, range serving, organization auth, and Remote Access Gateway remain out of scope.", StringComparison.Ordinal),
                 "120-E1: claim ledger records explicit non-claims");
-            Check(note.Contains("local DataLoader-shaped facade", StringComparison.Ordinal)
-                  && note.Contains("official Python MCAP reader", StringComparison.Ordinal),
+            Check(source.Contains("Run --phase120-official to execute Python mcap interop.", StringComparison.Ordinal)
+                  && source.Contains("Local readers opened generated fixture.", StringComparison.Ordinal),
                 "120-E2: claim ledger records allowed local compatibility claims");
             AddCore("claim-ledger", "passed", "Claim ledger distinguishes supported claims from non-claims.");
         }

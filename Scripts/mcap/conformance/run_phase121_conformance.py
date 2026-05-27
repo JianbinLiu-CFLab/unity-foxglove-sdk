@@ -4,7 +4,8 @@
 # Purpose: Run the Phase 121 MCAP conformance baseline through a cross-platform Python entry point.
 # Usage: python Scripts/mcap/conformance/run_phase121_conformance.py [--release-blocking]
 # Inputs: third-party/mcap checkout, C# conformance console project, and csharp runner overlay sources.
-# Outputs: build/mcap-conformance/phase121-conformance-report.json and overlay/test artifacts under build/mcap-conformance.
+# Outputs: phase121 conformance report (default under build/mcap-conformance)
+# and overlay/test artifacts under build/mcap-conformance.
 
 from __future__ import annotations
 
@@ -61,6 +62,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--release-blocking",
         action="store_true",
         help="Return a non-zero exit code when external tooling is skipped or measured failures exist.",
+    )
+    parser.add_argument(
+        "--report-path",
+        help="Optional report output path. Defaults to build/mcap-conformance/phase121-conformance-report.json.",
     )
     return parser.parse_args(argv)
 
@@ -155,6 +160,7 @@ def write_phase121_report(
     """Write the Phase 121 conformance baseline report."""
 
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     report = {
         "officialMcapCommit": get_official_commit(),
         "officialMcapPath": str(OFFICIAL_ROOT),
@@ -425,7 +431,10 @@ def run_conformance(release_blocking: bool) -> int:
 def main(argv: list[str]) -> int:
     """Program entry point."""
 
+    global REPORT_PATH
     args = parse_args(argv)
+    if args.report_path:
+        REPORT_PATH = Path(args.report_path).resolve()
     return run_conformance(bool(args.release_blocking))
 
 

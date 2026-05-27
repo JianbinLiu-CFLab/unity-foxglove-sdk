@@ -127,6 +127,12 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
+            if (stack.Count != 0)
+            {
+                error = "Unbalanced preprocessor directives: " + stack.Count + " unclosed block(s) at end of file.";
+                return false;
+            }
+
             return true;
         }
 
@@ -153,10 +159,14 @@ namespace Unity.FoxgloveSDK.Tests
                 return GuardCondition.RequiresNotDefine;
             }
 
-            if (normalized.Contains(define, StringComparison.Ordinal)
-                || normalized.Contains("defined(" + define + ")", StringComparison.Ordinal))
+            // Split by C preprocessor operators for exact identifier matching;
+            // avoids false match on superstring defines (e.g. DEFINE vs DEFINE_TEST).
+            var parts = normalized.Split(new[] { "&&", "||", "!", "(", ")" },
+                StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in parts)
             {
-                return GuardCondition.RequiresDefine;
+                if (part == define || part == "defined(" + define + ")")
+                    return GuardCondition.RequiresDefine;
             }
 
             return GuardCondition.Unknown;
