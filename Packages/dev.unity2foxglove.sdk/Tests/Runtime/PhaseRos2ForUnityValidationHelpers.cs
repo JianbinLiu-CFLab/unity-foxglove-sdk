@@ -16,6 +16,27 @@ namespace Unity.FoxgloveSDK.Tests
         public const string LegacyJazzyArtifactName = "Ros2ForUnity_Jazzy_standalone_windows10.zip";
         public const string LegacyHumbleArtifactName = "Ros2ForUnity_humble_standalone_windows11.zip";
 
+        /// <summary>
+        /// Union set of forbidden R2FU reference tokens. All Phase128-132 boundary validators
+        /// should use this shared list to keep guard coverage consistent.
+        /// </summary>
+        public static readonly string[] R2fuGuardTokens = new[]
+        {
+            "using ROS2;",
+            "namespace ROS2",
+            "ROS2UnityComponent",
+            "ROS2Node",
+            "IPublisher<",
+            "ISubscription<",
+            "tf2_msgs",
+            "sensor_msgs",
+            "std_msgs",
+            "geometry_msgs",
+            "nav_msgs",
+            "visualization_msgs",
+            "builtin_interfaces"
+        };
+
         public static bool IsForbiddenR2fuArtifact(string path, string allowedRuntimePackagePrefix = null)
         {
             if (!string.IsNullOrEmpty(allowedRuntimePackagePrefix)

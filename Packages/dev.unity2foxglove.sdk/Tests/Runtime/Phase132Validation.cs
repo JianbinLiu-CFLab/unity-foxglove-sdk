@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
         };
 
         private static int _passed;
+        private static string _repoRoot;
 
         public static void Validate()
         {
@@ -387,68 +388,12 @@ namespace Unity.FoxgloveSDK.Tests
                 + (optionalRuntimeHits.Count == 0 ? string.Empty : " (" + string.Join(", ", optionalRuntimeHits) + ")"));
         }
 
+        private const string R2fuDefine = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
+
         private static bool AllR2fuReferencesAreGuarded(string text)
         {
-            var tokens = new[]
-            {
-                "using ROS2;",
-                "ROS2UnityComponent",
-                "ROS2Node",
-                "IPublisher<",
-                "sensor_msgs",
-                "nav_msgs",
-                "geometry_msgs",
-                "std_msgs",
-                "builtin_interfaces"
-            };
-
-            var stack = new Stack<bool>();
-            var lines = text.Replace("\r\n", "\n").Split('\n');
-            for (var i = 0; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                var trimmed = line.TrimStart();
-
-                if (trimmed.StartsWith("#if ", StringComparison.Ordinal))
-                {
-                    stack.Push(trimmed.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#elif ", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    stack.Push(trimmed.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#else", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    stack.Push(false);
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#endif", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    continue;
-                }
-
-                if (trimmed.StartsWith("//", StringComparison.Ordinal))
-                    continue;
-
-                if (tokens.Any(token => line.Contains(token, StringComparison.Ordinal))
-                    && !stack.Any(guarded => guarded))
-                {
-                    throw new InvalidOperationException("Unguarded Phase132 R2FU reference on line " + (i + 1) + ": " + trimmed);
-                }
-            }
-
-            return true;
+            return PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(
+                text, R2fuDefine, PhaseRos2ForUnityValidationHelpers.R2fuGuardTokens, out _);
         }
 
         private static IEnumerable<string> CoreProductionForbiddenTokens()
@@ -470,12 +415,22 @@ namespace Unity.FoxgloveSDK.Tests
             return new[]
             {
                 "using ROS2;",
+                "namespace ROS2",
+                "ISubscription<",
                 "ROS2UnityComponent",
                 "ROS2Node",
                 "IPublisher<",
+                "tf2_msgs",
                 "sensor_msgs.msg",
+                "sensor_msgs",
                 "nav_msgs.msg",
-                "geometry_msgs.msg"
+                "nav_msgs",
+                "geometry_msgs.msg",
+                "geometry_msgs",
+                "std_msgs",
+                "visualization_msgs",
+                "builtin_interfaces",
+                "ros2cs"
             };
         }
 
@@ -515,7 +470,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            return File.ReadAllText(RepoPath(relativePath));
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase132 file: " + relativePath, path);
+            return File.ReadAllText(path);
         }
 
         private static string RepoPath(string relativePath)
@@ -533,16 +491,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string FindRepoRoot()
         {
-            var dir = AppContext.BaseDirectory;
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, "Packages"))
-                    && Directory.Exists(Path.Combine(dir, "Scripts")))
-                    return dir;
-                dir = Directory.GetParent(dir)?.FullName;
-            }
-
-            return Directory.GetCurrentDirectory();
+            if (_repoRoot != null)
+                return _repoRoot;
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+            _repoRoot = root;
+            return _repoRoot;
         }
 
         private static void Check(bool condition, string label)

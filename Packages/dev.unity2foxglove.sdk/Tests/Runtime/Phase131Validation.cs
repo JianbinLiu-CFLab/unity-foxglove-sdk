@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
 
         private static int _passed;
+        private static string _repoRoot;
 
         public static void Validate()
         {
@@ -188,8 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
                          "Scripts/smoke/phase128_rviz2_acceptance.py",
                          "Scripts/smoke/phase129_pointcloud2_acceptance.py",
                          "Scripts/smoke/phase130_markerarray_acceptance.py",
-                         "Scripts/smoke/phase131_standard_visualization_acceptance.py",
-                         "Scripts/smoke/phase132_standard_messages_acceptance.py"
+                         "Scripts/smoke/phase131_standard_visualization_acceptance.py"
                      })
             {
                 var smokeHelper = ReadRepoText(path);
@@ -430,10 +430,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
+            if (_repoRoot != null)
+                return _repoRoot;
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
                 throw new InvalidOperationException("Could not find repository root.");
-            return root;
+            _repoRoot = root;
+            return _repoRoot;
         }
 
         private static string Rel(string path)
