@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var json = File.ReadAllText(pkgJson);
             Assert(json.Contains("\"name\": \"dev.unity2foxglove.sdk\""), "package.json name correct");
-            Assert(json.Contains("\"version\": \"1.9.3\""), "package.json version is 1.9.3");
+            Assert(json.Contains("\"version\": \"1.9.4\""), "package.json version is 1.9.4");
             Assert(json.Contains("\"displayName\": \"Unity2Foxglove SDK\""), "package.json displayName correct");
             Assert(json.Contains("\"license\": \"Apache-2.0\""), "package.json license is Apache-2.0");
 

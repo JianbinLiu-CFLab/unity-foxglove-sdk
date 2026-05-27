@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 1.9.4 - 2026-05-27
+
+### Added
+
+- ROS2 For Unity sample and acceptance coverage now includes RViz2-ready standard visualization flows, standard message publishing, and synchronized imported Unity project samples.
+- Repository validation now includes stronger public-boundary checks so release gates do not depend on private workspace notes, ignored outputs, or machine-local sibling repositories.
+- Additional smoke and helper coverage was added for MCAP conformance, ROS2 bridge behavior, native encoder tooling, package validators, and performance regression checks.
+
 ### Changed
 
 - FoxgloveManager-generated MCAP recording file names now use UTC timestamps with fractional ticks (`yyyyMMdd_HHmmss_fffffffZ`) instead of local-time second precision. External scripts that parse recording names should not assume the older `yyyyMMdd_HHmmss.mcap` suffix.
@@ -16,6 +24,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Replay keeps the legacy behavior for CRC-mismatched chunks by default (`UseWithWarning`), with `Skip` and `Throw` available for strict tools.
 - `McapReplayEngine.MaxMessagesPerTick = 0` remains the unlimited-per-tick replay mode; negative values clamp to `1`.
 - JSON timestamp DTOs normalize inbound `nsec >= 1_000_000_000` into whole seconds while continuing to emit normalized values.
+- ROS2 bridge runtime state, adapter package detection, demo cleanup, OpenH264 diagnostics, and release package validation were hardened for clearer failure modes and better repeatability.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.9.4.
+
+### Verified
+
+- GitHub Actions passed for runtime tests, analyzer freshness, package structure checks, and docs checks.
+- Runtime validation suite passed locally.
+- Extended runtime, local evidence, MCAP conformance, ROS2 visualization, and standard message validation gates passed locally.
+- Release package, ROS2 For Unity runtime package, and ROS2 For Unity adapter package validators passed locally.
+- Public docs link/path/encoding checks, repository private-boundary checks, Python compile checks, quick performance baseline, and git whitespace checks passed locally.
 
 ## 1.9.3 - 2026-05-24
 
