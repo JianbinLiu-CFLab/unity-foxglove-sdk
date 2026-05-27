@@ -12,10 +12,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 
@@ -34,9 +35,9 @@ MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json"
 
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-ARTIFACT_SHA256 = "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188"
-ARTIFACT_SIZE = 16686195
-INVENTORY_FILE_COUNT = 1044
+ARTIFACT_SHA256 = "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232"
+ARTIFACT_SIZE = 17472174
+INVENTORY_FILE_COUNT = 1053
 
 CRITICAL_DLLS = (
     "rcl.dll",
@@ -127,6 +128,15 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
 def read_optional_text(path: Path) -> str:
     """Read UTF-8 text when present, returning an empty string for absent files."""
     return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+
+
+def file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest for a package payload file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def check_package_metadata(results: list[CheckResult]) -> None:
@@ -281,6 +291,45 @@ def check_inventory(results: list[CheckResult]) -> None:
         f"present={sorted(present)!r}",
     )
 
+    files = data.get("files", [])
+    malformed: list[str] = []
+    missing: list[str] = []
+    mismatched: list[str] = []
+    checked_dlls = 0
+    if isinstance(files, list):
+        for item in files:
+            if not isinstance(item, dict):
+                malformed.append(repr(item))
+                continue
+            path_text = str(item.get("path", ""))
+            if not path_text.lower().endswith(".dll"):
+                continue
+            checked_dlls += 1
+            expected_hash = str(item.get("sha256", "")).lower()
+            parts = PurePosixPath(path_text).parts
+            if len(parts) < 2 or parts[0] != "Ros2ForUnity":
+                malformed.append(path_text)
+                continue
+            package_path = RUNTIME_ROOT.joinpath(*parts[1:])
+            if not package_path.is_file():
+                missing.append(path_text)
+                continue
+            if expected_hash and file_sha256(package_path) != expected_hash:
+                mismatched.append(path_text)
+
+    add(
+        results,
+        "runtime inventory DLL files exist on disk",
+        isinstance(files, list) and checked_dlls >= 900 and not malformed and not missing,
+        f"checked_dlls={checked_dlls} malformed={malformed[:8]!r} missing={missing[:8]!r}",
+    )
+    add(
+        results,
+        "runtime inventory DLL hashes match disk",
+        isinstance(files, list) and checked_dlls >= 900 and not mismatched,
+        f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}",
+    )
+
 
 def check_runtime_files(results: list[CheckResult]) -> None:
     """Validate critical runtime files and package layout."""
@@ -374,7 +423,18 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
 
     component = read_optional_text(scripts / "ROS2UnityComponent.cs")
     component_join = "threadToJoin.Join(1000)" in component or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in component
-    for token in ("private volatile bool quitting", "OnDestroy()", "OnApplicationQuit()", "node.Dispose()"):
+    for token in (
+        LOCAL_PATCH_MARKER,
+        "private volatile bool quitting",
+        "OnDestroy()",
+        "OnApplicationQuit()",
+        "node.Dispose()",
+        "StopExecutor()",
+        "TryDetachRuntimeState",
+        "QuarantineNodesAfterExecutorTimeout",
+        "ReferenceEquals(executorThread, threadToJoin)",
+        "Ros2cs.SpinOnce(ros2csNodes, spinTimeout)",
+    ):
         add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
     add(
         results,
@@ -387,7 +447,17 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
 
     core = read_optional_text(scripts / "ROS2UnityCore.cs")
     core_join = "threadToJoin.Join(1000)" in core or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in core
-    for token in ("IDisposable", "private volatile bool quitting", "public void Dispose()"):
+    for token in (
+        LOCAL_PATCH_MARKER,
+        "IDisposable",
+        "private volatile bool quitting",
+        "public void Dispose()",
+        "StopExecutor()",
+        "TryDetachRuntimeState",
+        "QuarantineNodesAfterExecutorTimeout",
+        "ReferenceEquals(executorThread, threadToJoin)",
+        "Ros2cs.SpinOnce(ros2csNodes, spinTimeout)",
+    ):
         add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)
     add(
         results,
@@ -442,6 +512,7 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         "apply_local_patch_overlays",
         "collect_meta_overlays",
         "apply_meta_overlays",
+        "LOCAL_PATCH_OVERLAY_FILES",
         "LEAKY_UPSTREAM_EXAMPLES",
         "runtime_asmdef",
         "make_writable",

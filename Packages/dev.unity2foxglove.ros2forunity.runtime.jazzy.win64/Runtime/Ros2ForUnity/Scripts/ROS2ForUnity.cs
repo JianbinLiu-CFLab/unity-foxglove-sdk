@@ -367,10 +367,10 @@ internal class ROS2ForUnity
 
     private void ConnectLoggers()
     {
-        Ros2csLogger.setCallback(LogLevel.ERROR, Debug.LogError);
-        Ros2csLogger.setCallback(LogLevel.WARNING, Debug.LogWarning);
-        Ros2csLogger.setCallback(LogLevel.INFO, Debug.Log);
-        Ros2csLogger.setCallback(LogLevel.DEBUG, Debug.Log);
+        Ros2csLogger.SetCallback(LogLevel.ERROR, Debug.LogError);
+        Ros2csLogger.SetCallback(LogLevel.WARNING, Debug.LogWarning);
+        Ros2csLogger.SetCallback(LogLevel.INFO, Debug.Log);
+        Ros2csLogger.SetCallback(LogLevel.DEBUG, Debug.Log);
         Ros2csLogger.LogLevel = LogLevel.WARNING;
     }
 

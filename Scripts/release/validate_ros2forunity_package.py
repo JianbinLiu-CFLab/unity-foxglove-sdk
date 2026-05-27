@@ -336,11 +336,11 @@ def check_manifest(results: list[CheckResult]) -> None:
             "supportLevel": "Recommended",
             "distributionLevel": "BundleCandidate",
             "artifact": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
-            "artifactSha256": "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188",
-            "artifactSize": 16686195,
+            "artifactSha256": "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232",
+            "artifactSize": 17472174,
             "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
             "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
-            "inventoryFileCount": 1044,
+            "inventoryFileCount": 1053,
         }
         for key, value in current_expected.items():
             add(
@@ -498,14 +498,14 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         "schemaVersion": 1,
         "runtimeId": "r2fu-jazzy-win64",
         "artifactName": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
-        "artifactSize": 16686195,
-        "sha256": "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188",
+        "artifactSize": 17472174,
+        "sha256": "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232",
         "rosDistro": "jazzy",
         "rmw": "rmw_fastrtps_cpp",
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",
-        "fileCount": 1044,
+        "fileCount": 1053,
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")

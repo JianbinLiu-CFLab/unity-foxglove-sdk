@@ -6,11 +6,12 @@
 
 using System;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using UnityEditor.PackageManager;
 using UnityEngine;
+using Process = System.Diagnostics.Process;
+using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -535,7 +536,7 @@ namespace Unity.FoxgloveSDK.Editor
             catch (Exception ex)
             {
                 if (warnOnFailure)
-                    Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + ex.Message);
+                    UnityEngine.Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + ex.Message);
                 return false;
             }
         }
