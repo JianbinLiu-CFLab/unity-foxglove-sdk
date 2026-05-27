@@ -43,6 +43,11 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     private Phase110Ros2ForUnityContext _context;
     private IUnity2FoxgloveRos2Node _node;
 
+    public int PublishedCount => _publishedCount;
+    public int ReceivedCount => _receivedCount;
+    public string StatusMessage => _statusMessage;
+    public string LastError => _lastError;
+
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private IUnity2FoxgloveRos2Publisher<std_msgs.msg.String> _publisher;
     private IUnity2FoxgloveRos2Subscription _subscription;
@@ -153,6 +158,24 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             _inTopic = InTopic;
     }
 
+    public void ConfigureForBatch(
+        bool useDirectRuntime,
+        string nodeName,
+        string outTopic,
+        string inTopic,
+        bool enablePublisher,
+        bool enableSubscription,
+        float publishIntervalSeconds)
+    {
+        _useDirectRuntime = useDirectRuntime;
+        _nodeName = NormalizeOrFallback(nodeName, NodeName);
+        _outTopic = NormalizeOrFallback(outTopic, OutTopic);
+        _inTopic = NormalizeOrFallback(inTopic, InTopic);
+        _enablePublisher = enablePublisher;
+        _enableSubscription = enableSubscription;
+        _publishIntervalSeconds = Mathf.Max(0.1f, publishIntervalSeconds);
+    }
+
     private void WarnMissingDefine()
     {
         _lastError = "Import ROS2 For Unity and add UNITY2FOXGLOVE_ROS2_FOR_UNITY before running this sample.";
@@ -162,6 +185,11 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
         _warnedMissingDefine = true;
         Debug.LogWarning(LogPrefix + _statusMessage);
+    }
+
+    private static string NormalizeOrFallback(string value, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
     }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY

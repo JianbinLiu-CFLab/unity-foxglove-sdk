@@ -41,11 +41,12 @@ namespace Unity.FoxgloveSDK.Tests
             var manifest = FoxRunManifestBuilder.Build(FixtureMembers());
             var json = FoxRunManifestJsonWriter.WriteCanonical(manifest);
 
-            const string expectedJson = "{\"manifestVersion\":1,\"package\":\"Unity2Foxglove\",\"generator\":{\"name\":\"FoxRun\",\"majorVersion\":1},\"sections\":{\"foxrun\":{\"manifestHash\":\"653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d\",\"types\":[{\"declaringType\":\"Demo.RobotState\",\"contracts\":[{\"topic\":\"/phase112/battery\",\"schemaName\":\"\",\"encoding\":\"json\",\"contractHash\":\"d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16\",\"bindingHash\":\"dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52\",\"policyHash\":\"e555d34de178132da2bc530e15f17fef8c2a782a3e9c65985dd4926adba41eb8\",\"fields\":[{\"jsonName\":\"batteryLevel\",\"memberName\":\"_batteryLevel\",\"memberKind\":\"field\",\"type\":\"float32\",\"nullable\":false,\"array\":false}],\"policy\":{\"mode\":\"OnChange\",\"rateHz\":10,\"changeEpsilon\":0.00100000005,\"forceIntervalSeconds\":0}}]}]}},\"globalManifestHash\":\"653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d\"}";
+            const string expectedJson = "{\"manifestVersion\":1,\"package\":\"Unity2Foxglove\",\"generator\":{\"name\":\"FoxRun\",\"majorVersion\":1},\"sections\":{\"foxrun\":{\"manifestHash\":\"653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d\",\"types\":[{\"declaringType\":\"Demo.RobotState\",\"contracts\":[{\"topic\":\"/phase112/battery\",\"schemaName\":\"\",\"encoding\":\"json\",\"contractHash\":\"d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16\",\"bindingHash\":\"dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52\",\"policyHash\":\"e555d34de178132da2bc530e15f17fef8c2a782a3e9c65985dd4926adba41eb8\",\"fields\":[{\"jsonName\":\"batteryLevel\",\"memberName\":\"_batteryLevel\",\"memberKind\":\"field\",\"type\":\"float32\",\"nullable\":false,\"array\":false}],\"policy\":{\"mode\":\"OnChange\",\"rateHz\":10,\"changeEpsilon\":0.00100000005,\"forceIntervalSeconds\":0}}]}]}},\"globalManifestHash\":\"9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e\"}";
             const string expectedContractHash = "d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16";
             const string expectedBindingHash = "dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52";
             const string expectedPolicyHash = "e555d34de178132da2bc530e15f17fef8c2a782a3e9c65985dd4926adba41eb8";
             const string expectedManifestHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
+            const string expectedGlobalManifestHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
 
             var contract = manifest.Sections.FoxRun.Types[0].Contracts[0];
             Check(json == expectedJson, "112-A1: fixture canonical JSON is exact and compact");
@@ -53,9 +54,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(contract.BindingHash == expectedBindingHash, "112-A3: fixture bindingHash is exact");
             Check(contract.PolicyHash == expectedPolicyHash, "112-A4: fixture policyHash is exact");
             Check(manifest.Sections.FoxRun.ManifestHash == expectedManifestHash
-                  && manifest.GlobalManifestHash == expectedManifestHash,
-                "112-A5: fixture FoxRun and global hashes are exact and aligned");
-            Check(FoxRunManifestHasher.IsLowercaseSha256Hex(expectedManifestHash),
+                  && manifest.GlobalManifestHash == expectedGlobalManifestHash,
+                "112-A5: fixture FoxRun section hash and global hash are exact");
+            Check(FoxRunManifestHasher.IsLowercaseSha256Hex(expectedManifestHash)
+                  && FoxRunManifestHasher.IsLowercaseSha256Hex(expectedGlobalManifestHash),
                 "112-A6: fixture hashes are lowercase SHA-256 hex");
         }
 
@@ -152,6 +154,8 @@ namespace Unity.FoxgloveSDK.Tests
                 File.WriteAllText(manifestPath, "{\"stale\":true}");
                 FoxrunManifestWriter.WriteManifestFiles(tempRoot, Array.Empty<FoxRunManifestMember>(), "2026-05-20T00:00:00.0000000Z");
                 var rewritten = File.ReadAllText(manifestPath);
+                Check(File.Exists(hashPath),
+                    "112-D4a: manifest hash sidecar is written before content validation");
                 var hashText = File.ReadAllText(hashPath);
                 var hashBytes = File.ReadAllBytes(hashPath);
                 var expectedHashBytes = System.Text.Encoding.ASCII.GetBytes(empty.GlobalManifestHash + "\n");
@@ -217,11 +221,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && project.Contains("Editor/Shared/FoxRunManifest", StringComparison.Ordinal),
                 "112-F3: test project explicitly compiles Phase112 validation and manifest shared code");
 
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
-            Check(program.Contains("--phase112", StringComparison.Ordinal)
-                  && program.Contains("RunPhase112Only", StringComparison.Ordinal)
-                  && program.Contains("Phase112Validation.Validate()", StringComparison.Ordinal),
-                "112-F4: Program.cs wires --phase112");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            Check(registry.Contains("--phase112", StringComparison.Ordinal)
+                  && registry.Contains("Phase112Validation.Validate", StringComparison.Ordinal),
+                "112-F4: registry wires --phase112");
 
             var gitignore = ReadRepoText(".gitignore");
             Check(gitignore.Contains("Unity2Foxglove/Assets/Generated/FoxRun/", StringComparison.Ordinal)

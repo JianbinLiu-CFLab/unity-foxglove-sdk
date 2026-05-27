@@ -54,11 +54,11 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(source.Contains("Stop(clearOutputQueue: true)", StringComparison.Ordinal)
                       && source.Contains("Stop(clearOutputQueue: false)", StringComparison.Ordinal),
                     "111F-A1: encoder separates hard stop from publisher tail disposal: " + relativePath);
-            Check(source.Contains("DrainOutputQueue()", StringComparison.Ordinal)
-                  && (source.Contains("_outputCount = 0", StringComparison.Ordinal)
-                      || source.Contains("Volatile.Write(ref _outputCount, 0)", StringComparison.Ordinal)
-                      || source.Contains("Interlocked.Exchange(ref _outputCount, 0)", StringComparison.Ordinal)),
-                "111F-A2: encoder hard stop clears output queue/count: " + relativePath);
+                Check(source.Contains("DrainOutputQueue()", StringComparison.Ordinal)
+                      && (source.Contains("_outputCount = 0", StringComparison.Ordinal)
+                          || source.Contains("Volatile.Write(ref _outputCount, 0)", StringComparison.Ordinal)
+                          || source.Contains("Interlocked.Exchange(ref _outputCount, 0)", StringComparison.Ordinal)),
+                    "111F-A2: encoder hard stop clears output queue/count: " + relativePath);
             }
         }
 
@@ -281,7 +281,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyImportedSampleSync()
         {
-            foreach (var fileName in new[] { "Phase110Ros2ForUnityContext.cs", "Phase110Ros2ForUnityStringSmoke.cs" })
+            foreach (var fileName in new[]
+            {
+                "Phase110Ros2ForUnityContextFactory.cs",
+                "Phase110Ros2ForUnityContext.cs",
+                "Phase110Ros2ForUnityStringSmoke.cs"
+            })
             {
                 var packageSample = Normalize(ReadRepoText(SamplePath + "/" + fileName));
                 var importedSample = Normalize(ReadRepoText(ImportedSamplePath + "/" + fileName));
@@ -292,12 +297,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase111f", StringComparison.Ordinal)
-                  && program.Contains("RunPhase111FOnly", StringComparison.Ordinal)
-                  && program.Contains("Phase111FValidation.Validate()", StringComparison.Ordinal),
-                "111F-I1: Program.cs wires --phase111f");
+            Check(registry.Contains("--phase111f", StringComparison.Ordinal)
+                  && registry.Contains("Phase111FValidation.Validate", StringComparison.Ordinal),
+                "111F-I1: registry wires --phase111f");
             Check(project.Contains("Phase111FValidation.cs", StringComparison.Ordinal),
                 "111F-I2: test project compiles Phase111FValidation");
         }

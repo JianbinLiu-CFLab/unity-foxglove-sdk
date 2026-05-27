@@ -36,6 +36,7 @@
     <Compile Include="ValidationCategory.cs" />
     <Compile Include="PhaseValidationCase.cs" />
     <Compile Include="PhaseValidationRegistry.cs" />
+    <Compile Include="PhaseRos2ForUnityValidationHelpers.cs" />
     <Compile Include="FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="SkeletonValidation.cs" />
     <Compile Include="Phase1Validation.cs" />

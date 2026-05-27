@@ -118,36 +118,40 @@ namespace Unity.FoxgloveSDK.Tests
                     "bytes",
                     new byte[] { 1, 2, 3 },
                     null,
-                    out _)
-                  && !FoxgloveDebugOverlayEnvelope.TryCreateValue(
-                      "/debug/phase112b",
-                      "PlannerController",
-                      "bytes",
-                      new List<byte> { 1, 2, 3 },
-                      null,
-                      out _)
-                  && !FoxgloveDebugOverlayEnvelope.TryCreateValue(
-                      "/debug/phase112b",
-                      "PlannerController",
-                      "bytes",
-                      new ReadOnlyMemory<byte>(new byte[] { 1 }),
-                      null,
-                      out _)
-                  && !FoxgloveDebugOverlayEnvelope.TryCreateValue(
-                      "/debug/phase112b",
-                      "PlannerController",
-                      "bytes",
-                      new ArraySegment<byte>(new byte[] { 1 }),
-                      null,
-                      out _)
-                  && !FoxgloveDebugOverlayEnvelope.TryCreateValue(
-                      "/debug/phase112b",
-                      "PlannerController",
-                      "stream",
-                      new MemoryStream(new byte[] { 1 }),
-                      null,
-                      out _),
-                "112B-B4: binary and stream debug values are rejected");
+                    out _),
+                "112B-B4a: byte array debug values are rejected");
+            Check(!FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                    "/debug/phase112b",
+                    "PlannerController",
+                    "bytes",
+                    new List<byte> { 1, 2, 3 },
+                    null,
+                    out _),
+                "112B-B4b: List<byte> debug values are rejected");
+            Check(!FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                    "/debug/phase112b",
+                    "PlannerController",
+                    "bytes",
+                    new ReadOnlyMemory<byte>(new byte[] { 1 }),
+                    null,
+                    out _),
+                "112B-B4c: ReadOnlyMemory<byte> debug values are rejected");
+            Check(!FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                    "/debug/phase112b",
+                    "PlannerController",
+                    "bytes",
+                    new ArraySegment<byte>(new byte[] { 1 }),
+                    null,
+                    out _),
+                "112B-B4d: ArraySegment<byte> debug values are rejected");
+            Check(!FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                    "/debug/phase112b",
+                    "PlannerController",
+                    "stream",
+                    new MemoryStream(new byte[] { 1 }),
+                    null,
+                    out _),
+                "112B-B4e: stream debug values are rejected");
         }
 
         private static void VerifySourceBoundaries()
@@ -187,9 +191,22 @@ namespace Unity.FoxgloveSDK.Tests
                     "112B-C4: debug overlay is not wired into existing FoxRun contract file: " + path);
             }
 
-            var manifestSources = Directory.GetFiles(RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest"), "*.cs");
-            Check(manifestSources.All(path => !File.ReadAllText(path).Contains("FoxgloveDebugOverlay", StringComparison.Ordinal)),
-                "112B-C5: manifest model/json/hash files do not know about debug overlay");
+            var manifestDirectory = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest");
+            Check(Directory.Exists(manifestDirectory),
+                "112B-C5a: manifest source directory exists");
+            var manifestSources = Directory.GetFiles(manifestDirectory, "*.cs");
+            Check(manifestSources.Length > 0,
+                "112B-C5b: manifest source directory contains C# files");
+            var manifestSourceHits = new List<string>();
+            foreach (var path in manifestSources)
+            {
+                var text = File.ReadAllText(path);
+                if (text.Contains("FoxgloveDebugOverlay", StringComparison.Ordinal))
+                    manifestSourceHits.Add(Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'));
+            }
+            Check(manifestSourceHits.Count == 0,
+                "112B-C5c: manifest model/json/hash files do not know about debug overlay"
+                + (manifestSourceHits.Count == 0 ? string.Empty : " (" + string.Join(", ", manifestSourceHits) + ")"));
         }
 
         private static void VerifyPhase112ManifestFixtureUnchanged()
@@ -213,8 +230,9 @@ namespace Unity.FoxgloveSDK.Tests
                     0f)
             });
 
-            Check(manifest.GlobalManifestHash == "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d",
-                "112B-D1: Phase112 fixture manifest hash is unchanged");
+            Check(manifest.Sections.FoxRun.ManifestHash == "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d"
+                  && manifest.GlobalManifestHash == "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e",
+                "112B-D1: Phase112 fixture section and global manifest hashes are unchanged");
         }
 
         private static void VerifyDocs()

@@ -64,14 +64,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "Ros2ForUnity"
             };
 
-            var hits = scanRoots
-                .Where(Directory.Exists)
-                .SelectMany(rootDir => Directory.GetFiles(rootDir, "*.*", SearchOption.AllDirectories))
-                .Where(path => HasTextExtension(path))
-                .SelectMany(path => forbidden
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Path.GetRelativePath(root, path).Replace('\\', '/') + " -> " + token))
-                .ToList();
+            var hits = new List<string>();
+            foreach (var path in scanRoots
+                         .Where(Directory.Exists)
+                         .SelectMany(rootDir => Directory.GetFiles(rootDir, "*.*", SearchOption.AllDirectories))
+                         .Where(HasTextExtension))
+            {
+                var text = File.ReadAllText(path);
+                hits.AddRange(forbidden
+                    .Where(token => text.Contains(token, StringComparison.Ordinal))
+                    .Select(token => Path.GetRelativePath(root, path).Replace('\\', '/') + " -> " + token));
+            }
 
             Check(hits.Count == 0,
                 "106B-1: package Runtime/Editor/Samples have no hard ROS2 For Unity dependency"
@@ -108,8 +111,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "106C-8: acceptance component does not construct custom QoS");
             Check(!text.Contains("SpinOnce", StringComparison.Ordinal),
                 "106C-9: acceptance component does not manually spin ROS2");
-            Check(AllR2fuReferencesAreGuarded(text),
-                "106C-10: ROS2 For Unity API references stay inside compile guard");
+            Check(AllR2fuReferencesAreGuarded(text, out var guardError),
+                "106C-10: ROS2 For Unity API references stay inside compile guard" + guardError);
         }
 
         private static void VerifyTrackedAssetBoundary()
@@ -120,10 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "106D-1: extracted ROS2 For Unity assets are not tracked");
             var disallowedArtifacts = tracked
                 .Where(path => !path.StartsWith(runtimePackage, StringComparison.Ordinal))
-                .Where(path => path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)
-                               || path.EndsWith("Ros2ForUnity_humble_standalone_windows11.zip", StringComparison.OrdinalIgnoreCase)
-                               || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
-                               || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase))
+                .Where(path => PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(path))
                 .ToList();
             Check(disallowedArtifacts.Count == 0,
                 "106D-2: ROS2 For Unity artifacts are tracked only inside the explicit runtime package"
@@ -170,7 +170,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "106F-1: current Phase106 plan is the ROS2 For Unity interop spike");
         }
 
-        private static bool AllR2fuReferencesAreGuarded(string text)
+        private static bool AllR2fuReferencesAreGuarded(string text, out string error)
         {
             var tokens = new[]
             {
@@ -184,53 +184,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "CreateSubscription<"
             };
 
-            var stack = new Stack<bool>();
-            var lines = text.Replace("\r\n", "\n").Split('\n');
-            for (var i = 0; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                var trimmed = line.TrimStart();
-
-                if (trimmed.StartsWith("#if ", StringComparison.Ordinal))
-                {
-                    stack.Push(trimmed.Contains(Define, StringComparison.Ordinal));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#elif ", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    stack.Push(trimmed.Contains(Define, StringComparison.Ordinal));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#else", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    stack.Push(false);
-                    continue;
-                }
-
-                if (trimmed.StartsWith("#endif", StringComparison.Ordinal))
-                {
-                    if (stack.Count > 0)
-                        stack.Pop();
-                    continue;
-                }
-
-                if (trimmed.StartsWith("//", StringComparison.Ordinal))
-                    continue;
-
-                if (tokens.Any(token => line.Contains(token, StringComparison.Ordinal))
-                    && !stack.Any(guarded => guarded))
-                {
-                    throw new InvalidOperationException("Unguarded R2FU reference on line " + (i + 1) + ": " + trimmed);
-                }
-            }
-
-            return true;
+            return PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(text, Define, tokens, out error);
         }
 
         private static IReadOnlyList<string> GitLsFiles()

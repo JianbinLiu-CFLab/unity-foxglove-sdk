@@ -195,6 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPhase100CleanupScope()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
             Check(!program.Contains("--phase101", StringComparison.Ordinal)
@@ -207,19 +208,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && !project.Contains("Phase103Validation.cs", StringComparison.Ordinal)
                   && !project.Contains("Phase104Validation.cs", StringComparison.Ordinal),
                 "105F-2: test project does not compile embedded rclcpp validation files");
-            Check(program.Contains("--phase105", StringComparison.Ordinal),
+            Check(registry.Contains("--phase105", StringComparison.Ordinal),
                 "105F-3: Phase105 remains an independent Phase100 cleanup gate");
         }
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("--phase105") && program.Contains("Phase105Validation.Validate()"),
-                "105G-1: Program dispatches --phase105");
-            Check(program.IndexOf("Phase100Validation.Validate()", StringComparison.Ordinal)
-                  < program.IndexOf("Phase105Validation.Validate()", StringComparison.Ordinal),
+            Check(registry.Contains("--phase105", StringComparison.Ordinal)
+                  && registry.Contains("Phase105Validation.Validate", StringComparison.Ordinal),
+                "105G-1: registry dispatches --phase105");
+            Check(registry.IndexOf("Phase100Validation.Validate", StringComparison.Ordinal)
+                  < registry.IndexOf("Phase105Validation.Validate", StringComparison.Ordinal),
                 "105G-2: full runtime validation calls Phase105 after Phase100");
             Check(project.Contains("Phase105Validation.cs"),
                 "105G-3: Phase105 validation is included in the runtime test project");
@@ -243,7 +245,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckSummaryBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
             var text = ReadRepoText(relativePath);
-            var window = WindowBefore(text, declaration, 16);
+            var window = WindowBefore(text, declaration, 16, message);
             var ok = window.Contains("/// <summary>", StringComparison.Ordinal)
                      && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
             Check(ok, message);
@@ -252,19 +254,19 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckGroupCommentBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
             var text = ReadRepoText(relativePath);
-            var window = WindowBefore(text, declaration, 10);
+            var window = WindowBefore(text, declaration, 10, message);
             var ok = (window.Contains("//", StringComparison.Ordinal) || window.Contains("///", StringComparison.Ordinal))
                      && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
             Check(ok, message);
         }
 
-        private static string WindowBefore(string text, string declaration, int lookbackLines)
+        private static string WindowBefore(string text, string declaration, int lookbackLines, string checkMessage)
         {
             var normalized = text.Replace("\r\n", "\n");
             var lines = normalized.Split('\n');
             var index = Array.FindIndex(lines, line => line.Contains(declaration, StringComparison.Ordinal));
             if (index < 0)
-                throw new InvalidOperationException("Phase105 could not find declaration: " + declaration);
+                throw new InvalidOperationException(checkMessage + " (missing declaration: " + declaration + ")");
 
             var start = Math.Max(0, index - lookbackLines);
             return string.Join("\n", lines.Skip(start).Take(index - start));
