@@ -45,15 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "80A-2: SDK package.json has no OpenH264 or WebRTC dependency");
 
             var cameraOutputMode = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
-            var phase81PromotionExists = File.Exists(Path.Combine(
-                FindRepoRoot() ?? "",
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Tests",
-                "Runtime",
-                "Phase81Validation.cs"));
-            Check(phase81PromotionExists || !ContainsAny(cameraOutputMode, "OpenH264", "H264OpenH264"),
-                "80A-3: production CameraOutputMode excludes OpenH264 until Phase 81 promotion");
+            Check(cameraOutputMode.Contains("H264OpenH264", StringComparison.Ordinal),
+                "80A-3: production CameraOutputMode records the promoted OpenH264 mode");
 
             Check(!HasCommittedOpenH264BinaryArtifacts(),
                 "80A-4: no OpenH264 binary artifacts are committed under package/assets paths");
@@ -194,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine($"[PASS] {name}");
@@ -207,21 +200,13 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            if (!File.Exists(full))
+                throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
+
+            return File.ReadAllText(full);
         }
 
         private static string FindRepoRoot()
-        {
-            var dir = Directory.GetCurrentDirectory();
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
-                    return dir;
-
-                dir = Directory.GetParent(dir)?.FullName;
-            }
-
-            return null;
-        }
+            => Phase16Validation.FindRepoRoot();
     }
 }

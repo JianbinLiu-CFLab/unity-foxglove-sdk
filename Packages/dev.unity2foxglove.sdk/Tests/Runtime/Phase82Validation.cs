@@ -18,6 +18,10 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase82Validation
     {
+        private const int NativeSmokeSubmittedFrames = 60;
+        private const int NativeSmokeMaxFirstOutputInput = 2;
+        private const int NativeSmokeExpectedMinimumAccessUnits = 57;
+
         private static int _passed;
 
         public static void Validate()
@@ -45,8 +49,8 @@ namespace Unity.FoxgloveSDK.Tests
                 return;
             }
 
-            var optionsType = Type.GetType("Foxglove.Schemas.Video.MediaFoundationH264EncoderOptions, FoxgloveSdk.Tests");
-            var sidecarType = Type.GetType("Foxglove.Schemas.Video.MediaFoundationH264EncoderSidecar, FoxgloveSdk.Tests");
+            var optionsType = FindType("Foxglove.Schemas.Video.MediaFoundationH264EncoderOptions");
+            var sidecarType = FindType("Foxglove.Schemas.Video.MediaFoundationH264EncoderSidecar");
             if (optionsType == null || sidecarType == null)
                 throw new InvalidOperationException("Native H.264 types are not available.");
 
@@ -84,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var accessUnits = 0;
                 var bytes = 0;
                 var firstOutputAfterInput = -1;
-                for (var i = 0; i < 60; i++)
+                for (var i = 0; i < NativeSmokeSubmittedFrames; i++)
                 {
                     if (!(bool)trySubmitFrame.Invoke(sidecar, new object[] { frame }))
                         throw new InvalidOperationException("Native H.264 frame submit failed: " + GetStringProperty(sidecarType, sidecar, "LastError"));
@@ -99,15 +103,17 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
-                var expectedMinimum = 57;
-                if (firstOutputAfterInput < 0 || firstOutputAfterInput > 2)
+                // Media Foundation low-latency mode is expected to emit the first access unit within
+                // two submitted frames and to drain nearly all submitted frames before Stop().
+                if (firstOutputAfterInput < 0 || firstOutputAfterInput > NativeSmokeMaxFirstOutputInput)
                     throw new InvalidOperationException(
                         "Native H.264 first output was delayed until input "
                         + firstOutputAfterInput + "; low-latency mode did not engage.");
-                if (accessUnits < expectedMinimum)
+                if (accessUnits < NativeSmokeExpectedMinimumAccessUnits)
                     throw new InvalidOperationException(
                         "Native H.264 produced only " + accessUnits
-                        + " access units for 60 input frames; expected at least " + expectedMinimum + ".");
+                        + " access units for " + NativeSmokeSubmittedFrames
+                        + " input frames; expected at least " + NativeSmokeExpectedMinimumAccessUnits + ".");
 
                 Console.WriteLine(
                     "Native H.264 smoke completed. AccessUnits=" + accessUnits
@@ -119,7 +125,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyModeProfile()
         {
-            var modeType = Type.GetType("Unity.FoxgloveSDK.Components.CameraOutputMode, FoxgloveSdk.Tests");
+            var modeType = FindType("Unity.FoxgloveSDK.Components.CameraOutputMode");
             Check(modeType != null && modeType.IsEnum, "82A-1: CameraOutputMode enum exists");
             Check(Enum.GetNames(modeType).Contains("H264OpenH264"),
                 "82A-2: OpenH264 mode remains present");
@@ -130,7 +136,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Convert.ToInt32(Enum.Parse(modeType, "H264MediaFoundationExperimental")) == 4,
                 "82A-5: H264MediaFoundationExperimental enum value is stable at 4");
 
-            var profileType = Type.GetType("Unity.FoxgloveSDK.Components.CameraVideoOutputProfile, FoxgloveSdk.Tests");
+            var profileType = FindType("Unity.FoxgloveSDK.Components.CameraVideoOutputProfile");
             Check(profileType != null, "82A-6: CameraVideoOutputProfile exists");
             var forMode = profileType.GetMethod("ForMode", BindingFlags.Public | BindingFlags.Static);
             Check(forMode != null, "82A-7: CameraVideoOutputProfile.ForMode exists");
@@ -152,7 +158,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyH264AccessUnitNormalizer()
         {
-            var normalizerType = Type.GetType("Foxglove.Schemas.Video.H264AccessUnitNormalizer, FoxgloveSdk.Tests");
+            var normalizerType = FindType("Foxglove.Schemas.Video.H264AccessUnitNormalizer");
             Check(normalizerType != null, "82B-1: H264AccessUnitNormalizer type exists");
 
             var normalizer = Activator.CreateInstance(normalizerType);
@@ -205,7 +211,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMediaFoundationOptionsAndSidecar()
         {
-            var optionsType = Type.GetType("Foxglove.Schemas.Video.MediaFoundationH264EncoderOptions, FoxgloveSdk.Tests");
+            var optionsType = FindType("Foxglove.Schemas.Video.MediaFoundationH264EncoderOptions");
             Check(optionsType != null, "82C-1: MediaFoundationH264EncoderOptions type exists");
             var options = Activator.CreateInstance(optionsType);
             SetField(optionsType, options, "Width", 640);
@@ -239,8 +245,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(GetBoolProperty(optionsType, highOptions, "HasManagedConversionCostWarning"),
                 "82C-7: options warn for high-resolution managed NV12 conversion");
 
-            var sidecarType = Type.GetType("Foxglove.Schemas.Video.MediaFoundationH264EncoderSidecar, FoxgloveSdk.Tests");
-            var interfaceType = Type.GetType("Foxglove.Schemas.Video.ICameraVideoEncoderSidecar, FoxgloveSdk.Tests");
+            var sidecarType = FindType("Foxglove.Schemas.Video.MediaFoundationH264EncoderSidecar");
+            var interfaceType = FindType("Foxglove.Schemas.Video.ICameraVideoEncoderSidecar");
             Check(sidecarType != null, "82C-8: MediaFoundationH264EncoderSidecar type exists");
             Check(interfaceType != null && interfaceType.IsAssignableFrom(sidecarType),
                 "82C-9: MediaFoundation sidecar implements codec-neutral interface");
@@ -346,7 +352,7 @@ namespace Unity.FoxgloveSDK.Tests
                         continue;
 
                     var value = (Guid)field.GetValue(null);
-                    Check(value != Guid.Empty, "82C-15b: Media Foundation GUID " + field.Name + " is valid");
+                    Check(value != Guid.Empty, "82C-16-" + field.Name + ": Media Foundation GUID is valid");
                     count++;
                 }
 
@@ -360,7 +366,7 @@ namespace Unity.FoxgloveSDK.Tests
             catch (Exception ex)
             {
                 throw new InvalidOperationException(
-                    "82C-15b: Media Foundation GUID table initializes without TypeInitializationException: "
+                    "82C-16: Media Foundation GUID table initializes without TypeInitializationException: "
                     + ex.GetType().Name + " " + ex.Message,
                     ex);
             }
@@ -499,18 +505,22 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            if (!File.Exists(full))
+                throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
+
+            return File.ReadAllText(full);
         }
 
         private static string FindRepoRoot()
-        {
-            var dir = Directory.GetCurrentDirectory();
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
-                    return dir;
+            => Phase16Validation.FindRepoRoot();
 
-                dir = Directory.GetParent(dir)?.FullName;
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(fullName, throwOnError: false);
+                if (type != null)
+                    return type;
             }
 
             return null;
@@ -519,7 +529,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

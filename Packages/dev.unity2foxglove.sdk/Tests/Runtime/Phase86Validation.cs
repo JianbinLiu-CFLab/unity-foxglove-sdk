@@ -116,7 +116,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("Volatile.Read(ref _recorder)")
                   && source.Contains("Volatile.Write(ref _recorder"),
                 "86E-2: RecordingController uses volatile recorder reads/writes");
-            var onParameterChanged = source.Substring(source.IndexOf("private void OnParameterChanged", StringComparison.Ordinal));
+            var onParameterChangedIndex = source.IndexOf("private void OnParameterChanged", StringComparison.Ordinal);
+            Check(onParameterChangedIndex >= 0, "86E-3a: RecordingController exposes OnParameterChanged");
+            var onParameterChanged = source.Substring(onParameterChangedIndex);
             Check(Ordered(onParameterChanged, "var recorder = Volatile.Read(ref _recorder);", "recorder.WriteMetadata"),
                 "86E-3: OnParameterChanged writes through a local recorder capture");
         }
@@ -169,7 +171,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -182,7 +184,9 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required repository file is missing.", path);
+            return File.ReadAllText(path);
         }
     }
 }
