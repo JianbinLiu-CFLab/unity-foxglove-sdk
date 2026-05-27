@@ -66,6 +66,7 @@ EXIT_FAILURE = 1
 EXIT_TOPIC_NOT_FOUND = 3
 EXIT_NO_MESSAGES = 4
 EXIT_WRONG_CHANNEL = 5
+EXIT_DECODE_FAILURE = 6
 
 
 @dataclass(frozen=True)
@@ -480,11 +481,13 @@ async def run(args: argparse.Namespace) -> int:
     if measurement.message_count == 0:
         result = "NO_MESSAGES"
         exit_code = EXIT_NO_MESSAGES
-    elif (
-        measurement.decoded_samples
-        and measurement.malformed_payload_count == 0
-        and all(sample.format == "draco" and sample.draco_data_bytes > 0 for sample in measurement.decoded_samples)
-    ):
+    elif not measurement.decoded_samples:
+        result = "DECODE_FAILURE"
+        exit_code = EXIT_DECODE_FAILURE
+    elif measurement.malformed_payload_count > 0 and not args.allow_malformed_payloads:
+        result = "DECODE_FAILURE"
+        exit_code = EXIT_DECODE_FAILURE
+    elif all(sample.format == "draco" and sample.draco_data_bytes > 0 for sample in measurement.decoded_samples):
         result = "PASS"
         exit_code = EXIT_SUCCESS
     else:
@@ -540,6 +543,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--advertise-timeout-seconds", type=float, default=DEFAULT_ADVERTISE_TIMEOUT_SECONDS)
     parser.add_argument("--idle-timeout-seconds", type=float, default=DEFAULT_IDLE_TIMEOUT_SECONDS)
     parser.add_argument("--subscription-id", type=int, default=DEFAULT_SUBSCRIPTION_ID)
+    parser.add_argument(
+        "--allow-malformed-payloads",
+        action="store_true",
+        help="Keep exit code 0 for diagnostic runs even when some received payloads fail to decode.",
+    )
     parser.add_argument("--self-test", action="store_true", help="Run offline decoder self-test and exit.")
     return parser.parse_args()
 

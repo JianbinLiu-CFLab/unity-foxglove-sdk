@@ -63,7 +63,12 @@ def run_dotnet(*runtime_args: str) -> int:
         "--",
         *runtime_args,
     ]
-    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache())
+    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True)
+    if result.returncode != EXIT_SUCCESS:
+        if result.stdout:
+            print(result.stdout, file=sys.stderr, end="")
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="")
     return result.returncode
 
 
