@@ -479,10 +479,7 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
     general_public_docs = readme + "\n" + notices + "\n" + sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
     forbidden_public_tokens = ["Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108", "phase", "Phase"]
     hits = [token for token in forbidden_public_tokens if token in general_public_docs]
-    manifest_text = (PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json").read_text(
-        encoding="utf-8",
-        errors="replace",
-    )
+    manifest_text = MANIFEST.read_text(encoding="utf-8", errors="replace") if MANIFEST.exists() else ""
     hits.extend(token for token in forbidden_public_tokens if token in manifest_text)
     add(results, "public R2FU docs avoid internal phase names", not hits, ", ".join(hits) if hits else "no phase tokens")
 
