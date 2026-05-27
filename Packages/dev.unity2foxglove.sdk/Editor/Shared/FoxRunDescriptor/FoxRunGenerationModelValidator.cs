@@ -30,6 +30,15 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var target = member.DeclaringType + "." + member.MemberName;
 
+            if (string.IsNullOrWhiteSpace(member.ClassName))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN011", target, member.MemberName, "FoxRun declaring class name is required."));
+
+            if (string.IsNullOrWhiteSpace(member.MemberName))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN012", target, member.MemberName, "FoxRun member name is required."));
+
+            if (member.PublishMode < 0 || member.PublishMode > 3)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun publish mode must be between 0 and 3."));
+
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN006", target, member.MemberName, "FoxRun member type '" + member.RawObservedTypeName + "' is not a canonical built-in contract type."));
 

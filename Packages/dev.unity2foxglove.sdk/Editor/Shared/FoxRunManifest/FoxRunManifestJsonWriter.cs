@@ -123,6 +123,32 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        public static string WriteGlobalHashInput(
+            int manifestVersion,
+            string packageName,
+            FoxRunManifestGenerator generator,
+            string foxRunSectionHash)
+        {
+            var sb = new StringBuilder();
+            sb.Append('{');
+            AppendPropertyName(sb, "manifestVersion");
+            sb.Append(manifestVersion.ToString(CultureInfo.InvariantCulture));
+            sb.Append(',');
+            AppendPropertyName(sb, "package");
+            AppendString(sb, packageName);
+            sb.Append(',');
+            AppendPropertyName(sb, "generator");
+            WriteGenerator(sb, generator);
+            sb.Append(',');
+            AppendPropertyName(sb, "sections");
+            sb.Append('{');
+            AppendPropertyName(sb, "foxrun");
+            AppendString(sb, foxRunSectionHash);
+            sb.Append('}');
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         private static void WriteGenerator(StringBuilder sb, FoxRunManifestGenerator generator)
         {
             sb.Append('{');

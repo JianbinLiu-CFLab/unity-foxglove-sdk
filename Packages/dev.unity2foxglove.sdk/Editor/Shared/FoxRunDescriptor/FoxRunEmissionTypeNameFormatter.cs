@@ -51,8 +51,14 @@ namespace Unity.FoxgloveSDK.Editor
             if (type == null)
                 return "object";
 
-            if (type.IsArray && type.GetArrayRank() == 1)
-                return FromReflectionType(type.GetElementType()) + "[]";
+            if (type.IsArray)
+            {
+                var element = FromReflectionType(type.GetElementType());
+                var rank = type.GetArrayRank();
+                return rank == 1
+                    ? element + "[]"
+                    : element + "[" + new string(',', rank - 1) + "]";
+            }
 
             var nullable = Nullable.GetUnderlyingType(type);
             if (nullable != null)
@@ -143,16 +149,50 @@ namespace Unity.FoxgloveSDK.Editor
         private static List<string> SplitClrGenericArguments(string value)
         {
             var result = new List<string>();
-            foreach (var part in (value ?? string.Empty).Split(new[] { "],[" }, StringSplitOptions.None))
-                result.Add(StripAssembly(part));
+            var text = value ?? string.Empty;
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < text.Length; i++)
+            {
+                var ch = text[i];
+                if (ch == '[')
+                {
+                    depth++;
+                }
+                else if (ch == ']')
+                {
+                    depth = Math.Max(0, depth - 1);
+                    if (depth == 0 && i + 2 < text.Length && text[i + 1] == ',' && text[i + 2] == '[')
+                    {
+                        result.Add(StripAssembly(text.Substring(start, i - start + 1)));
+                        i += 2;
+                        start = i + 1;
+                    }
+                }
+            }
+            if (start <= text.Length)
+                result.Add(StripAssembly(text.Substring(start)));
             return result;
         }
 
         private static string StripAssembly(string value)
         {
             var text = (value ?? string.Empty).Trim().Trim('[', ']');
-            var comma = text.IndexOf(',');
+            var comma = FindTopLevelComma(text);
             return comma >= 0 ? text.Substring(0, comma).Trim() : text;
+        }
+
+        private static int FindTopLevelComma(string text)
+        {
+            var depth = 0;
+            for (var i = 0; i < text.Length; i++)
+            {
+                var ch = text[i];
+                if (ch == '[') depth++;
+                else if (ch == ']') depth = Math.Max(0, depth - 1);
+                else if (ch == ',' && depth == 0) return i;
+            }
+            return -1;
         }
 
         private static string QualifiedName(Type type)

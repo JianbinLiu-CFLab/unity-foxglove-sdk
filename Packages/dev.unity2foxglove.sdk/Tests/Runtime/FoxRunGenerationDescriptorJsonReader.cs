@@ -35,8 +35,8 @@ namespace Unity.FoxgloveSDK.Tests
                         StringValue(member, "emissionTypeName"),
                         StringValue(member, "canonicalType"),
                         isValueType: false,
-                        isArray: false,
-                        elementTypeName: string.Empty,
+                        isArray: BoolValue(member, "isArray"),
+                        elementTypeName: StringValue(member, "elementTypeName"),
                         topic: StringValue(member, "topic"),
                         rateHz: FloatValue(member, "rateHz"),
                         schemaName: StringValue(member, "schemaName"),
@@ -61,6 +61,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int IntValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) ? token.Value<int>() : 0;
+
+        private static bool BoolValue(JObject obj, string name)
+            => obj.TryGetValue(name, out var token) && token.Value<bool>();
 
         private static float FloatValue(JObject obj, string name)
         {

@@ -140,12 +140,19 @@ namespace Unity.FoxgloveSDK.Editor
             SchemaEncoding = schemaEncoding ?? string.Empty;
             CatalogEntryHash = catalogEntryHash ?? string.Empty;
             DescriptorDataSha256 = descriptorDataSha256 ?? string.Empty;
-            EntryCount = entryCount;
             Entries = Copy(entries);
+            ValidateEntryCount(entryCount, Entries.Count, nameof(Unity2FoxgloveProtobufRegistrySection));
+            EntryCount = entryCount;
         }
 
         private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
             => new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
+
+        private static void ValidateEntryCount(int declared, int actual, string sectionName)
+        {
+            if (declared != actual)
+                throw new ArgumentException(sectionName + " entryCount " + declared + " does not match entries.Count " + actual + ".");
+        }
     }
 
     public sealed class Unity2FoxgloveProtobufRegistryEntry
@@ -195,12 +202,19 @@ namespace Unity.FoxgloveSDK.Editor
             SourceCommit = sourceCommit ?? string.Empty;
             SourceTreeSha256 = sourceTreeSha256 ?? string.Empty;
             SourceFileCount = sourceFileCount;
-            EntryCount = entryCount;
             Entries = Copy(entries);
+            ValidateEntryCount(entryCount, Entries.Count, nameof(Unity2FoxgloveRos2MsgRegistrySection));
+            EntryCount = entryCount;
         }
 
         private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
             => new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
+
+        private static void ValidateEntryCount(int declared, int actual, string sectionName)
+        {
+            if (declared != actual)
+                throw new ArgumentException(sectionName + " entryCount " + declared + " does not match entries.Count " + actual + ".");
+        }
     }
 
     public sealed class Unity2FoxgloveRos2MsgRegistryEntry
@@ -235,9 +249,13 @@ namespace Unity.FoxgloveSDK.Editor
             int entryCount,
             IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> entries)
         {
-            EntryCount = entryCount;
             Entries = new List<Unity2FoxgloveSdkTypedPublisherEntry>(
                 entries ?? Array.Empty<Unity2FoxgloveSdkTypedPublisherEntry>()).AsReadOnly();
+            if (entryCount != Entries.Count)
+                throw new ArgumentException(
+                    nameof(Unity2FoxgloveSdkTypedPublishersSection) + " entryCount " + entryCount +
+                    " does not match entries.Count " + Entries.Count + ".");
+            EntryCount = entryCount;
         }
     }
 

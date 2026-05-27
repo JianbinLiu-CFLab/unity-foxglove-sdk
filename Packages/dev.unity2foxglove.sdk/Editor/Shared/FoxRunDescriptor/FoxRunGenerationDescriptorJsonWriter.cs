@@ -73,6 +73,11 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "canonicalType", member.CanonicalType);
             sb.Append(',');
+            WriteName(sb, "isArray");
+            sb.Append(member.IsArray ? "true" : "false");
+            sb.Append(',');
+            WriteStringField(sb, "elementTypeName", member.ElementTypeName);
+            sb.Append(',');
             WriteStringField(sb, "topic", member.Topic);
             sb.Append(',');
             WriteStringField(sb, "schemaName", member.SchemaName);
@@ -113,6 +118,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void WriteFloat(StringBuilder sb, float value)
         {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+            {
+                sb.Append('0');
+                return;
+            }
+
             sb.Append(value.ToString("G9", CultureInfo.InvariantCulture));
         }
 
