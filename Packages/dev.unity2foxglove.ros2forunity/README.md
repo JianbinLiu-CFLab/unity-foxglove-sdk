@@ -74,6 +74,10 @@ The adapter package automatically enables the Standalone build-target symbol whe
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
 ```
 
+Automatic detection is intentionally conservative: the runtime package must be present in both `Packages/manifest.json` and Unity's resolved `Packages/packages-lock.json`. If the manifest lists the runtime package but Unity has not resolved it yet, the installer leaves the symbol disabled and logs a package-specific warning rather than compiling guarded code against missing runtime assemblies. The automatic installer only edits the Standalone build target; set the symbol manually for external imports or other build targets.
+
+The adapter runtime and editor asmdefs remain `autoReferenced=true` on purpose. Imported Package Manager samples land in predefined project assemblies, so this convenience keeps the facade interfaces visible without requiring users to add sample asmdefs. The core SDK still has no reference to this optional package.
+
 For an external, non-package ROS2 For Unity import, add that symbol manually.
 
 The sample exposes one bidirectional `std_msgs/msg/String` smoke pair:

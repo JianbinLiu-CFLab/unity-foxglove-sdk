@@ -11,6 +11,11 @@ namespace Unity2Foxglove.Ros2ForUnity
     /// <summary>
     /// No-op facade used when the ROS2 For Unity runtime is not bundled or active.
     /// </summary>
+    /// <remarks>
+    /// This singleton intentionally keeps <see cref="Status"/> at
+    /// <see cref="Unity2FoxgloveRos2Status.Unavailable"/> after disposal because it
+    /// represents an absent runtime, not a per-session runtime object.
+    /// </remarks>
     public sealed class Unity2FoxgloveRos2UnavailableContext : IUnity2FoxgloveRos2Context
     {
         private const string UnavailableMessage =
@@ -31,7 +36,9 @@ namespace Unity2Foxglove.Ros2ForUnity
 
         public IUnity2FoxgloveRos2Node CreateNode(string nodeName)
         {
-            return new UnavailableNode(NormalizeName(nodeName), UnavailableMessage);
+            return new UnavailableNode(
+                Unity2FoxgloveRos2UnavailableContext.NormalizeName(nodeName),
+                UnavailableMessage);
         }
 
         public void Dispose()
@@ -62,12 +69,15 @@ namespace Unity2Foxglove.Ros2ForUnity
 
             public IUnity2FoxgloveRos2Publisher<T> CreatePublisher<T>(string topic)
             {
-                return new UnavailablePublisher<T>(NormalizeTopic(topic), _message);
+                return new UnavailablePublisher<T>(
+                    Unity2FoxgloveRos2UnavailableContext.NormalizeTopic(topic),
+                    _message);
             }
 
             public IUnity2FoxgloveRos2Subscription CreateSubscription<T>(string topic, Action<T> callback)
             {
-                return new UnavailableSubscription(NormalizeTopic(topic));
+                return new UnavailableSubscription(
+                    Unity2FoxgloveRos2UnavailableContext.NormalizeTopic(topic));
             }
 
             public void Dispose()
