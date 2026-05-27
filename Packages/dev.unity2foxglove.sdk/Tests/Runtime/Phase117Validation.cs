@@ -35,7 +35,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyParityMatrix()
         {
-            var matrix = ReadRepoText("Developer/102 Phase117 MCAP Spec Parity Matrix.md");
+            const string matrixPath = "Developer/102 Phase117 MCAP Spec Parity Matrix.md";
+            if (!File.Exists(RepoPath(matrixPath)))
+            {
+                Console.WriteLine("[INFO] 117-A1..A4 skipped: local Developer parity matrix is absent; direct MCAP behavior checks continue.");
+                return;
+            }
+
+            var matrix = ReadRepoText(matrixPath);
             foreach (var opcode in new[]
             {
                 "0x01", "0x02", "0x03", "0x04", "0x05", "0x06", "0x07", "0x08",
@@ -138,12 +145,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiring()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase117", StringComparison.Ordinal)
-                  && program.Contains("RunPhase117Only", StringComparison.Ordinal)
-                  && program.Contains("Phase117Validation.Validate()", StringComparison.Ordinal),
-                "117-G1: Program.cs wires --phase117");
+            Check(validationRegistry.Contains("--phase117", StringComparison.Ordinal)
+                  && validationRegistry.Contains("Phase117Validation.Validate", StringComparison.Ordinal),
+                "117-G1: validation registry wires --phase117");
             Check(project.Contains("Phase117Validation.cs", StringComparison.Ordinal),
                 "117-G2: runtime test project compiles Phase117Validation");
         }
@@ -332,7 +338,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

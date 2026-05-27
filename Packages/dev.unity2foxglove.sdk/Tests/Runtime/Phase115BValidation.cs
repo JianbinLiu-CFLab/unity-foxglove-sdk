@@ -175,7 +175,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 Directory.CreateDirectory(tempRoot);
-                File.WriteAllText(mcapPath, "placeholder");
+                CreateMinimalMcap(mcapPath);
                 CreateCurrentEvidenceFixture(currentRoot);
 
                 var warnResult = SchemaEvidenceSidecarWriter.WriteSidecar(
@@ -297,11 +297,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "115B-D7: Manager Inspector surfaces identity mode and current evidence controls near recording/replay");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase115BValidation.cs", StringComparison.Ordinal)
-                  && program.Contains("--phase115b", StringComparison.Ordinal)
-                  && program.Contains("Phase115BValidation.Validate()", StringComparison.Ordinal),
-                "115B-D8: runtime validation project compiles Phase115B tests and Program dispatches them");
+                  && validationRegistry.Contains("--phase115b", StringComparison.Ordinal)
+                  && validationRegistry.Contains("Phase115BValidation.Validate", StringComparison.Ordinal),
+                "115B-D8: runtime validation project compiles Phase115B tests and validation registry dispatches them");
         }
 
         private static void VerifyDocs()
@@ -346,8 +346,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = Path.Combine(Path.GetTempPath(), "unity2foxglove-phase115b-" + label + "-" + Guid.NewGuid().ToString("N") + ".mcap");
             using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (var recorder = new McapRecorder(fs))
             {
-                var recorder = new McapRecorder(fs);
                 recorder.AddChannel(1, "/phase115b/" + label, "json", "", "", "");
                 recorder.WriteMessage(1, 10, Encoding.UTF8.GetBytes("{}"));
                 if (metadataJson != null)
@@ -356,6 +356,17 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return path;
+        }
+
+        private static void CreateMinimalMcap(string path)
+        {
+            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (var recorder = new McapRecorder(fs))
+            {
+                recorder.AddChannel(1, "/phase115b/sidecar", "json", "", "", "");
+                recorder.WriteMessage(1, 1, Encoding.UTF8.GetBytes("{}"));
+                recorder.Close();
+            }
         }
 
         private static FoxRunSchemaManifestInfo FixtureRuntimeInfo(string globalHash)

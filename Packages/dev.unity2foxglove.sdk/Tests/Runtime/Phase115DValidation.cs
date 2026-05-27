@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -223,7 +224,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(adapter.Contains("Pose ownership contention skipped", StringComparison.Ordinal)
                   && adapter.Contains("Debug.Log(", StringComparison.Ordinal)
-                  && !adapter.Contains("Debug.LogWarning(\r\n                    $\"[Foxglove Replay] Pose ownership contention skipped", StringComparison.Ordinal)
+                  && !Regex.IsMatch(
+                      adapter,
+                      @"Debug\.LogWarning\s*\([\s\S]{0,200}Pose ownership contention skipped",
+                      RegexOptions.CultureInvariant)
                   && adapter.Contains("topic='{context.Topic}'", StringComparison.Ordinal)
                   && adapter.Contains("schema='{context.SchemaName}'", StringComparison.Ordinal),
                 "115D-E5: pose contention diagnostics are informational and identify the skipped source");

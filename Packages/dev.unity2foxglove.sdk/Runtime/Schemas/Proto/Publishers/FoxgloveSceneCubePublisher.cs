@@ -7,6 +7,7 @@
 
 using System.Collections.Generic;
 using Google.Protobuf;
+using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;

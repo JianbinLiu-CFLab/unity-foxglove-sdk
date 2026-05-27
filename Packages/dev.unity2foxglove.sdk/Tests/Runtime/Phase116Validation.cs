@@ -57,9 +57,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "116-A3: McapDataLoader exposes Stream/leaveOpen constructor");
             Check(loader.GetMethod("Initialize", Type.EmptyTypes)?.ReturnType == init,
                 "116-A4: Initialize returns initialization DTO");
-            Check(loader.GetMethod("CreateIterator")?.ReturnType == typeof(IEnumerable<>).MakeGenericType(message),
+            Check(loader.GetMethod("CreateIterator", new[] { query })?.ReturnType == typeof(IEnumerable<>).MakeGenericType(message),
                 "116-A5: CreateIterator returns typed message enumerable");
-            Check(loader.GetMethod("GetBackfill")?.ReturnType == typeof(IReadOnlyList<>).MakeGenericType(message),
+            Check(loader.GetMethod("GetBackfill", new[] { backfill })?.ReturnType == typeof(IReadOnlyList<>).MakeGenericType(message),
                 "116-A6: GetBackfill returns typed message list");
 
             foreach (var dto in new[] { init, channel, schema, problem, timeRange, message, query, backfill })
@@ -195,8 +195,8 @@ namespace Unity.FoxgloveSDK.Tests
             var invalidPath = TempInvalidMcap();
             try
             {
-                Check(Throws<Exception>(() => CreatePathLoader(invalidPath)),
-                    "116-F2: malformed MCAP still fails hard through existing reader behavior");
+                Check(Throws<EndOfStreamException>(() => CreatePathLoader(invalidPath)),
+                    "116-F2: truncated MCAP fails with EndOfStreamException through existing reader behavior");
             }
             finally
             {
@@ -206,12 +206,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationWiringAndDocs()
         {
-            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(program.Contains("--phase116", StringComparison.Ordinal)
-                  && program.Contains("RunPhase116Only", StringComparison.Ordinal)
-                  && program.Contains("Phase116Validation.Validate()", StringComparison.Ordinal),
-                "116-G1: Program.cs wires --phase116");
+            Check(validationRegistry.Contains("--phase116", StringComparison.Ordinal)
+                  && validationRegistry.Contains("Phase116Validation.Validate", StringComparison.Ordinal),
+                "116-G1: validation registry wires --phase116");
             Check(project.Contains("Phase116Validation.cs", StringComparison.Ordinal),
                 "116-G2: runtime test project compiles Phase116Validation");
             Check(ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/08_MCAP_Recording_and_Replay.md")
@@ -292,7 +291,36 @@ namespace Unity.FoxgloveSDK.Tests
             => Activator.CreateInstance(RequiredType(name));
 
         private static object Invoke(object target, string method, params object[] args)
-            => target.GetType().GetMethod(method).Invoke(target, args);
+        {
+            var candidates = target.GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(candidate => candidate.Name == method && candidate.GetParameters().Length == args.Length)
+                .ToList();
+            var methodInfo = candidates.SingleOrDefault(candidate => ParametersAssignable(candidate.GetParameters(), args));
+            if (methodInfo == null)
+                throw new MissingMethodException(target.GetType().FullName, method + "(" + args.Length + " args)");
+            return methodInfo.Invoke(target, args);
+        }
+
+        private static bool ParametersAssignable(ParameterInfo[] parameters, object[] args)
+        {
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameterType = parameters[i].ParameterType;
+                var arg = args[i];
+                if (arg == null)
+                {
+                    if (parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) == null)
+                        return false;
+                    continue;
+                }
+
+                if (!parameterType.IsInstanceOfType(arg))
+                    return false;
+            }
+
+            return true;
+        }
 
         private static List<object> InvokeMessages(object loader, string method, object query)
             => ((IEnumerable)Invoke(loader, method, query)).Cast<object>().ToList();
@@ -424,7 +452,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException(name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
