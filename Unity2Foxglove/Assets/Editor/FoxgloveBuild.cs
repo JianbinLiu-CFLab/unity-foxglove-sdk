@@ -52,7 +52,7 @@ public static class FoxgloveBuild
         var config = ResolveTarget(targetName);
         var outputPath = string.IsNullOrEmpty(outputPathOverride) ? config.OutputPath : outputPathOverride;
         var outputDir = Path.GetDirectoryName(outputPath);
-        if (!Directory.Exists(outputDir))
+        if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
             Directory.CreateDirectory(outputDir);
 
         var namedTarget = NamedBuildTarget.FromBuildTargetGroup(BuildTargetGroup.Standalone);

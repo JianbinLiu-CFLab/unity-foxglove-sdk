@@ -23,6 +23,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
     private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
     private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
+    private readonly object _lifecycleLock = new object();
     private readonly object _outputLock = new object();
     private Process _process;
     private CancellationTokenSource _stop;
@@ -32,6 +33,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     private OpenH264ProbeSidecarOptions _options;
     private int _inputCount;
     private int _outputCount;
+    private int _framesSubmitted;
+    private int _accessUnitsReceived;
+    private int _droppedInputFrames;
 
     public bool IsRunning
     {
@@ -52,9 +56,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
     }
 
-    public int FramesSubmitted { get; private set; }
-    public int AccessUnitsReceived { get; private set; }
-    public int DroppedInputFrames { get; private set; }
+    public int FramesSubmitted => Volatile.Read(ref _framesSubmitted);
+    public int AccessUnitsReceived => Volatile.Read(ref _accessUnitsReceived);
+    public int DroppedInputFrames => Volatile.Read(ref _droppedInputFrames);
     public string LastStderrLine { get; private set; }
     public string LastError { get; private set; }
 
@@ -126,14 +130,14 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         while (Volatile.Read(ref _inputCount) >= capacity && _inputFrames.TryDequeue(out _))
         {
             Interlocked.Decrement(ref _inputCount);
-            DroppedInputFrames++;
+            Interlocked.Increment(ref _droppedInputFrames);
         }
 
         var copy = new byte[i420Frame.Length];
         Buffer.BlockCopy(i420Frame, 0, copy, 0, i420Frame.Length);
         _inputFrames.Enqueue(copy);
         Interlocked.Increment(ref _inputCount);
-        FramesSubmitted++;
+        Interlocked.Increment(ref _framesSubmitted);
         return true;
     }
 
@@ -151,11 +155,29 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
     public void Stop()
     {
-        var stop = _stop;
+        CancellationTokenSource stop;
+        Process process;
+        Task stdinTask;
+        Task stdoutTask;
+        Task stderrTask;
+        lock (_lifecycleLock)
+        {
+            stop = _stop;
+            process = _process;
+            stdinTask = _stdinTask;
+            stdoutTask = _stdoutTask;
+            stderrTask = _stderrTask;
+
+            _process = null;
+            _stdinTask = null;
+            _stdoutTask = null;
+            _stderrTask = null;
+            _stop = null;
+        }
+
         if (stop != null && !stop.IsCancellationRequested)
             stop.Cancel();
 
-        var process = _process;
         if (process != null)
         {
             try
@@ -184,15 +206,22 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             {
             }
 
-            process.Dispose();
+            WaitForWorkerTasks(stdinTask, stdoutTask, stderrTask);
+
+            try
+            {
+                process.Dispose();
+            }
+            catch
+            {
+            }
+        }
+        else
+        {
+            WaitForWorkerTasks(stdinTask, stdoutTask, stderrTask);
         }
 
-        _process = null;
-        _stdinTask = null;
-        _stdoutTask = null;
-        _stderrTask = null;
-        _stop?.Dispose();
-        _stop = null;
+        stop?.Dispose();
         DrainQueues();
     }
 
@@ -264,7 +293,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
                     break;
 
                 var length = readLength.Length;
-                if (length == 0 || length > MaxAccessUnitBytes)
+                if (length <= 0 || length > MaxAccessUnitBytes)
                 {
                     LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
                     Stop();
@@ -322,7 +351,31 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
             _outputAccessUnits.Enqueue(accessUnit);
             Interlocked.Increment(ref _outputCount);
-            AccessUnitsReceived++;
+            Interlocked.Increment(ref _accessUnitsReceived);
+        }
+    }
+
+    private static void WaitForWorkerTasks(params Task[] tasks)
+    {
+        if (tasks == null || tasks.Length == 0)
+            return;
+
+        var currentTaskId = Task.CurrentId;
+        foreach (var task in tasks)
+        {
+            if (task == null || task.IsCompleted)
+                continue;
+
+            if (currentTaskId.HasValue && task.Id == currentTaskId.Value)
+                continue;
+
+            try
+            {
+                task.Wait(500);
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -380,14 +433,14 @@ public sealed class OpenH264ProbeSidecarOptions
     public const int MaxDimension = 4096;
     public const int MaxFrameBytes = 32 * 1024 * 1024;
 
-    public string HelperExecutablePath = "";
-    public int Width = 640;
-    public int Height = 480;
-    public int FrameRate = 30;
-    public int BitrateKbps = 4000;
-    public int KeyframeInterval = 30;
-    public int MaxInputQueue = 2;
-    public int MaxOutputQueue = 4;
+    public string HelperExecutablePath { get; set; } = "";
+    public int Width { get; set; } = 640;
+    public int Height { get; set; } = 480;
+    public int FrameRate { get; set; } = 30;
+    public int BitrateKbps { get; set; } = 4000;
+    public int KeyframeInterval { get; set; } = 30;
+    public int MaxInputQueue { get; set; } = 2;
+    public int MaxOutputQueue { get; set; } = 4;
 
     public int FrameByteCount
     {

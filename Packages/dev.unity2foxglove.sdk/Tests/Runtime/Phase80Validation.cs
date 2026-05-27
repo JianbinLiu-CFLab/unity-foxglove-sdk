@@ -62,6 +62,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyProbeSource()
         {
             var source = ReadRepoText("Unity2Foxglove/Assets/Experimental/OpenH264/OpenH264ProbePublisher.cs");
+            var converter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/Rgb24ToI420Converter.cs");
             Check(!string.IsNullOrEmpty(source),
                 "80B-1: demo OpenH264 probe publisher exists");
             Check(source.Contains("AddComponentMenu(\"Foxglove/Experimental/OpenH264 Source Probe Publisher\")"),
@@ -79,17 +80,21 @@ namespace Unity.FoxgloveSDK.Tests
                 "80B-6: probe gates capture on demand/cadence before readback");
             Check(source.Contains("TryConvertRgb24ToI420"),
                 "80B-7: probe has dedicated RGB24-to-I420 conversion method");
-            Check(source.Contains("width % 2") && source.Contains("height % 2"),
+            Check(source.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420")
+                  && converter.Contains("width % 2")
+                  && converter.Contains("height % 2"),
                 "80B-8: conversion rejects odd dimensions");
-            Check(source.Contains("rgb24.Length") && source.Contains("i420.Length"),
+            Check(source.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420")
+                  && converter.Contains("rgb24.Length")
+                  && converter.Contains("i420.Length"),
                 "80B-9: conversion validates input and output buffer sizes");
-            Check(source.Contains("yOffset")
-                  && source.Contains("uOffset")
-                  && source.Contains("vOffset")
-                  && source.Contains("2x2"),
+            Check(converter.Contains("yOffset")
+                  && converter.Contains("uOffset")
+                  && converter.Contains("vOffset")
+                  && converter.Contains("2x2"),
                 "80B-10: conversion writes explicit Y/U/V planes with 2x2 chroma averaging");
-            Check(source.Contains("GetVerticallyFlippedRgbIndex")
-                  && source.Contains("height - 1 - y"),
+            Check(source.Contains("flipVertical: true")
+                  && converter.Contains("flipVertical ? height - 1 - y : y"),
                 "80B-11: conversion vertically flips Unity readback rows before I420 encoding");
             Check(!ContainsAny(source, "FFmpeg", "Unity.WebRTC", "RTCRtpScriptTransform"),
                 "80B-12: OpenH264 probe does not depend on FFmpeg or Unity WebRTC");

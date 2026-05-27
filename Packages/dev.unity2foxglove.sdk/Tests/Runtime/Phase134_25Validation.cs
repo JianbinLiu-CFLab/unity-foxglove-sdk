@@ -45,6 +45,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("EnsureCaptureResources(width, height)", StringComparison.Ordinal)
                   && !source.Contains("EnsureCaptureResources();", StringComparison.Ordinal),
                 "134-25A-6: experimental OpenH264 probe validates dimensions before creating capture resources");
+            Check(source.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420", StringComparison.Ordinal)
+                  && !source.Contains("ComputeY(", StringComparison.Ordinal)
+                  && !source.Contains("GetVerticallyFlippedRgbIndex", StringComparison.Ordinal),
+                "134-25A-7: experimental OpenH264 probe delegates RGB24-to-I420 conversion to the shared SDK converter");
         }
 
         private static void VerifyProbeSidecarOptions()
@@ -61,6 +65,24 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-25B-3: experimental OpenH264 sidecar validates frame budget before process start");
             Check(!source.Contains("Width * Height * 3 / 2", StringComparison.Ordinal),
                 "134-25B-4: experimental OpenH264 sidecar no longer exposes unchecked int frame-size math");
+            Check(source.Contains("length <= 0 || length > MaxAccessUnitBytes", StringComparison.Ordinal),
+                "134-25B-5: experimental OpenH264 sidecar rejects negative, zero, and oversized access-unit lengths");
+            Check(source.Contains("WaitForWorkerTasks", StringComparison.Ordinal)
+                  && source.Contains("stop?.Dispose();", StringComparison.Ordinal)
+                  && source.IndexOf("WaitForWorkerTasks", StringComparison.Ordinal) < source.IndexOf("stop?.Dispose();", StringComparison.Ordinal),
+                "134-25B-6: experimental OpenH264 sidecar waits for worker tasks before disposing cancellation state");
+            Check(source.Contains("FramesSubmitted => Volatile.Read", StringComparison.Ordinal)
+                  && source.Contains("Interlocked.Increment(ref _framesSubmitted)", StringComparison.Ordinal)
+                  && source.Contains("Interlocked.Increment(ref _droppedInputFrames)", StringComparison.Ordinal)
+                  && source.Contains("Interlocked.Increment(ref _accessUnitsReceived)", StringComparison.Ordinal),
+                "134-25B-7: experimental OpenH264 sidecar counters use atomic updates and volatile reads");
+            Check(source.Contains("public string HelperExecutablePath { get; set; }", StringComparison.Ordinal)
+                  && source.Contains("public int MaxOutputQueue { get; set; }", StringComparison.Ordinal),
+                "134-25B-8: experimental OpenH264 sidecar options expose property setters instead of mutable public fields");
+
+            var build = ReadRepoText("Unity2Foxglove/Assets/Editor/FoxgloveBuild.cs");
+            Check(build.Contains("!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir)", StringComparison.Ordinal),
+                "134-25C-1: Unity IL2CPP build helper handles bare output filenames without creating a null directory");
         }
 
         private static string ReadRepoText(string relativePath)
