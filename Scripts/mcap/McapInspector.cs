@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Tests/Runtime
-// Purpose: Reads an MCAP file and prints channel metadata, statistics, and /tf /scene messages to console.
+// Module: Scripts/mcap
+// Purpose: Standalone diagnostic tool that reads an MCAP file and prints channel metadata, statistics, and /tf /scene messages.
+// Note: This file owns a Main entry point and is intentionally not compiled into the runtime test harness.
 
 using System;
 using System.IO;

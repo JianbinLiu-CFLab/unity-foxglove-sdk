@@ -4,6 +4,7 @@
 // Module: Tests/Runtime
 // Purpose: Central registry for CI-safe, local-evidence, and explicit phase validations.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -160,6 +161,17 @@ namespace Unity.FoxgloveSDK.Tests
             Local("--phase138", "Phase 138", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B", Phase138BValidation.Validate, "--phase137b"),
         };
+
+        static PhaseValidationRegistry()
+        {
+            var duplicate = All
+                .SelectMany(item => item.AllFlags())
+                .GroupBy(flag => flag, StringComparer.Ordinal)
+                .FirstOrDefault(group => group.Count() > 1);
+
+            if (duplicate != null)
+                throw new InvalidOperationException("Duplicate validation flag registered: " + duplicate.Key);
+        }
 
         public static IEnumerable<PhaseValidationCase> DefaultValidations(bool includeLocalEvidence)
         {

@@ -47,11 +47,15 @@ IGNORED_SUFFIXES = {
 
 @dataclass(frozen=True)
 class Drift:
+    """A single package/imported sample synchronization difference."""
+
     kind: str
     path: Path
 
 
 def rel(path: Path, root: Path = ROOT) -> str:
+    """Return a repository-relative display path when possible."""
+
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
@@ -59,6 +63,8 @@ def rel(path: Path, root: Path = ROOT) -> str:
 
 
 def resolve_cli_path(value: str | None, default: Path) -> Path:
+    """Resolve an optional CLI path relative to the repository root."""
+
     if value is None:
         return default.resolve()
     path = Path(value)
@@ -68,14 +74,20 @@ def resolve_cli_path(value: str | None, default: Path) -> Path:
 
 
 def is_ignored(path: Path) -> bool:
+    """Return whether a sample-relative path is ignored for drift checks."""
+
     return path.suffix.lower() in IGNORED_SUFFIXES
 
 
 def is_allowlisted(relative_path: Path) -> bool:
+    """Return whether an imported sample drift is intentionally owned locally."""
+
     return relative_path in ALLOWLISTED_RELATIVE_FILES
 
 
 def iter_files(root: Path) -> set[Path]:
+    """Return all non-ignored file paths relative to a sample root."""
+
     if not root.exists():
         return set()
     files = set()
@@ -88,6 +100,8 @@ def iter_files(root: Path) -> set[Path]:
 
 
 def compare_roots(package_root: Path, imported_root: Path) -> list[Drift]:
+    """Compare package and imported sample roots and return drift entries."""
+
     package_files = iter_files(package_root)
     imported_files = iter_files(imported_root)
     all_files = sorted(package_files | imported_files)
@@ -112,6 +126,8 @@ def compare_roots(package_root: Path, imported_root: Path) -> list[Drift]:
 
 
 def apply_sync(package_root: Path, imported_root: Path, drift: list[Drift]) -> None:
+    """Copy package-owned sample files for every fixable drift entry."""
+
     for item in drift:
         if item.kind == "extra imported":
             continue
@@ -122,6 +138,8 @@ def apply_sync(package_root: Path, imported_root: Path, drift: list[Drift]) -> N
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for sample synchronization."""
+
     parser = argparse.ArgumentParser(
         description="Validate or synchronize ROS2 For Unity package Samples~ into the imported Unity demo sample copy."
     )
@@ -138,6 +156,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the ROS2 sample synchronization check or apply mode."""
+
     args = parse_args()
     package_root = resolve_cli_path(args.package_root, DEFAULT_PACKAGE_ROOT)
     imported_root = resolve_cli_path(args.imported_root, DEFAULT_IMPORTED_ROOT)
