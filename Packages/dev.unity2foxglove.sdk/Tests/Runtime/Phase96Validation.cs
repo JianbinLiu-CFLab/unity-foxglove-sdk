@@ -182,8 +182,10 @@ namespace Unity.FoxgloveSDK.Tests
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
+            var normalizedManagerEditor = NormalizeLineEndings(managerEditor);
 
-            Check(managerEditor.Contains("DrawSection(\"ROS2 Bridge\"") && !managerEditor.Contains("Subheader(\"ROS2 Bridge\");\r\n            DrawRos2BridgeSection();"),
+            Check(normalizedManagerEditor.Contains("DrawSection(\"ROS2 Bridge\"")
+                  && !normalizedManagerEditor.Contains("Subheader(\"ROS2 Bridge\");\n            DrawRos2BridgeSection();"),
                 "96F-1: Manager Inspector promotes ROS2 Bridge to top-level section");
             Check(managerEditor.Contains("\"Bridge Namespace\"") && managerEditor.Contains("\"QoS Preset\"") && managerEditor.Contains("\"Effective QoS\""),
                 "96F-2: Manager Inspector exposes topic namespace and QoS preset");
@@ -191,9 +193,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "96F-3: Manager bridge labels are compact product labels");
             Check(cameraEditor.Contains("Bridge Topic Override") && pointCloudEditor.Contains("Bridge Topic Override"),
                 "96F-4: custom publisher Inspectors expose topic override");
-            Check(cameraEditor.Contains("Effective Bridge Topic") && pointCloudEditor.Contains("Effective Bridge QoS"),
-                "96F-5: custom publisher Inspectors show effective topic and QoS");
+            Check(cameraEditor.Contains("Effective Bridge Topic") && pointCloudEditor.Contains("Effective Bridge Topic"),
+                "96F-5: custom publisher Inspectors show effective bridge topic");
+            Check(cameraEditor.Contains("Effective Bridge QoS") && pointCloudEditor.Contains("Effective Bridge QoS"),
+                "96F-6: custom publisher Inspectors show effective bridge QoS");
         }
+
+        private static string NormalizeLineEndings(string text)
+            => text.Replace("\r\n", "\n").Replace('\r', '\n');
 
         private static string Resolve(string bridgeNamespace, string publisherTopic, string overrideTopic)
         {
@@ -226,7 +233,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -239,7 +246,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
     }
 }

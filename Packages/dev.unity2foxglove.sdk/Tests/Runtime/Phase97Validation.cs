@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase97Validation
     {
+        private static readonly object EnvironmentGate = new object();
         private static int _passed;
 
         public static void Validate()
@@ -125,48 +126,51 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMockedLiveHealthReport()
         {
-            var oldDistro = Environment.GetEnvironmentVariable("ROS_DISTRO");
-            try
+            lock (EnvironmentGate)
             {
-                Environment.SetEnvironmentVariable("ROS_DISTRO", "jazzy");
-                var ready = new Ros2BridgeHealthRunner(
-                    new RecordingCommandRunner(successByDefault: true),
-                    new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
-                    FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
+                var oldDistro = Environment.GetEnvironmentVariable("ROS_DISTRO");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ROS_DISTRO", "jazzy");
+                    var ready = new Ros2BridgeHealthRunner(
+                        new RecordingCommandRunner(successByDefault: true),
+                        new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
+                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
 
-                Check(ready.Summary == Ros2BridgeHealthSummary.Ready, "97C-1: mocked healthy live report is Ready");
-                Check(ready.Environment.RosDistro == "jazzy", "97C-2: live report records ROS_DISTRO");
-                Check(ready.Checks.Single(c => c.Id == "interfaces.catalog").Message.Contains("41"),
-                    "97C-3: live interface check covers all 41 schemas");
+                    Check(ready.Summary == Ros2BridgeHealthSummary.Ready, "97C-1: mocked healthy live report is Ready");
+                    Check(ready.Environment.RosDistro == "jazzy", "97C-2: live report records ROS_DISTRO");
+                    Check(ready.Checks.Single(c => c.Id == "interfaces.catalog").Message.Contains(FoxgloveRos2MsgSchemaCatalog.SourceFileCount.ToString()),
+                        "97C-3: live interface check covers all 41 schemas");
 
-                var noRos2 = new Ros2BridgeHealthRunner(
-                    new RecordingCommandRunner(successByDefault: false),
-                    new FakeProbe(true),
-                    FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
-                Check(noRos2.Summary == Ros2BridgeHealthSummary.NeedsSetup,
-                    "97C-4: missing ros2 maps to NeedsSetup");
-                Check(noRos2.Checks.Single(c => c.Id == "foxglove_msgs.package").Status == Ros2BridgeHealthStatus.Skipped,
-                    "97C-5: missing ros2 skips dependent package check");
+                    var noRos2 = new Ros2BridgeHealthRunner(
+                        new RecordingCommandRunner(successByDefault: false),
+                        new FakeProbe(true),
+                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
+                    Check(noRos2.Summary == Ros2BridgeHealthSummary.NeedsSetup,
+                        "97C-4: missing ros2 maps to NeedsSetup");
+                    Check(noRos2.Checks.Single(c => c.Id == "foxglove_msgs.package").Status == Ros2BridgeHealthStatus.Skipped,
+                        "97C-5: missing ros2 skips dependent package check");
 
-                var wslSidecarReady = new Ros2BridgeHealthRunner(
-                    new LaunchFailureCommandRunner(),
-                    new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
-                    FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
-                Check(wslSidecarReady.Summary == Ros2BridgeHealthSummary.Ready,
-                    "97C-6: sidecar-ready report tolerates missing Windows ros2 CLI");
-                Check(wslSidecarReady.Checks.Single(c => c.Id == "ros2.cli").Status == Ros2BridgeHealthStatus.Warning,
-                    "97C-7: missing Windows ros2 CLI is a warning when command launch fails");
+                    var wslSidecarReady = new Ros2BridgeHealthRunner(
+                        new LaunchFailureCommandRunner(),
+                        new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
+                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
+                    Check(wslSidecarReady.Summary == Ros2BridgeHealthSummary.Ready,
+                        "97C-6: sidecar-ready report tolerates missing Windows ros2 CLI");
+                    Check(wslSidecarReady.Checks.Single(c => c.Id == "ros2.cli").Status == Ros2BridgeHealthStatus.Warning,
+                        "97C-7: missing Windows ros2 CLI is a warning when command launch fails");
 
-                var sidecarDown = new Ros2BridgeHealthRunner(
-                    new RecordingCommandRunner(successByDefault: true),
-                    new FakeProbe(false),
-                    FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
-                Check(sidecarDown.Summary == Ros2BridgeHealthSummary.SidecarNotRunning,
-                    "97C-8: sidecar-only failure maps to SidecarNotRunning");
-            }
-            finally
-            {
-                Environment.SetEnvironmentVariable("ROS_DISTRO", oldDistro);
+                    var sidecarDown = new Ros2BridgeHealthRunner(
+                        new RecordingCommandRunner(successByDefault: true),
+                        new FakeProbe(false),
+                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
+                    Check(sidecarDown.Summary == Ros2BridgeHealthSummary.SidecarNotRunning,
+                        "97C-8: sidecar-only failure maps to SidecarNotRunning");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ROS_DISTRO", oldDistro);
+                }
             }
         }
 
@@ -229,13 +233,10 @@ namespace Unity.FoxgloveSDK.Tests
             var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
             var prefs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
-            var bridgeStart = managerEditor.IndexOf("private void DrawRos2BridgeSection()", StringComparison.Ordinal);
-            var diagnosticsStart = managerEditor.IndexOf("private void DrawDiagnosticsSection()", StringComparison.Ordinal);
-            var healthDraw = managerEditor.IndexOf("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal);
-            Check(bridgeStart >= 0
-                  && diagnosticsStart >= 0
-                  && healthDraw > bridgeStart
-                  && !(healthDraw > diagnosticsStart && healthDraw < bridgeStart),
+            var bridgeMethod = SourceMethod(managerEditor, "void DrawRos2BridgeSection");
+            var diagnosticsMethod = SourceMethod(managerEditor, "void DrawDiagnosticsSection");
+            Check(bridgeMethod.Contains("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal)
+                  && !diagnosticsMethod.Contains("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal),
                 "97F-1: Manager ROS2 Bridge section owns ROS2 Bridge health drawer");
             Check(drawer.Contains("ROS2 Bridge Health") && drawer.Contains("Check ROS2 Bridge"),
                 "97F-2: Inspector exposes one-click health check");
@@ -248,9 +249,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCliWiring()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var csproj = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("--phase97") && program.Contains("RunPhase97Only"),
+            Check(registry.Contains("\"--phase97\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase97Validation.Validate", StringComparison.Ordinal),
                 "97G-1: Program dispatches --phase97");
             Check(program.Contains("--phase97-health") && program.Contains("--json"),
                 "97G-2: Program dispatches health JSON output");
@@ -291,7 +294,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -304,7 +307,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private static bool SourceMethodContains(string source, string methodName, string needle)
@@ -315,10 +321,24 @@ namespace Unity.FoxgloveSDK.Tests
             var start = source.IndexOf(methodName, StringComparison.Ordinal);
             if (start < 0)
                 return string.Empty;
-            var next = source.IndexOf("\n}", start, StringComparison.Ordinal);
-            if (next < 0)
-                next = source.Length;
-            return source.Substring(start, next - start);
+            var braceStart = source.IndexOf('{', start);
+            if (braceStart < 0)
+                return string.Empty;
+
+            var depth = 0;
+            for (var i = braceStart; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(start, i - start + 1);
+                }
+            }
+
+            return source.Substring(start);
         }
 
         private sealed class RecordingCommandRunner : IRos2BridgeCommandRunner

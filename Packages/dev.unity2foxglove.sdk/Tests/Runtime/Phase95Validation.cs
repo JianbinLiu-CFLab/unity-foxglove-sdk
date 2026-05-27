@@ -154,6 +154,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 try
                 {
+                    factory.StopStarted.Set();
                     runtime.Stop();
                 }
                 catch (Exception ex)
@@ -162,11 +163,11 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             });
             stopThread.Start();
-            Thread.Sleep(50);
+            Check(factory.StopStarted.Wait(3000), "95C2-2: stop race test starts Stop while connect is blocked");
             factory.ReleaseConnect.Set();
 
-            Check(stopThread.Join(3000) && stopException == null, "95C2-2: Stop returns after late connect completes");
-            Check(factory.DisposeCalls > 0, "95C2-3: Stop disposes sink connected during shutdown race");
+            Check(stopThread.Join(3000) && stopException == null, "95C2-3: Stop returns after late connect completes");
+            Check(factory.DisposeCalls > 0, "95C2-4: Stop disposes sink connected during shutdown race");
         }
 
         private static void VerifyPublisherWrapperUsesRuntime()
@@ -234,7 +235,9 @@ namespace Unity.FoxgloveSDK.Tests
             var docs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/13_Schema_Coverage.md");
             Check(readme.Contains("WebSocket") && readme.Contains("ROS2 Bridge") && readme.Contains("disabled by default"),
                 "95F-1: README documents independent optional bridge");
-            Check(docs.Contains("Phase 95") && docs.Contains("seven") && docs.Contains("sidecar"),
+            Check(docs.Contains("Phase 95")
+                  && (docs.Contains("seven validated publisher") || docs.Contains("7 validated publisher"))
+                  && docs.Contains("sidecar"),
                 "95F-2: schema coverage docs describe Phase95 product boundary");
             Check(ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/README.md").Contains("Phase 95"),
                 "95F-3: sidecar README references productized bridge path");
@@ -281,12 +284,24 @@ namespace Unity.FoxgloveSDK.Tests
             var idx = source.IndexOf(methodName, StringComparison.Ordinal);
             if (idx < 0)
                 return false;
-            var nextMethod = source.IndexOf("\n        public ", idx + methodName.Length, StringComparison.Ordinal);
-            if (nextMethod < 0)
-                nextMethod = source.IndexOf("\n        private ", idx + methodName.Length, StringComparison.Ordinal);
-            if (nextMethod < 0)
-                nextMethod = source.Length;
-            return source.Substring(idx, nextMethod - idx).Contains(needle);
+            var braceStart = source.IndexOf('{', idx);
+            if (braceStart < 0)
+                return false;
+
+            var depth = 0;
+            for (var i = braceStart; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(idx, i - idx + 1).Contains(needle);
+                }
+            }
+
+            return source.Substring(idx).Contains(needle);
         }
 
         private static bool WaitUntil(Func<bool> condition, int timeoutMs)
@@ -318,7 +333,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -331,7 +346,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private sealed class FakeSinkFactory
@@ -394,6 +412,7 @@ namespace Unity.FoxgloveSDK.Tests
             private readonly object _gate = new object();
             public readonly ManualResetEventSlim ConnectStarted = new ManualResetEventSlim(false);
             public readonly ManualResetEventSlim ReleaseConnect = new ManualResetEventSlim(false);
+            public readonly ManualResetEventSlim StopStarted = new ManualResetEventSlim(false);
             public int DisposeCalls;
 
             public IRos2BridgeSink Create()
@@ -410,7 +429,7 @@ namespace Unity.FoxgloveSDK.Tests
                 public void Connect(string host, int port, int timeoutMs)
                 {
                     _owner.ConnectStarted.Set();
-                    _owner.ReleaseConnect.Wait(3000);
+                    _owner.ReleaseConnect.Wait();
                     IsConnected = true;
                 }
 

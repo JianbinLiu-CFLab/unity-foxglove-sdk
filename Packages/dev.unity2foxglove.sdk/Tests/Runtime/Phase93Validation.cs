@@ -194,7 +194,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!supported.Contains("cdr"), "93F-1: product session keeps cdr out of supportedEncodings");
 
             var transport = new Phase93FakeTransport();
-            var session = new FoxgloveSession("phase93-session", transport, schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase93-session", transport, schemaRegistry: registry);
             session.EnableCdr();
             transport.SimulateConnect(1);
 
@@ -265,7 +265,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "93I-1: Phase93 does not add IMessage Manager convenience API");
             Check(managerServer.Contains("enableCdrClientPublish: false"),
                 "93I-2: Manager still suppresses CDR client-publish support");
-            Check(schemaCoverage.Contains("Phase 93") && schemaCoverage.Contains("41") && schemaCoverage.Contains("low-level"),
+            Check(schemaCoverage.Contains("Phase 93")
+                  && schemaCoverage.Contains(FoxgloveRos2MsgSchemaCatalog.SourceFileCount + " root ROS 2")
+                  && schemaCoverage.Contains("low-level"),
                 "93I-3: schema coverage docs describe low-level full ROS2 CDR parity");
         }
 
@@ -283,7 +285,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void WriteAllSchemaMcap(Stream stream, DefaultSchemaRegistry registry)
         {
             using var recorder = new McapRecorder(stream, leaveOpen: true);
-            var session = new FoxgloveSession("phase93-mcap", new Phase93FakeTransport(), schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase93-mcap", new Phase93FakeTransport(), schemaRegistry: registry);
             session.SetRecorder(recorder);
             var samples = BuildSamples();
             for (var i = 0; i < samples.Count; i++)
@@ -375,7 +377,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -388,7 +390,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private sealed class Phase93Sample

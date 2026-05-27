@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             using var stream = File.Create(outputPath);
             using var recorder = new McapRecorder(stream);
-            var session = new FoxgloveSession("phase91-mcap", new Phase91FakeTransport(), schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase91-mcap", new Phase91FakeTransport(), schemaRegistry: registry);
             session.SetRecorder(recorder);
 
             var samples = BuildSamples();
@@ -144,7 +144,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Throws<ArgumentException>(() => Ros2CdrPayloadValidator.Validate(new byte[] { 0, 0, 0, 0 })),
                 "91C-5: wrong CDR encapsulation header is rejected");
 
-            var session = new FoxgloveSession("phase91-validation", new Phase91FakeTransport(), schemaRegistry: new DefaultSchemaRegistry());
+            using var session = new FoxgloveSession("phase91-validation", new Phase91FakeTransport(), schemaRegistry: new DefaultSchemaRegistry());
             Check(Throws<ArgumentException>(() => session.PublishRos2Cdr(99, new byte[] { 0, 0, 0, 0 }, 1)),
                 "91C-6: session PublishRos2Cdr validates before publishing");
 
@@ -368,7 +368,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase91FakeTransport();
-            var session = new FoxgloveSession("phase91-session", transport, schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase91-session", transport, schemaRegistry: registry);
             session.EnableCdr();
             transport.SimulateConnect(1);
 
@@ -399,7 +399,7 @@ namespace Unity.FoxgloveSDK.Tests
             using var stream = new MemoryStream();
             using (var recorder = new McapRecorder(stream))
             {
-                var mcapSession = new FoxgloveSession("phase91-mcap", new Phase91FakeTransport(), schemaRegistry: registry);
+                using var mcapSession = new FoxgloveSession("phase91-mcap", new Phase91FakeTransport(), schemaRegistry: registry);
                 mcapSession.SetRecorder(recorder);
                 for (var i = 0; i < samples.Count; i++)
                 {
@@ -427,9 +427,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyBoundary()
         {
             var runtimeRoot = Path.Combine(Phase16Validation.FindRepoRoot(), "Packages", "dev.unity2foxglove.sdk", "Runtime");
-            var componentText = string.Join("\n", Directory.EnumerateFiles(Path.Combine(runtimeRoot, "Components"), "*.cs", SearchOption.AllDirectories)
+            var componentsRoot = Path.Combine(runtimeRoot, "Components");
+            var publishersRoot = Path.Combine(runtimeRoot, "Schemas", "Proto", "Publishers");
+            Check(Directory.Exists(componentsRoot), "91G-0: Runtime Components source root exists");
+            Check(Directory.Exists(publishersRoot), "91G-0b: Runtime Proto publisher source root exists");
+
+            var componentText = string.Join("\n", Directory.EnumerateFiles(componentsRoot, "*.cs", SearchOption.AllDirectories)
                 .Select(File.ReadAllText));
-            var publisherText = string.Join("\n", Directory.EnumerateFiles(Path.Combine(runtimeRoot, "Schemas", "Proto", "Publishers"), "*.cs", SearchOption.AllDirectories)
+            var publisherText = string.Join("\n", Directory.EnumerateFiles(publishersRoot, "*.cs", SearchOption.AllDirectories)
                 .Select(File.ReadAllText));
             var managerPublishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var sessionText = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
@@ -560,7 +565,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -573,7 +578,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private sealed class Phase91Sample

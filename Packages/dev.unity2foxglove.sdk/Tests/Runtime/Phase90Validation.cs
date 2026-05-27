@@ -113,7 +113,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase90FakeTransport();
-            var session = new FoxgloveSession("phase90-session", transport, schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase90-session", transport, schemaRegistry: registry);
             session.EnableCdr();
             transport.SimulateConnect(1);
 
@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             var transport = new Phase90FakeTransport();
-            var session = new FoxgloveSession("phase90-mcap", transport, schemaRegistry: registry);
+            using var session = new FoxgloveSession("phase90-mcap", transport, schemaRegistry: registry);
 
             using var stream = new MemoryStream();
             using var recorder = new McapRecorder(stream);
@@ -199,9 +199,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyBoundary()
         {
             var runtimeRoot = Path.Combine(Phase16Validation.FindRepoRoot(), "Packages", "dev.unity2foxglove.sdk", "Runtime");
+            Check(Directory.Exists(runtimeRoot), "90G-0: Runtime source root exists");
             var runtimeText = string.Join("\n", Directory.EnumerateFiles(runtimeRoot, "*.cs", SearchOption.AllDirectories)
                 .Select(File.ReadAllText));
             var componentsRoot = Path.Combine(runtimeRoot, "Components");
+            Check(Directory.Exists(componentsRoot), "90G-0b: Runtime Components source root exists");
             var componentText = string.Join("\n", Directory.EnumerateFiles(componentsRoot, "*.cs", SearchOption.AllDirectories)
                 .Select(File.ReadAllText));
             var catalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
@@ -221,7 +223,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);
@@ -234,7 +236,10 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source file was not found.", path);
+
+            return File.ReadAllText(path);
         }
 
         private static JToken FirstAdvertisedChannel(string json)
@@ -246,9 +251,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ComputeSourceTreeSha256(string sourceRoot)
         {
             using var sha = SHA256.Create();
-            foreach (var path in Directory.GetFiles(sourceRoot, "*.msg").OrderBy(Path.GetFileName, StringComparer.Ordinal))
+            foreach (var path in Directory.GetFiles(sourceRoot, "*.msg", SearchOption.AllDirectories)
+                         .OrderBy(path => ToStableRelativePath(sourceRoot, path), StringComparer.Ordinal))
             {
-                var nameBytes = Encoding.UTF8.GetBytes(Path.GetFileName(path));
+                var nameBytes = Encoding.UTF8.GetBytes(ToStableRelativePath(sourceRoot, path));
                 sha.TransformBlock(nameBytes, 0, nameBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
                 var fileBytes = File.ReadAllBytes(path);
@@ -257,6 +263,12 @@ namespace Unity.FoxgloveSDK.Tests
             }
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
             return BitConverter.ToString(sha.Hash).Replace("-", "").ToLowerInvariant();
+        }
+
+        private static string ToStableRelativePath(string root, string path)
+        {
+            var relative = Path.GetRelativePath(root, path);
+            return relative.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
         }
 
         private sealed class Phase90FakeTransport : IFoxgloveTransport
