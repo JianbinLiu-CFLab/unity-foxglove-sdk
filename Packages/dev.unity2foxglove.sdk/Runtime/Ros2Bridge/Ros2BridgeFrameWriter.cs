@@ -24,7 +24,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
             if (frame.PayloadLength > MaxPayloadBytes)
-                throw new ArgumentException("ROS 2 bridge payload exceeds the Phase 94 maximum.", nameof(frame));
+            {
+                throw new ArgumentException(
+                    $"ROS 2 bridge payload is {frame.PayloadLength} bytes, exceeding the {MaxPayloadBytes} byte maximum.",
+                    nameof(frame));
+            }
 
             var header = new FrameHeader
             {
@@ -49,7 +53,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var headerJson = JsonConvert.SerializeObject(header, Formatting.None);
             var headerBytes = Encoding.UTF8.GetBytes(headerJson);
             if (headerBytes.Length > MaxHeaderBytes)
-                throw new ArgumentException("ROS 2 bridge JSON header exceeds the Phase 94 maximum.", nameof(frame));
+            {
+                throw new ArgumentException(
+                    $"ROS 2 bridge JSON header is {headerBytes.Length} bytes, exceeding the {MaxHeaderBytes} byte maximum.",
+                    nameof(frame));
+            }
 
             using var stream = new MemoryStream(16 + headerBytes.Length + frame.PayloadLength);
             stream.WriteByte((byte)'U');

@@ -102,10 +102,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     try
                     {
                         process.Kill();
+                        process.WaitForExit(Math.Max(1, timeoutMs));
+                        process.WaitForExit();
                     }
                     catch
                     {
-                        // The process may have exited between WaitForExit and Kill.
+                        // The process may have exited between WaitForExit and Kill, or rejected termination.
                     }
 
                     stopwatch.Stop();

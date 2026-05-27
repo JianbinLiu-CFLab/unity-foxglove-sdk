@@ -280,7 +280,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Check(bash.Contains("ros2 interface show") && bash.Contains(schema),
                     "98C-5: bash preflight checks " + schema);
-                Check(ps1.Contains("ros2 interface show") && ps1.Contains(schema),
+                Check((ps1.Contains("ros2 interface show") || ps1.Contains("Invoke-Ros2Checked"))
+                      && ps1.Contains(schema),
                     "98C-6: PowerShell preflight checks " + schema);
             }
 

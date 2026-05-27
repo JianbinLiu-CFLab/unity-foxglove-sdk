@@ -70,6 +70,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private static byte[] ReadU2R2Frame(Stream stream)
         {
             var fixedHeader = ReadExact(stream, 16);
+            if (fixedHeader[0] != 'U' || fixedHeader[1] != '2' || fixedHeader[2] != 'R' || fixedHeader[3] != '2')
+                throw new FormatException("U2R2 response magic is invalid.");
+            if (ReadUInt16LE(fixedHeader, 4) != 1)
+                throw new FormatException("U2R2 response version is unsupported.");
+            if (ReadUInt16LE(fixedHeader, 6) != 0)
+                throw new FormatException("U2R2 response flags must be zero.");
+
             var headerLength = ReadUInt32LE(fixedHeader, 8);
             var payloadLength = ReadUInt32LE(fixedHeader, 12);
             if (headerLength == 0 || headerLength > Ros2BridgeFrameWriter.MaxHeaderBytes)
@@ -109,5 +116,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                       | (data[offset + 1] << 8)
                       | (data[offset + 2] << 16)
                       | (data[offset + 3] << 24));
+
+        private static ushort ReadUInt16LE(byte[] data, int offset)
+            => (ushort)(data[offset] | (data[offset + 1] << 8));
     }
 }

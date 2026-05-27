@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
@@ -29,6 +30,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private bool _autoConnect;
         private bool _connected;
         private bool _connecting;
+        private long _workerGeneration;
         private long _sentFrames;
         private long _droppedFrames;
         private long _failedFrames;
@@ -55,7 +57,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (sendTimeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(sendTimeoutMs), "ROS2 Bridge send timeout must be positive.");
 
-            _host = host;
+            _host = NormalizeLoopbackHost(host);
             _port = port;
             _queueCapacity = queueCapacity;
             _reconnectIntervalMs = reconnectIntervalMs;
@@ -80,10 +82,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 _enabled = enabled;
                 _autoConnect = autoConnect;
                 _stopRequested = false;
+                if (_worker != null && !_worker.IsAlive)
+                    _worker = null;
                 if (!_enabled || !_autoConnect || _worker != null)
                     return;
 
-                _worker = new Thread(WorkerLoop)
+                var generation = ++_workerGeneration;
+                _worker = new Thread(() => WorkerLoop(generation))
                 {
                     IsBackground = true,
                     Name = "Unity2Foxglove ROS2 Bridge"
@@ -160,6 +165,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 _enabled = false;
                 _stopRequested = true;
+                _workerGeneration++;
                 if (_queue.Count > 0)
                 {
                     _droppedFrames += _queue.Count;
@@ -181,6 +187,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 lock (_gate)
                 {
                     _lastError = "ROS2 Bridge worker did not stop within timeout.";
+                    if (_worker == worker)
+                        _worker = null;
                 }
             }
 
@@ -193,7 +201,14 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public void Connect(string host, int port, int timeoutMs)
         {
-            Ros2BridgeTcpClient.ValidateLoopbackHost(host);
+            var normalizedHost = NormalizeLoopbackHost(host);
+            if (!string.Equals(normalizedHost, _host, StringComparison.OrdinalIgnoreCase) || port != _port)
+            {
+                throw new InvalidOperationException(
+                    "ROS2 Bridge runtime Connect must use the configured host and port; create a new runtime for a different endpoint.");
+            }
+            if (timeoutMs <= 0)
+                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS2 Bridge connect timeout must be positive.");
             Start(enabled: true, autoConnect: true);
         }
 
@@ -214,16 +229,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             _signal.Dispose();
         }
 
-        private void WorkerLoop()
+        private void WorkerLoop(long generation)
         {
             while (true)
             {
                 try
                 {
-                    if (ShouldStop())
+                    if (ShouldStop(generation))
                         return;
 
-                    if (!EnsureConnected())
+                    if (!EnsureConnected(generation))
                     {
                         _signal.Wait(_reconnectIntervalMs);
                         _signal.Reset();
@@ -241,7 +256,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     IRos2BridgeSink sink;
                     lock (_gate)
                     {
-                        if (_stopRequested || !_enabled)
+                        if (_stopRequested || !_enabled || generation != _workerGeneration)
                             return;
                         sink = _sink;
                     }
@@ -257,6 +272,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                         sink.Send(frame, _sendTimeoutMs);
                         lock (_gate)
                         {
+                            if (generation != _workerGeneration)
+                                return;
                             _sentFrames++;
                             _lastError = string.Empty;
                         }
@@ -266,21 +283,25 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                         MarkFailure(ex.Message, disconnect: true);
                     }
                 }
-                catch (ObjectDisposedException) when (ShouldStop())
+                catch (ObjectDisposedException) when (ShouldStop(generation))
                 {
                     return;
                 }
                 catch (Exception ex)
                 {
+                    if (ShouldStop(generation))
+                        return;
                     MarkFailure(ex.Message, disconnect: true);
                 }
             }
         }
 
-        private bool EnsureConnected()
+        private bool EnsureConnected(long generation)
         {
             lock (_gate)
             {
+                if (_stopRequested || !_enabled || generation != _workerGeneration)
+                    return false;
                 if (_connected && _sink != null && _sink.IsConnected)
                     return true;
                 _connecting = true;
@@ -294,7 +315,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 IRos2BridgeSink previousSink = null;
                 lock (_gate)
                 {
-                    if (_stopRequested || !_enabled)
+                    if (_stopRequested || !_enabled || generation != _workerGeneration)
                     {
                         _connected = false;
                         _connecting = false;
@@ -337,10 +358,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
         }
 
-        private bool ShouldStop()
+        private bool ShouldStop(long generation)
         {
             lock (_gate)
-                return _stopRequested;
+                return _stopRequested || generation != _workerGeneration;
         }
 
         private void MarkFailure(string message, bool disconnect, bool countFrameFailure = true)
@@ -389,5 +410,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private static long NowUnixMs()
             => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        private static string NormalizeLoopbackHost(string host)
+        {
+            Ros2BridgeTcpClient.ValidateLoopbackHost(host);
+            if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+                return "127.0.0.1";
+            return IPAddress.TryParse(host, out var address) ? address.ToString() : host.Trim();
+        }
     }
 }

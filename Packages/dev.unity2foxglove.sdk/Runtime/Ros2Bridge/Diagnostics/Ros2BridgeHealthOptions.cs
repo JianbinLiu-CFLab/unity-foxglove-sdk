@@ -5,6 +5,7 @@
 // Purpose: Options snapshot for ROS2 Bridge health checks.
 
 using System;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
@@ -30,7 +31,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             int commandTimeoutMs = 3000,
             int sidecarTimeoutMs = 1000,
             string unityVersion = "",
-            string sdkVersion = "")
+            string sdkVersion = "",
+            CancellationToken cancellationToken = default)
         {
             LiveMode = liveMode;
             Host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host.Trim();
@@ -41,6 +43,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             SidecarTimeoutMs = sidecarTimeoutMs < 1 ? 1 : sidecarTimeoutMs;
             UnityVersion = unityVersion ?? string.Empty;
             SdkVersion = sdkVersion ?? string.Empty;
+            CancellationToken = cancellationToken;
         }
 
         public bool LiveMode { get; }
@@ -52,6 +55,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public int SidecarTimeoutMs { get; }
         public string UnityVersion { get; }
         public string SdkVersion { get; }
+        public CancellationToken CancellationToken { get; }
         public Action<Ros2BridgeHealthProgress> Progress { get; set; }
 
         public string EffectiveRos2Executable

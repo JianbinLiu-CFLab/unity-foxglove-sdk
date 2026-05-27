@@ -25,6 +25,13 @@ namespace Unity.FoxgloveSDK.Tests
             PublicPayloadViewReturnsFreshDefensiveCopies();
             WriterAndRuntimeUseOwnedPayloadSnapshot();
             PublicPayloadGetterDocumentsCopyCost();
+            CommandRunnerDrainsTimedOutProcessOutput();
+            HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation();
+            RuntimeConnectContractAndWorkerGenerationAreExplicit();
+            SidecarResetsPerClientStateAndRejectsMalformedFrames();
+            PowerShellPreflightChecksNativeExitCodes();
+            HealthProbeValidatesFixedHeaderBeforeAllocation();
+            TopicAndFrameWritersRejectNewlinesAndReportSizes();
 
             Console.WriteLine($"Phase 134-16: {_passed} checks passed.");
         }
@@ -87,6 +94,103 @@ namespace Unity.FoxgloveSDK.Tests
                   && frameSource.Contains("PayloadLength", StringComparison.Ordinal)
                   && frameSource.Contains("WritePayloadTo", StringComparison.Ordinal),
                 "134-16D-1: public Payload getter warns callers about per-call clone cost");
+        }
+
+        private static void CommandRunnerDrainsTimedOutProcessOutput()
+        {
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/IRos2BridgeCommandRunner.cs");
+
+            Check(source.Contains("process.Kill()", StringComparison.Ordinal)
+                  && source.Contains("process.WaitForExit(Math.Max(1, timeoutMs))", StringComparison.Ordinal)
+                  && source.Contains("process.WaitForExit();", StringComparison.Ordinal),
+                "134-16E-1: timed-out ROS2 CLI commands wait for process exit after kill before reading buffered output");
+        }
+
+        private static void HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation()
+        {
+            var optionsSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
+            var runnerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthRunner.cs");
+
+            Check(optionsSource.Contains("CancellationToken cancellationToken = default", StringComparison.Ordinal)
+                  && optionsSource.Contains("public CancellationToken CancellationToken", StringComparison.Ordinal)
+                  && runnerSource.Contains("ThrowIfCancellationRequested(options)", StringComparison.Ordinal),
+                "134-16F-1: health diagnostics expose and observe cancellation between bounded checks");
+            Check(!runnerSource.Contains("!= 41", StringComparison.Ordinal)
+                  && runnerSource.Contains("SourceFileCount != FoxgloveRos2MsgSchemaCatalog.Entries.Count", StringComparison.Ordinal),
+                "134-16F-2: health diagnostics compare schema catalog source and entry counts without a hardcoded 41");
+        }
+
+        private static void RuntimeConnectContractAndWorkerGenerationAreExplicit()
+        {
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+
+            Check(source.Contains("_workerGeneration", StringComparison.Ordinal)
+                  && source.Contains("WorkerLoop(generation)", StringComparison.Ordinal)
+                  && source.Contains("generation != _workerGeneration", StringComparison.Ordinal),
+                "134-16G-1: bridge runtime invalidates stale workers with generation checks");
+            Check(source.Contains("Connect must use the configured host and port", StringComparison.Ordinal)
+                  && source.Contains("NormalizeLoopbackHost(host)", StringComparison.Ordinal)
+                  && source.Contains("timeoutMs <= 0", StringComparison.Ordinal),
+                "134-16G-2: Connect validates host, port, and timeout instead of silently ignoring arguments");
+        }
+
+        private static void SidecarResetsPerClientStateAndRejectsMalformedFrames()
+        {
+            var source = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
+
+            Check(source.Contains("class ScopedFd", StringComparison.Ordinal)
+                  && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
+                  && source.Contains("ScopedFd client_fd", StringComparison.Ordinal),
+                "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
+            Check(source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
+                  && source.IndexOf("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
+                  > source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
+                "134-16H-2: sidecar publisher maps are scoped per client connection");
+            Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
+                  && source.Contains("reject frame: missing or invalid op", StringComparison.Ordinal)
+                  && source.Contains("topic must not contain newline", StringComparison.Ordinal),
+                "134-16H-3: sidecar rejects missing op fields and newline-bearing topics");
+            Check(!source.Contains("Phase 94 accepts only IPv4 loopback hosts", StringComparison.Ordinal)
+                  && source.Contains("--port must be an integer in 1..65535", StringComparison.Ordinal),
+                "134-16H-4: sidecar argument errors are explicit and avoid stale phase wording");
+        }
+
+        private static void PowerShellPreflightChecksNativeExitCodes()
+        {
+            var source = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.ps1");
+
+            Check(source.Contains("function Invoke-Ros2Checked", StringComparison.Ordinal)
+                  && source.Contains("$LASTEXITCODE", StringComparison.Ordinal)
+                  && source.Contains("ROS2 Bridge launch failed with exit code", StringComparison.Ordinal),
+                "134-16I-1: PowerShell sample preflight fails on nonzero ros2 command exit codes");
+        }
+
+        private static void HealthProbeValidatesFixedHeaderBeforeAllocation()
+        {
+            var source = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeU2R2HealthProbe.cs");
+
+            Check(source.Contains("U2R2 response magic is invalid", StringComparison.Ordinal)
+                  && source.Contains("U2R2 response version is unsupported", StringComparison.Ordinal)
+                  && source.IndexOf("var headerLength = ReadUInt32LE", StringComparison.Ordinal)
+                  > source.IndexOf("U2R2 response flags must be zero", StringComparison.Ordinal),
+                "134-16J-1: health probe validates U2R2 fixed header before allocating variable sections");
+        }
+
+        private static void TopicAndFrameWritersRejectNewlinesAndReportSizes()
+        {
+            var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
+            var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
+            var topicProfileSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeTopicProfile.cs");
+
+            Check(frameSource.Contains("topic.IndexOf('\\r')", StringComparison.Ordinal)
+                  && topicProfileSource.Contains("ContainsNewline", StringComparison.Ordinal)
+                  && topicProfileSource.Contains("new char[value.Length]", StringComparison.Ordinal)
+                  && !topicProfileSource.Contains("while (value.Contains(\"//\"))", StringComparison.Ordinal),
+                "134-16K-1: C# bridge topic normalization rejects newlines and collapses slashes in one pass");
+            Check(writerSource.Contains("frame.PayloadLength} bytes", StringComparison.Ordinal)
+                  && writerSource.Contains("headerBytes.Length} bytes", StringComparison.Ordinal)
+                  && !writerSource.Contains("Phase 94 maximum", StringComparison.Ordinal),
+                "134-16K-2: frame writer oversize errors include actual sizes and avoid stale phase wording");
         }
 
         private static Ros2BridgeFrame CreateFrame(byte[] payload)

@@ -124,9 +124,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var errorCode = header.Value<string>("errorCode") ?? string.Empty;
             var message = header.Value<string>("message") ?? string.Empty;
 
-            if (status == "ok" && (string.IsNullOrWhiteSpace(sidecarName) || string.IsNullOrWhiteSpace(sidecarVersion)))
+            if (string.Equals(status, "ok", StringComparison.Ordinal)
+                && (string.IsNullOrWhiteSpace(sidecarName) || string.IsNullOrWhiteSpace(sidecarVersion)))
                 throw new FormatException("Health pong ok response requires sidecarName and sidecarVersion.");
-            if (status == "error" && string.IsNullOrWhiteSpace(errorCode))
+            if (string.Equals(status, "error", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(errorCode))
                 throw new FormatException("Health pong error response requires errorCode.");
 
             return new Ros2BridgeHealthPong(
