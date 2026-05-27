@@ -208,10 +208,10 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
                     _directRos2Unity = gameObject.AddComponent<ROS2UnityComponent>();
                     _ownsDirectRos2Unity = true;
                 }
-                else
-                {
-                    _ownsDirectRos2Unity = true;
-                }
+                // Pre-existing component (user-attached, or from a prior OnEnable/OnDisable
+                // cycle where DisposeDirectEndpoints did not run). Do NOT claim ownership:
+                // destroying a user-attached ROS2UnityComponent would break other consumers
+                // sharing the same GameObject.
             }
 
             if (!_directRos2Unity.Ok())

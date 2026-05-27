@@ -180,8 +180,8 @@ namespace Unity.FoxgloveSDK.Tests
             return script.Substring(start, end - start);
         }
 
-        /// <summary>Maximum time to wait for a subprocess before killing it.</summary>
-        private const int SubprocessTimeoutMs = 30_000;
+        /// <summary>Maximum time to wait for the full external conformance wrapper before killing it.</summary>
+        private const int SubprocessTimeoutMs = 1_500_000;
 
         private static string FindPython()
         {

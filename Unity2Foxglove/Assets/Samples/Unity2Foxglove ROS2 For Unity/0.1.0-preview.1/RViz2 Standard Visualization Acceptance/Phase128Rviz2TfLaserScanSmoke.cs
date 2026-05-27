@@ -46,6 +46,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
     private bool _endpointsLogged;
     private bool _firstPublishLogged;
     private bool _initializationBlocked;
+    private float _nextRetryTime;
     private bool _warnedMissingStartExecutor;
     private double _realtimeStartSeconds;
     private long _unixStartSeconds;
@@ -177,9 +178,10 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
 
     private bool TryEnsurePostReadySetup()
     {
-        if (_initializationBlocked)
+        if (_initializationBlocked && Time.time < _nextRetryTime)
             return false;
 
+        _initializationBlocked = false;
         try
         {
             EnsureExecutorStarted();
@@ -189,6 +191,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
         catch (Exception ex)
         {
             _initializationBlocked = true;
+            _nextRetryTime = Time.time + 5f;
             _lastError = ex.GetType().Name + ": " + ex.Message;
             _statusMessage = _lastError;
             Debug.LogWarning(LogPrefix + " ROS2 For Unity endpoint setup failed: " + _lastError);
@@ -198,9 +201,10 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
 
     private bool TryEnsureReady()
     {
-        if (_initializationBlocked)
+        if (_initializationBlocked && Time.time < _nextRetryTime)
             return false;
 
+        _initializationBlocked = false;
         try
         {
             EnsureRos2UnityComponent();
@@ -217,6 +221,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
         catch (Exception ex)
         {
             _initializationBlocked = true;
+            _nextRetryTime = Time.time + 5f;
             _lastError = ex.GetType().Name + ": " + ex.Message;
             _statusMessage = _lastError;
             Debug.LogWarning(LogPrefix + " ROS2 For Unity initialization failed: " + _lastError);

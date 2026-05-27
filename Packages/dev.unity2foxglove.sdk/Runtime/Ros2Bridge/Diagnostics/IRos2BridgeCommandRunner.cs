@@ -164,7 +164,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 if (cancellationToken.IsCancellationRequested)
                     return true;
-                if (process.WaitForExit(50))
+                // Bound the poll interval by the remaining budget so sub-50ms
+                // timeoutMs values are not silently rounded up to 50ms.
+                var remaining = (int)Math.Max(1, timeoutMs - deadline.ElapsedMilliseconds);
+                if (process.WaitForExit(Math.Min(50, remaining)))
                     return true;
             }
 

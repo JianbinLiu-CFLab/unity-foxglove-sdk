@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Unity.FoxgloveSDK.Editor;
@@ -67,6 +68,7 @@ namespace Unity.FoxgloveSDK.Tests
             ValidateWorkflowScriptReferences(repoRoot);
             ValidateDocsWorkflowCoverage(repoRoot);
             ValidatePublicDocsScriptReferences(repoRoot);
+            ValidatePrivateWorkspaceBoundaries(repoRoot);
             ValidateResearchDoiPolicy(repoRoot);
             ValidateGeneratedSourceProvenance(repoRoot);
             ValidateThirdPartyNotices(repoRoot);
@@ -402,6 +404,69 @@ namespace Unity.FoxgloveSDK.Tests
                 foreach (var file in Directory.GetFiles(path, "*.md", SearchOption.AllDirectories))
                     AssertPublicDocHasNoStaleScriptPath(repoRoot, file);
             }
+        }
+
+        static void ValidatePrivateWorkspaceBoundaries(string repoRoot)
+        {
+            if (!TryRunGitLsFiles(
+                    repoRoot,
+                    new[]
+                    {
+                        "Plan/**",
+                        "Developer/**",
+                        ":(glob)**/Developer/**",
+                        ":(glob)**/Developer.meta"
+                    },
+                    out var trackedPrivateFiles))
+            {
+                Console.WriteLine("[WARN] git unavailable; skipping tracked private workspace boundary checks");
+                return;
+            }
+
+            Assert(trackedPrivateFiles.Count == 0,
+                "No tracked Plan/Developer private workspace files are present");
+        }
+
+        static bool TryRunGitLsFiles(string repoRoot, IReadOnlyList<string> pathspecs, out IReadOnlyList<string> files)
+        {
+            files = Array.Empty<string>();
+
+            try
+            {
+                var arguments = "ls-files -- " + string.Join(" ", pathspecs.Select(QuoteGitArgument));
+                var startInfo = new ProcessStartInfo("git", arguments)
+                {
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                    return false;
+
+                var output = process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+                if (!process.WaitForExit(5000) || process.ExitCode != 0)
+                    return false;
+
+                files = output.Replace("\r\n", "\n")
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(path => path.Replace('\\', '/'))
+                    .ToArray();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static string QuoteGitArgument(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
         }
 
         static void AssertPublicDocHasNoStaleScriptPath(string repoRoot, string path)

@@ -24,6 +24,13 @@
 
 namespace
 {
+    enum class FrameReadStatus
+    {
+        Frame,
+        EndOfStream,
+        PartialFrame
+    };
+
     struct Options
     {
         int width = 0;
@@ -173,7 +180,13 @@ namespace
 
         return true;
 #else
-        (void)options;
+        if (!options.openh264Dll.empty())
+        {
+            std::cerr
+                << "--openh264-dll is ignored on non-Windows builds; "
+                << "the helper uses linked OpenH264 symbols."
+                << std::endl;
+        }
         api.createEncoder = &WelsCreateSVCEncoder;
         api.destroyEncoder = &WelsDestroySVCEncoder;
         api.getCodecVersion = &WelsGetCodecVersion;
@@ -216,20 +229,20 @@ namespace
         std::cout.write(reinterpret_cast<const char*>(bytes), 4);
     }
 
-    bool ReadFrame(std::vector<uint8_t>& frame)
+    FrameReadStatus ReadFrame(std::vector<uint8_t>& frame)
     {
         std::cin.read(reinterpret_cast<char*>(frame.data()), static_cast<std::streamsize>(frame.size()));
         const std::streamsize read = std::cin.gcount();
         if (read == 0 && std::cin.eof())
-            return false;
+            return FrameReadStatus::EndOfStream;
 
         if (read != static_cast<std::streamsize>(frame.size()))
         {
             std::cerr << "Partial I420 frame received before EOF. bytes=" << read << std::endl;
-            std::exit(3);
+            return FrameReadStatus::PartialFrame;
         }
 
-        return true;
+        return FrameReadStatus::Frame;
     }
 
     void AppendLayerNalUnits(const SLayerBSInfo& layer, std::vector<uint8_t>& accessUnit)
@@ -304,7 +317,7 @@ int main(int argc, char** argv)
     if (!LoadOpenH264(options, api))
         return 4;
     if (!ValidateOpenH264Version(api))
-        return 4;
+        return 5;
 
     ISVCEncoder* encoder = nullptr;
     if (api.createEncoder(&encoder) != 0 || encoder == nullptr)
@@ -349,9 +362,19 @@ int main(int argc, char** argv)
     const size_t frameBytes = static_cast<size_t>(options.width) * static_cast<size_t>(options.height) * 3 / 2;
     std::vector<uint8_t> frame(frameBytes);
     uint64_t framesEncoded = 0;
+    int exitCode = 0;
 
-    while (ReadFrame(frame))
+    while (true)
     {
+        const FrameReadStatus readStatus = ReadFrame(frame);
+        if (readStatus == FrameReadStatus::EndOfStream)
+            break;
+        if (readStatus == FrameReadStatus::PartialFrame)
+        {
+            exitCode = 3;
+            break;
+        }
+
         SSourcePicture picture;
         std::memset(&picture, 0, sizeof(picture));
         picture.iPicWidth = options.width;
@@ -379,8 +402,11 @@ int main(int argc, char** argv)
         ++framesEncoded;
     }
 
-    std::cerr << "OpenH264 probe helper finished. frames=" << framesEncoded << std::endl;
+    if (exitCode == 0)
+        std::cerr << "OpenH264 probe helper finished. frames=" << framesEncoded << std::endl;
+    else
+        std::cerr << "OpenH264 probe helper failed with exit " << exitCode << " frames=" << framesEncoded << std::endl;
     encoder->Uninitialize();
     api.destroyEncoder(encoder);
-    return 0;
+    return exitCode;
 }

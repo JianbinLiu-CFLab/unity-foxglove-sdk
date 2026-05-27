@@ -161,6 +161,8 @@ namespace Unity.FoxgloveSDK.Tests
             var trailing = remaining - compressedLength;
             if (trailing < 0)
                 throw new InvalidDataException($"Chunk record compressedLength {compressedLength} exceeds remaining bytes {remaining}.");
+            if (trailing > 0)
+                throw new InvalidDataException($"Chunk record has {trailing} trailing byte(s) after declared compressed payload.");
 
             var recs = new byte[compressedLength];
             if (compressedLength > 0) Buffer.BlockCopy(content, off, recs, 0, compressedLength);

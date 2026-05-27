@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.Editor
                 if (!BuildHelperExecutable(versionDir, finalHelperPath, packageRoot, out var buildError))
                     return Fail(buildError);
 
-                TryDelete(compressedPath);
+                TryDelete(compressedPath, warnOnFailure: true);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
             }
             catch (Exception ex)
@@ -310,7 +310,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             foreach (var root in CandidateVisualStudioRoots())
             {
-                foreach (var year in new[] { "2026", "2022", "2019" })
+                foreach (var year in new[] { "2022", "2019" })
                 {
                     foreach (var edition in new[] { "Community", "Professional", "Enterprise", "BuildTools" })
                     {
@@ -524,15 +524,19 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static void TryDelete(string path)
+        private static bool TryDelete(string path, bool warnOnFailure = false)
         {
             try
             {
                 if (File.Exists(path))
                     File.Delete(path);
+                return true;
             }
-            catch
+            catch (Exception ex)
             {
+                if (warnOnFailure)
+                    Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + ex.Message);
+                return false;
             }
         }
 

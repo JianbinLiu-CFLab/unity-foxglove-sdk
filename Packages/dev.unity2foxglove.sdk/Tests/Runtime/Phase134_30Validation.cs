@@ -133,7 +133,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && !source.Contains("old = \"\"\"", StringComparison.Ordinal),
                 "134-30N: Phase138B patches ros2cs standalone DLL block with a resilient matcher");
             Check(source.Contains("parser.add_argument(\n        \"--evidence-path\"", StringComparison.Ordinal)
-                  && source.Contains("args.evidence_path", StringComparison.Ordinal),
+                  && source.Contains("args.evidence_path", StringComparison.Ordinal)
+                  && source.Contains("DEFAULT_EVIDENCE_PATH", StringComparison.Ordinal)
+                  && !source.Contains("repo_root / \"Developer\"", StringComparison.Ordinal),
                 "134-30O: Phase138B evidence path can be overridden for CI or local evidence runs");
         }
 

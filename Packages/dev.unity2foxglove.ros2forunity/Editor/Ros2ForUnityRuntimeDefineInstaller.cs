@@ -102,10 +102,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!ContainsPackageKey(manifest))
                 return false;
 
-            // Accept manifest.json alone on cold project import, where packages-lock.json
-            // may not yet exist. If the package is resolvable, the next domain reload
-            // will re-check with the lock file in place.
-            return true;
+            var lockPath = Path.Combine(projectDirectory.FullName, "Packages", "packages-lock.json");
+            if (!File.Exists(lockPath))
+            {
+                Debug.LogWarning(
+                    "Unity2Foxglove found " + RuntimePackageName
+                    + " in manifest.json, but Packages/packages-lock.json is missing. "
+                    + "Leaving " + CompileSymbol + " disabled until Unity resolves the runtime package.");
+                return false;
+            }
+
+            var lockFile = File.ReadAllText(lockPath);
+            if (ContainsPackageKey(lockFile))
+                return true;
+
+            Debug.LogWarning(
+                "Unity2Foxglove found " + RuntimePackageName
+                + " in manifest.json, but not in packages-lock.json. "
+                + "Leaving " + CompileSymbol + " disabled until the runtime package is resolved.");
+            return false;
         }
 
         private static bool ContainsPackageKey(string json)

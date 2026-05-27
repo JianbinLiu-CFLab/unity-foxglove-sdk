@@ -164,7 +164,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
             Check(!installer.Contains("\"2026\", \"2022\", \"2019\"", StringComparison.Ordinal)
-                  && installer.Contains("TryDelete(compressedPath)", StringComparison.Ordinal),
+                  && installer.Contains("TryDelete(compressedPath, warnOnFailure: true)", StringComparison.Ordinal)
+                  && installer.Contains("Could not delete temporary OpenH264 installer file", StringComparison.Ordinal),
                 "134-19-H1: OpenH264 installer removes dead VS year probe and cleans successful download cache");
 
             var replayDrawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");

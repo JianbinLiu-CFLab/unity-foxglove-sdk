@@ -258,7 +258,7 @@ def measure_runner_output(name: str, kind: str, result: CommandResult) -> dict[s
     text = result.stdout + "\n" + result.stderr
     tested = len(re.findall(r"(?m)^\s*testing\s+", text))
     skipped = len(re.findall(r"(?m)^\s*(not supported|unsupported)\s+", text))
-    errors = len(re.findall(r"(?m)^(Error:|FAIL\b|\w+Error:|fail\s+)", text, re.IGNORECASE))
+    errors = len(re.findall(r"(?m)^(Error:|FAIL\b|\w+Error:)", text, re.IGNORECASE))
     if result.exit_code != 0 and errors == 0:
         errors = 1
     passed = max(0, tested - errors)

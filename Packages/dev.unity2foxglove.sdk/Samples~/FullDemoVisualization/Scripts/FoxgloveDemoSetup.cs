@@ -113,9 +113,9 @@ public class FoxgloveDemoSetup : MonoBehaviour
         {
             runtime.Parameters.OnParameterChanged -= OnParameterChanged;
         }
-        if (_resetSvcId != 0)
+        if (_resetSvcId != 0 && runtime != null)
         {
-            _manager.UnregisterService(_resetSvcId);
+            runtime.UnregisterService(_resetSvcId);
             _resetSvcId = 0;
         }
         if (_scenePublisher != null)

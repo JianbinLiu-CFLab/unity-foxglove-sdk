@@ -79,14 +79,17 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     }
     else
     {
-      if (!initialTimeAcquired)
+      // U2F-LOCAL-PATCH: double-checked lock — write initialTime BEFORE flipping the
+      // acquired flag, and publish the flag via Volatile.Write so readers that exit
+      // the outer check via Volatile.Read see a fully-initialized initialTime.
+      if (!Volatile.Read(ref initialTimeAcquired))
       {
         lock (_lock)
         {
           if (!initialTimeAcquired)
           {
-            initialTimeAcquired = true;
             initialTime = clock.Now.Seconds - lastReadingSecs;
+            Volatile.Write(ref initialTimeAcquired, true);
           }
         }
       }

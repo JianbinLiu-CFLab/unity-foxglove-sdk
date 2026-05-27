@@ -485,10 +485,12 @@ namespace Unity.FoxgloveSDK.Editor
             for (var i = 0; i < parameters.Length; i++)
             {
                 var parameterType = parameters[i].ParameterType;
+                var nullableParameterType = Nullable.GetUnderlyingType(parameterType);
+                var effectiveParameterType = nullableParameterType ?? parameterType;
                 var arg = args[i];
                 if (arg == null)
                 {
-                    if (parameterType.IsValueType)
+                    if (parameterType.IsValueType && nullableParameterType == null)
                         return false;
                     continue;
                 }
@@ -497,7 +499,10 @@ namespace Unity.FoxgloveSDK.Editor
                 if (parameterType.IsAssignableFrom(argType))
                     continue;
 
-                if (parameterType.IsPrimitive && argType.IsPrimitive && parameterType == argType)
+                if (effectiveParameterType.IsAssignableFrom(argType))
+                    continue;
+
+                if (effectiveParameterType.IsPrimitive && argType.IsPrimitive && effectiveParameterType == argType)
                     continue;
 
                 return false;

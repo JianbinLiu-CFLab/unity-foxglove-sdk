@@ -317,7 +317,7 @@ int main(int argc, char** argv)
     if (!LoadOpenH264(options, api))
         return 4;
     if (!ValidateOpenH264Version(api))
-        return 4;
+        return 5;
 
     ISVCEncoder* encoder = nullptr;
     if (api.createEncoder(&encoder) != 0 || encoder == nullptr)

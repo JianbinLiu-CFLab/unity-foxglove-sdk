@@ -35,6 +35,7 @@ ROS2CS_BRANCH = "feature/jazzy-support"
 DEFAULT_BUILD_ROOT = pathlib.Path(r"D:\ros2unity\.build\r2fu-jazzy-win64")
 DEFAULT_WORK_ROOT = DEFAULT_BUILD_ROOT / "work"
 DEFAULT_TEMP_ROOT = DEFAULT_BUILD_ROOT / "tmp"
+DEFAULT_EVIDENCE_PATH = pathlib.Path("build") / "phase138b" / "r2fu_jazzy_windows_build_evidence.md"
 CHECKOUT_DIR_NAME = "r2u"
 JAZZY_PIXI_RUNTIME_DLLS = ("yaml.dll", "spdlog.dll", "fmt.dll")
 
@@ -403,7 +404,7 @@ def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: p
         if entry and not is_contaminating_python_path(entry)
     ]
     merged_path = os.pathsep.join([str(path) for path in path_entries] + filtered_existing)
-    cleaned["Path"] = merged_path
+    cleaned.pop("Path", None)
     cleaned["PATH"] = merged_path
     cleaned["COLCON_PYTHON_EXECUTABLE"] = str(python)
     cleaned["PYTHONUTF8"] = "1"
@@ -920,7 +921,7 @@ def main(argv: list[str]) -> int:
         if args.evidence_path and not pathlib.Path(args.evidence_path).is_absolute()
         else pathlib.Path(args.evidence_path).resolve()
         if args.evidence_path
-        else repo_root / "Developer" / "87 Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence.md"
+        else (repo_root / DEFAULT_EVIDENCE_PATH).resolve()
     )
     vs_dev_cmd: pathlib.Path | None = None
     effective_generator = "unresolved"

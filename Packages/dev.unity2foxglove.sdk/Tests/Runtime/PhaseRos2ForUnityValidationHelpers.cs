@@ -152,24 +152,104 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static GuardCondition ClassifyCondition(string condition, string define)
         {
-            var normalized = condition.Replace(" ", string.Empty);
-            if (normalized.Contains("!" + define, StringComparison.Ordinal)
-                || normalized.Contains("!defined(" + define + ")", StringComparison.Ordinal))
+            var normalized = StripOuterParens(condition.Replace(" ", string.Empty));
+            if (string.IsNullOrEmpty(normalized))
+                return GuardCondition.Unknown;
+
+            // Split on top-level `||` first (OR is lowest-precedence among the
+            // operators we handle). A condition `A || B` is RequiresDefine ONLY
+            // if every disjunct independently guarantees the define — otherwise
+            // a branch like `UNITY_EDITOR || DEFINE` would be wrongly treated as
+            // guarded when it can compile in the editor without DEFINE.
+            var disjuncts = SplitTopLevel(normalized, "||");
+
+            var allRequireDefine = true;
+            var allRequireNotDefine = true;
+            foreach (var disjunct in disjuncts)
             {
-                return GuardCondition.RequiresNotDefine;
+                var implies = ClassifyConjunction(StripOuterParens(disjunct), define);
+                if (implies != GuardCondition.RequiresDefine)
+                    allRequireDefine = false;
+                if (implies != GuardCondition.RequiresNotDefine)
+                    allRequireNotDefine = false;
+                if (!allRequireDefine && !allRequireNotDefine)
+                    return GuardCondition.Unknown;
             }
 
-            // Split by C preprocessor operators for exact identifier matching;
-            // avoids false match on superstring defines (e.g. DEFINE vs DEFINE_TEST).
-            var parts = normalized.Split(new[] { "&&", "||", "!", "(", ")" },
-                StringSplitOptions.RemoveEmptyEntries);
-            foreach (var part in parts)
+            if (allRequireDefine)
+                return GuardCondition.RequiresDefine;
+            if (allRequireNotDefine)
+                return GuardCondition.RequiresNotDefine;
+            return GuardCondition.Unknown;
+        }
+
+        private static GuardCondition ClassifyConjunction(string conjunction, string define)
+        {
+            if (string.IsNullOrEmpty(conjunction))
+                return GuardCondition.Unknown;
+
+            // A conjunction `A && B && ...` implies the define if ANY conjunct
+            // is the bare positive define; implies !define if any is negated.
+            var conjuncts = SplitTopLevel(conjunction, "&&");
+            foreach (var raw in conjuncts)
             {
-                if (part == define || part == "defined(" + define + ")")
+                var conjunct = StripOuterParens(raw);
+                if (conjunct == define || conjunct == "defined(" + define + ")")
                     return GuardCondition.RequiresDefine;
+                if (conjunct == "!" + define || conjunct == "!defined(" + define + ")")
+                    return GuardCondition.RequiresNotDefine;
             }
 
             return GuardCondition.Unknown;
+        }
+
+        private static string StripOuterParens(string value)
+        {
+            var current = value;
+            while (current.Length >= 2 && current[0] == '(' && current[current.Length - 1] == ')')
+            {
+                // Only strip if the leading '(' matches the trailing ')'.
+                var depth = 0;
+                var matched = true;
+                for (var i = 0; i < current.Length - 1; i++)
+                {
+                    if (current[i] == '(') depth++;
+                    else if (current[i] == ')') depth--;
+                    if (depth == 0)
+                    {
+                        matched = false;
+                        break;
+                    }
+                }
+
+                if (!matched)
+                    break;
+                current = current.Substring(1, current.Length - 2);
+            }
+
+            return current;
+        }
+
+        private static List<string> SplitTopLevel(string value, string separator)
+        {
+            var parts = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i <= value.Length - separator.Length; i++)
+            {
+                var c = value[i];
+                if (c == '(') depth++;
+                else if (c == ')') depth = Math.Max(0, depth - 1);
+                else if (depth == 0 && string.CompareOrdinal(value, i, separator, 0, separator.Length) == 0)
+                {
+                    parts.Add(value.Substring(start, i - start));
+                    i += separator.Length - 1;
+                    start = i + 1;
+                }
+            }
+
+            parts.Add(value.Substring(start));
+            return parts;
         }
 
         private enum GuardCondition
