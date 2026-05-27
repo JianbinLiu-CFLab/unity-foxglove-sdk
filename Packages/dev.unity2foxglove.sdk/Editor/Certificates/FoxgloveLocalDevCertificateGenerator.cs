@@ -178,10 +178,47 @@ namespace Unity.FoxgloveSDK.Editor
                 && !IPAddress.TryParse(host, out _)
                 && !string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
             {
-                names.Add(host.Trim());
+                var trimmed = host.Trim();
+                if (!IsSafeDnsName(trimmed))
+                    throw new ArgumentException(
+                        "Certificate DNS SAN host must contain only letters, digits, dots, or hyphens: " + trimmed,
+                        nameof(host));
+                names.Add(trimmed);
             }
 
             return names;
+        }
+
+        private static bool IsSafeDnsName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 253)
+                return false;
+
+            var labelLength = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (c == '.')
+                {
+                    if (labelLength == 0)
+                        return false;
+                    labelLength = 0;
+                    continue;
+                }
+
+                var allowed = (c >= 'A' && c <= 'Z')
+                              || (c >= 'a' && c <= 'z')
+                              || (c >= '0' && c <= '9')
+                              || c == '-';
+                if (!allowed)
+                    return false;
+
+                labelLength++;
+                if (labelLength > 63)
+                    return false;
+            }
+
+            return labelLength > 0;
         }
 
         /// <summary>Build IP SAN addresses for the generated local-development certificate.</summary>
@@ -421,7 +458,7 @@ namespace Unity.FoxgloveSDK.Editor
             var methods = target.GetType().GetMethods();
             foreach (var method in methods)
             {
-                if (method.Name == name && method.GetParameters().Length == args.Length)
+                if (method.Name == name && ParametersMatch(method.GetParameters(), args))
                     return method.Invoke(target, args);
             }
 
@@ -433,11 +470,40 @@ namespace Unity.FoxgloveSDK.Editor
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static);
             foreach (var method in methods)
             {
-                if (method.Name == name && method.GetParameters().Length == args.Length)
+                if (method.Name == name && ParametersMatch(method.GetParameters(), args))
                     return method.Invoke(null, args);
             }
 
             throw new MissingMethodException(type.FullName, name);
+        }
+
+        private static bool ParametersMatch(ParameterInfo[] parameters, object[] args)
+        {
+            if (parameters.Length != args.Length)
+                return false;
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameterType = parameters[i].ParameterType;
+                var arg = args[i];
+                if (arg == null)
+                {
+                    if (parameterType.IsValueType)
+                        return false;
+                    continue;
+                }
+
+                var argType = arg.GetType();
+                if (parameterType.IsAssignableFrom(argType))
+                    continue;
+
+                if (parameterType.IsPrimitive && argType.IsPrimitive)
+                    continue;
+
+                return false;
+            }
+
+            return true;
         }
 
         private static void AddExtension(object extensions, object extension)
@@ -538,13 +604,16 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
+                var legacyArgument = RequiresLegacyPkcs12Option(openssl, context.OutputDirectory)
+                    ? " -legacy"
+                    : string.Empty;
                 RunTool(
                     openssl,
                     $"req -x509 -newkey rsa:{FoxgloveLocalDevCertificateGenerator.RsaKeySizeBits} -sha256 -days {FoxgloveLocalDevCertificateGenerator.ValidityDays} -nodes -keyout {Quote(keyPath)} -out {Quote(context.RootCaPath)} -config {Quote(configPath)}",
                     context.OutputDirectory);
                 RunTool(
                     openssl,
-                    $"pkcs12 -export -out {Quote(context.PfxPath)} -inkey {Quote(keyPath)} -in {Quote(context.RootCaPath)} -passout pass: -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1",
+                    $"pkcs12 -export -out {Quote(context.PfxPath)} -inkey {Quote(keyPath)} -in {Quote(context.RootCaPath)} -passout pass: -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1{legacyArgument}",
                     context.OutputDirectory);
             }
             finally
@@ -552,6 +621,24 @@ namespace Unity.FoxgloveSDK.Editor
                 TryDelete(keyPath);
                 TryDelete(configPath);
             }
+        }
+
+        private static bool RequiresLegacyPkcs12Option(string openssl, string workingDirectory)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = openssl,
+                Arguments = "version",
+                WorkingDirectory = workingDirectory
+            };
+
+            var result = FoxgloveEditorProcessRunner.Run(psi, 10000);
+            if (result.TimedOut || result.ExitCode != 0)
+                return false;
+
+            var version = (result.Stdout + " " + result.Stderr).Trim();
+            return version.StartsWith("OpenSSL 3.", StringComparison.OrdinalIgnoreCase)
+                   || version.IndexOf("OpenSSL 3 ", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>Write a minimal OpenSSL config with local host names and IP addresses as SAN entries.</summary>

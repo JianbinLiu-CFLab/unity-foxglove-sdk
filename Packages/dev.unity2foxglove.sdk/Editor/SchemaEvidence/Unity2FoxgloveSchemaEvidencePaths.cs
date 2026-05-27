@@ -69,19 +69,19 @@ namespace Unity.FoxgloveSDK.Editor
                 candidate = fullCandidate.Substring(project.Length).Replace('\\', '/');
             }
 
-            if (candidate.Equals("Assets", StringComparison.Ordinal))
+            if (candidate.Equals("Assets", StringComparison.OrdinalIgnoreCase))
             {
                 normalized = "Assets";
                 return true;
             }
 
-            if (!candidate.StartsWith("Assets/", StringComparison.Ordinal))
+            if (!candidate.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
             {
                 error = "Schema evidence root must be an Assets-relative path, for example Assets/Generated.";
                 return false;
             }
 
-            normalized = candidate.TrimEnd('/');
+            normalized = "Assets" + candidate.Substring("Assets".Length).TrimEnd('/');
             return true;
         }
 

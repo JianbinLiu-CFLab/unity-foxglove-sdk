@@ -345,12 +345,26 @@ namespace Unity.FoxgloveSDK.Tests
                         : "ros2 help";
                 return new Ros2BridgeCommandResult(0, stdout, "", false, "", 1);
             }
+
+            public Ros2BridgeCommandResult Run(
+                string executable,
+                string arguments,
+                int timeoutMs,
+                System.Threading.CancellationToken cancellationToken)
+                => Run(executable, arguments, timeoutMs);
         }
 
         private sealed class LaunchFailureCommandRunner : IRos2BridgeCommandRunner
         {
             public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
                 => new Ros2BridgeCommandResult(-1, "", "", false, "file not found", 1);
+
+            public Ros2BridgeCommandResult Run(
+                string executable,
+                string arguments,
+                int timeoutMs,
+                System.Threading.CancellationToken cancellationToken)
+                => Run(executable, arguments, timeoutMs);
         }
 
         private sealed class FakeProbe : IRos2BridgeHealthProbe
@@ -375,6 +389,13 @@ namespace Unity.FoxgloveSDK.Tests
                     ? new Ros2BridgeProbeResult(true, "ok", _name, _version, 1)
                     : new Ros2BridgeProbeResult(false, "connection refused", durationMs: 1);
             }
+
+            public Ros2BridgeProbeResult Ping(
+                string host,
+                int port,
+                int timeoutMs,
+                System.Threading.CancellationToken cancellationToken)
+                => Ping(host, port, timeoutMs);
         }
     }
 }

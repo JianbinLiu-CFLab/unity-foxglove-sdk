@@ -65,6 +65,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var executable = options.EffectiveRos2Executable;
             ThrowIfCancellationRequested(options);
             var cli = RunRos2Command(
+                options,
                 Ros2CliId,
                 "ROS2 CLI",
                 executable,
@@ -88,6 +89,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
                 ThrowIfCancellationRequested(options);
                 var package = RunRos2Command(
+                    options,
                     FoxgloveMsgsId,
                     "foxglove_msgs",
                     executable,
@@ -184,7 +186,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     $"Checking interfaces {i + 1}/{entries.Count}",
                     i,
                     entries.Count));
-                var result = _commandRunner.Run(executable, "interface show " + schemaName, options.CommandTimeoutMs);
+                var result = _commandRunner.Run(
+                    executable,
+                    "interface show " + schemaName,
+                    options.CommandTimeoutMs,
+                    options.CancellationToken);
                 if (!result.Succeeded)
                     missing.Add(schemaName + " (" + CompactFailure(result) + ")");
             }
@@ -218,7 +224,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private Ros2BridgeHealthCheckResult CheckSidecarPing(Ros2BridgeHealthOptions options)
         {
-            var result = _healthProbe.Ping(options.Host, options.Port, options.SidecarTimeoutMs);
+            var result = _healthProbe.Ping(
+                options.Host,
+                options.Port,
+                options.SidecarTimeoutMs,
+                options.CancellationToken);
             if (result.Succeeded)
             {
                 var suffix = string.IsNullOrWhiteSpace(result.SidecarVersion)
@@ -243,6 +253,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         }
 
         private Ros2BridgeHealthCheckResult RunRos2Command(
+            Ros2BridgeHealthOptions options,
             string id,
             string title,
             string executable,
@@ -254,7 +265,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             bool warnOnLaunchFailure = false)
         {
             timeoutMs = Math.Max(1, timeoutMs);
-            var result = _commandRunner.Run(executable, arguments, timeoutMs);
+            var result = _commandRunner.Run(executable, arguments, timeoutMs, options.CancellationToken);
             if (result.Succeeded)
             {
                 return new Ros2BridgeHealthCheckResult(

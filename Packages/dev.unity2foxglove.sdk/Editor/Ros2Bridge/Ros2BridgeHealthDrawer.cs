@@ -5,6 +5,7 @@
 // Purpose: Inspector drawer for ROS2 Bridge health diagnostics.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using UnityEditor;
@@ -13,13 +14,27 @@ using UnityEngine;
 namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>Inspector UI for running ROS2 Bridge health checks and showing setup guidance.</summary>
-    internal sealed class Ros2BridgeHealthDrawer
+    internal sealed class Ros2BridgeHealthDrawer : IDisposable
     {
         private readonly object _gate = new object();
         private Task<Ros2BridgeHealthReport> _task;
+        private CancellationTokenSource _cancellation;
         private Ros2BridgeHealthReport _lastReport;
         private Ros2BridgeHealthProgress _progress;
         private string _lastError = string.Empty;
+
+        public Ros2BridgeHealthDrawer()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += CancelHealthCheck;
+        }
+
+        public void Dispose()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload -= CancelHealthCheck;
+            CancelHealthCheck();
+            _cancellation?.Dispose();
+            _cancellation = null;
+        }
 
         internal void Draw(SerializedObject serializedObject)
         {
@@ -32,6 +47,12 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (GUILayout.Button("Check ROS2 Bridge"))
                     StartHealthCheck(serializedObject);
+            }
+
+            using (new EditorGUI.DisabledScope(!running))
+            {
+                if (GUILayout.Button("Cancel ROS2 Bridge Check"))
+                    CancelHealthCheck();
             }
 
             CompleteTaskIfReady();
@@ -69,6 +90,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void StartHealthCheck(SerializedObject serializedObject)
         {
+            CancelHealthCheck();
             var host = ReadString(serializedObject, "_ros2BridgeHost", "127.0.0.1");
             var port = ReadInt(serializedObject, "_ros2BridgePort", 8767);
             var timeout = ReadInt(serializedObject, "_ros2BridgeSendTimeoutMs", 1000);
@@ -76,6 +98,8 @@ namespace Unity.FoxgloveSDK.Editor
             var pathSource = string.IsNullOrWhiteSpace(ros2)
                 ? Ros2BridgeRos2PathSource.Path
                 : Ros2BridgeRos2PathSource.EditorPrefs;
+            var cancellation = new CancellationTokenSource();
+            _cancellation = cancellation;
 
             lock (_gate)
             {
@@ -91,7 +115,8 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2PathSource: pathSource,
                 commandTimeoutMs: Math.Max(1000, timeout),
                 sidecarTimeoutMs: Math.Max(1000, timeout),
-                unityVersion: Application.unityVersion)
+                unityVersion: Application.unityVersion,
+                cancellationToken: cancellation.Token)
             {
                 Progress = progress =>
                 {
@@ -101,6 +126,16 @@ namespace Unity.FoxgloveSDK.Editor
             };
 
             _task = Task.Run(() => new Ros2BridgeHealthRunner().Run(options));
+        }
+
+        private void CancelHealthCheck()
+        {
+            var cancellation = _cancellation;
+            if (cancellation == null)
+                return;
+
+            try { cancellation.Cancel(); }
+            catch { }
         }
 
         private void CompleteTaskIfReady()
@@ -120,6 +155,8 @@ namespace Unity.FoxgloveSDK.Editor
             finally
             {
                 _task = null;
+                _cancellation?.Dispose();
+                _cancellation = null;
             }
         }
 
