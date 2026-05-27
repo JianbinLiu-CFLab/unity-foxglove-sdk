@@ -87,7 +87,7 @@ def read_sidecar_sha256(path: Path) -> str:
     text = path.read_text(encoding="utf-8", errors="replace").strip()
     if not text:
         return ""
-    return text.split()[0].lower()
+    return text.split()[0].lstrip("\ufeff").lower()
 
 
 def classify_file(name: str) -> str:

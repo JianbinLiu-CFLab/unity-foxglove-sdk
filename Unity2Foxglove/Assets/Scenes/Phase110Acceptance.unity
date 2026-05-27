@@ -188,6 +188,7 @@ MonoBehaviour:
   _statusMessage: Not started.
   _publishedCount: 0
   _receivedCount: 0
+  _droppedDirectReceivedCount: 0
   _lastReceived: 
   _lastError: 
 --- !u!1 &1959286318

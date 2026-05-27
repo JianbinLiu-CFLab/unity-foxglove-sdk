@@ -32,9 +32,9 @@ PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-jazzy-win64"
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-ARTIFACT_SHA256 = "22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188"
-ARTIFACT_SIZE = 16686195
-INVENTORY_FILE_COUNT = 1044
+ARTIFACT_SHA256 = "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232"
+ARTIFACT_SIZE = 17472174
+INVENTORY_FILE_COUNT = 1053
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "build" / "dist" / ARTIFACT_NAME
@@ -51,6 +51,10 @@ UPSTREAM_LICENSE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Upst
 UNITY_PACKAGE_PATH_PATCH_MARKER = "Unity2Foxglove package path support"
 LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
 MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."
+LOCAL_PATCH_OVERLAY_FILES = {
+    "Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs",
+    "Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs",
+}
 LEAKY_UPSTREAM_EXAMPLES = (
     "ROS2TalkerExample.cs",
     "ROS2ListenerExample.cs",
@@ -310,8 +314,9 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
     overlays: dict[str, str] = {}
     for path in scripts.rglob("*.cs"):
         text = path.read_text(encoding="utf-8", errors="replace")
-        if LOCAL_PATCH_MARKER in text:
-            overlays[path.relative_to(package).as_posix()] = text
+        relative = path.relative_to(package).as_posix()
+        if LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES:
+            overlays[relative] = text
     return overlays
 
 
@@ -499,7 +504,7 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-jazzy-win64`
 - Artifact source: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`
-- SHA-256: `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188`
+- SHA-256: `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
 
@@ -540,7 +545,7 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `22baf2b624b0fb171efc94b403876491a66e57b39b6f747a3c2e30644ce32188` |
+| SHA-256 | `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232` |
 | Inventory file count | `{file_count}` |
 
 ## Known Upstream Components

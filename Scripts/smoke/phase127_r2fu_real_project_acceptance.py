@@ -9,10 +9,11 @@
 
 Start Unity manually first, add/enable Phase127R2FURealProjectSmoke in the
 Phase106Acceptance scene, and press Play. This script then sets a Windows ROS2
-Jazzy environment and validates the external graph:
+Jazzy environment and validates the external data path:
 
   1. /unity2foxglove/phase127/in has a Unity subscription.
-  2. /unity2foxglove/phase127/out echoes a Unity tick.
+  2. /unity2foxglove/phase127/out echoes a Unity tick. Graph info is diagnostic
+     because Windows/Fast DDS topic-info snapshots can time out while echo works.
   3. Publishing inbound messages to /in succeeds.
 
 The optional positional path is the ROS2 Jazzy Windows root. It defaults to
@@ -29,6 +30,11 @@ import sys
 import time
 
 import _ros2_windows_env as ros2env
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
 
 DEFAULT_ROS2_ROOT = ros2env.DEFAULT_ROS2_ROOT
 NODE_NAME = "unity2foxglove_phase127"
@@ -63,6 +69,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=20.0,
         help="ROS2 spin time for echoing one Unity /out message.",
+    )
+    parser.add_argument(
+        "--echo-attempts",
+        type=int,
+        default=4,
+        help="How many bounded /out echo attempts to make before failing.",
     )
     parser.add_argument(
         "--publish-count",
@@ -145,6 +157,41 @@ def wait_for_subscription(
     )
 
 
+def echo_unity_tick(
+    pixi_python: pathlib.Path,
+    ros2_script: pathlib.Path,
+    env: dict[str, str],
+    spin_seconds: float,
+    attempts: int,
+) -> str:
+    """Echo Unity's /out topic, treating ROS graph probes as advisory only."""
+
+    last_output = ""
+    for attempt in range(1, max(1, attempts) + 1):
+        print(f"[phase127] Echo /out attempt {attempt}/{max(1, attempts)}")
+        try:
+            output = ros2env.echo_once(
+                pixi_python,
+                ros2_script,
+                env,
+                OUT_TOPIC,
+                MSG_TYPE,
+                spin_seconds,
+            )
+            last_output = output
+            if "phase127 unity smoke" in output:
+                return output
+        except subprocess.TimeoutExpired as exc:
+            last_output = f"<echo {OUT_TOPIC} timed out after {exc.timeout:.1f}s>"
+        except RuntimeError as exc:
+            last_output = str(exc)
+
+        if attempt < max(1, attempts):
+            time.sleep(2)
+
+    raise RuntimeError(f"Did not receive Phase127 Unity tick on {OUT_TOPIC}.\n{last_output}")
+
+
 def main(argv: list[str]) -> int:
     """Script entry point."""
 
@@ -165,26 +212,26 @@ def main(argv: list[str]) -> int:
     print("--- topic info /in ---")
     print(info.rstrip())
 
-    print("--- echo /out ---")
-    echo = ros2env.run_ros2(
+    print(f"[phase127] Probing Unity publisher graph state: {OUT_TOPIC}")
+    out_info = ros2env.probe_topic_info(
         pixi_python,
         ros2_script,
         env,
-        [
-            "topic",
-            "echo",
-            OUT_TOPIC,
-            MSG_TYPE,
-            "--once",
-            "--spin-time",
-            str(args.echo_spin_seconds),
-            "--no-daemon",
-        ],
-        timeout_seconds=args.echo_spin_seconds + 10.0,
-    ).stdout
+        OUT_TOPIC,
+        timeout_seconds=5.0,
+    )
+    print("--- topic info /out (diagnostic, not a hard gate) ---")
+    print(out_info.rstrip())
+
+    print("--- echo /out ---")
+    echo = echo_unity_tick(
+        pixi_python,
+        ros2_script,
+        env,
+        args.echo_spin_seconds,
+        args.echo_attempts,
+    )
     print(echo.rstrip())
-    if "phase127 unity smoke" not in echo:
-        raise RuntimeError(f"Did not receive Phase127 Unity tick on {OUT_TOPIC}.\n{echo}")
 
     print("--- pub /in ---")
     pub = ros2env.run_ros2(
