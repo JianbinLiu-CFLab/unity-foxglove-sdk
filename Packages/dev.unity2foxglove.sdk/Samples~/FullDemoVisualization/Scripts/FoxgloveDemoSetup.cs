@@ -20,13 +20,17 @@ public class FoxgloveDemoSetup : MonoBehaviour
 {
     internal const float ScaleMinimum = 0.2f;
     internal const float ScaleMaximum = 5f;
+    private const int ClientPayloadPreviewBytes = 160;
 
     [SerializeField] private FoxgloveManager _manager;
+    [SerializeField] private GameObject _cube;
 
     private uint _resetSvcId;
     private float _lastAppliedScale = -1f;
     private Color _lastAppliedColor = Color.clear;
     private bool _syncingColor;
+    private bool _warnedInvalidScale;
+    private bool _warnedPlayerTagFallback;
     private SynchronizationContext _unityContext;
     private FoxgloveSceneCubePublisher _scenePublisher;
     private GameObject _cachedCube;
@@ -51,7 +55,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
         rt.RegisterParameter("/cube/scale", 1.0, "number", true);
 
-        _resetSvcId = rt.RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor
+        _resetSvcId = _manager.RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor
         {
             Name = "/cube/reset_pose",
             Type = "/cube/reset_pose",
@@ -74,7 +78,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         });
 
         // Phase 8: log client-published messages to Unity Console.
-        rt.Session.OnClientMessage += OnClientMessageReceived;
+        _manager.OnClientMessage += OnClientMessageReceived;
 
         // Advertise /unity/client_log so Foxglove sees foxglove.Log in the schema picker.
         _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
@@ -104,8 +108,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         if (runtime != null)
         {
             runtime.Parameters.OnParameterChanged -= OnParameterChanged;
-            if (runtime.Session != null)
-                runtime.Session.OnClientMessage -= OnClientMessageReceived;
+            _manager.OnClientMessage -= OnClientMessageReceived;
             if (_resetSvcId != 0)
             {
                 runtime.UnregisterService(_resetSvcId);
@@ -142,8 +145,15 @@ public class FoxgloveDemoSetup : MonoBehaviour
                             cube.transform.localScale = new Vector3(clamped, clamped, clamped);
                     }
                 }
+                else
+                {
+                    WarnInvalidScaleOnce("non-finite scale value");
+                }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                WarnInvalidScaleOnce(ex.Message);
+            }
         }
     }
 
@@ -152,10 +162,20 @@ public class FoxgloveDemoSetup : MonoBehaviour
     /// </summary>
     private GameObject FindCube()
     {
+        if (_cube != null)
+            return _cube;
         if (_cachedCube != null)
             return _cachedCube;
         _cachedCube = GameObject.Find("Cube");
-        if (_cachedCube == null) _cachedCube = GameObject.FindGameObjectWithTag("Player");
+        if (_cachedCube == null)
+        {
+            _cachedCube = GameObject.FindGameObjectWithTag("Player");
+            if (_cachedCube != null && !_warnedPlayerTagFallback)
+            {
+                _warnedPlayerTagFallback = true;
+                Debug.LogWarning("[FoxgloveDemo] Cube object not found; using Player-tagged fallback object.");
+            }
+        }
         return _cachedCube;
     }
 
@@ -176,7 +196,8 @@ public class FoxgloveDemoSetup : MonoBehaviour
 
     private void OnClientMessageReceived(uint cid, uint chId, string topic, byte[] payload)
     {
-        Debug.Log($"[ClientMsg] client={cid} topic={topic} payload={Encoding.UTF8.GetString(payload)}");
+        payload ??= System.Array.Empty<byte>();
+        Debug.Log($"[ClientMsg] client={cid} channel={chId} topic={topic} bytes={payload.Length} preview={FormatPayloadPreview(payload)}");
     }
 
     /// <summary>
@@ -253,6 +274,38 @@ public class FoxgloveDemoSetup : MonoBehaviour
         catch
         {
             return false;
+        }
+    }
+
+    private void WarnInvalidScaleOnce(string reason)
+    {
+        if (_warnedInvalidScale)
+            return;
+
+        _warnedInvalidScale = true;
+        Debug.LogWarning("[FoxgloveDemo] Ignoring invalid /cube/scale parameter: " + reason);
+    }
+
+    private static string FormatPayloadPreview(byte[] payload)
+    {
+        var count = Mathf.Min(payload.Length, ClientPayloadPreviewBytes);
+        try
+        {
+            var text = new UTF8Encoding(false, true).GetString(payload, 0, count);
+            return payload.Length > count ? $"utf8:{text}..." : $"utf8:{text}";
+        }
+        catch
+        {
+            var builder = new StringBuilder(count * 3);
+            for (var i = 0; i < count; i++)
+            {
+                if (i > 0)
+                    builder.Append(' ');
+                builder.Append(payload[i].ToString("X2"));
+            }
+            if (payload.Length > count)
+                builder.Append(" ...");
+            return "hex:" + builder;
         }
     }
 }
