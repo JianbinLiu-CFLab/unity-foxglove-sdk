@@ -15,7 +15,7 @@ namespace ROS2
 {
 
 /// <summary>
-/// Interace for acquiring time
+/// Interface for acquiring time
 /// </summary>
 public interface ITimeSource
 {

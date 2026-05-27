@@ -54,6 +54,7 @@ namespace ROS2
 
         public ROS2UnityCore()
         {
+            Thread threadToStart;
             lock (mutex)
             {
                 ros2forUnity = new ROS2ForUnity();
@@ -64,8 +65,10 @@ namespace ROS2
 
                 executorThread = new Thread(() => Tick());
                 executorThread.IsBackground = true;
-                executorThread.Start();
+                threadToStart = executorThread;
             }
+
+            threadToStart.Start();
         }
 
         public ROS2Node CreateNode(string name)

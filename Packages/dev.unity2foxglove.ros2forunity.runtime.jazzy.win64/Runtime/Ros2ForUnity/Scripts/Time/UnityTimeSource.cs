@@ -33,7 +33,14 @@ public class UnityTimeSource : ITimeSource
   public UnityTimeSource()
   {
     mainThreadId = Thread.CurrentThread.ManagedThreadId;
-    lastReadingSecs = Time.timeAsDouble;
+    try
+    {
+      lastReadingSecs = Time.timeAsDouble;
+    }
+    catch (Exception exception)
+    {
+      throw new InvalidOperationException("UnityTimeSource must be constructed on the Unity main thread.", exception);
+    }
   }
 
   public void GetTime(out int seconds, out uint nanoseconds)

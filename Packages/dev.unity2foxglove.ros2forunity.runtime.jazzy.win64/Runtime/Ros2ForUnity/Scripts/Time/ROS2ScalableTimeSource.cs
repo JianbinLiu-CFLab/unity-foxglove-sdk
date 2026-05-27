@@ -27,6 +27,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
 {
   private Thread mainThread;
   private double lastReadingSecs;
+  private double lastTimeScale;
   private ROS2.Clock clock;
   private double initialTime = 0;
   private double initialTimeScale = 0;
@@ -37,6 +38,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   public ROS2ScalableTimeSource()
   {
     mainThread = Thread.CurrentThread;
+    RefreshUnityTimeCache();
   }
 
   public void GetTime(out int seconds, out uint nanoseconds)
@@ -54,18 +56,21 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
       clock = new ROS2.Clock();
     }
 
+    if (mainThread.Equals(Thread.CurrentThread))
+    {
+      RefreshUnityTimeCache();
+    }
+
     if (!initialTimeScaleAcquired)
     {
       initialTimeScaleAcquired = true;
-      initialTimeScale = Time.timeScale;
+      initialTimeScale = lastTimeScale;
     }
 
-    if (initialTimeScale != Time.timeScale)
+    if (initialTimeScale != lastTimeScale)
     {
       timeScaleChanged = true;
     }
-
-    lastReadingSecs = mainThread.Equals(Thread.CurrentThread) ? Time.timeAsDouble : lastReadingSecs;
 
     if (initialTimeScale == 1.0 && !timeScaleChanged)
     {
@@ -76,10 +81,16 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
       if (!initialTimeAcquired)
       {
         initialTimeAcquired = true;
-        initialTime = clock.Now.Seconds - Time.timeAsDouble;
+        initialTime = clock.Now.Seconds - lastReadingSecs;
       }
       TimeUtils.TimeFromTotalSeconds(lastReadingSecs + initialTime, out seconds, out nanoseconds);
     }
+  }
+
+  private void RefreshUnityTimeCache()
+  {
+    lastReadingSecs = Time.timeAsDouble;
+    lastTimeScale = Time.timeScale;
   }
 
   public void Dispose()

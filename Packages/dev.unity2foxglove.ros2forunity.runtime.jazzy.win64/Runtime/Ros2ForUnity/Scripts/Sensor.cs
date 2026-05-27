@@ -140,7 +140,6 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         string nsName = agentName.Replace(" ", "_");
         publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
         ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
-        publishing = true;
     }
 
     /// <summary>
@@ -185,8 +184,6 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     /// </summary>
     void Awake()
     {
-        // turn on publishing on start
-        publishing = true;
         CalculateFrameTime();
         lastTimestamp = DateTime.UtcNow.Ticks / 1E7;
     }
