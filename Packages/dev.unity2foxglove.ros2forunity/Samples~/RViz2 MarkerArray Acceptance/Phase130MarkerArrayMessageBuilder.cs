@@ -39,24 +39,29 @@ public static class Phase130MarkerArrayMessageBuilder
         Vector3 scale,
         Color color,
         int sec,
-        uint nanosec)
+        uint nanosec,
+        string frameId = DefaultFrameId)
     {
         return new visualization_msgs.msg.MarkerArray
         {
             Markers = new[]
             {
-                CreateAddOrModifyMarker(stableName, position, scale, color, sec, nanosec)
+                CreateAddOrModifyMarker(stableName, position, scale, color, sec, nanosec, frameId)
             }
         };
     }
 
-    public static visualization_msgs.msg.MarkerArray BuildDelete(string stableName, int sec, uint nanosec)
+    public static visualization_msgs.msg.MarkerArray BuildDelete(
+        string stableName,
+        int sec,
+        uint nanosec,
+        string frameId = DefaultFrameId)
     {
         return new visualization_msgs.msg.MarkerArray
         {
             Markers = new[]
             {
-                CreateBaseMarker(stableName, sec, nanosec, visualization_msgs.msg.Marker.DELETE, visualization_msgs.msg.Marker.CUBE)
+                CreateBaseMarker(stableName, sec, nanosec, visualization_msgs.msg.Marker.DELETE, visualization_msgs.msg.Marker.CUBE, frameId)
             }
         };
     }
@@ -67,7 +72,7 @@ public static class Phase130MarkerArrayMessageBuilder
         {
             Markers = new[]
             {
-                CreateBaseMarker("delete_all", sec, nanosec, visualization_msgs.msg.Marker.DELETEALL, visualization_msgs.msg.Marker.CUBE)
+                CreateDeleteAllMarker(sec, nanosec)
             }
         };
     }
@@ -78,11 +83,12 @@ public static class Phase130MarkerArrayMessageBuilder
         Vector3 scale,
         Color color,
         int sec,
-        uint nanosec)
+        uint nanosec,
+        string frameId)
     {
         return new visualization_msgs.msg.Marker
         {
-            Header = CreateHeader(sec, nanosec),
+            Header = CreateHeader(sec, nanosec, frameId),
             Ns = DefaultNamespace,
             Id = CreateDeterministicId(stableName),
             Type = visualization_msgs.msg.Marker.CUBE,
@@ -95,15 +101,35 @@ public static class Phase130MarkerArrayMessageBuilder
         };
     }
 
-    private static visualization_msgs.msg.Marker CreateBaseMarker(string stableName, int sec, uint nanosec, int action, int type)
+    private static visualization_msgs.msg.Marker CreateBaseMarker(
+        string stableName,
+        int sec,
+        uint nanosec,
+        int action,
+        int type,
+        string frameId)
     {
         return new visualization_msgs.msg.Marker
         {
-            Header = CreateHeader(sec, nanosec),
+            Header = CreateHeader(sec, nanosec, frameId),
             Ns = DefaultNamespace,
             Id = CreateDeterministicId(stableName),
             Type = type,
             Action = action,
+            Lifetime = ZeroLifetime(),
+            Frame_locked = false
+        };
+    }
+
+    private static visualization_msgs.msg.Marker CreateDeleteAllMarker(int sec, uint nanosec)
+    {
+        return new visualization_msgs.msg.Marker
+        {
+            Header = CreateHeader(sec, nanosec),
+            Ns = string.Empty,
+            Id = 0,
+            Type = visualization_msgs.msg.Marker.CUBE,
+            Action = visualization_msgs.msg.Marker.DELETEALL,
             Lifetime = ZeroLifetime(),
             Frame_locked = false
         };
@@ -144,7 +170,7 @@ public static class Phase130MarkerArrayMessageBuilder
         };
     }
 
-    private static std_msgs.msg.Header CreateHeader(int sec, uint nanosec)
+    private static std_msgs.msg.Header CreateHeader(int sec, uint nanosec, string frameId = DefaultFrameId)
     {
         return new std_msgs.msg.Header
         {
@@ -153,7 +179,7 @@ public static class Phase130MarkerArrayMessageBuilder
                 Sec = sec,
                 Nanosec = nanosec
             },
-            Frame_id = DefaultFrameId
+            Frame_id = string.IsNullOrWhiteSpace(frameId) ? DefaultFrameId : frameId.Trim()
         };
     }
 

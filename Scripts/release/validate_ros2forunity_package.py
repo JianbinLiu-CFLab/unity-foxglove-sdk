@@ -948,7 +948,8 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         and "double[36]" in standard_sources
         and "rgb8" in standard_sources
         and "step = checked((uint)(width * 3))" in standard_sources
-        and "data.Length must equal height * step" in standard_sources,
+        and "expectedLength = checked(height * (int)step)" in standard_sources
+        and "new byte[expectedLength]" in standard_sources,
         rel(STANDARD_MESSAGES_SAMPLE),
     )
     add(

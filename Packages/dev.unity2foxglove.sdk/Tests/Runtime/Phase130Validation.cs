@@ -179,7 +179,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("Nanosec = 0u", StringComparison.Ordinal)
                   && builder.Contains("Frame_locked = false", StringComparison.Ordinal),
                 "130D-4: builder sets zero lifetime and does not frame-lock markers");
-            Check(builder.Contains("BuildDelete(string stableName", StringComparison.Ordinal)
+            Check(builder.Contains("BuildDelete(", StringComparison.Ordinal)
+                  && builder.Contains("string stableName", StringComparison.Ordinal)
                   && builder.Contains("CreateBaseMarker(stableName", StringComparison.Ordinal)
                   && builder.Contains("Ns = DefaultNamespace", StringComparison.Ordinal)
                   && builder.Contains("Id = CreateDeterministicId(stableName)", StringComparison.Ordinal),

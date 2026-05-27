@@ -43,10 +43,16 @@ It does not add CameraInfo, raw Image, CompressedImage, IMU, Odometry, PoseStamp
 
 ## Windows Acceptance Helper
 
-Run Unity first, then execute this canonical command from the repository root:
+Run Unity first. For full external ROS2 topic checks plus RViz2 launch, use the one-command helper from the repository root:
 
 ```text
-python Scripts\smoke\phase131_standard_visualization_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization v1\rviz2_phase131_standard_visualization.rviz" --launch-rviz
+python Scripts\smoke\phase131_standard_visualization_acceptance.py
+```
+
+If your ROS2 root or sample path differs from the default, override them explicitly:
+
+```text
+python Scripts\smoke\phase131_standard_visualization_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization v1\rviz2_phase131_standard_visualization.rviz"
 ```
 
 The helper uses:
@@ -55,7 +61,13 @@ The helper uses:
 <ros2-root>\.pixi\envs\default\python.exe <ros2-root>\Scripts\ros2-script.py
 ```
 
-It checks publisher endpoints and bounded echoes for `/tf`, `/scan`, `/points`, and `/markers`. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting. Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for canonical same-machine acceptance unless deliberately debugging discovery.
+The acceptance helper launches RViz2 first, prints timestamped RViz2 startup diagnostics, then checks publisher endpoints and bounded echoes for `/tf`, `/scan`, `/points`, and `/markers`. Add `--no-launch-rviz` only when you want CLI checks without RViz2. Add `--rmw rmw_cyclonedds_cpp` if your Unity/R2FU runtime is using Cyclone DDS instead of the default Fast DDS setting. Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for canonical same-machine acceptance unless deliberately debugging discovery.
+
+To open only RViz2 without one-shot CLI echo checks, use this Python launcher:
+
+```text
+python Scripts\smoke\launch_phase131_rviz2.py
+```
 
 RViz2 is launched directly through `<ros2-root>\bin\rviz2.exe` with RViz2/Ogre/gz_math DLL directories added to `PATH`. This avoids treating a bare `ros2` launcher as the primary Windows path.
 

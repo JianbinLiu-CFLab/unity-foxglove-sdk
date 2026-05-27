@@ -406,12 +406,13 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
         // ROS2 builtin_interfaces/Time.sec is int32; this smoke follows that ROS2/Y2038 wire limit.
         sec = checked((int)wholeSeconds);
-        nanosec = (uint)Math.Min(999999999d, Math.Max(0d, Math.Round(fractional * 1000000000d)));
-        if (nanosec == 1000000000u)
+        var nanos = (uint)Math.Max(0d, Math.Round(fractional * 1000000000d));
+        if (nanos >= 1000000000u)
         {
             sec = checked(sec + 1);
-            nanosec = 0u;
+            nanos -= 1000000000u;
         }
+        nanosec = nanos;
     }
 
     private static double RealtimeSeconds()
@@ -447,6 +448,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _navSatFixPublisher = null;
         _node = null;
         _executorStarted = false;
+        _warnedMissingStartExecutor = false;
 
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);
@@ -475,10 +477,11 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
             return;
 
         _runtimeRootLogged = true;
-        var root = FindRuntimeRoot();
+        var root = ResolveRuntimeRoot();
         _runtimeRoot = root ?? string.Empty;
+        const string runtimePackagePrefix = "Packages/dev.unity2foxglove.ros2forunity" + ".runtime.";
         _runtimeRootIsPackage = !string.IsNullOrEmpty(root)
-            && root.Replace('\\', '/').Contains("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.OrdinalIgnoreCase);
+            && root.Replace('\\', '/').Contains(runtimePackagePrefix, StringComparison.OrdinalIgnoreCase);
         _assetRuntimePresent = Directory.Exists(Path.Combine(Application.dataPath, "Ros2ForUnity"));
 
         Debug.Log(LogPrefix + " RUNTIME_ROOT=" + _runtimeRoot);
@@ -486,22 +489,19 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         Debug.Log(LogPrefix + " ASSET_RUNTIME_PRESENT=" + _assetRuntimePresent);
     }
 
-    private static string FindRuntimeRoot()
+    private static string ResolveRuntimeRoot()
     {
-        var projectRoot = Directory.GetParent(Application.dataPath);
-        if (projectRoot == null)
-            return string.Empty;
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var type = assembly.GetType("ROS2." + "ROS2ForUnity");
+            var method = type?.GetMethod(
+                "GetRos2ForUnityPath",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (method?.Invoke(null, null) is string root)
+                return root;
+        }
 
-        var packagesRoot = Path.Combine(projectRoot.FullName, "Packages");
-        if (!Directory.Exists(packagesRoot))
-            return string.Empty;
-
-        var candidates = Directory.GetDirectories(packagesRoot, "dev.unity2foxglove.ros2forunity.runtime.*");
-        if (candidates.Length == 0)
-            return string.Empty;
-
-        Array.Sort(candidates, StringComparer.OrdinalIgnoreCase);
-        return candidates[candidates.Length - 1];
+        return string.Empty;
     }
 }
 
