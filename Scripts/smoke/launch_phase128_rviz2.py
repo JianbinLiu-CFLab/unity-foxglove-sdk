@@ -15,13 +15,12 @@ Phase128Rviz2TfLaserScanSmoke publishing before launching RViz2.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
-import subprocess
 import sys
 
+import _ros2_windows_env as ros2env
 
-DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows")
+DEFAULT_ROS2_ROOT = ros2env.DEFAULT_ROS2_ROOT
 DEFAULT_RVIZ_CONFIG = pathlib.Path(
     r"Packages\dev.unity2foxglove.ros2forunity\Samples~"
     r"\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
@@ -61,93 +60,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--no-software-rendering",
         action="store_true",
-        help="Do not set QT_OPENGL/QT_QUICK_BACKEND/LIBGL_ALWAYS_SOFTWARE.",
+        help="Compatibility no-op. Shared launcher always uses the known-good software rendering env.",
+    )
+    parser.add_argument(
+        "--rmw",
+        default=None,
+        help="Override RMW_IMPLEMENTATION. Omit to preserve the shell value or shared default.",
+    )
+    parser.add_argument(
+        "--domain-id",
+        default=None,
+        help="Override ROS_DOMAIN_ID. Omit to preserve the shared default.",
+    )
+    parser.add_argument(
+        "--rviz-startup-check-seconds",
+        type=float,
+        default=1.5,
+        help="Seconds to wait for an immediate RViz2 process exit after launch.",
+    )
+    parser.add_argument(
+        "--rviz-window-wait-seconds",
+        type=float,
+        default=45.0,
+        help="Seconds to wait for a visible RViz2 window after launch.",
     )
     return parser.parse_args(argv)
-
-
-def find_workspace_root() -> pathlib.Path:
-    """Find the repository root from either cwd or this script location."""
-
-    starts = [pathlib.Path.cwd(), pathlib.Path(__file__).resolve().parent]
-    for start in starts:
-        for candidate in (start, *start.parents):
-            if (candidate / "Packages").is_dir() and (candidate / "Scripts").is_dir():
-                return candidate
-    return pathlib.Path.cwd()
-
-
-def resolve_existing_path(path_text: str, description: str, workspace_root: pathlib.Path) -> pathlib.Path:
-    """Resolve an absolute or workspace-relative path and require it to exist."""
-
-    path = pathlib.Path(path_text)
-    candidates = [path] if path.is_absolute() else [workspace_root / path, pathlib.Path.cwd() / path]
-    for candidate in candidates:
-        try:
-            return candidate.resolve(strict=True)
-        except FileNotFoundError:
-            continue
-
-    path = candidates[0]
-    try:
-        return path.resolve(strict=True)
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"{description} does not exist: {path}") from exc
-
-
-def build_rviz_env(
-    ros2_root: pathlib.Path,
-    discovery_range: str | None,
-    software_rendering: bool,
-) -> dict[str, str]:
-    """Build the Windows Jazzy environment required by direct rviz2.exe launch."""
-
-    pixi = ros2_root / ".pixi" / "envs" / "default"
-    path_entries = [
-        ros2_root / "bin",
-        ros2_root / "Scripts",
-        pixi,
-        pixi / "Library" / "bin",
-        pixi / "Scripts",
-        ros2_root / "opt" / "rviz_ogre_vendor" / "bin",
-        ros2_root / "opt" / "gz_math_vendor" / "bin",
-        pathlib.Path(r"C:\Windows\system32"),
-        pathlib.Path(r"C:\Windows"),
-        pathlib.Path(r"C:\Windows\System32\Wbem"),
-        pathlib.Path(r"C:\Windows\System32\WindowsPowerShell\v1.0"),
-    ]
-
-    missing = [path for path in path_entries if not path.exists()]
-    if missing:
-        details = "\n".join(f"  missing: {path}" for path in missing)
-        raise FileNotFoundError(f"Required RViz2 PATH entries are missing:\n{details}")
-
-    env = os.environ.copy()
-    env["PATH"] = os.pathsep.join(str(path) for path in path_entries)
-    env["PYTHONPATH"] = str(ros2_root / "Lib" / "site-packages")
-    env["AMENT_PREFIX_PATH"] = str(ros2_root)
-    env["CMAKE_PREFIX_PATH"] = str(ros2_root)
-    env["COLCON_PREFIX_PATH"] = str(ros2_root)
-    env["COLCON_PYTHON_EXECUTABLE"] = str(pixi / "python.exe")
-    env["ROS_VERSION"] = "2"
-    env["ROS_PYTHON_VERSION"] = "3"
-    env["ROS_DISTRO"] = "jazzy"
-    env["ROS_DOMAIN_ID"] = "0"
-    env["RMW_IMPLEMENTATION"] = env.get("RMW_IMPLEMENTATION") or "rmw_fastrtps_cpp"
-
-    if discovery_range:
-        env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = discovery_range
-    else:
-        env.pop("ROS_AUTOMATIC_DISCOVERY_RANGE", None)
-    env.pop("ROS_LOCALHOST_ONLY", None)
-    env.pop("ROS_DISCOVERY_SERVER", None)
-
-    if software_rendering:
-        env["QT_OPENGL"] = "software"
-        env["QT_QUICK_BACKEND"] = "software"
-        env["LIBGL_ALWAYS_SOFTWARE"] = "1"
-
-    return env
 
 
 def print_summary(
@@ -172,27 +109,31 @@ def main(argv: list[str]) -> int:
     """Run the launcher and return a process-style exit code."""
 
     args = parse_args(argv)
-    workspace_root = find_workspace_root()
-    ros2_root = resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
-    rviz_config = resolve_existing_path(args.rviz_config, "RViz2 config", workspace_root)
+    workspace_root = ros2env.find_workspace_root()
+    ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
+    rviz_config = ros2env.resolve_existing_path(args.rviz_config, "RViz2 config", workspace_root)
     rviz_exe = ros2_root / "bin" / "rviz2.exe"
     if not rviz_exe.exists():
         raise FileNotFoundError(f"rviz2.exe not found: {rviz_exe}")
 
-    env = build_rviz_env(
-        ros2_root,
-        discovery_range=args.discovery_range,
-        software_rendering=not args.no_software_rendering,
-    )
+    ros2env.validate_ros2_root(ros2_root)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
     print_summary(ros2_root, rviz_exe, rviz_config, env)
+    if args.no_software_rendering:
+        print("[phase128] --no-software-rendering is ignored by the shared launcher.")
 
     if args.dry_run:
         print("[phase128] Dry run only; RViz2 was not launched.")
         return 0
 
-    command = [str(rviz_exe), "-d", str(rviz_config)]
-    process = subprocess.Popen(command, cwd=str(ros2_root), env=env)
-    print(f"[phase128] Launched RViz2 pid={process.pid}")
+    process = ros2env.launch_rviz(
+        ros2_root,
+        rviz_config,
+        env,
+        "phase128",
+        startup_check_seconds=args.rviz_startup_check_seconds,
+        window_wait_seconds=args.rviz_window_wait_seconds,
+    )
     if args.detached:
         return 0
 

@@ -40,6 +40,7 @@ TF_MSG_TYPE = "tf2_msgs/msg/TFMessage"
 SCAN_MSG_TYPE = "sensor_msgs/msg/LaserScan"
 POINTS_MSG_TYPE = "sensor_msgs/msg/PointCloud2"
 MARKERS_MSG_TYPE = "visualization_msgs/msg/MarkerArray"
+POSITIVE_YAML_FLOAT_RE = r"-\s*(?:(?:[1-9][0-9]*)(?:\.[0-9]*)?|0\.[0-9]*[1-9][0-9]*)(?:[eE][+-]?[0-9]+)?\s*$"
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -141,7 +142,7 @@ def validate_scan_echo(output: str) -> None:
     """Validate LaserScan echo contains a non-empty scan in the laser frame."""
 
     require_tokens("LaserScan echo", output, ["frame_id: laser", "angle_min:", "angle_max:", "ranges:"])
-    if not re.search(r"-\s*[1-9][0-9]*(?:\.[0-9]+)?", output):
+    if not re.search(POSITIVE_YAML_FLOAT_RE, output, re.MULTILINE):
         raise RuntimeError(f"LaserScan echo did not contain a positive range.\n{output}")
 
 
@@ -155,14 +156,12 @@ def validate_pointcloud2_echo(output: str) -> None:
 
 
 def validate_markerarray_echo(output: str) -> None:
-    """Validate MarkerArray echo contains a bounded cube marker or cleanup action."""
+    """Validate MarkerArray echo contains a bounded ADD/MODIFY cube marker."""
 
     require_tokens("MarkerArray echo", output, ["markers:", "frame_id: map", "ns: unity2foxglove", "id:"])
-    if "action: 3" in output:
-        return
     require_tokens("MarkerArray echo", output, ["type: 1", "lifetime:"])
-    if "action: 0" not in output and "action: 2" not in output:
-        raise RuntimeError(f"MarkerArray echo did not contain ADD or DELETE action.\n{output}")
+    if "action: 0" not in output:
+        raise RuntimeError(f"MarkerArray echo did not contain an ADD/MODIFY action.\n{output}")
 
 
 def launch_rviz_before_echo(
@@ -286,7 +285,15 @@ def main(argv: list[str]) -> int:
     print("--- echo /markers ---")
     stage_started = time.perf_counter()
     ros2env.log_event("phase131", "echo start topic=/markers")
-    markers_echo = ros2env.echo_once(pixi_python, ros2_script, env, MARKERS_TOPIC, MARKERS_MSG_TYPE, args.echo_spin_seconds)
+    markers_echo = echo_until_tokens(
+        pixi_python,
+        ros2_script,
+        env,
+        MARKERS_TOPIC,
+        MARKERS_MSG_TYPE,
+        args.echo_spin_seconds,
+        ["action: 0", "type: 1", "ns: unity2foxglove"],
+    )
     print(markers_echo.rstrip())
     validate_markerarray_echo(markers_echo)
     ros2env.log_event("phase131", f"echo done topic=/markers elapsed={time.perf_counter() - stage_started:.3f}s")

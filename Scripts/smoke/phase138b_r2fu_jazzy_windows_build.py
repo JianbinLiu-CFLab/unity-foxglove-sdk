@@ -18,6 +18,7 @@ import argparse
 import datetime as _dt
 import os
 import pathlib
+import re
 import shutil
 import stat
 import subprocess
@@ -84,6 +85,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--log-prefix", default="phase138b")
+    parser.add_argument(
+        "--evidence-path",
+        default="",
+        help="Optional evidence markdown output path. Relative paths resolve from --repo-root.",
+    )
     return parser.parse_args(argv)
 
 
@@ -250,8 +256,7 @@ def classify_output(output: str) -> str:
         or "catkin_pkg" in lower
         or "ament_package" in lower
         or "anaconda3" in lower
-        or "python313" in lower
-        or "python312" in lower
+        or re.search(r"python3[0-9]{2,}", lower) is not None
     ):
         return "BLOCKED_PYTHON_SELECTION"
     if "visualstudioversion is not set" in lower or "vsdevcmd" in lower:
@@ -338,6 +343,7 @@ def resolve_vs_dev_cmd(explicit: str, env: dict[str, str], log_file: pathlib.Pat
 def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_file: pathlib.Path) -> dict[str, str]:
     """Import VsDevCmd.bat -arch=x64 -host_arch=x64 into a Python environment."""
 
+    reject_cmd_shell_unsafe_path("VsDevCmd.bat", vs_dev_cmd)
     command = f'call "{vs_dev_cmd}" -arch=x64 -host_arch=x64 >nul && set'
     with log_file.open("a", encoding="utf-8", errors="replace") as log:
         log.write(f"\n\n$ {command}\n# cwd={vs_dev_cmd.parent}\n")
@@ -366,6 +372,13 @@ def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_f
     return merged
 
 
+def reject_cmd_shell_unsafe_path(label: str, path: pathlib.Path) -> None:
+    """Reject a path that cannot be safely embedded in a cmd.exe quoted string."""
+
+    if '"' in str(path):
+        raise Phase138BError("BLOCKED_VSDEV_ENV", f"{label} contains an unsupported quote: {path}")
+
+
 def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: pathlib.Path) -> dict[str, str]:
     """Remove common Python contamination and pin ROS2 Jazzy paths."""
 
@@ -392,7 +405,6 @@ def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: p
     merged_path = os.pathsep.join([str(path) for path in path_entries] + filtered_existing)
     cleaned.pop("Path", None)
     cleaned["PATH"] = merged_path
-    cleaned["Path"] = merged_path
     cleaned["COLCON_PYTHON_EXECUTABLE"] = str(python)
     cleaned["PYTHONUTF8"] = "1"
     cleaned["TEMP"] = str(temp_root)
@@ -425,7 +437,7 @@ def is_contaminating_python_path(entry: str) -> bool:
         "python312",
         "python313",
     )
-    return any(token in lower for token in blocked)
+    return any(token in lower for token in blocked) or re.search(r"python3[0-9]{2,}", lower) is not None
 
 
 def capture_ros2_environment(ros2_root: pathlib.Path, env: dict[str, str], log_file: pathlib.Path) -> dict[str, str]:
@@ -574,15 +586,6 @@ def patch_ros2cs_jazzy_windows_standalone(checkout: pathlib.Path, log_file: path
 
     cmake = checkout / "src" / "ros2cs" / "src" / "ros2cs" / "ros2cs_core" / "CMakeLists.txt"
     text = cmake.read_text(encoding="utf-8")
-    old = """    set(third_party_standalone_libs
-      libssl-1_1-x64.dll
-      libcrypto-1_1-x64.dll
-      msvcp140.dll
-      vcruntime140.dll
-      vcruntime140_1.dll
-      tinyxml2.dll
-    )
-"""
     new = """    set(third_party_standalone_libs
       msvcp140.dll
       vcruntime140.dll
@@ -601,13 +604,28 @@ def patch_ros2cs_jazzy_windows_standalone(checkout: pathlib.Path, log_file: path
       )
     endif()
 """
-    if new in text:
+    if "libssl-3-x64.dll" in text and "ros2_distro STREQUAL \"jazzy\"" in text:
         patched = False
-    elif old in text:
-        cmake.write_text(text.replace(old, new), encoding="utf-8")
-        patched = True
     else:
-        raise Phase138BError("BLOCKED_ROS2CS_BUILD", "Could not patch ros2cs_core OpenSSL standalone DLL list")
+        pattern = re.compile(
+            r"(?ms)^[ \t]*set\(\s*third_party_standalone_libs\b.*?^[ \t]*\)\s*$"
+        )
+        matches = [
+            match
+            for match in pattern.finditer(text)
+            if "libssl-1_1-x64.dll" in match.group(0)
+            and "libcrypto-1_1-x64.dll" in match.group(0)
+            and "tinyxml2.dll" in match.group(0)
+        ]
+        if len(matches) != 1:
+            raise Phase138BError(
+                "BLOCKED_ROS2CS_BUILD",
+                f"Could not patch ros2cs_core OpenSSL standalone DLL list; matches={len(matches)}",
+            )
+
+        match = matches[0]
+        cmake.write_text(text[: match.start()] + new + text[match.end() :], encoding="utf-8")
+        patched = True
 
     with log_file.open("a", encoding="utf-8", errors="replace") as log:
         state = "applied" if patched else "already-present"
@@ -897,7 +915,13 @@ def main(argv: list[str]) -> int:
     ensure_dir(log_dir)
     ensure_dir(temp_root)
     log_file = log_dir / f"{args.log_prefix}_{timestamp()}.log"
-    evidence_path = repo_root / "Developer" / "87 Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence.md"
+    evidence_path = (
+        (repo_root / args.evidence_path).resolve()
+        if args.evidence_path and not pathlib.Path(args.evidence_path).is_absolute()
+        else pathlib.Path(args.evidence_path).resolve()
+        if args.evidence_path
+        else repo_root / "Developer" / "87 Phase138B R2FU Jazzy Windows Build Toolchain Closure Evidence.md"
+    )
     vs_dev_cmd: pathlib.Path | None = None
     effective_generator = "unresolved"
 
