@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 1 Tests ---");
+            _passCount = 0;
 
             TestFakeTransportServerInfo();
             TestServerInfoJsonContent();
@@ -161,9 +162,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestRealWebSocketConnect()
         {
             using var runtime = new FoxgloveRuntime();
-            var port = GetFreeTcpPort(18767);
+            var port = GetEphemeralTcpPort();
             runtime.Start("IntegrationTest", "127.0.0.1", port);
-            Thread.Sleep(50);
 
             try
             {
@@ -178,7 +178,6 @@ namespace Unity.FoxgloveSDK.Tests
 
                 // Read the first message (should be serverInfo)
                 var buffer = new byte[4096];
-                Task.Delay(100).Wait(); // let server finish sending serverInfo
                 var result = ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token).GetAwaiter().GetResult();
 
                 Assert(result.MessageType == WebSocketMessageType.Text, "First message is text (serverInfo)");
@@ -206,9 +205,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestBadSubprotocolRejected()
         {
             using var runtime = new FoxgloveRuntime();
-            var port = GetFreeTcpPort(18768);
+            var port = GetEphemeralTcpPort();
             runtime.Start("BadSubprotocolTest", "127.0.0.1", port);
-            Thread.Sleep(50);
 
             try
             {
@@ -243,32 +241,6 @@ namespace Unity.FoxgloveSDK.Tests
             finally
             {
                 runtime.Dispose();
-            }
-        }
-
-        private static int GetFreeTcpPort(int preferredPort)
-        {
-            if (CanBind(preferredPort))
-                return preferredPort;
-            return GetEphemeralTcpPort();
-        }
-
-        private static bool CanBind(int port)
-        {
-            TcpListener listener = null;
-            try
-            {
-                listener = new TcpListener(IPAddress.Loopback, port);
-                listener.Start();
-                return true;
-            }
-            catch (SocketException)
-            {
-                return false;
-            }
-            finally
-            {
-                listener?.Stop();
             }
         }
 

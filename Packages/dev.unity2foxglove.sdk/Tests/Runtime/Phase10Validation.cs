@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 10 Tests ---");
+            _passCount = 0;
 
             TestMagicBytes();
             TestMinimalValidFile();

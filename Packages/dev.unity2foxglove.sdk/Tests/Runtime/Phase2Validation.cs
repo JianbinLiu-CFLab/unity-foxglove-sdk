@@ -7,8 +7,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -45,6 +48,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 2 Tests ---");
+            _passCount = 0;
 
             // A: Protocol DTO snapshots
             TestAdvertiseSchemaNullNormalized();
@@ -301,7 +305,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestRuntimeProxyMethods()
         {
             var runtime = new FoxgloveRuntime();
-            runtime.Start("ProxyTest", "127.0.0.1", 18770);
+            runtime.Start("ProxyTest", "127.0.0.1", GetEphemeralTcpPort());
             try
             {
                 var ch = new AdvertiseChannel { Id = 1, Topic = "/t", Encoding = "json" };
@@ -471,7 +475,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             // Should not throw or disconnect
             fake.SimulateText(1, "{\"op\":\"unknownOp\",\"data\":{}}");
-            Assert(true, "Unknown op does not disconnect client");
+            AssertClientCanStillSubscribeAndReceive(session, fake, "Unknown op leaves client usable");
         }
 
         /// <summary>
@@ -485,7 +489,7 @@ namespace Unity.FoxgloveSDK.Tests
             fake.SimulateConnect(1);
 
             fake.SimulateText(1, "not json at all");
-            Assert(true, "Malformed JSON does not disconnect client");
+            AssertClientCanStillSubscribeAndReceive(session, fake, "Malformed JSON leaves client usable");
         }
 
         // ── E: Publish routing ──
@@ -599,13 +603,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var transport = new ManagedWsBackend();
             var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
-            runtime.Start("R1", "127.0.0.1", 18780);
+            var port = GetEphemeralTcpPort();
+            runtime.Start("R1", "127.0.0.1", port);
             runtime.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/t1", Encoding = "json" });
             var sid1 = runtime.Session.SessionId;
             runtime.Stop();
 
             // Restart with same transport — should not leak old session event handlers
-            runtime.Start("R2", "127.0.0.1", 18780);
+            runtime.Start("R2", "127.0.0.1", port);
             runtime.RegisterChannel(new AdvertiseChannel { Id = 2, Topic = "/t2", Encoding = "json" });
             Assert(runtime.Session.SessionId != sid1, "Restarted session has different SessionId");
             Assert(runtime.Session.Channels.Count == 1, "Restarted session has clean channel state");
@@ -614,7 +619,7 @@ namespace Unity.FoxgloveSDK.Tests
             var ws = new ClientWebSocket();
             ws.Options.AddSubProtocol(Subprotocol.SdkV1);
             var cts = new CancellationTokenSource(5000);
-            ws.ConnectAsync(new Uri("ws://127.0.0.1:18780/"), cts.Token).GetAwaiter().GetResult();
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
             Assert(ws.State == WebSocketState.Open, "Restart: WebSocket connected");
 
             var buf = new byte[4096];
@@ -647,7 +652,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestRealWebSocketPublishSubscribe()
         {
             using var runtime = new FoxgloveRuntime();
-            runtime.Start("RealPublishTest", "127.0.0.1", 18781);
+            var port = GetEphemeralTcpPort();
+            runtime.Start("RealPublishTest", "127.0.0.1", port);
             runtime.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/t", Encoding = "json" });
 
             try
@@ -655,7 +661,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var ws = new ClientWebSocket();
                 ws.Options.AddSubProtocol(Subprotocol.SdkV1);
                 var cts = new CancellationTokenSource(10000);
-                ws.ConnectAsync(new Uri("ws://127.0.0.1:18781/"), cts.Token).GetAwaiter().GetResult();
+                ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
                 Assert(ws.State == WebSocketState.Open, "Integration: WebSocket connected");
 
                 // Read serverInfo
@@ -677,8 +683,8 @@ namespace Unity.FoxgloveSDK.Tests
                 ws.SendAsync(new ArraySegment<byte>(subBytes), WebSocketMessageType.Text, true, cts.Token)
                     .GetAwaiter().GetResult();
 
-                // Give server a moment to process subscribe
-                Task.Delay(100).Wait();
+                Assert(SpinUntil(() => runtime.Session.HasChannelDemand(1), 2000),
+                    "Integration: subscribe processed before publish");
 
                 // Publish payload
                 var payload = Encoding.UTF8.GetBytes("{\"x\":1}");
@@ -701,11 +707,11 @@ namespace Unity.FoxgloveSDK.Tests
                 var unsubBytes = Encoding.UTF8.GetBytes(unsubJson);
                 ws.SendAsync(new ArraySegment<byte>(unsubBytes), WebSocketMessageType.Text, true, cts.Token)
                     .GetAwaiter().GetResult();
-                Task.Delay(100).Wait();
+                Assert(SpinUntil(() => !runtime.Session.HasChannelDemand(1), 2000),
+                    "Integration: unsubscribe processed before negative publish");
 
                 // Publish again — should not receive
                 runtime.Publish(1, payload);
-                Task.Delay(200).Wait();
 
                 // Use a cancellable receive so the negative assertion does not
                 // leave a pending ReceiveAsync that later aborts cleanup.
@@ -757,6 +763,44 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 ws.Dispose();
             }
+        }
+
+        private static void AssertClientCanStillSubscribeAndReceive(
+            FoxgloveSession session,
+            Phase2FakeTransport fake,
+            string label)
+        {
+            session.RegisterChannel(new AdvertiseChannel { Id = 77, Topic = "/stability", Encoding = "json" });
+            fake.SimulateText(1, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":991,\"channelId\":77}]}");
+            session.Publish(77, Encoding.UTF8.GetBytes("{\"ok\":true}"));
+            Assert(fake.SentBinaries(1).Count == 1, label);
+        }
+
+        private static int GetEphemeralTcpPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        private static bool SpinUntil(Func<bool> condition, int timeoutMs)
+        {
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                if (condition())
+                    return true;
+                Thread.Sleep(10);
+            }
+
+            return condition();
         }
 
         private static void CancelAndObserveReceive(
