@@ -63,11 +63,14 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
         private bool _runtimeLogged;
         private bool _inboundDeadlineArmed;
         private float _inboundDeadlineAt = float.PositiveInfinity;
+        private bool _previousRunInBackground;
+        private bool _executorsStarted;
         private bool _previousEnterPlayModeOptionsEnabled;
         private EnterPlayModeOptions _previousEnterPlayModeOptions;
 
         private BatchRunner()
         {
+            _previousRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
             _directMode = ReadBool("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_DIRECT", false);
             _requireInbound = ReadBool("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_REQUIRE_INBOUND", true);
@@ -124,14 +127,14 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
             if (_smoke == null)
                 throw new InvalidOperationException("Could not find Phase110Ros2ForUnityStringSmoke in " + ScenePath);
 
-            var type = typeof(Phase110Ros2ForUnityStringSmoke);
-            SetPrivateField(type, _smoke, "_useDirectRuntime", _directMode);
-            SetPrivateField(type, _smoke, "_nodeName", NodeName);
-            SetPrivateField(type, _smoke, "_outTopic", OutTopic);
-            SetPrivateField(type, _smoke, "_inTopic", InTopic);
-            SetPrivateField(type, _smoke, "_enablePublisher", true);
-            SetPrivateField(type, _smoke, "_enableSubscription", true);
-            SetPrivateField(type, _smoke, "_publishIntervalSeconds", 0.5f);
+            _smoke.ConfigureForBatch(
+                _directMode,
+                NodeName,
+                OutTopic,
+                InTopic,
+                enablePublisher: true,
+                enableSubscription: true,
+                publishIntervalSeconds: 0.5f);
 
             _startExecutor = typeof(ROS2UnityComponent).GetMethod(
                 "StartExecutor",
@@ -163,10 +166,10 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
                 LogRuntimeRootOnce();
                 EnsureExecutorsStarted();
 
-                var published = ReadInt("_publishedCount");
-                var received = ReadInt("_receivedCount");
-                var status = ReadString("_statusMessage");
-                var lastError = ReadString("_lastError");
+                var published = _smoke.PublishedCount;
+                var received = _smoke.ReceivedCount;
+                var status = _smoke.StatusMessage;
+                var lastError = _smoke.LastError;
 
                 if (!_readyLogged && published > 0)
                 {
@@ -233,14 +236,21 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 
         private void EnsureExecutorsStarted()
         {
-            if (_startExecutor == null)
+            if (_executorsStarted)
                 return;
+
+            if (_startExecutor == null)
+            {
+                _executorsStarted = true;
+                return;
+            }
 
             var components = UnityEngine.Object.FindObjectsByType<ROS2UnityComponent>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);
             for (var i = 0; i < components.Length; i++)
                 _startExecutor.Invoke(components[i], null);
+            _executorsStarted = true;
         }
 
         private void Pass(int published, int received, string status)
@@ -259,10 +269,10 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
             Debug.LogError(LogPrefix + " UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_FAIL "
                            + message
                            + " mode=" + (_directMode ? "direct" : "facade")
-                           + " published=" + SafeReadInt("_publishedCount")
-                           + " received=" + SafeReadInt("_receivedCount")
-                           + " status=" + SafeReadString("_statusMessage")
-                           + " lastError=" + SafeReadString("_lastError"));
+                           + " published=" + (_smoke == null ? -1 : _smoke.PublishedCount)
+                           + " received=" + (_smoke == null ? -1 : _smoke.ReceivedCount)
+                           + " status=" + (_smoke == null ? "<unavailable>" : _smoke.StatusMessage)
+                           + " lastError=" + (_smoke == null ? "<unavailable>" : _smoke.LastError));
             Complete(1);
         }
 
@@ -273,6 +283,7 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 
             _completed = true;
             EditorApplication.update -= Tick;
+            Application.runInBackground = _previousRunInBackground;
             EditorSettings.enterPlayModeOptionsEnabled = _previousEnterPlayModeOptionsEnabled;
             EditorSettings.enterPlayModeOptions = _previousEnterPlayModeOptions;
             try
@@ -286,56 +297,6 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
             }
 
             EditorApplication.Exit(exitCode);
-        }
-
-        private int SafeReadInt(string fieldName)
-        {
-            try
-            {
-                return ReadInt(fieldName);
-            }
-            catch (Exception)
-            {
-                return -1;
-            }
-        }
-
-        private string SafeReadString(string fieldName)
-        {
-            try
-            {
-                return ReadString(fieldName);
-            }
-            catch (Exception)
-            {
-                return "<unavailable>";
-            }
-        }
-
-        private int ReadInt(string fieldName)
-        {
-            return (int)GetPrivateField(typeof(Phase110Ros2ForUnityStringSmoke), _smoke, fieldName);
-        }
-
-        private string ReadString(string fieldName)
-        {
-            return (string)GetPrivateField(typeof(Phase110Ros2ForUnityStringSmoke), _smoke, fieldName);
-        }
-
-        private static object GetPrivateField(Type type, object instance, string name)
-        {
-            var field = type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field == null)
-                throw new MissingFieldException(type.FullName, name);
-            return field.GetValue(instance);
-        }
-
-        private static void SetPrivateField(Type type, object instance, string name, object value)
-        {
-            var field = type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field == null)
-                throw new MissingFieldException(type.FullName, name);
-            field.SetValue(instance, value);
         }
 
         private static string ResolveRuntimeRoot()

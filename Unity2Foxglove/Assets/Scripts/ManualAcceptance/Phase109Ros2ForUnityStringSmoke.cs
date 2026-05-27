@@ -26,6 +26,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
     private float _nextPublishTime;
     private bool _warnedMissingDefine;
     private bool _loggedFirstPublish;
+    private bool _previousRunInBackground;
     private Phase109Ros2ForUnityContext _context;
     private IUnity2FoxgloveRos2Node _node;
 
@@ -36,6 +37,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnEnable()
     {
+        _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishTime = 0f;
         _publishedCount = 0;
@@ -73,6 +75,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnDisable()
     {
+        Application.runInBackground = _previousRunInBackground;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         _subscription?.Dispose();
         _subscription = null;
@@ -106,12 +109,23 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
         if (_publisher != null && _subscription != null)
             return;
 
-        if (_node == null)
-            _node = _context.CreateNode("unity2foxglove_phase109");
+        try
+        {
+            if (_node == null)
+                _node = _context.CreateNode("unity2foxglove_phase109");
 
-        _subscription = _node.CreateSubscription<std_msgs.msg.String>(InTopic, OnStringReceived);
-        _publisher = _node.CreatePublisher<std_msgs.msg.String>(OutTopic);
-        _statusMessage = "Phase109 ROS2 For Unity string smoke ready.";
+            if (_subscription == null)
+                _subscription = _node.CreateSubscription<std_msgs.msg.String>(InTopic, OnStringReceived);
+            if (_publisher == null)
+                _publisher = _node.CreatePublisher<std_msgs.msg.String>(OutTopic);
+
+            _statusMessage = "Phase109 ROS2 For Unity string smoke ready.";
+        }
+        catch (System.Exception ex)
+        {
+            _statusMessage = "Phase109 endpoint creation failed: " + ex.Message;
+            throw;
+        }
     }
 
     private void PublishIfDue()

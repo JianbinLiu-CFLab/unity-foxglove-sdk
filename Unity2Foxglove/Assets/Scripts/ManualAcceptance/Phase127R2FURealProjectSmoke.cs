@@ -64,6 +64,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private bool _firstPublishLogged;
     private bool _greenLogged;
     private int _loggedReceivedCount;
+    private bool _previousRunInBackground;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private ROS2UnityComponent _ros2Unity;
@@ -78,6 +79,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void OnEnable()
     {
+        _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishAt = 0f;
         _publishedCount = 0;
@@ -118,6 +120,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void OnDisable()
     {
+        Application.runInBackground = _previousRunInBackground;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         CleanupManualRuntime();
 #endif
@@ -314,15 +317,22 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void UpdateGreenStatus()
     {
-        if (_greenLogged || _publishedCount < 1 || _receivedCount < _minInboundCount)
+        var received = SnapshotReceivedCount();
+        if (_greenLogged || _publishedCount < 1 || received < _minInboundCount)
             return;
 
         _greenLogged = true;
-        _statusMessage = "GREEN: published=" + _publishedCount + " received=" + _receivedCount;
+        _statusMessage = "GREEN: published=" + _publishedCount + " received=" + received;
         Debug.Log(LogPrefix + " UNITY2FOXGLOVE_R2FU_MANUAL_GREEN"
                   + " published=" + _publishedCount
-                  + " received=" + _receivedCount
+                  + " received=" + received
                   + " minInbound=" + _minInboundCount);
+    }
+
+    private int SnapshotReceivedCount()
+    {
+        lock (_receiveGate)
+            return _receivedCount;
     }
 
     private void CleanupManualRuntime()
@@ -443,9 +453,11 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         private bool _runtimeRootLogged;
         private bool _completed;
         private float _inboundDeadlineAt;
+        private bool _previousRunInBackground;
 
         private BatchRunner()
         {
+            _previousRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
             _initialPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
             _requireInbound = string.Equals(
@@ -514,12 +526,14 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
                               + " inTopic=" + InTopic);
                 }
 
-                if (_requireInbound && Time.realtimeSinceStartup > _inboundDeadlineAt && _received < _minInboundCount)
+                var received = SnapshotReceivedCount();
+
+                if (_requireInbound && Time.realtimeSinceStartup > _inboundDeadlineAt && received < _minInboundCount)
                     Fail("Inbound ROS2 message was not received before timeout.");
 
                 if (Time.realtimeSinceStartup - _startedAt >= _holdSeconds
                     && _published >= 3
-                    && (!_requireInbound || _received >= _minInboundCount))
+                    && (!_requireInbound || received >= _minInboundCount))
                     Pass();
             }
             catch (Exception ex)
@@ -627,9 +641,10 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
         private void Pass()
         {
+            var received = SnapshotReceivedCount();
             Debug.Log(LogPrefix + " UNITY2FOXGLOVE_R2FU_RUNTIME_SMOKE_GREEN"
                       + " published=" + _published
-                      + " received=" + _received
+                      + " received=" + received
                       + " minInbound=" + _minInboundCount
                       + " heldSeconds=" + (Time.realtimeSinceStartup - _startedAt).ToString("0.0"));
             Complete(0);
@@ -637,10 +652,11 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
         private void Fail(string message)
         {
+            var received = SnapshotReceivedCount();
             Debug.LogError(LogPrefix + " UNITY2FOXGLOVE_R2FU_RUNTIME_SMOKE_FAIL "
                            + message
                            + " published=" + _published
-                           + " received=" + _received
+                           + " received=" + received
                            + " minInbound=" + _minInboundCount
                            + DescribeNativeEntityState());
             Complete(1);
@@ -653,6 +669,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
             _completed = true;
             EditorApplication.update -= Tick;
+            Application.runInBackground = _previousRunInBackground;
             Cleanup();
             EditorApplication.Exit(exitCode);
         }
@@ -714,11 +731,22 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
             var ros2NodeField = typeof(ROS2Node).GetField(
                 "node",
                 BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (ros2NodeField == null)
+                return " nativeNodeDiagnostic=<unavailable:ROS2Node.node field missing>"
+                       + " publisherCreated=" + (_publisher != null)
+                       + " subscriptionCreated=" + (_subscription != null);
+
             var nativeNode = ros2NodeField?.GetValue(_node);
             return " nativeNodeType=" + (nativeNode?.GetType().FullName ?? "<null>")
                    + " nativeSubscriptions=" + CountCollectionProperty(nativeNode, "Subscriptions")
                    + " publisherCreated=" + (_publisher != null)
                    + " subscriptionCreated=" + (_subscription != null);
+        }
+
+        private int SnapshotReceivedCount()
+        {
+            lock (_receiveGate)
+                return _received;
         }
 
         private static int CountCollectionProperty(object instance, string propertyName)
