@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!string.IsNullOrEmpty(source),
                 "88C-1: Phase88 fanout smoke source exists");
             Check(source.Contains("FoxglovePointCloudPublisher _rawPublisher")
-                  && source.Contains("FoxgloveCompressedPointCloudPublisher _compressedPublisher")
+                  && source.Contains("FoxglovePointCloudPublisher _compressedPublisher")
                   && source.Contains("_rawPublisher.SetFrame(frame)")
                   && source.Contains("_compressedPublisher.SetFrame(frame)"),
                 "88C-2: fanout source feeds raw and compressed publishers from one frame");
