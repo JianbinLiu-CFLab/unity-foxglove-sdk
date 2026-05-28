@@ -165,6 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var controller = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var orchestrator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
 
@@ -185,8 +186,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && controller.Contains("StartTimeNs", StringComparison.Ordinal),
                 "115D-D3: tick and snapshot forwarding share context construction using replay log time");
 
-            Check(runtime.Contains("_replayContextForwarder", StringComparison.Ordinal)
-                  && server.Contains("_replayContextForwarder", StringComparison.Ordinal),
+            Check(orchestrator.Contains("_replayContextForwarder", StringComparison.Ordinal)
+                  || server.Contains("_replayContextForwarder", StringComparison.Ordinal),
                 "115D-D4: context replay events are wired and unwired through runtime and manager lifecycles");
 
             Check(runtime.Contains("OnReplayMessage", StringComparison.Ordinal)

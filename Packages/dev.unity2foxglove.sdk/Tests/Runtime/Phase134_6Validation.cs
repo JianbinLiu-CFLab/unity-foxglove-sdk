@@ -145,9 +145,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && handshakeSource.Contains("string.Equals(origin, \"file://\"", StringComparison.Ordinal)
                   && !handshakeSource.Contains("StartsWith(\"file://\"", StringComparison.Ordinal),
                 "134-6C-8: WebSocket Origin guard only auto-allows exact file origin");
+            var tickSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             Check(playbackSource.Contains("not internally synchronized", StringComparison.Ordinal)
                   && playbackSource.Contains("NormalizeSpeed", StringComparison.Ordinal)
-                  && runtimeSource.Contains("Invalid playback speed", StringComparison.Ordinal),
+                  && tickSource.Contains("Invalid playback speed", StringComparison.Ordinal),
                 "134-6C-9: playback clock thread-safety and invalid speed fallback are explicit");
         }
 

@@ -95,12 +95,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayDispatchLeavesPlaybackLockBeforeUserCallbacks()
         {
-            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
-            Check(runtimeSource.Contains("_replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true)", StringComparison.Ordinal)
-                  && runtimeSource.Contains("_replay.Tick(session, _playbackClock.NowNs, deferCallbacks: true)", StringComparison.Ordinal)
-                  && runtimeSource.Contains("_replay.DrainReplayCallbacks()", StringComparison.Ordinal),
+            Check(runtimeSource.Contains("replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true)", StringComparison.Ordinal)
+                  && runtimeSource.Contains("replay.Tick(session, playbackClock.NowNs, deferCallbacks: true)", StringComparison.Ordinal)
+                  && runtimeSource.Contains("replay.DrainReplayCallbacks()", StringComparison.Ordinal),
                 "134-3C-1: runtime defers replay callbacks until after playback lock scope");
             Check(replaySource.Contains("DrainReplayCallbacks", StringComparison.Ordinal)
                   && replaySource.Contains("ReplayCallbackDispatch", StringComparison.Ordinal)

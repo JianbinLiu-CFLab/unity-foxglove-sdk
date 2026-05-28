@@ -584,14 +584,15 @@ namespace Unity.FoxgloveSDK.Tests
             var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
             var playbackHandlerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var tickSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
                 && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
                 && sessionSource.Contains("_playback.Drain()", StringComparison.Ordinal),
                 "Playback control requests are queued by the transport thread and drained by runtime Tick");
-            var drainIndex = runtimeSource.IndexOf("DrainPlaybackControls()", StringComparison.Ordinal);
-            var clockTickIndex = runtimeSource.IndexOf("_playbackClock.Tick()", StringComparison.Ordinal);
+            var drainIndex = tickSource.IndexOf("DrainPlaybackControls()", StringComparison.Ordinal);
+            var clockTickIndex = tickSource.IndexOf("playbackClock.Tick()", StringComparison.Ordinal);
             Assert(drainIndex >= 0 && clockTickIndex > drainIndex,
                 "Runtime drains playback controls before advancing replay time");
             Assert(replaySource.Contains("PublishMessages(session, messages, nowNs, \"Tick\", forwardToScene: true)", StringComparison.Ordinal),
