@@ -116,6 +116,7 @@
     <Compile Include="Phase137BValidation.cs" />
     <Compile Include="Phase137CValidation.cs" />
     <Compile Include="Phase137DValidation.cs" />
+    <Compile Include="Phase137EValidation.cs" />
     <Compile Include="Phase137Validation.cs" />
     <Compile Include="Phase142Validation.cs" />
     <Compile Include="Phase143Validation.cs" />
