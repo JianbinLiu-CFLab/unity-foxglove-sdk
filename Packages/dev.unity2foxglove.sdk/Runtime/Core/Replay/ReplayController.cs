@@ -146,26 +146,58 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>
         /// Creates a replay controller using the provided logger for warnings and
-        /// playback diagnostics.
+        /// playback diagnostics. Uses the supplied recording state reader for
+        /// mutual-exclusion checks and the clock for playback range control.
         /// </summary>
-        public ReplayController(IFoxgloveLogger logger)
+        public ReplayController(IFoxgloveLogger logger, IRecordingStateReader recordingState, IRangePlaybackClock clock)
         {
             _logger = logger;
+            _recordingState = recordingState;
+            _clock = clock;
         }
 
         /// <summary>
-        /// Load an MCAP file for replay.
-        /// <para>Disables any previous replay state first. If recording is active,
-        /// replay is declined with a warning. Strict blocks only confirmed
-        /// FoxRun schema mismatches, Warn logs and continues, and Off skips
-        /// schema identity enforcement. Sets the playback clock range, then starts playback.</para>
+        /// Creates a replay controller using the provided logger for warnings and
+        /// playback diagnostics.
         /// </summary>
+        [Obsolete("Use ReplayController(IFoxgloveLogger, IRecordingStateReader, IRangePlaybackClock) instead.")]
+        public ReplayController(IFoxgloveLogger logger) : this(logger, null, null) { }
+
+        private readonly IRecordingStateReader _recordingState;
+        private readonly IRangePlaybackClock _clock;
+
+        /// <summary>
+        /// Load an MCAP file for replay with the default Strict schema identity mode.
+        /// Recording-state and coordinate-mode values are read from the injected
+        /// <see cref="IRecordingStateReader"/>.
+        /// </summary>
+        public void Enable(string filePath, SchemaIdentityMode identityMode = SchemaIdentityMode.Strict)
+        {
+            var recordingEnabled = _recordingState != null && _recordingState.IsEnabled;
+            var coordinateMode = _recordingState?.CoordinateMode ?? "";
+            EnableCore(filePath, recordingEnabled, coordinateMode, identityMode);
+        }
+
+        /// <summary>
+        /// Load an MCAP file for replay with externally supplied playback-clock,
+        /// recording-state, and coordinate-mode values.
+        /// </summary>
+        [Obsolete("Use Enable(string, SchemaIdentityMode) — recording state and clock are now supplied through the constructor.")]
         public void Enable(
             string filePath,
             PlaybackClock playbackClock,
             bool recordingEnabled,
             string currentCoordinateMode = "",
             SchemaIdentityMode identityMode = SchemaIdentityMode.Strict)
+        {
+            EnableCore(filePath, recordingEnabled, currentCoordinateMode, identityMode);
+        }
+
+        private void EnableCore(
+            string filePath,
+            bool recordingEnabled,
+            string currentCoordinateMode,
+            SchemaIdentityMode identityMode)
         {
             lock (_replayEngineLock)
             {
@@ -188,7 +220,7 @@ namespace Unity.FoxgloveSDK.Core
                     var summary = _replayEngine.Summary;
                     if (identityMode != SchemaIdentityMode.Off)
                     {
-                        var schemaGuard = EvaluateFoxRunReplaySchemaGuard(_replayEngine);
+                        var schemaGuard = ReplaySchemaGuard.Evaluate(_replayEngine);
                         if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch)
                             _lastEnableHadSchemaMismatch = true;
 
@@ -217,17 +249,10 @@ namespace Unity.FoxgloveSDK.Core
 
                     if (summary?.Channels != null)
                     {
-                        foreach (var ch in summary.Channels)
-                        {
-                            if (ch.Metadata != null && ch.Metadata.TryGetValue("coordinate_mode", out var mcapMode)
-                                && !string.IsNullOrEmpty(mcapMode))
-                            {
-                                if (mcapMode != currentCoordinateMode)
-                                    _logger.LogWarning($"MCAP '{Path.GetFileName(filePath)}' was recorded with coordinate_mode '{mcapMode}', " +
-                                        $"but current mode is '{currentCoordinateMode}'. Mismatch may cause incorrect object transforms.");
-                                break;
-                            }
-                        }
+                        var modeWarning = ReplayCoordinateModeGuard.FindMismatch(
+                            summary.Channels, currentCoordinateMode, filePath);
+                        if (modeWarning != null)
+                            _logger.LogWarning(modeWarning);
                     }
 
                     _channelTopicMap = new Dictionary<ushort, string>();
@@ -239,15 +264,15 @@ namespace Unity.FoxgloveSDK.Core
                         {
                             _channelTopicMap[c.Id] = c.Topic;
                             _channelMap[c.Id] = c;
-                            var schema = _summarySchemas != null && _summarySchemas.TryGetValue(c.SchemaId, out var s) ? s : null;
+                            var s = _summarySchemas != null && _summarySchemas.TryGetValue(c.SchemaId, out var schema) ? schema : null;
                             _channelBehaviorMap[c.Id] = ReplayChannelBehaviorClassifier.ClassifyChannel(
                                 c.MessageEncoding,
-                                schema?.Name,
-                                schema?.Encoding,
+                                s?.Name,
+                                s?.Encoding,
                                 c.Topic);
                         }
 
-                    playbackClock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
+                    _clock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
                     _replayEngine.Play();
                     _replayEnabled = true;
                     _hasPanelHistoryTime = false;
@@ -266,18 +291,6 @@ namespace Unity.FoxgloveSDK.Core
                     _replayEnabled = false;
                 }
             }
-        }
-
-        private static FoxRunReplaySchemaGuardResult EvaluateFoxRunReplaySchemaGuard(McapReplayEngine replayEngine)
-        {
-            var metadata = replayEngine?.FindMetadata(FoxRunSchemaMcapMetadata.MetadataName);
-            if (metadata == null)
-                return FoxRunSchemaMcapMetadata.CreateMissingRecordedResult();
-
-            if (metadata.Metadata == null || !metadata.Metadata.TryGetValue("value", out var value))
-                return FoxRunSchemaMcapMetadata.CreateMalformedRecordedResult("Metadata record is missing the value entry.");
-
-            return FoxRunSchemaMcapMetadata.EvaluateRecordedJson(value, FoxRunSchemaInfoRegistry.Current);
         }
 
         private static string CreateWarnModeSchemaMismatchMessage(FoxRunReplaySchemaGuardResult result)

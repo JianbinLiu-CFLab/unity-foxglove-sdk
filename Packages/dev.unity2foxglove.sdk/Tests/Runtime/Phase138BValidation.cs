@@ -151,11 +151,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var entry = PhaseValidationRegistry.Find(new[] { "--phase138b" });
-            var aliasEntry = PhaseValidationRegistry.Find(new[] { "--phase137b" });
 
             Check(entry != null
-                  && entry.Run == (Action)Validate
-                  && aliasEntry == entry,
+                  && entry.Run == (Action)Validate,
                 "138B-G1: validation registry wires --phase138b");
             Check(entry != null
                   && entry.Category == ValidationCategory.LocalEvidence

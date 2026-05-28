@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// This clock is not internally synchronized; runtime owners must serialize
     /// Tick, Apply, and state reads through their playback-control lock.
     /// </summary>
-    public class PlaybackClock : IFoxgloveClock
+    public class PlaybackClock : IRangePlaybackClock
     {
         /// <summary>Playback lifecycle states.</summary>
         private enum PlaybackStatus : byte

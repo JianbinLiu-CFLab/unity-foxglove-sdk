@@ -104,8 +104,8 @@ namespace Unity.FoxgloveSDK.Core
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
             TryRegisterRos2MsgSchemas();
-            _recording = new RecordingController(_logger);
-            _replay = new ReplayController(_logger);
+            _recording = new RecordingController(_logger, _playbackClock);
+            _replay = new ReplayController(_logger, _recording, _playbackClock);
             _replaySnapshots = new ReplaySnapshotStateMachine();
         }
 
@@ -196,7 +196,7 @@ namespace Unity.FoxgloveSDK.Core
                     session.EnableProtobuf();
                 if (enableCdrClientPublish && _ros2MsgSchemasRegistered)
                     session.EnableCdr();
-                _recording.AttachToSession(_playbackClock, _parameters, session);
+                _recording.AttachToSession(_parameters, session);
                 session.Start(host, port);
 
                 _session = session;
@@ -512,10 +512,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Enable MCAP replay; fails if recording is active.</summary>
         public void EnableReplay(string filePath)
-            => _replay.Enable(filePath, _playbackClock, _recording.IsEnabled, _recording.CoordinateMode);
+            => _replay.Enable(filePath);
         /// <summary>Enable MCAP replay using the selected schema identity policy.</summary>
         public void EnableReplay(string filePath, SchemaIdentityMode identityMode)
-            => _replay.Enable(filePath, _playbackClock, _recording.IsEnabled, _recording.CoordinateMode, identityMode);
+            => _replay.Enable(filePath, identityMode);
         /// <summary>Disable replay and dispose the engine.</summary>
         public void DisableReplay()
         {
