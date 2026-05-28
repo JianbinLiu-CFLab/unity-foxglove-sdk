@@ -242,7 +242,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - WSL2 and remote Linux ROS2 peer topologies, validated with both Default Discovery and Discovery Server RMW modes
 
 > [!IMPORTANT]
-> Windows Defender Firewall may block inbound UDP for Fast DDS (DDS) discovery. Before running R2FU cross-machine smoke, install an Inbound Allow rule for the Unity Editor (or the relevant DDS UDP ports), or use a Fast DDS Discovery Server to collapse traffic to a single port. See report 20 for root cause evidence.
+> Windows Defender Firewall may block inbound UDP for Fast DDS (DDS) discovery. Before running R2FU cross-machine smoke, install an Inbound Allow rule for the Unity Editor (or the relevant DDS UDP ports), or use a Fast DDS Discovery Server to collapse traffic to a single port.
 
 ### Not Supported
 

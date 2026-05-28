@@ -92,8 +92,8 @@ This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go ne
 - Packages must work independently and compose cleanly: the core SDK works by itself, the ROS2 For Unity adapter package compiles and reports a missing runtime gracefully, a runtime package exposes metadata/diagnostics by itself, and adapter plus runtime enables Unity-as-ROS2-node publish/subscribe.
 - The current R2FU direction is Jazzy-first for Windows x64. A rebuilt Jazzy standalone runtime has passed Unity + Windows ROS2 Jazzy bidirectional `std_msgs/msg/String` data-path smoke without reproducing the old Humble runtime crash. Humble remains legacy/fallback evidence, not the recommended new-user runtime line.
 - Runtime binary artifacts are release/package artifacts, not core SDK dependencies. The planned first runtime package is `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`; it must include runtime inventory, checksums, third-party notices, license inventory, and fresh-project acceptance before it can be treated as bundled-ready.
-- Windows Firewall may block inbound UDP for R2FU DDS discovery; see report 20 for root cause and Discovery Server / firewall rule fixes. WSL2 is a valid topology with proper firewall configuration.
-- Standard-message, RViz2, rosbag2, MarkerArray, PointCloud2, and MCAP fanout plans are deferred into the 170-series until the R2FU adapter/runtime package line is stable. Those plans should build on the optional R2FU package and runtime packages instead of extending the old sidecar or embedded native spike routes.
+- Windows Firewall may block inbound UDP for R2FU DDS discovery; configure Inbound Allow rules for the Unity Editor or use a Fast DDS Discovery Server. WSL2 is a valid topology with proper firewall configuration.
+- Standard-message, RViz2, rosbag2, MarkerArray, PointCloud2, and MCAP fanout plans are deferred until the R2FU adapter/runtime package line is stable. Those plans should build on the optional R2FU package and runtime packages instead of extending the old sidecar or embedded native spike routes.
 
 ## 3. Long-Term Ideas
 
