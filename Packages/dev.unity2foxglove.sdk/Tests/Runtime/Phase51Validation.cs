@@ -346,7 +346,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(transport.DataBinary.Count == 1,
                 "51B-19: live MessageData publish uses data binary priority");
 
-            var transportSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/IFoxgloveTransport.cs");
+            var transportSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/Abstractions/IFoxgloveTransport.cs");
             var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             Check(transportSource.Contains("BroadcastDataBinary")
                   && Regex.IsMatch(backendSource, @"BroadcastBinary[\s\S]*FramePriority\.Control")
