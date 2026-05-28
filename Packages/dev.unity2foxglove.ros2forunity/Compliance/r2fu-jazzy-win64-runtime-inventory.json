@@ -162,7 +162,7 @@
     "This inventory is generated from a local runtime artifact that is not committed to git.",
     "This is an engineering inventory, not a complete legal audit.",
     "The Jazzy package must include transitive DLLs such as yaml.dll, spdlog.dll, and fmt.dll or Unity may fail to load rcl.dll.",
-    "WSL2 NAT remains diagnostic-only; use Windows ROS2 Jazzy or a real remote Linux topology for acceptance."
+    "Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports. Windows ROS2 Jazzy, properly firewalled WSL2, or a real remote Linux topology should be used for acceptance."
   ],
   "files": [
     {

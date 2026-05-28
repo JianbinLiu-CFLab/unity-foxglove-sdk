@@ -353,7 +353,7 @@ def check_manifest(results: list[CheckResult]) -> None:
         add(
             results,
             "manifest current runtime caveats",
-            "WSL2 NAT" in caveats and "graph snapshots" in caveats,
+            "Windows Firewall" in caveats and "DDS" in caveats,
             caveats,
         )
         critical_files = current.get("criticalRuntimeFiles", [])
@@ -448,7 +448,7 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
 
     add(results, "README says runtime not bundled", "runtime binaries are not bundled" in readme.lower(), rel(PACKAGE / "README.md"))
     add(results, "README says external adapter sample", "ros2 for unity external adapter" in readme.lower(), rel(PACKAGE / "README.md"))
-    add(results, "README says WSL2 is not GREEN gate", "wsl2 nat" in readme.lower() and "not a green gate" in readme.lower(), rel(PACKAGE / "README.md"))
+    add(results, "README explains Windows Firewall is the root cause, not WSL2 NAT", "windows firewall" in readme.lower() and "fast dds" in readme.lower() and "wsl2" in readme.lower(), rel(PACKAGE / "README.md"))
     add(
         results,
         "README defers standard visualization",

@@ -277,9 +277,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("topic echo --once " + OutTopic, StringComparison.Ordinal)
                   && sampleReadme.Contains("topic pub --once " + InTopic, StringComparison.Ordinal),
                 "110-H2: sample README gives concrete setup and live smoke commands");
-            Check(combined.Contains("WSL2 NAT", StringComparison.Ordinal)
-                  && combined.Contains("not a GREEN gate", StringComparison.Ordinal),
-                "110-H3: docs keep WSL2 NAT out of the GREEN gate");
+            Check(combined.Contains("Windows Firewall", StringComparison.Ordinal)
+                  && combined.Contains("WSL2", StringComparison.Ordinal),
+                "110-H3: docs explain Windows Firewall root cause, not WSL2 NAT");
             Check(combined.Contains("standard ROS2 visualization", StringComparison.OrdinalIgnoreCase)
                   && combined.Contains("external R2FU path is stable", StringComparison.Ordinal),
                 "110-H4: docs defer standard ROS2 visualization mapping");

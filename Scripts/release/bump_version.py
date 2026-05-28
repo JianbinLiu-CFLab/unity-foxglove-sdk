@@ -110,6 +110,9 @@ class VersionBump:
         text = re.sub(r"package\.json version is \d+\.\d+\.\d+", f"package.json version is {self.version}", text)
         self.write_if_changed(path, text, f"update Phase16 package version assertion to {self.version}")
 
+    # Maximum number of old release-note links kept in README.
+    KEEP_RELEASE_NOTES = 2
+
     def update_readme(self, old_version: str) -> None:
         """Update root README badges and release-note links for the target version."""
         path = self.root / "README.md"
@@ -117,17 +120,34 @@ class VersionBump:
         text = text.replace(f"release-v{old_version}", f"release-v{self.version}")
         text = text.replace(f"verified for v{old_version}", f"verified for v{self.version}")
 
+        release_note_line = (
+            r"^- \[v(?P<ver>\d+\.\d+\.\d+) release notes\]"
+            r"\(docs/releases/RELEASE_NOTES_v(?P=ver)\.md\)$"
+        )
+        release_note_re = re.compile(release_note_line, re.MULTILINE)
+
         release_note = f"- [v{self.version} release notes](docs/releases/RELEASE_NOTES_v{self.version}.md)"
         if release_note not in text:
-            marker = re.compile(
-                r"(^- \[v\d+\.\d+\.\d+ release notes\]\(docs/releases/RELEASE_NOTES_v\d+\.\d+\.\d+\.md\)$)",
-                re.MULTILINE,
-            )
-            match = marker.search(text)
+            match = release_note_re.search(text)
             if match:
                 text = text[: match.start()] + release_note + "\n" + text[match.start() :]
             else:
-                text += f"\n{release_note}\n"
+                archive = "- [Release notes archive](docs/releases/)"
+                idx = text.find(archive)
+                if idx >= 0:
+                    text = text[:idx] + release_note + "\n" + text[idx:]
+                else:
+                    text += f"\n{release_note}\n"
+
+        # Trim old entries to keep only the latest KEEP_RELEASE_NOTES.
+        hits = list(release_note_re.finditer(text))
+        if len(hits) > self.KEEP_RELEASE_NOTES:
+            for hit in hits[: -self.KEEP_RELEASE_NOTES]:
+                start = hit.start()
+                end = hit.end()
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                text = text[:start] + text[end:]
 
         self.write_if_changed(path, text, f"update README version references to {self.version}")
 

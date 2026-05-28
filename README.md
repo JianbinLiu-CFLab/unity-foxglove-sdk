@@ -202,11 +202,6 @@ Release and compliance documents:
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [v1.9.4 release notes](docs/releases/RELEASE_NOTES_v1.9.4.md)
-- [v1.9.3 release notes](docs/releases/RELEASE_NOTES_v1.9.3.md)
-- [v1.9.2 release notes](docs/releases/RELEASE_NOTES_v1.9.2.md)
-- [v1.9.1 release notes](docs/releases/RELEASE_NOTES_v1.9.1.md)
-- [v1.9.0 release notes](docs/releases/RELEASE_NOTES_v1.9.0.md)
-- [v1.8.0 release notes](docs/releases/RELEASE_NOTES_v1.8.0.md)
 - [Release notes archive](docs/releases/)
 
 Development planning notes are not shipped with the repository. If you need implementation history or design context, please contact the author.
@@ -244,6 +239,10 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - Optional Unity-native WSS/TLS transport, local dev certificate generation, root CA distribution helper, and lightweight shared query-token gate
 - IL2CPP build support with automatic link.xml generation
 - Optional ROS2 For Unity adapter plus Jazzy Windows x64 runtime package for Unity-as-ROS2-node smoke workflows. The boundary keeps R2FU attribution, adapter samples, runtime inventory, checksums, notices, and binary policy separate from the core SDK.
+- WSL2 and remote Linux ROS2 peer topologies, validated with both Default Discovery and Discovery Server RMW modes
+
+> [!IMPORTANT]
+> Windows Defender Firewall may block inbound UDP for Fast DDS (DDS) discovery. Before running R2FU cross-machine smoke, install an Inbound Allow rule for the Unity Editor (or the relevant DDS UDP ports), or use a Fast DDS Discovery Server to collapse traffic to a single port. See report 20 for root cause evidence.
 
 ### Not Supported
 
@@ -252,7 +251,6 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
 - **Production ROS 2 bridge distribution** - the current ROS 2 sidecar bridge is experimental, localhost-only, manual to build/run, and has no installer or remote-host support
-- **WSL2 NAT as ROS2 acceptance topology** - WSL2 NAT can block or distort DDS endpoint discovery for R2FU. Use Windows ROS2 Jazzy for local smoke, or a real LAN, VPN, physical Linux host, or bridged Ubuntu VM for remote Linux acceptance.
 - **General ROS2 For Unity runtime matrix** - v1.9.0 packages a Jazzy Windows x64 runtime path only. Linux, macOS, Humble, Lyrical, alternate RMW implementations, and multi-runtime conflict resolution are not included.
 - **Production ROS2 For Unity support contract** - the R2FU runtime package is optional and preview-scoped. It is not part of the core SDK, does not imply RobotecAI support for Unity2Foxglove users, and should not be treated as a full production ROS2 distribution.
 
