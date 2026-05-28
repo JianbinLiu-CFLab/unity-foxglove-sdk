@@ -8,13 +8,27 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Coordinates per-frame tick dispatch: drains service calls, advances the
+    /// playback clock, and routes replay seek/play/pause/disable operations
+    /// through a shared snapshot state machine under a single lock.
+    /// </summary>
     internal class TickCoordinator
     {
         private readonly object _playbackControlLock = new();
         private readonly ReplaySnapshotStateMachine _replaySnapshots;
 
+        /// <summary>
+        /// Creates a <see cref="TickCoordinator"/> backed by the given snapshot
+        /// state machine.
+        /// </summary>
         public TickCoordinator(ReplaySnapshotStateMachine snapshots) { _replaySnapshots = snapshots; }
 
+        /// <summary>
+        /// Per-frame tick: drains pending service/playback-control calls, advances
+        /// the clock, and dispatches replay work (scene snapshot, panel snapshot,
+        /// drain callbacks) when replay is active.
+        /// </summary>
         public void Tick(FoxgloveSession session, PlaybackClock playbackClock, ReplayController replay, IFoxgloveClock wallClock)
         {
             if (session == null) return;
@@ -65,6 +79,11 @@ namespace Unity.FoxgloveSDK.Core
         private bool TryConsumeReplaySceneSnapshot(out ulong timeNs, IFoxgloveClock wallClock)
             => _replaySnapshots.TryConsumeSceneSnapshot(out timeNs);
 
+        /// <summary>
+        /// Applies a decoded playback-control request (play/pause + optional seek)
+        /// to the clock and replay controller, and returns the resulting playback
+        /// state snapshot.
+        /// </summary>
         public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
             byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId,
             ReplayController replay, PlaybackClock playbackClock, IFoxgloveClock wallClock,
@@ -103,6 +122,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Applies a playback command (play/pause speed change) to the clock
+        /// without touching the replay controller.
+        /// </summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs,
             PlaybackClock playbackClock, IFoxgloveLogger logger)
         {
@@ -113,6 +136,10 @@ namespace Unity.FoxgloveSDK.Core
                 playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
         }
 
+        /// <summary>
+        /// Returns a snapshot of the playback clock state for a client-requested
+        /// state response.
+        /// </summary>
         public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId,
             PlaybackClock playbackClock)
         {
@@ -120,6 +147,10 @@ namespace Unity.FoxgloveSDK.Core
                 return playbackClock.ToState(didSeek, requestId);
         }
 
+        /// <summary>
+        /// Seek the replay controller to the given timestamp, queueing both a
+        /// scene snapshot and a panel snapshot.
+        /// </summary>
         public void ReplaySeek(ulong timeNs, ReplayController replay, IFoxgloveClock wallClock)
         {
             lock (_playbackControlLock)
@@ -130,6 +161,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Resume replay playback, clearing any pending snapshots and advancing
+        /// the playback clock.
+        /// </summary>
         public void ReplayPlay(ReplayController replay, PlaybackClock playbackClock)
         {
             lock (_playbackControlLock)
@@ -142,6 +177,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Pause replay playback and clear any pending panel snapshot so stale
+        /// data is not published on next tick.
+        /// </summary>
         public void ReplayPause(ReplayController replay, PlaybackClock playbackClock)
         {
             lock (_playbackControlLock)
@@ -152,6 +191,9 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Disable replay: clears pending snapshots and disposes the replay engine.
+        /// </summary>
         public void DisableReplay(ReplayController replay)
         {
             ClearPendingReplaySnapshot();
@@ -159,9 +201,15 @@ namespace Unity.FoxgloveSDK.Core
             replay.Disable();
         }
 
+        /// <summary>
+        /// Clears the pending panel snapshot request if one is queued.
+        /// </summary>
         public void ClearPendingReplaySnapshot()
             => _replaySnapshots.ClearPanelSnapshot();
 
+        /// <summary>
+        /// Clears the pending scene snapshot request if one is queued.
+        /// </summary>
         public void ClearPendingReplaySceneSnapshot()
             => _replaySnapshots.ClearSceneSnapshot();
     }

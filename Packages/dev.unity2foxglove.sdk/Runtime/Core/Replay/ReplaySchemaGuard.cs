@@ -10,8 +10,18 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Evaluates FoxRun schema identity metadata embedded in an MCAP file
+    /// against the current runtime's schema identity to detect potential
+    /// mismatch.
+    /// </summary>
     internal static class ReplaySchemaGuard
     {
+        /// <summary>
+        /// Reads the schema-identity metadata record from the given replay engine
+        /// and returns a <see cref="FoxRunReplaySchemaGuardResult"/> describing
+        /// whether the recorded schema matches the current runtime.
+        /// </summary>
         internal static FoxRunReplaySchemaGuardResult Evaluate(McapReplayEngine replayEngine)
         {
             var metadata = replayEngine?.FindMetadata(FoxRunSchemaMcapMetadata.MetadataName);

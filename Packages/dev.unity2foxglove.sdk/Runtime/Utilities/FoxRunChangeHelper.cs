@@ -16,6 +16,11 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public static class FoxRunChangeHelper
     {
+        /// <summary>
+        /// Returns true when <paramref name="current"/> differs from
+        /// <paramref name="last"/> by more than <paramref name="epsilon"/>.
+        /// Two NaN values compare as equal (no change).
+        /// </summary>
         public static bool FloatChanged(float current, float last, float epsilon)
         {
             if (float.IsNaN(current) || float.IsNaN(last))
@@ -23,6 +28,11 @@ namespace Unity.FoxgloveSDK.Components
             return Math.Abs(current - last) > epsilon;
         }
 
+        /// <summary>
+        /// Returns true when <paramref name="current"/> differs from
+        /// <paramref name="last"/> by more than <paramref name="epsilon"/>.
+        /// Two NaN values compare as equal (no change).
+        /// </summary>
         public static bool DoubleChanged(double current, double last, double epsilon)
         {
             if (double.IsNaN(current) || double.IsNaN(last))

@@ -115,6 +115,10 @@ namespace Unity.FoxgloveSDK.Editor
         public static string ValueExpr(string name, string type)
             => TypeExprEmitter.ValueExpr(name, type);
 
+        /// <summary>
+        /// Internal convenience overload that delegates to the core emitter
+        /// using a namespace, class name, and member list directly.
+        /// </summary>
         internal static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
         {
             return EmitClassCore(ns, className, members);

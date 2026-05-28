@@ -7,8 +7,16 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Escapes a string value for use as a C# string literal, handling
+    /// backslash, double-quote, and control-character escapes.
+    /// </summary>
     internal static class StringLiteralEmitter
     {
+        /// <summary>
+        /// Returns a C# string literal for the given value with all required
+        /// escape sequences applied.
+        /// </summary>
         internal static string CSharpStringLiteral(string value)
         {
             if (string.IsNullOrEmpty(value))

@@ -9,8 +9,18 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Emits the <c>FoxgloveLog_Publish</c> dispatch method that builds a
+    /// JSON payload dictionary from member values and calls
+    /// <c>FoxgloveManager.PublishJson</c> for each topic index.
+    /// </summary>
     internal static class PublishDispatchEmitter
     {
+        /// <summary>
+        /// Emits the <c>IFoxgloveLogSource.FoxgloveLog_Publish</c> implementation
+        /// that switches on topic index and emits a
+        /// <c>FoxgloveManager.PublishJson</c> call for each topic.
+        /// </summary>
         internal static void EmitPublish(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
             sb.AppendLine($"{pad}    [Preserve]");
