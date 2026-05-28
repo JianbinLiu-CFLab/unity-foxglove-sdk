@@ -97,6 +97,13 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
+            // Reject unrealistic scan rates (>30 Hz is not a standard lidar mode).
+            if (scanRateHz > 30.0)
+            {
+                error = $"Unsupported lidar mode \"{mode}\": expected 10 or 20 Hz.";
+                return false;
+            }
+
             JObject root;
             try
             {

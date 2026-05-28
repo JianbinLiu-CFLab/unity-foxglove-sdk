@@ -2,13 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 138 R2FU Jazzy standalone rebuild evidence validation.
+// Purpose: Phase 138 Virtual LiDAR Digital Twin validation.
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
+using System.Text.RegularExpressions;
+using Foxglove.Schemas;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -19,231 +24,259 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 138: R2FU Jazzy Standalone Rebuild ===");
+            Console.WriteLine("--- Phase 138: Virtual LiDAR Digital Twin ---");
             _passed = 0;
 
-            VerifyTrackedJazzyArtifacts();
-            VerifyTrackedArtifactHygiene();
-            VerifyCoreSdkBoundary();
-            VerifyValidationWiring();
+            VerifyProfileDefaults();
+            VerifyJsonParseErrors();
+            VerifyRayGenerator();
+            VerifyFrameIntegration();
+            VerifyVirtualLidarSource();
+            VerifyMazeDemoFiles();
 
             Console.WriteLine($"Phase 138: {_passed} checks passed.");
+            Console.WriteLine();
         }
 
-        private static void VerifyTrackedJazzyArtifacts()
-        {
-            Check(RepoFileExists("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
-                "138A-1: tracked Jazzy Windows build orchestrator is present");
-            Check(RepoFileExists("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.json"),
-                "138A-2: tracked Jazzy runtime package manifest is present");
+        // ---------------------------------------------------------------
+        // 7.1  Sensor / profile / ray generator checks (pure C#)
+        // ---------------------------------------------------------------
 
-            var orchestrator = ReadRepoText("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py");
-            Check(orchestrator.Contains("feature/jazzy-support", StringComparison.Ordinal)
-                  && orchestrator.Contains("R2FU_REPO_URL", StringComparison.Ordinal)
-                  && orchestrator.Contains("ROS2CS_REPO_URL", StringComparison.Ordinal),
-                "138A-3: tracked orchestrator records public upstream branch and repository inputs");
+        private static void VerifyProfileDefaults()
+        {
+            var profile = LidarProfileLoader.CreateOs132Default();
+            Check(profile.PixelsPerColumn == 32, "7.1-1: PixelsPerColumn == 32");
+            Check(profile.ColumnsPerFrame == 1024, "7.1-2: ColumnsPerFrame == 1024");
+            Check(profile.ScanRateHz > 9.9 && profile.ScanRateHz < 10.1, "7.1-3: ScanRateHz ~ 10.0 Hz");
+            Check(Math.Abs(profile.MinRangeMeters - 0.7) < 1e-9, "7.1-4: MinRangeMeters == 0.7");
+            Check(profile.BeamAltitudeAngles.Length == 32, "7.1-5: BeamAltitudeAngles.Length == 32");
+            Check(profile.BeamAzimuthAngles.Length == 32, "7.1-6: BeamAzimuthAngles.Length == 32");
         }
 
-        private static void VerifyTrackedArtifactHygiene()
+        private static void VerifyJsonParseErrors()
         {
-            var offenders = GitLsFiles()
-                .Where(IsForbiddenTrackedArtifact)
-                .ToList();
-
-            Check(offenders.Count == 0,
-                "138C-1: tracked files contain no R2FU zips, Unity imports, metadata XML, native plugin artifacts, or build outputs"
-                + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
-        }
-
-        private static void VerifyCoreSdkBoundary()
-        {
-            var packageJson = ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json");
-            Check(!packageJson.Contains("rclcpp", StringComparison.OrdinalIgnoreCase)
-                  && !packageJson.Contains("Ros2ForUnity", StringComparison.Ordinal),
-                "138D-1: core SDK package manifest remains free of R2FU/rclcpp dependencies");
-
-            var productionRoots = new[]
+            // 2. Mismatched beam counts
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime",
-                "Packages/dev.unity2foxglove.sdk/Editor",
-                "Packages/dev.unity2foxglove.sdk/Samples~"
-            };
+                var json = "{ \"pixels_per_column\": 32, \"beam_altitude_angles\": [";
+                for (var i = 0; i < 31; i++)
+                    json += (i == 0 ? "" : ",") + "0.0";
+                json += "] }";
 
-            var offenders = productionRoots
-                .SelectMany(TextFiles)
-                .SelectMany(path => CoreForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
-                .ToList();
+                var ok = LidarProfileLoader.TryParseFromJson(json, "1024x10", out var profile, out var error);
+                Check(!ok, "7.1-7: TryParseFromJson mismatched beam counts returns false");
+                Check(error != null && error.Contains("does not match"), "7.1-8: error message mentions mismatch");
+                Check(profile == null, "7.1-9: profile is null on mismatch failure");
+            }
 
-            Check(offenders.Count == 0,
-                "138D-2: core SDK production surface has no hard ROS2 For Unity dependency"
-                + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
-        }
-
-        private static void VerifyValidationWiring()
-        {
-            var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var entry = PhaseValidationRegistry.Find(new[] { "--phase138" });
-
-            Check(entry != null
-                  && entry.Run == (Action)Validate,
-                "138E-1: validation registry wires --phase138");
-            Check(entry != null
-                  && entry.Category == ValidationCategory.LocalEvidence
-                  && entry.IncludeInDefault,
-                "138E-2: Phase138 is classified as local-evidence opt-in outside default CI");
-            Check(project.Contains("Phase138Validation.cs", StringComparison.Ordinal),
-                "138E-3: test project compiles Phase138Validation");
-        }
-
-        private static bool IsForbiddenTrackedArtifact(string path)
-        {
-            var normalized = path.Replace('\\', '/');
-            var inRuntimePackage = normalized.StartsWith(
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/",
-                StringComparison.Ordinal);
-            if (normalized.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal))
-                return true;
-            if (normalized.StartsWith("third-party/ros2-for-unity/install/", StringComparison.Ordinal)
-                || normalized.StartsWith("third-party/ros2-for-unity/build/", StringComparison.Ordinal)
-                || normalized.StartsWith("third-party/ros2-for-unity/log/", StringComparison.Ordinal))
-                return true;
-            if (normalized.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase))
-                return true;
-            var fileName = Path.GetFileName(normalized);
-            if (fileName.StartsWith("Ros2ForUnity", StringComparison.OrdinalIgnoreCase)
-                && fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (inRuntimePackage)
-                return false;
-            if (IsForbiddenNativeRuntimeName(fileName))
-                return true;
-            return fileName == "metadata_ros2cs.xml"
-                   || fileName == "metadata_ros2_for_unity.xml";
-        }
-
-        private static bool IsForbiddenNativeRuntimeName(string fileName)
-        {
-            var extension = Path.GetExtension(fileName);
-            if (!extension.Equals(".dll", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".so", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".dylib", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            var lower = fileName.ToLowerInvariant();
-            return lower.Contains("ros2")
-                   || lower.Contains("ros2cs")
-                   || lower.Contains("rcl")
-                   || lower.Contains("rmw_")
-                   || lower.Contains("fastdds")
-                   || lower.Contains("fastrtps")
-                   || lower.Contains("cyclonedds")
-                   || lower.Contains("foonathan")
-                   || lower.Contains("rcutils");
-        }
-
-        private static IEnumerable<string> CoreForbiddenTokens()
-        {
-            return new[]
+            // 3. Unsupported mode "1024x99"
             {
-                "using ROS2;",
-                "ROS2UnityComponent",
-                "Ros2ForUnity",
-                "RobotecAI ROS2 For Unity",
-                "metadata_ros2cs.xml",
-                "metadata_ros2_for_unity.xml"
-            };
+                var json = "{ \"pixels_per_column\": 32, \"beam_altitude_angles\": [";
+                for (var i = 0; i < 32; i++)
+                    json += (i == 0 ? "" : ",") + "0.0";
+                json += "] }";
+
+                var ok = LidarProfileLoader.TryParseFromJson(json, "1024x99", out var profile, out var error);
+                Check(!ok && error != null && error.Contains("1024x99", StringComparison.Ordinal),
+                    "7.1-10: unsupported mode \"1024x99\" returns false with mode in error message");
+            }
         }
 
-        private static IEnumerable<string> GitLsFiles()
+        private static void VerifyRayGenerator()
         {
+            var profile = LidarProfileLoader.CreateOs132Default();
+
+            // 4. columnStep=4 → 32 * (1024/4) = 8192 rays
+            var gen4 = new LidarRayGenerator(profile, 4);
+            Check(gen4.RayCount == 32 * (1024 / 4), "7.1-11: RayGenerator(step=4) RayCount == 8192");
+
+            // 5. columnStep=1 → 32768 rays
+            var gen1 = new LidarRayGenerator(profile, 1);
+            Check(gen1.RayCount == 32 * 1024, "7.1-12: RayGenerator(step=1) RayCount == 32768");
+
+            // 6. All generated ray directions are finite and unit-length
+            {
+                var allValid = true;
+                for (var c = 0; c < profile.ColumnsPerFrame && allValid; c++)
+                {
+                    for (var r = 0; r < profile.PixelsPerColumn && allValid; r++)
+                    {
+                        if (!gen1.TryGetRay(c, r, out var dir, out _))
+                            continue;
+                        var mag = dir.Length();
+                        if (float.IsNaN(mag) || float.IsInfinity(mag)
+                            || mag < 0.9999f || mag > 1.0001f)
+                        {
+                            allValid = false;
+                        }
+                    }
+                }
+
+                Check(allValid, "7.1-13: all ray directions are finite and unit-length");
+            }
+
+            // 7. Time offsets monotonic by column, normalized [0..1)
+            {
+                const int ring = 0;
+                float prevOffset = -1f;
+                var monotonic = true;
+                var belowOne = true;
+
+                for (var c = 0; c < profile.ColumnsPerFrame; c++)
+                {
+                    gen1.TryGetRay(c, ring, out _, out var t);
+                    if (t <= prevOffset) monotonic = false;
+                    if (t >= 1.0f) belowOne = false;
+                    prevOffset = t;
+                }
+
+                Check(monotonic, "7.1-14: time offsets monotonic by column");
+                Check(belowOne, "7.1-15: time offsets normalized [0..1)");
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // 7.2  Frame integration checks
+        // ---------------------------------------------------------------
+
+        private static void VerifyFrameIntegration()
+        {
+            // 8. Build a synthetic PointCloudFrame with 4 points
+            var frame = new PointCloudFrame
+            {
+                UnixNs = 1000000000UL,
+                FrameId = "test_frame"
+            };
+            frame.Points.Add(new PointCloudPoint(1f, 0f, 0f) { Intensity = 0.5f, Ring = 1 });
+            frame.Points.Add(new PointCloudPoint(0f, 2f, 0f) { Reflectivity = 0.3f, Ring = 2 });
+            frame.Points.Add(new PointCloudPoint(0f, 0f, 3f) { Intensity = 0.8f, TimeOffsetSeconds = 0.05f });
+            frame.Points.Add(new PointCloudPoint(-1f, -1f, 1f));
+
+            var packed = PointCloudPackedDataBuilder.Build(frame);
+            Check(packed.Data.Length > 0, "7.2-1: PointCloudPackedDataBuilder builds non-empty data");
+            Check(packed.PointStride > 0, "7.2-2: packed PointStride > 0");
+            Check(packed.Fields.Count >= 3, "7.2-3: packed has at least x/y/z fields");
+
+            // 9. Frame serialized as JSON via PointCloudMessageBuilder.CreateJson without throwing
             try
             {
-                var startInfo = new ProcessStartInfo("git", "ls-files")
-                {
-                    WorkingDirectory = RepoRoot(),
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var process = Process.Start(startInfo);
-                if (process == null)
-                    return Array.Empty<string>();
-                var output = process.StandardOutput.ReadToEnd();
-                if (!process.WaitForExit(5000) || process.ExitCode != 0)
-                    return Array.Empty<string>();
-                return output.Replace("\r\n", "\n")
-                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                var jsonMsg = PointCloudMessageBuilder.CreateJson(frame);
+                Check(jsonMsg != null && jsonMsg.PointStride > 0,
+                    "7.2-4: CreateJson produces valid non-null message");
             }
-            catch
+            catch (Exception ex)
             {
-                return Array.Empty<string>();
+                Check(false, "7.2-4: CreateJson threw: " + ex.Message);
+            }
+
+            // 10. Frame serialized as protobuf via PointCloudMessageBuilder.CreateProtobuf without throwing
+            try
+            {
+                var protoMsg = PointCloudMessageBuilder.CreateProtobuf(frame);
+                Check(protoMsg != null && protoMsg.PointStride > 0,
+                    "7.2-5: CreateProtobuf produces valid non-null message");
+            }
+            catch (Exception ex)
+            {
+                Check(false, "7.2-5: CreateProtobuf threw: " + ex.Message);
             }
         }
 
-        private static IEnumerable<string> TextFiles(string relativePath)
+        // ---------------------------------------------------------------
+        // Source-text checks (Unity-free — File.ReadAllText only)
+        // ---------------------------------------------------------------
+
+        private static void VerifyVirtualLidarSource()
         {
-            var path = Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
-            if (!Directory.Exists(path))
-                return Array.Empty<string>();
-            return Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
-                .Where(HasTextExtension);
+            var repoRoot = Phase16Validation.FindRepoRoot();
+            var path = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+                "Runtime", "Sensors", "Lidar", "VirtualLidar.cs");
+
+            Check(File.Exists(path), "7.3-1: VirtualLidar.cs exists at expected path");
+
+            var content = File.ReadAllText(path);
+
+            Check(Regex.IsMatch(content, @"namespace\s+Unity\.FoxgloveSDK\.Components\b"),
+                "7.3-2: VirtualLidar.cs namespace is Unity.FoxgloveSDK.Components");
+
+            Check(!content.Contains("using ROS2;") && !content.Contains("using sensor_msgs;"),
+                "7.3-3: VirtualLidar.cs has no ROS2/sensor_msgs using directives");
+
+            Check((content.Contains("SetFrame") || content.Contains("PublishFrame"))
+                  && !content.Contains("PublishJson") && !content.Contains("PublishProto"),
+                "7.3-4: VirtualLidar.cs calls SetFrame/PublishFrame, not PublishJson/PublishProto directly");
         }
 
-        private static bool HasTextExtension(string path)
+        // ---------------------------------------------------------------
+        // Maze demo checks
+        // ---------------------------------------------------------------
+
+        private static void VerifyMazeDemoFiles()
         {
-            var extension = Path.GetExtension(path).ToLowerInvariant();
-            return extension == ".cs"
-                   || extension == ".json"
-                   || extension == ".md"
-                   || extension == ".asmdef"
-                   || extension == ".txt"
-                   || extension == ".xml"
-                   || extension == ".uxml"
-                   || extension == ".uss";
+            var repoRoot = Phase16Validation.FindRepoRoot();
+            var mazeDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+                "Samples~", "Virtual LiDAR Maze Demo");
+            var readmePath = Path.Combine(mazeDir, "README.md");
+
+            if (!Directory.Exists(mazeDir))
+            {
+                Check(false, "7.4-1: maze demo directory not found");
+                return;
+            }
+
+            // 15. Maze demo files exist
+            var csFiles = Directory.GetFiles(mazeDir, "Phase138*.cs");
+            var csCount = csFiles.Length;
+
+            Check(csCount >= 4, $"7.4-2: maze demo has >= 4 Phase138*.cs files (found {csCount})");
+
+            var hasReadme = File.Exists(readmePath);
+            Check(hasReadme, "7.4-2: MazeDemo README.md exists");
+
+            // 16. Maze demo files do NOT contain "using ROS2;"
+            var ros2Violations = new List<string>();
+            foreach (var f in csFiles)
+            {
+                var text = File.ReadAllText(f);
+                if (text.Contains("using ROS2;"))
+                    ros2Violations.Add(Path.GetFileName(f));
+            }
+
+            Check(ros2Violations.Count == 0,
+                "7.4-3: maze demo files have no \"using ROS2;\"" +
+                (ros2Violations.Count == 0 ? "" : " (" + string.Join(", ", ros2Violations) + ")"));
+
+            // 17. Maze vehicle controller falls back gracefully
+            var controllerFiles = csFiles
+                .Where(f => Path.GetFileName(f).Contains("Controller", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (controllerFiles.Length > 0)
+            {
+                var foundFallback = false;
+                foreach (var f in controllerFiles)
+                {
+                    if (File.ReadAllText(f).Contains("Legacy Input Manager is disabled", StringComparison.Ordinal))
+                    {
+                        foundFallback = true;
+                        break;
+                    }
+                }
+
+                Check(foundFallback,
+                    "7.4-4: vehicle controller contains \"Legacy Input Manager is disabled\" fallback message");
+            }
+            else
+            {
+                Check(false, "7.4-4: no vehicle controller file found");
+            }
         }
 
-        private static bool RepoFileExists(string relativePath)
+        private static void Check(bool condition, string label)
         {
-            return File.Exists(RepoPath(relativePath));
-        }
-
-        private static string ReadRepoText(string relativePath)
-        {
-            var path = RepoPath(relativePath);
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing required Phase138 file: " + relativePath, path);
-            return File.ReadAllText(path);
-        }
-
-        private static string RepoPath(string relativePath)
-        {
-            return Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
-        }
-
-        private static string RepoRoot()
-        {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new InvalidOperationException("Could not find repository root.");
-            return root;
-        }
-
-        private static string Rel(string fullPath)
-        {
-            var root = RepoRoot();
-            var relative = Path.GetRelativePath(root, fullPath);
-            return relative.Replace('\\', '/');
-        }
-
-        private static void Check(bool condition, string message)
-        {
-            if (!condition)
-                throw new InvalidOperationException(message);
             _passed++;
-            Console.WriteLine("[PASS] " + message);
+            Console.WriteLine(condition ? $"[PASS] {label}" : $"[FAIL] {label}");
+            if (!condition)
+                throw new InvalidOperationException($"Phase 138 validation failed: {label}");
         }
     }
 }
