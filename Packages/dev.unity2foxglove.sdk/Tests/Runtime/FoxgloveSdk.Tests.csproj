@@ -21,7 +21,7 @@
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
     <Compile Include="../../Runtime/Core/**/*.cs" />
-    <Compile Include="../../Runtime/Protocol/*.cs" />
+    <Compile Include="../../Runtime/Protocol/**/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
     <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
