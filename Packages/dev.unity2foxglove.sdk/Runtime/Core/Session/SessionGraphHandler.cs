@@ -17,13 +17,16 @@ namespace Unity.FoxgloveSDK.Core
     /// <summary>Owns connection graph topology, subscribers, broadcasts, and MCAP graph metadata.</summary>
     internal sealed class SessionGraphHandler
     {
+        /// <summary>Publisher ID string used for Unity-originated graph entries.</summary>
         private const string UnityPublisherId = "unity";
+        /// <summary>Metadata record name for the connection graph MCAP metadata snapshot.</summary>
         private const string GraphMetadataName = "foxglove.connection_graph";
 
         private readonly IFoxgloveTransport _transport;
         private readonly IFoxgloveLogger _logger;
         private readonly Func<McapRecorder> _recorderProvider;
         private readonly ConnectionGraphRegistry _graph = new();
+        /// <summary>Volatile flag: 1 when the graph is dirty and needs a metadata flush.</summary>
         private int _dirty;
 
         public SessionGraphHandler(
@@ -36,6 +39,7 @@ namespace Unity.FoxgloveSDK.Core
             _recorderProvider = recorderProvider ?? (() => null);
         }
 
+        /// <summary>Clears the connection graph and resets the dirty flag.</summary>
         public void Clear()
         {
             _graph.Clear();

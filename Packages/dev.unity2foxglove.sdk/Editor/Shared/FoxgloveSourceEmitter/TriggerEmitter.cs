@@ -10,13 +10,25 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Builds and emits trigger methods (per-member and <c>FoxRun_TriggerAll</c>)
+    /// for FoxRun partial classes that have OnTrigger-mode topics.
+    /// </summary>
     internal static class TriggerEmitter
     {
+        /// <summary>
+        /// Describes a single trigger method: its name and the set of topic
+        /// indexes it publishes.
+        /// </summary>
         internal sealed class TriggerMember
         {
             public readonly string MethodName;
             public readonly List<int> TopicIndexes;
 
+            /// <summary>
+            /// Creates a <see cref="TriggerMember"/> with the given method name and
+            /// topic index list.
+            /// </summary>
             public TriggerMember(string methodName, List<int> topicIndexes)
             {
                 MethodName = methodName;
@@ -24,6 +36,11 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        /// <summary>
+        /// Groups OnTrigger-mode members by origin member name and produces a
+        /// list of <see cref="TriggerMember"/> descriptors with deduplicated
+        /// method names.
+        /// </summary>
         internal static List<TriggerMember> BuildTriggerMembers(
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> topics,
@@ -55,6 +72,10 @@ namespace Unity.FoxgloveSDK.Editor
             return result;
         }
 
+        /// <summary>
+        /// Emits per-member trigger methods and a <c>FoxRun_TriggerAll</c> method
+        /// that fire FoxgloveLogHub triggers for all OnTrigger-mode topics.
+        /// </summary>
         internal static void EmitTriggers(StringBuilder sb, IReadOnlyList<TriggerMember> triggerMembers, IReadOnlyList<string> topics, Dictionary<string, int> topicModes, string pad)
         {
             if (triggerMembers.Count == 0)

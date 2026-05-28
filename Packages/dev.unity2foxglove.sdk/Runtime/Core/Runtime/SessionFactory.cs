@@ -8,8 +8,17 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Factory that wires a new <see cref="FoxgloveSession"/> with transport,
+    /// clock, schema registry, parameter store, service registry, recording
+    /// controller, and optional protobuf/CDR support.
+    /// </summary>
     internal static class SessionFactory
     {
+        /// <summary>
+        /// Creates a fully-wired <see cref="FoxgloveSession"/> with protobuf and CDR
+        /// support enabled when the corresponding schemas are registered.
+        /// </summary>
         public static FoxgloveSession Create(
             string name, bool enableCdrClientPublish,
             IFoxgloveTransport transport, PlaybackClock playbackClock,

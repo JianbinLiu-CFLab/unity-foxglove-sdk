@@ -11,8 +11,17 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Emits the <c>FoxgloveLog_GetTopic</c> switch method and provides
+    /// publish-mode literal translation for generated FoxRun partial classes.
+    /// </summary>
     internal static class TopicMetadataEmitter
     {
+        /// <summary>
+        /// Emits the <c>IFoxgloveLogSource.FoxgloveLog_GetTopic</c> switch
+        /// method that returns a <c>FoxgloveLogTopicInfo</c> for each topic
+        /// index.
+        /// </summary>
         internal static void EmitGetTopic(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, Dictionary<string, int> topicModes, string pad)
         {
             sb.AppendLine($"{pad}    FoxgloveLogTopicInfo IFoxgloveLogSource.FoxgloveLog_GetTopic(int index)");
@@ -37,6 +46,11 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine();
         }
 
+        /// <summary>
+        /// Returns the <c>FoxRunPublishMode</c> enum literal for the given
+        /// numeric mode value (0=FixedRate, 1=OnChange, 2=OnChangeOrInterval,
+        /// 3=OnTrigger).
+        /// </summary>
         internal static string PublishModeLiteral(int mode)
         {
             switch (mode)

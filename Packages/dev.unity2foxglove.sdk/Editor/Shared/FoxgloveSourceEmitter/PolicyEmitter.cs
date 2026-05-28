@@ -9,8 +9,18 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Emits the <c>ShouldPublish</c> and <c>MarkPublished</c> interface
+    /// implementation methods for FoxRun partial classes with change-detection
+    /// or interval-based publish policies.
+    /// </summary>
     internal static class PolicyEmitter
     {
+        /// <summary>
+        /// Emits last-value storage fields and the <c>IFoxgloveLogPolicySource</c>
+        /// implementation (<c>ShouldPublish</c> and <c>MarkPublished</c>) for
+        /// topics that use OnChange or OnChangeOrInterval publish modes.
+        /// </summary>
         internal static void EmitPolicy(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, Dictionary<string, int> topicModes, string pad)
         {
             var hasPolicy = topicModes.Values.Any(m => m != 0);

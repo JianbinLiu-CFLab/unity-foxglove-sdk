@@ -7,6 +7,12 @@ using System;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Emits change-detection and value expressions for Unity value types
+    /// (<c>float</c>, <c>double</c>, <c>Vector3</c>, <c>Vector2</c>,
+    /// <c>Quaternion</c>, <c>Color</c>) used in generated FoxRun partial
+    /// classes.
+    /// </summary>
     internal static class TypeExprEmitter
     {
         /// <summary>
@@ -60,11 +66,19 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        /// <summary>
+        /// Formats a float value as a C# float literal with invariant culture
+        /// and <c>f</c> suffix.
+        /// </summary>
         internal static string FloatLiteral(float value)
         {
             return value.ToString("G9", System.Globalization.CultureInfo.InvariantCulture) + "f";
         }
 
+        /// <summary>
+        /// Returns a <c>this.MemberName</c> access expression with keyword
+        /// escaping applied.
+        /// </summary>
         internal static string MemberAccess(string memberName)
         {
             return "this." + IdentifierUtils.EscapeIdentifier(memberName);

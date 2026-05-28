@@ -8,8 +8,16 @@ using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Sanitizes and escapes identifiers for use in generated C# source code.
+    /// </summary>
     internal static class IdentifierUtils
     {
+        /// <summary>
+        /// Sanitizes a value into a valid C# identifier: replaces disallowed
+        /// characters with underscores and prepends an underscore when the
+        /// value starts with a digit.
+        /// </summary>
         internal static string SanitizeIdentifier(string value)
         {
             if (string.IsNullOrEmpty(value))
@@ -25,6 +33,10 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Sanitizes a value into a safe file-name stem: replaces any
+        /// character that is not a valid C# identifier part with an underscore.
+        /// </summary>
         internal static string SanitizeFileStem(string value)
         {
             if (string.IsNullOrEmpty(value))
@@ -37,6 +49,10 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.Length == 0 ? "FoxRunSource" : sb.ToString();
         }
 
+        /// <summary>
+        /// Escapes an identifier with the <c>@</c> prefix when it collides with
+        /// a C# keyword. Leaves already-escaped identifiers unchanged.
+        /// </summary>
         internal static string EscapeIdentifier(string value)
         {
             if (string.IsNullOrEmpty(value))
@@ -46,6 +62,9 @@ namespace Unity.FoxgloveSDK.Editor
             return IsCSharpKeyword(bare) ? "@" + bare : value;
         }
 
+        /// <summary>
+        /// Returns true when the given value is a C# reserved keyword.
+        /// </summary>
         internal static bool IsCSharpKeyword(string value)
         {
             switch (value)
@@ -133,11 +152,19 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        /// <summary>
+        /// Returns true when the character is valid as the first character of
+        /// a C# identifier (letter or underscore).
+        /// </summary>
         internal static bool IsIdentifierStart(char ch)
         {
             return ch == '_' || char.IsLetter(ch);
         }
 
+        /// <summary>
+        /// Returns true when the character is valid inside a C# identifier
+        /// (letter, digit, or underscore).
+        /// </summary>
         internal static bool IsIdentifierPart(char ch)
         {
             return ch == '_' || char.IsLetterOrDigit(ch);

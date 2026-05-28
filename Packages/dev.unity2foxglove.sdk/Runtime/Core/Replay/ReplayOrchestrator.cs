@@ -7,6 +7,12 @@ using System;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Orchestrates attachment/detachment of a <see cref="ReplayController"/> to
+    /// a <see cref="FoxgloveSession"/>, forwarding replay messages with exception-safe
+    /// invoke wrappers that prevent a single faulty listener from taking down the
+    /// entire dispatch.
+    /// </summary>
     internal class ReplayOrchestrator
     {
         private readonly IFoxgloveLogger _logger;
@@ -18,8 +24,17 @@ namespace Unity.FoxgloveSDK.Core
         public event Action<ReplayMessageContext> OnReplayMessageContext;
         public event Action<ReplayBatchContext> OnReplayBatchCompleted;
 
+        /// <summary>
+        /// Creates a <see cref="ReplayOrchestrator"/> with the given logger for
+        /// diagnostic output in safe-invoke wrappers.
+        /// </summary>
         public ReplayOrchestrator(IFoxgloveLogger logger) { _logger = logger; }
 
+        /// <summary>
+        /// Registers channels on the session and wires replay message forwarding
+        /// from <paramref name="replay"/> to the session. On failure during wiring,
+        /// cleans up via <see cref="Detach"/> and re-throws.
+        /// </summary>
         public void Attach(ReplayController replay, FoxgloveSession session)
         {
             replay.RegisterChannels(session);
@@ -42,6 +57,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Unwires all previously attached replay event forwarders from the given
+        /// <paramref name="replay"/> controller. Safe to call multiple times.
+        /// </summary>
         public void Detach(ReplayController replay)
         {
             if (_replayForwarder != null) { replay.OnReplayMessage -= _replayForwarder; _replayForwarder = null; }

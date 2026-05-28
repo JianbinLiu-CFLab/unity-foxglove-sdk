@@ -12,6 +12,11 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Scans MCAP channel metadata for a <c>coordinate_mode</c> entry and
+    /// compares it against the caller's current coordinate mode, returning a
+    /// human-readable mismatch warning when they differ.
+    /// </summary>
     internal static class ReplayCoordinateModeGuard
     {
         /// <summary>
