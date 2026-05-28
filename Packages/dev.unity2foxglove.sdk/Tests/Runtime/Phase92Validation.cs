@@ -234,10 +234,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "92E-1: shared editor labels force visible ROS2 text");
 
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var publishDataEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var publisherBaseEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
-            Check(managerEditor.Contains("DrawGlobalEncodingProperty(\"_defaultPublisherEncoding\"")
+            Check(publishDataEditor.Contains("DrawGlobalEncodingProperty(\"_defaultPublisherEncoding\"")
                   && publisherBaseEditor.Contains("PublisherEncodingEditorLabels.DrawPublisherOverride")
                   && publisherBaseEditor.Contains("PublisherEncodingEditorLabels.DrawEffectiveEncoding"),
                 "92E-2: manager/base publisher inspector uses product encoding labels");

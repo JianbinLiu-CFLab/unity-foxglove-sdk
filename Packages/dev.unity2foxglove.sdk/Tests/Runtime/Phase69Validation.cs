@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayInspectorExposesPreflightActions()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var drawerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
             Check(managerSource.Contains("_mcapReplayPreflight.Draw(serializedObject, target, replayPath)"),
                 "69A-1: replay Inspector delegates to MCAP preflight drawer");
@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPreflightDrawerIsSeparateModule()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var drawerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
             Check(drawerSource.Contains("internal sealed class McapReplayPreflightDrawer"),
                 "69D-1: MCAP replay preflight lives in a separate Editor module");

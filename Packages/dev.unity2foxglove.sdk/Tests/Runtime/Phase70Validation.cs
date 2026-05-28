@@ -95,9 +95,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPublishDataHeaders()
         {
-            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var section = Slice(editorSource, "private void DrawPublishDataSection()", "private void DrawMcapSection()");
+            var section = Slice(editorSource, "private void DrawPublishDataSection()", "}");
 
             Check(section.Contains("Subheader(\"Publish Rate\")"),
                 "70A-14: Publish Data labels rate settings as Publish Rate");
@@ -126,7 +126,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySerializedFieldCoverage()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var mainSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var publishDataSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var mcapSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
+            var source = mainSource + "\n" + publishDataSource + "\n" + mcapSource;
             var fields = new[]
             {
                 "_serverName",
@@ -169,7 +172,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyConnectionSecurityAdjacency()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var section = Slice(source, "private void DrawConnectionSecuritySection()", "private void DrawPublishDataSection()");
+            var section = Slice(source, "private void DrawConnectionSecuritySection()", "private void DrawSecureWebSocketSection");
             Check(section.Contains("_transportMode"),
                 "70C-1: Connection & Security contains transport mode");
             Check(section.Contains("_certificatePfxPath") || section.Contains("DrawSecureWebSocketFields"),
@@ -185,15 +188,17 @@ namespace Unity.FoxgloveSDK.Tests
             var secureAutoExpand = Slice(source, "private void EnsureSecureSettingsVisible()", "private static void DrawSection");
             Check(secureAutoExpand.Contains("_connectionSecurityExpanded = true"),
                 "70C-7: secure settings auto-expand Connection & Security");
-            var certificateButtons = Slice(source, "private void DrawCertificateUtilityButtons", "private void DrawTransportHealth");
+            var certificateButtons = Slice(source, "private void DrawCertificateUtilityButtons", "private static void DrawStackedPathBrowse");
             Check(CountOccurrences(certificateButtons, "new EditorGUILayout.HorizontalScope()") >= 2,
                 "70C-8: certificate utility actions are split into rows with at most two buttons");
         }
 
         private static void VerifyMcapWorkflowGrouping()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var section = Slice(source, "private void DrawMcapSection()", "private void DrawDiagnosticsSection()");
+            var mainSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var mcapSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
+            var source = mainSource + "\n" + mcapSource;
+            var section = Slice(mcapSource, "private void DrawMcapSection()", "private void DrawSchemaEvidenceSection");
             Check(section.Contains("_enablePlaybackControl"),
                 "70D-1: MCAP section contains Playback Control");
             Check(section.Contains("_enableRecording"),
@@ -219,7 +224,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPreflightModuleBoundary()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var drawerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
             Check(drawerSource.Contains("internal sealed class McapReplayPreflightDrawer"),
                 "70E-1: MCAP preflight drawer remains separate");
