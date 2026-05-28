@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(McapBinaryReader.MatchesMagic(bytes, 0),
                 "51A-2: magic matcher uses immutable internal magic bytes");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             Check(!source.Contains("public static readonly byte[] Magic"),
                 "51A-3: McapWriter no longer exposes a public mutable static byte array");
         }
@@ -485,7 +485,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMcapWriterAvoidsPerRecordToArray()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             Check(source.Contains("WriteBufferedRecord") && source.Contains("TryGetBuffer"),
                 "51C-2a: McapWriter writes buffered records without forcing MemoryStream.ToArray");
 

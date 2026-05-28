@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPublicParitySurface()
         {
-            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             foreach (var required in new[]
             {
                 "WriteHeader",
@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "117-A1: public MCAP writer exposes " + required);
             }
 
-            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapReader.cs");
+            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
             Check(reader.Contains("DefaultRecordSizeLimit", StringComparison.Ordinal)
                   && reader.Contains("MCAP opcode 0x00 is invalid", StringComparison.Ordinal),
                 "117-A2: public MCAP reader enforces record-size and invalid-opcode guards");

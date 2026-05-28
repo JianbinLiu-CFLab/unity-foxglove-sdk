@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "105D-6: point-cloud byte constants document packed field units",
                 "bytes");
             CheckGroupCommentBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs",
                 "internal const byte OpcodeHeader = 0x01;",
                 "105D-7: MCAP opcode table has source record-table comment",
                 "MCAP", "opcode");

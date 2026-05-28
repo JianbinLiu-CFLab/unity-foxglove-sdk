@@ -50,7 +50,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && options.ValidateCrcs,
                 "123-A1: McapReadOptions defaults preserve existing product behavior");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapReadOptions.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReadOptions.cs");
             foreach (var required in new[] { "McapReadOrder", "FileOrder", "LogTimeDescending", "UseOfficialEndTimeSemantics", "AllowLinearFallback", "ValidateCrcs" })
                 Check(source.Contains(required, StringComparison.Ordinal), "123-A2: read option source exposes " + required);
         }
@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceReader.cs");
             var indexed = ReadRepoText("Scripts/mcap/conformance/csharp-runners/CsharpIndexedReaderTestRunner.ts");
-            var productIndexedReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapIndexedReader.cs");
+            var productIndexedReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapIndexedReader.cs");
             Check(reader.Contains("McapStreamingReader", StringComparison.Ordinal)
                   && reader.Contains("NonSeekableReadStream", StringComparison.Ordinal)
                   && reader.Contains("AllowLinearFallback = false", StringComparison.Ordinal),
