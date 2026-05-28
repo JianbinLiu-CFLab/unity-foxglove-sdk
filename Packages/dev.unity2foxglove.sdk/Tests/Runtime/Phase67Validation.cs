@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void UnityLoggerDoesNotAutoForwardToStatus()
         {
-            var loggerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveLogger.cs");
+            var loggerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Logging/FoxgloveLogger.cs");
 
             Check(!loggerSource.Contains("PublishStatus") && !loggerSource.Contains("RemoveStatus"),
                 "67G-1: UnityLogger does not automatically forward logs to status messages");

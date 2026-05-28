@@ -913,7 +913,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var parts = new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs",

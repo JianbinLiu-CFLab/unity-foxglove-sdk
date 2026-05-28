@@ -320,7 +320,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(readme.Contains("ROS2") || readme.Contains("ROS 2"),
                 "92G-2: README mentions user-facing ROS2 output");
 
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             Check(manager.Contains("_defaultPublisherEncoding = GlobalEncoding.Protobuf"),
                 "92G-3: existing scenes still default to Protobuf");
         }

@@ -96,7 +96,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPublishDataHeaders()
         {
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var section = Slice(editorSource, "private void DrawPublishDataSection()", "private void DrawMcapSection()");
 
             Check(section.Contains("Subheader(\"Publish Rate\")"),

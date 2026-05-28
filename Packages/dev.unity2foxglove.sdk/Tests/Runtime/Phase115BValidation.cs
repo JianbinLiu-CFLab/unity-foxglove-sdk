@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string SidecarWriterPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/SchemaEvidenceSidecarWriter.cs";
         private const string ReplayControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
         private const string RuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs";
-        private const string ManagerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs";
+        private const string ManagerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string ManagerSetupPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs";
         private const string ManagerServerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
         private const string ManagerEditorPath = "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
