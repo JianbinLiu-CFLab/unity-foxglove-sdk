@@ -211,6 +211,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorAndSettingsSyncSource()
         {
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var mcapEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var layout = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerInspectorLayout.cs");
             var settings = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SchemaEvidence/Unity2FoxgloveSchemaEvidenceSettings.cs");
             var hook = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs");
@@ -223,11 +224,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && layout.Contains("WorkflowSubsection", StringComparison.Ordinal),
                 "115C-F1: low-frequency Inspector sections and schema evidence default collapsed");
 
-            Check(editor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
-                  && editor.Contains("Refresh Evidence Now", StringComparison.Ordinal)
-                  && editor.Contains("Edit Project Settings", StringComparison.Ordinal)
-                  && editor.Contains("Evidence refreshes automatically on Play, Build, and Recording", StringComparison.Ordinal)
-                  && editor.Contains("SettingsService.OpenProjectSettings", StringComparison.Ordinal),
+            Check(mcapEditor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Refresh Evidence Now", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Edit Project Settings", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Evidence refreshes automatically on Play, Build, and Recording", StringComparison.Ordinal)
+                  && mcapEditor.Contains("SettingsService.OpenProjectSettings", StringComparison.Ordinal),
                 "115C-F2: Inspector labels explain automatic evidence refresh and project settings ownership");
 
             Check(settings.Contains("SyncSerializedManager", StringComparison.Ordinal)

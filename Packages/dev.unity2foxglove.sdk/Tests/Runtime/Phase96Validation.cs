@@ -180,6 +180,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorSourceExpectations()
         {
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
+            var publishDataEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
             var normalizedManagerEditor = NormalizeLineEndings(managerEditor);
@@ -187,9 +189,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(normalizedManagerEditor.Contains("DrawSection(\"ROS2 Bridge\"")
                   && !normalizedManagerEditor.Contains("Subheader(\"ROS2 Bridge\");\n            DrawRos2BridgeSection();"),
                 "96F-1: Manager Inspector promotes ROS2 Bridge to top-level section");
-            Check(managerEditor.Contains("\"Bridge Namespace\"") && managerEditor.Contains("\"QoS Preset\"") && managerEditor.Contains("\"Effective QoS\""),
+            Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"QoS Preset\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
                 "96F-2: Manager Inspector exposes topic namespace and QoS preset");
-            Check(managerEditor.Contains("\"Host\"") && managerEditor.Contains("\"Default Output\"") && managerEditor.Contains("\"Allow Publisher Override\""),
+            Check(ros2BridgeEditor.Contains("\"Host\"") && ros2BridgeEditor.Contains("\"Default Output\"") && ros2BridgeEditor.Contains("\"Allow Publisher Override\""),
                 "96F-3: Manager bridge labels are compact product labels");
             Check(cameraEditor.Contains("Bridge Topic Override") && pointCloudEditor.Contains("Bridge Topic Override"),
                 "96F-4: custom publisher Inspectors expose topic override");

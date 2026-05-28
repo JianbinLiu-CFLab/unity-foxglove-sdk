@@ -196,6 +196,7 @@ namespace Unity.FoxgloveSDK.Tests
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
 
@@ -221,7 +222,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedPointCloudPublisher.cs").Contains("PublishRos2Bridge"),
                 "95E-8: legacy compressed point cloud spike stays out of bridge productization");
-            Check(managerEditor.Contains("ROS2 Bridge") && managerEditor.Contains("Queued Frames") && managerEditor.Contains("Last Error"),
+            Check(managerEditor.Contains("ROS2 Bridge") && ros2BridgeEditor.Contains("Queued Frames") && ros2BridgeEditor.Contains("Last Error"),
                 "95E-9: Manager Inspector exposes simple bridge UX");
             Check(cameraEditor.Contains("ROS2 Bridge") && pointCloudEditor.Contains("ROS2 Bridge"),
                 "95E-10: custom publisher Inspectors expose bridge UX");

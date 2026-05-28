@@ -39,8 +39,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManagerDefaultPublishRate()
         {
             var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var publishDataSection = Slice(editorSource, "private void DrawPublishDataSection()", "private void DrawMcapSection()");
+            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var publishDataSection = Slice(editorSource, "private void DrawPublishDataSection()", "}");
 
             Check(managerSource.Contains("_defaultPublishRateHz = 10f"),
                 "71A-1: manager exposes Default Publish Rate Hz serialized default");

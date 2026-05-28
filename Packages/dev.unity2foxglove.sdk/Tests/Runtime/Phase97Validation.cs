@@ -230,11 +230,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorSourceExpectations()
         {
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
+            var diagnosticsEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
             var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs");
             var prefs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
-            var bridgeMethod = SourceMethod(managerEditor, "void DrawRos2BridgeSection");
-            var diagnosticsMethod = SourceMethod(managerEditor, "void DrawDiagnosticsSection");
+            var bridgeMethod = SourceMethod(ros2BridgeEditor, "void DrawRos2BridgeSection");
+            var diagnosticsMethod = SourceMethod(diagnosticsEditor, "void DrawDiagnosticsSection");
             Check(bridgeMethod.Contains("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal)
                   && !diagnosticsMethod.Contains("_ros2BridgeHealthDrawer.Draw", StringComparison.Ordinal),
                 "97F-1: Manager ROS2 Bridge section owns ROS2 Bridge health drawer");

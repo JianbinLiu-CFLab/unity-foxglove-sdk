@@ -286,14 +286,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "115B-D6: FoxRun and aggregate generation share the schema evidence path resolver");
 
             var editor = ReadRepoText(ManagerEditorPath);
-            Check(editor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
-                  && editor.Contains("_identityModeSource", StringComparison.Ordinal)
-                  && editor.Contains("_identityModeOverride", StringComparison.Ordinal)
-                  && editor.Contains("Apply Project Defaults", StringComparison.Ordinal)
-                  && editor.Contains("Refresh Evidence Now", StringComparison.Ordinal)
-                  && editor.Contains("Edit Project Settings", StringComparison.Ordinal)
-                  && editor.Contains("Open Current Evidence", StringComparison.Ordinal)
-                  && editor.Contains("Copy Hash", StringComparison.Ordinal),
+            var mcapEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
+            Check(mcapEditor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
+                  && mcapEditor.Contains("_identityModeSource", StringComparison.Ordinal)
+                  && mcapEditor.Contains("_identityModeOverride", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Apply Project Defaults", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Refresh Evidence Now", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Edit Project Settings", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Open Current Evidence", StringComparison.Ordinal)
+                  && mcapEditor.Contains("Copy Hash", StringComparison.Ordinal),
                 "115B-D7: Manager Inspector surfaces identity mode and current evidence controls near recording/replay");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
