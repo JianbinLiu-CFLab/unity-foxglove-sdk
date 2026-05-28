@@ -38,6 +38,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
 
+        /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
+        public PointCloudFrame LastFrame { get; private set; }
+
         private Sensors.Lidar.LidarProfile _profile;
         private Sensors.Lidar.LidarRayGenerator _rayGenerator;
         private float _nextScanTime;
@@ -76,6 +79,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             var frame = RunScan();
+            LastFrame = frame;
 
             if (_pointCloudPublisher != null && (frame.Points.Count > 0 || _publishEmptyFrames))
                 _pointCloudPublisher.SetFrame(frame);
