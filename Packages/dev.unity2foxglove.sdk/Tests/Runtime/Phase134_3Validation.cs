@@ -95,7 +95,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayDispatchLeavesPlaybackLockBeforeUserCallbacks()
         {
-            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Check(runtimeSource.Contains("_replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true)", StringComparison.Ordinal)

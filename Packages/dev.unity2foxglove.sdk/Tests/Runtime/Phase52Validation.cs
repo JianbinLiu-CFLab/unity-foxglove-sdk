@@ -549,7 +549,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestManagerSourceClosesBackendSelectionPath()
         {
             var managerSource = ReadManagerSource();
-            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Certificates/FoxgloveLocalDevCertificateGenerator.cs");
             var demoSource = ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
@@ -913,7 +913,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var parts = new[]
             {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs",

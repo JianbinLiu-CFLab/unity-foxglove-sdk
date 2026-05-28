@@ -215,7 +215,7 @@ namespace Unity.FoxgloveSDK.Tests
             var settings = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SchemaEvidence/Unity2FoxgloveSchemaEvidenceSettings.cs");
             var hook = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs");
             var build = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs");
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
 
             Check(editor.Contains("private static bool _connectionSecurityExpanded;", StringComparison.Ordinal)
                   && editor.Contains("private static bool _publishDataExpanded;", StringComparison.Ordinal)

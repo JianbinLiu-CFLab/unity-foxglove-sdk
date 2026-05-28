@@ -225,7 +225,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "107-D3: docs explain Windows Firewall is the root cause, not WSL2 NAT");
             Check(roadmap.Contains("one-repo, multi-package", StringComparison.Ordinal)
                   && roadmap.Contains("R2FU adapter/runtime package line", StringComparison.Ordinal)
-                  && roadmap.Contains("170-series", StringComparison.Ordinal),
+                  && roadmap.Contains("deferred", StringComparison.Ordinal),
                 "107-D4: roadmap marks R2FU optional packages as ROS2 mainline and defers old ROS2 plans");
             Check(optionalReadme.Contains("runtime binaries are not bundled", StringComparison.OrdinalIgnoreCase)
                   && (optionalReadme.Contains("future adapter", StringComparison.OrdinalIgnoreCase)

@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RecordingControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs";
         private const string ReplayControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
         private const string ReplayEnginePath = "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs";
-        private const string ManagerRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs";
+        private const string ManagerRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string ManagerServerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
         private const string ManagerSetupPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs";
         private static int _passed;

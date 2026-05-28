@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.Tests
             var playbackSource = ReadRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Transport/Clock/PlaybackClock.cs");
             var runtimeSource = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
 
             Check(backendSource.Contains("TransportHostResolver.ResolveBindAddress(host)", StringComparison.Ordinal)
                   && certSource.Contains("TransportHostResolver.ResolveBindAddress(host)", StringComparison.Ordinal),

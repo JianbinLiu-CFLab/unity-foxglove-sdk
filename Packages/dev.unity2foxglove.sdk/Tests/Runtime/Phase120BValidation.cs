@@ -197,7 +197,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "120B-G1: summary-less chunk scan still collects schema/channel/message records");
             }
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapReader.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
             Check(!source.Contains("schemaContent = new byte[recordLength]", StringComparison.Ordinal)
                   && !source.Contains("channelContent = new byte[recordLength]", StringComparison.Ordinal),
                 "120B-G2: chunk schema/channel decode avoids record-sized temp arrays");

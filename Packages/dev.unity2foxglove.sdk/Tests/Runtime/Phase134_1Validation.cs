@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFoxgloveManagerUsesBoundedClientEventQueue()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
 
             Check(manager.Contains("MaxQueuedClientEvents", StringComparison.Ordinal)
@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyClientEventQueueOverflowWarning()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
 
             Check(manager.Contains("WarnClientEventQueueOverflow", StringComparison.Ordinal)
                   && manager.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagerInspectorAndRuntimeBounds()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var normalizedManager = manager.Replace("\r\n", "\n");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
@@ -157,7 +157,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeWarningThrottling()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
 
             Check(manager.Contains("_lastRos2BridgePublishWarningKey", StringComparison.Ordinal)
@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyLoggerSeverityPrefixes()
         {
-            var logger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/IFoxgloveLogger.cs");
+            var logger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Abstractions/IFoxgloveLogger.cs");
 
             Check(logger.Contains("[Foxglove][Warning]", StringComparison.Ordinal)
                   && logger.Contains("[Foxglove][Error]", StringComparison.Ordinal),
@@ -183,9 +183,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRecordingAndAssetBudgetHardening()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
 
             Check(setup.Contains("DateTime.UtcNow.ToString(RecordingTimestampFormat", StringComparison.Ordinal)
                   && setup.Contains("yyyyMMdd_HHmmss_fffffff'Z'", StringComparison.Ordinal),

@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
             Check(threw, "122-A4: invalid compression fails clearly");
 
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var controller = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
             Check(runtime.Contains("EnableRecording(string filePath, McapWriterOptions options", StringComparison.Ordinal)
                   && controller.Contains("Enable(string filePath, McapWriterOptions options", StringComparison.Ordinal),

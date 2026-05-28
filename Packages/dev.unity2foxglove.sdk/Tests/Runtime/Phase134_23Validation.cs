@@ -148,7 +148,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && mouseDrag.Contains("TryReadMouse", StringComparison.Ordinal),
                 "134-23-F6: MouseDragCube compiles without a hard Input System package dependency");
 
-            var manager = ReadRepoFile(PackageRoot + "/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoFile(PackageRoot + "/Runtime/Components/Manager/FoxgloveManager.cs");
             Check(manager.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler", StringComparison.Ordinal)
                   && manager.Contains("_runtime?.RegisterService(descriptor, handler)", StringComparison.Ordinal),
                 "134-23-F7: FoxgloveManager exposes handler-based service registration facade");

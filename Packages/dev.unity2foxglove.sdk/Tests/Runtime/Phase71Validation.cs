@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagerDefaultPublishRate()
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var publishDataSection = Slice(editorSource, "private void DrawPublishDataSection()", "private void DrawMcapSection()");
 

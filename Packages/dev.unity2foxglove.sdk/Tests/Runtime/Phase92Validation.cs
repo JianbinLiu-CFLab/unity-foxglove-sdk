@@ -154,7 +154,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var managerServer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             Check(managerSource.Contains("TryPrepareRos2Publish"),
                 "92C-1: manager exposes product ROS2 preflight");
             Check(managerSource.Contains("public void PublishRos2(string topic, string schemaName, byte[] payload, ulong logTimeNs)"),
@@ -320,7 +320,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(readme.Contains("ROS2") || readme.Contains("ROS 2"),
                 "92G-2: README mentions user-facing ROS2 output");
 
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             Check(manager.Contains("_defaultPublisherEncoding = GlobalEncoding.Protobuf"),
                 "92G-3: existing scenes still default to Protobuf");
         }

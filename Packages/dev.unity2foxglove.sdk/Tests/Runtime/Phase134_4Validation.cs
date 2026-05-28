@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ManagerPublishingPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs";
         private const string ManagerPath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs";
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string PublisherEditorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs";
 
@@ -109,8 +109,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyParameterLifecycleFacadesAndComponentUnregister()
         {
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxgloveManager.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var component = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Parameters/FoxgloveParameterComponent.cs");
 
             Check(runtime.Contains("public bool UnregisterParameter(string name)", StringComparison.Ordinal)
@@ -175,7 +175,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyQuaternionCoordinateRoundTrip()
         {
-            var converter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/CoordinateConverter.cs");
+            var converter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Utilities/CoordinateConverter.cs");
             Check(converter.Contains("new UnityEngine.Quaternion(-q.z, q.x, -q.y, q.w)", StringComparison.Ordinal)
                   && converter.Contains("new UnityEngine.Quaternion(q.y, -q.z, -q.x, q.w)", StringComparison.Ordinal),
                 "134-4G-1: coordinate converter keeps the reviewed quaternion mapping formulas");

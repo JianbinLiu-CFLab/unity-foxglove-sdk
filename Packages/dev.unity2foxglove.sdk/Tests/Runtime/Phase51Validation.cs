@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(McapBinaryReader.MatchesMagic(bytes, 0),
                 "51A-2: magic matcher uses immutable internal magic bytes");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             Check(!source.Contains("public static readonly byte[] Magic"),
                 "51A-3: McapWriter no longer exposes a public mutable static byte array");
         }
@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyProtobufRegistrationCatchLogsWarning()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             Check(source.Contains("catch (Exception ex)") && source.Contains("_logger.LogWarning")
                   && source.Contains("protobuf", StringComparison.OrdinalIgnoreCase),
                 "51A-9: protobuf registration failures are logged as non-fatal warnings");
@@ -296,7 +296,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "51B-15: runtime can start successfully after rollback");
             runtime.Dispose();
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var start = ExtractMethodBody(source, "public void Start");
             var catchIndex = start.IndexOf("catch", StringComparison.Ordinal);
             var detachIndex = start.IndexOf("_recording.DetachFromSession()", StringComparison.Ordinal);
@@ -346,7 +346,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(transport.DataBinary.Count == 1,
                 "51B-19: live MessageData publish uses data binary priority");
 
-            var transportSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/IFoxgloveTransport.cs");
+            var transportSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/Abstractions/IFoxgloveTransport.cs");
             var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             Check(transportSource.Contains("BroadcastDataBinary")
                   && Regex.IsMatch(backendSource, @"BroadcastBinary[\s\S]*FramePriority\.Control")
@@ -433,7 +433,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimeTickLockBoundaryIsDocumented()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var tick = ExtractMethodBody(source, "public void Tick");
             Check(tick.Contains("broadcastLiveTime") && tick.Contains("session.BroadcastTime()"),
                 "51B-31: live time broadcast runs outside the playback control lock");
@@ -485,7 +485,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMcapWriterAvoidsPerRecordToArray()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/McapWriter.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             Check(source.Contains("WriteBufferedRecord") && source.Contains("TryGetBuffer"),
                 "51C-2a: McapWriter writes buffered records without forcing MemoryStream.ToArray");
 
