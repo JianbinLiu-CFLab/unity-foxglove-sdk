@@ -108,19 +108,19 @@ namespace Unity.FoxgloveSDK.Editor
                 case "float":
                 case "Single":
                 case "System.Single":
-                    return $"__foxrun_float_changed({access}, {lastVar}, {eps})";
+                    return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}, {lastVar}, {eps})";
                 case "double":
                 case "Double":
                 case "System.Double":
-                    return $"__foxrun_double_changed({access}, {lastVar}, {eps})";
+                    return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.DoubleChanged({access}, {lastVar}, {eps})";
                 case "Vector3":
-                    return $"__foxrun_float_changed({access}.x, {lastVar}.x, {eps}) || __foxrun_float_changed({access}.y, {lastVar}.y, {eps}) || __foxrun_float_changed({access}.z, {lastVar}.z, {eps})";
+                    return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.x, {lastVar}.x, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.y, {lastVar}.y, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.z, {lastVar}.z, {eps})";
                 case "Vector2":
-                    return $"__foxrun_float_changed({access}.x, {lastVar}.x, {eps}) || __foxrun_float_changed({access}.y, {lastVar}.y, {eps})";
+                    return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.x, {lastVar}.x, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.y, {lastVar}.y, {eps})";
                 case "Quaternion":
-                    return $"__foxrun_float_changed({access}.x, {lastVar}.x, {eps}) || __foxrun_float_changed({access}.y, {lastVar}.y, {eps}) || __foxrun_float_changed({access}.z, {lastVar}.z, {eps}) || __foxrun_float_changed({access}.w, {lastVar}.w, {eps})";
+                    return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.x, {lastVar}.x, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.y, {lastVar}.y, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.z, {lastVar}.z, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.w, {lastVar}.w, {eps})";
                 case "Color":
-                    return $"__foxrun_float_changed({access}.r, {lastVar}.r, {eps}) || __foxrun_float_changed({access}.g, {lastVar}.g, {eps}) || __foxrun_float_changed({access}.b, {lastVar}.b, {eps}) || __foxrun_float_changed({access}.a, {lastVar}.a, {eps})";
+                    return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.r, {lastVar}.r, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.g, {lastVar}.g, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.b, {lastVar}.b, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.a, {lastVar}.a, {eps})";
                 default:
                     return $"!EqualityComparer<{type}>.Default.Equals({access}, {lastVar})";
             }
@@ -294,19 +294,6 @@ namespace Unity.FoxgloveSDK.Editor
                     for (int j = 0; j < fields.Count; j++)
                         sb.AppendLine($"{pad}    private {fields[j].TypeName} __last_{i}_{j};");
                 }
-                sb.AppendLine();
-
-                sb.AppendLine($"{pad}    private static bool __foxrun_float_changed(float current, float last, float epsilon)");
-                sb.AppendLine($"{pad}    {{");
-                sb.AppendLine($"{pad}        if (float.IsNaN(current) || float.IsNaN(last)) return !(float.IsNaN(current) && float.IsNaN(last));");
-                sb.AppendLine($"{pad}        return Math.Abs(current - last) > epsilon;");
-                sb.AppendLine($"{pad}    }}");
-                sb.AppendLine();
-                sb.AppendLine($"{pad}    private static bool __foxrun_double_changed(double current, double last, double epsilon)");
-                sb.AppendLine($"{pad}    {{");
-                sb.AppendLine($"{pad}        if (double.IsNaN(current) || double.IsNaN(last)) return !(double.IsNaN(current) && double.IsNaN(last));");
-                sb.AppendLine($"{pad}        return Math.Abs(current - last) > epsilon;");
-                sb.AppendLine($"{pad}    }}");
                 sb.AppendLine();
 
                 // ShouldPublish

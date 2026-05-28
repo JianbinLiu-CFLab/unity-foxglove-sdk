@@ -40,7 +40,14 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun publish mode must be between 0 and 3."));
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN006", target, member.MemberName, "FoxRun member type '" + member.RawObservedTypeName + "' is not a canonical built-in contract type."));
+            {
+                var raw = member.RawObservedTypeName ?? string.Empty;
+                var message = IsUnityNativeContainerTypeName(raw)
+                    ? "FoxRun member type '" + raw + "' is a Unity native container and is not supported "
+                      + "as a FoxRun field; use a managed type instead."
+                    : "FoxRun member type '" + raw + "' is not a canonical built-in contract type.";
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN006", target, member.MemberName, message));
+            }
 
             if (IsUnsupportedGenericMember(member))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN007", target, member.MemberName, "Generic FoxRun member type may be unsafe for IL2CPP contract governance."));
@@ -75,6 +82,42 @@ namespace Unity.FoxgloveSDK.Editor
                    || name.IndexOf("System.IO.Stream", StringComparison.Ordinal) >= 0
                    || name.IndexOf("Memory<System.Byte>", StringComparison.Ordinal) >= 0
                    || name.IndexOf("ReadOnlyMemory<System.Byte>", StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool IsUnityNativeContainerTypeName(string rawTypeName)
+        {
+            if (string.IsNullOrEmpty(rawTypeName))
+                return false;
+
+            foreach (var prefix in new[]
+            {
+                "NativeArray<",
+                "NativeList<",
+                "NativeHashMap<",
+                "NativeMultiHashMap<",
+                "NativeParallelHashMap<",
+                "NativeParallelMultiHashMap<",
+                "NativeSlice<",
+                "NativeQueue<",
+                "NativeReference<",
+                "NativeText<",
+                "Unity.Collections.NativeArray<",
+                "Unity.Collections.NativeList<",
+                "Unity.Collections.NativeHashMap<",
+                "Unity.Collections.NativeMultiHashMap<",
+                "Unity.Collections.NativeParallelHashMap<",
+                "Unity.Collections.NativeParallelMultiHashMap<",
+                "Unity.Collections.NativeSlice<",
+                "Unity.Collections.NativeQueue<",
+                "Unity.Collections.NativeReference<",
+                "Unity.Collections.NativeText<"
+            })
+            {
+                if (rawTypeName.StartsWith(prefix, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
         }
     }
 
