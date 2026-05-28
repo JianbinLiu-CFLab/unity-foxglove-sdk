@@ -22,16 +22,24 @@ namespace Unity.FoxgloveSDK.Core
 
         public void Attach(ReplayController replay, FoxgloveSession session)
         {
+            replay.RegisterChannels(session);
             Action<string, byte[]> replayForwarder = SafeInvokeReplayMessage;
             Action<ReplayMessageContext> replayContextForwarder = SafeInvokeReplayMessageContext;
             Action<ReplayBatchContext> replayBatchForwarder = SafeInvokeReplayBatchCompleted;
-            replay.OnReplayMessage += replayForwarder;
-            replay.OnReplayMessageContext += replayContextForwarder;
-            replay.OnReplayBatchCompleted += replayBatchForwarder;
             _replayForwarder = replayForwarder;
             _replayContextForwarder = replayContextForwarder;
             _replayBatchForwarder = replayBatchForwarder;
-            replay.RegisterChannels(session);
+            try
+            {
+                replay.OnReplayMessage += replayForwarder;
+                replay.OnReplayMessageContext += replayContextForwarder;
+                replay.OnReplayBatchCompleted += replayBatchForwarder;
+            }
+            catch
+            {
+                Detach(replay);
+                throw;
+            }
         }
 
         public void Detach(ReplayController replay)

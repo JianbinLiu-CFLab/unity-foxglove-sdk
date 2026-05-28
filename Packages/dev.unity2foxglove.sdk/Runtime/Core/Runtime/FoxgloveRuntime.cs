@@ -200,7 +200,7 @@ namespace Unity.FoxgloveSDK.Core
                     _replayOrchestrator.Detach(_replay);
                     try
                     {
-                        session.Dispose();
+                        session?.Dispose();
                     }
                     catch (Exception disposeEx)
                     {
