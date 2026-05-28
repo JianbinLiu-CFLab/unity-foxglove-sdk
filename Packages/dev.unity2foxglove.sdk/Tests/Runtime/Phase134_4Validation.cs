@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyParameterLifecycleFacadesAndComponentUnregister()
         {
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var component = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Parameters/FoxgloveParameterComponent.cs");
 

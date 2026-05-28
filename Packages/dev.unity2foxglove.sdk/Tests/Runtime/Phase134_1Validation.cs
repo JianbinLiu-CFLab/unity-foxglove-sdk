@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyLoggerSeverityPrefixes()
         {
-            var logger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/IFoxgloveLogger.cs");
+            var logger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Abstractions/IFoxgloveLogger.cs");
 
             Check(logger.Contains("[Foxglove][Warning]", StringComparison.Ordinal)
                   && logger.Contains("[Foxglove][Error]", StringComparison.Ordinal),
@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
 
             Check(setup.Contains("DateTime.UtcNow.ToString(RecordingTimestampFormat", StringComparison.Ordinal)
                   && setup.Contains("yyyyMMdd_HHmmss_fffffff'Z'", StringComparison.Ordinal),

@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyProtobufRegistrationCatchLogsWarning()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             Check(source.Contains("catch (Exception ex)") && source.Contains("_logger.LogWarning")
                   && source.Contains("protobuf", StringComparison.OrdinalIgnoreCase),
                 "51A-9: protobuf registration failures are logged as non-fatal warnings");
@@ -296,7 +296,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "51B-15: runtime can start successfully after rollback");
             runtime.Dispose();
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var start = ExtractMethodBody(source, "public void Start");
             var catchIndex = start.IndexOf("catch", StringComparison.Ordinal);
             var detachIndex = start.IndexOf("_recording.DetachFromSession()", StringComparison.Ordinal);
@@ -433,7 +433,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimeTickLockBoundaryIsDocumented()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var tick = ExtractMethodBody(source, "public void Tick");
             Check(tick.Contains("broadcastLiveTime") && tick.Contains("session.BroadcastTime()"),
                 "51B-31: live time broadcast runs outside the playback control lock");

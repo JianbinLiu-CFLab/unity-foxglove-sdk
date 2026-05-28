@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimeTickAdvancesPlaybackClockBeforeReplay()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var tickIndex = source.IndexOf("_playbackClock.Tick()", StringComparison.Ordinal);
             var replayIndex = source.IndexOf("_replay.Tick(", StringComparison.Ordinal);
             Check(tickIndex >= 0 && replayIndex > tickIndex,

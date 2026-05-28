@@ -22,10 +22,10 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string MismatchedHash = "0000000000000000000000000000000000000000000000000000000000000000";
-        private const string RuntimeIdentityModePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/SchemaIdentityMode.cs";
+        private const string RuntimeIdentityModePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/SchemaIdentityMode.cs";
         private const string SidecarWriterPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/SchemaEvidenceSidecarWriter.cs";
         private const string ReplayControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
-        private const string RuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs";
+        private const string RuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs";
         private const string ManagerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string ManagerSetupPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs";
         private const string ManagerServerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";

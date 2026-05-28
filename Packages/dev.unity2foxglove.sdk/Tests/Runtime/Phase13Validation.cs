@@ -583,7 +583,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
             var playbackHandlerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
-            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/FoxgloveRuntime.cs");
+            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
 
             Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
