@@ -171,8 +171,8 @@ namespace Unity.FoxgloveSDK.Tests
                 new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/value", 10f, "",
                     (int)FoxRunPublishMode.OnChange, 0.01f, 0f)
             });
-            Check(source.Contains("__foxrun_float_changed") && source.Contains("float.IsNaN"),
-                "41C-4: generated float comparison handles NaN transitions explicitly");
+            Check(source.Contains("FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
+                "41C-4: generated float comparison uses FoxRunChangeHelper (NaN-safe by contract)");
         }
 
         private static void TestEmitterUsesConfiguredEpsilonInGeneratedSource()
@@ -183,7 +183,7 @@ namespace Unity.FoxgloveSDK.Tests
                     (int)FoxRunPublishMode.OnChange, 0.1f, 0f)
             });
 
-            Check(source.Contains("__foxrun_float_changed", StringComparison.Ordinal)
+            Check(source.Contains("FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal)
                   && source.Contains("this.Value", StringComparison.Ordinal)
                   && source.Contains("__last_0_0", StringComparison.Ordinal)
                   && source.Contains("0.100000001f", StringComparison.Ordinal),

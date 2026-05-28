@@ -77,18 +77,6 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         private double __lastPublishSec_6;
         private UnityEngine.Vector3 __last_6_0;
 
-        private static bool __foxrun_float_changed(float current, float last, float epsilon)
-        {
-            if (float.IsNaN(current) || float.IsNaN(last)) return !(float.IsNaN(current) && float.IsNaN(last));
-            return Math.Abs(current - last) > epsilon;
-        }
-
-        private static bool __foxrun_double_changed(double current, double last, double epsilon)
-        {
-            if (double.IsNaN(current) || double.IsNaN(last)) return !(double.IsNaN(current) && double.IsNaN(last));
-            return Math.Abs(current - last) > epsilon;
-        }
-
         bool IFoxgloveLogPolicySource.FoxgloveLog_ShouldPublish(int topicIndex, double nowSec)
         {
             bool changed;
@@ -110,12 +98,12 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 4: return false;
                 case 5:
                     changed = !__hasLast_5;
-                    if (!changed) changed = __foxrun_float_changed(this._value, __last_5_0, 0f);
-                    if (!changed) changed = __foxrun_float_changed(this._valueMirror, __last_5_1, 0.00999999978f);
+                    if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._value, __last_5_0, 0f);
+                    if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._valueMirror, __last_5_1, 0.00999999978f);
                     return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_5, changed, __lastPublishSec_5, 0f);
                 case 6:
                     changed = !__hasLast_6;
-                    if (!changed) changed = __foxrun_float_changed(this._position.x, __last_6_0.x, 0.00100000005f) || __foxrun_float_changed(this._position.y, __last_6_0.y, 0.00100000005f) || __foxrun_float_changed(this._position.z, __last_6_0.z, 0.00100000005f);
+                    if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.x, __last_6_0.x, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.y, __last_6_0.y, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.z, __last_6_0.z, 0.00100000005f);
                     return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_6, changed, __lastPublishSec_6, 0f);
                 default: return true;
             }
