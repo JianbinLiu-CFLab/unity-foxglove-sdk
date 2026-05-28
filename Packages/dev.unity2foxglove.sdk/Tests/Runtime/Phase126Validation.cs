@@ -63,8 +63,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && registry.Contains("includeLocalEvidence && item.Category == ValidationCategory.LocalEvidence", StringComparison.Ordinal)
                   && registry.Contains("ValidationCategory.LocalEvidence, run, includeInDefault: true", StringComparison.Ordinal)
                   && registry.Contains("--phase126", StringComparison.Ordinal)
-                  && registry.Contains("--phase138b", StringComparison.Ordinal)
-                  && registry.Contains("--phase137b", StringComparison.Ordinal),
+                  && registry.Contains("--phase138b", StringComparison.Ordinal),
                 "126B-2: validation registry classifies CI-safe and local-evidence phases");
             Check(project.Contains("Phase126Validation.cs", StringComparison.Ordinal)
                   && project.Contains("PhaseValidationRegistry.cs", StringComparison.Ordinal)

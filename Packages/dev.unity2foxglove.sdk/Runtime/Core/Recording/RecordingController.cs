@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Core
     /// and attached to a FoxgloveSession on Start. Captures parameter
     /// snapshots and change events as MCAP metadata.
     /// </summary>
-    public class RecordingController : IDisposable
+    public class RecordingController : IDisposable, IRecordingStateReader
     {
         /// <summary>Active MCAP recorder, or null when not recording.</summary>
         private McapRecorder _recorder;
@@ -36,18 +36,28 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Whether recording has been enabled (attached on next session start).</summary>
         private bool _recordingEnabled;
         private readonly IFoxgloveLogger _logger;
-        private PlaybackClock _playbackClock;
+        private readonly IFoxgloveClock _clock;
         private FoxgloveParameterStore _parameters;
         private FoxgloveSession _session;
 
-        /// <summary>Whether recording is enabled via <c>Enable()</c>.</summary>
+        /// <inheritdoc cref="IRecordingStateReader.IsEnabled"/>
         public bool IsEnabled => _recordingEnabled;
-        /// <summary>Coordinate mode set for this recording.</summary>
+        /// <inheritdoc cref="IRecordingStateReader.CoordinateMode"/>
         public string CoordinateMode => _coordinateMode;
 
-        public RecordingController(IFoxgloveLogger logger)
+        /// <summary>
+        /// Creates a recording controller with the provided logger.
+        /// Uses a default <see cref="Transport.SystemClock"/> for timestamp generation.
+        /// </summary>
+        public RecordingController(IFoxgloveLogger logger) : this(logger, new Transport.SystemClock()) { }
+
+        /// <summary>
+        /// Creates a recording controller with the provided logger and clock.
+        /// </summary>
+        public RecordingController(IFoxgloveLogger logger, IFoxgloveClock clock)
         {
             _logger = logger;
+            _clock = clock;
         }
 
         /// <summary>
@@ -77,15 +87,27 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>
         /// Attach the recorder to a session on start.
-        /// <para>Creates an MCAP file, writes a parameter snapshot as metadata,
-        /// subscribes to parameter change events, then hands the recorder to the session.</para>
+        /// Uses the clock supplied at construction time.
         /// </summary>
+        public void AttachToSession(FoxgloveParameterStore parameters, FoxgloveSession session)
+        {
+            AttachToSessionCore(parameters, session);
+        }
+
+        /// <summary>
+        /// Attach the recorder to a session on start with an externally provided clock.
+        /// </summary>
+        [Obsolete("Use AttachToSession(FoxgloveParameterStore, FoxgloveSession) — the clock is now supplied through the constructor.")]
         public void AttachToSession(PlaybackClock clock, FoxgloveParameterStore parameters, FoxgloveSession session)
+        {
+            AttachToSessionCore(parameters, session);
+        }
+
+        private void AttachToSessionCore(FoxgloveParameterStore parameters, FoxgloveSession session)
         {
             if (Volatile.Read(ref _recorder) != null)
                 DetachFromSession();
 
-            _playbackClock = clock;
             _parameters = parameters;
             if (!_recordingEnabled || _recordingPath == null) return;
 
@@ -101,7 +123,7 @@ namespace Unity.FoxgloveSDK.Core
                 // If the snapshot or event subscription throws, the recorder and
                 // stream remain owned locally and are cleaned up in catch.
                 var allParams = parameters.GetAllWireParameters();
-                var snapshotTime = clock.NowNs;
+                var snapshotTime = _clock.NowNs;
                 var snapshot = new List<object>();
                 foreach (var p in allParams)
                     snapshot.Add(new { name = p.Name, type = p.Type, value = p.Value, timestamp = snapshotTime });
@@ -184,7 +206,7 @@ namespace Unity.FoxgloveSDK.Core
 
             try
             {
-                var timestamp = _playbackClock?.NowNs ?? 0UL;
+                var timestamp = _clock.NowNs;
                 var entry = JsonConvert.SerializeObject(new { name, type, value, timestamp });
                 recorder.WriteMetadata("foxglove.parameters", entry);
             }

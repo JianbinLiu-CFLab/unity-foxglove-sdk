@@ -287,7 +287,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var replay = ReadRepoText(ReplayControllerPath);
             var loadIndex = replay.IndexOf("_replayEngine.Load(filePath)", StringComparison.Ordinal);
-            var guardIndex = replay.IndexOf("EvaluateFoxRunReplaySchemaGuard(_replayEngine)", StringComparison.Ordinal);
+            var guardIndex = replay.IndexOf("ReplaySchemaGuard.Evaluate(_replayEngine)", StringComparison.Ordinal);
             var playIndex = replay.IndexOf("_replayEngine.Play()", StringComparison.Ordinal);
             Check(loadIndex >= 0 && guardIndex > loadIndex && playIndex > guardIndex,
                 "114-F4: replay guard runs after Load and before Play");
