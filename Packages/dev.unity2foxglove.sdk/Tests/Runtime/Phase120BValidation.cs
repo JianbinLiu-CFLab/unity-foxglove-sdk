@@ -208,14 +208,14 @@ namespace Unity.FoxgloveSDK.Tests
             var schemaContent = BuildSchemaContent(1, "phase120b.Bounded", "jsonschema", Encoding.UTF8.GetBytes("{}"));
             var schemaBuffer = WrapWithPadding(schemaContent);
             Check(ThrowsWith<InvalidDataException>(
-                    () => McapReader.DecodeSchema(schemaBuffer, 1, schemaContent.Length - 1),
+                    () => McapRecordDecoder.DecodeSchema(schemaBuffer, 1, schemaContent.Length - 1),
                     "segment"),
                 "120B-G3: DecodeSchema honors contentLen segment bounds");
 
             var channelContent = BuildChannelContent(1, 1, "/phase120b/bounded", "json");
             var channelBuffer = WrapWithPadding(channelContent);
             Check(ThrowsWith<InvalidDataException>(
-                    () => McapReader.DecodeChannel(channelBuffer, 1, channelContent.Length - 1),
+                    () => McapRecordDecoder.DecodeChannel(channelBuffer, 1, channelContent.Length - 1),
                     "segment"),
                 "120B-G4: DecodeChannel honors contentLen segment bounds");
         }
