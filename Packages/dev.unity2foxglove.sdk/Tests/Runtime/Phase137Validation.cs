@@ -180,11 +180,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyProtocolMessages(string repoRoot)
         {
             var messagesDir = Path.Combine(repoRoot, "Packages/dev.unity2foxglove.sdk/Runtime/Protocol/Messages");
+            var protocolDir = Path.Combine(repoRoot, "Packages/dev.unity2foxglove.sdk/Runtime/Protocol");
             Check(Directory.Exists(messagesDir), "137-5: Messages/ directory exists");
 
             foreach (var file in ExpectedMessageFiles)
             {
-                var path = Path.Combine(messagesDir, file);
+                // ProtocolConstants.cs lives in Protocol/ root; other files live in Messages/
+                var dir = file == "ProtocolConstants.cs" ? protocolDir : messagesDir;
+                var path = Path.Combine(dir, file);
                 Check(File.Exists(path), "137-6: message file exists: " + file);
                 if (File.Exists(path))
                 {

@@ -258,7 +258,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 
 - **CSWSH Origin Guard**: browser-origin WebSocket connections are rejected by default. An Inspector-configurable allowlist enables specific origins. `file://` origins (Electron/Foxglove Desktop) are always permitted.
 - **SecureWebSocket mode**: optional `wss://` support loads a PFX certificate and private key in Unity. The root CA distributor is only a bootstrap helper; verify the SHA-256 fingerprint before trusting a CA.
-- **Shared token gate**: optional `?token=...` matching can reject missing or wrong tokens before WebSocket upgrade. Prefer using it with WSS; do not treat it as strong identity.
+- **Shared token gate**: set a shared passphrase in the Inspector; clients must append `?token=...` to the WebSocket URL. This is a simple gate for trusted LAN environments, not production authentication. Combine with WSS for transport encryption.
 - **Default bind**: `127.0.0.1:8765`. Do not expose this port on untrusted networks.
 - **Plain WebSocket remains default**: anyone who can reach an unsecured plain WebSocket port can interact with parameters, services, and published data unless the optional token gate is configured.
 
