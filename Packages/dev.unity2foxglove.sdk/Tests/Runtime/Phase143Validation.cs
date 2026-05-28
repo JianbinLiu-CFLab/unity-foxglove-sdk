@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 137 R2FU standalone distro upgrade ladder strategy validation.
+// Purpose: Phase 143 R2FU standalone distro upgrade ladder strategy validation.
 
 using System;
 using System.Collections.Generic;
@@ -12,14 +12,14 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    public static class Phase137Validation
+    public static class Phase143Validation
     {
         private static int _passed;
 
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 137: R2FU Standalone Distro Upgrade Ladder ===");
+            Console.WriteLine("=== Phase 143: R2FU Standalone Distro Upgrade Ladder ===");
             _passed = 0;
 
             VerifyTrackedStrategyArtifacts();
@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyCoreSdkStaysRosFree();
             VerifyValidationWiring();
 
-            Console.WriteLine($"Phase 137: {_passed} checks passed.");
+            Console.WriteLine($"Phase 143: {_passed} checks passed.");
         }
 
         private static void VerifyTrackedStrategyArtifacts()
@@ -35,11 +35,11 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(registry.Contains("--phase138", StringComparison.Ordinal)
                   && registry.Contains("--phase138b", StringComparison.Ordinal),
-                "137A-1: tracked validation registry keeps downstream Jazzy gates explicit");
+                "143A-1: tracked validation registry keeps downstream Jazzy gates explicit");
             Check(RepoFileExists("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
-                "137A-2: tracked Jazzy Windows build orchestrator is present");
+                "143A-2: tracked Jazzy Windows build orchestrator is present");
             Check(RepoFileExists("Packages/dev.unity2foxglove.ros2forunity/package.json"),
-                "137A-3: tracked optional ROS2 package manifest is present");
+                "143A-3: tracked optional ROS2 package manifest is present");
         }
 
         private static void VerifyTrackedArtifactHygiene()
@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToList();
 
             Check(offenders.Count == 0,
-                "137D-1: tracked files contain no R2FU zips, Unity imports, metadata XML, native plugin artifacts, or build outputs"
+                "143D-1: tracked files contain no R2FU zips, Unity imports, metadata XML, native plugin artifacts, or build outputs"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
         }
 
@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Tests
             var packageJson = ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json");
             Check(!packageJson.Contains("rclcpp", StringComparison.OrdinalIgnoreCase)
                   && !packageJson.Contains("Ros2ForUnity", StringComparison.Ordinal),
-                "137E-1: core SDK package manifest remains free of R2FU/rclcpp dependencies");
+                "143E-1: core SDK package manifest remains free of R2FU/rclcpp dependencies");
 
             var productionRoots = new[]
             {
@@ -75,26 +75,27 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToList();
 
             Check(offenders.Count == 0,
-                "137E-2: core SDK production surface has no hard ROS2 For Unity dependency"
+                "143E-2: core SDK production surface has no hard ROS2 For Unity dependency"
                 + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
         }
 
         private static void VerifyValidationWiring()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var entry = PhaseValidationRegistry.Find(new[] { "--phase137" });
-            var aliasEntry = PhaseValidationRegistry.Find(new[] { "--phase136" });
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase143" });
+            var phase142Entry = PhaseValidationRegistry.Find(new[] { "--phase142" });
 
             Check(entry != null
                   && entry.Run == (Action)Validate
-                  && aliasEntry == entry,
-                "137F-1: validation registry wires --phase137");
+                  && phase142Entry != null
+                  && phase142Entry != entry,
+                "143F-1: validation registry wires --phase143 and --phase142 as distinct entries");
             Check(entry != null
                   && entry.Category == ValidationCategory.LocalEvidence
                   && entry.IncludeInDefault,
-                "137F-2: Phase137 is classified as local-evidence opt-in outside default CI");
-            Check(project.Contains("Phase137Validation.cs", StringComparison.Ordinal),
-                "137F-3: test project compiles Phase137Validation");
+                "143F-2: Phase143 is classified as local-evidence opt-in outside default CI");
+            Check(project.Contains("Phase143Validation.cs", StringComparison.Ordinal),
+                "143F-3: test project compiles Phase143Validation");
         }
 
         private static bool IsForbiddenTrackedArtifact(string path)
@@ -214,7 +215,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = RepoPath(relativePath);
             if (!File.Exists(path))
-                throw new FileNotFoundException("Missing required Phase137 file: " + relativePath, path);
+                throw new FileNotFoundException("Missing required Phase143 file: " + relativePath, path);
             return File.ReadAllText(path);
         }
 

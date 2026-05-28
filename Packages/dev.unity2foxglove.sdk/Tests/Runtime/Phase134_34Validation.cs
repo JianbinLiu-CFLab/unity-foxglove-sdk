@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && phase24d.Contains("ChannelMessageCounts.Values.Contains(2UL)", StringComparison.Ordinal),
                 "134-34E: matching-schema MCAP test asserts message counts");
             Check(phase41.Contains("TestEmitterUsesConfiguredEpsilonInGeneratedSource", StringComparison.Ordinal)
-                  && phase41.Contains("__foxrun_float_changed", StringComparison.Ordinal)
+                  && phase41.Contains("FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal)
                   && phase41.Contains("this.Value", StringComparison.Ordinal)
                   && phase41.Contains("__last_0_0", StringComparison.Ordinal)
                   && phase41.Contains("0.100000001f", StringComparison.Ordinal),

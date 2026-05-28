@@ -17,7 +17,7 @@ using UnityEngine;
 public class Phase88PointCloudFanoutSource : MonoBehaviour
 {
     [SerializeField] private FoxglovePointCloudPublisher _rawPublisher;
-    [SerializeField] private FoxgloveCompressedPointCloudPublisher _compressedPublisher;
+    [SerializeField] private FoxglovePointCloudPublisher _compressedPublisher;
     [SerializeField, Min(1)] private int _pointCount = 1000;
     [SerializeField] private string _frameId = "unity_world";
     [SerializeField, Min(1)] private int _columns = 50;

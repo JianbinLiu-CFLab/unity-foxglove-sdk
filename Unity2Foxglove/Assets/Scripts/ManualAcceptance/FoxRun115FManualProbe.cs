@@ -68,6 +68,10 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
     [FoxRun("/debug/115f/nullable", RateHz = 2f)]
     public int? optionalCount = 0;
 
+    // Test from Phase136, test for FOXRUN006 message
+    // [FoxRun("/test/native", RateHz = 10f)]
+    // public NativeArray<float> _testNative;
+
     // Negative diagnostic probe: uncomment this attribute to verify that
     // FOXRUN006 rejects non-canonical custom object payloads as an error.
     // [FoxRun("/debug/115f/nested", PublishMode = FoxRunPublishMode.OnTrigger)]

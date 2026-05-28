@@ -113,7 +113,8 @@
     <Compile Include="Phase100Validation.cs" />
     <Compile Include="Phase105Validation.cs" />
     <Compile Include="Phase106Validation.cs" />
-    <Compile Include="Phase137Validation.cs" />
+    <Compile Include="Phase142Validation.cs" />
+    <Compile Include="Phase143Validation.cs" />
     <Compile Include="Phase138Validation.cs" />
     <Compile Include="Phase138BValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
