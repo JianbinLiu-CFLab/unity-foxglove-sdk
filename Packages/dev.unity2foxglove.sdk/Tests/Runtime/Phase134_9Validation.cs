@@ -86,7 +86,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TruncatedMessageContentThrowsInvalidData()
         {
-            Check(ThrowsInvalidData(() => McapReader.DecodeMessage(new byte[10], 0, 10)),
+            Check(ThrowsInvalidData(() => McapRecordDecoder.DecodeMessage(new byte[10], 0, 10)),
                 "134-9C-1: truncated message fixed header throws InvalidDataException");
         }
 
@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Tests
             WriteU64LE(content, 3);
             WriteU64LE(content, 4);
             WriteU32LE(content, 11);
-            Check(ThrowsInvalidData(() => McapReader.DecodeChunkIndex(content.ToArray())),
+            Check(ThrowsInvalidData(() => McapRecordDecoder.DecodeChunkIndex(content.ToArray())),
                 "134-9C-2: malformed chunk index vector length is rejected");
         }
 
@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
             WriteU64LE(content, 1);
             WriteU64LE(content, 2);
             WriteU32LE(content, 11);
-            Check(ThrowsInvalidData(() => McapReader.DecodeStatistics(content.ToArray())),
+            Check(ThrowsInvalidData(() => McapRecordDecoder.DecodeStatistics(content.ToArray())),
                 "134-9C-3: malformed statistics channel-count vector length is rejected");
         }
 
@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
             var content = new MemoryStream();
             WriteString(content, "phase134_9");
             WriteU32LE(content, 0x80000000);
-            Check(ThrowsInvalidData(() => McapReader.DecodeMetadata(content.ToArray())),
+            Check(ThrowsInvalidData(() => McapRecordDecoder.DecodeMetadata(content.ToArray())),
                 "134-9G-1: oversized metadata map length is rejected");
         }
 

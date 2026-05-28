@@ -112,25 +112,25 @@ namespace Unity.FoxgloveSDK.IO
             switch (opcode)
             {
                 case McapWriter.OpcodeHeader:
-                    McapReader.DecodeHeader(content);
+                    McapRecordDecoder.DecodeHeader(content);
                     break;
                 case McapWriter.OpcodeSchema:
-                    AddSchema(result.Summary.Schemas, McapReader.DecodeSchema(content));
+                    AddSchema(result.Summary.Schemas, McapRecordDecoder.DecodeSchema(content));
                     break;
                 case McapWriter.OpcodeChannel:
                 {
-                    var channel = McapReader.DecodeChannel(content);
+                    var channel = McapRecordDecoder.DecodeChannel(content);
                     AddChannel(result.Summary.Channels, channel);
                     filter.AddChannel(channel);
                     break;
                 }
                 case McapWriter.OpcodeMessage:
-                    AddMessage(result, options, filter, McapReader.DecodeMessage(content, 0, content.Length), ref retainedPayloadBytes);
+                    AddMessage(result, options, filter, McapRecordDecoder.DecodeMessage(content, 0, content.Length), ref retainedPayloadBytes);
                     break;
                 case McapWriter.OpcodeChunk:
                     result.Summary.Statistics ??= new McapStatistics();
                     result.Summary.Statistics.ChunkCount++;
-                    var records = McapReader.DecodeChunkRecordsContent(
+                    var records = McapRecordDecoder.DecodeChunkRecordsContent(
                         content,
                         out var crcValid,
                         options.ChunkUncompressedSizeLimit);
@@ -139,7 +139,7 @@ namespace Unity.FoxgloveSDK.IO
                     ProcessChunkRecords(result, options, filter, records, ref retainedPayloadBytes);
                     break;
                 case McapWriter.OpcodeAttachment:
-                    var attachment = McapReader.DecodeAttachment(content);
+                    var attachment = McapRecordDecoder.DecodeAttachment(content);
                     if (options.ValidateCrcs && !attachment.CrcValid)
                         throw new InvalidDataException("MCAP attachment CRC mismatch.");
                     result.Attachments.Add(attachment);
@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.IO
                     });
                     break;
                 case McapWriter.OpcodeMetadata:
-                    var metadata = McapReader.DecodeMetadata(content);
+                    var metadata = McapRecordDecoder.DecodeMetadata(content);
                     result.Metadata.Add(metadata);
                     result.Summary.MetadataIndexes.Add(new McapMetadataIndex
                     {
@@ -165,16 +165,16 @@ namespace Unity.FoxgloveSDK.IO
                     });
                     break;
                 case McapWriter.OpcodeStatistics:
-                    result.Summary.Statistics = McapReader.DecodeStatistics(content);
+                    result.Summary.Statistics = McapRecordDecoder.DecodeStatistics(content);
                     break;
                 case McapWriter.OpcodeChunkIndex:
-                    result.Summary.ChunkIndexes.Add(McapReader.DecodeChunkIndex(content));
+                    result.Summary.ChunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(content));
                     break;
                 case McapWriter.OpcodeAttachmentIndex:
-                    result.Summary.AttachmentIndexes.Add(McapReader.DecodeAttachmentIndex(content));
+                    result.Summary.AttachmentIndexes.Add(McapRecordDecoder.DecodeAttachmentIndex(content));
                     break;
                 case McapWriter.OpcodeMetadataIndex:
-                    result.Summary.MetadataIndexes.Add(McapReader.DecodeMetadataIndex(content));
+                    result.Summary.MetadataIndexes.Add(McapRecordDecoder.DecodeMetadataIndex(content));
                     break;
                 case McapWriter.OpcodeSummaryOffset:
                     break;
@@ -183,7 +183,7 @@ namespace Unity.FoxgloveSDK.IO
                     beforeDataEnd = false;
                     break;
                 case McapWriter.OpcodeFooter:
-                    McapReader.DecodeFooter(content);
+                    McapRecordDecoder.DecodeFooter(content);
                     break;
                 default:
                     break;
@@ -214,28 +214,28 @@ namespace Unity.FoxgloveSDK.IO
                 switch (opcode)
                 {
                     case McapWriter.OpcodeSchema:
-                        AddSchema(result.Summary.Schemas, McapReader.DecodeSchema(uncompressedRecords, off, recordLength));
+                        AddSchema(result.Summary.Schemas, McapRecordDecoder.DecodeSchema(uncompressedRecords, off, recordLength));
                         break;
                     case McapWriter.OpcodeChannel:
                     {
-                        var channel = McapReader.DecodeChannel(uncompressedRecords, off, recordLength);
+                        var channel = McapRecordDecoder.DecodeChannel(uncompressedRecords, off, recordLength);
                         AddChannel(result.Summary.Channels, channel);
                         filter.AddChannel(channel);
                         break;
                     }
                     case McapWriter.OpcodeMessage:
-                        AddMessage(result, options, filter, McapReader.DecodeMessage(uncompressedRecords, off, recordLength), ref retainedPayloadBytes);
+                        AddMessage(result, options, filter, McapRecordDecoder.DecodeMessage(uncompressedRecords, off, recordLength), ref retainedPayloadBytes);
                         break;
                     case McapWriter.OpcodeMetadata:
                     {
                         var content = Slice(uncompressedRecords, off, recordLength);
-                        result.Metadata.Add(McapReader.DecodeMetadata(content));
+                        result.Metadata.Add(McapRecordDecoder.DecodeMetadata(content));
                         break;
                     }
                     case McapWriter.OpcodeAttachment:
                     {
                         var content = Slice(uncompressedRecords, off, recordLength);
-                        var attachment = McapReader.DecodeAttachment(content);
+                        var attachment = McapRecordDecoder.DecodeAttachment(content);
                         if (options.ValidateCrcs && !attachment.CrcValid)
                             throw new InvalidDataException("MCAP attachment CRC mismatch.");
                         result.Attachments.Add(attachment);

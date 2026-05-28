@@ -112,19 +112,19 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 switch (opcode)
                 {
                     case McapWriter.OpcodeHeader:
-                        records.Add(ToRecord(McapReader.DecodeHeader(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeHeader(content)));
                         break;
                     case McapWriter.OpcodeFooter:
-                        records.Add(ToRecord(McapReader.DecodeFooter(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeFooter(content)));
                         break;
                     case McapWriter.OpcodeSchema:
-                        records.Add(ToRecord(McapReader.DecodeSchema(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeSchema(content)));
                         break;
                     case McapWriter.OpcodeChannel:
-                        records.Add(ToRecord(McapReader.DecodeChannel(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeChannel(content)));
                         break;
                     case McapWriter.OpcodeMessage:
-                        records.Add(ToRecord(McapReader.DecodeMessage(content, 0, content.Length)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeMessage(content, 0, content.Length)));
                         break;
                     case McapWriter.OpcodeChunk:
                         AddChunkRecords(records, content);
@@ -132,22 +132,22 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                     case McapWriter.OpcodeMessageIndex:
                         break;
                     case McapWriter.OpcodeChunkIndex:
-                        records.Add(ToRecord(McapReader.DecodeChunkIndex(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeChunkIndex(content)));
                         break;
                     case McapWriter.OpcodeAttachment:
-                        records.Add(ToRecord(McapReader.DecodeAttachment(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeAttachment(content)));
                         break;
                     case McapWriter.OpcodeAttachmentIndex:
-                        records.Add(ToRecord(McapReader.DecodeAttachmentIndex(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeAttachmentIndex(content)));
                         break;
                     case McapWriter.OpcodeStatistics:
-                        records.Add(ToRecord(McapReader.DecodeStatistics(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeStatistics(content)));
                         break;
                     case McapWriter.OpcodeMetadata:
-                        records.Add(ToRecord(McapReader.DecodeMetadata(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeMetadata(content)));
                         break;
                     case McapWriter.OpcodeMetadataIndex:
-                        records.Add(ToRecord(McapReader.DecodeMetadataIndex(content)));
+                        records.Add(ToRecord(McapRecordDecoder.DecodeMetadataIndex(content)));
                         break;
                     case McapWriter.OpcodeSummaryOffset:
                         records.Add(ToRecord(DecodeSummaryOffset(content)));
