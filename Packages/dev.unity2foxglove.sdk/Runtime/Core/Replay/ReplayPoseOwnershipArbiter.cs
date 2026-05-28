@@ -9,23 +9,37 @@ using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>Decision outcome for a single pose offer: Apply, Hold (deferred), or Skip (contention).</summary>
     public enum ReplayPoseOwnershipDecisionKind
     {
+        /// <summary>Apply the offered pose immediately.</summary>
         Apply = 0,
+        /// <summary>Hold the pose for deferred resolution after init-batch completes.</summary>
         Hold = 1,
+        /// <summary>Skip — another channel already owns this transform.</summary>
         Skip = 2
     }
 
+    /// <summary>Pose sample from a replay message, carrying optional position and rotation.</summary>
     public readonly struct ReplayPoseSample
     {
+        /// <summary>Whether this sample carries a position value.</summary>
         public readonly bool HasPosition;
+        /// <summary>World-space X position in meters.</summary>
         public readonly float PositionX;
+        /// <summary>World-space Y position in meters.</summary>
         public readonly float PositionY;
+        /// <summary>World-space Z position in meters.</summary>
         public readonly float PositionZ;
+        /// <summary>Whether this sample carries a rotation value.</summary>
         public readonly bool HasRotation;
+        /// <summary>Rotation quaternion X component.</summary>
         public readonly float RotationX;
+        /// <summary>Rotation quaternion Y component.</summary>
         public readonly float RotationY;
+        /// <summary>Rotation quaternion Z component.</summary>
         public readonly float RotationZ;
+        /// <summary>Rotation quaternion W component.</summary>
         public readonly float RotationW;
 
         public ReplayPoseSample(
@@ -50,18 +64,27 @@ namespace Unity.FoxgloveSDK.Core
             RotationW = rotationW;
         }
 
+        /// <summary>Creates a position-only pose sample with identity rotation.</summary>
         public static ReplayPoseSample CreatePosition(float x, float y, float z)
             => new(true, x, y, z, false, 0, 0, 0, 1);
     }
 
+    /// <summary>Result of a single pose ownership arbitration decision.</summary>
     public readonly struct ReplayPoseOwnershipDecision
     {
+        /// <summary>Decision kind: Apply, Hold, or Skip.</summary>
         public readonly ReplayPoseOwnershipDecisionKind Kind;
+        /// <summary>Integer key identifying the transform in the scene.</summary>
         public readonly int TransformKey;
+        /// <summary>Channel ID of the replay message offering this pose.</summary>
         public readonly ushort ChannelId;
+        /// <summary>Channel ID of the current pose owner (same as ChannelId for non-contention).</summary>
         public readonly ushort OwnerChannelId;
+        /// <summary>Behavior class of the owning channel.</summary>
         public readonly ReplayChannelBehavior OwnerBehavior;
+        /// <summary>The pose sample being offered.</summary>
         public readonly ReplayPoseSample Pose;
+        /// <summary>Whether this decision should trigger a contention warning log.</summary>
         public readonly bool ShouldReportContention;
 
         public ReplayPoseOwnershipDecision(
@@ -89,6 +112,7 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public sealed class ReplayPoseOwnershipArbiter
     {
+        /// <summary>Maximum number of contention pairs reported before the set is cleared to prevent unbounded growth.</summary>
         private const int MaxReportedContentions = 4096;
 
         private readonly Dictionary<int, OwnerState> _owners = new();
@@ -96,6 +120,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly HashSet<ContentionKey> _reportedContentions = new();
         private readonly List<ReplayPoseOwnershipDecision> _resolvedHeld = new();
 
+        /// <summary>Whether init-batch deferral is active. Held poses are resolved when this is set to false.</summary>
         public bool IsDeferralActive { get; private set; } = true;
 
         /// <summary>
@@ -167,6 +192,7 @@ namespace Unity.FoxgloveSDK.Core
                 false);
         }
 
+        /// <summary>Ends the init-batch deferral period, resolving all held poses to Apply decisions.</summary>
         public IReadOnlyList<ReplayPoseOwnershipDecision> EndInitDeferral()
         {
             _resolvedHeld.Clear();
@@ -185,6 +211,7 @@ namespace Unity.FoxgloveSDK.Core
             return _resolvedHeld.ToArray();
         }
 
+        /// <summary>Clears all ownership state and resets deferral to active.</summary>
         public void Reset()
         {
             _owners.Clear();

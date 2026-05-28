@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Utilities
+// Purpose: Shared change-detection helpers used by generated FoxRun code.
 
 using System;
 
