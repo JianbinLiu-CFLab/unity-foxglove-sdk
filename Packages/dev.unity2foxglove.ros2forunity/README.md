@@ -6,7 +6,7 @@ It provides facade/API boundaries, documentation, attribution records, and a sou
 
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 
-The current product direction is Jazzy-first for Windows x64 runtime work. The `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package owns the R2FU Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
+The current product direction is Jazzy-first for Windows x64 runtime work. The `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package owns the ROS2 For Unity Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
@@ -36,7 +36,7 @@ The old Humble standalone asset remains historical/fallback evidence, but it is 
 
 Windows Firewall may block inbound Fast DDS UDP discovery. WSL2, VPN, physical Linux host, or bridged Ubuntu VM are all valid ROS2 peer topologies once appropriate firewall allow rules are in place (see report 20 for root cause and fixes).
 
-R2FU Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual publish/subscribe data flow as the current acceptance signal.
+ROS2 For Unity Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual publish/subscribe data flow as the current acceptance signal.
 
 ## Package Composition
 

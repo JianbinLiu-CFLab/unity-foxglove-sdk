@@ -11,7 +11,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Util;
-using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
 {

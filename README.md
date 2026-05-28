@@ -112,7 +112,7 @@ Optional ROS2 For Unity packaging follows this boundary:
 |---|---|---|
 | `dev.unity2foxglove.sdk` | Core Foxglove WebSocket, MCAP, Replay, FoxRun, and normal Unity SDK workflows. | No |
 | `dev.unity2foxglove.ros2forunity` | Optional facade, adapter sample, docs, and diagnostics for ROS2 For Unity workflows. | No large runtime |
-| `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Optional Jazzy Windows x64 runtime package with R2FU runtime files, package-path patch, manifest, inventory, checksums, and notices. | Yes |
+| `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Optional Jazzy Windows x64 runtime package with ROS2 For Unity runtime files, package-path patch, manifest, inventory, checksums, and notices. | Yes |
 
 The packages should also stand alone cleanly:
 
@@ -238,11 +238,11 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - FoxRun attribute-based zero-code publishing via generated code, including fixed-rate, change-driven, interval, and explicit `OnTrigger` topics
 - Optional Unity-native WSS/TLS transport, local dev certificate generation, root CA distribution helper, and lightweight shared query-token gate
 - IL2CPP build support with automatic link.xml generation
-- Optional ROS2 For Unity adapter plus Jazzy Windows x64 runtime package for Unity-as-ROS2-node smoke workflows. The boundary keeps R2FU attribution, adapter samples, runtime inventory, checksums, notices, and binary policy separate from the core SDK.
+- Optional ROS2 For Unity adapter plus Jazzy Windows x64 runtime package for Unity-as-ROS2-node smoke workflows. The boundary keeps ROS2 For Unity attribution, adapter samples, runtime inventory, checksums, notices, and binary policy separate from the core SDK.
 - WSL2 and remote Linux ROS2 peer topologies, validated with both Default Discovery and Discovery Server RMW modes
 
 > [!IMPORTANT]
-> Windows Defender Firewall may block inbound UDP for Fast DDS (DDS) discovery. Before running R2FU cross-machine smoke, install an Inbound Allow rule for the Unity Editor (or the relevant DDS UDP ports), or use a Fast DDS Discovery Server to collapse traffic to a single port.
+> Windows Defender Firewall may block inbound UDP for Fast DDS (DDS) discovery. Before running ROS2 For Unity cross-machine smoke, install an Inbound Allow rule for the Unity Editor (or the relevant DDS UDP ports), or use a Fast DDS Discovery Server to collapse traffic to a single port.
 
 ### Not Supported
 
@@ -252,7 +252,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
 - **Production ROS 2 bridge distribution** - the current ROS 2 sidecar bridge is experimental, localhost-only, manual to build/run, and has no installer or remote-host support
 - **General ROS2 For Unity runtime matrix** - v1.9.0 packages a Jazzy Windows x64 runtime path only. Linux, macOS, Humble, Lyrical, alternate RMW implementations, and multi-runtime conflict resolution are not included.
-- **Production ROS2 For Unity support contract** - the R2FU runtime package is optional and preview-scoped. It is not part of the core SDK, does not imply RobotecAI support for Unity2Foxglove users, and should not be treated as a full production ROS2 distribution.
+- **Production ROS2 For Unity support contract** - the ROS2 For Unity runtime package is optional and preview-scoped. It is not part of the core SDK, does not imply RobotecAI support for Unity2Foxglove users, and should not be treated as a full production ROS2 distribution.
 
 ### Security
 
