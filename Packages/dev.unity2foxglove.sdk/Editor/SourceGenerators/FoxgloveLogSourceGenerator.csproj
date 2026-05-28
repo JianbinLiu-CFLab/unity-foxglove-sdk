@@ -11,7 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="src\**\*.cs" />
-    <Compile Include="..\Shared\FoxgloveSourceEmitter.cs" Link="Shared\FoxgloveSourceEmitter.cs" />
+    <Compile Include="..\Shared\FoxgloveSourceEmitter\**\*.cs" LinkBase="Shared\FoxgloveSourceEmitter" />
     <Compile Include="..\Shared\FoxRunDescriptor\**\*.cs"
              Exclude="..\Shared\FoxRunDescriptor\FoxRunGeneratedSourceReconciler.cs"
              LinkBase="Shared\FoxRunDescriptor" />

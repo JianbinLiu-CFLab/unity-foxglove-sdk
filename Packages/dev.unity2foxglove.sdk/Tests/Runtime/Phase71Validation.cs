@@ -126,14 +126,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var attrSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Attributes/FoxRunAttribute.cs");
             var generatorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
-            var emitterSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs");
+            var emitterSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
+            var topicMetaSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
             var hubSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
 
             Check(attrSource.Contains("public float RateHz { get; set; } = 10f"),
                 "71E-1: FoxRunAttribute RateHz default remains 10");
             Check(generatorSource.Contains("float rateHz = 10f") && generatorSource.Contains("named.Key == \"RateHz\""),
                 "71E-2: source generator still reads explicit FoxRun RateHz");
-            Check(emitterSource.Contains("fields.Max(m => m.RateHz)") || emitterSource.Contains("m.RateHz"),
+            Check(topicMetaSource.Contains("fields.Max(m => m.RateHz)"),
                 "71E-3: shared emitter still emits FoxRun topic RateHz metadata");
             Check(hubSource.Contains("var rateHz = info.RateHz")
                     && hubSource.Contains("nonPositivePublishesEveryFrame: false"),

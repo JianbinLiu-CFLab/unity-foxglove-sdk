@@ -145,7 +145,7 @@ The shared emitter converts the generation model into C# source.
 In Unity2Foxglove, this is implemented by:
 
 ```text
-Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs
+Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs
 ```
 
 Its constraints are deliberate:
@@ -276,7 +276,7 @@ Schema Evidence identity policy makes that governance adjustable for different p
 
 | Evidence | Location | Meaning |
 | --- | --- | --- |
-| Shared emitter | `Editor/Shared/FoxgloveSourceEmitter.cs` | Single source of generation semantics |
+| Shared emitter | `Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs` | Single source of generation semantics |
 | Shared generation model | `Editor/Shared/FoxRunDescriptor/` | Host-independent model, descriptor writer, comparer, validator, and canonical type normalizer |
 | Emission type formatter | `Editor/Shared/FoxRunDescriptor/FoxRunEmissionTypeNameFormatter.cs` | Converts Roslyn and reflection type observations into legal, stable C# source type names |
 | FoxRun canonical manifest | `Editor/Shared/FoxRunManifest/` | Host-independent contract normalization and fingerprinting |
@@ -287,7 +287,7 @@ Schema Evidence identity policy makes that governance adjustable for different p
 | Generation descriptor | `Assets/Generated/FoxRun/foxrun.generation-descriptor.json` | Non-replay-blocking audit descriptor serialized from the model passed to the emitter |
 | Descriptor reader validation | `Tests/Runtime/FoxRunGenerationDescriptorJsonReader.cs`, `Phase115FValidation.cs` | Test-owned parser that proves descriptor JSON round-trips back into the model comparer |
 | Checked-in analyzer DLL | `Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll` | Unity-loaded Roslyn analyzer/source generator artifact; must be rebuilt after source changes |
-| IL2CPP-safe JSON payload emission | `Editor/Shared/FoxgloveSourceEmitter.cs`, `Phase115FValidation.cs` | Emits dictionary payloads instead of anonymous objects so Player JSON serialization keeps payload fields |
+| IL2CPP-safe JSON payload emission | `Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs`, `Phase115FValidation.cs` | Emits dictionary payloads instead of anonymous objects so Player JSON serialization keeps payload fields |
 | Play Mode manifest hook | `Editor/FoxRun/FoxrunManifestPlayModeHook.cs` | Refreshes canonical manifest artifacts before Editor Play Mode |
 | Build preprocess hook | `Editor/FoxRun/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
 | IL2CPP preservation | `Editor/FoxRun/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
