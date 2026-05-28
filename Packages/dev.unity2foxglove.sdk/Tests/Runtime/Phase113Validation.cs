@@ -199,7 +199,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Attributes/FoxRunAttribute.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs"
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs"
             })
             {
                 Check(!ReadRepoText(path).Contains("FoxRunSchemaInfoRegistry", StringComparison.Ordinal),

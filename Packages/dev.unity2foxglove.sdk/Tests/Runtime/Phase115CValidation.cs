@@ -115,13 +115,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var manifestWriter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestJsonWriter.cs");
             var schemaInfoWriter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunSchemaInfoWriter.cs");
-            var sourceEmitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs");
+            var typeExprEmitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TypeExprEmitter.cs");
             Check(!manifestWriter.Contains("ToString(\"R\"", StringComparison.Ordinal)
                   && !schemaInfoWriter.Contains("ToString(\"R\"", StringComparison.Ordinal)
-                  && !sourceEmitter.Contains("ToString(\"R\"", StringComparison.Ordinal)
+                  && !typeExprEmitter.Contains("ToString(\"R\"", StringComparison.Ordinal)
                   && manifestWriter.Contains("ToString(\"G9\"", StringComparison.Ordinal)
                   && schemaInfoWriter.Contains("ToString(\"G9\"", StringComparison.Ordinal)
-                  && sourceEmitter.Contains("ToString(\"G9\"", StringComparison.Ordinal),
+                  && typeExprEmitter.Contains("ToString(\"G9\"", StringComparison.Ordinal),
                 "115C-B1: canonical writers and generated source constants use deterministic G9 float formatting");
 
             var manifest = FoxRunManifestBuilder.Build(Phase115BFixtureMembers());

@@ -114,6 +114,7 @@
     <Compile Include="Phase105Validation.cs" />
     <Compile Include="Phase106Validation.cs" />
     <Compile Include="Phase137BValidation.cs" />
+    <Compile Include="Phase137CValidation.cs" />
     <Compile Include="Phase137Validation.cs" />
     <Compile Include="Phase142Validation.cs" />
     <Compile Include="Phase143Validation.cs" />
@@ -191,7 +192,7 @@
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="TempMcapHelper.cs" />
-    <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter.cs" Link="Shared/FoxgloveSourceEmitter.cs" />
+    <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs" Link="SourceGenerators/FoxgloveLogSourceGenerator.cs" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs" Link="SourceGenerators/FoxRunRoslynGenerationModelLowerer.cs" />
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />

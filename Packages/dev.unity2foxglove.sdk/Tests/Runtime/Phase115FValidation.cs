@@ -223,7 +223,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!generator.Contains("EmitClass(spc, grp.ToArray())", StringComparison.Ordinal),
                 "115F-D2: Roslyn source generator emits from the shared lowered model");
 
-            var emitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs");
+            var emitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
             Check(!emitter.Contains("public static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)", StringComparison.Ordinal),
                 "115F-D3: legacy TopicMember emitter overload is not public production API");
             Check(!emitter.Contains("RawObservedTypeName", StringComparison.Ordinal),
