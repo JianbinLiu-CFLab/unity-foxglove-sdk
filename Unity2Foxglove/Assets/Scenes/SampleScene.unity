@@ -409,6 +409,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup
   _manager: {fileID: 0}
+  _cube: {fileID: 0}
 --- !u!114 &346350284
 MonoBehaviour:
   m_ObjectHideFlags: 0
