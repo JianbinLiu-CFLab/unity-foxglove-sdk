@@ -433,7 +433,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimeTickLockBoundaryIsDocumented()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             var tick = ExtractMethodBody(source, "public void Tick");
             Check(tick.Contains("broadcastLiveTime") && tick.Contains("session.BroadcastTime()"),
                 "51B-31: live time broadcast runs outside the playback control lock");

@@ -59,14 +59,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly RecordingController _recording;
         /// <summary>Replay lifecycle controller.</summary>
         private readonly ReplayController _replay;
-        private readonly ReplaySnapshotStateMachine _replaySnapshots;
-        /// <summary>Delegate bridging replay OnReplayMessage to the runtime's own event.</summary>
-        private Action<string, byte[]> _replayForwarder;
-        /// <summary>Delegate bridging context-rich replay messages to the runtime's own event.</summary>
-        private Action<ReplayMessageContext> _replayContextForwarder;
-        /// <summary>Delegate bridging replay batch boundaries to the runtime's own event.</summary>
-        private Action<ReplayBatchContext> _replayBatchForwarder;
-        private readonly object _playbackControlLock = new();
+        private readonly ReplayOrchestrator _replayOrchestrator;
+        private readonly TickCoordinator _tickCoordinator;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
@@ -106,7 +100,8 @@ namespace Unity.FoxgloveSDK.Core
             TryRegisterRos2MsgSchemas();
             _recording = new RecordingController(_logger, _playbackClock);
             _replay = new ReplayController(_logger, _recording, _playbackClock);
-            _replaySnapshots = new ReplaySnapshotStateMachine();
+            _replayOrchestrator = new ReplayOrchestrator(_logger);
+            _tickCoordinator = new TickCoordinator(new ReplaySnapshotStateMachine());
         }
 
         /// <summary>Active session; null before Start or after Stop.</summary>
@@ -185,50 +180,27 @@ namespace Unity.FoxgloveSDK.Core
             if (_session != null)
                 throw new InvalidOperationException("Session already started. Call Stop() first.");
 
-            var session = new FoxgloveSession(name, _transport, _playbackClock, _schemaRegistry, _logger, _parameters, _services);
-            Action<string, byte[]> replayForwarder = null;
-            Action<ReplayMessageContext> replayContextForwarder = null;
-            Action<ReplayBatchContext> replayBatchForwarder = null;
+            FoxgloveSession session = null;
             try
             {
-                session.SetRuntimeContext(this);
-                if (_protobufSchemasRegistered)
-                    session.EnableProtobuf();
-                if (enableCdrClientPublish && _ros2MsgSchemasRegistered)
-                    session.EnableCdr();
-                _recording.AttachToSession(_parameters, session);
+                session = SessionFactory.Create(
+                    name, enableCdrClientPublish,
+                    _transport, _playbackClock, _schemaRegistry, _logger,
+                    _parameters, _services, _recording,
+                    _protobufSchemasRegistered, _ros2MsgSchemasRegistered,
+                    this);
                 session.Start(host, port);
-
                 _session = session;
-                _replay.RegisterChannels(session);
-
-                replayForwarder = SafeInvokeReplayMessage;
-                replayContextForwarder = SafeInvokeReplayMessageContext;
-                replayBatchForwarder = SafeInvokeReplayBatchCompleted;
-                _replay.OnReplayMessage += replayForwarder;
-                _replay.OnReplayMessageContext += replayContextForwarder;
-                _replay.OnReplayBatchCompleted += replayBatchForwarder;
-                _replayForwarder = replayForwarder;
-                _replayContextForwarder = replayContextForwarder;
-                _replayBatchForwarder = replayBatchForwarder;
+                _replayOrchestrator.Attach(_replay, session);
             }
             catch
             {
                 try
                 {
-                    if (replayForwarder != null)
-                        _replay.OnReplayMessage -= replayForwarder;
-                    if (replayContextForwarder != null)
-                        _replay.OnReplayMessageContext -= replayContextForwarder;
-                    if (replayBatchForwarder != null)
-                        _replay.OnReplayBatchCompleted -= replayBatchForwarder;
-                    _replayForwarder = null;
-                    _replayContextForwarder = null;
-                    _replayBatchForwarder = null;
-
+                    _replayOrchestrator.Detach(_replay);
                     try
                     {
-                        session.Dispose();
+                        session?.Dispose();
                     }
                     catch (Exception disposeEx)
                     {
@@ -246,13 +218,25 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>Fires when the replay engine forwards a message (e.g. for UI update).</summary>
-        public event Action<string, byte[]> OnReplayMessage;
+        public event Action<string, byte[]> OnReplayMessage
+        {
+            add => _replayOrchestrator.OnReplayMessage += value;
+            remove => _replayOrchestrator.OnReplayMessage -= value;
+        }
 
         /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
-        public event Action<ReplayMessageContext> OnReplayMessageContext;
+        public event Action<ReplayMessageContext> OnReplayMessageContext
+        {
+            add => _replayOrchestrator.OnReplayMessageContext += value;
+            remove => _replayOrchestrator.OnReplayMessageContext -= value;
+        }
 
         /// <summary>Fires after a replay batch has been forwarded to scene listeners.</summary>
-        public event Action<ReplayBatchContext> OnReplayBatchCompleted;
+        public event Action<ReplayBatchContext> OnReplayBatchCompleted
+        {
+            add => _replayOrchestrator.OnReplayBatchCompleted += value;
+            remove => _replayOrchestrator.OnReplayBatchCompleted -= value;
+        }
 
         /// <summary>Test-only hook to fire replay without loading an MCAP file.</summary>
         internal void FireReplayForTests(string topic, byte[] data)
@@ -267,23 +251,10 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Stop()
         {
-            _replaySnapshots.Clear();
+            _tickCoordinator.ClearPendingReplaySnapshot();
+            _tickCoordinator.ClearPendingReplaySceneSnapshot();
             _replay.CancelPanelHistory();
-            if (_replayForwarder != null)
-            {
-                _replay.OnReplayMessage -= _replayForwarder;
-                _replayForwarder = null;
-            }
-            if (_replayContextForwarder != null)
-            {
-                _replay.OnReplayMessageContext -= _replayContextForwarder;
-                _replayContextForwarder = null;
-            }
-            if (_replayBatchForwarder != null)
-            {
-                _replay.OnReplayBatchCompleted -= _replayBatchForwarder;
-                _replayBatchForwarder = null;
-            }
+            _replayOrchestrator.Detach(_replay);
             var session = _session;
             _session = null;
             session?.SetRecorder(null);
@@ -443,61 +414,18 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Apply a playback command to the clock.</summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
-        {
-            var normalizedSpeed = NormalizePlaybackSpeedForCommand(speed);
-            lock (_playbackControlLock)
-                _playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
-        }
+            => _tickCoordinator.ApplyPlaybackCommand(cmd, speed, hasSeek, seekNs, _playbackClock, _logger);
 
         /// <summary>Get a snapshot of the playback clock state for a response.</summary>
         public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
-        {
-            lock (_playbackControlLock)
-                return _playbackClock.ToState(didSeek, requestId);
-        }
+            => _tickCoordinator.GetPlaybackState(didSeek, requestId, _playbackClock);
 
         /// <summary>Apply a decoded playback control request on the runtime owner thread.</summary>
         public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
             byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
-        {
-            var normalizedSpeed = NormalizePlaybackSpeedForCommand(speed);
-            lock (_playbackControlLock)
-            {
-                _playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
-
-                if (hasSeek)
-                {
-                    _replay.Seek(seekNs);
-                    QueueReplaySceneSnapshot(seekNs);
-                }
-
-                if (cmd == 0)
-                {
-                    ClearPendingReplaySnapshot();
-                    _replay.ResetPanelHistoryProgress();
-                    _replay.Play();
-                }
-                else if (cmd == 1)
-                {
-                    _replay.Pause();
-                    ClearPendingReplaySnapshot();
-                }
-
-                if (hasSeek && cmd == 1)
-                    QueueReplaySnapshot(seekNs);
-
-                return _playbackClock.ToState(hasSeek, requestId);
-            }
-        }
-
-        private float NormalizePlaybackSpeedForCommand(float speed)
-        {
-            var normalized = PlaybackClock.NormalizeSpeed(speed);
-            if (normalized != speed)
-                _logger.LogWarning($"Invalid playback speed {speed}; using 1.0.");
-
-            return normalized;
-        }
+            => _tickCoordinator.ApplyPlaybackControl(
+                cmd, speed, hasSeek, seekNs, requestId,
+                _replay, _playbackClock, _wallClock, _logger);
 
         // ── Replay (delegated) ──
 
@@ -518,66 +446,16 @@ namespace Unity.FoxgloveSDK.Core
             => _replay.Enable(filePath, identityMode);
         /// <summary>Disable replay and dispose the engine.</summary>
         public void DisableReplay()
-        {
-            ClearPendingReplaySnapshot();
-            ClearPendingReplaySceneSnapshot();
-            _replay.Disable();
-        }
+            => _tickCoordinator.DisableReplay(_replay);
         /// <summary>Seek replay to the given nanosecond timestamp.</summary>
         public void ReplaySeek(ulong timeNs)
-        {
-            lock (_playbackControlLock)
-            {
-                _replay.Seek(timeNs);
-                QueueReplaySceneSnapshot(timeNs);
-                QueueReplaySnapshot(timeNs);
-            }
-        }
+            => _tickCoordinator.ReplaySeek(timeNs, _replay, _wallClock);
         /// <summary>Start or resume replay playback.</summary>
         public void ReplayPlay()
-        {
-            lock (_playbackControlLock)
-            {
-                ClearPendingReplaySnapshot();
-                ClearPendingReplaySceneSnapshot();
-                _replay.ResetPanelHistoryProgress();
-                _playbackClock.Play();
-                _replay.Play();
-            }
-        }
+            => _tickCoordinator.ReplayPlay(_replay, _playbackClock);
         /// <summary>Pause replay playback.</summary>
         public void ReplayPause()
-        {
-            lock (_playbackControlLock)
-            {
-                _playbackClock.Pause();
-                _replay.Pause();
-                ClearPendingReplaySnapshot();
-            }
-        }
-
-        private void QueueReplaySnapshot(ulong timeNs)
-        {
-            _replay.CancelPanelHistory();
-            _replaySnapshots.RequestPanelSnapshot(
-                timeNs,
-                _wallClock.NowNs + ReplayController.ScrubHistoryDebounceNs);
-        }
-
-        private bool TryConsumeReplaySnapshot(out ulong timeNs)
-            => _replaySnapshots.TryConsumePanelSnapshot(_wallClock.NowNs, out timeNs);
-
-        private void QueueReplaySceneSnapshot(ulong timeNs)
-            => _replaySnapshots.RequestSceneSnapshot(timeNs);
-
-        private bool TryConsumeReplaySceneSnapshot(out ulong timeNs)
-            => _replaySnapshots.TryConsumeSceneSnapshot(out timeNs);
-
-        private void ClearPendingReplaySnapshot()
-            => _replaySnapshots.ClearPanelSnapshot();
-
-        private void ClearPendingReplaySceneSnapshot()
-            => _replaySnapshots.ClearSceneSnapshot();
+            => _tickCoordinator.ReplayPause(_replay, _playbackClock);
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
@@ -592,95 +470,7 @@ namespace Unity.FoxgloveSDK.Core
         /// replay engine when active, or broadcasts wall-clock time.
         /// </summary>
         public void Tick()
-        {
-            var session = _session;
-            if (session == null) return;
-            session.DrainPlaybackControls();
-            session.DrainServiceCalls();
-            var broadcastLiveTime = false;
-            lock (_playbackControlLock)
-            {
-                _playbackClock.Tick();
-
-                if (_replay.IsEnabled)
-                {
-                    // Replay work intentionally stays inside _playbackControlLock.
-                    // Seek/play/pause mutate the same snapshot scheduler, and
-                    // releasing the lock here could publish a stale pre-seek
-                    // snapshot after a newer playback control request.
-                    if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
-                        _replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);
-                    if (TryConsumeReplaySnapshot(out var snapshotTimeNs))
-                        _replay.PublishSnapshot(session, snapshotTimeNs);
-                    else
-                        _replay.DrainPanelHistory(session);
-                    _replay.Tick(session, _playbackClock.NowNs, deferCallbacks: true);
-                }
-                else
-                    broadcastLiveTime = true;
-            }
-
-            if (broadcastLiveTime)
-                session.BroadcastTime();
-            _replay.DrainReplayCallbacks();
-        }
-
-        private void SafeInvokeReplayMessage(string topic, byte[] data)
-        {
-            var handlers = OnReplayMessage;
-            if (handlers == null)
-                return;
-
-            foreach (Action<string, byte[]> handler in handlers.GetInvocationList())
-            {
-                try
-                {
-                    handler(topic, data);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Replay message listener failed: {ex.Message}");
-                }
-            }
-        }
-
-        private void SafeInvokeReplayMessageContext(ReplayMessageContext context)
-        {
-            var handlers = OnReplayMessageContext;
-            if (handlers == null)
-                return;
-
-            foreach (Action<ReplayMessageContext> handler in handlers.GetInvocationList())
-            {
-                try
-                {
-                    handler(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Replay message context listener failed: {ex.Message}");
-                }
-            }
-        }
-
-        private void SafeInvokeReplayBatchCompleted(ReplayBatchContext context)
-        {
-            var handlers = OnReplayBatchCompleted;
-            if (handlers == null)
-                return;
-
-            foreach (Action<ReplayBatchContext> handler in handlers.GetInvocationList())
-            {
-                try
-                {
-                    handler(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Replay batch listener failed: {ex.Message}");
-                }
-            }
-        }
+            => _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock);
 
         // ── Transport Health ──
 
