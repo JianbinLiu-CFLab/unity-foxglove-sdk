@@ -29,7 +29,7 @@ The component creates a ROS2 For Unity backed context, publishes one `std_msgs/m
 
 ## Windows ROS2 Jazzy Smoke
 
-Use Windows ROS2 Jazzy as the local acceptance peer. WSL2 NAT is not a GREEN gate for this sample; it remains a separate DDS discovery investigation.
+Use Windows ROS2 Jazzy as the local acceptance peer. WSL2 ROS2 peers are valid once Windows Firewall allow rules are configured for Fast DDS UDP ports (see report 20).
 
 In PowerShell:
 

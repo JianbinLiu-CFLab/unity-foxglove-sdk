@@ -219,10 +219,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(readme.Contains("normal Foxglove WebSocket streaming, MCAP recording, or replay", StringComparison.Ordinal)
                   && readme.Contains("no ROS2", StringComparison.OrdinalIgnoreCase),
                 "107-D2: README keeps no-ROS default prominent");
-            Check(combined.Contains("WSL2 NAT", StringComparison.Ordinal)
-                  && combined.Contains("real LAN", StringComparison.Ordinal)
-                  && combined.Contains("bridged", StringComparison.OrdinalIgnoreCase),
-                "107-D3: docs state WSL2 NAT is not the remote Linux acceptance gate");
+            Check(combined.Contains("Windows Firewall", StringComparison.Ordinal)
+                  && combined.Contains("Fast DDS", StringComparison.Ordinal)
+                  && combined.Contains("WSL2", StringComparison.Ordinal),
+                "107-D3: docs explain Windows Firewall is the root cause, not WSL2 NAT");
             Check(roadmap.Contains("one-repo, multi-package", StringComparison.Ordinal)
                   && roadmap.Contains("R2FU adapter/runtime package line", StringComparison.Ordinal)
                   && roadmap.Contains("170-series", StringComparison.Ordinal),

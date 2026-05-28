@@ -35,11 +35,11 @@
     "evidence": [
       "Local Jazzy runtime rebuild evidence",
       "Unity Editor plus Windows ROS2 Jazzy bidirectional string topic smoke",
-      "WSL2 NAT diagnostic packet-capture notes"
+      "Windows Firewall diagnostic packet-capture notes"
     ],
     "knownCaveats": [
       "Runtime artifact is local and not bundled in this adapter package.",
-      "WSL2 NAT is diagnostic-only, not a GREEN gate.",
+      "Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports.",
       "ros2 topic list graph snapshots can be intermittent; bidirectional data path is the current gate."
     ]
   },

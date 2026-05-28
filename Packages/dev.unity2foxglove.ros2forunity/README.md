@@ -34,7 +34,7 @@ The current Jazzy Windows x64 runtime package has its runtime manifest, generate
 
 The old Humble standalone asset remains historical/fallback evidence, but it is not the recommended new-user runtime line after the Jazzy rebuild and retest.
 
-WSL2 NAT remains a problematic DDS discovery topology and is not a GREEN gate for the external adapter sample or future runtime package. Future remote Linux acceptance should use a real LAN, VPN, physical Linux host, or bridged Ubuntu VM rather than WSL2 NAT.
+Windows Firewall may block inbound Fast DDS UDP discovery. WSL2, VPN, physical Linux host, or bridged Ubuntu VM are all valid ROS2 peer topologies once appropriate firewall allow rules are in place (see report 20 for root cause and fixes).
 
 R2FU Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual publish/subscribe data flow as the current acceptance signal.
 

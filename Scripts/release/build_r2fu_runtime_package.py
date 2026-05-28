@@ -577,7 +577,7 @@ If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.d
 - This package is a prototype until fresh-project acceptance passes.
 - The inventory is an engineering inventory generated from the local runtime artifact, not a complete legal audit.
 - Public release should refresh transitive license attribution before registry or binary distribution.
-- DDS acceptance should use Windows ROS2 Jazzy or a real remote Linux topology; WSL2 NAT remains diagnostic-only.
+- Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports. Windows ROS2 Jazzy, properly firewalled WSL2, or a real remote Linux topology should be used for acceptance.
 
 RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware users and that the Robotec team cannot support and maintain the project for the general community. Unity2Foxglove must preserve that caveat and must not imply upstream community support for Unity2Foxglove-specific packaging.
 """

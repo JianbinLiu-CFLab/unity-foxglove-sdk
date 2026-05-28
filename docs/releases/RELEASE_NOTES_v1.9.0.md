@@ -18,7 +18,7 @@ Unity2Foxglove v1.9.0 is a larger boundary release: the core SDK stays ROS-free 
 - The core `dev.unity2foxglove.sdk` package is versioned as v1.9.0. The optional ROS2 For Unity adapter and Jazzy runtime packages remain preview-scoped package lines.
 - Normal Foxglove WebSocket, MCAP recording, replay, and FoxRun workflows do not require ROS2, ROS2 For Unity, Python, or the optional runtime package.
 - The packaged R2FU runtime path is Jazzy Windows x64 only. Linux, macOS, Humble, Lyrical, alternate RMW implementations, and production multi-runtime conflict handling remain outside this release.
-- WSL2 NAT is not a reliable ROS2 acceptance topology for R2FU DDS discovery; use Windows ROS2 Jazzy for local smoke or a real LAN, VPN, physical Linux host, or bridged VM for remote Linux acceptance.
+- Windows Firewall may block inbound Fast DDS UDP discovery for R2FU; see report 20 for root cause analysis and firewall/Discovery Server fixes. WSL2 is a valid ROS2 peer topology once firewall allow rules are configured.
 
 ## Verification
 

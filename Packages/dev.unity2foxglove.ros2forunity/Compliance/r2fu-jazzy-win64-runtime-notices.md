@@ -55,4 +55,4 @@ If the transitive DLLs are missing, Unity can report `UnsatisfiedLinkError: rcl.
 - This artifact is a candidate until a runtime package is produced and accepted in a fresh Unity project.
 - The inventory is an engineering inventory generated from the local zip, not a complete legal audit.
 - A future runtime package must include complete transitive license attribution before public distribution.
-- WSL2 NAT is diagnostic-only for DDS discovery; Windows ROS2 Jazzy or a real remote Linux topology should be used for acceptance.
+- Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports. Windows ROS2 Jazzy, properly firewalled WSL2, or a real remote Linux topology should be used for acceptance.
