@@ -38,10 +38,11 @@ namespace Unity.FoxgloveSDK.Tests
             var samples = packageJson["samples"] as JArray
                           ?? throw new InvalidOperationException("package.json samples must be an array");
 
-            Check(samples.Count == 3, "134-23-A1: package.json declares exactly three importable core SDK samples");
+            Check(samples.Count == 4, "134-23-A1: package.json declares exactly four importable core SDK samples");
             VerifySampleDeclaration(samples, "Basic Visualization", "Samples~/BasicVisualization");
             VerifySampleDeclaration(samples, "Full Demo Visualization", "Samples~/FullDemoVisualization");
             VerifySampleDeclaration(samples, "ROS2 Bridge Sample", "Samples~/Ros2BridgeSample");
+            VerifySampleDeclaration(samples, "Virtual LiDAR Maze Demo", "Samples~/Virtual LiDAR Maze Demo");
         }
 
         private static void VerifySampleImportAssets()
@@ -78,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var validator = ReadRepoFile(ReleaseValidator);
 
-            Check(validator.Contains("EXPECTED_SAMPLE_COUNT = 3", StringComparison.Ordinal)
+            Check(validator.Contains("EXPECTED_SAMPLE_COUNT = 4", StringComparison.Ordinal)
                   && validator.Contains("SAMPLES = PACKAGE / \"Samples~\"", StringComparison.Ordinal),
                 "134-23-D1: release validator keeps explicit Samples~ package boundary");
             Check(validator.Contains("\"Basic Visualization\": \"Samples~/BasicVisualization\"", StringComparison.Ordinal)

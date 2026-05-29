@@ -40,11 +40,12 @@ namespace Unity.FoxgloveSDK.Tests
             var pkg = JObject.Parse(pkgJson);
             Assert(pkg["samples"] != null, "package.json.samples exists");
             var samples = pkg["samples"] as JArray;
-            Assert(samples != null && samples.Count == 3, "package.json.samples has 3 entries");
+            Assert(samples != null && samples.Count == 4, "package.json.samples has 4 entries");
 
             bool hasBasic = false;
             bool hasFull = false;
             bool hasRos2Bridge = false;
+            bool hasLidarMaze = false;
             foreach (var s in samples)
             {
                 var name = (string)s["displayName"];
@@ -52,11 +53,13 @@ namespace Unity.FoxgloveSDK.Tests
                 if (name == "Basic Visualization") hasBasic = true;
                 if (name == "Full Demo Visualization") hasFull = true;
                 if (name == "ROS2 Bridge Sample") hasRos2Bridge = true;
+                if (name == "Virtual LiDAR Maze Demo") hasLidarMaze = true;
                 Assert(Directory.Exists(Path.Combine(pkgDir, path)), $"Sample path exists: {path}");
             }
             Assert(hasBasic, "Basic Visualization sample declared");
             Assert(hasFull, "Full Demo Visualization sample declared");
             Assert(hasRos2Bridge, "ROS2 Bridge Sample declared");
+            Assert(hasLidarMaze, "Virtual LiDAR Maze Demo sample declared");
 
             // ── package core dependencies ──
             var deps = pkg["dependencies"] as JObject;

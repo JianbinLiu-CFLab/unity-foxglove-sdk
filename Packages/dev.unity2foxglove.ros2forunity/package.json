@@ -36,6 +36,11 @@
       "displayName": "ROS2 Standard Message Expansion",
       "description": "Imports source-only ROS2 For Unity samples for CameraInfo, raw Image, IMU, Odometry, PoseStamped, and NavSatFix.",
       "path": "Samples~/ROS2 Standard Message Expansion"
+    },
+    {
+      "displayName": "Virtual LiDAR PointCloud2 Digital Twin",
+      "description": "Imports a source-only ROS2 For Unity sample that mirrors a VirtualLidar component's PointCloudFrame output to sensor_msgs/msg/PointCloud2 on /points.",
+      "path": "Samples~/Virtual LiDAR PointCloud2 Digital Twin"
     }
   ],
   "keywords": [
