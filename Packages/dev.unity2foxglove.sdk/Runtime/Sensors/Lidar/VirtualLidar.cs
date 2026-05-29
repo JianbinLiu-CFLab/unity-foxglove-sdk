@@ -32,6 +32,15 @@ namespace Unity.FoxgloveSDK.Components
             Custom
         }
 
+        /// <summary>How the scan (frame-generation) rate is chosen.</summary>
+        public enum ScanRateSource
+        {
+            /// <summary>Use the selected sensor's nominal scan rate (from the model/profile).</summary>
+            UseSensorRate,
+            /// <summary>Use the Scan Rate Hz field below.</summary>
+            Override
+        }
+
         [Header("Output")]
         [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
 
@@ -59,7 +68,12 @@ namespace Unity.FoxgloveSDK.Components
 
         [Header("Scan")]
         [SerializeField] private string _frameId = "os_lidar";
-        [SerializeField] private float _scanRateHzOverride;
+        [Tooltip("Use Sensor Rate = the model's nominal Hz; Override = use Scan Rate Hz below. " +
+                 "This is the LiDAR's frame-generation rate; the point cloud's publish rate to " +
+                 "Foxglove is set separately on FoxglovePointCloudPublisher (Publish Rate).")]
+        [SerializeField] private ScanRateSource _scanRateSource = ScanRateSource.UseSensorRate;
+        [Tooltip("Scan rate in Hz, used when Scan Rate Source = Override.")]
+        [SerializeField, Min(0f)] private float _scanRateHzOverride = 10f;
         [SerializeField] private float _maxRangeMeters = 50f;
         [SerializeField, Min(1)] private int _columnStep = 4;
         [Tooltip("0 (default) = no clipping: cast every ray the selected sensor defines " +
@@ -118,7 +132,9 @@ namespace Unity.FoxgloveSDK.Components
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
 
-            var rateHz = _scanRateHzOverride > 0f ? _scanRateHzOverride : _scanPattern.ScanRateHz;
+            var rateHz = _scanRateSource == ScanRateSource.Override && _scanRateHzOverride > 0f
+                ? _scanRateHzOverride
+                : _scanPattern.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
             _nextScanTime = Time.unscaledTime;
 

@@ -66,6 +66,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             }
             SetField(publisher, "_maxPoints", publishCap);
             SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
+            // Draco output: compresses the cloud and runs the encode on a worker thread
+            // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
+            SetField(publisher, "_outputMode", PointCloudOutputMode.Draco);
+            SetField(publisher, "_topic", "/unity/point_cloud_draco");
 
             // 2. Maze centred on origin.
             var maze = Phase138MazeBuilder.Build(CellsX, CellsZ, CellSize, 1.5f, 0.2f, 42);

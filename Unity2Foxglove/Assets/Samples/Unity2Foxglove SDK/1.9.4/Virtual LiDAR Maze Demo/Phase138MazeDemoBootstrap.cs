@@ -40,6 +40,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             // user later lowers Max Points on the publisher to throttle bandwidth.
             SetPrivateField(publisher, "_maxPoints", DensestRegistryRayCount());
             SetPrivateField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
+            // Draco output: compresses the cloud and runs the encode on a worker thread
+            // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
+            SetPrivateField(publisher, "_outputMode", PointCloudOutputMode.Draco);
+            SetPrivateField(publisher, "_topic", "/unity/point_cloud_draco");
             publisher.enabled = false; // enable after verifying Runtime is ready
 
             // 2. Maze (centred on origin)

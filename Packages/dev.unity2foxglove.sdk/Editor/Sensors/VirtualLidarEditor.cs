@@ -26,7 +26,8 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _vendor, _model, _mode;
         private SerializedProperty _customPixelsPerColumn, _customFovTopDeg, _customFovBottomDeg,
             _customColumnsPerFrame, _customScanRateHz, _customMinRangeMeters;
-        private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters, _scanRateHzOverride,
+        private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters,
+            _scanRateSource, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
         private SerializedProperty _syntheticReflectivity, _syntheticIntensity, _pointCloudPublisher;
 
@@ -48,6 +49,7 @@ namespace Unity.FoxgloveSDK.Editor
             _columnStep = serializedObject.FindProperty("_columnStep");
             _maxRaysPerScan = serializedObject.FindProperty("_maxRaysPerScan");
             _maxRangeMeters = serializedObject.FindProperty("_maxRangeMeters");
+            _scanRateSource = serializedObject.FindProperty("_scanRateSource");
             _scanRateHzOverride = serializedObject.FindProperty("_scanRateHzOverride");
             _layerMask = serializedObject.FindProperty("_layerMask");
             _publishEmptyFrames = serializedObject.FindProperty("_publishEmptyFrames");
@@ -79,7 +81,17 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_columnStep);
             EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
-            EditorGUILayout.PropertyField(_scanRateHzOverride);
+
+            // Scan rate — mirrors the publisher's "Publish Rate" UX. NOTE: this is the
+            // LiDAR's frame-generation rate; the point cloud's publish rate to Foxglove
+            // is set on FoxglovePointCloudPublisher (Publish Rate Source / Hz).
+            EditorGUILayout.PropertyField(_scanRateSource, new GUIContent("Scan Rate Source"));
+            using (new EditorGUI.DisabledScope(
+                _scanRateSource.enumValueIndex != (int)VirtualLidar.ScanRateSource.Override))
+            {
+                EditorGUILayout.PropertyField(_scanRateHzOverride, new GUIContent("Scan Rate Hz"));
+            }
+
             EditorGUILayout.PropertyField(_layerMask);
             EditorGUILayout.PropertyField(_publishEmptyFrames);
             EditorGUILayout.PropertyField(_drawDebugRays);
