@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public double ScanRateHz { get; }
         public double MinRangeMeters { get; }
         public int RayCount { get; }
+        /// <summary>Number of beam rings in the scan.</summary>
+        public int Rings => _altRad.Length;
 
         /// <summary>
         /// Creates a spinning pattern from exact beam-angle arrays (metadata).

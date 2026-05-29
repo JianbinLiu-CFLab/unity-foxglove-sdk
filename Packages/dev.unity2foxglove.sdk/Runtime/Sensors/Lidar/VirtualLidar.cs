@@ -191,6 +191,12 @@ namespace Unity.FoxgloveSDK.Components
                     TimeOffsetSeconds = timeOffset
                 };
 
+                // Restore Ring for spinning patterns (index-derived).
+                if (_scanPattern is Sensors.Lidar.SpinningScanPattern spin)
+                {
+                    point.Ring = (ushort)(i % spin.Rings);
+                }
+
                 frame.Points.Add(point);
             }
 
