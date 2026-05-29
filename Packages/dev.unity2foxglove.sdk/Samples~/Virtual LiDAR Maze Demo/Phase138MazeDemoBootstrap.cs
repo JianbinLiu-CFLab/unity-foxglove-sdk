@@ -34,6 +34,12 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(manager, "_coordinateMode", CoordinateMode.RightHand);
 
             var publisher = mgrGo.AddComponent<FoxglovePointCloudPublisher>();
+            // Default to "no clipping": size the publish cap to the densest sensor in
+            // the registry so any model fits without being truncated (auto-scales as
+            // new/denser LiDARs are added). Uniform sampling keeps the cloud even if a
+            // user later lowers Max Points on the publisher to throttle bandwidth.
+            SetPrivateField(publisher, "_maxPoints", DensestRegistryRayCount());
+            SetPrivateField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             publisher.enabled = false; // enable after verifying Runtime is ready
 
             // 2. Maze (centred on origin)
@@ -94,6 +100,18 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null — point cloud publisher stays disabled.");
                 s_warnedManagerNull = true;
             }
+        }
+
+        /// <summary>Largest RayCount across all registered sensors (columnStep 4), min 4096.</summary>
+        private static int DensestRegistryRayCount()
+        {
+            var max = 4096;
+            foreach (var spec in Unity.FoxgloveSDK.Sensors.Lidar.LidarModelRegistry.All)
+            {
+                var rc = Unity.FoxgloveSDK.Sensors.Lidar.LidarScanPatternFactory.Create(spec, "", 4).RayCount;
+                if (rc > max) max = rc;
+            }
+            return max;
         }
 
         private static void SetPrivateField(object target, string fieldName, object value)

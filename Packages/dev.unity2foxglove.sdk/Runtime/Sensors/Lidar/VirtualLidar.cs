@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.Collections;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
@@ -61,6 +62,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private float _scanRateHzOverride;
         [SerializeField] private float _maxRangeMeters = 50f;
         [SerializeField, Min(1)] private int _columnStep = 4;
+        [Tooltip("0 (default) = no clipping: cast every ray the selected sensor defines " +
+                 "(full resolution, scales automatically with the model). " +
+                 "Set a value > 0 to cap rays per scan for performance — excess rays are " +
+                 "uniformly subsampled. Raycasts run in parallel via RaycastCommand.")]
+        [SerializeField, Min(0)] private int _maxRaysPerScan = 0;
         [SerializeField] private LayerMask _layerMask = ~0;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
@@ -76,6 +82,16 @@ namespace Unity.FoxgloveSDK.Components
         private int _frameCounter;
         private float _nextScanTime;
         private float _scanPeriod;
+
+        // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
+        private NativeArray<RaycastCommand> _commands;
+        private NativeArray<RaycastHit> _results;
+        private float[] _rayTimeOffsets;
+        private ushort[] _rayRings;
+        private int _rawRayCount;       // pattern.RayCount
+        private int _effectiveRayCount; // rays actually cast per scan (after budget)
+        private int _rayStride;         // subsampling stride into the pattern
+        private int _spinEffectiveColumns; // RayCount/Rings for spinning, else 0
 
         private void Start()
         {
@@ -105,6 +121,32 @@ namespace Unity.FoxgloveSDK.Components
             var rateHz = _scanRateHzOverride > 0f ? _scanRateHzOverride : _scanPattern.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
             _nextScanTime = Time.unscaledTime;
+
+            AllocateScanBuffers();
+        }
+
+        private void AllocateScanBuffers()
+        {
+            _rawRayCount = Math.Max(1, _scanPattern.RayCount);
+            var budget = _maxRaysPerScan <= 0 ? _rawRayCount : Math.Min(_rawRayCount, _maxRaysPerScan);
+            budget = Math.Max(1, budget);
+            _rayStride = Math.Max(1, (_rawRayCount + budget - 1) / budget);          // ceil
+            _effectiveRayCount = (_rawRayCount + _rayStride - 1) / _rayStride;        // ceil
+
+            _spinEffectiveColumns = _scanPattern is Sensors.Lidar.SpinningScanPattern spin && spin.Rings > 0
+                ? spin.RayCount / spin.Rings
+                : 0;
+
+            _commands = new NativeArray<RaycastCommand>(_effectiveRayCount, Allocator.Persistent);
+            _results = new NativeArray<RaycastHit>(_effectiveRayCount, Allocator.Persistent);
+            _rayTimeOffsets = new float[_effectiveRayCount];
+            _rayRings = new ushort[_effectiveRayCount];
+        }
+
+        private void OnDestroy()
+        {
+            if (_commands.IsCreated) _commands.Dispose();
+            if (_results.IsCreated) _results.Dispose();
         }
 
         private Sensors.Lidar.LidarProfile LoadProfile()
@@ -164,46 +206,61 @@ namespace Unity.FoxgloveSDK.Components
                 FrameId = _frameId
             };
 
-            var worldPos = transform.position;
-            var rayCount = _scanPattern.RayCount;
-
-            for (var i = 0; i < rayCount; i++)
+            if (!_commands.IsCreated || _effectiveRayCount <= 0)
             {
-                if (!_scanPattern.TryGetRay(i, _frameCounter, out var localDir, out var timeOffset))
-                    continue;
+                _frameCounter++;
+                return frame;
+            }
 
-                var unityLocalDir = new Vector3(localDir.X, localDir.Y, localDir.Z);
-                var worldDir = transform.TransformDirection(unityLocalDir);
-                var hit = Physics.Raycast(worldPos, worldDir, out var hitInfo, _maxRangeMeters, _layerMask);
+            var worldPos = transform.position;
+            var queryParams = new QueryParameters(_layerMask.value);
 
-                if (_drawDebugRays)
+            // Build the ray batch on the main thread (cheap), then cast in parallel.
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var index = k * _rayStride;
+                if (index >= _rawRayCount) index = _rawRayCount - 1;
+
+                if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
                 {
-                    var rayLength = hit ? hitInfo.distance : _maxRangeMeters;
-                    Debug.DrawRay(worldPos, worldDir * rayLength, hit ? Color.green : Color.red, _scanPeriod);
+                    _commands[k] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                    _rayTimeOffsets[k] = 0f;
+                    _rayRings[k] = 0;
+                    continue;
                 }
 
-                if (!hit || hitInfo.distance < _scanPattern.MinRangeMeters || hitInfo.distance > _maxRangeMeters)
+                var worldDir = transform.TransformDirection(new Vector3(localDir.X, localDir.Y, localDir.Z));
+                _commands[k] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                _rayTimeOffsets[k] = timeOffset;
+                _rayRings[k] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+            }
+
+            // Parallel raycast across worker threads, then read results on the main thread.
+            RaycastCommand.ScheduleBatch(_commands, _results, 64).Complete();
+
+            var minRange = (float)_scanPattern.MinRangeMeters;
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var hit = _results[k];
+                if (hit.collider == null)
                     continue;
 
-                var localHitPoint = transform.InverseTransformPoint(hitInfo.point);
+                var d = hit.distance;
+                if (d < minRange || d > _maxRangeMeters)
+                    continue;
+
+                if (_drawDebugRays)
+                    Debug.DrawRay(_commands[k].from, _commands[k].direction * d, Color.green, _scanPeriod);
+
+                var localHitPoint = transform.InverseTransformPoint(hit.point);
                 var rosHit = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
-                var point = new PointCloudPoint(rosHit.x, rosHit.y, rosHit.z)
+                frame.Points.Add(new PointCloudPoint(rosHit.x, rosHit.y, rosHit.z)
                 {
                     Intensity = _syntheticIntensity,
                     Reflectivity = _syntheticReflectivity,
-                    TimeOffsetSeconds = timeOffset
-                };
-
-                // Restore Ring for spinning patterns. The scan loop is ring-major
-                // (ring = index / effectiveColumns, effectiveColumns = RayCount / Rings),
-                // matching SpinningScanPattern.TryGetRay's index decomposition.
-                if (_scanPattern is Sensors.Lidar.SpinningScanPattern spin && spin.Rings > 0)
-                {
-                    var effectiveColumns = spin.RayCount / spin.Rings;
-                    point.Ring = (ushort)(effectiveColumns > 0 ? i / effectiveColumns : 0);
-                }
-
-                frame.Points.Add(point);
+                    TimeOffsetSeconds = _rayTimeOffsets[k],
+                    Ring = _rayRings[k]
+                });
             }
 
             _frameCounter++;

@@ -5,6 +5,7 @@
 
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -54,6 +55,17 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(manager, "_coordinateMode", CoordinateMode.RightHand);
             var publisher = mgrGo.AddComponent<FoxglovePointCloudPublisher>();
             SetField(publisher, "_frameId", "vehicle_lidar");
+            // Default to "no clipping": size the publish cap to the densest sensor in
+            // the registry so any model fits (auto-scales as new LiDARs are added).
+            // Uniform sampling keeps the cloud even if Max Points is later lowered.
+            var publishCap = 4096;
+            foreach (var spec in LidarModelRegistry.All)
+            {
+                var rc = LidarScanPatternFactory.Create(spec, "", 4).RayCount;
+                if (rc > publishCap) publishCap = rc;
+            }
+            SetField(publisher, "_maxPoints", publishCap);
+            SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
 
             // 2. Maze centred on origin.
             var maze = Phase138MazeBuilder.Build(CellsX, CellsZ, CellSize, 1.5f, 0.2f, 42);

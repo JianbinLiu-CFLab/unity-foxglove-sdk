@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _vendor, _model, _mode;
         private SerializedProperty _customPixelsPerColumn, _customFovTopDeg, _customFovBottomDeg,
             _customColumnsPerFrame, _customScanRateHz, _customMinRangeMeters;
-        private SerializedProperty _frameId, _columnStep, _maxRangeMeters, _scanRateHzOverride,
+        private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
         private SerializedProperty _syntheticReflectivity, _syntheticIntensity, _pointCloudPublisher;
 
@@ -46,6 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
             _customMinRangeMeters = serializedObject.FindProperty("_customMinRangeMeters");
             _frameId = serializedObject.FindProperty("_frameId");
             _columnStep = serializedObject.FindProperty("_columnStep");
+            _maxRaysPerScan = serializedObject.FindProperty("_maxRaysPerScan");
             _maxRangeMeters = serializedObject.FindProperty("_maxRangeMeters");
             _scanRateHzOverride = serializedObject.FindProperty("_scanRateHzOverride");
             _layerMask = serializedObject.FindProperty("_layerMask");
@@ -76,6 +77,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.LabelField("Scan", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(_frameId);
             EditorGUILayout.PropertyField(_columnStep);
+            EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
             EditorGUILayout.PropertyField(_scanRateHzOverride);
             EditorGUILayout.PropertyField(_layerMask);
