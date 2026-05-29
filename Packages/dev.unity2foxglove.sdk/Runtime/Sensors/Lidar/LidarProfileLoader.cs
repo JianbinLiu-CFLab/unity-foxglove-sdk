@@ -10,18 +10,8 @@ using Newtonsoft.Json.Linq;
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
     /// <summary>
-    /// Built-in spinning-LiDAR presets (Ouster OS-0/OS-1/OS-2 at 32/64/128 rings).
-    /// Beam angles are evenly distributed across the line's vertical FOV.
-    /// </summary>
-    public enum LidarPreset
-    {
-        Os0_32, Os0_64, Os0_128,
-        Os1_32, Os1_64, Os1_128,
-        Os2_32, Os2_64, Os2_128
-    }
-
-    /// <summary>
     /// Parses LiDAR metadata JSON and provides built-in fallback profiles.
+    /// Built-in presets now live in <see cref="LidarModelRegistry"/>.
     /// </summary>
     public static class LidarProfileLoader
     {
@@ -61,25 +51,17 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             };
         }
 
-        /// <summary>Create a built-in preset profile (1024 columns, 10 Hz).</summary>
-        public static LidarProfile CreatePreset(LidarPreset preset)
+        /// <summary>Parse a lidar mode string "&lt;columns&gt;x&lt;rateHz&gt;" (e.g. "1024x10").</summary>
+        public static bool TryParseMode(string mode, out int columns, out double rateHz)
         {
-            // (productLine, rings, fovTopDeg, fovBottomDeg, minRange)
-            switch (preset)
-            {
-                case LidarPreset.Os0_32:  return CreateUniform("OS-0", 32,  1024, 10, 45.0, -45.0, 0.3);
-                case LidarPreset.Os0_64:  return CreateUniform("OS-0", 64,  1024, 10, 45.0, -45.0, 0.3);
-                case LidarPreset.Os0_128: return CreateUniform("OS-0", 128, 1024, 10, 45.0, -45.0, 0.3);
-                case LidarPreset.Os1_64:  return CreateUniform("OS-1", 64,  1024, 10, 16.6, -16.6, 0.7);
-                case LidarPreset.Os1_128: return CreateUniform("OS-1", 128, 1024, 10, 16.6, -16.6, 0.7);
-                case LidarPreset.Os2_32:  return CreateUniform("OS-2", 32,  1024, 10, 11.25, -11.25, 0.5);
-                case LidarPreset.Os2_64:  return CreateUniform("OS-2", 64,  1024, 10, 11.25, -11.25, 0.5);
-                case LidarPreset.Os2_128: return CreateUniform("OS-2", 128, 1024, 10, 11.25, -11.25, 0.5);
-                case LidarPreset.Os1_32:
-                default:
-                    // Exact datasheet angles for the canonical OS-1-32.
-                    return CreateOs132Default();
-            }
+            columns = 0;
+            rateHz = 0;
+            if (string.IsNullOrWhiteSpace(mode)) return false;
+            var parts = mode.Split('x');
+            return parts.Length == 2
+                && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out columns)
+                && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out rateHz)
+                && columns > 0 && rateHz > 0;
         }
 
         /// <summary>
@@ -147,31 +129,6 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(mode))
-            {
-                error = "Lidar mode string is null or empty.";
-                return false;
-            }
-
-            // Parse scan rate from mode string (e.g. "1024x10" → 10, "1024x20" → 20)
-            // Expected format: "<columns>x<rate>"
-            var parts = mode.Split('x');
-            if (parts.Length != 2
-                || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
-                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var scanRateHz)
-                || scanRateHz <= 0)
-            {
-                error = $"Unknown lidar mode format: \"{mode}\". Expected \"<columns>x<rate>\" (e.g. \"1024x10\").";
-                return false;
-            }
-
-            // Reject unrealistic scan rates (>30 Hz is not a standard lidar mode).
-            if (scanRateHz > 30.0)
-            {
-                error = $"Unsupported lidar mode \"{mode}\": expected 10 or 20 Hz.";
-                return false;
-            }
-
             JObject root;
             try
             {
@@ -183,67 +140,90 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
-            var pixelsPerColumn = root["pixels_per_column"]?.Value<int?>();
-            if (pixelsPerColumn == null || pixelsPerColumn <= 0)
+            // Schema-tolerant: handles legacy flat metadata (beam angles + lidar_mode
+            // at top level, pixels under "data_format") and v2/v3 nested metadata
+            // ("beam_intrinsics", "lidar_data_format", "config_params", "sensor_info").
+            var beam = root["beam_intrinsics"] as JObject;
+            var df = (root["lidar_data_format"] ?? root["data_format"]) as JObject;
+            var cfg = root["config_params"] as JObject;
+            var info = root["sensor_info"] as JObject;
+
+            JToken FromBeam(string key) => beam?[key] ?? root[key];
+            JToken FromFormat(string key) => df?[key] ?? root[key];
+
+            // lidar_mode: JSON value wins; fall back to the mode argument.
+            var lidarModeStr = (cfg?["lidar_mode"] ?? root["lidar_mode"])?.Value<string>();
+            if (string.IsNullOrWhiteSpace(lidarModeStr))
+                lidarModeStr = mode;
+            if (string.IsNullOrWhiteSpace(lidarModeStr))
             {
-                error = "Missing or invalid \"pixels_per_column\" field.";
+                error = "No \"lidar_mode\" in JSON and no mode argument provided.";
+                return false;
+            }
+            if (!TryParseMode(lidarModeStr, out var modeColumns, out var scanRateHz))
+            {
+                error = $"Unknown lidar mode format: \"{lidarModeStr}\". Expected \"<columns>x<rate>\" (e.g. \"1024x10\").";
+                return false;
+            }
+            if (scanRateHz > 30.0)
+            {
+                error = $"Unsupported lidar mode \"{lidarModeStr}\": scan rate above 30 Hz.";
                 return false;
             }
 
-            var columnsPerFrame = root["columns_per_frame"]?.Value<int?>() ?? 1024;
-            var columnsPerPacket = root["columns_per_packet"]?.Value<int?>() ?? 16;
-            var minRange = root["lidar_mode"]?["min_range"]?.Value<double?>() ?? 0.7;
-            var originOffset = root["lidar_origin_to_beam_origin_mm"]?.Value<double?>() / 1000.0 ?? 0.03618;
-
-            // Parse beam altitude angles
-            var altToken = root["beam_altitude_angles"];
-            if (altToken == null || !(altToken is JArray altArray))
+            // beam_altitude_angles (required)
+            if (!(FromBeam("beam_altitude_angles") is JArray altArray) || altArray.Count == 0)
             {
                 error = "Missing or invalid \"beam_altitude_angles\" array.";
                 return false;
             }
+            var altitude = new double[altArray.Count];
+            for (var i = 0; i < altArray.Count; i++)
+                altitude[i] = altArray[i].Value<double>();
 
-            if (altArray.Count != pixelsPerColumn.Value)
+            // pixels_per_column: from data_format/lidar_data_format/top level; else infer.
+            var pixelsPerColumn = FromFormat("pixels_per_column")?.Value<int?>() ?? altArray.Count;
+            if (pixelsPerColumn <= 0)
+                pixelsPerColumn = altArray.Count;
+            if (pixelsPerColumn != altArray.Count)
             {
                 error = $"beam_altitude_angles length ({altArray.Count}) does not match pixels_per_column ({pixelsPerColumn}).";
                 return false;
             }
 
-            var altitude = new double[altArray.Count];
-            for (var i = 0; i < altArray.Count; i++)
-                altitude[i] = altArray[i].Value<double>();
-
-            // Parse beam azimuth angles (optional — fill with zeros if empty)
-            var azmToken = root["beam_azimuth_angles"];
+            // beam_azimuth_angles (optional → zeros)
             double[] azimuth;
-
-            if (azmToken != null && azmToken is JArray azmArray && azmArray.Count > 0)
+            if (FromBeam("beam_azimuth_angles") is JArray azmArray && azmArray.Count > 0)
             {
-                if (azmArray.Count != pixelsPerColumn.Value)
+                if (azmArray.Count != pixelsPerColumn)
                 {
                     error = $"beam_azimuth_angles length ({azmArray.Count}) does not match pixels_per_column ({pixelsPerColumn}).";
                     return false;
                 }
-
                 azimuth = new double[azmArray.Count];
                 for (var i = 0; i < azmArray.Count; i++)
                     azimuth[i] = azmArray[i].Value<double>();
             }
             else
             {
-                azimuth = new double[pixelsPerColumn.Value];
-                // Already zero-initialized
+                azimuth = new double[pixelsPerColumn];
             }
+
+            var columnsPerFrame = FromFormat("columns_per_frame")?.Value<int?>() ?? modeColumns;
+            var columnsPerPacket = FromFormat("columns_per_packet")?.Value<int?>() ?? 16;
+            var originMm = FromBeam("lidar_origin_to_beam_origin_mm")?.Value<double?>();
+            var originOffset = originMm.HasValue ? originMm.Value / 1000.0 : 0.03618;
+            var prodLine = (info?["prod_line"] ?? root["prod_line"])?.Value<string>() ?? "OS-1";
 
             profile = new LidarProfile
             {
-                ProductLine = root["prod_line"]?.Value<string>() ?? "OS-1",
-                LidarMode = mode,
-                PixelsPerColumn = pixelsPerColumn.Value,
+                ProductLine = prodLine,
+                LidarMode = lidarModeStr,
+                PixelsPerColumn = pixelsPerColumn,
                 ColumnsPerFrame = columnsPerFrame,
                 ColumnsPerPacket = columnsPerPacket,
                 ScanRateHz = scanRateHz,
-                MinRangeMeters = minRange,
+                MinRangeMeters = 0.7, // metadata rarely carries min_range; sensible default
                 LidarOriginToBeamOriginMeters = originOffset,
                 BeamAltitudeAngles = altitude,
                 BeamAzimuthAngles = azimuth

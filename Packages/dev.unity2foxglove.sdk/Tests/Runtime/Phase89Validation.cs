@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             Check(source.Contains("[Header(\"Point Cloud Output\")]")
-                  && source.Contains("_outputMode = PointCloudOutputMode.Raw")
+                  && source.Contains("_outputMode = PointCloudOutputMode.Draco")
                   && source.Contains("_warnedDracoFailure"),
                 "89B-1: point-cloud publisher exposes Raw/Draco output fields without a helper path");
             Check(source.Contains("ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode)")

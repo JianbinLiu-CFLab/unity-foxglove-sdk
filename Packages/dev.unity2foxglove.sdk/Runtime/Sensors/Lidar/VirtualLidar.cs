@@ -5,9 +5,11 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.Collections;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -30,18 +32,31 @@ namespace Unity.FoxgloveSDK.Components
             Custom
         }
 
+        /// <summary>How the scan (frame-generation) rate is chosen.</summary>
+        public enum ScanRateSource
+        {
+            /// <summary>Use the selected sensor's nominal scan rate (from the model/profile).</summary>
+            UseSensorRate,
+            /// <summary>Use the Scan Rate Hz field below.</summary>
+            Override
+        }
+
         [Header("Output")]
         [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
 
         [Header("Profile")]
-        [Tooltip("Where the scan geometry comes from. Default BuiltInPreset reproduces the previous OS-1-32 behaviour. To load a sensor's metadata.json, switch to MetadataJson.")]
+        [Tooltip("Where the scan geometry comes from.")]
         [SerializeField] private ProfileSource _profileSource = ProfileSource.BuiltInPreset;
         [Tooltip("Used when Profile Source = MetadataJson.")]
         [SerializeField] private TextAsset _metadataJson;
-        [Tooltip("Mode string for metadata parsing: \"<columns>x<rateHz>\", e.g. 1024x10 or 2048x10.")]
+        [Tooltip("Mode string for metadata parsing.")]
         [SerializeField] private string _metadataMode = "1024x10";
         [Tooltip("Used when Profile Source = BuiltInPreset.")]
-        [SerializeField] private Sensors.Lidar.LidarPreset _preset = Sensors.Lidar.LidarPreset.Os1_32;
+        [SerializeField] private Sensors.Lidar.LidarVendor _vendor = Sensors.Lidar.LidarVendor.Ouster;
+        [Tooltip("Model identifier within the vendor (e.g. OS-1-32, VLP-16, Mid-360).")]
+        [SerializeField] private string _model = "OS-1-32";
+        [Tooltip("Optional scan mode for models that support multiple modes (e.g. 1024x10, 2048x10).")]
+        [SerializeField] private string _mode = "1024x10";
 
         [Header("Custom Profile (Profile Source = Custom)")]
         [SerializeField, Min(1)] private int _customPixelsPerColumn = 32;
@@ -53,9 +68,19 @@ namespace Unity.FoxgloveSDK.Components
 
         [Header("Scan")]
         [SerializeField] private string _frameId = "os_lidar";
-        [SerializeField] private float _scanRateHzOverride;
+        [Tooltip("Use Sensor Rate = the model's nominal Hz; Override = use Scan Rate Hz below. " +
+                 "This is the LiDAR's frame-generation rate; the point cloud's publish rate to " +
+                 "Foxglove is set separately on FoxglovePointCloudPublisher (Publish Rate).")]
+        [SerializeField] private ScanRateSource _scanRateSource = ScanRateSource.UseSensorRate;
+        [Tooltip("Scan rate in Hz, used when Scan Rate Source = Override.")]
+        [SerializeField, Min(0f)] private float _scanRateHzOverride = 10f;
         [SerializeField] private float _maxRangeMeters = 50f;
         [SerializeField, Min(1)] private int _columnStep = 4;
+        [Tooltip("0 (default) = no clipping: cast every ray the selected sensor defines " +
+                 "(full resolution, scales automatically with the model). " +
+                 "Set a value > 0 to cap rays per scan for performance — excess rays are " +
+                 "uniformly subsampled. Raycasts run in parallel via RaycastCommand.")]
+        [SerializeField, Min(0)] private int _maxRaysPerScan = 0;
         [SerializeField] private LayerMask _layerMask = ~0;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
@@ -67,18 +92,37 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
 
-        private Sensors.Lidar.LidarProfile _profile;
-        private Sensors.Lidar.LidarRayGenerator _rayGenerator;
+        private ILidarScanPattern _scanPattern;
+        private int _frameCounter;
         private float _nextScanTime;
         private float _scanPeriod;
 
+        // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
+        private NativeArray<RaycastCommand> _commands;
+        private NativeArray<RaycastHit> _results;
+        private float[] _rayTimeOffsets;
+        private ushort[] _rayRings;
+        private int _rawRayCount;       // pattern.RayCount
+        private int _effectiveRayCount; // rays actually cast per scan (after budget)
+        private int _rayStride;         // subsampling stride into the pattern
+        private int _spinEffectiveColumns; // RayCount/Rings for spinning, else 0
+
         private void Start()
         {
-            _profile = LoadProfile();
-            if (_profile == null)
-                _profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
+            if (_profileSource == ProfileSource.BuiltInPreset)
+            {
+                if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
+            }
 
-            _rayGenerator = new Sensors.Lidar.LidarRayGenerator(_profile, _columnStep);
+            if (_scanPattern == null)
+            {
+                // Fallback: metadata JSON or custom params via old profile path
+                var profile = LoadProfile();
+                if (profile == null)
+                    profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
+                _scanPattern = Sensors.Lidar.LidarScanPatternFactory.FromProfile(profile, _columnStep);
+            }
 
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)
@@ -88,9 +132,37 @@ namespace Unity.FoxgloveSDK.Components
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
 
-            var rateHz = _scanRateHzOverride > 0f ? _scanRateHzOverride : _profile.ScanRateHz;
+            var rateHz = _scanRateSource == ScanRateSource.Override && _scanRateHzOverride > 0f
+                ? _scanRateHzOverride
+                : _scanPattern.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
             _nextScanTime = Time.unscaledTime;
+
+            AllocateScanBuffers();
+        }
+
+        private void AllocateScanBuffers()
+        {
+            _rawRayCount = Math.Max(1, _scanPattern.RayCount);
+            var budget = _maxRaysPerScan <= 0 ? _rawRayCount : Math.Min(_rawRayCount, _maxRaysPerScan);
+            budget = Math.Max(1, budget);
+            _rayStride = Math.Max(1, (_rawRayCount + budget - 1) / budget);          // ceil
+            _effectiveRayCount = (_rawRayCount + _rayStride - 1) / _rayStride;        // ceil
+
+            _spinEffectiveColumns = _scanPattern is Sensors.Lidar.SpinningScanPattern spin && spin.Rings > 0
+                ? spin.RayCount / spin.Rings
+                : 0;
+
+            _commands = new NativeArray<RaycastCommand>(_effectiveRayCount, Allocator.Persistent);
+            _results = new NativeArray<RaycastHit>(_effectiveRayCount, Allocator.Persistent);
+            _rayTimeOffsets = new float[_effectiveRayCount];
+            _rayRings = new ushort[_effectiveRayCount];
+        }
+
+        private void OnDestroy()
+        {
+            if (_commands.IsCreated) _commands.Dispose();
+            if (_results.IsCreated) _results.Dispose();
         }
 
         private Sensors.Lidar.LidarProfile LoadProfile()
@@ -118,7 +190,9 @@ namespace Unity.FoxgloveSDK.Components
 
                 case ProfileSource.BuiltInPreset:
                 default:
-                    return Sensors.Lidar.LidarProfileLoader.CreatePreset(_preset);
+                    // BuiltInPreset is resolved via LidarModelRegistry in Start();
+                    // reaching here means the registry lookup failed → use the fallback.
+                    return null;
             }
         }
 
@@ -148,50 +222,64 @@ namespace Unity.FoxgloveSDK.Components
                 FrameId = _frameId
             };
 
-            var worldPos = transform.position;
-            var columnCount = _profile.ColumnsPerFrame / _columnStep;
-
-            for (var c = 0; c < columnCount; c++)
+            if (!_commands.IsCreated || _effectiveRayCount <= 0)
             {
-                var column = c * _columnStep;
-
-                for (var ring = 0; ring < _profile.PixelsPerColumn; ring++)
-                {
-                    if (!_rayGenerator.TryGetRay(column, ring, out var localDir, out var timeOffset))
-                        continue;
-
-                    // Convert System.Numerics.Vector3 (Unity-free generator output) to UnityEngine.Vector3.
-                    var unityLocalDir = new Vector3(localDir.X, localDir.Y, localDir.Z);
-                    var worldDir = transform.TransformDirection(unityLocalDir);
-                    var hit = Physics.Raycast(worldPos, worldDir, out var hitInfo, _maxRangeMeters, _layerMask);
-
-                    if (_drawDebugRays)
-                    {
-                        var rayLength = hit ? hitInfo.distance : _maxRangeMeters;
-                        Debug.DrawRay(worldPos, worldDir * rayLength, hit ? Color.green : Color.red, _scanPeriod);
-                    }
-
-                    if (!hit || hitInfo.distance < _profile.MinRangeMeters || hitInfo.distance > _maxRangeMeters)
-                        continue;
-
-                    var localHitPoint = transform.InverseTransformPoint(hitInfo.point);
-                    // Convert Unity left-handed (X right, Y up, Z forward) to
-                    // Foxglove/ROS right-handed (X forward, Y left, Z up) so
-                    // downstream Foxglove panels render the cloud correctly in
-                    // its frame_id without per-axis TF gymnastics.
-                    var rosPoint = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
-                    var point = new PointCloudPoint(rosPoint.x, rosPoint.y, rosPoint.z)
-                    {
-                        Intensity = _syntheticIntensity,
-                        Reflectivity = _syntheticReflectivity,
-                        Ring = (ushort)ring,
-                        TimeOffsetSeconds = timeOffset
-                    };
-
-                    frame.Points.Add(point);
-                }
+                _frameCounter++;
+                return frame;
             }
 
+            var worldPos = transform.position;
+            var queryParams = new QueryParameters(_layerMask.value);
+
+            // Build the ray batch on the main thread (cheap), then cast in parallel.
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var index = k * _rayStride;
+                if (index >= _rawRayCount) index = _rawRayCount - 1;
+
+                if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
+                {
+                    _commands[k] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                    _rayTimeOffsets[k] = 0f;
+                    _rayRings[k] = 0;
+                    continue;
+                }
+
+                var worldDir = transform.TransformDirection(new Vector3(localDir.X, localDir.Y, localDir.Z));
+                _commands[k] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                _rayTimeOffsets[k] = timeOffset;
+                _rayRings[k] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+            }
+
+            // Parallel raycast across worker threads, then read results on the main thread.
+            RaycastCommand.ScheduleBatch(_commands, _results, 64).Complete();
+
+            var minRange = (float)_scanPattern.MinRangeMeters;
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var hit = _results[k];
+                if (hit.collider == null)
+                    continue;
+
+                var d = hit.distance;
+                if (d < minRange || d > _maxRangeMeters)
+                    continue;
+
+                if (_drawDebugRays)
+                    Debug.DrawRay(_commands[k].from, _commands[k].direction * d, Color.green, _scanPeriod);
+
+                var localHitPoint = transform.InverseTransformPoint(hit.point);
+                var rosHit = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
+                frame.Points.Add(new PointCloudPoint(rosHit.x, rosHit.y, rosHit.z)
+                {
+                    Intensity = _syntheticIntensity,
+                    Reflectivity = _syntheticReflectivity,
+                    TimeOffsetSeconds = _rayTimeOffsets[k],
+                    Ring = _rayRings[k]
+                });
+            }
+
+            _frameCounter++;
             return frame;
         }
 

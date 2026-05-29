@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Components
         private const int DracoWorkerStopWaitMs = 5000;
 
         [Header("Point Cloud Output")]
-        [SerializeField] private PointCloudOutputMode _outputMode = PointCloudOutputMode.Raw;
+        [SerializeField] private PointCloudOutputMode _outputMode = PointCloudOutputMode.Draco;
 
         [Header("Point Cloud")]
         [SerializeField] private string _frameId = "unity_world";

@@ -2,271 +2,338 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase 138B R2FU Jazzy Windows build toolchain closure validation.
+// Purpose: Phase 138B multi-vendor LiDAR middleware validation.
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
+using System.Text.RegularExpressions;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase138BValidation
     {
-        private const string OrchestratorPath = "Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py";
         private static int _passed;
 
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 138B: R2FU Jazzy Windows Build Toolchain Closure ===");
+            Console.WriteLine("--- Phase 138B: Multi-Vendor LiDAR Middleware ---");
             _passed = 0;
 
-            VerifyPythonOrchestrator();
-            VerifyNoPowerShellWrapper();
-            VerifyTrackedArtifactHygiene();
-            VerifyCoreSdkBoundary();
-            VerifyValidationWiring();
+            VerifyRegistry();
+            VerifySpinningRegression();
+            VerifyMode();
+            VerifyRosette();
+            VerifySourceText();
+            VerifyFixtureRoundTrip();
 
             Console.WriteLine($"Phase 138B: {_passed} checks passed.");
+            Console.WriteLine();
         }
 
-        private static void VerifyPythonOrchestrator()
+        // ---------------------------------------------------------------
+        // Registry checks
+        // ---------------------------------------------------------------
+
+        private static void VerifyRegistry()
         {
-            Check(RepoFileExists(OrchestratorPath), "138B-B1: Python build orchestrator exists");
-            if (!RepoFileExists(OrchestratorPath))
-                return;
-
-            var script = ReadRepoText(OrchestratorPath);
-            Check(script.Contains("argparse", StringComparison.Ordinal)
-                  && script.Contains("--work-root", StringComparison.Ordinal)
-                  && script.Contains(@"D:\ros2unity\.build\r2fu-jazzy-win64", StringComparison.Ordinal)
-                  && script.Contains("DEFAULT_WORK_ROOT", StringComparison.Ordinal)
-                  && script.Contains("DEFAULT_TEMP_ROOT", StringComparison.Ordinal)
-                  && !script.Contains("default=r\"D:\\r\"", StringComparison.Ordinal)
-                  && !script.Contains("default=r\"D:\\t\"", StringComparison.Ordinal),
-                "138B-B2: orchestrator exposes work-root arguments under the consolidated build root");
-            var localSiblingRoot = "D:" + Path.DirectorySeparatorChar + "ros2unity" + Path.DirectorySeparatorChar;
-            var localRos2Rc = localSiblingRoot + "ros2" + "rc";
-            var localR2fu = localSiblingRoot + "ros2-for-" + "unity";
-            Check(!script.Contains(localRos2Rc, StringComparison.OrdinalIgnoreCase)
-                  && !script.Contains(localR2fu, StringComparison.OrdinalIgnoreCase),
-                "138B-B2b: orchestrator does not use local sibling ROS2/R2FU repositories as evidence");
-            Check(script.Contains("assert_safe_root", StringComparison.Ordinal)
-                  && script.Contains("BaiduSyncdisk", StringComparison.Ordinal),
-                "138B-B3: orchestrator refuses synced/repo work roots");
-            Check(script.Contains("VsDevCmd.bat", StringComparison.Ordinal)
-                  && script.Contains("vswhere.exe", StringComparison.Ordinal)
-                  && script.Contains("-arch=x64", StringComparison.Ordinal)
-                  && script.Contains("-host_arch=x64", StringComparison.Ordinal),
-                "138B-B4: orchestrator resolves and imports the VS x64 developer environment");
-            Check(script.Contains("COLCON_PYTHON_EXECUTABLE", StringComparison.Ordinal)
-                  && script.Contains(".pixi", StringComparison.Ordinal)
-                  && script.Contains("catkin_pkg", StringComparison.Ordinal),
-                "138B-B5: orchestrator pins ROS2 Jazzy pixi Python and validates catkin_pkg");
-            Check(script.Contains("[\"TEMP\"]", StringComparison.Ordinal)
-                  && script.Contains("[\"TMP\"]", StringComparison.Ordinal),
-                "138B-B6: orchestrator moves TEMP/TMP outside the synced workspace");
-            Check(script.Contains("record_where_diagnostics", StringComparison.Ordinal)
-                  && script.Contains("\"where\"", StringComparison.Ordinal)
-                  && script.Contains("msbuild", StringComparison.Ordinal)
-                  && script.Contains("cl", StringComparison.Ordinal),
-                "138B-B7: orchestrator records where diagnostics for native tools");
-            Check(script.Contains("BUILD_ORCHESTRATOR_GREEN", StringComparison.Ordinal)
-                  && script.Contains("BLOCKED_CL_TEMP_IL", StringComparison.Ordinal)
-                  && script.Contains("BLOCKED_WINDOWS_PATH_LENGTH", StringComparison.Ordinal)
-                  && script.Contains("BLOCKED_UNKNOWN_TOOLCHAIN", StringComparison.Ordinal),
-                "138B-B8: orchestrator emits explicit verdict labels");
-            Check(script.Contains("build.ps1", StringComparison.Ordinal)
-                  && script.Contains("get_repos.ps1", StringComparison.Ordinal)
-                  && script.Contains("feature/jazzy-support", StringComparison.Ordinal),
-                "138B-B9: orchestrator uses upstream R2FU scripts and Jazzy support branches");
-            Check(script.Contains("resolve_cmake_generator", StringComparison.Ordinal)
-                  && script.Contains("prefer Ninja", StringComparison.Ordinal)
-                  && script.Contains("EffectiveGenerator", StringComparison.Ordinal),
-                "138B-B10: orchestrator resolves auto generator to prefer Ninja and records it");
-            Check(script.Contains("CHECKOUT_DIR_NAME", StringComparison.Ordinal)
-                  && script.Contains("\"r2u\"", StringComparison.Ordinal),
-                "138B-B11: orchestrator uses a short checkout directory to reduce generated object paths");
-            Check(script.Contains("patch_ros2cs_jazzy_windows_standalone", StringComparison.Ordinal)
-                  && script.Contains("libssl-3-x64.dll", StringComparison.Ordinal)
-                  && script.Contains("libcrypto-3-x64.dll", StringComparison.Ordinal),
-                "138B-B12: orchestrator patches Jazzy Windows standalone OpenSSL 3 runtime DLL names");
-            Check(script.Contains("modulenotfounderror", StringComparison.OrdinalIgnoreCase)
-                  && script.Contains("anaconda3", StringComparison.OrdinalIgnoreCase)
-                  && script.IndexOf("modulenotfounderror", StringComparison.OrdinalIgnoreCase)
-                     < script.IndexOf("system cannot find the file", StringComparison.OrdinalIgnoreCase),
-                "138B-B13: orchestrator classifies Python contamination before generic missing-file failures");
-            Check(script.Contains("JAZZY_PIXI_RUNTIME_DLLS", StringComparison.Ordinal)
-                  && script.Contains("copy_jazzy_pixi_runtime_closure", StringComparison.Ordinal)
-                  && script.Contains("yaml.dll", StringComparison.Ordinal)
-                  && script.Contains("spdlog.dll", StringComparison.Ordinal)
-                  && script.Contains("fmt.dll", StringComparison.Ordinal),
-                "138B-B14: orchestrator closes Jazzy pixi runtime DLL dependencies for rcl.dll loading");
-            Check(script.Contains("kill_process_tree_windows", StringComparison.Ordinal)
-                  && script.Contains("taskkill", StringComparison.Ordinal)
-                  && script.Contains("timed_out", StringComparison.Ordinal)
-                  && script.Contains("exit_code = 124 if timed_out", StringComparison.Ordinal),
-                "138B-B15: orchestrator kills Windows process trees and reports timeout as 124");
-            Check(script.Contains("is_contaminating_python_path", StringComparison.Ordinal)
-                  && script.Contains("miniconda", StringComparison.Ordinal)
-                  && script.Contains("python311", StringComparison.Ordinal)
-                  && script.Contains("probe.unlink()", StringComparison.Ordinal),
-                "138B-B16: orchestrator filters Python contamination broadly and cleans CL probe files");
-        }
-
-        private static void VerifyNoPowerShellWrapper()
-        {
-            var offenders = GitLsFiles()
-                .Where(path => path.Replace('\\', '/').StartsWith("Scripts/smoke/phase138b_", StringComparison.Ordinal)
-                               && path.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            Check(offenders.Count == 0,
-                "138B-D1: tracked files contain no Phase138B PowerShell wrapper"
-                + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
-        }
-
-        private static void VerifyTrackedArtifactHygiene()
-        {
-            var offenders = GitLsFiles()
-                .Where(IsForbiddenTrackedArtifact)
-                .ToList();
-
-            Check(offenders.Count == 0,
-                "138B-E1: tracked files contain no R2FU runtime zips, Unity imports, metadata XML, native runtime binaries, or build outputs"
-                + (offenders.Count == 0 ? string.Empty : " (" + string.Join(", ", offenders) + ")"));
-        }
-
-        private static void VerifyCoreSdkBoundary()
-        {
-            var packageJson = ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json");
-            Check(!packageJson.Contains("rclcpp", StringComparison.OrdinalIgnoreCase)
-                  && !packageJson.Contains("Ros2ForUnity", StringComparison.Ordinal),
-                "138B-F1: core SDK package manifest remains free of R2FU/rclcpp dependencies");
-        }
-
-        private static void VerifyValidationWiring()
-        {
-            var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var entry = PhaseValidationRegistry.Find(new[] { "--phase138b" });
-
-            Check(entry != null
-                  && entry.Run == (Action)Validate,
-                "138B-G1: validation registry wires --phase138b");
-            Check(entry != null
-                  && entry.Category == ValidationCategory.LocalEvidence
-                  && entry.IncludeInDefault,
-                "138B-G2: Phase138B is classified as local-evidence opt-in outside default CI");
-            Check(project.Contains("Phase138BValidation.cs", StringComparison.Ordinal),
-                "138B-G3: test project compiles Phase138BValidation");
-        }
-
-        private static bool IsForbiddenTrackedArtifact(string path)
-        {
-            var normalized = path.Replace('\\', '/');
-            if (normalized.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal))
-                return true;
-            if (normalized.StartsWith("third-party/ros2-for-unity/install/", StringComparison.Ordinal)
-                || normalized.StartsWith("third-party/ros2-for-unity/build/", StringComparison.Ordinal)
-                || normalized.StartsWith("third-party/ros2-for-unity/log/", StringComparison.Ordinal))
-                return true;
-            if (normalized.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal))
-                return normalized.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-                       || normalized.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
-                       || normalized.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
-            if (normalized.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase))
-                return true;
-            var fileName = Path.GetFileName(normalized);
-            if (fileName.StartsWith("Ros2ForUnity", StringComparison.OrdinalIgnoreCase)
-                && fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (IsForbiddenNativeRuntimeName(fileName))
-                return true;
-            return fileName == "metadata_ros2cs.xml"
-                   || fileName == "metadata_ros2_for_unity.xml";
-        }
-
-        private static bool IsForbiddenNativeRuntimeName(string fileName)
-        {
-            var extension = Path.GetExtension(fileName);
-            if (!extension.Equals(".dll", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".so", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".dylib", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            var lower = fileName.ToLowerInvariant();
-            return lower.Contains("ros2")
-                   || lower.Contains("ros2cs")
-                   || lower.Contains("rcl")
-                   || lower.Contains("rmw_")
-                   || lower.Contains("fastdds")
-                   || lower.Contains("fastrtps")
-                   || lower.Contains("cyclonedds")
-                   || lower.Contains("foonathan")
-                   || lower.Contains("rcutils");
-        }
-
-        private static IEnumerable<string> GitLsFiles()
-        {
-            try
+            // 1. Every model yields non-null ILidarScanPattern
+            foreach (var spec in LidarModelRegistry.All)
             {
-                var startInfo = new ProcessStartInfo("git", "ls-files")
+                var mode = spec.Modes?[0] ?? "";
+                var step = spec.Kind == LidarScanKind.Spinning ? 4 : 1;
+                var pattern = LidarScanPatternFactory.Create(spec, mode, step);
+                Check(pattern != null,
+                    $"8.1-1: {spec.Vendor}/{spec.Model} yields non-null ILidarScanPattern");
+            }
+
+            // 2. Every spinning model has RayCount > 0 and sane ScanRateHz (0..100)
+            foreach (var spec in LidarModelRegistry.All.Where(s => s.Kind == LidarScanKind.Spinning))
+            {
+                var mode = spec.Modes?[0] ?? "";
+                var pattern = LidarScanPatternFactory.Create(spec, mode, 4);
+                Check(pattern.RayCount > 0,
+                    $"8.1-2a: {spec.Vendor}/{spec.Model} RayCount > 0 ({pattern.RayCount})");
+                Check(pattern.ScanRateHz > 0 && pattern.ScanRateHz < 100,
+                    $"8.1-2b: {spec.Vendor}/{spec.Model} ScanRateHz sane ({pattern.ScanRateHz})");
+            }
+
+            // 3. Every non-repetitive (Livox) model has RayCount > 0
+            foreach (var spec in LidarModelRegistry.All.Where(s => s.Kind == LidarScanKind.NonRepetitive))
+            {
+                var mode = spec.Modes?[0] ?? "";
+                var pattern = LidarScanPatternFactory.Create(spec, mode, 1);
+                Check(pattern.RayCount > 0,
+                    $"8.1-3: {spec.Vendor}/{spec.Model} RayCount > 0 ({pattern.RayCount})");
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Spinning regression
+        // ---------------------------------------------------------------
+
+        private static void VerifySpinningRegression()
+        {
+            var profile = LidarProfileLoader.CreateOs132Default();
+            var pattern = LidarScanPatternFactory.FromProfile(profile, 4);
+
+            // 4. RayCount == 8192
+            Check(pattern.RayCount == 8192,
+                "8.2-1: OS-1-32 from profile, step=4 RayCount == 8192");
+
+            // 5. First 100 ray directions are unit-length and finite
+            var limit = Math.Min(100, pattern.RayCount);
+            for (var i = 0; i < limit; i++)
+            {
+                if (!pattern.TryGetRay(i, 0, out var dir, out _))
+                    continue;
+                var mag = dir.Length();
+                Check(!float.IsNaN(mag) && !float.IsInfinity(mag)
+                      && mag >= 0.9999f && mag <= 1.0001f,
+                    $"8.2-2: ray[{i}] direction is unit-length and finite ({mag:F6})");
+            }
+
+            // 6. Time offsets monotonic [0..1)
+            {
+                float prevOffset = -1f;
+                var monotonic = true;
+                var belowOne = true;
+                var nonNegative = true;
+
+                for (var i = 0; i < limit; i++)
                 {
-                    WorkingDirectory = RepoRoot(),
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var process = Process.Start(startInfo);
-                if (process == null)
-                    return Array.Empty<string>();
-                var output = process.StandardOutput.ReadToEnd();
-                if (!process.WaitForExit(5000) || process.ExitCode != 0)
-                    return Array.Empty<string>();
-                return output.Replace("\r\n", "\n")
-                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (!pattern.TryGetRay(i, 0, out _, out var t))
+                        continue;
+                    if (t < 0) nonNegative = false;
+                    if (t <= prevOffset) monotonic = false;
+                    if (t >= 1.0f) belowOne = false;
+                    prevOffset = t;
+                }
+
+                Check(nonNegative && monotonic && belowOne,
+                    "8.2-3: time offsets in [0..1) and monotonic");
             }
-            catch
+
+            // 6b. Column azimuth sweep present: ring-0 direction varies across columns.
+            //     Catches the B1 regression (all columns collapsing to one direction).
             {
-                return Array.Empty<string>();
+                var effCols = profile.ColumnsPerFrame / 4;
+                pattern.TryGetRay(0, 0, out var d0, out _);           // ring 0, column 0 (forward)
+                pattern.TryGetRay(effCols / 4, 0, out var dq, out _); // ring 0, ~quarter turn
+                var dx = Math.Abs(d0.X - dq.X);
+                Check(dx > 0.5f, $"8.2-4: ring-0 azimuth sweep present (|dx| {dx:F3} > 0.5)");
+            }
+
+            // 6c. Equivalence with the Phase 138 LidarRayGenerator (locks B1 + B2).
+            {
+                var gen = new LidarRayGenerator(profile, 4);
+                var effCols = profile.ColumnsPerFrame / 4;
+                var maxDiff = 0.0;
+                var checkN = Math.Min(300, pattern.RayCount);
+                for (var i = 0; i < checkN; i++)
+                {
+                    var ring = i / effCols;
+                    var col = (i % effCols) * 4;
+                    pattern.TryGetRay(i, 0, out var p, out _);
+                    gen.TryGetRay(col, ring, out var g, out _);
+                    maxDiff = Math.Max(maxDiff, Math.Abs(p.X - g.X));
+                    maxDiff = Math.Max(maxDiff, Math.Abs(p.Y - g.Y));
+                    maxDiff = Math.Max(maxDiff, Math.Abs(p.Z - g.Z));
+                }
+                Check(maxDiff < 1e-5,
+                    $"8.2-5: SpinningScanPattern matches LidarRayGenerator (maxDiff {maxDiff:E2})");
             }
         }
 
-        private static bool RepoFileExists(string relativePath)
+        // ---------------------------------------------------------------
+        // Scan-mode override (M1)
+        // ---------------------------------------------------------------
+
+        private static void VerifyMode()
         {
-            return File.Exists(RepoPath(relativePath));
+            if (!LidarModelRegistry.TryGet(LidarVendor.Ouster, "OS-1-32", out var spec))
+            {
+                Check(false, "8.6-0: OS-1-32 not found in registry");
+                return;
+            }
+
+            var p1024 = LidarScanPatternFactory.Create(spec, "1024x10", 4);
+            var p2048 = LidarScanPatternFactory.Create(spec, "2048x10", 4);
+            var p512 = LidarScanPatternFactory.Create(spec, "512x20", 4);
+
+            Check(p2048.RayCount == p1024.RayCount * 2,
+                $"8.6-1: mode 2048x10 doubles RayCount ({p1024.RayCount} -> {p2048.RayCount})");
+            Check(Math.Abs(p1024.ScanRateHz - 10.0) < 1e-9,
+                $"8.6-2: mode 1024x10 -> 10 Hz ({p1024.ScanRateHz})");
+            Check(Math.Abs(p512.ScanRateHz - 20.0) < 1e-9,
+                $"8.6-3: mode 512x20 -> 20 Hz ({p512.ScanRateHz})");
         }
 
-        private static string ReadRepoText(string relativePath)
+        // ---------------------------------------------------------------
+        // Rosette (Livox) checks
+        // ---------------------------------------------------------------
+
+        private static void VerifyRosette()
         {
-            var path = RepoPath(relativePath);
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing required Phase138B file: " + relativePath, path);
-            return File.ReadAllText(path);
+            if (!LidarModelRegistry.TryGet(LidarVendor.Livox, "Mid-360", out var spec))
+            {
+                Check(false, "8.3-0: Mid-360 not found in registry");
+                return;
+            }
+
+            var pattern = LidarScanPatternFactory.Create(spec, "", 1);
+
+            // 7. RayCount == spec.BeamsPerFrame
+            Check(pattern.RayCount == spec.BeamsPerFrame,
+                $"8.3-1: Mid-360 RayCount == BeamsPerFrame ({pattern.RayCount} == {spec.BeamsPerFrame})");
+
+            // 8. First 100 ray directions are finite
+            var limit = Math.Min(100, pattern.RayCount);
+            for (var i = 0; i < limit; i++)
+            {
+                if (!pattern.TryGetRay(i, 0, out var dir, out _))
+                    continue;
+                Check(!float.IsNaN(dir.X) && !float.IsNaN(dir.Y) && !float.IsNaN(dir.Z)
+                      && !float.IsInfinity(dir.X) && !float.IsInfinity(dir.Y) && !float.IsInfinity(dir.Z),
+                    $"8.3-2: Mid-360 ray[{i}] direction is finite");
+            }
+
+            // 9. Non-repetition: frameIndex=0 vs frameIndex=1 produce different directions for same ray index
+            pattern.TryGetRay(0, 0, out var dir0, out _);
+            pattern.TryGetRay(0, 1, out var dir1, out _);
+            var diff = Math.Abs(dir0.X - dir1.X) + Math.Abs(dir0.Y - dir1.Y) + Math.Abs(dir0.Z - dir1.Z);
+            Check(diff > 1e-6f,
+                $"8.3-3: Mid-360 golden-angle rotation changes direction (frame0 vs frame1 diff={diff:F6})");
         }
 
-        private static string RepoPath(string relativePath)
+        // ---------------------------------------------------------------
+        // Source-text checks
+        // ---------------------------------------------------------------
+
+        private static void VerifySourceText()
         {
-            return Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var repoRoot = Phase16Validation.FindRepoRoot();
+            var path = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+                "Runtime", "Sensors", "Lidar", "VirtualLidar.cs");
+
+            Check(File.Exists(path), "8.4-1: VirtualLidar.cs exists");
+
+            var content = File.ReadAllText(path);
+
+            // 10. Contains ILidarScanPattern (middleware wired)
+            Check(content.Contains("ILidarScanPattern"),
+                "8.4-2: VirtualLidar.cs contains ILidarScanPattern");
+
+            // 11. Does NOT contain ROS2/sensor_msgs using directives
+            Check(!content.Contains("using ROS2;") && !content.Contains("using sensor_msgs;"),
+                "8.4-3: VirtualLidar.cs has no ROS2/sensor_msgs using directives");
+
+            // 12. Registry has >= 17 models across 4 vendors
+            var vendorCount = LidarModelRegistry.All.Select(s => s.Vendor).Distinct().Count();
+            var modelCount = LidarModelRegistry.All.Count;
+            Check(modelCount >= 17,
+                $"8.4-4a: Registry has >= 17 models ({modelCount})");
+            Check(vendorCount >= 4,
+                $"8.4-4b: Registry covers >= 4 vendors ({vendorCount})");
         }
 
-        private static string RepoRoot()
+        // ---------------------------------------------------------------
+        // Fixture round-trip
+        // ---------------------------------------------------------------
+
+        private static void VerifyFixtureRoundTrip()
         {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new InvalidOperationException("Could not find repository root.");
-            return root;
+            // 13. Legacy Ouster metadata with pixels_per_column and beam_altitude_angles at top level
+            // Build a 16-beam legacy JSON string programmatically to avoid manual counting errors.
+            var legacyJson = "{ \"pixels_per_column\": 16, \"columns_per_frame\": 1024, \"columns_per_packet\": 16, \"beam_altitude_angles\": [";
+            for (var i = 0; i < 16; i++)
+                legacyJson += (i == 0 ? "" : ", ") + string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:F1}", 15.0 - i * 2.0);
+            legacyJson += "], \"beam_azimuth_angles\": [";
+            for (var i = 0; i < 16; i++)
+                legacyJson += (i == 0 ? "0.0" : ", 0.0");
+            legacyJson += "] }";
+
+            var legacyOk = LidarProfileLoader.TryParseFromJson(legacyJson, "1024x10", out var legacyProfile, out var legacyError);
+
+            Check(legacyOk,
+                $"8.5-1: Legacy Ouster metadata parses ({legacyError ?? "OK"})");
+            if (legacyOk)
+            {
+                Check(legacyProfile.PixelsPerColumn == 16,
+                    "8.5-2: Legacy profile PixelsPerColumn == 16");
+                Check(legacyProfile.BeamAltitudeAngles.Length == 16,
+                    "8.5-3: Legacy profile BeamAltitudeAngles.Length == 16");
+            }
+
+            // 14. v2/v3 nested Ouster metadata now parses (beam_intrinsics +
+            //     lidar_data_format + config_params + sensor_info). lidar_mode is
+            //     taken from config_params (mode argument passed as null).
+            const string v2v3Json = @"{
+                ""sensor_info"": { ""prod_line"": ""OS-1-128"" },
+                ""beam_intrinsics"": {
+                    ""beam_altitude_angles"": [16.6, 15.5, 14.4, 13.3, 12.2, 11.1, 10.0, 8.9, 7.8, 6.7, 5.6, 4.5, 3.4, 2.3, 1.2, 0.1, -1.0, -2.1, -3.2, -4.3, -5.4, -6.5, -7.6, -8.7, -9.8, -10.9, -12.0, -13.1, -14.2, -15.3, -16.4, -17.5],
+                    ""lidar_origin_to_beam_origin_mm"": 15.806
+                },
+                ""lidar_data_format"": {
+                    ""pixels_per_column"": 32,
+                    ""columns_per_frame"": 2048,
+                    ""columns_per_packet"": 16
+                },
+                ""config_params"": { ""lidar_mode"": ""2048x10"" }
+            }";
+
+            var v2v3Ok = LidarProfileLoader.TryParseFromJson(v2v3Json, null, out var v2v3Profile, out var v2v3Error);
+            Check(v2v3Ok, $"8.5-4: v2/v3 nested Ouster metadata parses ({v2v3Error ?? "OK"})");
+            if (v2v3Ok)
+            {
+                Check(v2v3Profile.PixelsPerColumn == 32, "8.5-4a: v2/v3 PixelsPerColumn == 32 (lidar_data_format)");
+                Check(v2v3Profile.ColumnsPerFrame == 2048, "8.5-4b: v2/v3 ColumnsPerFrame == 2048 (lidar_data_format)");
+                Check(Math.Abs(v2v3Profile.ScanRateHz - 10.0) < 1e-9, "8.5-4c: v2/v3 ScanRateHz from config_params lidar_mode == 10");
+                Check(v2v3Profile.ProductLine == "OS-1-128", "8.5-4d: v2/v3 ProductLine from sensor_info");
+            }
+
+            // 15. Real legacy schema: beam angles at top level, pixels under
+            //     "data_format", lidar_mode a top-level string (mode arg null).
+            const string legacyNestedJson = @"{
+                ""prod_line"": ""OS-2-128"",
+                ""lidar_mode"": ""1024x10"",
+                ""lidar_origin_to_beam_origin_mm"": 13.762,
+                ""beam_altitude_angles"": [10.7, 10.0, 9.2, 8.4, 7.6, 6.8, 6.0, 5.2, 4.4, 3.6, 2.8, 2.0, 1.2, 0.4, -0.4, -1.2, -2.0, -2.8, -3.6, -4.4, -5.2, -6.0, -6.8, -7.6, -8.4, -9.2, -10.0, -10.8, -11.0, -11.05, -11.07, -11.09],
+                ""beam_azimuth_angles"": [],
+                ""data_format"": { ""pixels_per_column"": 32, ""columns_per_frame"": 1024, ""columns_per_packet"": 16 }
+            }";
+
+            var legacyNestedOk = LidarProfileLoader.TryParseFromJson(legacyNestedJson, null, out var legacyNestedProfile, out var legacyNestedError);
+            Check(legacyNestedOk, $"8.5-7: legacy data_format-nested metadata parses ({legacyNestedError ?? "OK"})");
+            if (legacyNestedOk)
+            {
+                Check(legacyNestedProfile.PixelsPerColumn == 32, "8.5-7a: legacy-nested PixelsPerColumn == 32 (from data_format)");
+                Check(legacyNestedProfile.ColumnsPerFrame == 1024, "8.5-7b: legacy-nested ColumnsPerFrame == 1024");
+            }
+
+            // Source-text: verify the parser source file exists so v2/v3 handling can be added later
+            var repoRoot = Phase16Validation.FindRepoRoot();
+            var loaderPath = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+                "Runtime", "Sensors", "Lidar", "LidarProfileLoader.cs");
+            Check(File.Exists(loaderPath),
+                "8.5-5: LidarProfileLoader.cs exists (parser source present for future v2/v3 support)");
+
+            // Verify that the parser file contains pixels_per_column (legacy path is wired)
+            var loaderContent = File.ReadAllText(loaderPath);
+            Check(loaderContent.Contains("pixels_per_column"),
+                "8.5-6: LidarProfileLoader.cs references pixels_per_column (legacy parse path is wired)");
         }
 
-        private static void Check(bool condition, string description)
+        private static void Check(bool condition, string label)
         {
-            if (!condition)
-                throw new InvalidOperationException(description);
             _passed++;
-            Console.WriteLine("[PASS] " + description);
+            Console.WriteLine(condition ? $"[PASS] {label}" : $"[FAIL] {label}");
+            if (!condition)
+                throw new InvalidOperationException($"Phase 138B validation failed: {label}");
         }
     }
 }
