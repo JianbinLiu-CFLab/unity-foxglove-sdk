@@ -67,18 +67,18 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
 
-        private Sensors.Lidar.LidarProfile _profile;
-        private Sensors.Lidar.LidarRayGenerator _rayGenerator;
+        private ILidarScanPattern _scanPattern;
+        private int _frameCounter;
         private float _nextScanTime;
         private float _scanPeriod;
 
         private void Start()
         {
-            _profile = LoadProfile();
-            if (_profile == null)
-                _profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
+            var profile = LoadProfile();
+            if (profile == null)
+                profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
 
-            _rayGenerator = new Sensors.Lidar.LidarRayGenerator(_profile, _columnStep);
+            _scanPattern = Sensors.Lidar.LidarScanPatternFactory.FromProfile(profile, _columnStep);
 
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)
@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Components
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
 
-            var rateHz = _scanRateHzOverride > 0f ? _scanRateHzOverride : _profile.ScanRateHz;
+            var rateHz = _scanRateHzOverride > 0f ? _scanRateHzOverride : _scanPattern.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
             _nextScanTime = Time.unscaledTime;
         }
@@ -149,49 +149,39 @@ namespace Unity.FoxgloveSDK.Components
             };
 
             var worldPos = transform.position;
-            var columnCount = _profile.ColumnsPerFrame / _columnStep;
+            var rayCount = _scanPattern.RayCount;
 
-            for (var c = 0; c < columnCount; c++)
+            for (var i = 0; i < rayCount; i++)
             {
-                var column = c * _columnStep;
+                if (!_scanPattern.TryGetRay(i, _frameCounter, out var localDir, out var timeOffset))
+                    continue;
 
-                for (var ring = 0; ring < _profile.PixelsPerColumn; ring++)
+                var unityLocalDir = new Vector3(localDir.X, localDir.Y, localDir.Z);
+                var worldDir = transform.TransformDirection(unityLocalDir);
+                var hit = Physics.Raycast(worldPos, worldDir, out var hitInfo, _maxRangeMeters, _layerMask);
+
+                if (_drawDebugRays)
                 {
-                    if (!_rayGenerator.TryGetRay(column, ring, out var localDir, out var timeOffset))
-                        continue;
-
-                    // Convert System.Numerics.Vector3 (Unity-free generator output) to UnityEngine.Vector3.
-                    var unityLocalDir = new Vector3(localDir.X, localDir.Y, localDir.Z);
-                    var worldDir = transform.TransformDirection(unityLocalDir);
-                    var hit = Physics.Raycast(worldPos, worldDir, out var hitInfo, _maxRangeMeters, _layerMask);
-
-                    if (_drawDebugRays)
-                    {
-                        var rayLength = hit ? hitInfo.distance : _maxRangeMeters;
-                        Debug.DrawRay(worldPos, worldDir * rayLength, hit ? Color.green : Color.red, _scanPeriod);
-                    }
-
-                    if (!hit || hitInfo.distance < _profile.MinRangeMeters || hitInfo.distance > _maxRangeMeters)
-                        continue;
-
-                    var localHitPoint = transform.InverseTransformPoint(hitInfo.point);
-                    // Convert Unity left-handed (X right, Y up, Z forward) to
-                    // Foxglove/ROS right-handed (X forward, Y left, Z up) so
-                    // downstream Foxglove panels render the cloud correctly in
-                    // its frame_id without per-axis TF gymnastics.
-                    var rosPoint = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
-                    var point = new PointCloudPoint(rosPoint.x, rosPoint.y, rosPoint.z)
-                    {
-                        Intensity = _syntheticIntensity,
-                        Reflectivity = _syntheticReflectivity,
-                        Ring = (ushort)ring,
-                        TimeOffsetSeconds = timeOffset
-                    };
-
-                    frame.Points.Add(point);
+                    var rayLength = hit ? hitInfo.distance : _maxRangeMeters;
+                    Debug.DrawRay(worldPos, worldDir * rayLength, hit ? Color.green : Color.red, _scanPeriod);
                 }
+
+                if (!hit || hitInfo.distance < _scanPattern.MinRangeMeters || hitInfo.distance > _maxRangeMeters)
+                    continue;
+
+                var localHitPoint = transform.InverseTransformPoint(hitInfo.point);
+                var rosHit = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
+                var point = new PointCloudPoint(rosHit.x, rosHit.y, rosHit.z)
+                {
+                    Intensity = _syntheticIntensity,
+                    Reflectivity = _syntheticReflectivity,
+                    TimeOffsetSeconds = timeOffset
+                };
+
+                frame.Points.Add(point);
             }
 
+            _frameCounter++;
             return frame;
         }
 
