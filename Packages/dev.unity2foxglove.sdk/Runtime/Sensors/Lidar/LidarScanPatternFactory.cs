@@ -24,25 +24,12 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             };
         }
 
-        private static bool TryParseOusterMode(string mode, out int columns, out double rateHz)
-        {
-            columns = 0;
-            rateHz = 0;
-            if (string.IsNullOrEmpty(mode)) return false;
-            var parts = mode.Split('x');
-            return parts.Length == 2
-                   && int.TryParse(parts[0], System.Globalization.NumberStyles.Integer,
-                       System.Globalization.CultureInfo.InvariantCulture, out columns)
-                   && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
-                       System.Globalization.CultureInfo.InvariantCulture, out rateHz)
-                   && columns > 0 && rateHz > 0;
-        }
-
         private static SpinningScanPattern CreateSpinning(LidarModelSpec spec, string mode, int columnStep)
         {
+            // Scan mode (e.g. "1024x10", "2048x10", "512x20") overrides columns/rate.
             var columns = spec.Columns;
             var rateHz = spec.RateHz;
-            if (TryParseOusterMode(mode, out var modeCols, out var modeRate))
+            if (LidarProfileLoader.TryParseMode(mode, out var modeCols, out var modeRate))
             {
                 columns = modeCols;
                 rateHz = modeRate;
@@ -51,7 +38,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             if (spec.BeamAltitudeAnglesDeg != null)
             {
                 var alt = spec.BeamAltitudeAnglesDeg.Select(d => d * Math.PI / 180.0).ToArray();
-                var azm = new double[spec.Rings];
+                var azm = new double[alt.Length];
                 return new SpinningScanPattern(spec.Model, rateHz, spec.MinRangeMeters,
                     columns, columnStep, alt, azm);
             }

@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyRegistry();
             VerifySpinningRegression();
+            VerifyMode();
             VerifyRosette();
             VerifySourceText();
             VerifyFixtureRoundTrip();
@@ -116,6 +117,60 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(nonNegative && monotonic && belowOne,
                     "8.2-3: time offsets in [0..1) and monotonic");
             }
+
+            // 6b. Column azimuth sweep present: ring-0 direction varies across columns.
+            //     Catches the B1 regression (all columns collapsing to one direction).
+            {
+                var effCols = profile.ColumnsPerFrame / 4;
+                pattern.TryGetRay(0, 0, out var d0, out _);           // ring 0, column 0 (forward)
+                pattern.TryGetRay(effCols / 4, 0, out var dq, out _); // ring 0, ~quarter turn
+                var dx = Math.Abs(d0.X - dq.X);
+                Check(dx > 0.5f, $"8.2-4: ring-0 azimuth sweep present (|dx| {dx:F3} > 0.5)");
+            }
+
+            // 6c. Equivalence with the Phase 138 LidarRayGenerator (locks B1 + B2).
+            {
+                var gen = new LidarRayGenerator(profile, 4);
+                var effCols = profile.ColumnsPerFrame / 4;
+                var maxDiff = 0.0;
+                var checkN = Math.Min(300, pattern.RayCount);
+                for (var i = 0; i < checkN; i++)
+                {
+                    var ring = i / effCols;
+                    var col = (i % effCols) * 4;
+                    pattern.TryGetRay(i, 0, out var p, out _);
+                    gen.TryGetRay(col, ring, out var g, out _);
+                    maxDiff = Math.Max(maxDiff, Math.Abs(p.X - g.X));
+                    maxDiff = Math.Max(maxDiff, Math.Abs(p.Y - g.Y));
+                    maxDiff = Math.Max(maxDiff, Math.Abs(p.Z - g.Z));
+                }
+                Check(maxDiff < 1e-5,
+                    $"8.2-5: SpinningScanPattern matches LidarRayGenerator (maxDiff {maxDiff:E2})");
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Scan-mode override (M1)
+        // ---------------------------------------------------------------
+
+        private static void VerifyMode()
+        {
+            if (!LidarModelRegistry.TryGet(LidarVendor.Ouster, "OS-1-32", out var spec))
+            {
+                Check(false, "8.6-0: OS-1-32 not found in registry");
+                return;
+            }
+
+            var p1024 = LidarScanPatternFactory.Create(spec, "1024x10", 4);
+            var p2048 = LidarScanPatternFactory.Create(spec, "2048x10", 4);
+            var p512 = LidarScanPatternFactory.Create(spec, "512x20", 4);
+
+            Check(p2048.RayCount == p1024.RayCount * 2,
+                $"8.6-1: mode 2048x10 doubles RayCount ({p1024.RayCount} -> {p2048.RayCount})");
+            Check(Math.Abs(p1024.ScanRateHz - 10.0) < 1e-9,
+                $"8.6-2: mode 1024x10 -> 10 Hz ({p1024.ScanRateHz})");
+            Check(Math.Abs(p512.ScanRateHz - 20.0) < 1e-9,
+                $"8.6-3: mode 512x20 -> 20 Hz ({p512.ScanRateHz})");
         }
 
         // ---------------------------------------------------------------
@@ -214,33 +269,50 @@ namespace Unity.FoxgloveSDK.Tests
                     "8.5-3: Legacy profile BeamAltitudeAngles.Length == 16");
             }
 
-            // 14. v2/v3 Ouster metadata with sensor_info.prod_line and beam_intrinsics
-            // NOTE: TryParseFromJson currently reads root-level keys (pixels_per_column, beam_altitude_angles).
-            // v2/v3 data is nested under sensor_info/beam_intrinsics/lidar_data_format, so a direct parse
-            // is expected to fail. We verify that the parser source file exists for future v2/v3 support.
+            // 14. v2/v3 nested Ouster metadata now parses (beam_intrinsics +
+            //     lidar_data_format + config_params + sensor_info). lidar_mode is
+            //     taken from config_params (mode argument passed as null).
             const string v2v3Json = @"{
-                ""sensor_info"": { ""prod_line"": ""OS-1"" },
+                ""sensor_info"": { ""prod_line"": ""OS-1-128"" },
                 ""beam_intrinsics"": {
-                    ""beam_altitude_angles"": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2],
-                    ""beam_azimuth_angles"": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    ""beam_altitude_angles"": [16.6, 15.5, 14.4, 13.3, 12.2, 11.1, 10.0, 8.9, 7.8, 6.7, 5.6, 4.5, 3.4, 2.3, 1.2, 0.1, -1.0, -2.1, -3.2, -4.3, -5.4, -6.5, -7.6, -8.7, -9.8, -10.9, -12.0, -13.1, -14.2, -15.3, -16.4, -17.5],
+                    ""lidar_origin_to_beam_origin_mm"": 15.806
                 },
                 ""lidar_data_format"": {
-                    ""pixels_per_column"": 128,
-                    ""columns_per_frame"": 1024,
+                    ""pixels_per_column"": 32,
+                    ""columns_per_frame"": 2048,
                     ""columns_per_packet"": 16
                 },
-                ""config_params"": { ""lidar_mode"": ""1024x10"" }
+                ""config_params"": { ""lidar_mode"": ""2048x10"" }
             }";
 
-            var v2v3Ok = LidarProfileLoader.TryParseFromJson(v2v3Json, "1024x10", out var v2v3Profile, out var v2v3Error);
-            if (!v2v3Ok)
+            var v2v3Ok = LidarProfileLoader.TryParseFromJson(v2v3Json, null, out var v2v3Profile, out var v2v3Error);
+            Check(v2v3Ok, $"8.5-4: v2/v3 nested Ouster metadata parses ({v2v3Error ?? "OK"})");
+            if (v2v3Ok)
             {
-                Console.WriteLine($"[INFO] 8.5-4: v2/v3 nested metadata parse failed (expected: parser only handles flat legacy format): {v2v3Error}");
+                Check(v2v3Profile.PixelsPerColumn == 32, "8.5-4a: v2/v3 PixelsPerColumn == 32 (lidar_data_format)");
+                Check(v2v3Profile.ColumnsPerFrame == 2048, "8.5-4b: v2/v3 ColumnsPerFrame == 2048 (lidar_data_format)");
+                Check(Math.Abs(v2v3Profile.ScanRateHz - 10.0) < 1e-9, "8.5-4c: v2/v3 ScanRateHz from config_params lidar_mode == 10");
+                Check(v2v3Profile.ProductLine == "OS-1-128", "8.5-4d: v2/v3 ProductLine from sensor_info");
             }
-            else
+
+            // 15. Real legacy schema: beam angles at top level, pixels under
+            //     "data_format", lidar_mode a top-level string (mode arg null).
+            const string legacyNestedJson = @"{
+                ""prod_line"": ""OS-2-128"",
+                ""lidar_mode"": ""1024x10"",
+                ""lidar_origin_to_beam_origin_mm"": 13.762,
+                ""beam_altitude_angles"": [10.7, 10.0, 9.2, 8.4, 7.6, 6.8, 6.0, 5.2, 4.4, 3.6, 2.8, 2.0, 1.2, 0.4, -0.4, -1.2, -2.0, -2.8, -3.6, -4.4, -5.2, -6.0, -6.8, -7.6, -8.4, -9.2, -10.0, -10.8, -11.0, -11.05, -11.07, -11.09],
+                ""beam_azimuth_angles"": [],
+                ""data_format"": { ""pixels_per_column"": 32, ""columns_per_frame"": 1024, ""columns_per_packet"": 16 }
+            }";
+
+            var legacyNestedOk = LidarProfileLoader.TryParseFromJson(legacyNestedJson, null, out var legacyNestedProfile, out var legacyNestedError);
+            Check(legacyNestedOk, $"8.5-7: legacy data_format-nested metadata parses ({legacyNestedError ?? "OK"})");
+            if (legacyNestedOk)
             {
-                Check(v2v3Profile != null,
-                    "8.5-4: v2/v3 Ouster metadata parses (unexpected success)");
+                Check(legacyNestedProfile.PixelsPerColumn == 32, "8.5-7a: legacy-nested PixelsPerColumn == 32 (from data_format)");
+                Check(legacyNestedProfile.ColumnsPerFrame == 1024, "8.5-7b: legacy-nested ColumnsPerFrame == 1024");
             }
 
             // Source-text: verify the parser source file exists so v2/v3 handling can be added later

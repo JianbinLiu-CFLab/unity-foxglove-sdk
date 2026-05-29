@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -131,7 +132,9 @@ namespace Unity.FoxgloveSDK.Components
 
                 case ProfileSource.BuiltInPreset:
                 default:
-                    return Sensors.Lidar.LidarProfileLoader.CreatePreset(_preset);
+                    // BuiltInPreset is resolved via LidarModelRegistry in Start();
+                    // reaching here means the registry lookup failed → use the fallback.
+                    return null;
             }
         }
 
@@ -191,10 +194,13 @@ namespace Unity.FoxgloveSDK.Components
                     TimeOffsetSeconds = timeOffset
                 };
 
-                // Restore Ring for spinning patterns (index-derived).
-                if (_scanPattern is Sensors.Lidar.SpinningScanPattern spin)
+                // Restore Ring for spinning patterns. The scan loop is ring-major
+                // (ring = index / effectiveColumns, effectiveColumns = RayCount / Rings),
+                // matching SpinningScanPattern.TryGetRay's index decomposition.
+                if (_scanPattern is Sensors.Lidar.SpinningScanPattern spin && spin.Rings > 0)
                 {
-                    point.Ring = (ushort)(i % spin.Rings);
+                    var effectiveColumns = spin.RayCount / spin.Rings;
+                    point.Ring = (ushort)(effectiveColumns > 0 ? i / effectiveColumns : 0);
                 }
 
                 frame.Points.Add(point);
