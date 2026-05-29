@@ -34,14 +34,18 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
 
         [Header("Profile")]
-        [Tooltip("Where the scan geometry comes from. Default BuiltInPreset reproduces the previous OS-1-32 behaviour. To load a sensor's metadata.json, switch to MetadataJson.")]
+        [Tooltip("Where the scan geometry comes from.")]
         [SerializeField] private ProfileSource _profileSource = ProfileSource.BuiltInPreset;
         [Tooltip("Used when Profile Source = MetadataJson.")]
         [SerializeField] private TextAsset _metadataJson;
-        [Tooltip("Mode string for metadata parsing: \"<columns>x<rateHz>\", e.g. 1024x10 or 2048x10.")]
+        [Tooltip("Mode string for metadata parsing.")]
         [SerializeField] private string _metadataMode = "1024x10";
         [Tooltip("Used when Profile Source = BuiltInPreset.")]
-        [SerializeField] private Sensors.Lidar.LidarPreset _preset = Sensors.Lidar.LidarPreset.Os1_32;
+        [SerializeField] private Sensors.Lidar.LidarVendor _vendor = Sensors.Lidar.LidarVendor.Ouster;
+        [Tooltip("Model identifier within the vendor (e.g. OS-1-32, VLP-16, Mid-360).")]
+        [SerializeField] private string _model = "OS-1-32";
+        [Tooltip("Optional scan mode for models that support multiple modes (e.g. 1024x10, 2048x10).")]
+        [SerializeField] private string _mode = "1024x10";
 
         [Header("Custom Profile (Profile Source = Custom)")]
         [SerializeField, Min(1)] private int _customPixelsPerColumn = 32;
@@ -74,11 +78,20 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Start()
         {
-            var profile = LoadProfile();
-            if (profile == null)
-                profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
+            if (_profileSource == ProfileSource.BuiltInPreset)
+            {
+                if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
+            }
 
-            _scanPattern = Sensors.Lidar.LidarScanPatternFactory.FromProfile(profile, _columnStep);
+            if (_scanPattern == null)
+            {
+                // Fallback: metadata JSON or custom params via old profile path
+                var profile = LoadProfile();
+                if (profile == null)
+                    profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
+                _scanPattern = Sensors.Lidar.LidarScanPatternFactory.FromProfile(profile, _columnStep);
+            }
 
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)

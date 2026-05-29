@@ -68,11 +68,21 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             }
 
             var alt = _altRad[ring];
-            var azm = _azmRad[ring];
+            var ringAzm = _azmRad[ring];
+
+            // Column sweep: 360 degrees over columns_per_frame.
+            // (column, ring) → beam direction matched against the original
+            // LidarRayGenerator (Phase 138 verified in Foxglove).
+            var columnAzm = column * (2.0 * Math.PI) / _columns;
+            var totalAzm = columnAzm + ringAzm;
+
+            // Sensor frame: x-right, y-up, z-forward (Unity left-handed).
+            // Positive altitude → beam points up (+Y). Azimuth sweeps CW
+            // around +Y (column 0 forward, column N/4 = +X right).
             direction = new Vector3(
-                (float)( Math.Cos(alt) * Math.Sin(-azm)),
-                (float)(-Math.Sin(alt)),
-                (float)( Math.Cos(alt) * Math.Cos(azm)));
+                (float)(Math.Cos(alt) * Math.Sin(totalAzm)),
+                (float)(Math.Sin(alt)),
+                (float)(Math.Cos(alt) * Math.Cos(totalAzm)));
             timeOffset = (float)column / _columns;
             return true;
         }
