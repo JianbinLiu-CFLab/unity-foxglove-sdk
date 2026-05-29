@@ -292,13 +292,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var packageJson = JObject.Parse(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"));
             var samples = packageJson["samples"]?.Children<JObject>().ToList() ?? new List<JObject>();
-            Check(samples.Count == 3 && samples.Any(sample => sample["displayName"]?.ToString() == "ROS2 Bridge Sample"),
-                "99D-1: package metadata includes ROS2 Bridge Sample as third sample");
+            Check(samples.Count == 4 && samples.Any(sample => sample["displayName"]?.ToString() == "ROS2 Bridge Sample"),
+                "99D-1: package metadata includes ROS2 Bridge Sample as fourth sample");
 
             var releaseValidation = ReadRepoText("Scripts/release/validate_package.py");
-            Check(releaseValidation.Contains("EXPECTED_SAMPLE_COUNT = 3")
+            Check(releaseValidation.Contains("EXPECTED_SAMPLE_COUNT = 4")
                   && releaseValidation.Contains("\"ROS2 Bridge Sample\""),
-                "99D-2: release validation expects the third sample");
+                "99D-2: release validation expects the fourth sample");
 
             var docsIndex = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/README.md");
             Check(docsIndex.Contains("16_ROS2_Bridge_Sample"),

@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.Tests
             var packageJson = ParseJsonObject(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"),
                 "98A-0b: package manifest is valid JSON");
             var samples = packageJson["samples"]?.Children<JObject>().ToList() ?? new List<JObject>();
-            Check(samples.Count == 3, "98A-1: package manifest exposes three samples");
+            Check(samples.Count == 4, "98A-1: package manifest exposes four samples");
             Check(samples.Any(sample =>
                     sample["displayName"]?.ToString() == "ROS2 Bridge Sample"
                     && sample["path"]?.ToString() == "Samples~/Ros2BridgeSample"),
@@ -226,7 +226,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "98B-1: docs document optional health diagnostics and sidecar launch");
             Check(samplesDoc.Contains("ROS2 Bridge Sample")
                   && (samplesDoc.Contains("three importable samples") || samplesDoc.Contains("three prepared samples")),
-                "98B-2: sample overview documents third sample");
+                "98B-2: sample overview documents fourth sample");
             Check(sampleReadme.Contains("direct Unity topics such as `/tf`")
                   && sampleReadme.Contains("mirrors it to ROS2 as `/unity2foxglove/tf`"),
                 "98B-3: sample README distinguishes direct Foxglove topics from ROS2 bridge topics");
@@ -349,9 +349,9 @@ namespace Unity.FoxgloveSDK.Tests
             var phase17 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase17Validation.cs");
             var validatePackage = ReadRepoText("Scripts/release/validate_package.py");
 
-            Check(phase17.Contains("samples.Count == 3") && phase17.Contains("ROS2 Bridge Sample"),
-                "98F-1: Phase17 package validation accepts three samples");
-            Check(validatePackage.Contains("EXPECTED_SAMPLE_COUNT = 3")
+            Check(phase17.Contains("samples.Count == 4") && phase17.Contains("ROS2 Bridge Sample"),
+                "98F-1: Phase17 package validation accepts four samples");
+            Check(validatePackage.Contains("EXPECTED_SAMPLE_COUNT = 4")
                   && validatePackage.Contains("\"ROS2 Bridge Sample\"")
                   && validatePackage.Contains("Samples~/Ros2BridgeSample"),
                 "98F-2: release validation expects ROS2 Bridge Sample");
