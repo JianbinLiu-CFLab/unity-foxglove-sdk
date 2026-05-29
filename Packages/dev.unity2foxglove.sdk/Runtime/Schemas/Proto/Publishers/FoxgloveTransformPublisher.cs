@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.Components
     {
         [SerializeField] private string _parentFrameId = "unity_world";
         [SerializeField] private string _childFrameId = "";
+        [Tooltip("Publish localPosition/localRotation instead of world transform. Use for a static child link (e.g. base_link -> sensor) under a moving parent.")]
+        [SerializeField] private bool _useLocalTransform;
 
         public override bool SupportsProtobufEncoding => true;
         public override bool SupportsRos2Encoding => true;
@@ -113,15 +115,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ResolveTransform(out UVector3 position, out UQuaternion rotation)
         {
+            var localPos = _useLocalTransform ? transform.localPosition : transform.position;
+            var localRot = _useLocalTransform ? transform.localRotation : transform.rotation;
+
             if (Manager?.ActiveCoordinateMode == CoordinateMode.RightHand)
             {
-                position = CoordinateConverter.UnityToFoxglovePosition(transform.position);
-                rotation = CoordinateConverter.UnityToFoxgloveRotation(transform.rotation);
+                position = CoordinateConverter.UnityToFoxglovePosition(localPos);
+                rotation = CoordinateConverter.UnityToFoxgloveRotation(localRot);
                 return;
             }
 
-            position = transform.position;
-            rotation = transform.rotation;
+            position = localPos;
+            rotation = localRot;
         }
     }
 }

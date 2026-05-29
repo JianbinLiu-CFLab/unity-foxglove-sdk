@@ -19,11 +19,37 @@ namespace Unity.FoxgloveSDK.Components
     [AddComponentMenu("Foxglove/Sensors/Virtual LiDAR")]
     public class VirtualLidar : MonoBehaviour
     {
+        /// <summary>Where the LiDAR scan geometry comes from.</summary>
+        public enum ProfileSource
+        {
+            /// <summary>Parse an Ouster-format metadata JSON TextAsset.</summary>
+            MetadataJson,
+            /// <summary>Use a built-in spinning-LiDAR preset (Ouster OS-0/1/2 × 32/64/128).</summary>
+            BuiltInPreset,
+            /// <summary>Use the manually edited Custom Profile fields below.</summary>
+            Custom
+        }
+
         [Header("Output")]
         [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
 
         [Header("Profile")]
+        [Tooltip("Where the scan geometry comes from. Default BuiltInPreset reproduces the previous OS-1-32 behaviour. To load a sensor's metadata.json, switch to MetadataJson.")]
+        [SerializeField] private ProfileSource _profileSource = ProfileSource.BuiltInPreset;
+        [Tooltip("Used when Profile Source = MetadataJson.")]
         [SerializeField] private TextAsset _metadataJson;
+        [Tooltip("Mode string for metadata parsing: \"<columns>x<rateHz>\", e.g. 1024x10 or 2048x10.")]
+        [SerializeField] private string _metadataMode = "1024x10";
+        [Tooltip("Used when Profile Source = BuiltInPreset.")]
+        [SerializeField] private Sensors.Lidar.LidarPreset _preset = Sensors.Lidar.LidarPreset.Os1_32;
+
+        [Header("Custom Profile (Profile Source = Custom)")]
+        [SerializeField, Min(1)] private int _customPixelsPerColumn = 32;
+        [SerializeField] private float _customFovTopDeg = 16.6f;
+        [SerializeField] private float _customFovBottomDeg = -16.6f;
+        [SerializeField, Min(16)] private int _customColumnsPerFrame = 1024;
+        [SerializeField, Min(1f)] private float _customScanRateHz = 10f;
+        [SerializeField, Min(0f)] private float _customMinRangeMeters = 0.5f;
 
         [Header("Scan")]
         [SerializeField] private string _frameId = "os_lidar";
@@ -48,13 +74,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Start()
         {
-            // Load profile: metadata JSON > built-in Ouster OS-1-32 fallback
-            if (_metadataJson != null && !string.IsNullOrEmpty(_metadataJson.text))
-            {
-                Sensors.Lidar.LidarProfileLoader.TryParseFromJson(
-                    _metadataJson.text, _metadataJson.name, out _profile, out _);
-            }
-
+            _profile = LoadProfile();
             if (_profile == null)
                 _profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
 
@@ -71,6 +91,35 @@ namespace Unity.FoxgloveSDK.Components
             var rateHz = _scanRateHzOverride > 0f ? _scanRateHzOverride : _profile.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
             _nextScanTime = Time.unscaledTime;
+        }
+
+        private Sensors.Lidar.LidarProfile LoadProfile()
+        {
+            switch (_profileSource)
+            {
+                case ProfileSource.MetadataJson:
+                {
+                    if (_metadataJson == null || string.IsNullOrEmpty(_metadataJson.text))
+                    {
+                        Debug.LogWarning("[VirtualLidar] Profile Source is MetadataJson but no JSON is assigned; using OS-1-32 fallback.");
+                        return null;
+                    }
+                    if (Sensors.Lidar.LidarProfileLoader.TryParseFromJson(
+                            _metadataJson.text, _metadataMode, out var parsed, out var error))
+                        return parsed;
+                    Debug.LogWarning($"[VirtualLidar] Metadata parse failed ({error}); using OS-1-32 fallback.");
+                    return null;
+                }
+
+                case ProfileSource.Custom:
+                    return Sensors.Lidar.LidarProfileLoader.CreateUniform(
+                        "Custom", _customPixelsPerColumn, _customColumnsPerFrame,
+                        _customScanRateHz, _customFovTopDeg, _customFovBottomDeg, _customMinRangeMeters);
+
+                case ProfileSource.BuiltInPreset:
+                default:
+                    return Sensors.Lidar.LidarProfileLoader.CreatePreset(_preset);
+            }
         }
 
         private void Update()
@@ -111,7 +160,9 @@ namespace Unity.FoxgloveSDK.Components
                     if (!_rayGenerator.TryGetRay(column, ring, out var localDir, out var timeOffset))
                         continue;
 
-                    var worldDir = transform.TransformDirection(localDir);
+                    // Convert System.Numerics.Vector3 (Unity-free generator output) to UnityEngine.Vector3.
+                    var unityLocalDir = new Vector3(localDir.X, localDir.Y, localDir.Z);
+                    var worldDir = transform.TransformDirection(unityLocalDir);
                     var hit = Physics.Raycast(worldPos, worldDir, out var hitInfo, _maxRangeMeters, _layerMask);
 
                     if (_drawDebugRays)
@@ -124,7 +175,12 @@ namespace Unity.FoxgloveSDK.Components
                         continue;
 
                     var localHitPoint = transform.InverseTransformPoint(hitInfo.point);
-                    var point = new PointCloudPoint(localHitPoint.x, localHitPoint.y, localHitPoint.z)
+                    // Convert Unity left-handed (X right, Y up, Z forward) to
+                    // Foxglove/ROS right-handed (X forward, Y left, Z up) so
+                    // downstream Foxglove panels render the cloud correctly in
+                    // its frame_id without per-axis TF gymnastics.
+                    var rosPoint = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
+                    var point = new PointCloudPoint(rosPoint.x, rosPoint.y, rosPoint.z)
                     {
                         Intensity = _syntheticIntensity,
                         Reflectivity = _syntheticReflectivity,

@@ -132,6 +132,24 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(monotonic, "7.1-14: time offsets monotonic by column");
                 Check(belowOne, "7.1-15: time offsets normalized [0..1)");
             }
+
+            // 8. Column sweep: columns must cover ~360 degrees, i.e. the
+            //    aggregate XZ direction set must span both hemispheres.
+            {
+                const int ring = 16; // mid-ring (non-zero altitude OK)
+                gen1.TryGetRay(0, ring, out var dirAt0, out _);
+                gen1.TryGetRay(profile.ColumnsPerFrame / 2, ring, out var dirAtHalf, out _);
+                gen1.TryGetRay(profile.ColumnsPerFrame / 4, ring, out var dirAtQuarter, out _);
+
+                // After half a rotation the XZ heading must be roughly opposite.
+                var dot = dirAt0.X * dirAtHalf.X + dirAt0.Z * dirAtHalf.Z;
+                var quarterDot = dirAt0.X * dirAtQuarter.X + dirAt0.Z * dirAtQuarter.Z;
+
+                Check(dot < -0.99f,
+                    "7.1-16: column at half-rotation points opposite to column 0 (dot ~= -1)");
+                Check(Math.Abs(quarterDot) < 0.01f,
+                    "7.1-17: column at quarter-rotation is orthogonal to column 0 (dot ~= 0)");
+            }
         }
 
         // ---------------------------------------------------------------
@@ -230,7 +248,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(csCount >= 4, $"7.4-2: maze demo has >= 4 Phase138*.cs files (found {csCount})");
 
             var hasReadme = File.Exists(readmePath);
-            Check(hasReadme, "7.4-2: MazeDemo README.md exists");
+            Check(hasReadme, "7.4-3: MazeDemo README.md exists");
 
             // 16. Maze demo files do NOT contain "using ROS2;"
             var ros2Violations = new List<string>();
@@ -242,32 +260,36 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             Check(ros2Violations.Count == 0,
-                "7.4-3: maze demo files have no \"using ROS2;\"" +
+                "7.4-5: maze demo files have no \"using ROS2;\"" +
                 (ros2Violations.Count == 0 ? "" : " (" + string.Join(", ", ros2Violations) + ")"));
 
-            // 17. Maze vehicle controller falls back gracefully
+            // 17. Maze vehicle controller supports both input systems or falls back gracefully
             var controllerFiles = csFiles
                 .Where(f => Path.GetFileName(f).Contains("Controller", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
             if (controllerFiles.Length > 0)
             {
-                var foundFallback = false;
+                var hasInputSupport = false;
                 foreach (var f in controllerFiles)
                 {
-                    if (File.ReadAllText(f).Contains("Legacy Input Manager is disabled", StringComparison.Ordinal))
+                    var content = File.ReadAllText(f);
+                    // Either native Input System support or legacy fallback
+                    if (content.Contains("ENABLE_INPUT_SYSTEM", StringComparison.Ordinal)
+                        || content.Contains("InputAction", StringComparison.Ordinal)
+                        || content.Contains("Input Manager is disabled", StringComparison.Ordinal))
                     {
-                        foundFallback = true;
+                        hasInputSupport = true;
                         break;
                     }
                 }
 
-                Check(foundFallback,
-                    "7.4-4: vehicle controller contains \"Legacy Input Manager is disabled\" fallback message");
+                Check(hasInputSupport,
+                    "7.4-5: vehicle controller supports Input System or falls back gracefully on legacy");
             }
             else
             {
-                Check(false, "7.4-4: no vehicle controller file found");
+                Check(false, "7.4-5: no vehicle controller file found");
             }
         }
 

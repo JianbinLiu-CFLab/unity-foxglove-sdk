@@ -27,6 +27,11 @@
       "displayName": "ROS2 Bridge Sample",
       "description": "Guided Unity-to-ROS2 bridge sample with sidecar launch kit, health preflight, and Foxglove layout.",
       "path": "Samples~/Ros2BridgeSample"
+    },
+    {
+      "displayName": "Virtual LiDAR Maze Demo",
+      "description": "Drop Phase138MazeDemoBootstrap onto an empty GameObject and press Play. Procedurally builds a maze and a WASD-driven vehicle with a Virtual LiDAR streaming to Foxglove via /unity/point_cloud.",
+      "path": "Samples~/Virtual LiDAR Maze Demo"
     }
   ]
 }

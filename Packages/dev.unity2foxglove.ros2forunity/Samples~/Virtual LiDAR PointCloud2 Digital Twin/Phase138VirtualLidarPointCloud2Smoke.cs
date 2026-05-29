@@ -9,6 +9,8 @@
 using ROS2;
 #endif
 using System;
+using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Schemas;
 using UnityEngine;
 
 [DisallowMultipleComponent]

@@ -10,7 +10,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
     /// <summary>
     /// Generates deterministic ray directions from a LidarProfile.
-    /// Uses Unity Vector3 for direct compatibility with Physics.Raycast.
+    /// Uses System.Numerics.Vector3 to keep the type Unity-free; consumers
+    /// convert at the Unity boundary.
     /// </summary>
     public class LidarRayGenerator
     {
@@ -44,14 +45,19 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             }
 
             var alt = _profile.BeamAltitudeAngles[ring];
-            var azm = _profile.BeamAzimuthAngles[ring];
+            var ringAzm = _profile.BeamAzimuthAngles[ring];
 
-            // Sensor frame: x-right, y-up, z-forward
-            // Azimuth rotation is around the y-axis (positive = rightward)
+            // Column sweep: 360 degrees over columns_per_frame.
+            var columnAzm = column * (2.0 * Math.PI) / _profile.ColumnsPerFrame;
+            var totalAzm = columnAzm + ringAzm;
+
+            // Sensor frame: x-right, y-up, z-forward (Unity left-handed).
+            // Positive altitude => beam points up (+Y). Azimuth sweeps CW around +Y
+            // (column 0 forward, column N/4 = +X right) to match Unity's rotation.
             direction = new Vector3(
-                (float)(Math.Cos(alt) * Math.Sin(azm)),
-                (float)(-Math.Sin(alt)),
-                (float)(Math.Cos(alt) * Math.Cos(azm))
+                (float)(Math.Cos(alt) * Math.Sin(totalAzm)),
+                (float)(Math.Sin(alt)),
+                (float)(Math.Cos(alt) * Math.Cos(totalAzm))
             );
 
             timeOffset = (float)column / _profile.ColumnsPerFrame;

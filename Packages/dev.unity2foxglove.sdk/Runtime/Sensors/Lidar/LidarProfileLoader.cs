@@ -10,10 +10,78 @@ using Newtonsoft.Json.Linq;
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
     /// <summary>
+    /// Built-in spinning-LiDAR presets (Ouster OS-0/OS-1/OS-2 at 32/64/128 rings).
+    /// Beam angles are evenly distributed across the line's vertical FOV.
+    /// </summary>
+    public enum LidarPreset
+    {
+        Os0_32, Os0_64, Os0_128,
+        Os1_32, Os1_64, Os1_128,
+        Os2_32, Os2_64, Os2_128
+    }
+
+    /// <summary>
     /// Parses LiDAR metadata JSON and provides built-in fallback profiles.
     /// </summary>
     public static class LidarProfileLoader
     {
+        /// <summary>
+        /// Build a spinning-LiDAR profile with beams evenly spaced across a vertical
+        /// FOV. Suitable for Ouster/Velodyne-style sensors; azimuth is co-axial (0).
+        /// </summary>
+        public static LidarProfile CreateUniform(
+            string productLine, int pixelsPerColumn, int columnsPerFrame,
+            double scanRateHz, double fovTopDeg, double fovBottomDeg, double minRangeMeters)
+        {
+            const double degToRad = Math.PI / 180.0;
+            pixelsPerColumn = Math.Max(1, pixelsPerColumn);
+            columnsPerFrame = Math.Max(16, columnsPerFrame);
+
+            var altitude = new double[pixelsPerColumn];
+            var azimuth = new double[pixelsPerColumn];
+            for (var i = 0; i < pixelsPerColumn; i++)
+            {
+                var t = pixelsPerColumn == 1 ? 0.5 : (double)i / (pixelsPerColumn - 1);
+                altitude[i] = (fovTopDeg + (fovBottomDeg - fovTopDeg) * t) * degToRad; // ring 0 = top
+                azimuth[i] = 0.0;
+            }
+
+            return new LidarProfile
+            {
+                ProductLine = string.IsNullOrEmpty(productLine) ? "Custom" : productLine,
+                LidarMode = $"{columnsPerFrame}x{(int)Math.Round(scanRateHz)}",
+                PixelsPerColumn = pixelsPerColumn,
+                ColumnsPerFrame = columnsPerFrame,
+                ColumnsPerPacket = 16,
+                ScanRateHz = scanRateHz <= 0 ? 10.0 : scanRateHz,
+                MinRangeMeters = Math.Max(0.0, minRangeMeters),
+                LidarOriginToBeamOriginMeters = 0.03618,
+                BeamAltitudeAngles = altitude,
+                BeamAzimuthAngles = azimuth
+            };
+        }
+
+        /// <summary>Create a built-in preset profile (1024 columns, 10 Hz).</summary>
+        public static LidarProfile CreatePreset(LidarPreset preset)
+        {
+            // (productLine, rings, fovTopDeg, fovBottomDeg, minRange)
+            switch (preset)
+            {
+                case LidarPreset.Os0_32:  return CreateUniform("OS-0", 32,  1024, 10, 45.0, -45.0, 0.3);
+                case LidarPreset.Os0_64:  return CreateUniform("OS-0", 64,  1024, 10, 45.0, -45.0, 0.3);
+                case LidarPreset.Os0_128: return CreateUniform("OS-0", 128, 1024, 10, 45.0, -45.0, 0.3);
+                case LidarPreset.Os1_64:  return CreateUniform("OS-1", 64,  1024, 10, 16.6, -16.6, 0.7);
+                case LidarPreset.Os1_128: return CreateUniform("OS-1", 128, 1024, 10, 16.6, -16.6, 0.7);
+                case LidarPreset.Os2_32:  return CreateUniform("OS-2", 32,  1024, 10, 11.25, -11.25, 0.5);
+                case LidarPreset.Os2_64:  return CreateUniform("OS-2", 64,  1024, 10, 11.25, -11.25, 0.5);
+                case LidarPreset.Os2_128: return CreateUniform("OS-2", 128, 1024, 10, 11.25, -11.25, 0.5);
+                case LidarPreset.Os1_32:
+                default:
+                    // Exact datasheet angles for the canonical OS-1-32.
+                    return CreateOs132Default();
+            }
+        }
+
         /// <summary>
         /// Create a built-in Ouster OS-1-32 fallback profile.
         /// 32 rings, 1024 columns, 10 Hz, min range 0.7 m.
