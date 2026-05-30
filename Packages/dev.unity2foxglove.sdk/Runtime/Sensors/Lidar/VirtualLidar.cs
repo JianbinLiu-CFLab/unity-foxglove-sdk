@@ -395,7 +395,9 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     Point = new float3(hit.point.x, hit.point.y, hit.point.z),
                     Distance = hit.distance,
-                    ColliderInstanceId = hit.collider == null ? 0u : (uint)hit.colliderInstanceID
+                    // Only hit/miss matters downstream (job tests != 0u); avoid the obsolete
+                    // colliderInstanceID and the EntityId type churn by using a hit flag.
+                    ColliderInstanceId = hit.collider == null ? 0u : 1u
                 };
             }
 
