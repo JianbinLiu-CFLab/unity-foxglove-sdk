@@ -65,10 +65,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
         [SerializeField] private FoxgloveTransportMode _transportMode = FoxgloveTransportMode.WebSocket;
+        [SerializeField, HideInInspector] private FoxgloveTransportMode _transportModeBeforeOutputDisabled = FoxgloveTransportMode.WebSocket;
         [Tooltip("When unchecked, the WebSocket server is disabled (transport = None).")]
         [SerializeField] private bool _foxgloveOutputEnabled = true;
-        [Tooltip("Global policy flag for R2FU native DDS output. R2FU components query this at runtime. Default on; uncheck to disable R2FU output.")]
-        [SerializeField] private bool _ros2NativeEnabled = true;
+        [Tooltip("Global policy flag for R2FU native DDS output. R2FU components query this at runtime. Default off; check to enable R2FU output.")]
+        [SerializeField] private bool _ros2NativeEnabled;
 
         [Header("Publish Rate")]
         [Tooltip("Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.")]
@@ -145,6 +146,9 @@ namespace Unity.FoxgloveSDK.Components
         private Ros2BridgeRuntime _ros2BridgeRuntime;
         private string _ros2BridgeSetupError = "";
         private ulong _ros2BridgeSequence;
+        private bool _lastFoxgloveOutputEnabled;
+        private bool _lastRos2BridgeEnabled;
+        private bool _outputModeWatchInitialized;
         private FoxgloveCertificateDistributor _certificateDistributor;
         private int _nextChannelId = FirstAutoChannelId;
         private bool _warnedNotRunning;
@@ -348,10 +352,9 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var logger = new UnityLogger();
-            // CreateTransport returns null when the WebSocket output is disabled
-            // (transport = None). Use a no-op transport so the runtime still
-            // constructs and runs (recording / replay / ROS2 bridge / R2FU policy).
-            var transport = CreateTransport(logger) ?? new Transport.NullFoxgloveTransport();
+            // Runtime services (recording, replay, ROS2 Bridge policy) should be available
+            // even when Foxglove output is temporarily disabled.
+            var transport = CreateTransport(logger);
             _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
         }
 
@@ -442,9 +445,24 @@ namespace Unity.FoxgloveSDK.Components
             _ros2BridgeReconnectIntervalMs = Mathf.Max(1, _ros2BridgeReconnectIntervalMs);
             _ros2BridgeSendTimeoutMs = Mathf.Max(1, _ros2BridgeSendTimeoutMs);
             if (!_foxgloveOutputEnabled)
+            {
+                if (_transportMode != FoxgloveTransportMode.None)
+                {
+                    _transportModeBeforeOutputDisabled = _transportMode;
+                }
+
                 _transportMode = FoxgloveTransportMode.None;
+            }
             else if (_transportMode == FoxgloveTransportMode.None)
-                _transportMode = FoxgloveTransportMode.WebSocket;
+            {
+                _transportMode = _transportModeBeforeOutputDisabled == FoxgloveTransportMode.None
+                    ? FoxgloveTransportMode.WebSocket
+                    : _transportModeBeforeOutputDisabled;
+            }
+            else
+            {
+                _transportModeBeforeOutputDisabled = _transportMode;
+            }
         }
 
         /// <summary>
@@ -458,6 +476,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             StartRos2BridgeIfNeeded();
+            InitializeOutputModeWatchers();
         }
 
         /// <summary>
@@ -468,6 +487,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime?.Tick();
             DrainClientEventQueue(_clientLifecycleEvents);
             DrainClientEventQueue(_clientMessageEvents);
+            ApplyLiveOutputModeWatchers();
         }
 
         private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
@@ -496,6 +516,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _ros2BridgeRuntime?.Stop();
             StopServer(restoreLivePublishers: false);
+            _outputModeWatchInitialized = false;
         }
 
         /// <summary>
@@ -617,6 +638,55 @@ namespace Unity.FoxgloveSDK.Components
                 CreateRos2BridgeRuntime();
 
             _ros2BridgeRuntime?.Start(enabled: true, autoConnect: _ros2BridgeAutoConnect);
+        }
+
+        /// <summary>
+        /// Captures the first observed runtime output-mode state.
+        /// </summary>
+        private void InitializeOutputModeWatchers()
+        {
+            _lastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
+            _lastRos2BridgeEnabled = _ros2BridgeEnabled;
+            _outputModeWatchInitialized = true;
+        }
+
+        /// <summary>
+        /// Applies live Output Mode toggles (WebSocket server + ROS2 bridge) without recreating the runtime.
+        /// </summary>
+        private void ApplyLiveOutputModeWatchers()
+        {
+            if (!_outputModeWatchInitialized)
+            {
+                InitializeOutputModeWatchers();
+                return;
+            }
+
+            if (_lastFoxgloveOutputEnabled != _foxgloveOutputEnabled)
+            {
+                if (_foxgloveOutputEnabled)
+                {
+                    StartServer();
+                }
+                else
+                {
+                    StopServer(restoreLivePublishers: true);
+                }
+            }
+
+            if (_lastRos2BridgeEnabled != _ros2BridgeEnabled)
+            {
+                if (_ros2BridgeEnabled)
+                {
+                    StartRos2BridgeIfNeeded();
+                }
+                else
+                {
+                    _ros2BridgeRuntime?.Stop();
+                }
+            }
+
+            _lastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
+            _lastRos2BridgeEnabled = _ros2BridgeEnabled;
         }
     }
 

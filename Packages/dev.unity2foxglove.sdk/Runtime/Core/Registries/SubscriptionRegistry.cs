@@ -227,7 +227,17 @@ namespace Unity.FoxgloveSDK.Core
             {
                 destination.Clear();
                 if (_byChannel.TryGetValue(channelId, out var subscribers))
-                    destination.AddRange(subscribers);
+                {
+                    if (subscribers.Count == 0)
+                        return;
+
+                    var seen = new HashSet<(uint, uint)>();
+                    foreach (var subscriber in subscribers)
+                    {
+                        if (seen.Add(subscriber))
+                            destination.Add(subscriber);
+                    }
+                }
             }
         }
 
@@ -287,6 +297,9 @@ namespace Unity.FoxgloveSDK.Core
                 _byChannel[channelId] = subscribers;
             }
 
+            if (subscribers.Contains((clientId, subscriptionId)))
+                return;
+
             subscribers.Add((clientId, subscriptionId));
         }
 
@@ -299,10 +312,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var subscriber = subscribers[i];
                 if (subscriber.clientId == clientId && subscriber.subscriptionId == subscriptionId)
-                {
                     subscribers.RemoveAt(i);
-                    break;
-                }
             }
 
             if (subscribers.Count == 0)

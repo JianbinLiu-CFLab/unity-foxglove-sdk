@@ -276,7 +276,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (!_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishJson called but server is not running.");
                     _warnedNotRunning = true;
@@ -310,7 +310,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (!_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishProto called but server is not running.");
                     _warnedNotRunning = true;
@@ -352,7 +352,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (!_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishRos2 called but server is not running.");
                     _warnedNotRunning = true;

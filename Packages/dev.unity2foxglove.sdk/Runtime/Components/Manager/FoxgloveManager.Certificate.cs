@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void StartCertificateDistributorIfNeeded()
         {
-            if (_transportMode != FoxgloveTransportMode.SecureWebSocket || !_rootCaDistributorEnabled)
+            if (ActiveTransportMode != FoxgloveTransportMode.SecureWebSocket || !_rootCaDistributorEnabled)
             {
                 return;
             }
