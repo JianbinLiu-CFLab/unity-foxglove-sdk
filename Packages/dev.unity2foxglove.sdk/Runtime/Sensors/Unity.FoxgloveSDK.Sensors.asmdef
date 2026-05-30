@@ -3,13 +3,16 @@
   "rootNamespace": "",
   "references": [
     "Unity.FoxgloveSDK",
-    "Unity.FoxgloveSDK.Proto"
+    "Unity.FoxgloveSDK.Proto",
+    "Unity.Burst",
+    "Unity.Collections",
+    "Unity.Mathematics"
   ],
   "includePlatforms": [],
   "excludePlatforms": [
     "WebGL"
   ],
-  "allowUnsafeCode": false,
+  "allowUnsafeCode": true,
   "overrideReferences": false,
   "autoReferenced": true,
   "defineConstraints": []

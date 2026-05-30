@@ -116,6 +116,11 @@ namespace Unity.FoxgloveSDK.Schemas
         public ulong UnixNs { get; set; }
         /// <summary>Frame of reference.</summary>
         public string FrameId { get; set; }
+        /// <summary>
+        /// Optional valid point count from native pipelines. A value below 0 means
+        /// use <see cref="Points"/>.Count.
+        /// </summary>
+        public int ValidCount { get; set; } = -1;
         /// <summary>Points to pack.</summary>
         public List<PointCloudPoint> Points { get; } = new List<PointCloudPoint>();
     }

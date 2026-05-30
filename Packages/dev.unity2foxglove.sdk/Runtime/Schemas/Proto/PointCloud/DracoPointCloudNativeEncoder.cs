@@ -76,13 +76,14 @@ namespace Foxglove.Schemas.PointCloud
             dracoPayload = null;
             error = "";
 
-            if (frame == null || frame.Points.Count == 0)
+            var pointCount = frame.GetPointCount();
+            if (frame == null || pointCount == 0)
             {
                 error = "Draco point-cloud frame is empty.";
                 return false;
             }
 
-            if (!ValidateInputBudget(frame.Points.Count, out error))
+            if (!ValidateInputBudget(pointCount, out error))
                 return false;
 
             var xyz = BuildXyzArray(frame);
@@ -90,7 +91,7 @@ namespace Foxglove.Schemas.PointCloud
                 MaxPayloadBytes,
                 Math.Max(4096, xyz.Length * sizeof(float) + OutputOverheadBytes)));
 
-            return TryEncodeWithCapacity(xyz, frame.Points.Count, initialCapacity, out dracoPayload, out error);
+            return TryEncodeWithCapacity(xyz, pointCount, initialCapacity, out dracoPayload, out error);
         }
 
         internal static bool ValidateInputBudget(int pointCount, out string error)
@@ -198,10 +199,12 @@ namespace Foxglove.Schemas.PointCloud
 
         private static float[] BuildXyzArray(PointCloudFrame frame)
         {
-            var xyz = new float[checked(frame.Points.Count * 3)];
+            var pointCount = frame.GetPointCount();
+            var xyz = new float[checked(pointCount * 3)];
             var index = 0;
-            foreach (var point in frame.Points)
+            for (var i = 0; i < pointCount; i++)
             {
+                var point = frame.Points[i];
                 xyz[index++] = point.X;
                 xyz[index++] = point.Y;
                 xyz[index++] = point.Z;

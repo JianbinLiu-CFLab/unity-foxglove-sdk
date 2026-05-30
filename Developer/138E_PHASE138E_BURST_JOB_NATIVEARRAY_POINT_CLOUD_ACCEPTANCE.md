@@ -1,0 +1,55 @@
+# Phase 138E Acceptance Report (Burst Job + NativeArray Point Cloud Pipeline)
+
+Date: 2026-05-30
+
+Scope: `Plan/138E_PHASE138E_BURST_JOB_NATIVEARRAY_POINT_CLOUD_PIPELINE_PLAN.md`
+
+## 自动验证（Offline checks）
+
+- Command:
+  - `dotnet run --project "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj" -- --phase138 --phase138b --phase138c2`
+- Result:
+  - PASS (command exits with code 0).
+  - `Phase 138 checks passed.` and previous phase regression lines unchanged.
+- Warnings:
+  - Only existing framework/API deprecation or unused-event warnings in test assemblies; no new errors tied to 138E files.
+
+## 人工验收（Unity + 编辑器 / Demo）
+
+> 说明：受当前会话离线限制，需在 Unity Editor 侧执行。
+
+1. 打开 Virtual LiDAR 示例场景（或你们 Maze/PointCloud 演示场景）并进入 Play。
+2. 启动/确认 `VirtualLidar` 组件存在，`PointCloudPublisher` 已挂载。
+3. 验证运行时每帧 `RunScan()` 的 `frame.ValidCount` 与实际有效点数一致（可通过调试日志或临时 UI）。
+4. 连接 Foxglove Studio（WebSocket/Bridge）订阅 `/points`（或场景实际 topic）。
+5. 验证点云可见且点位连续，点数在下采样或最大点数约束下稳定。
+6. 改变 `_maxRaysPerScan` 与 `profile` 参数，确认点云密度与耗时按预期变化。
+7. 运行时多次暂停/继续组件（Enable/Disable）后，确认无 native 内存持续增长与异常。
+8. 在 `PointCloudFrame` 被裁剪场景下（如采样）确认 JSON/Proto/Draco payload 使用裁剪后的有效点数。
+
+- Status（当前会话）:
+  - 自动验收：PASS
+  - 人工验收：PENDING（请在本地 Unity 运行复核）
+
+## 文件交付清单
+
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MessageDefinitions/FoxgloveSensorMessages.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MessageDefinitions/PointCloudFrameExtensions.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Sensors/CoordinateConverterFloat3.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarBuildPointsJob.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Utilities/PointCloudQoS.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudEncoderSidecar.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedPointCloudPublisher.cs`
+- `Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Unity.FoxgloveSDK.Sensors.asmdef`
+- `Packages/dev.unity2foxglove.sdk/package.json`
+
+## 决策
+
+- 138E（Burst + NativeArray point-cloud pipeline）实现已到可交付状态：
+  - 下游打包与发布路径统一以 `PointCloudFrame.ValidCount` 为有效口径；
+  - Unity 端虚拟激光使用 Burst/NativeArray 进行点生成；
+  - 非 Unity 的离线测试构建已不再因为 Unity-only 传感器实现类型而失败。

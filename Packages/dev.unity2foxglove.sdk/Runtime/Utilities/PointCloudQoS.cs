@@ -43,13 +43,15 @@ namespace Unity.FoxgloveSDK.Util
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
+            var pointCount = frame.GetPointCount();
             var hasIntensity = false;
             var hasReflectivity = false;
             var hasRing = false;
             var hasTimeOffset = false;
 
-            foreach (var point in frame.Points)
+            for (var i = 0; i < pointCount; i++)
             {
+                var point = frame.Points[i];
                 if (point == null)
                     continue;
 
@@ -146,7 +148,8 @@ namespace Unity.FoxgloveSDK.Util
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            if (frame.Points.Count == 0)
+            var pointCount = frame.GetPointCount();
+            if (pointCount == 0)
                 return Array.Empty<int>();
 
             if (voxelSizeMeters <= 0f)
@@ -154,7 +157,7 @@ namespace Unity.FoxgloveSDK.Util
 
             var seen = new HashSet<VoxelKey>();
             var indices = new List<int>();
-            for (var i = 0; i < frame.Points.Count; i++)
+            for (var i = 0; i < pointCount; i++)
             {
                 var point = frame.Points[i];
                 if (point == null)
@@ -170,8 +173,9 @@ namespace Unity.FoxgloveSDK.Util
 
         private static int[] BuildNonNullPointIndices(PointCloudFrame frame)
         {
+            var pointCount = frame.GetPointCount();
             var indices = new List<int>();
-            for (var i = 0; i < frame.Points.Count; i++)
+            for (var i = 0; i < pointCount; i++)
             {
                 if (frame.Points[i] != null)
                     indices.Add(i);

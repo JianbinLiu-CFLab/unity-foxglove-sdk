@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
         {
-            if (frame == null || frame.Points.Count == 0)
+            if (frame == null || frame.GetPointCount() == 0)
                 return;
 
             if (!DracoPointCloudNativeEncoder.TryEncode(frame, out var dracoPayload, out var encodeError))
