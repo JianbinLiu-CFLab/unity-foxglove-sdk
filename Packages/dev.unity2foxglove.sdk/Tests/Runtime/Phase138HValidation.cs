@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -39,6 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyStreamingLiDARState();
             VerifyPhase138hDemoHooks();
             VerifyAbsoluteTimeField();
+            VerifyTIlBaseline();
 
             Console.WriteLine("Phase 138H: all checks passed.");
             Console.WriteLine();
@@ -89,6 +91,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "138H-11: LidarModelSpec includes T_IL rotation field");
             Check(demoEditorSource.Contains("ApplyImuMountTransform"),
                 "138H-12: Demo builder applies IMU mount transform from model spec data");
+        }
+
+        // Behavioral check: registry ships a non-zero T_IL extrinsic baseline (not zero/identity).
+        private static void VerifyTIlBaseline()
+        {
+            Check(LidarModelRegistry.TryGet(LidarVendor.Ouster, "OS-1-32", out var spec),
+                "138H-16: OS-1-32 resolves from the model registry");
+            Check(spec.TIlTranslationMeters != System.Numerics.Vector3.Zero,
+                "138H-17: OS-1-32 ships a non-zero T_IL translation baseline (was all-zero before)");
         }
 
         // Behavioral check (shared layer, harness-runnable) for the D6 absolute-ns t field.

@@ -20,22 +20,39 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 /// <summary>Summary text for this member.</summary>
     public static class LidarModelRegistry
     {
+        // Ouster OS imu-to-lidar extrinsic (T_IL): datasheet-typical imu_to_sensor_transform,
+        // translation in meters (the IMU sits a few mm from the lidar origin), rotation identity.
+        // This is a sane non-zero baseline; replace with per-unit calibration when available.
+        private static readonly System.Numerics.Vector3 OusterImuToLidarMeters =
+            new(0.006253f, -0.011775f, 0.007645f);
+        private static readonly System.Numerics.Quaternion OusterImuToLidarRotation =
+            System.Numerics.Quaternion.Identity;
+
         private static readonly List<LidarModelSpec> _all = new()
         {
             // Ouster OS-0 (ultra-wide FOV)
-            LidarModelSpec.Ouster("OS-0-32", 32, 1024, M("1024x10", "2048x10"), +43.9, -45.4),
-            LidarModelSpec.Ouster("OS-0-64", 64, 1024, M("1024x10", "2048x10"), +43.9, -45.4),
-            LidarModelSpec.Ouster("OS-0-128", 128, 1024, M("1024x10", "2048x10"), +43.9, -45.4),
+            LidarModelSpec.Ouster("OS-0-32", 32, 1024, M("1024x10", "2048x10"), +43.9, -45.4,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
+            LidarModelSpec.Ouster("OS-0-64", 64, 1024, M("1024x10", "2048x10"), +43.9, -45.4,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
+            LidarModelSpec.Ouster("OS-0-128", 128, 1024, M("1024x10", "2048x10"), +43.9, -45.4,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
 
             // Ouster OS-1 (mid-range)
-            LidarModelSpec.Ouster("OS-1-32", 32, 1024, M("1024x10", "2048x10", "512x20"), +20.95, -21.82),
-            LidarModelSpec.Ouster("OS-1-64", 64, 1024, M("1024x10", "2048x10", "512x20"), +20.95, -21.82),
-            LidarModelSpec.Ouster("OS-1-128", 128, 1024, M("1024x10", "2048x10", "512x20"), +20.95, -21.82),
+            LidarModelSpec.Ouster("OS-1-32", 32, 1024, M("1024x10", "2048x10", "512x20"), +20.95, -21.82,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
+            LidarModelSpec.Ouster("OS-1-64", 64, 1024, M("1024x10", "2048x10", "512x20"), +20.95, -21.82,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
+            LidarModelSpec.Ouster("OS-1-128", 128, 1024, M("1024x10", "2048x10", "512x20"), +20.95, -21.82,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
 
             // Ouster OS-2 (long-range, narrow FOV)
-            LidarModelSpec.Ouster("OS-2-32", 32, 2048, M("1024x10", "2048x10"), +10.76, -11.09),
-            LidarModelSpec.Ouster("OS-2-64", 64, 2048, M("1024x10", "2048x10"), +10.76, -11.09),
-            LidarModelSpec.Ouster("OS-2-128", 128, 2048, M("1024x10", "2048x10"), +10.76, -11.09),
+            LidarModelSpec.Ouster("OS-2-32", 32, 2048, M("1024x10", "2048x10"), +10.76, -11.09,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
+            LidarModelSpec.Ouster("OS-2-64", 64, 2048, M("1024x10", "2048x10"), +10.76, -11.09,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
+            LidarModelSpec.Ouster("OS-2-128", 128, 2048, M("1024x10", "2048x10"), +10.76, -11.09,
+                tIlTranslationMeters: OusterImuToLidarMeters, tIlRotation: OusterImuToLidarRotation),
 
             // Velodyne
             LidarModelSpec.Velodyne("VLP-16", 16, 1800, 600, VlpAngles(16, +15.0, -15.0)),
