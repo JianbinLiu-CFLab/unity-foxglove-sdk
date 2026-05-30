@@ -1,9 +1,9 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR PointCloud2 Digital Twin
 // Purpose: Mirrors VirtualLidar PointCloudFrame output to ROS2 sensor_msgs/msg/PointCloud2 /points.
-// Publishes a map → os_lidar static transform so RViz2 can render the cloud.
+// Publishes a map 鈫?os_lidar static transform so RViz2 can render the cloud.
 // All ROS2 references are guarded by #if UNITY2FOXGLOVE_ROS2_FOR_UNITY.
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -13,8 +13,13 @@ using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
 using UnityEngine;
 
+/// <summary>
+/// Summary text for this member.
+/// </summary>
+
 [DisallowMultipleComponent]
 [AddComponentMenu("Foxglove/ROS2 For Unity/Virtual LiDAR PointCloud2 Mirror")]
+/// <summary>Summary text for this member.</summary>
 public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 {
     [Header("ROS2")]
@@ -41,7 +46,9 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     private void Start()
     {
         if (_virtualLidar == null)
-            _virtualLidar = GetComponent<VirtualLidar>();
+            _virtualLidar = GetComponentInChildren<VirtualLidar>();   // this GameObject or any child (e.g. LidarMount)
+        if (_virtualLidar == null)
+            _virtualLidar = FindFirstObjectByType<VirtualLidar>();    // fallback: anywhere in the scene
         if (_virtualLidar == null)
         {
             Debug.LogError("[Phase138VirtualLidarPointCloud2Smoke] VirtualLidar component not assigned or found.");
@@ -60,6 +67,11 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         if (_ros2Unity == null || !_ros2Unity.Ok())
+            return;
+
+        // R2FU output channel toggle (Output Mode 鈫?"ROS2 Native (R2FU)"), resolved
+        // centrally in Ros2NativeOutputPolicy so each R2FU component is a one-liner.
+        if (!Ros2NativeOutputPolicy.Enabled)
             return;
 
         if (_node == null)
@@ -125,3 +137,4 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     }
 #endif
 }
+

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -13,12 +13,21 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Parses LiDAR metadata JSON and provides built-in fallback profiles.
     /// Built-in presets now live in <see cref="LidarModelRegistry"/>.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public static class LidarProfileLoader
     {
         /// <summary>
         /// Build a spinning-LiDAR profile with beams evenly spaced across a vertical
         /// FOV. Suitable for Ouster/Velodyne-style sensors; azimuth is co-axial (0).
         /// </summary>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public static LidarProfile CreateUniform(
             string productLine, int pixelsPerColumn, int columnsPerFrame,
             double scanRateHz, double fovTopDeg, double fovBottomDeg, double minRangeMeters)
@@ -70,6 +79,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// Beam altitude angles sourced from Ouster OS-1-32 datasheet:
         /// approximately -16.6 to +16.6 degrees.
         /// </summary>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public static LidarProfile CreateOs132Default()
         {
             const double degToRad = Math.PI / 180.0;
@@ -118,6 +132,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// <param name="profile">Parsed profile, or null on failure.</param>
         /// <param name="error">Error message on failure.</param>
         /// <returns>true if parsing succeeded.</returns>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public static bool TryParseFromJson(string json, string mode, out LidarProfile profile, out string error)
         {
             profile = null;
@@ -191,7 +210,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
-            // beam_azimuth_angles (optional → zeros)
+            // beam_azimuth_angles (optional 鈫?zeros)
             double[] azimuth;
             if (FromBeam("beam_azimuth_angles") is JArray azmArray && azmArray.Count > 0)
             {
@@ -233,3 +252,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
+

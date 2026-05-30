@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -11,6 +11,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Vendor-agnostic LiDAR scan pattern. Implementations produce ray directions
     /// and time offsets for a single frame of a LiDAR scan.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public interface ILidarScanPattern
     {
         string ProductLine { get; }
@@ -29,3 +34,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             out Vector3 direction, out float timeOffset);
     }
 }
+

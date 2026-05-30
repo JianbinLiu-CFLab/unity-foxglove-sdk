@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo (Editor)
@@ -23,13 +23,23 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
     /// through the static maze. Use WASD to drive; raise Decay time to accumulate
     /// the point cloud.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public static class Phase138MazeDemoSceneBuilder
     {
         private const int CellsX = 8;
         private const int CellsZ = 8;
         private const float CellSize = 2f;
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
+/// <summary>Summary text for this member.</summary>
         public static void BuildScene()
         {
             // Clear previously generated demo roots, including any live
@@ -99,10 +109,31 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 
             var lidarPub = lidarMount.gameObject.AddComponent<FoxgloveTransformPublisher>();
             SetField(lidarPub, "_manager", manager);
-            SetField(lidarPub, "_topic", "/tf");
+            // Separate topic from base_link's publisher: two publishers sharing one
+            // /tf channel triggers a server subscription-routing bug ("unknown
+            // subscription id"). Foxglove aggregates FrameTransform from ALL topics
+            // into the TF tree, so a distinct topic still yields base_link->vehicle_lidar.
+            SetField(lidarPub, "_topic", "/tf_lidar");
             SetField(lidarPub, "_parentFrameId", "base_link");
             SetField(lidarPub, "_childFrameId", "vehicle_lidar");
             SetField(lidarPub, "_useLocalTransform", true);
+
+            // Optional: R2FU PointCloud2 mirror (Phase 138C smoke). Resolved by name
+            // across loaded assemblies (the smoke lives in Assembly-CSharp, not this
+            // editor assembly, so Type.GetType alone returns null). Added to the Vehicle
+            // only when the R2FU sample is imported; the smoke auto-finds the VirtualLidar.
+            var smokeType = FindTypeByName("Phase138VirtualLidarPointCloud2Smoke");
+            if (smokeType != null)
+            {
+                var smoke = vehicleGo.AddComponent(smokeType);
+                SetField(smoke, "_virtualLidar", lidar);
+                EditorUtility.SetDirty(smoke);
+            }
+            else
+            {
+                Debug.Log("[LidarMaze] Phase138VirtualLidarPointCloud2Smoke not found " +
+                          "(import the 'Virtual LiDAR PointCloud2 Digital Twin' R2FU sample to enable ROS2 output).");
+            }
 
             // 5. Static overview camera framing the whole maze.
             var camGo = new GameObject("DemoCamera");
@@ -143,5 +174,17 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             else
                 Debug.LogWarning($"[LidarMaze] Failed to set private field '{fieldName}' on {target.GetType().Name}");
         }
+
+        /// <summary>Find a type by simple name across all loaded assemblies (cross-assembly).</summary>
+        private static System.Type FindTypeByName(string name)
+        {
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var t = asm.GetType(name);
+                if (t != null) return t;
+            }
+            return null;
+        }
     }
 }
+

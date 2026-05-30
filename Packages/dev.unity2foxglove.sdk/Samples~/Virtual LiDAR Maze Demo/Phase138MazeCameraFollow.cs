@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo
@@ -10,6 +10,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// <summary>
     /// Simple top-down or chase camera that follows a target transform.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public class Phase138MazeCameraFollow : MonoBehaviour
     {
         [SerializeField] private Transform _target;
@@ -36,3 +41,4 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
+

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -13,6 +13,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Used by VirtualLidarEditor to populate dropdowns and by
     /// LidarScanPatternFactory to create scan patterns from presets.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public static class LidarModelRegistry
     {
         private static readonly List<LidarModelSpec> _all = new()
@@ -47,9 +52,24 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             LidarModelSpec.Livox("Tele-15", 14.5, 16.2, 48000),
         };
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public static IReadOnlyList<LidarModelSpec> All => _all.AsReadOnly();
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public static IEnumerable<LidarModelSpec> ForVendor(LidarVendor v)
             => _all.Where(s => s.Vendor == v);
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public static bool TryGet(LidarVendor v, string model, out LidarModelSpec spec)
         {
             spec = _all.FirstOrDefault(s => s.Vendor == v && s.Model == model);
@@ -71,3 +91,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
+

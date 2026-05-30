@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Sensors
@@ -14,11 +14,16 @@ namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
     /// Custom inspector for <see cref="VirtualLidar"/>. For BuiltInPreset mode it
-    /// shows a cascading Vendor → Model (→ optional Mode) selection driven by
+    /// shows a cascading Vendor 鈫?Model (鈫?optional Mode) selection driven by
     /// <see cref="LidarModelRegistry"/>, with a live read-only preview of the
     /// resolved scan geometry.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
     [CustomEditor(typeof(VirtualLidar))]
+/// <summary>Summary text for this member.</summary>
     public class VirtualLidarEditor : UnityEditor.Editor
     {
         private SerializedProperty _profileSource;
@@ -29,7 +34,8 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters,
             _scanRateSource, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
-        private SerializedProperty _syntheticReflectivity, _syntheticIntensity, _pointCloudPublisher;
+        private SerializedProperty _syntheticReflectivity, _syntheticIntensity;
+        private SerializedProperty _pointCloudPublisher;
 
         private void OnEnable()
         {
@@ -59,15 +65,21 @@ namespace Unity.FoxgloveSDK.Editor
             _pointCloudPublisher = serializedObject.FindProperty("_pointCloudPublisher");
         }
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
 
-            EditorGUILayout.PropertyField(_pointCloudPublisher);
-            EditorGUILayout.Space();
+            // Section titles ("Output", "Profile", "Scan", "Synthetic Values") come
+            // from the [Header] attributes on the VirtualLidar fields 鈥?PropertyField
+            // renders them. Don't also draw LabelField headers here or they double up.
+            EditorGUILayout.PropertyField(_pointCloudPublisher);   // [Header("Output")]
 
-            EditorGUILayout.LabelField("Profile", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_profileSource);
+            EditorGUILayout.PropertyField(_profileSource);         // [Header("Profile")]
             switch ((VirtualLidar.ProfileSource)_profileSource.enumValueIndex)
             {
                 case VirtualLidar.ProfileSource.BuiltInPreset: DrawPresetSection(); break;
@@ -75,14 +87,12 @@ namespace Unity.FoxgloveSDK.Editor
                 case VirtualLidar.ProfileSource.Custom: DrawCustomSection(); break;
             }
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Scan", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_frameId);
+            EditorGUILayout.PropertyField(_frameId);               // [Header("Scan")]
             EditorGUILayout.PropertyField(_columnStep);
             EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
 
-            // Scan rate — mirrors the publisher's "Publish Rate" UX. NOTE: this is the
+            // Scan rate 鈥?mirrors the publisher's "Publish Rate" UX. NOTE: this is the
             // LiDAR's frame-generation rate; the point cloud's publish rate to Foxglove
             // is set on FoxglovePointCloudPublisher (Publish Rate Source / Hz).
             EditorGUILayout.PropertyField(_scanRateSource, new GUIContent("Scan Rate Source"));
@@ -96,9 +106,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_publishEmptyFrames);
             EditorGUILayout.PropertyField(_drawDebugRays);
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Synthetic Values", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_syntheticReflectivity);
+            EditorGUILayout.PropertyField(_syntheticReflectivity); // [Header("Synthetic Values")]
             EditorGUILayout.PropertyField(_syntheticIntensity);
 
             serializedObject.ApplyModifiedProperties();
@@ -230,3 +238,4 @@ namespace Unity.FoxgloveSDK.Editor
         }
     }
 }
+

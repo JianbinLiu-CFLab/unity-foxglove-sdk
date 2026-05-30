@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -17,8 +17,13 @@ namespace Unity.FoxgloveSDK.Components
     /// A MonoBehaviour that raycasts Unity scene geometry using a LiDAR profile
     /// and publishes the resulting point cloud.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
     [DisallowMultipleComponent]
     [AddComponentMenu("Foxglove/Sensors/Virtual LiDAR")]
+/// <summary>Summary text for this member.</summary>
     public class VirtualLidar : MonoBehaviour
     {
         /// <summary>Where the LiDAR scan geometry comes from.</summary>
@@ -26,7 +31,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             /// <summary>Parse an Ouster-format metadata JSON TextAsset.</summary>
             MetadataJson,
-            /// <summary>Use a built-in spinning-LiDAR preset (Ouster OS-0/1/2 × 32/64/128).</summary>
+            /// <summary>Use a built-in spinning-LiDAR preset (Ouster OS-0/1/2 脳 32/64/128).</summary>
             BuiltInPreset,
             /// <summary>Use the manually edited Custom Profile fields below.</summary>
             Custom
@@ -78,7 +83,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _columnStep = 4;
         [Tooltip("0 (default) = no clipping: cast every ray the selected sensor defines " +
                  "(full resolution, scales automatically with the model). " +
-                 "Set a value > 0 to cap rays per scan for performance — excess rays are " +
+                 "Set a value > 0 to cap rays per scan for performance 鈥?excess rays are " +
                  "uniformly subsampled. Raycasts run in parallel via RaycastCommand.")]
         [SerializeField, Min(0)] private int _maxRaysPerScan = 0;
         [SerializeField] private LayerMask _layerMask = ~0;
@@ -191,7 +196,7 @@ namespace Unity.FoxgloveSDK.Components
                 case ProfileSource.BuiltInPreset:
                 default:
                     // BuiltInPreset is resolved via LidarModelRegistry in Start();
-                    // reaching here means the registry lookup failed → use the fallback.
+                    // reaching here means the registry lookup failed 鈫?use the fallback.
                     return null;
             }
         }
@@ -287,8 +292,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _columnStep = Math.Max(1, _columnStep);
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
-            _syntheticReflectivity = Mathf.Clamp01(_syntheticReflectivity);
-            _syntheticIntensity = Mathf.Clamp01(_syntheticIntensity);
         }
     }
 }
+

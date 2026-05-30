@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -11,6 +11,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// <summary>
     /// Creates an ILidarScanPattern from a model spec, parsed metadata, or custom parameters.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public static class LidarScanPatternFactory
     {
         /// <summary>Creates a scan pattern from a preset model spec.</summary>
@@ -59,3 +64,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
+

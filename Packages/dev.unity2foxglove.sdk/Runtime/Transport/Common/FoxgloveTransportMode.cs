@@ -16,6 +16,9 @@ namespace Unity.FoxgloveSDK.Transport
         WebSocket,
 
         /// <summary>TLS WebSocket listener, for example <c>wss://127.0.0.1:8765</c>.</summary>
-        SecureWebSocket
+        SecureWebSocket,
+
+        /// <summary>No transport listener. Use when only ROS2 Bridge output is needed.</summary>
+        None = 2
     }
 }

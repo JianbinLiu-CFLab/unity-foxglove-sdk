@@ -13,6 +13,12 @@ namespace Unity.FoxgloveSDK.Components
     public partial class FoxgloveManager
     {
         /// <summary>
+        /// Transport mode used for listener operations when output is enabled.
+        /// </summary>
+        private FoxgloveTransportMode ActiveTransportMode
+            => _transportMode == FoxgloveTransportMode.None ? FoxgloveTransportMode.WebSocket : _transportMode;
+
+        /// <summary>
         /// Starts the WebSocket server and wires transport callbacks into the Unity main-thread queue.
         /// </summary>
         public void StartServer()
@@ -23,12 +29,18 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            if (!_foxgloveOutputEnabled)
+            {
+                return;
+            }
+
             if (!ValidateTransportConfiguration())
             {
                 return;
             }
 
             EnsureRuntimeCreated();
+
             RegisterAssetRoots();
             SetupPlaybackControl();
             if (!SetupRecording())
@@ -101,7 +113,7 @@ namespace Unity.FoxgloveSDK.Components
                 SharedToken = _sharedToken ?? string.Empty
             };
 
-            if (_transportMode == FoxgloveTransportMode.SecureWebSocket)
+            if (ActiveTransportMode == FoxgloveTransportMode.SecureWebSocket)
             {
                 var tlsOptions = new FoxgloveTlsOptions
                 {
@@ -120,6 +132,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <returns>True when the configured transport can be started.</returns>
         private bool ValidateTransportConfiguration()
         {
+            if (!_foxgloveOutputEnabled)
+            {
+                return true;
+            }
+
             if (!IsValidTcpPort(_port))
             {
                 Debug.LogError($"[Foxglove] Server port must be between 1 and 65535. Current value: {_port}");
@@ -132,10 +149,8 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (_transportMode != FoxgloveTransportMode.SecureWebSocket)
-            {
+            if (ActiveTransportMode != FoxgloveTransportMode.SecureWebSocket)
                 return true;
-            }
 
             var pfxPath = ResolveProjectPath(_certificatePfxPath);
             if (string.IsNullOrWhiteSpace(pfxPath))
@@ -166,7 +181,7 @@ namespace Unity.FoxgloveSDK.Components
             return FoxgloveAppUrl.BuildWebSocketEndpoint(
                 _host,
                 _port,
-                _transportMode == FoxgloveTransportMode.SecureWebSocket,
+                ActiveTransportMode == FoxgloveTransportMode.SecureWebSocket,
                 _sharedToken,
                 redactToken);
         }

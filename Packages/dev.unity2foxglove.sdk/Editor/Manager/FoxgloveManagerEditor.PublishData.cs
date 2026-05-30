@@ -16,6 +16,12 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private void DrawPublishDataSection()
         {
+            FoxgloveManagerInspectorLayout.Subheader("Output Mode");
+            DrawProperty("_foxgloveOutputEnabled", "Foxglove WebSocket");
+            DrawProperty("_ros2NativeEnabled", "ROS2 Native (R2FU)");
+            DrawProperty("_ros2BridgeEnabled", "ROS2 Bridge");
+
+            EditorGUILayout.Space();
             FoxgloveManagerInspectorLayout.Subheader("Publish Rate");
             DrawFloatProperty(
                 "_defaultPublishRateHz",
