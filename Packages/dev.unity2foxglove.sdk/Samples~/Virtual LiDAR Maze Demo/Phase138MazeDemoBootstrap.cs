@@ -70,7 +70,33 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(basePublisher, "_parentFrameId", "map");
             SetPrivateField(basePublisher, "_childFrameId", "base_link");
 
-            // 4. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
+            // 4. IMU on a dedicated mount under base_link (imu_link). Readings come from the
+            // vehicle Rigidbody, so the mount only places imu_link in the TF tree (mirrors LidarMount).
+            var imuMount = new GameObject("IMUMount").transform;
+            imuMount.SetParent(vehicleGo.transform, false);
+            imuMount.localPosition = new Vector3(0f, 0.1f, 0f);
+
+            var imu = imuMount.gameObject.AddComponent<VirtualImu>();
+            SetPrivateField(imu, "_manager", manager);
+            SetPrivateField(imu, "_rigidbody", vehicleRb);
+            SetPrivateField(imu, "_frameId", "imu_link");
+            SetPrivateField(imu, "_topic", "/imu/data");
+            SetPrivateField(imu, "_publishOnStart", true);
+            SetPrivateField(imu, "_includeOrientation", true);
+            SetPrivateField(imu, "_globalPhysicsRateHzOverride", 0);
+            SetPrivateField(imu, "_enableNoise", false);
+            SetPrivateField(imu, "_accelNoiseStdDev", 0f);
+            SetPrivateField(imu, "_gyroNoiseStdDev", 0f);
+
+            var imuPublisher = imuMount.gameObject.AddComponent<FoxgloveTransformPublisher>();
+            SetPrivateField(imuPublisher, "_manager", manager);
+            // Distinct topic from base_link's publisher (same shared-/tf guard as the LiDAR).
+            SetPrivateField(imuPublisher, "_topic", "/tf_imu");
+            SetPrivateField(imuPublisher, "_parentFrameId", "base_link");
+            SetPrivateField(imuPublisher, "_childFrameId", "imu_link");
+            SetPrivateField(imuPublisher, "_useLocalTransform", true);
+
+            // 5. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
             var lidar = lidarMount.gameObject.AddComponent<VirtualLidar>();
             SetPrivateField(lidar, "_frameId", "vehicle_lidar");
             SetPrivateField(lidar, "_pointCloudPublisher", publisher);
@@ -145,4 +171,3 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
-

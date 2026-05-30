@@ -25,12 +25,12 @@
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
     <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
-    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs" />
+    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualImu.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
     <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/Ros2Msg/**/*.cs" />
-    <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs" />
+    <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs;../../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs" />
     <Compile Include="../../Runtime/Schemas/Proto/Ros2Bridge/Ros2BridgePublisher.cs" />
     <Compile Include="../../Runtime/Utilities/*.cs" />
     <Compile Include="Program.cs" />
@@ -126,6 +126,7 @@
     <Compile Include="Phase143Validation.cs" />
     <Compile Include="Phase138Validation.cs" />
     <Compile Include="Phase138BValidation.cs" />
+    <Compile Include="Phase138DValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
     <Compile Include="Phase108Validation.cs" />
     <Compile Include="Phase109Validation.cs" />
