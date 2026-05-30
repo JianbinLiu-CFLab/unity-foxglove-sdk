@@ -52,13 +52,10 @@ namespace Unity.FoxgloveSDK.Util
             for (var i = 0; i < pointCount; i++)
             {
                 var point = frame.Points[i];
-                if (point == null)
-                    continue;
-
-                hasIntensity |= point.Intensity.HasValue;
-                hasReflectivity |= point.Reflectivity.HasValue;
-                hasRing |= point.Ring.HasValue;
-                hasTimeOffset |= point.TimeOffsetSeconds.HasValue;
+                hasIntensity |= point.HasIntensity;
+                hasReflectivity |= point.HasReflectivity;
+                hasRing |= point.HasRing;
+                hasTimeOffset |= point.HasTimeOffset;
             }
 
             var stride = XyzPackedStrideBytes;
@@ -160,9 +157,6 @@ namespace Unity.FoxgloveSDK.Util
             for (var i = 0; i < pointCount; i++)
             {
                 var point = frame.Points[i];
-                if (point == null)
-                    continue;
-
                 var key = VoxelKey.From(point, voxelSizeMeters);
                 if (seen.Add(key))
                     indices.Add(i);
@@ -174,14 +168,14 @@ namespace Unity.FoxgloveSDK.Util
         private static int[] BuildNonNullPointIndices(PointCloudFrame frame)
         {
             var pointCount = frame.GetPointCount();
-            var indices = new List<int>();
-            for (var i = 0; i < pointCount; i++)
-            {
-                if (frame.Points[i] != null)
-                    indices.Add(i);
-            }
+            if (pointCount <= 0)
+                return Array.Empty<int>();
 
-            return indices.Count == 0 ? Array.Empty<int>() : indices.ToArray();
+            var indices = new int[pointCount];
+            for (var i = 0; i < pointCount; i++)
+                indices[i] = i;
+
+            return indices;
         }
 
         private readonly struct VoxelKey : IEquatable<VoxelKey>

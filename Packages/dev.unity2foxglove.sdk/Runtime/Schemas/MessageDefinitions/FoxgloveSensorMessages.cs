@@ -82,15 +82,24 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("P")] public List<double> P { get; set; } = new List<double>();
     }
 
-    /// <summary>One point in a generated point cloud frame.</summary>
-    public class PointCloudPoint
+    /// <summary>
+    /// One point in a generated point cloud frame. Value type (struct) so dense
+    /// scans store points in a contiguous buffer with no per-point heap allocation.
+    /// Optional fields use sentinels (<see cref="float.NaN"/> / <see cref="ushort.MaxValue"/>)
+    /// instead of nullables to stay blittable-friendly; use the Has* properties to test presence.
+    /// </summary>
+    public struct PointCloudPoint
     {
-        /// <summary>Create a point with required XYZ fields.</summary>
+        /// <summary>Create a point with required XYZ fields; optional fields default to absent.</summary>
         public PointCloudPoint(float x, float y, float z)
         {
             X = x;
             Y = y;
             Z = z;
+            Intensity = float.NaN;
+            Reflectivity = float.NaN;
+            TimeOffsetSeconds = float.NaN;
+            Ring = ushort.MaxValue;
         }
 
         /// <summary>X coordinate.</summary>
@@ -99,14 +108,23 @@ namespace Unity.FoxgloveSDK.Schemas
         public float Y { get; set; }
         /// <summary>Z coordinate.</summary>
         public float Z { get; set; }
-        /// <summary>Optional intensity value.</summary>
-        public float? Intensity { get; set; }
-        /// <summary>Optional reflectivity value.</summary>
-        public float? Reflectivity { get; set; }
-        /// <summary>Optional laser ring/channel index.</summary>
-        public ushort? Ring { get; set; }
-        /// <summary>Optional per-point time offset in seconds.</summary>
-        public float? TimeOffsetSeconds { get; set; }
+        /// <summary>Optional intensity value; <see cref="float.NaN"/> means absent.</summary>
+        public float Intensity { get; set; }
+        /// <summary>Optional reflectivity value; <see cref="float.NaN"/> means absent.</summary>
+        public float Reflectivity { get; set; }
+        /// <summary>Optional laser ring/channel index; <see cref="ushort.MaxValue"/> means absent.</summary>
+        public ushort Ring { get; set; }
+        /// <summary>Optional per-point time offset in seconds; <see cref="float.NaN"/> means absent.</summary>
+        public float TimeOffsetSeconds { get; set; }
+
+        /// <summary>Whether an intensity value is present.</summary>
+        public bool HasIntensity => !float.IsNaN(Intensity);
+        /// <summary>Whether a reflectivity value is present.</summary>
+        public bool HasReflectivity => !float.IsNaN(Reflectivity);
+        /// <summary>Whether a ring/channel index is present.</summary>
+        public bool HasRing => Ring != ushort.MaxValue;
+        /// <summary>Whether a per-point time offset is present.</summary>
+        public bool HasTimeOffset => !float.IsNaN(TimeOffsetSeconds);
     }
 
     /// <summary>Input frame for building PointCloud JSON/protobuf payloads.</summary>

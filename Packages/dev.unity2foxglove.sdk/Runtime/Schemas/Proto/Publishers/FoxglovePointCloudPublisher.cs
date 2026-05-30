@@ -447,14 +447,8 @@ namespace Unity.FoxgloveSDK.Components
 
             for (var i = 0; i < pointCount; i++)
             {
-                var point = frame.Points[i];
-                copy.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
-                {
-                    Intensity = point.Intensity,
-                    Reflectivity = point.Reflectivity,
-                    Ring = point.Ring,
-                    TimeOffsetSeconds = point.TimeOffsetSeconds
-                });
+                // Struct value-copy: no per-point heap allocation.
+                copy.Points.Add(frame.Points[i]);
             }
 
             return copy;

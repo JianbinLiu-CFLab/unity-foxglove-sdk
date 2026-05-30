@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Components
         private NativeArray<ushort> _rayRings;
         private NativeArray<VirtualLidarHitData> _rayHits;
         private NativeArray<VirtualLidarPointData> _pointData;
-        private PointCloudPoint[] _pointDataManaged;
+        private VirtualLidarPointData[] _pointDataManaged;
         private int _rawRayCount;       // pattern.RayCount
         private int _effectiveRayCount; // rays actually cast per scan (after budget)
         private int _rayStride;         // subsampling stride into the pattern
@@ -171,8 +171,9 @@ namespace Unity.FoxgloveSDK.Components
             _rayHits = new NativeArray<VirtualLidarHitData>(_effectiveRayCount, Allocator.Persistent);
             _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
 
-            if (_pointDataManaged == null || _pointDataManaged.Length < _effectiveRayCount)
-                _pointDataManaged = new PointCloudPoint[_effectiveRayCount];
+            // Exact length so NativeArray.CopyTo(_pointDataManaged) never length-mismatches
+            // (CopyTo requires equal lengths; _pointData is reallocated to _effectiveRayCount here too).
+            _pointDataManaged = new VirtualLidarPointData[_effectiveRayCount];
         }
 
         private void DisposeScanBuffers()
@@ -312,7 +313,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     Point = new float3(hit.point.x, hit.point.y, hit.point.z),
                     Distance = hit.distance,
-                    ColliderInstanceId = hit.collider == null ? 0 : hit.colliderInstanceID
+                    ColliderInstanceId = hit.collider == null ? 0 : hit.collider.GetInstanceID()
                 };
             }
 
@@ -331,8 +332,10 @@ namespace Unity.FoxgloveSDK.Components
 
             job.Schedule(_effectiveRayCount, 64).Complete();
 
-            frame.Points.EnsureCapacity(_effectiveRayCount);
-            frame.Points.Clear();
+            // List<T>.EnsureCapacity is unavailable in Unity's .NET profile; the Capacity
+            // setter pre-sizes the backing array the same way (grow-only).
+            if (frame.Points.Capacity < _effectiveRayCount)
+                frame.Points.Capacity = _effectiveRayCount;
             _pointData.CopyTo(_pointDataManaged);
 
             var validPointCount = 0;

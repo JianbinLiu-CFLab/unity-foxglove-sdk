@@ -97,10 +97,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     writer.Write(point.Y);
                     writer.Write(point.Z);
 
-                    if (layout.HasIntensity) writer.Write(point.Intensity ?? 0f);
-                    if (layout.HasReflectivity) writer.Write(point.Reflectivity ?? 0f);
-                    if (layout.HasRing) writer.Write(point.Ring ?? (ushort)0);
-                    if (layout.HasTimeOffset) writer.Write(point.TimeOffsetSeconds ?? 0f);
+                    if (layout.HasIntensity) writer.Write(point.HasIntensity ? point.Intensity : 0f);
+                    if (layout.HasReflectivity) writer.Write(point.HasReflectivity ? point.Reflectivity : 0f);
+                    if (layout.HasRing) writer.Write(point.HasRing ? point.Ring : (ushort)0);
+                    if (layout.HasTimeOffset) writer.Write(point.HasTimeOffset ? point.TimeOffsetSeconds : 0f);
                 }
 
                 return stream.ToArray();
@@ -135,10 +135,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 for (var i = 0; i < pointCount; i++)
                 {
                     var point = frame.Points[i];
-                    layout.HasIntensity |= point.Intensity.HasValue;
-                    layout.HasReflectivity |= point.Reflectivity.HasValue;
-                    layout.HasRing |= point.Ring.HasValue;
-                    layout.HasTimeOffset |= point.TimeOffsetSeconds.HasValue;
+                    layout.HasIntensity |= point.HasIntensity;
+                    layout.HasReflectivity |= point.HasReflectivity;
+                    layout.HasRing |= point.HasRing;
+                    layout.HasTimeOffset |= point.HasTimeOffset;
                 }
 
                 var fields = new List<PointCloudPackedField>

@@ -62,12 +62,11 @@ namespace Unity.FoxgloveSDK.Tests
             var indices = PointCloudQoS.BuildVoxelSampleIndices(frame, 0.1f);
             Check(indices.SequenceEqual(new[] { 0, 2 }),
                 "84B-1: voxel sampling keeps first source point per voxel in source order");
-            Check(ReferenceEquals(frame.Points[indices[0]], first)
-                  && frame.Points[indices[0]].Intensity == 0.75f
+            Check(frame.Points[indices[0]].Intensity == 0.75f
                   && frame.Points[indices[0]].Reflectivity == 0.25f
                   && frame.Points[indices[0]].Ring == 7
                   && frame.Points[indices[0]].TimeOffsetSeconds == 0.001f,
-                "84B-2: representative points preserve optional fields by reusing source points");
+                "84B-2: representative point at the source index preserves optional fields");
 
             var negative = new PointCloudFrame();
             negative.Points.Add(new PointCloudPoint(-0.01f, 0f, 0f));
