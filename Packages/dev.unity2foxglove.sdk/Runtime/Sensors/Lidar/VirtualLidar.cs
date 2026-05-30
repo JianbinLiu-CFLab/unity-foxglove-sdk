@@ -499,7 +499,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             // Parallel raycast across worker threads, then process results on main thread.
-            RaycastCommand.ScheduleBatch(_commands.Slice(0, batchCount), _results.Slice(0, batchCount), 64).Complete();
+            RaycastCommand.ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete();
 
             var minRange = (float)_scanPattern.MinRangeMeters;
             for (var k = 0; k < batchCount; k++)
