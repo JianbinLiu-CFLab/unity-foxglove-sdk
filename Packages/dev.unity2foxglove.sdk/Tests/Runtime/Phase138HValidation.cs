@@ -64,15 +64,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_scanSubSteps"), "138H-3: VirtualLidar exposes configurable _scanSubSteps");
             Check(source.Contains("_activeScanStartPhysSeconds"),
                 "138H-4: VirtualLidar tracks each scan's physical-start epoch for shared timing");
-            Check(source.Contains("_scanColumnProgress") && source.Contains("subStepsPerScan"),
-                "138H-5: VirtualLidar advances streaming scans by scan sub-steps");
+            Check(source.Contains("_scanColumnProgress") && source.Contains("columnsToEmit"),
+                "138H-5: VirtualLidar advances the streaming scan by columns per tick");
             Check(source.Contains("StartNewScan(_activeScanStartPhysSeconds + _scanPeriod)"),
                 "138H-6: VirtualLidar restarts each completed scan from prior scan start + period");
-            Check(source.Contains("scanSubStepOffset = _scanColumnCursor % subStepsPerScan")
-                && source.Contains("Math.Min(1f, timeOffset + subStepOffset)"),
-                "138H-7: per-sub-step time offset adds sub-step phase inside scan columns");
-            Check(source.Contains("RunStreamingColumn("),
-                "138H-8: VirtualLidar has streaming column worker");
+            Check(source.Contains("_scanCrossings") && source.Contains("GetSubArray"),
+                "138H-7: per-tick batch casts one ScheduleBatch slice and publishes at revolution crossings");
+            Check(source.Contains("_columnRays"),
+                "138H-8: VirtualLidar buckets rays by column (removes the per-column O(N) scan)");
             Check(source.Contains("RaycastCommand.ScheduleBatch") &&
                   source.Contains("_pointCloudPublisher.SetFrame(_activeScanFrame)"),
                 "138H-9: streaming worker writes managed frame buffer and publishes via publisher SetFrame");

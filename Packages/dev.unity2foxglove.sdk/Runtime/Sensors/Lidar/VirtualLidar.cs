@@ -107,8 +107,6 @@ namespace Unity.FoxgloveSDK.Components
 
         // Stream state.
         private bool _hasPrevPose;
-        private Vector3 _prevPosePosition;
-        private Quaternion _prevPoseRotation;
         private double _prevFixedTime;
         private double _scanColumnProgress;
         private int _scanColumnCursor;
@@ -116,6 +114,12 @@ namespace Unity.FoxgloveSDK.Components
         private PointCloudFrame _activeScanFrame;
         private int _activeScanValidPoints;
         private double _activeScanStartPhysSeconds;
+        // Rays grouped by column (built once) so a tick batch gathers a column's rays in
+        // O(rays-in-column) instead of scanning all rays per column (the O(N^2) hot path).
+        private int[][] _columnRays;
+        // Ray-index positions inside the current tick batch where a revolution completes.
+        private readonly System.Collections.Generic.List<int> _scanCrossings =
+            new System.Collections.Generic.List<int>();
 
         // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
         private NativeArray<RaycastCommand> _commands;
@@ -216,6 +220,20 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_scanColumnCount <= 0)
                 _scanColumnCount = Math.Max(1, rawColumns);
+
+            // Bucket ray indices by column once (CSR-style jagged array) for O(1) column gather.
+            var columnCounts = new int[_scanColumnCount];
+            for (var k = 0; k < _effectiveRayCount; k++)
+                columnCounts[_rayColumns[k]]++;
+            _columnRays = new int[_scanColumnCount][];
+            for (var c = 0; c < _scanColumnCount; c++)
+                _columnRays[c] = new int[columnCounts[c]];
+            var columnFill = new int[_scanColumnCount];
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var c = _rayColumns[k];
+                _columnRays[c][columnFill[c]++] = k;
+            }
         }
 
         private void DisposeScanBuffers()
@@ -227,6 +245,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_rayHits.IsCreated) _rayHits.Dispose();
             if (_pointData.IsCreated) _pointData.Dispose();
             _rayColumns = null;
+            _columnRays = null;
             _commands = default;
             _results = default;
             _rayTimeOffsets = default;
@@ -302,81 +321,139 @@ namespace Unity.FoxgloveSDK.Components
             if (!_hasPrevPose)
             {
                 _hasPrevPose = true;
-                _prevPosePosition = transform.position;
-                _prevPoseRotation = transform.rotation;
                 _prevFixedTime = nowPhys;
                 return;
             }
 
             var dt = nowPhys - _prevFixedTime;
+            _prevFixedTime = nowPhys;
             if (dt <= 0d)
-            {
-                _prevPosePosition = transform.position;
-                _prevPoseRotation = transform.rotation;
-                _prevFixedTime = nowPhys;
                 return;
-            }
 
-            var subStepsPerColumn = Math.Max(1, _scanSubSteps);
-            var subStepsPerScan = Math.Max(1, _scanColumnCount * subStepsPerColumn);
-            var subStepsToEmit = dt * subStepsPerScan / Math.Max(1e-12, _scanPeriod);
-            if (subStepsToEmit <= 0d)
-            {
-                _prevPosePosition = transform.position;
-                _prevPoseRotation = transform.rotation;
-                _prevFixedTime = nowPhys;
+            // Columns to advance this tick; carry the fractional remainder to avoid drift.
+            _scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, _scanPeriod);
+            var columnsToEmit = (int)Math.Floor(_scanColumnProgress);
+            if (columnsToEmit <= 0)
                 return;
-            }
+            _scanColumnProgress -= columnsToEmit;
 
-            _scanColumnProgress += subStepsToEmit;
+            // One tick-end pose for the whole batch: a single worldToLocal keeps the build
+            // job unchanged (no per-ray matrix). One revolution => _scanColumnCount poses,
+            // enough for IMU de-skew. Per-column pose interpolation is a future option.
+            var worldPos = transform.position;
+            var worldRot = transform.rotation;
+            var worldToLocal = Matrix4x4.TRS(worldPos, worldRot, Vector3.one).inverse.ToFloat4x4();
+            var queryParams = new QueryParameters(_layerMask.value);
 
-            var endPos = transform.position;
-            var endRot = transform.rotation;
-            var startPos = _prevPosePosition;
-            var startRot = _prevPoseRotation;
-            var emittedSubSteps = (int)Math.Floor(_scanColumnProgress);
-            if (emittedSubSteps <= 0)
+            // Build one batch for all columns this tick (cap at one revolution).
+            _scanCrossings.Clear();
+            var batchCount = 0;
+            for (var c = 0; c < columnsToEmit && batchCount < _effectiveRayCount; c++)
             {
-                _prevPosePosition = endPos;
-                _prevPoseRotation = endRot;
-                _prevFixedTime = nowPhys;
-                return;
-            }
+                var rays = _columnRays[_scanColumnCursor];
+                for (var r = 0; r < rays.Length && batchCount < _effectiveRayCount; r++)
+                {
+                    var k = rays[r];
+                    var index = k * _rayStride;
+                    if (index >= _rawRayCount) index = _rawRayCount - 1;
 
-            for (var i = 0; i < emittedSubSteps; i++)
-            {
-                _scanColumnProgress -= 1d;
-                var scanSubStep = _scanColumnCursor;
-                var column = scanSubStep / subStepsPerColumn;
-                var subStepIndex = scanSubStep % subStepsPerColumn;
-                var scanSubStepOffset = _scanColumnCursor % subStepsPerScan;
-                var subStepProgress = subStepsPerScan > 1
-                    ? (float)(scanSubStepOffset + 1) / subStepsPerScan
-                    : 1f;
-
-                RunStreamingColumn(column, startPos, startRot, endPos, endRot, subStepProgress, subStepIndex, subStepsPerColumn);
+                    if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
+                    {
+                        _commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                        _rayTimeOffsets[batchCount] = 0f;
+                        _rayRings[batchCount] = 0;
+                    }
+                    else
+                    {
+                        var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
+                        _commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                        _rayTimeOffsets[batchCount] = timeOffset;
+                        _rayRings[batchCount] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+                    }
+                    batchCount++;
+                }
 
                 _scanColumnCursor++;
-                if (_scanColumnCursor >= subStepsPerScan)
+                if (_scanColumnCursor >= _scanColumnCount)
                 {
-                    PublishActiveScan();
-                    StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
+                    _scanCrossings.Add(batchCount);
                     _scanColumnCursor = 0;
                 }
             }
 
-            _prevPosePosition = endPos;
-            _prevPoseRotation = endRot;
-            _prevFixedTime = nowPhys;
+            if (batchCount <= 0)
+                return;
+
+            // One parallel raycast + one build job for the entire tick batch.
+            RaycastCommand.ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete();
+
+            var minRange = (float)_scanPattern.MinRangeMeters;
+            for (var k = 0; k < batchCount; k++)
+            {
+                var hit = _results[k];
+                _rayHits[k] = new VirtualLidarHitData
+                {
+                    Point = new float3(hit.point.x, hit.point.y, hit.point.z),
+                    Distance = hit.distance,
+                    ColliderInstanceId = hit.collider == null ? 0u : (uint)hit.colliderInstanceID
+                };
+            }
+
+            var job = new VirtualLidarBuildPointsJob
+            {
+                Hits = _rayHits,
+                RayTimeOffsets = _rayTimeOffsets,
+                RayRings = _rayRings,
+                WorldToLocal = worldToLocal,
+                MinRange = minRange,
+                MaxRange = _maxRangeMeters,
+                SyntheticIntensity = _syntheticIntensity,
+                SyntheticReflectivity = _syntheticReflectivity,
+                Points = _pointData
+            };
+            job.Schedule(batchCount, 64).Complete();
+            _pointData.CopyTo(_pointDataManaged);
+
+            // Distribute points to the active frame, publishing each completed revolution.
+            var ci = 0;
+            for (var k = 0; k < batchCount; k++)
+            {
+                while (ci < _scanCrossings.Count && k == _scanCrossings[ci])
+                {
+                    PublishActiveScan();
+                    StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
+                    ci++;
+                }
+
+                var point = _pointDataManaged[k];
+                if (point.IsValid == 0)
+                    continue;
+
+                _activeScanFrame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
+                {
+                    Intensity = point.Intensity,
+                    Reflectivity = point.Reflectivity,
+                    TimeOffsetSeconds = point.TimeOffsetSeconds,
+                    Ring = point.Ring
+                });
+                _activeScanValidPoints++;
+            }
+            while (ci < _scanCrossings.Count && batchCount == _scanCrossings[ci])
+            {
+                PublishActiveScan();
+                StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
+                ci++;
+            }
         }
 
         private void StartNewScan(double scanStartPhysSeconds)
         {
             EnsureScanClock(Time.fixedTimeAsDouble);
 
+            // Note: scan phase (_scanColumnProgress/_scanColumnCursor) is owned by FixedUpdate
+            // and ResetScanState; StartNewScan must not clear it or a cross-revolution restart
+            // would drop the in-tick remainder.
             _activeScanStartPhysSeconds = scanStartPhysSeconds;
-            _scanColumnProgress = 0d;
-            _scanColumnCursor = 0;
             _activeScanFrame = new PointCloudFrame
             {
                 UnixNs = ComputeScanStartUnixNs(scanStartPhysSeconds),
@@ -437,121 +514,6 @@ namespace Unity.FoxgloveSDK.Components
             _scanColumnCursor = 0;
             _scanColumnProgress = 0d;
             StartNewScan(physNow);
-        }
-
-        private void RunStreamingColumn(
-            int column,
-            Vector3 startPos,
-            Quaternion startRot,
-            Vector3 endPos,
-            Quaternion endRot,
-            float poseBlend,
-            int subStepIndex,
-            int subStepsPerColumn)
-        {
-            if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
-                return;
-            if (_activeScanFrame == null)
-                StartNewScan(Time.fixedTimeAsDouble);
-
-            var worldPos = Vector3.Lerp(startPos, endPos, Math.Clamp(poseBlend, 0f, 1f));
-            var worldRot = Quaternion.Slerp(startRot, endRot, Math.Clamp(poseBlend, 0f, 1f));
-            var worldToLocal = Matrix4x4.TRS(worldPos, worldRot, Vector3.one).inverse.ToFloat4x4();
-            var queryParams = new QueryParameters(_layerMask.value);
-            var batchCount = 0;
-
-            // Build one sub-scan batch on the main thread (cheap), then cast in parallel.
-            for (var k = 0; k < _effectiveRayCount; k++)
-            {
-                if (_rayColumns[k] != column)
-                    continue;
-
-                var index = k * _rayStride;
-                if (index >= _rawRayCount) index = _rawRayCount - 1;
-
-                if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
-                {
-                    _commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                    _rayTimeOffsets[batchCount] = 0f;
-                    _rayRings[batchCount] = 0;
-                    _rayHits[batchCount] = new VirtualLidarHitData
-                    {
-                        Point = float3.zero,
-                        Distance = 0f,
-                        ColliderInstanceId = 0
-                    };
-                }
-                else
-                {
-                    var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
-                    _commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                    var subStepOffset = subStepsPerColumn <= 1
-                        ? 0f
-                        : subStepIndex / (float)(_scanColumnCount * subStepsPerColumn);
-                    _rayTimeOffsets[batchCount] = Math.Min(1f, timeOffset + subStepOffset);
-                    _rayRings[batchCount] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
-                }
-
-                batchCount++;
-            }
-
-            if (batchCount <= 0)
-                return;
-
-            // Parallel raycast across worker threads, then process results on main thread.
-            RaycastCommand.ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete();
-
-            var minRange = (float)_scanPattern.MinRangeMeters;
-            for (var k = 0; k < batchCount; k++)
-            {
-                var hit = _results[k];
-                _rayHits[k] = new VirtualLidarHitData
-                {
-                    Point = new float3(hit.point.x, hit.point.y, hit.point.z),
-                    Distance = hit.distance,
-                    ColliderInstanceId = hit.collider == null ? 0u : (uint)hit.colliderInstanceID
-                };
-            }
-
-            var job = new VirtualLidarBuildPointsJob
-            {
-                Hits = _rayHits,
-                RayTimeOffsets = _rayTimeOffsets,
-                RayRings = _rayRings,
-                WorldToLocal = worldToLocal,
-                MinRange = minRange,
-                MaxRange = _maxRangeMeters,
-                SyntheticIntensity = _syntheticIntensity,
-                SyntheticReflectivity = _syntheticReflectivity,
-                Points = _pointData
-            };
-
-            job.Schedule(batchCount, 64).Complete();
-
-            _pointData.CopyTo(_pointDataManaged);
-
-            var validPointCount = 0;
-            for (var k = 0; k < batchCount; k++)
-            {
-                var point = _pointDataManaged[k];
-                if (point.IsValid == 0)
-                    continue;
-
-                _activeScanFrame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
-                {
-                    Intensity = point.Intensity,
-                    Reflectivity = point.Reflectivity,
-                    TimeOffsetSeconds = point.TimeOffsetSeconds,
-                    Ring = point.Ring
-                });
-
-                if (_drawDebugRays)
-                    Debug.DrawRay(_commands[k].from, _commands[k].direction * _rayHits[k].Distance, Color.green, _scanPeriod);
-
-                validPointCount++;
-            }
-
-            _activeScanValidPoints += validPointCount;
         }
 
         private void OnValidate()
