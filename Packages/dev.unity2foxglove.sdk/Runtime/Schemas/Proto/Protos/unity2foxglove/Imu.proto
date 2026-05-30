@@ -1,0 +1,29 @@
+﻿syntax = "proto3";
+
+package unity2foxglove;
+
+import "google/protobuf/timestamp.proto";
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Quat {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double w = 4;
+}
+
+message Imu {
+  google.protobuf.Timestamp timestamp = 1;
+  string frame_id = 2;
+  Vec3 linear_acceleration = 3;
+  Vec3 angular_velocity = 4;
+  Quat orientation = 5;
+  repeated double orientation_covariance = 6;
+  repeated double angular_velocity_covariance = 7;
+  repeated double linear_acceleration_covariance = 8;
+}

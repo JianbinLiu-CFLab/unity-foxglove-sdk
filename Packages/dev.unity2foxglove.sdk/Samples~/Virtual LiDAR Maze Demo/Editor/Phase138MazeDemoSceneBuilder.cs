@@ -101,7 +101,28 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(basePub, "_parentFrameId", "map");
             SetField(basePub, "_childFrameId", "base_link");
 
-            // 4. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
+            // 4. IMU on a dedicated mount under base_link (imu_link). Readings come from the
+            // vehicle Rigidbody; the mount only places imu_link in the TF tree (mirrors LidarMount).
+            var imuMount = new GameObject("IMUMount");
+            Undo.RegisterCreatedObjectUndo(imuMount, "Build Maze Demo");
+            imuMount.transform.SetParent(vehicleGo.transform, false);
+            imuMount.transform.localPosition = new Vector3(0f, 0.1f, 0f);
+
+            var imu = imuMount.AddComponent<VirtualImu>();
+            SetField(imu, "_manager", manager);
+            SetField(imu, "_rigidbody", rb);
+            SetField(imu, "_frameId", "imu_link");
+            SetField(imu, "_topic", "/imu/data");
+
+            var imuPub = imuMount.AddComponent<FoxgloveTransformPublisher>();
+            SetField(imuPub, "_manager", manager);
+            // Separate topic from base_link's publisher (same shared-/tf guard as the LiDAR).
+            SetField(imuPub, "_topic", "/tf_imu");
+            SetField(imuPub, "_parentFrameId", "base_link");
+            SetField(imuPub, "_childFrameId", "imu_link");
+            SetField(imuPub, "_useLocalTransform", true);
+
+            // 5. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
             var lidar = lidarMount.gameObject.AddComponent<VirtualLidar>();
             SetField(lidar, "_frameId", "vehicle_lidar");
             SetField(lidar, "_pointCloudPublisher", publisher);
