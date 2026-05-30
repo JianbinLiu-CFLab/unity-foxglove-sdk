@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _customPixelsPerColumn, _customFovTopDeg, _customFovBottomDeg,
             _customColumnsPerFrame, _customScanRateHz, _customMinRangeMeters;
         private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters,
-            _scanRateSource, _scanRateHzOverride,
+            _scanSubSteps, _scanRateSource, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
         private SerializedProperty _syntheticReflectivity, _syntheticIntensity;
         private SerializedProperty _pointCloudPublisher;
@@ -55,6 +55,7 @@ namespace Unity.FoxgloveSDK.Editor
             _columnStep = serializedObject.FindProperty("_columnStep");
             _maxRaysPerScan = serializedObject.FindProperty("_maxRaysPerScan");
             _maxRangeMeters = serializedObject.FindProperty("_maxRangeMeters");
+            _scanSubSteps = serializedObject.FindProperty("_scanSubSteps");
             _scanRateSource = serializedObject.FindProperty("_scanRateSource");
             _scanRateHzOverride = serializedObject.FindProperty("_scanRateHzOverride");
             _layerMask = serializedObject.FindProperty("_layerMask");
@@ -89,6 +90,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.PropertyField(_frameId);               // [Header("Scan")]
             EditorGUILayout.PropertyField(_columnStep);
+            EditorGUILayout.PropertyField(_scanSubSteps);
             EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
 
@@ -211,6 +213,12 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.FloatField("Scan Rate (Hz)", (float)rate);
             EditorGUILayout.FloatField("Min Range (m)", (float)spec.MinRangeMeters);
             EditorGUILayout.FloatField("Max Range (m)", (float)spec.MaxRangeMeters);
+            var translation = spec.TIlTranslationMeters;
+            var rotation = spec.TIlRotation;
+            EditorGUILayout.Vector3Field("T_IL Translation (m)", new Vector3(
+                (float)translation.X, (float)translation.Y, (float)translation.Z));
+            EditorGUILayout.Vector3Field("T_IL Rotation (deg, euler)", new Quaternion(
+                (float)rotation.X, (float)rotation.Y, (float)rotation.Z, (float)rotation.W).eulerAngles);
             EditorGUI.EndDisabledGroup();
         }
 
@@ -238,4 +246,3 @@ namespace Unity.FoxgloveSDK.Editor
         }
     }
 }
-

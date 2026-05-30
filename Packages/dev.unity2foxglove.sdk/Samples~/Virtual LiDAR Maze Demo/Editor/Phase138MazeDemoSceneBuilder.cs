@@ -101,12 +101,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(basePub, "_parentFrameId", "map");
             SetField(basePub, "_childFrameId", "base_link");
 
-            // 4. IMU on a dedicated mount under base_link (imu_link). Readings come from the
-            // vehicle Rigidbody; the mount only places imu_link in the TF tree (mirrors LidarMount).
+            // 4. IMU on a dedicated mount under LiDAR mount (vehicle_lidar->imu_link = T_IL).
             var imuMount = new GameObject("IMUMount");
             Undo.RegisterCreatedObjectUndo(imuMount, "Build Maze Demo");
-            imuMount.transform.SetParent(vehicleGo.transform, false);
-            imuMount.transform.localPosition = new Vector3(0f, 0.1f, 0f);
+            imuMount.transform.SetParent(lidarMount, false);
+            ApplyImuMountTransform(imuMount.transform);
 
             var imu = imuMount.AddComponent<VirtualImu>();
             SetField(imu, "_manager", manager);
@@ -118,12 +117,13 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(imuPub, "_manager", manager);
             // Separate topic from base_link's publisher (same shared-/tf guard as the LiDAR).
             SetField(imuPub, "_topic", "/tf_imu");
-            SetField(imuPub, "_parentFrameId", "base_link");
+            SetField(imuPub, "_parentFrameId", "vehicle_lidar");
             SetField(imuPub, "_childFrameId", "imu_link");
             SetField(imuPub, "_useLocalTransform", true);
 
             // 5. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
             var lidar = lidarMount.gameObject.AddComponent<VirtualLidar>();
+            SetField(lidar, "_manager", manager);
             SetField(lidar, "_frameId", "vehicle_lidar");
             SetField(lidar, "_pointCloudPublisher", publisher);
             SetField(lidar, "_columnStep", 4);
@@ -206,6 +206,26 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             }
             return null;
         }
+
+        private static void ApplyImuMountTransform(Transform imuMount)
+        {
+            foreach (var spec in LidarModelRegistry.All)
+            {
+                if (spec.Model == "OS-1-32")
+                {
+                    var translation = spec.TIlTranslationMeters;
+                    imuMount.localPosition = new Vector3(
+                        (float)translation.X, (float)translation.Y, (float)translation.Z);
+
+                    var rotation = spec.TIlRotation;
+                    imuMount.localRotation = new Quaternion(
+                        (float)rotation.X, (float)rotation.Y, (float)rotation.Z, (float)rotation.W);
+                    return;
+                }
+            }
+
+            imuMount.localPosition = new Vector3(0f, 0.1f, 0f);
+            imuMount.localRotation = Quaternion.identity;
+        }
     }
 }
-

@@ -4,7 +4,6 @@
 // Module: Runtime/Sensors/Lidar
 
 using System;
-using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -46,6 +45,7 @@ namespace Unity.FoxgloveSDK.Components
 
         [Header("Output")]
         [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
+        [SerializeField] private FoxgloveManager _manager;
 
         [Header("Profile")]
         [Tooltip("Where the scan geometry comes from.")]
@@ -87,6 +87,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private LayerMask _layerMask = ~0;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
+        [SerializeField, Min(1)] private int _scanSubSteps = 1;
 
         [Header("Synthetic Values")]
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
@@ -97,8 +98,24 @@ namespace Unity.FoxgloveSDK.Components
 
         private ILidarScanPattern _scanPattern;
         private int _frameCounter;
-        private float _nextScanTime;
         private float _scanPeriod;
+
+        // Uniform sensor clock: single epoch shared across LiDAR scan lifecycle.
+        private bool _scanClockInitialized;
+        private ulong _scanEpochUnixNs;
+        private double _scanEpochPhysSeconds;
+
+        // Stream state.
+        private bool _hasPrevPose;
+        private Vector3 _prevPosePosition;
+        private Quaternion _prevPoseRotation;
+        private double _prevFixedTime;
+        private double _scanColumnProgress;
+        private int _scanColumnCursor;
+        private int _scanColumnCount;
+        private PointCloudFrame _activeScanFrame;
+        private int _activeScanValidPoints;
+        private double _activeScanStartPhysSeconds;
 
         // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
         private NativeArray<RaycastCommand> _commands;
@@ -108,6 +125,7 @@ namespace Unity.FoxgloveSDK.Components
         private NativeArray<VirtualLidarHitData> _rayHits;
         private NativeArray<VirtualLidarPointData> _pointData;
         private VirtualLidarPointData[] _pointDataManaged;
+        private int[] _rayColumns;
         private int _rawRayCount;       // pattern.RayCount
         private int _effectiveRayCount; // rays actually cast per scan (after budget)
         private int _rayStride;         // subsampling stride into the pattern
@@ -115,6 +133,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Start()
         {
+            if (_manager == null)
+                _manager = FindFirstObjectByType<FoxgloveManager>();
+
             if (_profileSource == ProfileSource.BuiltInPreset)
             {
                 if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
@@ -142,9 +163,9 @@ namespace Unity.FoxgloveSDK.Components
                 ? _scanRateHzOverride
                 : _scanPattern.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
-            _nextScanTime = Time.unscaledTime;
 
             AllocateScanBuffers();
+            ResetScanState(Time.fixedTimeAsDouble);
         }
 
         private void AllocateScanBuffers()
@@ -170,10 +191,31 @@ namespace Unity.FoxgloveSDK.Components
             _rayRings = new NativeArray<ushort>(_effectiveRayCount, Allocator.Persistent);
             _rayHits = new NativeArray<VirtualLidarHitData>(_effectiveRayCount, Allocator.Persistent);
             _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
+            _rayColumns = new int[_effectiveRayCount];
 
             // Exact length so NativeArray.CopyTo(_pointDataManaged) never length-mismatches
             // (CopyTo requires equal lengths; _pointData is reallocated to _effectiveRayCount here too).
             _pointDataManaged = new VirtualLidarPointData[_effectiveRayCount];
+            _scanColumnCount = 0;
+
+            var rawColumns = _spinEffectiveColumns > 0 ? _spinEffectiveColumns : Math.Max(1, _rawRayCount);
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var index = k * _rayStride;
+                if (index >= _rawRayCount)
+                    index = _rawRayCount - 1;
+
+                var column = index % rawColumns;
+                if (column < 0 || column >= rawColumns)
+                    column = 0;
+
+                _rayColumns[k] = column;
+                if (column >= _scanColumnCount)
+                    _scanColumnCount = column + 1;
+            }
+
+            if (_scanColumnCount <= 0)
+                _scanColumnCount = Math.Max(1, rawColumns);
         }
 
         private void DisposeScanBuffers()
@@ -184,12 +226,14 @@ namespace Unity.FoxgloveSDK.Components
             if (_rayRings.IsCreated) _rayRings.Dispose();
             if (_rayHits.IsCreated) _rayHits.Dispose();
             if (_pointData.IsCreated) _pointData.Dispose();
+            _rayColumns = null;
             _commands = default;
             _results = default;
             _rayTimeOffsets = default;
             _rayRings = default;
             _rayHits = default;
             _pointData = default;
+            _scanColumnCount = 0;
         }
 
         private void OnDestroy()
@@ -200,6 +244,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnEnable()
         {
             AllocateScanBuffers();
+            ResetScanState(Time.fixedTimeAsDouble);
         }
 
         private void OnDisable()
@@ -240,80 +285,229 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void Update()
+        private void FixedUpdate()
         {
-            if (Time.unscaledTime < _nextScanTime)
+            if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
                 return;
 
-            var frame = RunScan();
-            LastFrame = frame;
+            if (_scanPeriod <= 0f || _scanColumnCount <= 0)
+                return;
 
-            if (_pointCloudPublisher != null && (frame.GetPointCount() > 0 || _publishEmptyFrames))
-                _pointCloudPublisher.SetFrame(frame);
+            EnsureScanClock(Time.fixedTimeAsDouble);
 
-            _nextScanTime += _scanPeriod;
+            if (_activeScanFrame == null)
+                StartNewScan(Time.fixedTimeAsDouble);
 
-            // Guard against large time gaps (e.g. editor pause)
-            if (_nextScanTime < Time.unscaledTime)
-                _nextScanTime = Time.unscaledTime + _scanPeriod;
+            var nowPhys = Time.fixedTimeAsDouble;
+            if (!_hasPrevPose)
+            {
+                _hasPrevPose = true;
+                _prevPosePosition = transform.position;
+                _prevPoseRotation = transform.rotation;
+                _prevFixedTime = nowPhys;
+                return;
+            }
+
+            var dt = nowPhys - _prevFixedTime;
+            if (dt <= 0d)
+            {
+                _prevPosePosition = transform.position;
+                _prevPoseRotation = transform.rotation;
+                _prevFixedTime = nowPhys;
+                return;
+            }
+
+            var subStepsPerColumn = Math.Max(1, _scanSubSteps);
+            var subStepsPerScan = Math.Max(1, _scanColumnCount * subStepsPerColumn);
+            var subStepsToEmit = dt * subStepsPerScan / Math.Max(1e-12, _scanPeriod);
+            if (subStepsToEmit <= 0d)
+            {
+                _prevPosePosition = transform.position;
+                _prevPoseRotation = transform.rotation;
+                _prevFixedTime = nowPhys;
+                return;
+            }
+
+            _scanColumnProgress += subStepsToEmit;
+
+            var endPos = transform.position;
+            var endRot = transform.rotation;
+            var startPos = _prevPosePosition;
+            var startRot = _prevPoseRotation;
+            var emittedSubSteps = (int)Math.Floor(_scanColumnProgress);
+            if (emittedSubSteps <= 0)
+            {
+                _prevPosePosition = endPos;
+                _prevPoseRotation = endRot;
+                _prevFixedTime = nowPhys;
+                return;
+            }
+
+            for (var i = 0; i < emittedSubSteps; i++)
+            {
+                _scanColumnProgress -= 1d;
+                var scanSubStep = _scanColumnCursor;
+                var column = scanSubStep / subStepsPerColumn;
+                var subStepIndex = scanSubStep % subStepsPerColumn;
+                var scanSubStepOffset = _scanColumnCursor % subStepsPerScan;
+                var subStepProgress = subStepsPerScan > 1
+                    ? (float)(scanSubStepOffset + 1) / subStepsPerScan
+                    : 1f;
+
+                RunStreamingColumn(column, startPos, startRot, endPos, endRot, subStepProgress, subStepIndex, subStepsPerColumn);
+
+                _scanColumnCursor++;
+                if (_scanColumnCursor >= subStepsPerScan)
+                {
+                    PublishActiveScan();
+                    StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
+                    _scanColumnCursor = 0;
+                }
+            }
+
+            _prevPosePosition = endPos;
+            _prevPoseRotation = endRot;
+            _prevFixedTime = nowPhys;
         }
 
-        private PointCloudFrame RunScan()
+        private void StartNewScan(double scanStartPhysSeconds)
         {
-            var frame = new PointCloudFrame
+            EnsureScanClock(Time.fixedTimeAsDouble);
+
+            _activeScanStartPhysSeconds = scanStartPhysSeconds;
+            _scanColumnProgress = 0d;
+            _scanColumnCursor = 0;
+            _activeScanFrame = new PointCloudFrame
             {
-                UnixNs = FoxgloveTimeUtil.NowUnixTimeNs(),
+                UnixNs = ComputeScanStartUnixNs(scanStartPhysSeconds),
                 FrameId = _frameId,
                 ValidCount = 0
             };
+            _activeScanValidPoints = 0;
+            _activeScanFrame.Points.Clear();
+            if (_activeScanFrame.Points.Capacity < _effectiveRayCount)
+                _activeScanFrame.Points.Capacity = _effectiveRayCount;
+        }
 
+        private void PublishActiveScan()
+        {
+            if (_activeScanFrame == null)
+                return;
+
+            _activeScanFrame.ValidCount = _activeScanValidPoints;
+            LastFrame = _activeScanFrame;
+
+            if (_pointCloudPublisher != null && (_activeScanValidPoints > 0 || _publishEmptyFrames))
+                _pointCloudPublisher.SetFrame(_activeScanFrame);
+
+            _frameCounter++;
+        }
+
+        private ulong ComputeScanStartUnixNs(double scanStartPhysSeconds)
+        {
+            if (!_scanClockInitialized)
+                return FoxgloveTimeUtil.NowUnixTimeNs();
+
+            var deltaSeconds = scanStartPhysSeconds - _scanEpochPhysSeconds;
+            if (deltaSeconds < 0d)
+                deltaSeconds = 0d;
+
+            return checked(_scanEpochUnixNs + (ulong)Math.Round(deltaSeconds * 1e9));
+        }
+
+        private void EnsureScanClock(double physNow)
+        {
+            if (_scanClockInitialized)
+                return;
+
+            _scanClockInitialized = true;
+            _scanEpochPhysSeconds = physNow;
+            _scanEpochUnixNs = _manager == null
+                ? FoxgloveTimeUtil.NowUnixTimeNs()
+                : _manager.GetSharedSensorClockUnixTime(physNow);
+            _scanColumnProgress = 0d;
+        }
+
+        private void ResetScanState(double physNow)
+        {
+            EnsureScanClock(physNow);
+            _hasPrevPose = false;
+            _scanColumnCursor = 0;
+            _scanColumnProgress = 0d;
+            StartNewScan(physNow);
+        }
+
+        private void RunStreamingColumn(
+            int column,
+            Vector3 startPos,
+            Quaternion startRot,
+            Vector3 endPos,
+            Quaternion endRot,
+            float poseBlend,
+            int subStepIndex,
+            int subStepsPerColumn)
+        {
             if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
-            {
-                _frameCounter++;
-                return frame;
-            }
+                return;
+            if (_activeScanFrame == null)
+                StartNewScan(Time.fixedTimeAsDouble);
 
-            var worldPos = transform.position;
+            var worldPos = Vector3.Lerp(startPos, endPos, Math.Clamp(poseBlend, 0f, 1f));
+            var worldRot = Quaternion.Slerp(startRot, endRot, Math.Clamp(poseBlend, 0f, 1f));
+            var worldToLocal = Matrix4x4.TRS(worldPos, worldRot, Vector3.one).inverse.ToFloat4x4();
             var queryParams = new QueryParameters(_layerMask.value);
+            var batchCount = 0;
 
-            // Build the ray batch on the main thread (cheap), then cast in parallel.
+            // Build one sub-scan batch on the main thread (cheap), then cast in parallel.
             for (var k = 0; k < _effectiveRayCount; k++)
             {
+                if (_rayColumns[k] != column)
+                    continue;
+
                 var index = k * _rayStride;
                 if (index >= _rawRayCount) index = _rawRayCount - 1;
 
                 if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
                 {
-                    _commands[k] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                    _rayTimeOffsets[k] = 0f;
-                    _rayRings[k] = 0;
-                    _rayHits[k] = new VirtualLidarHitData
+                    _commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                    _rayTimeOffsets[batchCount] = 0f;
+                    _rayRings[batchCount] = 0;
+                    _rayHits[batchCount] = new VirtualLidarHitData
                     {
                         Point = float3.zero,
                         Distance = 0f,
                         ColliderInstanceId = 0
                     };
-                    continue;
+                }
+                else
+                {
+                    var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
+                    _commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                    var subStepOffset = subStepsPerColumn <= 1
+                        ? 0f
+                        : subStepIndex / (float)(_scanColumnCount * subStepsPerColumn);
+                    _rayTimeOffsets[batchCount] = Math.Min(1f, timeOffset + subStepOffset);
+                    _rayRings[batchCount] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
                 }
 
-                var worldDir = transform.TransformDirection(new Vector3(localDir.X, localDir.Y, localDir.Z));
-                _commands[k] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                _rayTimeOffsets[k] = timeOffset;
-                _rayRings[k] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+                batchCount++;
             }
 
+            if (batchCount <= 0)
+                return;
+
             // Parallel raycast across worker threads, then process results on main thread.
-            RaycastCommand.ScheduleBatch(_commands, _results, 64).Complete();
+            RaycastCommand.ScheduleBatch(_commands.Slice(0, batchCount), _results.Slice(0, batchCount), 64).Complete();
 
             var minRange = (float)_scanPattern.MinRangeMeters;
-            for (var k = 0; k < _effectiveRayCount; k++)
+            for (var k = 0; k < batchCount; k++)
             {
                 var hit = _results[k];
                 _rayHits[k] = new VirtualLidarHitData
                 {
                     Point = new float3(hit.point.x, hit.point.y, hit.point.z),
                     Distance = hit.distance,
-                    ColliderInstanceId = hit.collider == null ? 0 : hit.collider.GetInstanceID()
+                    ColliderInstanceId = hit.collider == null ? 0u : (uint)hit.colliderEntityId
                 };
             }
 
@@ -322,7 +516,7 @@ namespace Unity.FoxgloveSDK.Components
                 Hits = _rayHits,
                 RayTimeOffsets = _rayTimeOffsets,
                 RayRings = _rayRings,
-                WorldToLocal = transform.worldToLocalMatrix.ToFloat4x4(),
+                WorldToLocal = worldToLocal,
                 MinRange = minRange,
                 MaxRange = _maxRangeMeters,
                 SyntheticIntensity = _syntheticIntensity,
@@ -330,22 +524,18 @@ namespace Unity.FoxgloveSDK.Components
                 Points = _pointData
             };
 
-            job.Schedule(_effectiveRayCount, 64).Complete();
+            job.Schedule(batchCount, 64).Complete();
 
-            // List<T>.EnsureCapacity is unavailable in Unity's .NET profile; the Capacity
-            // setter pre-sizes the backing array the same way (grow-only).
-            if (frame.Points.Capacity < _effectiveRayCount)
-                frame.Points.Capacity = _effectiveRayCount;
             _pointData.CopyTo(_pointDataManaged);
 
             var validPointCount = 0;
-            for (var k = 0; k < _effectiveRayCount; k++)
+            for (var k = 0; k < batchCount; k++)
             {
                 var point = _pointDataManaged[k];
                 if (point.IsValid == 0)
                     continue;
 
-                frame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
+                _activeScanFrame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
                 {
                     Intensity = point.Intensity,
                     Reflectivity = point.Reflectivity,
@@ -359,15 +549,15 @@ namespace Unity.FoxgloveSDK.Components
                 validPointCount++;
             }
 
-            _frameCounter++;
-            frame.ValidCount = validPointCount;
-            return frame;
+            _activeScanValidPoints += validPointCount;
         }
 
         private void OnValidate()
         {
             _columnStep = Math.Max(1, _columnStep);
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
+            if (_scanSubSteps < 1)
+                _scanSubSteps = 1;
         }
     }
 }

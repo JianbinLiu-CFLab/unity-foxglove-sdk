@@ -4,6 +4,7 @@
 // Module: Samples/Virtual LiDAR Maze Demo
 
 using System.Reflection;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
@@ -70,11 +71,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(basePublisher, "_parentFrameId", "map");
             SetPrivateField(basePublisher, "_childFrameId", "base_link");
 
-            // 4. IMU on a dedicated mount under base_link (imu_link). Readings come from the
-            // vehicle Rigidbody, so the mount only places imu_link in the TF tree (mirrors LidarMount).
+            // 4. IMU mount under LiDAR mount; pose follows the selected demo model's T_IL
+            // (identity by default, overridable by model spec).
             var imuMount = new GameObject("IMUMount").transform;
-            imuMount.SetParent(vehicleGo.transform, false);
-            imuMount.localPosition = new Vector3(0f, 0.1f, 0f);
+            imuMount.SetParent(lidarMount, false);
+            ApplyImuMountTransform(imuMount);
 
             var imu = imuMount.gameObject.AddComponent<VirtualImu>();
             SetPrivateField(imu, "_manager", manager);
@@ -92,12 +93,13 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(imuPublisher, "_manager", manager);
             // Distinct topic from base_link's publisher (same shared-/tf guard as the LiDAR).
             SetPrivateField(imuPublisher, "_topic", "/tf_imu");
-            SetPrivateField(imuPublisher, "_parentFrameId", "base_link");
+            SetPrivateField(imuPublisher, "_parentFrameId", "vehicle_lidar");
             SetPrivateField(imuPublisher, "_childFrameId", "imu_link");
             SetPrivateField(imuPublisher, "_useLocalTransform", true);
 
             // 5. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
             var lidar = lidarMount.gameObject.AddComponent<VirtualLidar>();
+            SetPrivateField(lidar, "_manager", manager);
             SetPrivateField(lidar, "_frameId", "vehicle_lidar");
             SetPrivateField(lidar, "_pointCloudPublisher", publisher);
             SetPrivateField(lidar, "_columnStep", 4);
@@ -150,6 +152,27 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 if (rc > max) max = rc;
             }
             return max;
+        }
+
+        private static void ApplyImuMountTransform(Transform imuMount)
+        {
+            foreach (var spec in LidarModelRegistry.All)
+            {
+                if (spec.Model == "OS-1-32")
+                {
+                    var translation = spec.TIlTranslationMeters;
+                    imuMount.localPosition = new Vector3(
+                        (float)translation.X, (float)translation.Y, (float)translation.Z);
+
+                    var rotation = spec.TIlRotation;
+                    imuMount.localRotation = new Quaternion(
+                        (float)rotation.X, (float)rotation.Y, (float)rotation.Z, (float)rotation.W);
+                    return;
+                }
+            }
+
+            imuMount.localPosition = new Vector3(0f, 0.1f, 0f);
+            imuMount.localRotation = Quaternion.identity;
         }
 
         private static void SetPrivateField(object target, string fieldName, object value)
