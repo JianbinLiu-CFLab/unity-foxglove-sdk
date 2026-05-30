@@ -6,7 +6,10 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -35,6 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySharedSensorClock();
             VerifyStreamingLiDARState();
             VerifyPhase138hDemoHooks();
+            VerifyAbsoluteTimeField();
 
             Console.WriteLine("Phase 138H: all checks passed.");
             Console.WriteLine();
@@ -86,6 +90,29 @@ namespace Unity.FoxgloveSDK.Tests
                 "138H-11: LidarModelSpec includes T_IL rotation field");
             Check(demoEditorSource.Contains("ApplyImuMountTransform"),
                 "138H-12: Demo builder applies IMU mount transform from model spec data");
+        }
+
+        // Behavioral check (shared layer, harness-runnable) for the D6 absolute-ns t field.
+        private static void VerifyAbsoluteTimeField()
+        {
+            // Off by default: existing point-cloud payloads are unchanged (no `t` field).
+            var plain = new PointCloudFrame();
+            plain.Points.Add(new PointCloudPoint(1f, 2f, 3f) { TimeOffsetSeconds = 0.01f });
+            var plainPacked = PointCloudPackedDataBuilder.Build(plain);
+            Check(plainPacked.Fields.All(f => f.Name != "t"),
+                "138H-13: absolute-ns t field is absent unless opted in");
+
+            // Opt-in: adds an Ouster-style `t` = round(TimeOffsetSeconds * 1e9) ns.
+            var frame = new PointCloudFrame { EmitAbsoluteTimeNs = true };
+            frame.Points.Add(new PointCloudPoint(1f, 2f, 3f) { TimeOffsetSeconds = 0.0025f });
+            var packed = PointCloudPackedDataBuilder.Build(frame);
+            var tField = packed.Fields.FirstOrDefault(f => f.Name == "t");
+            Check(tField != null, "138H-14: opt-in adds Ouster-style t field for SLAM front-ends");
+            if (tField == null)
+                return;
+
+            var t = BitConverter.ToUInt32(packed.Data, (int)tField.Offset);
+            Check(t == 2_500_000u, "138H-15: t equals round(TimeOffsetSeconds * 1e9) ns");
         }
 
         private static string ReadText(string repoRoot, string relativePath)

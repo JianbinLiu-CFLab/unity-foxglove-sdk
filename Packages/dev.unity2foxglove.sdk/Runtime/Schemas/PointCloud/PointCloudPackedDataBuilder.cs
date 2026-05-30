@@ -101,6 +101,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     if (layout.HasReflectivity) writer.Write(point.HasReflectivity ? point.Reflectivity : 0f);
                     if (layout.HasRing) writer.Write(point.HasRing ? point.Ring : (ushort)0);
                     if (layout.HasTimeOffset) writer.Write(point.HasTimeOffset ? point.TimeOffsetSeconds : 0f);
+                    if (layout.HasAbsoluteTime)
+                        writer.Write(point.HasTimeOffset ? (uint)Math.Round(Math.Max(0f, point.TimeOffsetSeconds) * 1e9) : 0u);
                 }
 
                 return stream.ToArray();
@@ -125,6 +127,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             public bool HasReflectivity { get; private set; }
             public bool HasRing { get; private set; }
             public bool HasTimeOffset { get; private set; }
+            public bool HasAbsoluteTime { get; private set; }
             public uint Stride { get; private set; }
             public PointCloudPackedField[] Fields { get; private set; }
 
@@ -141,6 +144,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     layout.HasTimeOffset |= point.HasTimeOffset;
                 }
 
+                layout.HasAbsoluteTime = frame.EmitAbsoluteTimeNs && layout.HasTimeOffset;
+
                 var fields = new List<PointCloudPackedField>
                 {
                     Field("x", 0, PointCloudPackedNumericType.Float32),
@@ -153,6 +158,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 if (layout.HasReflectivity) AddField(fields, "reflectivity", PointCloudPackedNumericType.Float32, ref offset, 4);
                 if (layout.HasRing) AddField(fields, "ring", PointCloudPackedNumericType.Uint16, ref offset, 2);
                 if (layout.HasTimeOffset) AddField(fields, "time_offset", PointCloudPackedNumericType.Float32, ref offset, 4);
+                if (layout.HasAbsoluteTime) AddField(fields, "t", PointCloudPackedNumericType.Uint32, ref offset, 4);
 
                 layout.Stride = offset;
                 layout.Fields = fields.ToArray();

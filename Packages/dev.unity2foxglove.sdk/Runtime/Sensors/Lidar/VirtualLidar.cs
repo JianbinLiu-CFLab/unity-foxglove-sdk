@@ -381,7 +381,9 @@ namespace Unity.FoxgloveSDK.Components
             {
                 UnixNs = ComputeScanStartUnixNs(scanStartPhysSeconds),
                 FrameId = _frameId,
-                ValidCount = 0
+                ValidCount = 0,
+                // SLAM front-ends (FAST-LIO/LIVO2) consume the Ouster-style absolute-ns `t`.
+                EmitAbsoluteTimeNs = true
             };
             _activeScanValidPoints = 0;
             _activeScanFrame.Points.Clear();
@@ -507,7 +509,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     Point = new float3(hit.point.x, hit.point.y, hit.point.z),
                     Distance = hit.distance,
-                    ColliderInstanceId = hit.collider == null ? 0u : (uint)hit.colliderEntityId
+                    ColliderInstanceId = hit.collider == null ? 0u : (uint)hit.colliderInstanceID
                 };
             }
 

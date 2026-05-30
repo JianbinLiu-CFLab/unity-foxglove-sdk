@@ -139,6 +139,13 @@ namespace Unity.FoxgloveSDK.Schemas
         /// use <see cref="Points"/>.Count.
         /// </summary>
         public int ValidCount { get; set; } = -1;
+        /// <summary>
+        /// When true, the packed layout adds an Ouster-style <c>t</c> field
+        /// (uint32, ns relative to the frame start, = round(TimeOffsetSeconds * 1e9))
+        /// alongside <c>time_offset</c>, for SLAM front-ends (FAST-LIO/LIVO2). Off by
+        /// default so existing point-cloud payloads are unchanged.
+        /// </summary>
+        public bool EmitAbsoluteTimeNs { get; set; }
         /// <summary>Points to pack.</summary>
         public List<PointCloudPoint> Points { get; } = new List<PointCloudPoint>();
     }
