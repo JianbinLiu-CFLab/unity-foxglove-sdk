@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo (Editor)
@@ -23,13 +23,23 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
     /// through the static maze. Use WASD to drive; raise Decay time to accumulate
     /// the point cloud.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public static class Phase138MazeDemoSceneBuilder
     {
         private const int CellsX = 8;
         private const int CellsZ = 8;
         private const float CellSize = 2f;
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
+/// <summary>Summary text for this member.</summary>
         public static void BuildScene()
         {
             // Clear previously generated demo roots, including any live
@@ -177,3 +187,4 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         }
     }
 }
+

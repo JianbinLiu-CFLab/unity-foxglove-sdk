@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Sensors
@@ -14,11 +14,16 @@ namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
     /// Custom inspector for <see cref="VirtualLidar"/>. For BuiltInPreset mode it
-    /// shows a cascading Vendor → Model (→ optional Mode) selection driven by
+    /// shows a cascading Vendor 鈫?Model (鈫?optional Mode) selection driven by
     /// <see cref="LidarModelRegistry"/>, with a live read-only preview of the
     /// resolved scan geometry.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
     [CustomEditor(typeof(VirtualLidar))]
+/// <summary>Summary text for this member.</summary>
     public class VirtualLidarEditor : UnityEditor.Editor
     {
         private SerializedProperty _profileSource;
@@ -60,12 +65,17 @@ namespace Unity.FoxgloveSDK.Editor
             _pointCloudPublisher = serializedObject.FindProperty("_pointCloudPublisher");
         }
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
 
             // Section titles ("Output", "Profile", "Scan", "Synthetic Values") come
-            // from the [Header] attributes on the VirtualLidar fields — PropertyField
+            // from the [Header] attributes on the VirtualLidar fields 鈥?PropertyField
             // renders them. Don't also draw LabelField headers here or they double up.
             EditorGUILayout.PropertyField(_pointCloudPublisher);   // [Header("Output")]
 
@@ -82,7 +92,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
 
-            // Scan rate — mirrors the publisher's "Publish Rate" UX. NOTE: this is the
+            // Scan rate 鈥?mirrors the publisher's "Publish Rate" UX. NOTE: this is the
             // LiDAR's frame-generation rate; the point cloud's publish rate to Foxglove
             // is set on FoxglovePointCloudPublisher (Publish Rate Source / Hz).
             EditorGUILayout.PropertyField(_scanRateSource, new GUIContent("Scan Rate Source"));
@@ -228,3 +238,4 @@ namespace Unity.FoxgloveSDK.Editor
         }
     }
 }
+

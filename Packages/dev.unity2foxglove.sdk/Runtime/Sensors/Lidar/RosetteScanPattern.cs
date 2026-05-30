@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -13,6 +13,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Coverage fills in across frames via a golden-angle per-frame rotation.
     /// This is a coverage approximation, not an exact Livox trajectory.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public class RosetteScanPattern : ILidarScanPattern
     {
         private const double GoldenAngleDeg = 137.50776405;
@@ -22,10 +27,30 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         private readonly double _loopsPerFrame = 3.2;
         private readonly double _a = 7.0, _b = 11.0; // incommensurate Lissajous coefficients
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public string ProductLine { get; }
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public double ScanRateHz { get; }
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public double MinRangeMeters { get; }
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public int RayCount => _beamsPerFrame;
+
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
 
         public RosetteScanPattern(string productLine, double scanRateHz, double minRangeMeters,
             double fovHDeg, double fovVDeg, int beamsPerFrame)
@@ -37,6 +62,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             _fovVDeg = fovVDeg;
             _beamsPerFrame = Math.Max(1, beamsPerFrame);
         }
+
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
 
         public bool TryGetRay(int index, int frameIndex,
             out Vector3 direction, out float timeOffset)
@@ -67,3 +96,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
+

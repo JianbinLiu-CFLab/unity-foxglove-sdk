@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
@@ -21,6 +21,11 @@ namespace Unity.FoxgloveSDK.Components
     /// Publishes decoded point frames or child transforms as foxglove.PointCloud.
     /// Programmatic frames are intended for later Ouster/ROS input bridges.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
         private const int DracoFailureWarningIntervalFrames = 120;
@@ -65,8 +70,20 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => SchemaNameOverride;
         protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public override bool SupportsRos2Encoding => true;
         protected override string Ros2SchemaName => _outputMode == PointCloudOutputMode.Draco
             ? Ros2PublisherSchemaNames.CompressedPointCloud
@@ -98,6 +115,11 @@ namespace Unity.FoxgloveSDK.Components
         /// Queue a decoded frame for the next publish tick. This is a
         /// last-value-wins buffer: a new frame replaces stale pending data.
         /// </summary>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public void SetFrame(PointCloudFrame frame)
         {
             bool hadPendingFrame;
@@ -117,6 +139,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Publish a decoded frame immediately, bypassing the regular Update cadence.
         /// </summary>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
+/// <summary>Summary text for this member.</summary>
         public void PublishFrame(PointCloudFrame frame, ulong logTimeNs)
         {
             ResolveManager();
@@ -463,6 +490,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private sealed class DracoEncodeRequest
         {
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public DracoEncodeRequest(PointCloudFrame frame, ulong unixNs, bool publishWebSocket, bool publishBridge)
             {
                 Frame = frame;
@@ -471,14 +502,34 @@ namespace Unity.FoxgloveSDK.Components
                 PublishBridge = publishBridge;
             }
 
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public PointCloudFrame Frame { get; }
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public ulong UnixNs { get; }
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public bool PublishWebSocket { get; }
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public bool PublishBridge { get; }
         }
 
         private sealed class DracoEncodeResult
         {
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public DracoEncodeResult(DracoEncodeRequest request, bool success, byte[] payload, string error)
             {
                 Request = request;
@@ -487,9 +538,25 @@ namespace Unity.FoxgloveSDK.Components
                 Error = error;
             }
 
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public DracoEncodeRequest Request { get; }
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public bool Success { get; }
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public byte[] Payload { get; }
+            /// <summary>
+            /// Summary text for this member.
+            /// </summary>
+
             public string Error { get; }
         }
 
@@ -623,3 +690,4 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 }
+

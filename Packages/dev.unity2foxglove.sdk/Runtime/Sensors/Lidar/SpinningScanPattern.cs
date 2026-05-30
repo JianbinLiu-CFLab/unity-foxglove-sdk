@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -13,6 +13,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Rays are indexed by (column, ring) pairs, derived from beam-angle arrays
     /// or a uniform FOV distribution.
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public class SpinningScanPattern : ILidarScanPattern
     {
         private readonly double[] _altRad;
@@ -20,9 +25,25 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         private readonly int _columns;
         private readonly int _columnStep;
 
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public string ProductLine { get; }
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public double ScanRateHz { get; }
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public double MinRangeMeters { get; }
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public int RayCount { get; }
         /// <summary>Number of beam rings in the scan.</summary>
         public int Rings => _altRad.Length;
@@ -30,6 +51,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// <summary>
         /// Creates a spinning pattern from exact beam-angle arrays (metadata).
         /// </summary>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public SpinningScanPattern(string productLine, double scanRateHz, double minRangeMeters,
             int columns, int columnStep, double[] altitudeRad, double[] azimuthRad)
         {
@@ -46,6 +71,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// <summary>
         /// Creates a spinning pattern from uniform FOV distribution (presets without exact angles).
         /// </summary>
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
+
         public static SpinningScanPattern FromUniformFov(string productLine, double scanRateHz, double minRangeMeters,
             int rings, int columns, int columnStep, double fovTopDeg, double fovBottomDeg)
         {
@@ -53,6 +82,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             var azm = new double[rings]; // all zero for co-axial beams
             return new SpinningScanPattern(productLine, scanRateHz, minRangeMeters, columns, columnStep, alt, azm);
         }
+
+        /// <summary>
+        /// Summary text for this member.
+        /// </summary>
 
         public bool TryGetRay(int index, int frameIndex,
             out Vector3 direction, out float timeOffset)
@@ -73,13 +106,13 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             var ringAzm = _azmRad[ring];
 
             // Column sweep: 360 degrees over columns_per_frame.
-            // (column, ring) → beam direction matched against the original
+            // (column, ring) 鈫?beam direction matched against the original
             // LidarRayGenerator (Phase 138 verified in Foxglove).
             var columnAzm = column * (2.0 * Math.PI) / _columns;
             var totalAzm = columnAzm + ringAzm;
 
             // Sensor frame: x-right, y-up, z-forward (Unity left-handed).
-            // Positive altitude → beam points up (+Y). Azimuth sweeps CW
+            // Positive altitude 鈫?beam points up (+Y). Azimuth sweeps CW
             // around +Y (column 0 forward, column N/4 = +X right).
             direction = new Vector3(
                 (float)(Math.Cos(alt) * Math.Sin(totalAzm)),
@@ -101,3 +134,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
+

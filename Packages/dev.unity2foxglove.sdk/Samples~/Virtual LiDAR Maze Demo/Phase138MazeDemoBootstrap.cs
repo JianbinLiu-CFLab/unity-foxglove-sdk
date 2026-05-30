@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo
@@ -19,6 +19,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
     /// through the static maze with the point cloud accumulating (Decay time > 0).
     /// </summary>
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
+/// <summary>Summary text for this member.</summary>
     public class Phase138MazeDemoBootstrap : MonoBehaviour
     {
         private static bool s_warnedManagerNull;
@@ -104,7 +109,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             }
             else if (!s_warnedManagerNull)
             {
-                Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null — point cloud publisher stays disabled.");
+                Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null 鈥?point cloud publisher stays disabled.");
                 s_warnedManagerNull = true;
             }
         }
@@ -140,3 +145,4 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
+

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Virtual LiDAR PointCloud2 Digital Twin sample
@@ -10,6 +10,11 @@ using System;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
+/// <summary>
+/// Summary text for this member.
+/// </summary>
+
+/// <summary>Summary text for this member.</summary>
 public static class Phase138CPointCloud2MessageBuilder
 {
     private const byte PointFieldInt8 = 1;
@@ -22,6 +27,10 @@ public static class Phase138CPointCloud2MessageBuilder
     private const byte PointFieldFloat64 = 8;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+    /// <summary>
+    /// Summary text for this member.
+    /// </summary>
+
     public static sensor_msgs.msg.PointCloud2 Build(PointCloudFrame frame, string frameId, int sec, uint nanosec)
     {
         if (frame == null)
@@ -107,3 +116,4 @@ public static class Phase138CPointCloud2MessageBuilder
     }
 #endif
 }
+
