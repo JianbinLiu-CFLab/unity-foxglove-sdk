@@ -161,17 +161,16 @@ namespace Unity.FoxgloveSDK.Tests
 
             var frame = new PointCloudFrame();
             frame.Points.Add(new PointCloudPoint(0f, 0f, 0f));
-            frame.Points.Add(null);
             frame.Points.Add(new PointCloudPoint(0.01f, 0.01f, 0.01f));
             frame.Points.Add(new PointCloudPoint(1f, 1f, 1f));
 
             var voxelIndices = PointCloudQoS.BuildVoxelSampleIndices(frame, 0.5f);
-            Check(voxelIndices.SequenceEqual(new[] { 0, 3 }),
-                "134-7G-3: voxel sampling skips null points and keeps first voxel representatives");
+            Check(voxelIndices.SequenceEqual(new[] { 0, 2 }),
+                "134-7G-3: voxel sampling keeps first representative per voxel");
 
-            var allNonNull = PointCloudQoS.BuildVoxelSampleIndices(frame, 0f);
-            Check(allNonNull.SequenceEqual(new[] { 0, 2, 3 }),
-                "134-7G-4: non-positive voxel size returns all non-null point indices");
+            var allPoints = PointCloudQoS.BuildVoxelSampleIndices(frame, 0f);
+            Check(allPoints.SequenceEqual(new[] { 0, 1, 2 }),
+                "134-7G-4: non-positive voxel size returns all point indices");
         }
 
         private static FoxgloveSession CreatePlaybackSession(

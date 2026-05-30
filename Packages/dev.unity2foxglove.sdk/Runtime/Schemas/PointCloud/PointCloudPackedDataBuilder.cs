@@ -85,29 +85,31 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         private static byte[] Pack(PointCloudFrame frame, PointCloudLayout layout)
         {
-            var capacity = ValidatePackedDataBudget(frame, layout);
+            var pointCount = frame.GetPointCount();
+            var capacity = ValidatePackedDataBudget(pointCount, layout);
             using (var stream = new MemoryStream(capacity))
             using (var writer = new BinaryWriter(stream))
             {
-                foreach (var point in frame.Points)
+                for (var i = 0; i < pointCount; i++)
                 {
+                    var point = frame.Points[i];
                     writer.Write(point.X);
                     writer.Write(point.Y);
                     writer.Write(point.Z);
 
-                    if (layout.HasIntensity) writer.Write(point.Intensity ?? 0f);
-                    if (layout.HasReflectivity) writer.Write(point.Reflectivity ?? 0f);
-                    if (layout.HasRing) writer.Write(point.Ring ?? (ushort)0);
-                    if (layout.HasTimeOffset) writer.Write(point.TimeOffsetSeconds ?? 0f);
+                    if (layout.HasIntensity) writer.Write(point.HasIntensity ? point.Intensity : 0f);
+                    if (layout.HasReflectivity) writer.Write(point.HasReflectivity ? point.Reflectivity : 0f);
+                    if (layout.HasRing) writer.Write(point.HasRing ? point.Ring : (ushort)0);
+                    if (layout.HasTimeOffset) writer.Write(point.HasTimeOffset ? point.TimeOffsetSeconds : 0f);
                 }
 
                 return stream.ToArray();
             }
         }
 
-        private static int ValidatePackedDataBudget(PointCloudFrame frame, PointCloudLayout layout)
+        private static int ValidatePackedDataBudget(int pointCount, PointCloudLayout layout)
         {
-            var packedBytes = checked((long)frame.Points.Count * layout.Stride);
+            var packedBytes = checked((long)pointCount * layout.Stride);
             if (packedBytes > MaxPackedDataBytes)
             {
                 throw new InvalidOperationException(
@@ -129,12 +131,14 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             public static PointCloudLayout From(PointCloudFrame frame)
             {
                 var layout = new PointCloudLayout();
-                foreach (var point in frame.Points)
+                var pointCount = frame.GetPointCount();
+                for (var i = 0; i < pointCount; i++)
                 {
-                    layout.HasIntensity |= point.Intensity.HasValue;
-                    layout.HasReflectivity |= point.Reflectivity.HasValue;
-                    layout.HasRing |= point.Ring.HasValue;
-                    layout.HasTimeOffset |= point.TimeOffsetSeconds.HasValue;
+                    var point = frame.Points[i];
+                    layout.HasIntensity |= point.HasIntensity;
+                    layout.HasReflectivity |= point.HasReflectivity;
+                    layout.HasRing |= point.HasRing;
+                    layout.HasTimeOffset |= point.HasTimeOffset;
                 }
 
                 var fields = new List<PointCloudPackedField>

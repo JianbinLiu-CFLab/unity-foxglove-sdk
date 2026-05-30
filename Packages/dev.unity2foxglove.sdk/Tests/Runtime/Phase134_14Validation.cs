@@ -68,10 +68,11 @@ namespace Unity.FoxgloveSDK.Tests
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
             var tryEncodeIndex = source.IndexOf("public static bool TryEncode", StringComparison.Ordinal);
-            var validateIndex = source.IndexOf(
-                "ValidateInputBudget(frame.Points.Count",
-                tryEncodeIndex,
-                StringComparison.Ordinal);
+            var validateIndex = Math.Max(
+                source.IndexOf("ValidateInputBudget(frame.Points.Count", tryEncodeIndex, StringComparison.Ordinal),
+                Math.Max(
+                    source.IndexOf("ValidateInputBudget(frame.GetPointCount", tryEncodeIndex, StringComparison.Ordinal),
+                    source.IndexOf("ValidateInputBudget(pointCount", tryEncodeIndex, StringComparison.Ordinal)));
             var buildIndex = source.IndexOf("BuildXyzArray(frame)", tryEncodeIndex, StringComparison.Ordinal);
 
             Check(tryEncodeIndex >= 0 && validateIndex > tryEncodeIndex && buildIndex > validateIndex,

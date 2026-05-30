@@ -26,13 +26,15 @@ namespace Foxglove.Schemas.PointCloud
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            var capacity = checked(4 + frame.Points.Count * 12);
+            var pointCount = frame.GetPointCount();
+            var capacity = checked(4 + pointCount * 12);
             using (var stream = new MemoryStream(capacity))
             using (var writer = new BinaryWriter(stream))
             {
-                writer.Write((uint)frame.Points.Count);
-                foreach (var point in frame.Points)
+                writer.Write((uint)pointCount);
+                for (var i = 0; i < pointCount; i++)
                 {
+                    var point = frame.Points[i];
                     writer.Write(point.X);
                     writer.Write(point.Y);
                     writer.Write(point.Z);
@@ -153,7 +155,8 @@ namespace Foxglove.Schemas.PointCloud
             dracoPayload = null;
             SetLastError(null);
 
-            if (frame == null || frame.Points.Count == 0)
+            var pointCount = frame.GetPointCount();
+            if (frame == null || pointCount == 0)
             {
                 SetLastError("Draco point-cloud frame is empty.");
                 return false;

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
@@ -6,9 +6,12 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Components
@@ -17,13 +20,8 @@ namespace Unity.FoxgloveSDK.Components
     /// A MonoBehaviour that raycasts Unity scene geometry using a LiDAR profile
     /// and publishes the resulting point cloud.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
     [DisallowMultipleComponent]
     [AddComponentMenu("Foxglove/Sensors/Virtual LiDAR")]
-/// <summary>Summary text for this member.</summary>
     public class VirtualLidar : MonoBehaviour
     {
         /// <summary>Where the LiDAR scan geometry comes from.</summary>
@@ -31,7 +29,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             /// <summary>Parse an Ouster-format metadata JSON TextAsset.</summary>
             MetadataJson,
-            /// <summary>Use a built-in spinning-LiDAR preset (Ouster OS-0/1/2 脳 32/64/128).</summary>
+            /// <summary>Use the built-in spinning-LiDAR preset (Ouster OS-0/1/2).</summary>
             BuiltInPreset,
             /// <summary>Use the manually edited Custom Profile fields below.</summary>
             Custom
@@ -83,7 +81,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _columnStep = 4;
         [Tooltip("0 (default) = no clipping: cast every ray the selected sensor defines " +
                  "(full resolution, scales automatically with the model). " +
-                 "Set a value > 0 to cap rays per scan for performance 鈥?excess rays are " +
+                 "Set a value > 0 to cap rays per scan for performance; excess rays are " +
                  "uniformly subsampled. Raycasts run in parallel via RaycastCommand.")]
         [SerializeField, Min(0)] private int _maxRaysPerScan = 0;
         [SerializeField] private LayerMask _layerMask = ~0;
@@ -105,8 +103,11 @@ namespace Unity.FoxgloveSDK.Components
         // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
         private NativeArray<RaycastCommand> _commands;
         private NativeArray<RaycastHit> _results;
-        private float[] _rayTimeOffsets;
-        private ushort[] _rayRings;
+        private NativeArray<float> _rayTimeOffsets;
+        private NativeArray<ushort> _rayRings;
+        private NativeArray<VirtualLidarHitData> _rayHits;
+        private NativeArray<VirtualLidarPointData> _pointData;
+        private VirtualLidarPointData[] _pointDataManaged;
         private int _rawRayCount;       // pattern.RayCount
         private int _effectiveRayCount; // rays actually cast per scan (after budget)
         private int _rayStride;         // subsampling stride into the pattern
@@ -148,6 +149,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private void AllocateScanBuffers()
         {
+            if (_scanPattern == null)
+                return;
+
+            DisposeScanBuffers();
+
             _rawRayCount = Math.Max(1, _scanPattern.RayCount);
             var budget = _maxRaysPerScan <= 0 ? _rawRayCount : Math.Min(_rawRayCount, _maxRaysPerScan);
             budget = Math.Max(1, budget);
@@ -160,14 +166,45 @@ namespace Unity.FoxgloveSDK.Components
 
             _commands = new NativeArray<RaycastCommand>(_effectiveRayCount, Allocator.Persistent);
             _results = new NativeArray<RaycastHit>(_effectiveRayCount, Allocator.Persistent);
-            _rayTimeOffsets = new float[_effectiveRayCount];
-            _rayRings = new ushort[_effectiveRayCount];
+            _rayTimeOffsets = new NativeArray<float>(_effectiveRayCount, Allocator.Persistent);
+            _rayRings = new NativeArray<ushort>(_effectiveRayCount, Allocator.Persistent);
+            _rayHits = new NativeArray<VirtualLidarHitData>(_effectiveRayCount, Allocator.Persistent);
+            _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
+
+            // Exact length so NativeArray.CopyTo(_pointDataManaged) never length-mismatches
+            // (CopyTo requires equal lengths; _pointData is reallocated to _effectiveRayCount here too).
+            _pointDataManaged = new VirtualLidarPointData[_effectiveRayCount];
+        }
+
+        private void DisposeScanBuffers()
+        {
+            if (_commands.IsCreated) _commands.Dispose();
+            if (_results.IsCreated) _results.Dispose();
+            if (_rayTimeOffsets.IsCreated) _rayTimeOffsets.Dispose();
+            if (_rayRings.IsCreated) _rayRings.Dispose();
+            if (_rayHits.IsCreated) _rayHits.Dispose();
+            if (_pointData.IsCreated) _pointData.Dispose();
+            _commands = default;
+            _results = default;
+            _rayTimeOffsets = default;
+            _rayRings = default;
+            _rayHits = default;
+            _pointData = default;
         }
 
         private void OnDestroy()
         {
-            if (_commands.IsCreated) _commands.Dispose();
-            if (_results.IsCreated) _results.Dispose();
+            DisposeScanBuffers();
+        }
+
+        private void OnEnable()
+        {
+            AllocateScanBuffers();
+        }
+
+        private void OnDisable()
+        {
+            DisposeScanBuffers();
         }
 
         private Sensors.Lidar.LidarProfile LoadProfile()
@@ -181,9 +218,11 @@ namespace Unity.FoxgloveSDK.Components
                         Debug.LogWarning("[VirtualLidar] Profile Source is MetadataJson but no JSON is assigned; using OS-1-32 fallback.");
                         return null;
                     }
+
                     if (Sensors.Lidar.LidarProfileLoader.TryParseFromJson(
                             _metadataJson.text, _metadataMode, out var parsed, out var error))
                         return parsed;
+
                     Debug.LogWarning($"[VirtualLidar] Metadata parse failed ({error}); using OS-1-32 fallback.");
                     return null;
                 }
@@ -196,7 +235,7 @@ namespace Unity.FoxgloveSDK.Components
                 case ProfileSource.BuiltInPreset:
                 default:
                     // BuiltInPreset is resolved via LidarModelRegistry in Start();
-                    // reaching here means the registry lookup failed 鈫?use the fallback.
+                    // reaching here means the registry lookup failed so use the fallback.
                     return null;
             }
         }
@@ -209,7 +248,7 @@ namespace Unity.FoxgloveSDK.Components
             var frame = RunScan();
             LastFrame = frame;
 
-            if (_pointCloudPublisher != null && (frame.Points.Count > 0 || _publishEmptyFrames))
+            if (_pointCloudPublisher != null && (frame.GetPointCount() > 0 || _publishEmptyFrames))
                 _pointCloudPublisher.SetFrame(frame);
 
             _nextScanTime += _scanPeriod;
@@ -224,10 +263,11 @@ namespace Unity.FoxgloveSDK.Components
             var frame = new PointCloudFrame
             {
                 UnixNs = FoxgloveTimeUtil.NowUnixTimeNs(),
-                FrameId = _frameId
+                FrameId = _frameId,
+                ValidCount = 0
             };
 
-            if (!_commands.IsCreated || _effectiveRayCount <= 0)
+            if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
             {
                 _frameCounter++;
                 return frame;
@@ -247,6 +287,12 @@ namespace Unity.FoxgloveSDK.Components
                     _commands[k] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
                     _rayTimeOffsets[k] = 0f;
                     _rayRings[k] = 0;
+                    _rayHits[k] = new VirtualLidarHitData
+                    {
+                        Point = float3.zero,
+                        Distance = 0f,
+                        ColliderInstanceId = 0
+                    };
                     continue;
                 }
 
@@ -256,35 +302,65 @@ namespace Unity.FoxgloveSDK.Components
                 _rayRings[k] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
             }
 
-            // Parallel raycast across worker threads, then read results on the main thread.
+            // Parallel raycast across worker threads, then process results on main thread.
             RaycastCommand.ScheduleBatch(_commands, _results, 64).Complete();
 
             var minRange = (float)_scanPattern.MinRangeMeters;
             for (var k = 0; k < _effectiveRayCount; k++)
             {
                 var hit = _results[k];
-                if (hit.collider == null)
+                _rayHits[k] = new VirtualLidarHitData
+                {
+                    Point = new float3(hit.point.x, hit.point.y, hit.point.z),
+                    Distance = hit.distance,
+                    ColliderInstanceId = hit.collider == null ? 0 : hit.collider.GetInstanceID()
+                };
+            }
+
+            var job = new VirtualLidarBuildPointsJob
+            {
+                Hits = _rayHits,
+                RayTimeOffsets = _rayTimeOffsets,
+                RayRings = _rayRings,
+                WorldToLocal = transform.worldToLocalMatrix.ToFloat4x4(),
+                MinRange = minRange,
+                MaxRange = _maxRangeMeters,
+                SyntheticIntensity = _syntheticIntensity,
+                SyntheticReflectivity = _syntheticReflectivity,
+                Points = _pointData
+            };
+
+            job.Schedule(_effectiveRayCount, 64).Complete();
+
+            // List<T>.EnsureCapacity is unavailable in Unity's .NET profile; the Capacity
+            // setter pre-sizes the backing array the same way (grow-only).
+            if (frame.Points.Capacity < _effectiveRayCount)
+                frame.Points.Capacity = _effectiveRayCount;
+            _pointData.CopyTo(_pointDataManaged);
+
+            var validPointCount = 0;
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var point = _pointDataManaged[k];
+                if (point.IsValid == 0)
                     continue;
 
-                var d = hit.distance;
-                if (d < minRange || d > _maxRangeMeters)
-                    continue;
+                frame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
+                {
+                    Intensity = point.Intensity,
+                    Reflectivity = point.Reflectivity,
+                    TimeOffsetSeconds = point.TimeOffsetSeconds,
+                    Ring = point.Ring
+                });
 
                 if (_drawDebugRays)
-                    Debug.DrawRay(_commands[k].from, _commands[k].direction * d, Color.green, _scanPeriod);
+                    Debug.DrawRay(_commands[k].from, _commands[k].direction * _rayHits[k].Distance, Color.green, _scanPeriod);
 
-                var localHitPoint = transform.InverseTransformPoint(hit.point);
-                var rosHit = CoordinateConverter.UnityToFoxglovePosition(localHitPoint);
-                frame.Points.Add(new PointCloudPoint(rosHit.x, rosHit.y, rosHit.z)
-                {
-                    Intensity = _syntheticIntensity,
-                    Reflectivity = _syntheticReflectivity,
-                    TimeOffsetSeconds = _rayTimeOffsets[k],
-                    Ring = _rayRings[k]
-                });
+                validPointCount++;
             }
 
             _frameCounter++;
+            frame.ValidCount = validPointCount;
             return frame;
         }
 
@@ -295,4 +371,3 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 }
-

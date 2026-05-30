@@ -153,7 +153,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!publishWebSocket && !publishBridge) return;
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs);
-            if (prepared == null || prepared.Points.Count == 0) return;
+            if (prepared == null || prepared.GetPointCount() == 0) return;
             SetPreparedPublishDemand(publishWebSocket, publishBridge);
             try
             {
@@ -186,7 +186,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var frame = pendingFrame != null ? PrepareFrameForQoS(pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
             _warnedPendingDrop = false;
-            if (frame == null || frame.Points.Count == 0) return;
+            if (frame == null || frame.GetPointCount() == 0) return;
 
             SetPreparedPublishDemand(publishWebSocket, publishBridge);
             try
@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishDracoFrame(PointCloudFrame frame, ulong unixNs)
         {
-            if (frame == null || frame.Points.Count == 0)
+            if (frame == null || frame.GetPointCount() == 0)
                 return;
 
             QueueDracoEncode(frame, unixNs);
@@ -437,21 +437,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private static PointCloudFrame CloneFrameForBackgroundEncode(PointCloudFrame frame)
         {
+            var pointCount = frame.GetPointCount();
             var copy = new PointCloudFrame
             {
                 UnixNs = frame.UnixNs,
-                FrameId = frame.FrameId
+                FrameId = frame.FrameId,
+                ValidCount = pointCount
             };
 
-            foreach (var point in frame.Points)
+            for (var i = 0; i < pointCount; i++)
             {
-                copy.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
-                {
-                    Intensity = point.Intensity,
-                    Reflectivity = point.Reflectivity,
-                    Ring = point.Ring,
-                    TimeOffsetSeconds = point.TimeOffsetSeconds
-                });
+                // Struct value-copy: no per-point heap allocation.
+                copy.Points.Add(frame.Points[i]);
             }
 
             return copy;
@@ -565,23 +562,24 @@ namespace Unity.FoxgloveSDK.Components
             if (frame == null)
                 return null;
 
+            var pointCount = frame.GetPointCount();
             var stride = PointCloudQoS.ComputePackedStride(frame);
             var pointBudget = PointCloudQoS.ComputeEffectivePointBudget(
-                frame.Points.Count,
+                pointCount,
                 _maxPoints,
                 Math.Max(0, _maxPackedBytes),
                 stride);
 
             if (pointBudget <= 0)
             {
-                WarnPointCloudReduced(frame.Points.Count, pointBudget);
+                WarnPointCloudReduced(pointCount, pointBudget);
                 return null;
             }
 
             var useVoxelGrid = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters > 0f;
             var forceUniformFallback = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters <= 0f;
 
-            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && frame.Points.Count <= pointBudget)
+            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && pointCount <= pointBudget)
             {
                 _warnedPointCloudBudget = false;
                 return frame;
@@ -608,30 +606,32 @@ namespace Unity.FoxgloveSDK.Components
                         copy.Points.Add(frame.Points[voxelIndices[index]]);
                 }
             }
-            else if (frame.Points.Count <= pointBudget && !forceUniformFallback)
+            else if (pointCount <= pointBudget && !forceUniformFallback)
             {
-                for (var i = 0; i < frame.Points.Count; i++)
+                for (var i = 0; i < pointCount; i++)
                     copy.Points.Add(frame.Points[i]);
             }
             else if (_samplingMode == PointCloudSamplingMode.FirstPoints)
             {
-                var count = Math.Min(frame.Points.Count, pointBudget);
+                var count = Math.Min(pointCount, pointBudget);
                 for (var i = 0; i < count; i++)
                     copy.Points.Add(frame.Points[i]);
             }
             else
             {
-                var indices = PointCloudQoS.BuildUniformSampleIndices(frame.Points.Count, pointBudget);
+                var indices = PointCloudQoS.BuildUniformSampleIndices(pointCount, pointBudget);
                 foreach (var index in indices)
                     copy.Points.Add(frame.Points[index]);
             }
 
-            if (frame.Points.Count > pointBudget)
-                WarnPointCloudReduced(frame.Points.Count, pointBudget);
+            if (pointCount > pointBudget)
+                WarnPointCloudReduced(pointCount, pointBudget);
             else
             {
                 _warnedPointCloudBudget = false;
             }
+
+            copy.ValidCount = copy.Points.Count;
 
             return copy;
         }
@@ -690,4 +690,3 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 }
-
