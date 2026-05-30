@@ -287,8 +287,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             _columnStep = Math.Max(1, _columnStep);
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
-            _syntheticReflectivity = Mathf.Clamp01(_syntheticReflectivity);
-            _syntheticIntensity = Mathf.Clamp01(_syntheticIntensity);
         }
     }
 }

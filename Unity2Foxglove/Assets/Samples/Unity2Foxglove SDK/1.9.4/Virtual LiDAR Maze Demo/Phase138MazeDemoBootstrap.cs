@@ -75,7 +75,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
 
             var lidarPublisher = lidarMount.gameObject.AddComponent<FoxgloveTransformPublisher>();
             SetPrivateField(lidarPublisher, "_manager", manager);
-            SetPrivateField(lidarPublisher, "_topic", "/tf");
+            // Distinct topic from base_link's publisher: sharing one /tf channel
+            // trips a server subscription-routing bug. Foxglove still aggregates this
+            // FrameTransform into the TF tree.
+            SetPrivateField(lidarPublisher, "_topic", "/tf_lidar");
             SetPrivateField(lidarPublisher, "_parentFrameId", "base_link");
             SetPrivateField(lidarPublisher, "_childFrameId", "vehicle_lidar");
             SetPrivateField(lidarPublisher, "_useLocalTransform", true);

@@ -29,7 +29,8 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters,
             _scanRateSource, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
-        private SerializedProperty _syntheticReflectivity, _syntheticIntensity, _pointCloudPublisher;
+        private SerializedProperty _syntheticReflectivity, _syntheticIntensity;
+        private SerializedProperty _pointCloudPublisher;
 
         private void OnEnable()
         {
@@ -63,11 +64,12 @@ namespace Unity.FoxgloveSDK.Editor
         {
             serializedObject.Update();
 
-            EditorGUILayout.PropertyField(_pointCloudPublisher);
-            EditorGUILayout.Space();
+            // Section titles ("Output", "Profile", "Scan", "Synthetic Values") come
+            // from the [Header] attributes on the VirtualLidar fields — PropertyField
+            // renders them. Don't also draw LabelField headers here or they double up.
+            EditorGUILayout.PropertyField(_pointCloudPublisher);   // [Header("Output")]
 
-            EditorGUILayout.LabelField("Profile", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_profileSource);
+            EditorGUILayout.PropertyField(_profileSource);         // [Header("Profile")]
             switch ((VirtualLidar.ProfileSource)_profileSource.enumValueIndex)
             {
                 case VirtualLidar.ProfileSource.BuiltInPreset: DrawPresetSection(); break;
@@ -75,9 +77,7 @@ namespace Unity.FoxgloveSDK.Editor
                 case VirtualLidar.ProfileSource.Custom: DrawCustomSection(); break;
             }
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Scan", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_frameId);
+            EditorGUILayout.PropertyField(_frameId);               // [Header("Scan")]
             EditorGUILayout.PropertyField(_columnStep);
             EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
@@ -96,9 +96,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_publishEmptyFrames);
             EditorGUILayout.PropertyField(_drawDebugRays);
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Synthetic Values", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(_syntheticReflectivity);
+            EditorGUILayout.PropertyField(_syntheticReflectivity); // [Header("Synthetic Values")]
             EditorGUILayout.PropertyField(_syntheticIntensity);
 
             serializedObject.ApplyModifiedProperties();

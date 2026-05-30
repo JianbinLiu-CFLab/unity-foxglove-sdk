@@ -41,7 +41,9 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     private void Start()
     {
         if (_virtualLidar == null)
-            _virtualLidar = GetComponent<VirtualLidar>();
+            _virtualLidar = GetComponentInChildren<VirtualLidar>();   // this GameObject or any child (e.g. LidarMount)
+        if (_virtualLidar == null)
+            _virtualLidar = FindFirstObjectByType<VirtualLidar>();    // fallback: anywhere in the scene
         if (_virtualLidar == null)
         {
             Debug.LogError("[Phase138VirtualLidarPointCloud2Smoke] VirtualLidar component not assigned or found.");
@@ -60,6 +62,11 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         if (_ros2Unity == null || !_ros2Unity.Ok())
+            return;
+
+        // R2FU output channel toggle (Output Mode → "ROS2 Native (R2FU)"), resolved
+        // centrally in Ros2NativeOutputPolicy so each R2FU component is a one-liner.
+        if (!Ros2NativeOutputPolicy.Enabled)
             return;
 
         if (_node == null)

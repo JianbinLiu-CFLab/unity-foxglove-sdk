@@ -29,6 +29,13 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             EnsureRuntimeCreated();
+
+            if (_transportMode == FoxgloveTransportMode.None)
+            {
+                Debug.Log("[Foxglove] WebSocket server not started: transport mode is None (output mode Ros2BridgeOnly).");
+                return;
+            }
+
             RegisterAssetRoots();
             SetupPlaybackControl();
             if (!SetupRecording())
@@ -101,6 +108,9 @@ namespace Unity.FoxgloveSDK.Components
                 SharedToken = _sharedToken ?? string.Empty
             };
 
+            if (_transportMode == FoxgloveTransportMode.None)
+                return null;
+
             if (_transportMode == FoxgloveTransportMode.SecureWebSocket)
             {
                 var tlsOptions = new FoxgloveTlsOptions
@@ -131,6 +141,9 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.LogError($"[Foxglove] Root CA distributor port must be between 1 and 65535. Current value: {_rootCaDistributorPort}");
                 return false;
             }
+
+            if (_transportMode == FoxgloveTransportMode.None)
+                return true;
 
             if (_transportMode != FoxgloveTransportMode.SecureWebSocket)
             {

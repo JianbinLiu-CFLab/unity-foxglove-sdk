@@ -58,7 +58,9 @@ namespace Unity.FoxgloveSDK.Editor
             DrawSection("Publish Data", ref _publishDataExpanded, DrawPublishDataSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
-            DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
+            var ros2BridgeProp = serializedObject.FindProperty("_ros2BridgeEnabled");
+            if (ros2BridgeProp != null && ros2BridgeProp.boolValue)
+                DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
             DrawSection("Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
 
             serializedObject.ApplyModifiedProperties();
@@ -144,7 +146,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             FoxgloveManagerInspectorLayout.Subheader("Server");
             DrawProperty("_serverName");
-            DrawProperty("_transportMode");
+            using (new EditorGUI.DisabledScope(true))
+                DrawProperty("_transportMode");
             DrawProperty("_host");
             DrawProperty("_port");
             DrawProperty("_startOnEnable");

@@ -65,6 +65,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _startOnEnable = true;
         [SerializeField] private bool _runInBackground = true;
         [SerializeField] private FoxgloveTransportMode _transportMode = FoxgloveTransportMode.WebSocket;
+        [Tooltip("When unchecked, the WebSocket server is disabled (transport = None).")]
+        [SerializeField] private bool _foxgloveOutputEnabled = true;
+        [Tooltip("Global policy flag for R2FU native DDS output. R2FU components query this at runtime. Default on; uncheck to disable R2FU output.")]
+        [SerializeField] private bool _ros2NativeEnabled = true;
 
         [Header("Publish Rate")]
         [Tooltip("Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.")]
@@ -75,7 +79,6 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("When enabled, individual publishers can override the global default.")]
         [SerializeField] private bool _allowPublisherOverride = true;
 
-        [Header("ROS2 Bridge")]
         [Tooltip("Enable the optional localhost ROS2 Bridge mirror output. Normal Foxglove WebSocket output is unchanged.")]
         [SerializeField] private bool _ros2BridgeEnabled;
         [SerializeField] private string _ros2BridgeHost = "127.0.0.1";
@@ -262,6 +265,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Whether the optional ROS2 Bridge mirror output is enabled.</summary>
         public bool Ros2BridgeEnabled => _ros2BridgeEnabled;
 
+        /// <summary>Global policy flag for R2FU native DDS output. R2FU components check this at runtime.</summary>
+        public bool Ros2NativeEnabled => _ros2NativeEnabled;
+
         /// <summary>Manager-level default for publisher bridge output when the bridge master switch is enabled.</summary>
         public bool DefaultRos2BridgeOutputEnabled => _defaultRos2BridgeOutputEnabled;
 
@@ -342,7 +348,10 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var logger = new UnityLogger();
-            var transport = CreateTransport(logger);
+            // CreateTransport returns null when the WebSocket output is disabled
+            // (transport = None). Use a no-op transport so the runtime still
+            // constructs and runs (recording / replay / ROS2 bridge / R2FU policy).
+            var transport = CreateTransport(logger) ?? new Transport.NullFoxgloveTransport();
             _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
         }
 
@@ -432,6 +441,10 @@ namespace Unity.FoxgloveSDK.Components
             _ros2BridgeQueueCapacity = Mathf.Max(1, _ros2BridgeQueueCapacity);
             _ros2BridgeReconnectIntervalMs = Mathf.Max(1, _ros2BridgeReconnectIntervalMs);
             _ros2BridgeSendTimeoutMs = Mathf.Max(1, _ros2BridgeSendTimeoutMs);
+            if (!_foxgloveOutputEnabled)
+                _transportMode = FoxgloveTransportMode.None;
+            else if (_transportMode == FoxgloveTransportMode.None)
+                _transportMode = FoxgloveTransportMode.WebSocket;
         }
 
         /// <summary>
