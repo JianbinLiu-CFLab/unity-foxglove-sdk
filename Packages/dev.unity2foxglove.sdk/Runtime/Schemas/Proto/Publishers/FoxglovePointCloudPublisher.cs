@@ -184,6 +184,13 @@ namespace Unity.FoxgloveSDK.Components
                 _pendingFrame = null;
             }
 
+            // A source frame that carries its own timestamp (e.g. VirtualLidar's physics-time
+            // scan start) drives the log time too, so payload time == log time (matching the
+            // IMU path) and SLAM consumers see one consistent clock instead of a wall-clock vs
+            // physics-clock skew that drifts under frame-rate stalls.
+            if (pendingFrame != null && pendingFrame.UnixNs != 0)
+                unixNs = pendingFrame.UnixNs;
+
             var frame = pendingFrame != null ? PrepareFrameForQoS(pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
             _warnedPendingDrop = false;
             if (frame == null || frame.GetPointCount() == 0) return;
