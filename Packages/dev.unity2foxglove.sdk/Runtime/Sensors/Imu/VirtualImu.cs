@@ -8,6 +8,7 @@ using System;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Sensors.Imu;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Components
@@ -21,9 +22,9 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const string DefaultTopic = "/imu/data";
         private const string DefaultFrameId = "imu_link";
-        private const float MinDisplayHz = 10f;
         private const int MinQueueSamples = 8;
         private const int MaxQueueSamples = 512;
+        private const int DefaultTargetRateHz = 200;
 
         private readonly ImuSampleQueue _queue = new ImuSampleQueue();
 
@@ -39,6 +40,13 @@ namespace Unity.FoxgloveSDK.Components
             + "This affects all physics in the project.")]
         private int _globalPhysicsRateHzOverride = 0;
 
+        [Header("Rate")]
+        [Tooltip(
+            "IMU output rate via sub-step resampling between physics ticks.\n"
+            + "0 = one sample per physics tick (138D behavior).\n"
+            + "> 0 up-samples/down-samples with interpolation across tick interval.")]
+        [SerializeField, Min(0)] private int _targetRateHz = DefaultTargetRateHz;
+
         [Header("Noise (future)")]
         [SerializeField] private bool _enableNoise;
         [SerializeField] private float _accelNoiseStdDev;
@@ -48,8 +56,15 @@ namespace Unity.FoxgloveSDK.Components
         private int _maxQueuedSamples;
         private Vector3 _lastWorldVelocity;
         private bool _hasLastVelocity;
+        private Vector3 _lastBodyAcceleration;
+        private Vector3 _lastBodyAngularVelocity;
+        private Quaternion _lastBodyRotation;
         private float _originalFixedDeltaTime;
         private bool _didSetFixedDelta;
+        private bool _hasEpoch;
+        private ulong _epochUnixNs;
+        private double _epochPhysSeconds;
+        private long _nextSampleIndex;
 
         private bool PublishEnabled => _publishOnStart && _publishing;
 
@@ -81,6 +96,12 @@ namespace Unity.FoxgloveSDK.Components
             _maxQueuedSamples = ComputeMaxQueuedSamples();
             _queue.Resize(_maxQueuedSamples);
             _lastWorldVelocity = _rigidbody.linearVelocity;
+            _lastBodyAcceleration = Vector3.zero;
+            _lastBodyAngularVelocity = Vector3.zero;
+            _lastBodyRotation = _rigidbody.rotation;
+            _hasLastVelocity = false;
+            _hasEpoch = false;
+            _nextSampleIndex = 0;
             _publishing = _publishOnStart;
 
             if (_publishing)
@@ -113,20 +134,60 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var worldAcceleration = (worldVelocity - _lastWorldVelocity) / Time.fixedDeltaTime;
-
-            var specificForceWorld = worldAcceleration - Physics.gravity;
             var toBody = Quaternion.Inverse(_rigidbody.rotation);
-            var linearBody = toBody * specificForceWorld;
+            var linearBody = toBody * (worldAcceleration - Physics.gravity);
             var angularBody = toBody * _rigidbody.angularVelocity;
+            var bodyRotation = _rigidbody.rotation;
 
-            var sample = new ImuSample(
-                FoxgloveTimeUtil.NowUnixTimeNs(),
-                CoordinateConverter.UnityToFoxglovePosition(linearBody),
-                CoordinateConverter.UnityToFoxglovePosition(angularBody),
-                CoordinateConverter.UnityToFoxgloveRotation(_rigidbody.rotation));
+            if (_targetRateHz <= 0)
+            {
+                _queue.Enqueue(CreateSample(
+                    FoxgloveTimeUtil.NowUnixTimeNs(),
+                    linearBody,
+                    angularBody,
+                    bodyRotation));
+            }
+            else
+            {
+                var tickEndPhysical = Time.fixedTimeAsDouble;
+                if (!_hasEpoch)
+                {
+                    _epochUnixNs = FoxgloveTimeUtil.NowUnixTimeNs();
+                    _epochPhysSeconds = tickEndPhysical - Time.fixedDeltaTime;
+                    _nextSampleIndex = 0;
+                    _hasEpoch = true;
+                }
 
-            _queue.Enqueue(sample);
+                var tickStartRel = tickEndPhysical - Time.fixedDeltaTime - _epochPhysSeconds;
+                var tickEndRel = tickEndPhysical - _epochPhysSeconds;
+
+                _nextSampleIndex = ImuSubStep.AlignSampleIndexToTickStart(
+                    tickStartRel,
+                    _targetRateHz,
+                    _nextSampleIndex);
+
+                while (ImuSubStep.TryGetSampleTime(_targetRateHz, _nextSampleIndex, out var sampleRel))
+                {
+                    if (sampleRel > tickEndRel + 1e-12)
+                        break;
+
+                    var phase = (float)Math.Clamp((sampleRel - tickStartRel) / Time.fixedDeltaTime, 0.0, 1.0);
+                    // CreateSample applies the Unity->Foxglove coordinate conversion, matching
+                    // the targetHz<=0 path. Interpolate in Unity body frame, then convert.
+                    _queue.Enqueue(CreateSample(
+                        ImuSubStep.SampleTimestampNs(_epochUnixNs, _nextSampleIndex, _targetRateHz),
+                        Vector3.Lerp(_lastBodyAcceleration, linearBody, phase),
+                        Vector3.Lerp(_lastBodyAngularVelocity, angularBody, phase),
+                        Quaternion.Slerp(_lastBodyRotation, bodyRotation, phase)));
+
+                    _nextSampleIndex++;
+                }
+            }
+
             _lastWorldVelocity = worldVelocity;
+            _lastBodyAcceleration = linearBody;
+            _lastBodyAngularVelocity = angularBody;
+            _lastBodyRotation = bodyRotation;
         }
 
         private void Update()
@@ -160,6 +221,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (_globalPhysicsRateHzOverride < 0)
                 _globalPhysicsRateHzOverride = 0;
+            if (_targetRateHz < 0)
+                _targetRateHz = 0;
 
             if (string.IsNullOrWhiteSpace(_topic))
                 _topic = DefaultTopic;
@@ -169,13 +232,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private int ComputeMaxQueuedSamples()
         {
-            var fixedDelta = Time.fixedDeltaTime;
-            if (fixedDelta <= 0f)
-                fixedDelta = 1f / MinDisplayHz;
-
-            var physicsHz = 1f / fixedDelta;
-            var computed = (int)Math.Ceiling(physicsHz / MinDisplayHz) * 2;
-            return Math.Clamp(computed, MinQueueSamples, MaxQueueSamples);
+            return ImuSubStep.ComputeQueueCapacity(_targetRateHz, MinQueueSamples, MaxQueueSamples);
         }
 
         private void ApplyGlobalPhysicsRateOverride(int targetHz)
@@ -215,6 +272,19 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             ProtobufSchemaRegistryLoader.FromBytes(ImuSchema.FileDescriptorSetData, schemas).RegisterAll();
+        }
+
+        private static ImuSample CreateSample(
+            ulong timestampNs,
+            Vector3 linearBody,
+            Vector3 angularBody,
+            Quaternion rotation)
+        {
+            return new ImuSample(
+                timestampNs,
+                CoordinateConverter.UnityToFoxglovePosition(linearBody),
+                CoordinateConverter.UnityToFoxglovePosition(angularBody),
+                CoordinateConverter.UnityToFoxgloveRotation(rotation));
         }
 
         private readonly struct ImuSample
