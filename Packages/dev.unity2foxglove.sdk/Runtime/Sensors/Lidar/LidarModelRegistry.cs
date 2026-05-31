@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
+// Purpose: Centralizes built-in LiDAR model presets and lookup helpers.
 
 using System.Collections.Generic;
 using System.Linq;
@@ -14,11 +15,6 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Used by VirtualLidarEditor to populate dropdowns and by
     /// LidarScanPatternFactory to create scan patterns from presets.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public static class LidarModelRegistry
     {
         // Ouster OS datasheet-style child-to-sensor extrinsics. The scene scaffold
@@ -84,23 +80,23 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         };
 
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static IReadOnlyList<LidarModelSpec> All => _all.AsReadOnly();
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static IEnumerable<LidarModelSpec> ForVendor(LidarVendor v)
             => _all.Where(s => s.Vendor == v);
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static bool TryGet(LidarVendor v, string model, out LidarModelSpec spec)
         {
             spec = _all.FirstOrDefault(s => s.Vendor == v && s.Model == model);
@@ -122,3 +118,5 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
+
+

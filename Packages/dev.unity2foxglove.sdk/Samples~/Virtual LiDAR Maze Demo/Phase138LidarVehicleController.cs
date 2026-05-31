@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo
+// Purpose: Provides simple manual/autowander vehicle motion for the maze LiDAR demo.
 
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
@@ -17,11 +18,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// input or deterministic auto-wander, on both the new Input System and the
     /// legacy Input Manager.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class Phase138LidarVehicleController : MonoBehaviour
     {
         [SerializeField] private float _moveSpeed = 1.5f;
@@ -142,10 +138,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         /// Safe to call at runtime or from an editor tool.
         /// </summary>
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static GameObject BuildVehicle(Vector3 position, out Transform lidarMount)
         {
             return BuildVehicle(position, out _, out lidarMount);
@@ -275,3 +271,5 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
+
+

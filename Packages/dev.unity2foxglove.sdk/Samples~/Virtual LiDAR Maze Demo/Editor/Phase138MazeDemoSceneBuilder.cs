@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo (Editor)
+// Purpose: Builds a preconfigured maze scene with Virtual LiDAR + IMU demo components.
 
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -24,11 +25,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
     /// through the static maze. Use WASD to drive; raise Decay time to accumulate
     /// the point cloud.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public static class Phase138MazeDemoSceneBuilder
     {
         private const int CellsX = 8;
@@ -36,11 +32,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         private const float CellSize = 2f;
 
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static void BuildScene()
         {
             // Clear previously generated demo roots, including any live
@@ -244,3 +240,5 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         }
     }
 }
+
+

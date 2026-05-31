@@ -313,6 +313,8 @@ def parse_mcap(mcap_path: Path, imu_topic: str, pointcloud_topic: str) -> dict[s
     topic_samples: dict[str, MessageSamples] = {}
 
     def get(topic: str) -> MessageSamples:
+        """Get the sample container for ``topic`` (and create it if missing)."""
+
         existing = topic_samples.get(topic)
         if existing is None:
             fresh = MessageSamples(topic=topic, log_times_ns=[], publish_times_ns=[], payload_times_ns=[])
@@ -491,4 +493,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo
+// Purpose: Bootstraps the maze demo scene at runtime when no prebuilt scene exists.
 
 using System.Reflection;
 using Unity.FoxgloveSDK.Sensors.Lidar;
@@ -20,11 +21,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
     /// through the static maze with the point cloud accumulating (Decay time > 0).
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class Phase138MazeDemoBootstrap : MonoBehaviour
     {
         private static bool s_warnedManagerNull;
@@ -150,7 +146,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             }
             else if (!s_warnedManagerNull)
             {
-                Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null 鈥?point cloud publisher stays disabled.");
+                Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null point cloud publisher stays disabled.");
                 s_warnedManagerNull = true;
             }
         }
@@ -206,3 +202,5 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
+
+
