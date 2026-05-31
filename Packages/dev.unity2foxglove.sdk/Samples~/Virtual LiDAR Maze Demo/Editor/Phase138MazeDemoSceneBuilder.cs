@@ -116,6 +116,8 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidar, "_pointCloudPublisher", publisher);
             SetField(lidar, "_columnStep", 1);
             SetField(lidar, "_maxRaysPerScan", 0);
+            SetField(lidar, "_protectMainThreadFrameRate", true);
+            SetField(lidar, "_protectedScanRateHz", 2f);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
 
             // 4. IMU on the shared Ouster-style sensor unit frame.
@@ -245,4 +247,3 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         }
     }
 }
-

@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Foxglove.Schemas.PointCloud
 {
@@ -92,6 +93,54 @@ namespace Foxglove.Schemas.PointCloud
                 Math.Max(4096, xyz.Length * sizeof(float) + OutputOverheadBytes)));
 
             return TryEncodeWithCapacity(xyz, pointCount, initialCapacity, out dracoPayload, out error);
+        }
+
+        internal static bool TryEncodeVirtualLidarPoints(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            out byte[] dracoPayload,
+            out string error,
+            out int validCount)
+        {
+            dracoPayload = null;
+            error = "";
+            validCount = 0;
+
+            if (points == null || pointCount <= 0)
+            {
+                error = "Draco virtual LiDAR point snapshot is empty.";
+                return false;
+            }
+
+            pointCount = Math.Min(pointCount, points.Length);
+            var xyz = new float[checked(pointCount * 3)];
+            for (var i = 0; i < pointCount; i++)
+            {
+                var point = points[i];
+                if (point.IsValid == 0)
+                    continue;
+
+                var offset = validCount * 3;
+                xyz[offset] = point.X;
+                xyz[offset + 1] = point.Y;
+                xyz[offset + 2] = point.Z;
+                validCount++;
+            }
+
+            if (validCount == 0)
+            {
+                error = "Draco virtual LiDAR point snapshot has no valid points.";
+                return false;
+            }
+
+            if (!ValidateInputBudget(validCount, out error))
+                return false;
+
+            var initialCapacity = checked(Math.Min(
+                MaxPayloadBytes,
+                Math.Max(4096, validCount * XyzBytesPerPoint + OutputOverheadBytes)));
+
+            return TryEncodeWithCapacity(xyz, validCount, initialCapacity, out dracoPayload, out error);
         }
 
         internal static bool ValidateInputBudget(int pointCount, out string error)

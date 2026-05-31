@@ -190,8 +190,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
                   && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal"),
                 "134-14J-1: Draco point-cloud encoding runs on a below-normal background worker");
-            Check(source.Contains("CloneFrameForBackgroundEncode(frame)"),
-                "134-14J-2: Draco worker receives a cloned point-cloud frame");
+            Check(!source.Contains("CloneFrameForBackgroundEncode"),
+                "134-14J-2: Draco worker reads the fresh per-scan frame directly without a main-thread clone");
             Check(source.Contains("_pendingDracoEncode = request"),
                 "134-14J-3: Draco pending work is last-value-wins");
             Check(source.Contains("DrainCompletedDracoEncode()"),

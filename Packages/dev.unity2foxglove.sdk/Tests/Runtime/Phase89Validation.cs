@@ -112,7 +112,6 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal")
                   && source.Contains("RunDracoEncodeWorker")
                   && source.Contains("_pendingDracoEncode")
-                  && source.Contains("CloneFrameForBackgroundEncode")
                   && !source.Contains("Task.Run")
                   && !source.Contains("BlockingCollection"),
                 "89B-8: Draco encode uses a last-value background worker without unbounded async queues");

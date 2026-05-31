@@ -44,6 +44,9 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyDracoDocumentationIsCurrent();
             VerifyValidationWiring();
             VerifyUnityDebugAliases();
+            VerifyVirtualLidarMainThreadIsolation();
+            VerifyVirtualLidarStableSourceRateCap();
+            VerifyVirtualLidarDracoBypassesManagedPointAppend();
 
             Console.WriteLine("Phase 138I: all checks passed.");
             Console.WriteLine();
@@ -184,6 +187,63 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("new System.Threading.Thread(RunDracoEncodeWorker)", StringComparison.Ordinal)
                   && publisher.Contains("Priority = System.Threading.ThreadPriority.BelowNormal", StringComparison.Ordinal),
                 "138I-23: Stopwatch and Draco thread priority references avoid ambiguous UnityEngine names");
+        }
+
+        private static void VerifyVirtualLidarMainThreadIsolation()
+        {
+            var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var buildJob = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarBuildPointsJob.cs");
+
+            Check(buildJob.Contains("[ReadOnly] public NativeArray<RaycastHit> Hits", StringComparison.Ordinal)
+                  && buildJob.Contains("hit.distance > 0f", StringComparison.Ordinal)
+                  && !buildJob.Contains("VirtualLidarHitData", StringComparison.Ordinal)
+                  && lidar.Contains("var raycastHandle = RaycastCommand.ScheduleBatch", StringComparison.Ordinal)
+                  && lidar.Contains("buildJob.Schedule(batchCount, 64, raycastHandle)", StringComparison.Ordinal)
+                  && lidar.Contains("_pendingScanHandle.Complete()", StringComparison.Ordinal)
+                  && !lidar.Contains("hit.collider == null", StringComparison.Ordinal)
+                  && !lidar.Contains("_rayHits", StringComparison.Ordinal)
+                  && !lidar.Contains("job.Schedule(_pendingBatchCount, 64).Complete()", StringComparison.Ordinal),
+                "138I-24: VirtualLidar chains raycast-to-point build work off the main-thread consume path");
+        }
+
+        private static void VerifyVirtualLidarStableSourceRateCap()
+        {
+            var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var editor = ReadRepoText(DemoEditorRelativePath);
+            var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
+
+            Check(lidar.Contains("_protectMainThreadFrameRate", StringComparison.Ordinal)
+                  && lidar.Contains("_protectedScanRateHz", StringComparison.Ordinal)
+                  && lidar.Contains("ComputeProtectedScanPeriodSeconds", StringComparison.Ordinal)
+                  && lidar.Contains("_scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, ComputeProtectedScanPeriodSeconds())", StringComparison.Ordinal)
+                  && lidar.Contains("StartNewScan(_activeScanStartPhysSeconds + ComputeProtectedScanPeriodSeconds())", StringComparison.Ordinal)
+                  && !lidar.Contains("_mainThreadDeltaMsEma", StringComparison.Ordinal)
+                  && !lidar.Contains("MainThreadFrameRateEmaAlpha", StringComparison.Ordinal)
+                  && !lidar.Contains("Time.unscaledDeltaTime * 1000d", StringComparison.Ordinal)
+                  && Regex.IsMatch(editor, @"SetField\(lidar,\s*""_protectMainThreadFrameRate"",\s*true\)")
+                  && Regex.IsMatch(editor, @"SetField\(lidar,\s*""_protectedScanRateHz"",\s*2f\)")
+                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(lidar,\s*""_protectMainThreadFrameRate"",\s*true\)")
+                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(lidar,\s*""_protectedScanRateHz"",\s*2f\)"),
+                "138I-25: VirtualLidar uses a stable source-side LiDAR rate cap instead of frame-time feedback jitter");
+        }
+
+        private static void VerifyVirtualLidarDracoBypassesManagedPointAppend()
+        {
+            var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var encoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
+
+            Check(lidar.Contains("VirtualLidarPointData[] _activeScanPointSnapshot", StringComparison.Ordinal)
+                  && lidar.Contains("CopyPendingPointDataSegment", StringComparison.Ordinal)
+                  && lidar.Contains("TryPublishActiveNativeDracoScan", StringComparison.Ordinal)
+                  && lidar.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
+                  && publisher.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
+                  && publisher.Contains("QueueVirtualLidarDracoEncode", StringComparison.Ordinal)
+                  && publisher.Contains("VirtualLidarPointData[]", StringComparison.Ordinal)
+                  && publisher.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf", StringComparison.Ordinal)
+                  && encoder.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal)
+                  && encoder.Contains("VirtualLidarPointData[]", StringComparison.Ordinal),
+                "138I-26: VirtualLidar Draco path bypasses managed per-point append and encodes from an off-thread snapshot");
         }
 
         private static string ReadRepoText(string relativePath)

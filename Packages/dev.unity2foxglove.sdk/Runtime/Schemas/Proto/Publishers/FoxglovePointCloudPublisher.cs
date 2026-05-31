@@ -12,6 +12,7 @@ using Foxglove.Schemas.PointCloud;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+using Unity.FoxgloveSDK.Sensors.Lidar;
 using Unity.FoxgloveSDK.Util;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UVector3 = UnityEngine.Vector3;
@@ -76,6 +77,7 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => SchemaNameOverride;
         protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
+        internal bool CanQueueVirtualLidarDracoFrame => _outputMode == PointCloudOutputMode.Draco;
         /// <summary>
         /// Public/member behavior description.
         /// </summary>
@@ -173,6 +175,37 @@ namespace Unity.FoxgloveSDK.Components
             {
                 ClearPreparedPublishDemand();
             }
+        }
+
+        internal bool TryQueueVirtualLidarDracoFrame(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            ulong unixNs,
+            string frameId,
+            bool emitAbsoluteTimeNs)
+        {
+            if (!CanQueueVirtualLidarDracoFrame)
+                return false;
+
+            ResolveManager();
+            if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
+                return true;
+
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge)
+                return true;
+
+            QueueVirtualLidarDracoEncode(
+                points,
+                pointCount,
+                unixNs,
+                frameId,
+                emitAbsoluteTimeNs,
+                publishWebSocket,
+                publishBridge,
+                EffectiveEncoding);
+            return true;
         }
 
         protected virtual void Update()
@@ -276,13 +309,49 @@ namespace Unity.FoxgloveSDK.Components
                 publishBridge = ShouldPrepareRos2BridgePayload();
             }
 
-            var cloneStart = DiagnosticStart();
+            // No main-thread clone. VirtualLidar allocates a fresh PointCloudFrame for every
+            // scan (StartNewScan) and never mutates a frame after handing it to SetFrame, so
+            // the background worker can read this frame directly. Cloning 262144 points on the
+            // Update thread was the dominant per-frame main-thread spike that stalled the loop.
             var request = new DracoEncodeRequest(
-                CloneFrameForBackgroundEncode(frame),
+                frame,
                 unixNs,
                 publishWebSocket,
                 publishBridge,
-                DiagnosticElapsedMs(cloneStart));
+                EffectiveEncoding,
+                0d);
+            EnqueueDracoEncodeRequest(request);
+        }
+
+        private void QueueVirtualLidarDracoEncode(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            ulong unixNs,
+            string frameId,
+            bool emitAbsoluteTimeNs,
+            bool publishWebSocket,
+            bool publishBridge,
+            PublisherEffectiveEncoding webSocketEncoding)
+        {
+            if (points == null || pointCount <= 0)
+                return;
+
+            RecordPointCloudPrepared(pointCount);
+            var request = new DracoEncodeRequest(
+                points,
+                pointCount,
+                unixNs,
+                string.IsNullOrEmpty(frameId) ? _frameId : frameId,
+                emitAbsoluteTimeNs,
+                publishWebSocket,
+                publishBridge,
+                webSocketEncoding,
+                0d);
+            EnqueueDracoEncodeRequest(request);
+        }
+
+        private void EnqueueDracoEncodeRequest(DracoEncodeRequest request)
+        {
             var startWorker = false;
             lock (_dracoEncodeGate)
             {
@@ -358,14 +427,7 @@ namespace Unity.FoxgloveSDK.Components
                         }
                     }
 
-                    var encodeStart = Stopwatch.GetTimestamp();
-                    var success = DracoPointCloudNativeEncoder.TryEncode(request.Frame, out var dracoPayload, out var encodeError);
-                    var result = new DracoEncodeResult(
-                        request,
-                        success,
-                        dracoPayload,
-                        encodeError,
-                        (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
+                    var result = EncodeDracoRequest(request);
                     lock (_dracoEncodeGate)
                     {
                         if (_stopDracoEncodeWorker)
@@ -389,6 +451,94 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 _dracoEncodeWorkerIdle.Set();
+            }
+        }
+
+        private static DracoEncodeResult EncodeDracoRequest(DracoEncodeRequest request)
+        {
+            var encodeStart = Stopwatch.GetTimestamp();
+            var success = false;
+            var error = "";
+            byte[] dracoPayload = null;
+            var metadataFrame = request.Frame;
+            var validCount = 0;
+
+            if (request.HasVirtualLidarSnapshot)
+            {
+                success = DracoPointCloudNativeEncoder.TryEncodeVirtualLidarPoints(
+                    request.LidarPoints,
+                    request.LidarPointCount,
+                    out dracoPayload,
+                    out error,
+                    out validCount);
+                metadataFrame = new PointCloudFrame
+                {
+                    UnixNs = request.UnixNs,
+                    FrameId = request.FrameId,
+                    ValidCount = validCount,
+                    EmitAbsoluteTimeNs = request.EmitAbsoluteTimeNs
+                };
+            }
+            else
+            {
+                success = DracoPointCloudNativeEncoder.TryEncode(request.Frame, out dracoPayload, out error);
+            }
+
+            byte[] webSocketPayload = null;
+            byte[] bridgePayload = null;
+            if (success)
+            {
+                try
+                {
+                    BuildDracoPublishPayloads(
+                        request,
+                        metadataFrame,
+                        dracoPayload,
+                        out webSocketPayload,
+                        out bridgePayload);
+                }
+                catch (Exception ex)
+                {
+                    success = false;
+                    error = "Unable to serialize compressed point-cloud payload off thread: " + ex.Message;
+                }
+            }
+
+            return new DracoEncodeResult(
+                request,
+                metadataFrame,
+                success,
+                webSocketPayload,
+                bridgePayload,
+                error,
+                (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
+        }
+
+        private static void BuildDracoPublishPayloads(
+            DracoEncodeRequest request,
+            PointCloudFrame frame,
+            byte[] dracoPayload,
+            out byte[] webSocketPayload,
+            out byte[] bridgePayload)
+        {
+            webSocketPayload = null;
+            bridgePayload = null;
+            byte[] ros2Payload = null;
+
+            if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                ros2Payload = Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
+                webSocketPayload = ros2Payload;
+            }
+            else if (request.PublishWebSocket)
+            {
+                webSocketPayload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
+            }
+
+            if (request.PublishBridge)
+            {
+                ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
+                bridgePayload = ros2Payload;
             }
         }
 
@@ -427,8 +577,10 @@ namespace Unity.FoxgloveSDK.Components
                 _dracoFailureCount = 0;
                 _warnedDracoBacklog = false;
                 RecordPointCloudEncodeResult(result);
-                PublishDracoPayload(result.Request.Frame, result.Request.UnixNs, result.Payload, result.Request.PublishWebSocket, result.Request.PublishBridge);
+                PublishCompletedDracoPayload(result);
             }
+
+            LogPointCloudDiagnosticsIfReady();
         }
 
         private void StopDracoEncodeWorker(bool clearCompleted)
@@ -462,45 +614,19 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void PublishDracoPayload(PointCloudFrame frame, ulong unixNs, byte[] dracoPayload, bool publishWebSocket, bool publishBridge)
+        private void PublishCompletedDracoPayload(DracoEncodeResult result)
         {
-            byte[] ros2Payload = null;
-
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                ros2Payload = Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
-                PublishRos2(ros2Payload, unixNs);
+                PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
             }
-            else if (publishWebSocket)
+            else if (result.Request.PublishWebSocket)
             {
-                var payload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
-                PublishProto(payload, unixNs);
+                PublishProto(result.WebSocketPayload, result.Request.UnixNs);
             }
 
-            if (publishBridge)
-            {
-                ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
-                PublishRos2Bridge(ros2Payload, unixNs);
-            }
-        }
-
-        private static PointCloudFrame CloneFrameForBackgroundEncode(PointCloudFrame frame)
-        {
-            var pointCount = frame.GetPointCount();
-            var copy = new PointCloudFrame
-            {
-                UnixNs = frame.UnixNs,
-                FrameId = frame.FrameId,
-                ValidCount = pointCount
-            };
-
-            for (var i = 0; i < pointCount; i++)
-            {
-                // Struct value-copy: no per-point heap allocation.
-                copy.Points.Add(frame.Points[i]);
-            }
-
-            return copy;
+            if (result.Request.PublishBridge)
+                PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
         }
 
         private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
@@ -545,12 +671,36 @@ namespace Unity.FoxgloveSDK.Components
                 ulong unixNs,
                 bool publishWebSocket,
                 bool publishBridge,
+                PublisherEffectiveEncoding webSocketEncoding,
                 double cloneMs)
             {
                 Frame = frame;
                 UnixNs = unixNs;
                 PublishWebSocket = publishWebSocket;
                 PublishBridge = publishBridge;
+                WebSocketEncoding = webSocketEncoding;
+                CloneMs = cloneMs;
+            }
+
+            public DracoEncodeRequest(
+                VirtualLidarPointData[] lidarPoints,
+                int lidarPointCount,
+                ulong unixNs,
+                string frameId,
+                bool emitAbsoluteTimeNs,
+                bool publishWebSocket,
+                bool publishBridge,
+                PublisherEffectiveEncoding webSocketEncoding,
+                double cloneMs)
+            {
+                LidarPoints = lidarPoints;
+                LidarPointCount = lidarPointCount;
+                UnixNs = unixNs;
+                FrameId = frameId;
+                EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
+                PublishWebSocket = publishWebSocket;
+                PublishBridge = publishBridge;
+                WebSocketEncoding = webSocketEncoding;
                 CloneMs = cloneMs;
             }
 
@@ -559,6 +709,11 @@ namespace Unity.FoxgloveSDK.Components
             /// </summary>
 
             public PointCloudFrame Frame { get; }
+            public VirtualLidarPointData[] LidarPoints { get; }
+            public int LidarPointCount { get; }
+            public bool HasVirtualLidarSnapshot => LidarPoints != null;
+            public string FrameId { get; }
+            public bool EmitAbsoluteTimeNs { get; }
             /// <summary>
             /// Public/member behavior description.
             /// </summary>
@@ -574,6 +729,7 @@ namespace Unity.FoxgloveSDK.Components
             /// </summary>
 
             public bool PublishBridge { get; }
+            public PublisherEffectiveEncoding WebSocketEncoding { get; }
             /// <summary>Main-thread frame clone time before background Draco encode.</summary>
             public double CloneMs { get; }
         }
@@ -584,11 +740,20 @@ namespace Unity.FoxgloveSDK.Components
             /// Public/member behavior description.
             /// </summary>
 
-            public DracoEncodeResult(DracoEncodeRequest request, bool success, byte[] payload, string error, double encodeMs)
+            public DracoEncodeResult(
+                DracoEncodeRequest request,
+                PointCloudFrame frame,
+                bool success,
+                byte[] webSocketPayload,
+                byte[] bridgePayload,
+                string error,
+                double encodeMs)
             {
                 Request = request;
+                Frame = frame;
                 Success = success;
-                Payload = payload;
+                WebSocketPayload = webSocketPayload;
+                BridgePayload = bridgePayload;
                 Error = error;
                 EncodeMs = encodeMs;
             }
@@ -598,6 +763,7 @@ namespace Unity.FoxgloveSDK.Components
             /// </summary>
 
             public DracoEncodeRequest Request { get; }
+            public PointCloudFrame Frame { get; }
             /// <summary>
             /// Public/member behavior description.
             /// </summary>
@@ -607,7 +773,8 @@ namespace Unity.FoxgloveSDK.Components
             /// Public/member behavior description.
             /// </summary>
 
-            public byte[] Payload { get; }
+            public byte[] WebSocketPayload { get; }
+            public byte[] BridgePayload { get; }
             /// <summary>
             /// Public/member behavior description.
             /// </summary>
