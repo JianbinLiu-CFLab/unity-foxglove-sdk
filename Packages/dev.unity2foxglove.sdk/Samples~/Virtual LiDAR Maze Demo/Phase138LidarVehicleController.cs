@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo
+// Purpose: Provides simple manual/autowander vehicle motion for the maze LiDAR demo.
 
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
@@ -17,11 +18,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// input or deterministic auto-wander, on both the new Input System and the
     /// legacy Input Manager.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class Phase138LidarVehicleController : MonoBehaviour
     {
         [SerializeField] private float _moveSpeed = 1.5f;
@@ -142,11 +138,16 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         /// Safe to call at runtime or from an editor tool.
         /// </summary>
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static GameObject BuildVehicle(Vector3 position, out Transform lidarMount)
+        {
+            return BuildVehicle(position, out _, out lidarMount);
+        }
+
+        public static GameObject BuildVehicle(Vector3 position, out Transform lidarImuUnit, out Transform lidarMount)
         {
             var root = new GameObject("Vehicle");
             root.transform.position = position;
@@ -203,9 +204,14 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             col.center = new Vector3(0f, 0.45f, 0f);
             col.size = new Vector3(0.7f, 0.6f, 1.1f);
 
+            var unit = new GameObject("Lidar-IMU-Unit");
+            unit.transform.SetParent(root.transform, false);
+            unit.transform.localPosition = new Vector3(0f, 0.8f, 0f);
+            lidarImuUnit = unit.transform;
+
             var mount = new GameObject("LidarMount");
-            mount.transform.SetParent(root.transform, false);
-            mount.transform.localPosition = new Vector3(0f, 0.8f, 0f);
+            mount.transform.SetParent(lidarImuUnit, false);
+            mount.transform.localPosition = Vector3.zero;
             lidarMount = mount.transform;
 
             return root;
@@ -265,4 +271,5 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
+
 

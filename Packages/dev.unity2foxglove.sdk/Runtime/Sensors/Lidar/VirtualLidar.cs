@@ -4,7 +4,6 @@
 // Module: Runtime/Sensors/Lidar
 
 using System;
-using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -44,10 +43,19 @@ namespace Unity.FoxgloveSDK.Components
             Override
         }
 
-        [Header("Output")]
-        [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
+        /// <summary>Inspector input mode for editing T_IL rotation overrides.</summary>
+        public enum TIlRotationInputFormat
+        {
+            /// <summary>Edit the rotation as quaternion x/y/z/w.</summary>
+            Quaternion,
+            /// <summary>Edit the rotation as a row-major 3x3 matrix.</summary>
+            Matrix3x3
+        }
 
-        [Header("Profile")]
+        [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
+        [SerializeField] private FoxgloveManager _manager;
+        [SerializeField] private SensorUnitProfile _sensorUnitProfile;
+
         [Tooltip("Where the scan geometry comes from.")]
         [SerializeField] private ProfileSource _profileSource = ProfileSource.BuiltInPreset;
         [Tooltip("Used when Profile Source = MetadataJson.")]
@@ -61,7 +69,11 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Optional scan mode for models that support multiple modes (e.g. 1024x10, 2048x10).")]
         [SerializeField] private string _mode = "1024x10";
 
-        [Header("Custom Profile (Profile Source = Custom)")]
+        [SerializeField] private bool _overrideTIl;
+        [SerializeField] private TIlRotationInputFormat _tIlRotationInputFormat = TIlRotationInputFormat.Quaternion;
+        [SerializeField] private Vector3 _tIlTranslationMeters = new Vector3(0.006253f, -0.011775f, 0.007645f);
+        [SerializeField] private Quaternion _tIlRotation = Quaternion.identity;
+
         [SerializeField, Min(1)] private int _customPixelsPerColumn = 32;
         [SerializeField] private float _customFovTopDeg = 16.6f;
         [SerializeField] private float _customFovBottomDeg = -16.6f;
@@ -69,7 +81,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1f)] private float _customScanRateHz = 10f;
         [SerializeField, Min(0f)] private float _customMinRangeMeters = 0.5f;
 
-        [Header("Scan")]
         [SerializeField] private string _frameId = "os_lidar";
         [Tooltip("Use Sensor Rate = the model's nominal Hz; Override = use Scan Rate Hz below. " +
                  "This is the LiDAR's frame-generation rate; the point cloud's publish rate to " +
@@ -87,18 +98,123 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private LayerMask _layerMask = ~0;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
+        [SerializeField, Min(1)] private int _scanSubSteps = 1;
 
-        [Header("Synthetic Values")]
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
 
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
 
+        /// <summary>Current Inspector rotation input mode for the T_IL override.</summary>
+        public TIlRotationInputFormat TIlRotationFormat => _tIlRotationInputFormat;
+
+        /// <summary>The selected model's default LiDAR-to-sensor extrinsic, or identity when no model default applies.</summary>
+        public LidarTIlExtrinsic ModelLidarToSensor
+        {
+            get
+            {
+                if (ResolveSensorUnitProfile() != null)
+                    return _sensorUnitProfile.ModelLidarToSensor;
+
+                if (_profileSource == ProfileSource.BuiltInPreset &&
+                    Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    return new LidarTIlExtrinsic(spec.LidarToSensorTranslationMeters, spec.LidarToSensorRotation);
+
+                return LidarTIlExtrinsic.Identity;
+            }
+        }
+
+        /// <summary>The selected model's default IMU-to-sensor extrinsic, or identity when no model default applies.</summary>
+        public LidarTIlExtrinsic ModelImuToSensor
+        {
+            get
+            {
+                if (ResolveSensorUnitProfile() != null)
+                    return _sensorUnitProfile.ModelImuToSensor;
+
+                if (_profileSource == ProfileSource.BuiltInPreset &&
+                    Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    return new LidarTIlExtrinsic(spec.ImuToSensorTranslationMeters, spec.ImuToSensorRotation);
+
+                return LidarTIlExtrinsic.Identity;
+            }
+        }
+
+        /// <summary>Legacy alias for the selected model's default IMU-to-sensor extrinsic.</summary>
+        public LidarTIlExtrinsic ModelTIl => ModelImuToSensor;
+
+        /// <summary>The effective IMU-to-sensor extrinsic after applying the optional component override.</summary>
+        public LidarTIlExtrinsic EffectiveImuToSensor
+            => ResolveSensorUnitProfile() != null
+                ? _sensorUnitProfile.EffectiveImuToSensor
+                : _overrideTIl
+                ? new LidarTIlExtrinsic(
+                    ToNumericsVector3(_tIlTranslationMeters),
+                    ToNumericsQuaternion(_tIlRotation))
+                : ModelImuToSensor;
+
+        /// <summary>Legacy alias for the effective IMU-to-sensor extrinsic.</summary>
+        public LidarTIlExtrinsic EffectiveTIl => EffectiveImuToSensor;
+
+        /// <summary>Copy the currently selected model default into the editable override fields.</summary>
+        public void CopyModelTIlToOverride()
+        {
+            if (ResolveSensorUnitProfile() != null)
+            {
+                _sensorUnitProfile.CopyModelImuToSensorToOverride();
+                return;
+            }
+
+            var modelTIl = ModelImuToSensor;
+            _tIlTranslationMeters = ToUnityVector3(modelTIl.TranslationMeters);
+            _tIlRotation = ToUnityQuaternion(modelTIl.Rotation);
+        }
+
+        /// <summary>Convert a numerics vector to a Unity vector.</summary>
+        public static Vector3 ToUnityVector3(System.Numerics.Vector3 value)
+            => new Vector3(value.X, value.Y, value.Z);
+
+        /// <summary>Convert a numerics quaternion to a normalized Unity quaternion.</summary>
+        public static Quaternion ToUnityQuaternion(System.Numerics.Quaternion value)
+        {
+            var normalized = LidarTIlExtrinsic.NormalizeRotation(value);
+            return new Quaternion(normalized.X, normalized.Y, normalized.Z, normalized.W);
+        }
+
+        /// <summary>Convert a Unity vector to a numerics vector.</summary>
+        public static System.Numerics.Vector3 ToNumericsVector3(Vector3 value)
+            => new System.Numerics.Vector3(value.x, value.y, value.z);
+
+        /// <summary>Convert a Unity quaternion to a normalized numerics quaternion.</summary>
+        public static System.Numerics.Quaternion ToNumericsQuaternion(Quaternion value)
+            => LidarTIlExtrinsic.NormalizeRotation(
+                new System.Numerics.Quaternion(value.x, value.y, value.z, value.w));
+
         private ILidarScanPattern _scanPattern;
         private int _frameCounter;
-        private float _nextScanTime;
         private float _scanPeriod;
+
+        // Uniform sensor clock: single epoch shared across LiDAR scan lifecycle.
+        private bool _scanClockInitialized;
+        private ulong _scanEpochUnixNs;
+        private double _scanEpochPhysSeconds;
+
+        // Stream state.
+        private bool _hasPrevPose;
+        private double _prevFixedTime;
+        private double _scanColumnProgress;
+        private int _scanColumnCursor;
+        private int _scanColumnCount;
+        private PointCloudFrame _activeScanFrame;
+        private int _activeScanValidPoints;
+        private double _activeScanStartPhysSeconds;
+        // Rays grouped by column (built once) so a tick batch gathers a column's rays in
+        // O(rays-in-column) instead of scanning all rays per column (the O(N^2) hot path).
+        private int[][] _columnRays;
+        // Ray-index positions inside the current tick batch where a revolution completes.
+        private readonly System.Collections.Generic.List<int> _scanCrossings =
+            new System.Collections.Generic.List<int>();
 
         // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
         private NativeArray<RaycastCommand> _commands;
@@ -108,6 +224,7 @@ namespace Unity.FoxgloveSDK.Components
         private NativeArray<VirtualLidarHitData> _rayHits;
         private NativeArray<VirtualLidarPointData> _pointData;
         private VirtualLidarPointData[] _pointDataManaged;
+        private int[] _rayColumns;
         private int _rawRayCount;       // pattern.RayCount
         private int _effectiveRayCount; // rays actually cast per scan (after budget)
         private int _rayStride;         // subsampling stride into the pattern
@@ -115,7 +232,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Start()
         {
-            if (_profileSource == ProfileSource.BuiltInPreset)
+            ResolveSensorUnitProfile();
+
+            if (_manager == null)
+                _manager = _sensorUnitProfile != null && _sensorUnitProfile.Manager != null
+                    ? _sensorUnitProfile.Manager
+                    : FindFirstObjectByType<FoxgloveManager>();
+
+            if (_sensorUnitProfile != null)
+            {
+                _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
+            }
+            else if (_profileSource == ProfileSource.BuiltInPreset)
             {
                 if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
                     _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
@@ -133,7 +261,14 @@ namespace Unity.FoxgloveSDK.Components
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)
             {
-                _pointCloudPublisher = GetComponent<FoxglovePointCloudPublisher>();
+                if (_sensorUnitProfile != null)
+                    _pointCloudPublisher = _sensorUnitProfile.PointCloudPublisher;
+
+                if (_pointCloudPublisher == null)
+                    _pointCloudPublisher = GetComponentInParent<FoxglovePointCloudPublisher>();
+
+                if (_pointCloudPublisher == null)
+                    _pointCloudPublisher = GetComponent<FoxglovePointCloudPublisher>();
                 if (_pointCloudPublisher == null)
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
@@ -142,9 +277,16 @@ namespace Unity.FoxgloveSDK.Components
                 ? _scanRateHzOverride
                 : _scanPattern.ScanRateHz;
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
-            _nextScanTime = Time.unscaledTime;
 
             AllocateScanBuffers();
+            ResetScanState(Time.fixedTimeAsDouble);
+        }
+
+        private SensorUnitProfile ResolveSensorUnitProfile()
+        {
+            if (_sensorUnitProfile == null)
+                _sensorUnitProfile = GetComponentInParent<SensorUnitProfile>();
+            return _sensorUnitProfile;
         }
 
         private void AllocateScanBuffers()
@@ -170,10 +312,45 @@ namespace Unity.FoxgloveSDK.Components
             _rayRings = new NativeArray<ushort>(_effectiveRayCount, Allocator.Persistent);
             _rayHits = new NativeArray<VirtualLidarHitData>(_effectiveRayCount, Allocator.Persistent);
             _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
+            _rayColumns = new int[_effectiveRayCount];
 
             // Exact length so NativeArray.CopyTo(_pointDataManaged) never length-mismatches
             // (CopyTo requires equal lengths; _pointData is reallocated to _effectiveRayCount here too).
             _pointDataManaged = new VirtualLidarPointData[_effectiveRayCount];
+            _scanColumnCount = 0;
+
+            var rawColumns = _spinEffectiveColumns > 0 ? _spinEffectiveColumns : Math.Max(1, _rawRayCount);
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var index = k * _rayStride;
+                if (index >= _rawRayCount)
+                    index = _rawRayCount - 1;
+
+                var column = index % rawColumns;
+                if (column < 0 || column >= rawColumns)
+                    column = 0;
+
+                _rayColumns[k] = column;
+                if (column >= _scanColumnCount)
+                    _scanColumnCount = column + 1;
+            }
+
+            if (_scanColumnCount <= 0)
+                _scanColumnCount = Math.Max(1, rawColumns);
+
+            // Bucket ray indices by column once (CSR-style jagged array) for O(1) column gather.
+            var columnCounts = new int[_scanColumnCount];
+            for (var k = 0; k < _effectiveRayCount; k++)
+                columnCounts[_rayColumns[k]]++;
+            _columnRays = new int[_scanColumnCount][];
+            for (var c = 0; c < _scanColumnCount; c++)
+                _columnRays[c] = new int[columnCounts[c]];
+            var columnFill = new int[_scanColumnCount];
+            for (var k = 0; k < _effectiveRayCount; k++)
+            {
+                var c = _rayColumns[k];
+                _columnRays[c][columnFill[c]++] = k;
+            }
         }
 
         private void DisposeScanBuffers()
@@ -184,12 +361,15 @@ namespace Unity.FoxgloveSDK.Components
             if (_rayRings.IsCreated) _rayRings.Dispose();
             if (_rayHits.IsCreated) _rayHits.Dispose();
             if (_pointData.IsCreated) _pointData.Dispose();
+            _rayColumns = null;
+            _columnRays = null;
             _commands = default;
             _results = default;
             _rayTimeOffsets = default;
             _rayRings = default;
             _rayHits = default;
             _pointData = default;
+            _scanColumnCount = 0;
         }
 
         private void OnDestroy()
@@ -200,6 +380,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnEnable()
         {
             AllocateScanBuffers();
+            ResetScanState(Time.fixedTimeAsDouble);
         }
 
         private void OnDisable()
@@ -240,80 +421,100 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void Update()
+        private void FixedUpdate()
         {
-            if (Time.unscaledTime < _nextScanTime)
+            if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
                 return;
 
-            var frame = RunScan();
-            LastFrame = frame;
+            if (_scanPeriod <= 0f || _scanColumnCount <= 0)
+                return;
 
-            if (_pointCloudPublisher != null && (frame.GetPointCount() > 0 || _publishEmptyFrames))
-                _pointCloudPublisher.SetFrame(frame);
+            EnsureScanClock(Time.fixedTimeAsDouble);
 
-            _nextScanTime += _scanPeriod;
+            if (_activeScanFrame == null)
+                StartNewScan(Time.fixedTimeAsDouble);
 
-            // Guard against large time gaps (e.g. editor pause)
-            if (_nextScanTime < Time.unscaledTime)
-                _nextScanTime = Time.unscaledTime + _scanPeriod;
-        }
-
-        private PointCloudFrame RunScan()
-        {
-            var frame = new PointCloudFrame
+            var nowPhys = Time.fixedTimeAsDouble;
+            if (!_hasPrevPose)
             {
-                UnixNs = FoxgloveTimeUtil.NowUnixTimeNs(),
-                FrameId = _frameId,
-                ValidCount = 0
-            };
-
-            if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
-            {
-                _frameCounter++;
-                return frame;
+                _hasPrevPose = true;
+                _prevFixedTime = nowPhys;
+                return;
             }
 
+            var dt = nowPhys - _prevFixedTime;
+            _prevFixedTime = nowPhys;
+            if (dt <= 0d)
+                return;
+
+            // Columns to advance this tick; carry the fractional remainder to avoid drift.
+            _scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, _scanPeriod);
+            var columnsToEmit = (int)Math.Floor(_scanColumnProgress);
+            if (columnsToEmit <= 0)
+                return;
+            _scanColumnProgress -= columnsToEmit;
+
+            // One tick-end pose for the whole batch: a single worldToLocal keeps the build
+            // job unchanged (no per-ray matrix). One revolution => _scanColumnCount poses,
+            // enough for IMU de-skew. Per-column pose interpolation is a future option.
             var worldPos = transform.position;
+            var worldRot = transform.rotation;
+            var worldToLocal = Matrix4x4.TRS(worldPos, worldRot, Vector3.one).inverse.ToFloat4x4();
             var queryParams = new QueryParameters(_layerMask.value);
 
-            // Build the ray batch on the main thread (cheap), then cast in parallel.
-            for (var k = 0; k < _effectiveRayCount; k++)
+            // Build one batch for all columns this tick (cap at one revolution).
+            _scanCrossings.Clear();
+            var batchCount = 0;
+            for (var c = 0; c < columnsToEmit && batchCount < _effectiveRayCount; c++)
             {
-                var index = k * _rayStride;
-                if (index >= _rawRayCount) index = _rawRayCount - 1;
-
-                if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
+                var rays = _columnRays[_scanColumnCursor];
+                for (var r = 0; r < rays.Length && batchCount < _effectiveRayCount; r++)
                 {
-                    _commands[k] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                    _rayTimeOffsets[k] = 0f;
-                    _rayRings[k] = 0;
-                    _rayHits[k] = new VirtualLidarHitData
+                    var k = rays[r];
+                    var index = k * _rayStride;
+                    if (index >= _rawRayCount) index = _rawRayCount - 1;
+
+                    if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
                     {
-                        Point = float3.zero,
-                        Distance = 0f,
-                        ColliderInstanceId = 0
-                    };
-                    continue;
+                        _commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                        _rayTimeOffsets[batchCount] = 0f;
+                        _rayRings[batchCount] = 0;
+                    }
+                    else
+                    {
+                        var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
+                        _commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                        _rayTimeOffsets[batchCount] = timeOffset;
+                        _rayRings[batchCount] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+                    }
+                    batchCount++;
                 }
 
-                var worldDir = transform.TransformDirection(new Vector3(localDir.X, localDir.Y, localDir.Z));
-                _commands[k] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                _rayTimeOffsets[k] = timeOffset;
-                _rayRings[k] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+                _scanColumnCursor++;
+                if (_scanColumnCursor >= _scanColumnCount)
+                {
+                    _scanCrossings.Add(batchCount);
+                    _scanColumnCursor = 0;
+                }
             }
 
-            // Parallel raycast across worker threads, then process results on main thread.
-            RaycastCommand.ScheduleBatch(_commands, _results, 64).Complete();
+            if (batchCount <= 0)
+                return;
+
+            // One parallel raycast + one build job for the entire tick batch.
+            RaycastCommand.ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete();
 
             var minRange = (float)_scanPattern.MinRangeMeters;
-            for (var k = 0; k < _effectiveRayCount; k++)
+            for (var k = 0; k < batchCount; k++)
             {
                 var hit = _results[k];
                 _rayHits[k] = new VirtualLidarHitData
                 {
                     Point = new float3(hit.point.x, hit.point.y, hit.point.z),
                     Distance = hit.distance,
-                    ColliderInstanceId = hit.collider == null ? 0 : hit.collider.GetInstanceID()
+                    // Only hit/miss matters downstream (job tests != 0u); avoid the obsolete
+                    // colliderInstanceID and the EntityId type churn by using a hit flag.
+                    ColliderInstanceId = hit.collider == null ? 0u : 1u
                 };
             }
 
@@ -322,52 +523,124 @@ namespace Unity.FoxgloveSDK.Components
                 Hits = _rayHits,
                 RayTimeOffsets = _rayTimeOffsets,
                 RayRings = _rayRings,
-                WorldToLocal = transform.worldToLocalMatrix.ToFloat4x4(),
+                WorldToLocal = worldToLocal,
                 MinRange = minRange,
                 MaxRange = _maxRangeMeters,
                 SyntheticIntensity = _syntheticIntensity,
                 SyntheticReflectivity = _syntheticReflectivity,
                 Points = _pointData
             };
-
-            job.Schedule(_effectiveRayCount, 64).Complete();
-
-            // List<T>.EnsureCapacity is unavailable in Unity's .NET profile; the Capacity
-            // setter pre-sizes the backing array the same way (grow-only).
-            if (frame.Points.Capacity < _effectiveRayCount)
-                frame.Points.Capacity = _effectiveRayCount;
+            job.Schedule(batchCount, 64).Complete();
             _pointData.CopyTo(_pointDataManaged);
 
-            var validPointCount = 0;
-            for (var k = 0; k < _effectiveRayCount; k++)
+            // Distribute points to the active frame, publishing each completed revolution.
+            var ci = 0;
+            for (var k = 0; k < batchCount; k++)
             {
+                while (ci < _scanCrossings.Count && k == _scanCrossings[ci])
+                {
+                    PublishActiveScan();
+                    StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
+                    ci++;
+                }
+
                 var point = _pointDataManaged[k];
                 if (point.IsValid == 0)
                     continue;
 
-                frame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
+                _activeScanFrame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
                 {
                     Intensity = point.Intensity,
                     Reflectivity = point.Reflectivity,
                     TimeOffsetSeconds = point.TimeOffsetSeconds,
                     Ring = point.Ring
                 });
-
-                if (_drawDebugRays)
-                    Debug.DrawRay(_commands[k].from, _commands[k].direction * _rayHits[k].Distance, Color.green, _scanPeriod);
-
-                validPointCount++;
+                _activeScanValidPoints++;
             }
+            while (ci < _scanCrossings.Count && batchCount == _scanCrossings[ci])
+            {
+                PublishActiveScan();
+                StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
+                ci++;
+            }
+        }
+
+        private void StartNewScan(double scanStartPhysSeconds)
+        {
+            EnsureScanClock(Time.fixedTimeAsDouble);
+
+            // Note: scan phase (_scanColumnProgress/_scanColumnCursor) is owned by FixedUpdate
+            // and ResetScanState; StartNewScan must not clear it or a cross-revolution restart
+            // would drop the in-tick remainder.
+            _activeScanStartPhysSeconds = scanStartPhysSeconds;
+            _activeScanFrame = new PointCloudFrame
+            {
+                UnixNs = ComputeScanStartUnixNs(scanStartPhysSeconds),
+                FrameId = _frameId,
+                ValidCount = 0,
+                // SLAM front-ends (FAST-LIO/LIVO2) consume the Ouster-style absolute-ns `t`.
+                EmitAbsoluteTimeNs = true
+            };
+            _activeScanValidPoints = 0;
+            _activeScanFrame.Points.Clear();
+            if (_activeScanFrame.Points.Capacity < _effectiveRayCount)
+                _activeScanFrame.Points.Capacity = _effectiveRayCount;
+        }
+
+        private void PublishActiveScan()
+        {
+            if (_activeScanFrame == null)
+                return;
+
+            _activeScanFrame.ValidCount = _activeScanValidPoints;
+            LastFrame = _activeScanFrame;
+
+            if (_pointCloudPublisher != null && (_activeScanValidPoints > 0 || _publishEmptyFrames))
+                _pointCloudPublisher.SetFrame(_activeScanFrame);
 
             _frameCounter++;
-            frame.ValidCount = validPointCount;
-            return frame;
+        }
+
+        private ulong ComputeScanStartUnixNs(double scanStartPhysSeconds)
+        {
+            if (!_scanClockInitialized)
+                return FoxgloveTimeUtil.NowUnixTimeNs();
+
+            var deltaSeconds = scanStartPhysSeconds - _scanEpochPhysSeconds;
+            if (deltaSeconds < 0d)
+                deltaSeconds = 0d;
+
+            return checked(_scanEpochUnixNs + (ulong)Math.Round(deltaSeconds * 1e9));
+        }
+
+        private void EnsureScanClock(double physNow)
+        {
+            if (_scanClockInitialized)
+                return;
+
+            _scanClockInitialized = true;
+            _scanEpochPhysSeconds = physNow;
+            _scanEpochUnixNs = _manager == null
+                ? FoxgloveTimeUtil.NowUnixTimeNs()
+                : _manager.GetSharedSensorClockUnixTime(physNow);
+            _scanColumnProgress = 0d;
+        }
+
+        private void ResetScanState(double physNow)
+        {
+            EnsureScanClock(physNow);
+            _hasPrevPose = false;
+            _scanColumnCursor = 0;
+            _scanColumnProgress = 0d;
+            StartNewScan(physNow);
         }
 
         private void OnValidate()
         {
             _columnStep = Math.Max(1, _columnStep);
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
+            if (_scanSubSteps < 1)
+                _scanSubSteps = 1;
         }
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo (Editor)
+// Purpose: Builds a preconfigured maze scene with Virtual LiDAR + IMU demo components.
 
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -16,18 +17,14 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
     /// <summary>
     /// Editor tool that bakes the Virtual LiDAR Maze Demo into the active scene as
     /// inspectable, pre-generated objects (no runtime auto-generation). Builds the
-    /// maze, a primitive car with a roof LiDAR, the map -> base_link -> vehicle_lidar
-    /// TF tree, a FoxgloveManager in RightHand mode, and an overview camera.
+    /// maze, a primitive car with a roof LiDAR/IMU unit, the
+    /// map -> base_link -> os_sensor -> os_lidar/os_imu TF tree, a
+    /// FoxgloveManager in RightHand mode, and an overview camera.
     ///
     /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
     /// through the static maze. Use WASD to drive; raise Decay time to accumulate
     /// the point cloud.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public static class Phase138MazeDemoSceneBuilder
     {
         private const int CellsX = 8;
@@ -35,11 +32,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         private const float CellSize = 2f;
 
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public static void BuildScene()
         {
             // Clear previously generated demo roots, including any live
@@ -58,13 +55,27 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
                     Object.DestroyImmediate(stale.gameObject);
             }
 
-            // 1. FoxgloveManager (RightHand) + point cloud publisher.
+            // 1. FoxgloveManager (RightHand). Sensor publishers live on their units.
             var mgrGo = new GameObject("FoxgloveManager");
             Undo.RegisterCreatedObjectUndo(mgrGo, "Build Maze Demo");
             var manager = mgrGo.AddComponent<FoxgloveManager>();
             SetField(manager, "_coordinateMode", CoordinateMode.RightHand);
-            var publisher = mgrGo.AddComponent<FoxglovePointCloudPublisher>();
-            SetField(publisher, "_frameId", "vehicle_lidar");
+
+            // 2. Maze centred on origin.
+            var maze = Phase138MazeBuilder.Build(CellsX, CellsZ, CellSize, 1.5f, 0.2f, 42);
+            Undo.RegisterCreatedObjectUndo(maze, "Build Maze Demo");
+
+            // 3. Vehicle (base_link) at the start cell with a roof LiDAR mount.
+            var start = Phase138MazeBuilder.CellCenter(0, 0, CellsX, CellsZ, CellSize);
+            var vehicleGo = Phase138LidarVehicleController.BuildVehicle(start, out var lidarImuUnit, out var lidarMount);
+            Undo.RegisterCreatedObjectUndo(vehicleGo, "Build Maze Demo");
+
+            var sensorUnit = lidarImuUnit.gameObject.AddComponent<SensorUnitProfile>();
+            SetField(sensorUnit, "_manager", manager);
+
+            var publisher = lidarImuUnit.gameObject.AddComponent<FoxglovePointCloudPublisher>();
+            SetField(publisher, "_manager", manager);
+            SetField(publisher, "_frameId", "os_lidar");
             // Default to "no clipping": size the publish cap to the densest sensor in
             // the registry so any model fits (auto-scales as new LiDARs are added).
             // Uniform sampling keeps the cloud even if Max Points is later lowered.
@@ -80,15 +91,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
             SetField(publisher, "_outputMode", PointCloudOutputMode.Draco);
             SetField(publisher, "_topic", "/unity/point_cloud_draco");
-
-            // 2. Maze centred on origin.
-            var maze = Phase138MazeBuilder.Build(CellsX, CellsZ, CellSize, 1.5f, 0.2f, 42);
-            Undo.RegisterCreatedObjectUndo(maze, "Build Maze Demo");
-
-            // 3. Vehicle (base_link) at the start cell with a roof LiDAR mount.
-            var start = Phase138MazeBuilder.CellCenter(0, 0, CellsX, CellsZ, CellSize);
-            var vehicleGo = Phase138LidarVehicleController.BuildVehicle(start, out var lidarMount);
-            Undo.RegisterCreatedObjectUndo(vehicleGo, "Build Maze Demo");
+            SetField(sensorUnit, "_pointCloudPublisher", publisher);
 
             var rb = vehicleGo.AddComponent<Rigidbody>();
             rb.useGravity = false;
@@ -101,42 +104,51 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(basePub, "_parentFrameId", "map");
             SetField(basePub, "_childFrameId", "base_link");
 
-            // 4. IMU on a dedicated mount under base_link (imu_link). Readings come from the
-            // vehicle Rigidbody; the mount only places imu_link in the TF tree (mirrors LidarMount).
+            // 4. LiDAR on the Ouster-style os_lidar frame under os_sensor.
+            var lidar = lidarMount.gameObject.AddComponent<VirtualLidar>();
+            SetField(lidar, "_manager", manager);
+            SetField(lidar, "_sensorUnitProfile", sensorUnit);
+            SetField(lidar, "_frameId", "os_lidar");
+            SetField(lidar, "_pointCloudPublisher", publisher);
+            SetField(lidar, "_columnStep", 4);
+            ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
+
+            // 4. IMU on the shared Ouster-style sensor unit frame.
             var imuMount = new GameObject("IMUMount");
             Undo.RegisterCreatedObjectUndo(imuMount, "Build Maze Demo");
-            imuMount.transform.SetParent(vehicleGo.transform, false);
-            imuMount.transform.localPosition = new Vector3(0f, 0.1f, 0f);
+            imuMount.transform.SetParent(lidarImuUnit, false);
+            ApplySensorChildTransform(imuMount.transform, sensorUnit.EffectiveImuToSensor);
 
             var imu = imuMount.AddComponent<VirtualImu>();
             SetField(imu, "_manager", manager);
             SetField(imu, "_rigidbody", rb);
-            SetField(imu, "_frameId", "imu_link");
+            SetField(imu, "_frameId", "os_imu");
             SetField(imu, "_topic", "/imu/data");
+
+            var unitPub = lidarImuUnit.gameObject.AddComponent<FoxgloveTransformPublisher>();
+            SetField(unitPub, "_manager", manager);
+            SetField(unitPub, "_topic", "/tf_sensor");
+            SetField(unitPub, "_parentFrameId", "base_link");
+            SetField(unitPub, "_childFrameId", "os_sensor");
+            SetField(unitPub, "_useLocalTransform", true);
 
             var imuPub = imuMount.AddComponent<FoxgloveTransformPublisher>();
             SetField(imuPub, "_manager", manager);
             // Separate topic from base_link's publisher (same shared-/tf guard as the LiDAR).
             SetField(imuPub, "_topic", "/tf_imu");
-            SetField(imuPub, "_parentFrameId", "base_link");
-            SetField(imuPub, "_childFrameId", "imu_link");
+            SetField(imuPub, "_parentFrameId", "os_sensor");
+            SetField(imuPub, "_childFrameId", "os_imu");
             SetField(imuPub, "_useLocalTransform", true);
-
-            // 5. LiDAR on the roof mount (vehicle_lidar), static link under base_link.
-            var lidar = lidarMount.gameObject.AddComponent<VirtualLidar>();
-            SetField(lidar, "_frameId", "vehicle_lidar");
-            SetField(lidar, "_pointCloudPublisher", publisher);
-            SetField(lidar, "_columnStep", 4);
 
             var lidarPub = lidarMount.gameObject.AddComponent<FoxgloveTransformPublisher>();
             SetField(lidarPub, "_manager", manager);
             // Separate topic from base_link's publisher: two publishers sharing one
             // /tf channel triggers a server subscription-routing bug ("unknown
             // subscription id"). Foxglove aggregates FrameTransform from ALL topics
-            // into the TF tree, so a distinct topic still yields base_link->vehicle_lidar.
+            // into the TF tree, so a distinct topic still yields os_sensor->os_lidar.
             SetField(lidarPub, "_topic", "/tf_lidar");
-            SetField(lidarPub, "_parentFrameId", "base_link");
-            SetField(lidarPub, "_childFrameId", "vehicle_lidar");
+            SetField(lidarPub, "_parentFrameId", "os_sensor");
+            SetField(lidarPub, "_childFrameId", "os_lidar");
             SetField(lidarPub, "_useLocalTransform", true);
 
             // Optional: R2FU PointCloud2 mirror (Phase 138C smoke). Resolved by name
@@ -170,12 +182,32 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(camPub, "_topic", "/unity/camera");
             SetField(camPub, "_frameId", "unity_camera");
 
-            foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, lidarPub, camPub })
+            foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, unitPub, imu, imuPub, lidarPub, camPub })
                 EditorUtility.SetDirty(dirty);
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
 
             Debug.Log("[LidarMaze] Maze demo scene built. In Foxglove, set the 3D panel " +
                       "Display frame to 'map'. Press Play and drive with WASD.");
+        }
+
+        private static void ApplySensorChildTransform(
+            Transform child,
+            LidarTIlExtrinsic childToSensor)
+        {
+            var sensorToChild = InvertExtrinsic(childToSensor);
+            var localTranslation = VirtualLidar.ToUnityVector3(sensorToChild.TranslationMeters);
+            var localRotation = VirtualLidar.ToUnityQuaternion(sensorToChild.Rotation);
+            child.localPosition = CoordinateConverter.FoxgloveToUnityPosition(localTranslation);
+            child.localRotation = CoordinateConverter.FoxgloveToUnityRotation(localRotation);
+        }
+
+        private static LidarTIlExtrinsic InvertExtrinsic(LidarTIlExtrinsic childToParent)
+        {
+            var inverseRotation = System.Numerics.Quaternion.Inverse(childToParent.Rotation);
+            var inverseTranslation = System.Numerics.Vector3.Transform(
+                -childToParent.TranslationMeters,
+                inverseRotation);
+            return new LidarTIlExtrinsic(inverseTranslation, inverseRotation);
         }
 
         private static void SetField(object target, string fieldName, object value)
@@ -208,4 +240,5 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         }
     }
 }
+
 

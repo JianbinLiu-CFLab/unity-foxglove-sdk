@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     {
         public float3 Point;
         public float Distance;
-        public int ColliderInstanceId;
+        public uint ColliderInstanceId;
     }
 
     /// <summary>Builds point payload records from raycast results.</summary>
@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             }
 
             var hit = Hits[index];
-            if (hit.ColliderInstanceId != 0 && hit.Distance > 0f && hit.Distance >= MinRange && hit.Distance <= MaxRange)
+            if (hit.ColliderInstanceId != 0u && hit.Distance > 0f && hit.Distance >= MinRange && hit.Distance <= MaxRange)
             {
                 var local = math.mul(WorldToLocal, new float4(hit.Point, 1f)).xyz;
                 var converted = CoordinateConverterFloat3.UnityToFoxglovePosition(local);

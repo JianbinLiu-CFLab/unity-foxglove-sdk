@@ -25,7 +25,7 @@
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
     <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
-    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualImu.cs" />
+    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
     <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
@@ -126,6 +126,7 @@
     <Compile Include="Phase143Validation.cs" />
     <Compile Include="Phase138Validation.cs" />
     <Compile Include="Phase138BValidation.cs" />
+    <Compile Include="Phase138HValidation.cs" />
     <Compile Include="Phase138DValidation.cs" />
     <Compile Include="Phase138FValidation.cs" />
     <Compile Include="Phase107Validation.cs" />

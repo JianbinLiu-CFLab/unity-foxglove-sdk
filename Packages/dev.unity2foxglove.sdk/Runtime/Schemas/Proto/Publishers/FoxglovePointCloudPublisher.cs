@@ -21,11 +21,6 @@ namespace Unity.FoxgloveSDK.Components
     /// Publishes decoded point frames or child transforms as foxglove.PointCloud.
     /// Programmatic frames are intended for later Ouster/ROS input bridges.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
         private const int DracoFailureWarningIntervalFrames = 120;
@@ -71,17 +66,17 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public override bool SupportsRos2Encoding => true;
@@ -116,10 +111,10 @@ namespace Unity.FoxgloveSDK.Components
         /// last-value-wins buffer: a new frame replaces stale pending data.
         /// </summary>
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public void SetFrame(PointCloudFrame frame)
         {
             bool hadPendingFrame;
@@ -140,10 +135,10 @@ namespace Unity.FoxgloveSDK.Components
         /// Publish a decoded frame immediately, bypassing the regular Update cadence.
         /// </summary>
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public void PublishFrame(PointCloudFrame frame, ulong logTimeNs)
         {
             ResolveManager();
@@ -183,6 +178,13 @@ namespace Unity.FoxgloveSDK.Components
                 pendingFrame = _pendingFrame;
                 _pendingFrame = null;
             }
+
+            // A source frame that carries its own timestamp (e.g. VirtualLidar's physics-time
+            // scan start) drives the log time too, so payload time == log time (matching the
+            // IMU path) and SLAM consumers see one consistent clock instead of a wall-clock vs
+            // physics-clock skew that drifts under frame-rate stalls.
+            if (pendingFrame != null && pendingFrame.UnixNs != 0)
+                unixNs = pendingFrame.UnixNs;
 
             var frame = pendingFrame != null ? PrepareFrameForQoS(pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
             _warnedPendingDrop = false;
@@ -488,7 +490,7 @@ namespace Unity.FoxgloveSDK.Components
         private sealed class DracoEncodeRequest
         {
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public DracoEncodeRequest(PointCloudFrame frame, ulong unixNs, bool publishWebSocket, bool publishBridge)
@@ -500,22 +502,22 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public PointCloudFrame Frame { get; }
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public ulong UnixNs { get; }
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public bool PublishWebSocket { get; }
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public bool PublishBridge { get; }
@@ -524,7 +526,7 @@ namespace Unity.FoxgloveSDK.Components
         private sealed class DracoEncodeResult
         {
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public DracoEncodeResult(DracoEncodeRequest request, bool success, byte[] payload, string error)
@@ -536,22 +538,22 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public DracoEncodeRequest Request { get; }
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public bool Success { get; }
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public byte[] Payload { get; }
             /// <summary>
-            /// Summary text for this member.
+            /// Public/member behavior description.
             /// </summary>
 
             public string Error { get; }
@@ -690,3 +692,5 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 }
+
+

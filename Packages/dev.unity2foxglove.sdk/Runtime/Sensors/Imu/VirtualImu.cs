@@ -141,8 +141,11 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_targetRateHz <= 0)
             {
+                var sampleTimeNs = _manager == null
+                    ? FoxgloveTimeUtil.NowUnixTimeNs()
+                    : _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble);
                 _queue.Enqueue(CreateSample(
-                    FoxgloveTimeUtil.NowUnixTimeNs(),
+                    sampleTimeNs,
                     linearBody,
                     angularBody,
                     bodyRotation));
@@ -152,7 +155,9 @@ namespace Unity.FoxgloveSDK.Components
                 var tickEndPhysical = Time.fixedTimeAsDouble;
                 if (!_hasEpoch)
                 {
-                    _epochUnixNs = FoxgloveTimeUtil.NowUnixTimeNs();
+                    _epochUnixNs = _manager == null
+                        ? FoxgloveTimeUtil.NowUnixTimeNs()
+                        : _manager.GetSharedSensorClockUnixTime(tickEndPhysical - Time.fixedDeltaTime);
                     _epochPhysSeconds = tickEndPhysical - Time.fixedDeltaTime;
                     _nextSampleIndex = 0;
                     _hasEpoch = true;

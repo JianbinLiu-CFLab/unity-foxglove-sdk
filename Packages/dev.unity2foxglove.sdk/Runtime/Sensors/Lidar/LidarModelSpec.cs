@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Sensors/Lidar
+// Purpose: Defines immutable LiDAR model metadata used by scan pattern creation.
+
+using System.Numerics;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
@@ -9,98 +12,120 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Declares a known LiDAR model with preset parameters.
     /// Used by LidarModelRegistry to populate the Inspector dropdown.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public sealed class LidarModelSpec
     {
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly LidarVendor Vendor;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly string Model;              // e.g. "OS-1-32", "VLP-16"
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly LidarScanKind Kind;
 
         // Spinning
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly int Rings;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly int Columns;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly double RateHz;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public readonly double FovTopDeg, FovBottomDeg;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly double[] BeamAltitudeAnglesDeg; // null -> uniform distribution
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly string[] Modes;                  // null or e.g. {"1024x10", "2048x10"}
 
         // Non-repetitive (Livox)
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public readonly double FovHDeg, FovVDeg;
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
-/// <summary>Summary text for this member.</summary>
+/// <summary>Public/member behavior description.</summary>
         public readonly int BeamsPerFrame;
 
         // Shared
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public readonly double MinRangeMeters, MaxRangeMeters;
 
+        /// <summary>Translation from LiDAR frame to sensor housing frame in meters.</summary>
+        public readonly Vector3 LidarToSensorTranslationMeters;
+
+        /// <summary>Rotation from LiDAR frame to sensor housing frame.</summary>
+        public readonly Quaternion LidarToSensorRotation;
+
+        /// <summary>Translation from IMU frame to sensor housing frame in meters.</summary>
+        public readonly Vector3 ImuToSensorTranslationMeters;
+
+        /// <summary>Rotation from IMU frame to sensor housing frame.</summary>
+        public readonly Quaternion ImuToSensorRotation;
+
         /// <summary>
-        /// Summary text for this member.
+        /// Legacy alias for the IMU-to-sensor translation, retained for existing
+        /// T_IL override UI and tests.
+        /// </summary>
+        public readonly Vector3 TIlTranslationMeters;
+
+        /// <summary>
+        /// Legacy alias for the IMU-to-sensor rotation, retained for existing
+        /// T_IL override UI and tests.
+        /// </summary>
+        public readonly Quaternion TIlRotation;
+
+        /// <summary>
+        /// Public/member behavior description.
         /// </summary>
 
         public LidarModelSpec(LidarVendor vendor, string model, LidarScanKind kind,
             int rings, int columns, double rateHz, double fovTopDeg, double fovBottomDeg,
             double[] beamAltitudeAnglesDeg, string[] modes,
             double fovHDeg, double fovVDeg, int beamsPerFrame,
-            double minRangeMeters, double maxRangeMeters)
+            double minRangeMeters, double maxRangeMeters,
+            Vector3? lidarToSensorTranslationMeters = null, Quaternion? lidarToSensorRotation = null,
+            Vector3? imuToSensorTranslationMeters = null, Quaternion? imuToSensorRotation = null,
+            Vector3? tIlTranslationMeters = null, Quaternion? tIlRotation = null)
         {
             Vendor = vendor;
             Model = model;
@@ -117,22 +142,34 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             BeamsPerFrame = beamsPerFrame;
             MinRangeMeters = minRangeMeters;
             MaxRangeMeters = maxRangeMeters;
+            LidarToSensorTranslationMeters = lidarToSensorTranslationMeters ?? Vector3.Zero;
+            LidarToSensorRotation = lidarToSensorRotation ?? Quaternion.Identity;
+            ImuToSensorTranslationMeters = imuToSensorTranslationMeters ?? tIlTranslationMeters ?? Vector3.Zero;
+            ImuToSensorRotation = imuToSensorRotation ?? tIlRotation ?? Quaternion.Identity;
+            TIlTranslationMeters = ImuToSensorTranslationMeters;
+            TIlRotation = ImuToSensorRotation;
         }
 
         // Factory helpers
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public static LidarModelSpec Ouster(string model, int rings, int columns, string[] modes,
             double fovTopDeg, double fovBottomDeg, double[] beamAltDeg = null,
-            double minRange = 0.5, double maxRange = 120)
+            double minRange = 0.5, double maxRange = 120,
+            Vector3? lidarToSensorTranslationMeters = null, Quaternion? lidarToSensorRotation = null,
+            Vector3? imuToSensorTranslationMeters = null, Quaternion? imuToSensorRotation = null,
+            Vector3? tIlTranslationMeters = null, Quaternion? tIlRotation = null)
             => new(LidarVendor.Ouster, model, LidarScanKind.Spinning,
                 rings, columns, 10.0, fovTopDeg, fovBottomDeg,
-                beamAltDeg, modes, 0, 0, 0, minRange, maxRange);
+                beamAltDeg, modes, 0, 0, 0, minRange, maxRange,
+                lidarToSensorTranslationMeters, lidarToSensorRotation,
+                imuToSensorTranslationMeters, imuToSensorRotation,
+                tIlTranslationMeters, tIlRotation);
 
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public static LidarModelSpec Velodyne(string model, int rings, int columns, double rpm,
@@ -142,7 +179,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 beamAltDeg, null, 0, 0, 0, minRange, maxRange);
 
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public static LidarModelSpec RoboSense(string model, int rings, int columns,
@@ -152,7 +189,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 null, null, 0, 0, 0, minRange, maxRange);
 
         /// <summary>
-        /// Summary text for this member.
+        /// Public/member behavior description.
         /// </summary>
 
         public static LidarModelSpec Livox(string model, double fovHDeg, double fovVDeg,
@@ -162,4 +199,5 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 fovHDeg, fovVDeg, beamsPerFrame, minRange, maxRange);
     }
 }
+
 
