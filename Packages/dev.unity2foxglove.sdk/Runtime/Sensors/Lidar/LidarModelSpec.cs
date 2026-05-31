@@ -94,15 +94,27 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 
         public readonly double MinRangeMeters, MaxRangeMeters;
 
+        /// <summary>Translation from LiDAR frame to sensor housing frame in meters.</summary>
+        public readonly Vector3 LidarToSensorTranslationMeters;
+
+        /// <summary>Rotation from LiDAR frame to sensor housing frame.</summary>
+        public readonly Quaternion LidarToSensorRotation;
+
+        /// <summary>Translation from IMU frame to sensor housing frame in meters.</summary>
+        public readonly Vector3 ImuToSensorTranslationMeters;
+
+        /// <summary>Rotation from IMU frame to sensor housing frame.</summary>
+        public readonly Quaternion ImuToSensorRotation;
+
         /// <summary>
-        /// Translation from LiDAR frame to IMU frame in meters.
-        /// Used by the demo scaffold as the T_IL baseline mount offset.
+        /// Legacy alias for the IMU-to-sensor translation, retained for existing
+        /// T_IL override UI and tests.
         /// </summary>
         public readonly Vector3 TIlTranslationMeters;
 
         /// <summary>
-        /// Rotation from LiDAR frame to IMU frame.
-        /// Used by the demo scaffold as the T_IL baseline mount rotation.
+        /// Legacy alias for the IMU-to-sensor rotation, retained for existing
+        /// T_IL override UI and tests.
         /// </summary>
         public readonly Quaternion TIlRotation;
 
@@ -115,6 +127,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             double[] beamAltitudeAnglesDeg, string[] modes,
             double fovHDeg, double fovVDeg, int beamsPerFrame,
             double minRangeMeters, double maxRangeMeters,
+            Vector3? lidarToSensorTranslationMeters = null, Quaternion? lidarToSensorRotation = null,
+            Vector3? imuToSensorTranslationMeters = null, Quaternion? imuToSensorRotation = null,
             Vector3? tIlTranslationMeters = null, Quaternion? tIlRotation = null)
         {
             Vendor = vendor;
@@ -132,8 +146,12 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             BeamsPerFrame = beamsPerFrame;
             MinRangeMeters = minRangeMeters;
             MaxRangeMeters = maxRangeMeters;
-            TIlTranslationMeters = tIlTranslationMeters ?? Vector3.Zero;
-            TIlRotation = tIlRotation ?? Quaternion.Identity;
+            LidarToSensorTranslationMeters = lidarToSensorTranslationMeters ?? Vector3.Zero;
+            LidarToSensorRotation = lidarToSensorRotation ?? Quaternion.Identity;
+            ImuToSensorTranslationMeters = imuToSensorTranslationMeters ?? tIlTranslationMeters ?? Vector3.Zero;
+            ImuToSensorRotation = imuToSensorRotation ?? tIlRotation ?? Quaternion.Identity;
+            TIlTranslationMeters = ImuToSensorTranslationMeters;
+            TIlRotation = ImuToSensorRotation;
         }
 
         // Factory helpers
@@ -144,10 +162,14 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public static LidarModelSpec Ouster(string model, int rings, int columns, string[] modes,
             double fovTopDeg, double fovBottomDeg, double[] beamAltDeg = null,
             double minRange = 0.5, double maxRange = 120,
+            Vector3? lidarToSensorTranslationMeters = null, Quaternion? lidarToSensorRotation = null,
+            Vector3? imuToSensorTranslationMeters = null, Quaternion? imuToSensorRotation = null,
             Vector3? tIlTranslationMeters = null, Quaternion? tIlRotation = null)
             => new(LidarVendor.Ouster, model, LidarScanKind.Spinning,
                 rings, columns, 10.0, fovTopDeg, fovBottomDeg,
                 beamAltDeg, modes, 0, 0, 0, minRange, maxRange,
+                lidarToSensorTranslationMeters, lidarToSensorRotation,
+                imuToSensorTranslationMeters, imuToSensorRotation,
                 tIlTranslationMeters, tIlRotation);
 
         /// <summary>

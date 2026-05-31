@@ -43,11 +43,19 @@ namespace Unity.FoxgloveSDK.Components
             Override
         }
 
-        [Header("Output")]
+        /// <summary>Inspector input mode for editing T_IL rotation overrides.</summary>
+        public enum TIlRotationInputFormat
+        {
+            /// <summary>Edit the rotation as quaternion x/y/z/w.</summary>
+            Quaternion,
+            /// <summary>Edit the rotation as a row-major 3x3 matrix.</summary>
+            Matrix3x3
+        }
+
         [SerializeField] private FoxglovePointCloudPublisher _pointCloudPublisher;
         [SerializeField] private FoxgloveManager _manager;
+        [SerializeField] private SensorUnitProfile _sensorUnitProfile;
 
-        [Header("Profile")]
         [Tooltip("Where the scan geometry comes from.")]
         [SerializeField] private ProfileSource _profileSource = ProfileSource.BuiltInPreset;
         [Tooltip("Used when Profile Source = MetadataJson.")]
@@ -61,7 +69,11 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Optional scan mode for models that support multiple modes (e.g. 1024x10, 2048x10).")]
         [SerializeField] private string _mode = "1024x10";
 
-        [Header("Custom Profile (Profile Source = Custom)")]
+        [SerializeField] private bool _overrideTIl;
+        [SerializeField] private TIlRotationInputFormat _tIlRotationInputFormat = TIlRotationInputFormat.Quaternion;
+        [SerializeField] private Vector3 _tIlTranslationMeters = new Vector3(0.006253f, -0.011775f, 0.007645f);
+        [SerializeField] private Quaternion _tIlRotation = Quaternion.identity;
+
         [SerializeField, Min(1)] private int _customPixelsPerColumn = 32;
         [SerializeField] private float _customFovTopDeg = 16.6f;
         [SerializeField] private float _customFovBottomDeg = -16.6f;
@@ -69,7 +81,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1f)] private float _customScanRateHz = 10f;
         [SerializeField, Min(0f)] private float _customMinRangeMeters = 0.5f;
 
-        [Header("Scan")]
         [SerializeField] private string _frameId = "os_lidar";
         [Tooltip("Use Sensor Rate = the model's nominal Hz; Override = use Scan Rate Hz below. " +
                  "This is the LiDAR's frame-generation rate; the point cloud's publish rate to " +
@@ -89,12 +100,96 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _drawDebugRays;
         [SerializeField, Min(1)] private int _scanSubSteps = 1;
 
-        [Header("Synthetic Values")]
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
 
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
+
+        /// <summary>Current Inspector rotation input mode for the T_IL override.</summary>
+        public TIlRotationInputFormat TIlRotationFormat => _tIlRotationInputFormat;
+
+        /// <summary>The selected model's default LiDAR-to-sensor extrinsic, or identity when no model default applies.</summary>
+        public LidarTIlExtrinsic ModelLidarToSensor
+        {
+            get
+            {
+                if (ResolveSensorUnitProfile() != null)
+                    return _sensorUnitProfile.ModelLidarToSensor;
+
+                if (_profileSource == ProfileSource.BuiltInPreset &&
+                    Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    return new LidarTIlExtrinsic(spec.LidarToSensorTranslationMeters, spec.LidarToSensorRotation);
+
+                return LidarTIlExtrinsic.Identity;
+            }
+        }
+
+        /// <summary>The selected model's default IMU-to-sensor extrinsic, or identity when no model default applies.</summary>
+        public LidarTIlExtrinsic ModelImuToSensor
+        {
+            get
+            {
+                if (ResolveSensorUnitProfile() != null)
+                    return _sensorUnitProfile.ModelImuToSensor;
+
+                if (_profileSource == ProfileSource.BuiltInPreset &&
+                    Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    return new LidarTIlExtrinsic(spec.ImuToSensorTranslationMeters, spec.ImuToSensorRotation);
+
+                return LidarTIlExtrinsic.Identity;
+            }
+        }
+
+        /// <summary>Legacy alias for the selected model's default IMU-to-sensor extrinsic.</summary>
+        public LidarTIlExtrinsic ModelTIl => ModelImuToSensor;
+
+        /// <summary>The effective IMU-to-sensor extrinsic after applying the optional component override.</summary>
+        public LidarTIlExtrinsic EffectiveImuToSensor
+            => ResolveSensorUnitProfile() != null
+                ? _sensorUnitProfile.EffectiveImuToSensor
+                : _overrideTIl
+                ? new LidarTIlExtrinsic(
+                    ToNumericsVector3(_tIlTranslationMeters),
+                    ToNumericsQuaternion(_tIlRotation))
+                : ModelImuToSensor;
+
+        /// <summary>Legacy alias for the effective IMU-to-sensor extrinsic.</summary>
+        public LidarTIlExtrinsic EffectiveTIl => EffectiveImuToSensor;
+
+        /// <summary>Copy the currently selected model default into the editable override fields.</summary>
+        public void CopyModelTIlToOverride()
+        {
+            if (ResolveSensorUnitProfile() != null)
+            {
+                _sensorUnitProfile.CopyModelImuToSensorToOverride();
+                return;
+            }
+
+            var modelTIl = ModelImuToSensor;
+            _tIlTranslationMeters = ToUnityVector3(modelTIl.TranslationMeters);
+            _tIlRotation = ToUnityQuaternion(modelTIl.Rotation);
+        }
+
+        /// <summary>Convert a numerics vector to a Unity vector.</summary>
+        public static Vector3 ToUnityVector3(System.Numerics.Vector3 value)
+            => new Vector3(value.X, value.Y, value.Z);
+
+        /// <summary>Convert a numerics quaternion to a normalized Unity quaternion.</summary>
+        public static Quaternion ToUnityQuaternion(System.Numerics.Quaternion value)
+        {
+            var normalized = LidarTIlExtrinsic.NormalizeRotation(value);
+            return new Quaternion(normalized.X, normalized.Y, normalized.Z, normalized.W);
+        }
+
+        /// <summary>Convert a Unity vector to a numerics vector.</summary>
+        public static System.Numerics.Vector3 ToNumericsVector3(Vector3 value)
+            => new System.Numerics.Vector3(value.x, value.y, value.z);
+
+        /// <summary>Convert a Unity quaternion to a normalized numerics quaternion.</summary>
+        public static System.Numerics.Quaternion ToNumericsQuaternion(Quaternion value)
+            => LidarTIlExtrinsic.NormalizeRotation(
+                new System.Numerics.Quaternion(value.x, value.y, value.z, value.w));
 
         private ILidarScanPattern _scanPattern;
         private int _frameCounter;
@@ -137,10 +232,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Start()
         {
-            if (_manager == null)
-                _manager = FindFirstObjectByType<FoxgloveManager>();
+            ResolveSensorUnitProfile();
 
-            if (_profileSource == ProfileSource.BuiltInPreset)
+            if (_manager == null)
+                _manager = _sensorUnitProfile != null && _sensorUnitProfile.Manager != null
+                    ? _sensorUnitProfile.Manager
+                    : FindFirstObjectByType<FoxgloveManager>();
+
+            if (_sensorUnitProfile != null)
+            {
+                _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
+            }
+            else if (_profileSource == ProfileSource.BuiltInPreset)
             {
                 if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
                     _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
@@ -158,7 +261,14 @@ namespace Unity.FoxgloveSDK.Components
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)
             {
-                _pointCloudPublisher = GetComponent<FoxglovePointCloudPublisher>();
+                if (_sensorUnitProfile != null)
+                    _pointCloudPublisher = _sensorUnitProfile.PointCloudPublisher;
+
+                if (_pointCloudPublisher == null)
+                    _pointCloudPublisher = GetComponentInParent<FoxglovePointCloudPublisher>();
+
+                if (_pointCloudPublisher == null)
+                    _pointCloudPublisher = GetComponent<FoxglovePointCloudPublisher>();
                 if (_pointCloudPublisher == null)
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
@@ -170,6 +280,13 @@ namespace Unity.FoxgloveSDK.Components
 
             AllocateScanBuffers();
             ResetScanState(Time.fixedTimeAsDouble);
+        }
+
+        private SensorUnitProfile ResolveSensorUnitProfile()
+        {
+            if (_sensorUnitProfile == null)
+                _sensorUnitProfile = GetComponentInParent<SensorUnitProfile>();
+            return _sensorUnitProfile;
         }
 
         private void AllocateScanBuffers()

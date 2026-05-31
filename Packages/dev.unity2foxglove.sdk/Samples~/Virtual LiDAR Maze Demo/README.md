@@ -1,14 +1,15 @@
 # Virtual LiDAR Maze Demo
 
 Demonstrates the Virtual LiDAR sensor driving through a procedurally generated maze,
-published to Foxglove with a proper `map -> base_link -> vehicle_lidar` TF tree.
+published to Foxglove with a proper
+`map -> base_link -> os_sensor -> os_lidar/os_imu` TF tree.
 
 ## Setup (recommended: pre-generated scene)
 
 1. Import this sample into your Unity project.
 2. Open or create the scene you want to build into.
 3. Menu: **Foxglove ▸ Phase138 ▸ Build Maze Demo Scene**.
-   This bakes the maze, a primitive car with a roof LiDAR, the TF publishers,
+   This bakes the maze, a primitive car with a roof LiDAR/IMU unit, the TF publishers,
    a `FoxgloveManager` (RightHand mode), and an overview camera as real,
    inspectable GameObjects. Tweak anything in the Inspector, then save the scene.
 4. Press Play and drive with **WASD**.
@@ -29,9 +30,10 @@ share the same handedness (Unity left-hand ➜ Foxglove/ROS right-hand: X forwar
 Y left, Z up). Leaving it in LeftHand mode publishes TF in Unity axes while the
 LiDAR cloud stays in ROS axes, which is what makes the cloud look rotated.
 
-## LiDAR sensor model
+## Sensor unit profile
 
-Select the `VirtualLidar` component (on the car's `LidarMount`) and set **Profile Source**:
+Select the `SensorUnitProfile` component on `Lidar-IMU-Unit` (`os_sensor`) and set
+the LiDAR/IMU unit identity there:
 
 - **BuiltInPreset** — pick an Ouster preset from the dropdown: OS-0 / OS-1 / OS-2 at
   32 / 64 / 128 rings (beams evenly spaced across each line's vertical FOV).
@@ -40,6 +42,10 @@ Select the `VirtualLidar` component (on the car's `LidarMount`) and set **Profil
   e.g. a real Ouster OS-128.
 - **Custom** — type the geometry directly: rings (`Pixels Per Column`), vertical FOV
   top/bottom degrees, columns per frame, scan rate, min range.
+
+The same component owns the Ouster-style `lidar_to_sensor_transform` and
+`imu_to_sensor_transform` values. `VirtualLidar` on `LidarMount` only controls
+LiDAR scan behavior such as frame id, range, ray budget, and debug rays.
 
 This covers spinning / semi-solid-state sensors (Ouster, Velodyne, Hesai). Livox-style
 non-repetitive (rosette) scanning is not modelled by the ring/column geometry and is

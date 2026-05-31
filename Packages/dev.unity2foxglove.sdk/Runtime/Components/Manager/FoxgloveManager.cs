@@ -193,7 +193,7 @@ namespace Unity.FoxgloveSDK.Components
                 return _sensorClockEpochUnixNs;
             }
 
-            return checked(_sensorClockEpochUnixNs + (ulong)Math.Round(deltaSeconds * SensorClockNanosPerSecond));
+            return checked(_sensorClockEpochUnixNs + (ulong)System.Math.Round(deltaSeconds * SensorClockNanosPerSecond));
         }
 
         /// <summary>Fires when a Foxglove client connects on the main thread.</summary>
