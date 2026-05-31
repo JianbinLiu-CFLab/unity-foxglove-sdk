@@ -186,8 +186,10 @@ namespace Unity.FoxgloveSDK.Tests
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
 
-            Check(source.Contains("ThreadPool.QueueUserWorkItem(_ => RunDracoEncodeWorker())"),
-                "134-14J-1: Draco point-cloud encoding runs on a background worker");
+            Check(source.Contains("StartDracoEncodeWorker")
+                  && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
+                  && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal"),
+                "134-14J-1: Draco point-cloud encoding runs on a below-normal background worker");
             Check(source.Contains("CloneFrameForBackgroundEncode(frame)"),
                 "134-14J-2: Draco worker receives a cloned point-cloud frame");
             Check(source.Contains("_pendingDracoEncode = request"),

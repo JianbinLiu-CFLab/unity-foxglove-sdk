@@ -180,8 +180,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!lidar.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && !publisher.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && lidar.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
-                  && publisher.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal),
-                "138I-23: Stopwatch aliases avoid ambiguous UnityEngine.Debug references");
+                  && publisher.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
+                  && publisher.Contains("new System.Threading.Thread(RunDracoEncodeWorker)", StringComparison.Ordinal)
+                  && publisher.Contains("Priority = System.Threading.ThreadPriority.BelowNormal", StringComparison.Ordinal),
+                "138I-23: Stopwatch and Draco thread priority references avoid ambiguous UnityEngine names");
         }
 
         private static string ReadRepoText(string relativePath)

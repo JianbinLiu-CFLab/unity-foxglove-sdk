@@ -107,7 +107,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("publishes nothing")
                   && source.Contains("LogDracoFailure"),
                 "89B-7: Draco failures log and do not fall back to raw");
-            Check(source.Contains("ThreadPool.QueueUserWorkItem")
+            Check(source.Contains("StartDracoEncodeWorker")
+                  && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
+                  && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal")
                   && source.Contains("RunDracoEncodeWorker")
                   && source.Contains("_pendingDracoEncode")
                   && source.Contains("CloneFrameForBackgroundEncode")

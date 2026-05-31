@@ -310,7 +310,7 @@ namespace Unity.FoxgloveSDK.Components
 
             try
             {
-                ThreadPool.QueueUserWorkItem(_ => RunDracoEncodeWorker());
+                StartDracoEncodeWorker();
             }
             catch (Exception ex)
             {
@@ -321,6 +321,17 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 LogDracoFailure("Unable to queue background Draco encode: " + ex.Message);
             }
+        }
+
+        private void StartDracoEncodeWorker()
+        {
+            var worker = new System.Threading.Thread(RunDracoEncodeWorker)
+            {
+                IsBackground = true,
+                Name = "Foxglove Draco PointCloud Encode",
+                Priority = System.Threading.ThreadPriority.BelowNormal
+            };
+            worker.Start();
         }
 
         private void RunDracoEncodeWorker()
