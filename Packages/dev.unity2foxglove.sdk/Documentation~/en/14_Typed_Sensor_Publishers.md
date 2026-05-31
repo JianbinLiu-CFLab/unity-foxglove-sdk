@@ -72,7 +72,7 @@ pointCloudPublisher.SetFrame(frame);
 
 In Draco mode, the same sampled `PointCloudFrame` is encoded by the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. The publisher emits `foxglove.CompressedPointCloud` with format = `draco`. If the native plugin is missing or incompatible, Draco mode logs a warning and publishes nothing until the plugin is restored or the component is switched back to raw mode.
 
-Phase 89 keeps native Draco encode synchronous in the Unity publish/update path. Large frames can block publishing while they encode. Use QoS budgets, test with `Check Draco`, and keep raw mode available for dependency-free or unsupported-platform point clouds.
+Draco native encode runs on a worker thread, but the main thread still prepares QoS, clones the sampled frame for background encode, drains completed results, and packs Raw/ROS2 payloads when those outputs are active. Use the opt-in performance diagnostics, test with `Check Draco`, and keep raw mode available for dependency-free or full-stride ROS2 point clouds.
 
 ### 3.1 Field Layout
 

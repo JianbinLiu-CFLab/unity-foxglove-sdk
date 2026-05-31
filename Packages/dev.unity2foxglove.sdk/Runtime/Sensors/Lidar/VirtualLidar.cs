@@ -12,6 +12,7 @@ using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -99,6 +100,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
         [SerializeField, Min(1)] private int _scanSubSteps = 1;
+        [SerializeField] private bool _logPerformanceDiagnostics;
 
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
@@ -209,6 +211,34 @@ namespace Unity.FoxgloveSDK.Components
         private PointCloudFrame _activeScanFrame;
         private int _activeScanValidPoints;
         private double _activeScanStartPhysSeconds;
+        private enum PendingScanState
+        {
+            Idle,
+            Scheduled,
+            Consumed,
+            Published
+        }
+
+        private PendingScanState _pendingScanState;
+        private JobHandle _pendingRaycastHandle;
+        private int _pendingBatchCount;
+        private int[] _pendingScanCrossings = Array.Empty<int>();
+        private int _pendingScanCrossingCount;
+        private float4x4 _pendingWorldToLocal;
+        private int _pendingProfileHash;
+        private int _nextPendingScanId;
+        private int _pendingScanId;
+
+        private const int DiagnosticLogIntervalTicks = 60;
+        private int _diagnosticTicks;
+        private int _diagnosticScans;
+        private long _diagnosticRays;
+        private long _diagnosticValidPoints;
+        private int _diagnosticOverruns;
+        private double _diagnosticCompleteMsTotal;
+        private double _diagnosticCompleteMsMax;
+        private double _diagnosticBuildMsTotal;
+        private double _diagnosticAppendMsTotal;
         // Rays grouped by column (built once) so a tick batch gathers a column's rays in
         // O(rays-in-column) instead of scanning all rays per column (the O(N^2) hot path).
         private int[][] _columnRays;
@@ -223,7 +253,6 @@ namespace Unity.FoxgloveSDK.Components
         private NativeArray<ushort> _rayRings;
         private NativeArray<VirtualLidarHitData> _rayHits;
         private NativeArray<VirtualLidarPointData> _pointData;
-        private VirtualLidarPointData[] _pointDataManaged;
         private int[] _rayColumns;
         private int _rawRayCount;       // pattern.RayCount
         private int _effectiveRayCount; // rays actually cast per scan (after budget)
@@ -313,10 +342,6 @@ namespace Unity.FoxgloveSDK.Components
             _rayHits = new NativeArray<VirtualLidarHitData>(_effectiveRayCount, Allocator.Persistent);
             _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
             _rayColumns = new int[_effectiveRayCount];
-
-            // Exact length so NativeArray.CopyTo(_pointDataManaged) never length-mismatches
-            // (CopyTo requires equal lengths; _pointData is reallocated to _effectiveRayCount here too).
-            _pointDataManaged = new VirtualLidarPointData[_effectiveRayCount];
             _scanColumnCount = 0;
 
             var rawColumns = _spinEffectiveColumns > 0 ? _spinEffectiveColumns : Math.Max(1, _rawRayCount);
@@ -351,10 +376,13 @@ namespace Unity.FoxgloveSDK.Components
                 var c = _rayColumns[k];
                 _columnRays[c][columnFill[c]++] = k;
             }
+
+            _pendingScanCrossings = new int[Math.Max(1, _scanColumnCount)];
         }
 
         private void DisposeScanBuffers()
         {
+            DrainPendingScan();
             if (_commands.IsCreated) _commands.Dispose();
             if (_results.IsCreated) _results.Dispose();
             if (_rayTimeOffsets.IsCreated) _rayTimeOffsets.Dispose();
@@ -431,6 +459,8 @@ namespace Unity.FoxgloveSDK.Components
 
             EnsureScanClock(Time.fixedTimeAsDouble);
 
+            ConsumePendingScan();
+
             if (_activeScanFrame == null)
                 StartNewScan(Time.fixedTimeAsDouble);
 
@@ -453,6 +483,17 @@ namespace Unity.FoxgloveSDK.Components
             if (columnsToEmit <= 0)
                 return;
             _scanColumnProgress -= columnsToEmit;
+
+            SchedulePendingScan(columnsToEmit);
+        }
+
+        private void SchedulePendingScan(int columnsToEmit)
+        {
+            if (_pendingScanState == PendingScanState.Scheduled)
+            {
+                RecordLidarDiagnostics(0, 0, 0d, 0d, 0d, asyncOverrun: true);
+                return;
+            }
 
             // One tick-end pose for the whole batch: a single worldToLocal keeps the build
             // job unchanged (no per-ray matrix). One revolution => _scanColumnCount poses,
@@ -501,11 +542,41 @@ namespace Unity.FoxgloveSDK.Components
             if (batchCount <= 0)
                 return;
 
-            // One parallel raycast + one build job for the entire tick batch.
-            RaycastCommand.ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete();
+            _pendingScanCrossingCount = Math.Min(_scanCrossings.Count, _pendingScanCrossings.Length);
+            for (var i = 0; i < _pendingScanCrossingCount; i++)
+                _pendingScanCrossings[i] = _scanCrossings[i];
+
+            _pendingBatchCount = batchCount;
+            _pendingWorldToLocal = worldToLocal;
+            _pendingProfileHash = ComputeScanProfileHash();
+            _pendingScanId = ++_nextPendingScanId;
+            _pendingRaycastHandle = RaycastCommand.ScheduleBatch(
+                _commands.GetSubArray(0, batchCount),
+                _results.GetSubArray(0, batchCount),
+                64);
+            _pendingScanState = PendingScanState.Scheduled;
+        }
+
+        private void ConsumePendingScan()
+        {
+            if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
+                return;
+
+            var completeStart = DiagnosticStart();
+            _pendingRaycastHandle.Complete();
+            var completeMs = DiagnosticElapsedMs(completeStart);
+            _pendingScanState = PendingScanState.Consumed;
+
+            if (_pendingProfileHash != ComputeScanProfileHash())
+            {
+                RecordLidarDiagnostics(_pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: true);
+                ClearPendingScan();
+                return;
+            }
 
             var minRange = (float)_scanPattern.MinRangeMeters;
-            for (var k = 0; k < batchCount; k++)
+            var buildStart = DiagnosticStart();
+            for (var k = 0; k < _pendingBatchCount; k++)
             {
                 var hit = _results[k];
                 _rayHits[k] = new VirtualLidarHitData
@@ -523,28 +594,31 @@ namespace Unity.FoxgloveSDK.Components
                 Hits = _rayHits,
                 RayTimeOffsets = _rayTimeOffsets,
                 RayRings = _rayRings,
-                WorldToLocal = worldToLocal,
+                WorldToLocal = _pendingWorldToLocal,
                 MinRange = minRange,
                 MaxRange = _maxRangeMeters,
                 SyntheticIntensity = _syntheticIntensity,
                 SyntheticReflectivity = _syntheticReflectivity,
                 Points = _pointData
             };
-            job.Schedule(batchCount, 64).Complete();
-            _pointData.CopyTo(_pointDataManaged);
+            job.Schedule(_pendingBatchCount, 64).Complete();
+            var buildMs = DiagnosticElapsedMs(buildStart);
 
             // Distribute points to the active frame, publishing each completed revolution.
+            var appendStart = DiagnosticStart();
+            var validPoints = 0;
             var ci = 0;
-            for (var k = 0; k < batchCount; k++)
+            for (var k = 0; k < _pendingBatchCount; k++)
             {
-                while (ci < _scanCrossings.Count && k == _scanCrossings[ci])
+                while (ci < _pendingScanCrossingCount && k == _pendingScanCrossings[ci])
                 {
                     PublishActiveScan();
+                    _pendingScanState = PendingScanState.Published;
                     StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
                     ci++;
                 }
 
-                var point = _pointDataManaged[k];
+                var point = _pointData[k];
                 if (point.IsValid == 0)
                     continue;
 
@@ -556,13 +630,110 @@ namespace Unity.FoxgloveSDK.Components
                     Ring = point.Ring
                 });
                 _activeScanValidPoints++;
+                validPoints++;
             }
-            while (ci < _scanCrossings.Count && batchCount == _scanCrossings[ci])
+            while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
             {
                 PublishActiveScan();
+                _pendingScanState = PendingScanState.Published;
                 StartNewScan(_activeScanStartPhysSeconds + _scanPeriod);
                 ci++;
             }
+
+            var appendMs = DiagnosticElapsedMs(appendStart);
+            RecordLidarDiagnostics(_pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false);
+            ClearPendingScan();
+        }
+
+        private void DrainPendingScan()
+        {
+            if (_pendingScanState == PendingScanState.Scheduled)
+                _pendingRaycastHandle.Complete();
+
+            ClearPendingScan();
+        }
+
+        private void ClearPendingScan()
+        {
+            _pendingRaycastHandle = default;
+            _pendingScanState = PendingScanState.Idle;
+            _pendingBatchCount = 0;
+            _pendingScanCrossingCount = 0;
+            _pendingProfileHash = 0;
+            _pendingScanId = 0;
+        }
+
+        private int ComputeScanProfileHash()
+        {
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + _rawRayCount;
+                hash = hash * 31 + _effectiveRayCount;
+                hash = hash * 31 + _rayStride;
+                hash = hash * 31 + _scanColumnCount;
+                return hash;
+            }
+        }
+
+        private long DiagnosticStart()
+            => _logPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+
+        private double DiagnosticElapsedMs(long startTicks)
+            => startTicks == 0L
+                ? 0d
+                : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
+
+        private void RecordLidarDiagnostics(
+            int rayCount,
+            int validPointCount,
+            double completeMs,
+            double buildMs,
+            double appendMs,
+            bool asyncOverrun)
+        {
+            if (!_logPerformanceDiagnostics)
+                return;
+
+            _diagnosticTicks++;
+            _diagnosticScans++;
+            _diagnosticRays += Math.Max(0, rayCount);
+            _diagnosticValidPoints += Math.Max(0, validPointCount);
+            _diagnosticCompleteMsTotal += completeMs;
+            _diagnosticCompleteMsMax = Math.Max(_diagnosticCompleteMsMax, completeMs);
+            _diagnosticBuildMsTotal += buildMs;
+            _diagnosticAppendMsTotal += appendMs;
+            if (asyncOverrun || completeMs > Time.fixedDeltaTime * 1000d)
+                _diagnosticOverruns++;
+
+            if (_diagnosticTicks < DiagnosticLogIntervalTicks)
+                return;
+
+            var divisor = Math.Max(1, _diagnosticScans);
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                this,
+                "[LidarDiag] scanId={0} scans={1} rays={2} valid={3} completeMs avg={4:F2} max={5:F2} buildMs avg={6:F2} appendMs avg={7:F2} overrun={8}",
+                _pendingScanId,
+                _diagnosticScans,
+                _diagnosticRays,
+                _diagnosticValidPoints,
+                _diagnosticCompleteMsTotal / divisor,
+                _diagnosticCompleteMsMax,
+                _diagnosticBuildMsTotal / divisor,
+                _diagnosticAppendMsTotal / divisor,
+                _diagnosticOverruns);
+
+            _diagnosticTicks = 0;
+            _diagnosticScans = 0;
+            _diagnosticRays = 0;
+            _diagnosticValidPoints = 0;
+            _diagnosticOverruns = 0;
+            _diagnosticCompleteMsTotal = 0d;
+            _diagnosticCompleteMsMax = 0d;
+            _diagnosticBuildMsTotal = 0d;
+            _diagnosticAppendMsTotal = 0d;
         }
 
         private void StartNewScan(double scanStartPhysSeconds)

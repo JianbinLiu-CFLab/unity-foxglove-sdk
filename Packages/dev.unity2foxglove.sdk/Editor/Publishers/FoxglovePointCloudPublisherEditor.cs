@@ -142,7 +142,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "Draco mode uses the bundled Windows native plugin Unity2FoxgloveDracoNative.dll. No helper executable or PATH setup is required.",
                 MessageType.Info);
             EditorGUILayout.HelpBox(
-                "Phase 89 uses synchronous native encode. Keep point-cloud QoS budgets realistic and use Raw mode on unsupported platforms.",
+                "Native Draco encode runs on a worker thread. The main thread still prepares QoS, clones frames, drains completed results, and packs Raw/ROS2 payloads when those outputs are active.",
                 MessageType.Info);
 
             var checkRequested = false;

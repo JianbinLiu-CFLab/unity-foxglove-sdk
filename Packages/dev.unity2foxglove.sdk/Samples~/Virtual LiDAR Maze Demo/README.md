@@ -64,8 +64,11 @@ Set `_useAutoWander` on the vehicle controller for a hands-free demo.
 
 ## Performance
 
-- `columnStep=4` (default) balances quality and throughput.
-- Set `columnStep=1` on the VirtualLidar for a stress test (every laser column fired).
+- The generated 138I stress scene uses `OS-2-128`, `2048x10`, `columnStep=1`,
+  no ray cap, a 262144 point budget, and a 10Hz point-cloud publisher.
+- Draco output is the compressed visualization path and runs native encode work on
+  a worker thread. Raw/ROS2 PointCloud2 validation remains the full-stride path for
+  SLAM fields such as `ring`, `time_offset`, and absolute-ns `t`.
 
 ## Limitations
 
