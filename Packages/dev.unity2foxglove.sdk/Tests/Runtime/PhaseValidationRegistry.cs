@@ -182,6 +182,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase138h", "Phase 138H", Phase138HValidation.Validate),
             Ci("--phase138i", "Phase 138I", Phase138IValidation.Validate, includeInDefault: false),
             Ci("--phase138j", "Phase 138J", Phase138JValidation.Validate, includeInDefault: false),
+            Ci("--phase138k", "Phase 138K", Phase138KValidation.Validate, includeInDefault: false),
             Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 

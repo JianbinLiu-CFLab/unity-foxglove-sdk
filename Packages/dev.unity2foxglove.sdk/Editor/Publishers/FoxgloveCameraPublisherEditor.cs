@@ -73,6 +73,7 @@ namespace Unity.FoxgloveSDK.Editor
             var videoBitrateKbps = serializedObject.FindProperty("_videoBitrateKbps");
             var videoKeyframeInterval = serializedObject.FindProperty("_videoKeyframeInterval");
             var videoMaxOutputQueue = serializedObject.FindProperty("_videoMaxOutputQueue");
+            var logVideoDiagnostics = serializedObject.FindProperty("_logVideoDiagnostics");
             var logEncoderStderr = serializedObject.FindProperty("_logEncoderStderr");
             var enableBackpressure = serializedObject.FindProperty("_enableBackpressureAdaptation");
             var backpressureCooldown = serializedObject.FindProperty("_backpressureCooldownSeconds");
@@ -117,6 +118,7 @@ namespace Unity.FoxgloveSDK.Editor
                     maxPendingReadbacks,
                     openH264MaxInputQueue,
                     videoMaxOutputQueue,
+                    logVideoDiagnostics,
                     logEncoderStderr);
             }
             else if (mode == CameraOutputMode.H264MediaFoundationExperimental)
@@ -127,11 +129,12 @@ namespace Unity.FoxgloveSDK.Editor
                     videoKeyframeInterval,
                     maxPendingReadbacks,
                     videoMaxOutputQueue,
+                    logVideoDiagnostics,
                     logEncoderStderr);
             }
             else if (profile.IsVideo)
             {
-                DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logEncoderStderr);
+                DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logVideoDiagnostics, logEncoderStderr);
             }
             else
             {
@@ -210,6 +213,7 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty videoKeyframeInterval,
             SerializedProperty maxPendingReadbacks,
             SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logVideoDiagnostics,
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
@@ -254,6 +258,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Stderr"));
         }
 
@@ -266,6 +271,7 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty maxPendingReadbacks,
             SerializedProperty openH264MaxInputQueue,
             SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logVideoDiagnostics,
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
@@ -345,6 +351,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(openH264MaxInputQueue, new GUIContent("Max Input Queue"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }
 
@@ -354,6 +361,7 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty videoKeyframeInterval,
             SerializedProperty maxPendingReadbacks,
             SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logVideoDiagnostics,
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
@@ -369,6 +377,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }
 
