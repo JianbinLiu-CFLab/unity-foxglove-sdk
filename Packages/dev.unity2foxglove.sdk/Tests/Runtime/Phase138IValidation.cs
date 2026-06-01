@@ -47,6 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyVirtualLidarMainThreadIsolation();
             VerifyVirtualLidarStableSourceRateCap();
             VerifyVirtualLidarDracoBypassesManagedPointAppend();
+            VerifyVirtualLidarPointSnapshotAsmdefBoundary();
 
             Console.WriteLine("Phase 138I: all checks passed.");
             Console.WriteLine();
@@ -240,10 +241,30 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
                   && publisher.Contains("QueueVirtualLidarDracoEncode", StringComparison.Ordinal)
                   && publisher.Contains("VirtualLidarPointData[]", StringComparison.Ordinal)
+                  && publisher.Contains("RecordPointCloudPrepared(pointCount)", StringComparison.Ordinal)
+                  && publisher.Contains("private void RecordPointCloudPrepared(int pointCount)", StringComparison.Ordinal)
                   && publisher.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf", StringComparison.Ordinal)
                   && encoder.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal)
                   && encoder.Contains("VirtualLidarPointData[]", StringComparison.Ordinal),
                 "138I-26: VirtualLidar Draco path bypasses managed per-point append and encodes from an off-thread snapshot");
+        }
+
+        private static void VerifyVirtualLidarPointSnapshotAsmdefBoundary()
+        {
+            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var encoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
+            var sharedPoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/VirtualLidarPointData.cs");
+            var assemblyInfo = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/AssemblyInfo.cs");
+            var protoAssemblyInfo = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/AssemblyInfo.cs");
+
+            Check(!publisher.Contains("using Unity.FoxgloveSDK.Sensors.Lidar;", StringComparison.Ordinal)
+                  && !encoder.Contains("using Unity.FoxgloveSDK.Sensors.Lidar;", StringComparison.Ordinal)
+                  && sharedPoint.Contains("namespace Unity.FoxgloveSDK.Schemas.PointCloud", StringComparison.Ordinal)
+                  && sharedPoint.Contains("internal struct VirtualLidarPointData", StringComparison.Ordinal)
+                  && assemblyInfo.Contains("InternalsVisibleTo(\"Unity.FoxgloveSDK.Proto\")", StringComparison.Ordinal)
+                  && assemblyInfo.Contains("InternalsVisibleTo(\"Unity.FoxgloveSDK.Sensors\")", StringComparison.Ordinal)
+                  && protoAssemblyInfo.Contains("InternalsVisibleTo(\"Unity.FoxgloveSDK.Sensors\")", StringComparison.Ordinal),
+                "138I-27: VirtualLidar Draco snapshot DTO lives below Sensors so Proto asmdef has no reverse dependency");
         }
 
         private static string ReadRepoText(string relativePath)

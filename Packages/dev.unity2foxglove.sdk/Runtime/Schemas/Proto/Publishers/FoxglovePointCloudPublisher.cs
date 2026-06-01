@@ -11,8 +11,8 @@ using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
-using Unity.FoxgloveSDK.Sensors.Lidar;
 using Unity.FoxgloveSDK.Util;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UVector3 = UnityEngine.Vector3;
@@ -794,11 +794,19 @@ namespace Unity.FoxgloveSDK.Components
 
         private void RecordPointCloudPrepared(PointCloudFrame frame)
         {
-            if (!_logPerformanceDiagnostics || frame == null)
+            if (frame == null)
+                return;
+
+            RecordPointCloudPrepared(frame.GetPointCount());
+        }
+
+        private void RecordPointCloudPrepared(int pointCount)
+        {
+            if (!_logPerformanceDiagnostics)
                 return;
 
             _diagnosticFrames++;
-            _diagnosticPreparedPoints += frame.GetPointCount();
+            _diagnosticPreparedPoints += Math.Max(0, pointCount);
         }
 
         private void RecordPointCloudDrop(int count = 1)

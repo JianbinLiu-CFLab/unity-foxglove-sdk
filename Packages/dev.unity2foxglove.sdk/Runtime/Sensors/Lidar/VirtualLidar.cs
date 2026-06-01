@@ -10,6 +10,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 using Stopwatch = System.Diagnostics.Stopwatch;

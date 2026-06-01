@@ -10,26 +10,12 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.FoxgloveSDK.Sensors;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 using UnityEngine;
 #endif
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
-    /// <summary>Unmanaged output record consumed by VirtualLidar.</summary>
-#pragma warning disable CS0649
-    internal struct VirtualLidarPointData
-    {
-        public float X;
-        public float Y;
-        public float Z;
-        public float Intensity;
-        public float Reflectivity;
-        public float TimeOffsetSeconds;
-        public ushort Ring;
-        public byte IsValid;
-    }
-#pragma warning restore CS0649
-
 #if UNITY_5_3_OR_NEWER
     /// <summary>Builds point payload records from raycast results.</summary>
     [BurstCompile]

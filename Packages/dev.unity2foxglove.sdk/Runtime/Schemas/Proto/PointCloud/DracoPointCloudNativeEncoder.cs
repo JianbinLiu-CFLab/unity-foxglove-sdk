@@ -10,7 +10,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Foxglove.Schemas.PointCloud
 {
