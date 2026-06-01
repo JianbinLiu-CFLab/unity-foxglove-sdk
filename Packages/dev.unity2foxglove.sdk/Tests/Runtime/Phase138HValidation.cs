@@ -82,8 +82,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "138H-4: VirtualLidar tracks each scan's physical-start epoch for shared timing");
             Check(source.Contains("_scanColumnProgress") && source.Contains("columnsToEmit"),
                 "138H-5: VirtualLidar advances the streaming scan by columns per tick");
-            Check(source.Contains("StartNewScan(_activeScanStartPhysSeconds + _scanPeriod)"),
-                "138H-6: VirtualLidar restarts each completed scan from prior scan start + period");
+            Check(source.Contains("StartNewScan(Time.fixedTimeAsDouble)"),
+                "138H-6: VirtualLidar restarts each completed scan from the actual physics time (steady, non-superseding scan timestamps)");
             Check(source.Contains("_scanCrossings") && source.Contains("GetSubArray"),
                 "138H-7: per-tick batch casts one ScheduleBatch slice and publishes at revolution crossings");
             Check(source.Contains("_columnRays"),

@@ -196,7 +196,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-14J-3: Draco pending work is last-value-wins");
             Check(source.Contains("DrainCompletedDracoEncode()"),
                 "134-14J-4: completed Draco work is drained from Update");
-            Check(source.Contains("PublishDracoPayload("),
+            Check(source.Contains("PublishCompletedDracoPayload("),
                 "134-14J-5: background encode result is published through a main-thread drain path");
             Check(source.Contains("DracoFailureWarningIntervalFrames"),
                 "134-14J-6: repeated Draco failures are throttled");

@@ -85,8 +85,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(lidar, "_pointCloudPublisher", publisher);
             SetPrivateField(lidar, "_columnStep", 1);
             SetPrivateField(lidar, "_maxRaysPerScan", 0);
-            SetPrivateField(lidar, "_protectMainThreadFrameRate", true);
-            SetPrivateField(lidar, "_protectedScanRateHz", 2f);
+            // Per-tick raycast budget keeps full-fidelity OS-2-128 off the main loop. The scan
+            // rate falls out of it automatically (~1.2 Hz at 6144), trading Hz for a steady
+            // main thread and a continuous, non-flickering point cloud.
+            SetPrivateField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             SetPrivateField(lidar, "_publishEmptyFrames", false);
             SetPrivateField(lidar, "_drawDebugRays", false);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);

@@ -218,19 +218,16 @@ namespace Unity.FoxgloveSDK.Tests
             var editor = ReadRepoText(DemoEditorRelativePath);
             var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
 
-            Check(lidar.Contains("_protectMainThreadFrameRate", StringComparison.Ordinal)
-                  && lidar.Contains("_protectedScanRateHz", StringComparison.Ordinal)
-                  && lidar.Contains("ComputeProtectedScanPeriodSeconds", StringComparison.Ordinal)
-                  && lidar.Contains("_scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, ComputeProtectedScanPeriodSeconds())", StringComparison.Ordinal)
-                  && lidar.Contains("StartNewScan(_activeScanStartPhysSeconds + ComputeProtectedScanPeriodSeconds())", StringComparison.Ordinal)
-                  && !lidar.Contains("_mainThreadDeltaMsEma", StringComparison.Ordinal)
-                  && !lidar.Contains("MainThreadFrameRateEmaAlpha", StringComparison.Ordinal)
-                  && !lidar.Contains("Time.unscaledDeltaTime * 1000d", StringComparison.Ordinal)
-                  && Regex.IsMatch(editor, @"SetField\(lidar,\s*""_protectMainThreadFrameRate"",\s*true\)")
-                  && Regex.IsMatch(editor, @"SetField\(lidar,\s*""_protectedScanRateHz"",\s*2f\)")
-                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(lidar,\s*""_protectMainThreadFrameRate"",\s*true\)")
-                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(lidar,\s*""_protectedScanRateHz"",\s*2f\)"),
-                "138I-25: VirtualLidar uses a stable source-side LiDAR rate cap instead of frame-time feedback jitter");
+            Check(lidar.Contains("_maxRaycastCommandsPerFixedUpdate", StringComparison.Ordinal)
+                  && lidar.Contains("BudgetColumnsPerTick", StringComparison.Ordinal)
+                  && lidar.Contains("Math.Min((int)Math.Floor(_scanColumnProgress), budgetColumns)", StringComparison.Ordinal)
+                  && lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
+                  && !lidar.Contains("ComputeProtectedScanPeriodSeconds", StringComparison.Ordinal)
+                  && !lidar.Contains("_protectMainThreadFrameRate", StringComparison.Ordinal)
+                  && !lidar.Contains("_protectedScanRateHz", StringComparison.Ordinal)
+                  && Regex.IsMatch(editor, @"SetField\(lidar,\s*""_maxRaycastCommandsPerFixedUpdate"",\s*\d+\)")
+                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(lidar,\s*""_maxRaycastCommandsPerFixedUpdate"",\s*\d+\)"),
+                "138I-25: VirtualLidar caps per-FixedUpdate raycast work (budget) so full-fidelity scans lower their rate instead of stalling the main loop");
         }
 
         private static void VerifyVirtualLidarDracoBypassesManagedPointAppend()

@@ -102,10 +102,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _drawDebugRays;
         [SerializeField, Min(1)] private int _scanSubSteps = 1;
         [SerializeField] private bool _logPerformanceDiagnostics;
-        [Tooltip("When enabled, cap LiDAR scan cadence at Protected Scan Rate Hz so point-cloud work cannot dominate the main loop.")]
-        [SerializeField] private bool _protectMainThreadFrameRate = true;
-        [Tooltip("Stable LiDAR scan-rate cap used when main-thread protection is enabled. This is intentionally fixed, not frame-time feedback, to avoid point-cloud cadence jitter.")]
-        [SerializeField, Min(0.1f)] private float _protectedScanRateHz = 2f;
+        [Tooltip("Maximum RaycastCommands scheduled per FixedUpdate. This is the real main-thread protection: it caps how much PhysX raycast work one physics tick can block on (the Complete() call). The scan rate falls out of it automatically (rate ~= budget * physicsHz / raysPerScan), so a full-fidelity scan simply publishes slower instead of stalling TF/camera/IMU. Lower it if the main loop still drops; raise it for a faster point cloud.")]
+        [SerializeField, Min(256)] private int _maxRaycastCommandsPerFixedUpdate = 6144;
 
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
@@ -263,6 +261,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _effectiveRayCount; // rays actually cast per scan (after budget)
         private int _rayStride;         // subsampling stride into the pattern
         private int _spinEffectiveColumns; // RayCount/Rings for spinning, else 0
+        private int _maxRaysPerColumn = 1; // most rays in any single column (per-tick budget unit)
 
         private void Start()
         {
@@ -374,8 +373,13 @@ namespace Unity.FoxgloveSDK.Components
             for (var k = 0; k < _effectiveRayCount; k++)
                 columnCounts[_rayColumns[k]]++;
             _columnRays = new int[_scanColumnCount][];
+            _maxRaysPerColumn = 1;
             for (var c = 0; c < _scanColumnCount; c++)
+            {
                 _columnRays[c] = new int[columnCounts[c]];
+                if (columnCounts[c] > _maxRaysPerColumn)
+                    _maxRaysPerColumn = columnCounts[c];
+            }
             var columnFill = new int[_scanColumnCount];
             for (var k = 0; k < _effectiveRayCount; k++)
             {
@@ -483,9 +487,22 @@ namespace Unity.FoxgloveSDK.Components
             if (dt <= 0d)
                 return;
 
-            // Columns to advance this tick; carry the fractional remainder to avoid drift.
-            _scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, ComputeProtectedScanPeriodSeconds());
-            var columnsToEmit = (int)Math.Floor(_scanColumnProgress);
+            // Columns this scan rate wants to advance this tick; carry the remainder.
+            _scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
+
+            // Hard cap on per-tick raycast work — the real fix. PhysX must finish the batch
+            // within one fixed step or RaycastCommand.Complete() blocks the physics loop and
+            // starves TF/camera/render. When the budget can not keep up with the nominal scan
+            // rate, the scan just spans more ticks (lower effective Hz), never a stall.
+            var budgetColumns = BudgetColumnsPerTick();
+
+            // Never let the backlog grow past one revolution, or a slow start would burst a
+            // giant batch and reintroduce the very stall we are preventing.
+            var maxProgress = _scanColumnCount + budgetColumns;
+            if (_scanColumnProgress > maxProgress)
+                _scanColumnProgress = maxProgress;
+
+            var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress), budgetColumns);
             if (columnsToEmit <= 0)
                 return;
             _scanColumnProgress -= columnsToEmit;
@@ -610,7 +627,7 @@ namespace Unity.FoxgloveSDK.Components
                     AppendOrCopyPendingPointDataSegment(segmentStart, k - segmentStart, useNativeDraco, ref validPoints);
                     PublishActiveScan();
                     _pendingScanState = PendingScanState.Published;
-                    StartNewScan(_activeScanStartPhysSeconds + ComputeProtectedScanPeriodSeconds());
+                    StartNewScan(Time.fixedTimeAsDouble);
                     segmentStart = k;
                     ci++;
                 }
@@ -621,7 +638,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 PublishActiveScan();
                 _pendingScanState = PendingScanState.Published;
-                StartNewScan(_activeScanStartPhysSeconds + ComputeProtectedScanPeriodSeconds());
+                StartNewScan(Time.fixedTimeAsDouble);
                 ci++;
             }
 
@@ -865,14 +882,14 @@ namespace Unity.FoxgloveSDK.Components
             return checked(_scanEpochUnixNs + (ulong)Math.Round(deltaSeconds * 1e9));
         }
 
-        private double ComputeProtectedScanPeriodSeconds()
+        // Largest number of whole columns whose rays fit inside one FixedUpdate's raycast
+        // budget. With OS-2-128 (128 rays/column) and a 6144 budget that is 48 columns/tick,
+        // i.e. ~1.2 Hz full-fidelity at 50 Hz physics — slow but rock-steady, with TF/camera
+        // and the main loop fully protected.
+        private int BudgetColumnsPerTick()
         {
-            var basePeriod = Math.Max(1e-12, _scanPeriod);
-            if (!_protectMainThreadFrameRate)
-                return basePeriod;
-
-            var protectedRateHz = Math.Max(0.1f, _protectedScanRateHz);
-            return Math.Max(basePeriod, 1d / protectedRateHz);
+            var perColumn = Math.Max(1, _maxRaysPerColumn);
+            return Math.Max(1, _maxRaycastCommandsPerFixedUpdate / perColumn);
         }
 
         private void EnsureScanClock(double physNow)
@@ -903,7 +920,8 @@ namespace Unity.FoxgloveSDK.Components
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
             if (_scanSubSteps < 1)
                 _scanSubSteps = 1;
-            _protectedScanRateHz = Math.Max(0.1f, _protectedScanRateHz);
+            if (_maxRaycastCommandsPerFixedUpdate < 256)
+                _maxRaycastCommandsPerFixedUpdate = 256;
         }
     }
 }

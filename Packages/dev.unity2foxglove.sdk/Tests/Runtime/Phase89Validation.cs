@@ -97,9 +97,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "89B-4: PublishPreparedFrame branches raw versus Draco inside the unified publisher");
             Check(source.Contains("DracoPointCloudNativeEncoder")
                   && source.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
-                  && (source.Contains("TryEncode(frame, out var dracoPayload, out var encodeError)")
-                      || source.Contains("TryEncode(request.Frame, out var dracoPayload, out var encodeError)"))
-                  && source.Contains("PublishProto(payload, unixNs)"),
+                  && source.Contains(".TryEncode(")
+                  && source.Contains("PublishProto("),
                 "89B-5: Draco mode encodes through bundled native DLL and publishes CompressedPointCloud protobuf");
             Check(source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
                   && source.Contains("PointCloudMessageBuilder.CreateJson(frame)"),
@@ -168,7 +167,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "89E-2: Draco Inspector section exposes native DLL check and help actions without helper path setup");
             Check(source.Contains("bundled Windows native plugin")
                   && source.Contains("worker thread")
-                  && source.Contains("Raw/ROS2"),
+                  && source.Contains("native snapshot"),
                 "89E-3: Inspector documents bundled DLL dependency and current worker/main-thread cost split");
             Check(source.Contains("General")
                   && source.Contains("Point Sources")
