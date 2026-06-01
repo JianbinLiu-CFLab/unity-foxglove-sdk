@@ -31,6 +31,12 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
         private const string DemoReadmeRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/README.md";
+        private const string ImportedDemoEditorRelativePath =
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
+        private const string ImportedDemoBootstrapRelativePath =
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
+        private const string SmokeSceneRelativePath =
+            "Unity2Foxglove/Assets/Scenes/Phase138_Foxglove_MCAP_Smoke.unity";
 
         /// <summary>Run all Phase 138I checks.</summary>
         public static void Validate()
@@ -286,15 +292,34 @@ namespace Unity.FoxgloveSDK.Tests
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
             var editor = ReadRepoText(DemoEditorRelativePath);
             var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
+            var importedEditor = ReadRepoText(ImportedDemoEditorRelativePath);
+            var importedBootstrap = ReadRepoText(ImportedDemoBootstrapRelativePath);
+            var smokeScene = ReadRepoText(SmokeSceneRelativePath);
 
-            Check(publisher.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
+            Check(publisher.Contains("_nativeDracoMaxPublishRateHz", StringComparison.Ordinal)
                   && publisher.Contains("_lastNativeDracoPublishUnixNs", StringComparison.Ordinal)
+                  && publisher.Contains("rateHz <= 0f", StringComparison.Ordinal)
                   && publisher.Contains("ShouldQueueVirtualLidarDracoFrame(unixNs)", StringComparison.Ordinal)
                   && publisher.Contains("RecordPointCloudDrop()", StringComparison.Ordinal),
-                "138I-29: VirtualLidar native Draco path has its own source-side publish cap and records dropped frames");
-            Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoPublishRateHz"",\s*2f\)")
-                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoPublishRateHz"",\s*2f\)"),
-                "138I-30: maze demo caps native Draco visualization to a stable 2Hz while keeping the main loop responsive");
+                "138I-29: VirtualLidar native Draco path has an optional source-side publish cap and records dropped frames");
+            Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
+                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
+                  && Regex.IsMatch(importedEditor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
+                  && Regex.IsMatch(importedBootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
+                  && smokeScene.Contains("_nativeDracoMaxPublishRateHz: 0", StringComparison.Ordinal)
+                  && smokeScene.Contains("_suppressTransformFallbackAfterSourceFrames: 1", StringComparison.Ordinal)
+                  && !editor.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
+                  && !bootstrap.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
+                  && !importedEditor.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
+                  && !importedBootstrap.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
+                  && !smokeScene.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal),
+                "138I-30: maze demo and imported Unity project leave native Draco source cadence uncapped so the LiDAR raycast budget controls the actual rate");
+            Check(publisher.Contains("_suppressTransformFallbackAfterSourceFrames", StringComparison.Ordinal)
+                  && publisher.Contains("MarkSourceDrivenPointCloud", StringComparison.Ordinal)
+                  && publisher.Contains("ShouldSuppressTransformFallback()", StringComparison.Ordinal)
+                  && publisher.Contains("CreateFrameFromTransforms(unixNs)", StringComparison.Ordinal)
+                  && publisher.Contains("PointCloud transform fallback suppressed", StringComparison.Ordinal),
+                "138I-31: source-driven point clouds suppress sparse transform fallback frames that would overwrite LiDAR data");
         }
 
         private static void VerifyManagedDracoRejectsMetadataOnlyFramesBeforePinning()
@@ -307,7 +332,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!DracoPointCloudNativeEncoder.TryEncode(metadataOnlyFrame, out _, out var error)
                   && error.Contains("empty", StringComparison.OrdinalIgnoreCase),
-                "138I-31: managed Draco encoder rejects metadata-only frames before indexing managed points");
+                "138I-32: managed Draco encoder rejects metadata-only frames before indexing managed points");
         }
 
         private static string ReadRepoText(string relativePath)

@@ -144,9 +144,10 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.HelpBox(
                 "Native Draco encode runs on a worker thread. Managed frames still pass through QoS before encoding; Virtual LiDAR native snapshots can bypass that managed point append path.",
                 MessageType.Info);
-            DrawProperty("_nativeDracoPublishRateHz", "Native LiDAR Rate Hz");
+            DrawProperty("_nativeDracoMaxPublishRateHz", "Native LiDAR Max Rate Hz");
+            DrawProperty("_suppressTransformFallbackAfterSourceFrames", "Suppress Transform Fallback After Source");
             EditorGUILayout.HelpBox(
-                "Virtual LiDAR can hand full-resolution Draco snapshots directly to the worker, bypassing the regular Update publish gate. This cap drops excess LiDAR snapshots before encoding so TF, camera, and IMU stay responsive.",
+                "Virtual LiDAR can hand full-resolution Draco snapshots directly to the worker, bypassing the regular Update publish gate. Leave Max Rate at 0 to publish every completed source scan; use a positive value only as an explicit visualization safety valve. Source-driven publishers suppress transform fallback frames so sparse child-transform points cannot overwrite real LiDAR clouds.",
                 MessageType.Info);
 
             var checkRequested = false;

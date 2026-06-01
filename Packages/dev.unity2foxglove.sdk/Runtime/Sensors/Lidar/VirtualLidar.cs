@@ -305,6 +305,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (_pointCloudPublisher == null)
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
+            _pointCloudPublisher?.MarkSourceDrivenPointCloud();
 
             var rateHz = _scanRateSource == ScanRateSource.Override && _scanRateHzOverride > 0f
                 ? _scanRateHzOverride
