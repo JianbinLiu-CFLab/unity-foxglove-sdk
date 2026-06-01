@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 138I: Full-Fidelity OS-2-128 10Hz PointCloud Throughput ===");
 
             VerifyOs2128FullFidelityPattern();
-            VerifyFullFidelityMazeProfile();
+            VerifyMazeDefaultProfile();
             VerifyVirtualLidarIgnoresDemoVehicleSelfHits();
             VerifyPointCloudQosPassThrough();
             VerifyOptInDiagnostics();
@@ -88,15 +88,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "138I-4: validation catches the old columnStep=4 reduced-fidelity path");
         }
 
-        private static void VerifyFullFidelityMazeProfile()
+        private static void VerifyMazeDefaultProfile()
         {
             var editor = ReadRepoText(DemoEditorRelativePath);
             var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
+            var importedEditor = ReadRepoText(ImportedDemoEditorRelativePath);
+            var importedBootstrap = ReadRepoText(ImportedDemoBootstrapRelativePath);
 
-            Check(ContainsFullFidelityProfile(editor),
-                "138I-5: editor maze builder applies a named full-fidelity OS-2-128 2048x10 stress profile");
-            Check(ContainsFullFidelityProfile(bootstrap),
-                "138I-6: runtime maze bootstrap applies the same full-fidelity stress profile");
+            Check(ContainsDefaultMazeProfile(editor) && ContainsDefaultMazeProfile(importedEditor),
+                "138I-5: editor maze builder defaults to the healthy OS-1-32 1024x10 demo profile");
+            Check(ContainsDefaultMazeProfile(bootstrap) && ContainsDefaultMazeProfile(importedBootstrap),
+                "138I-6: runtime maze bootstrap defaults to the same healthy OS-1-32 1024x10 demo profile");
             Check(editor.Contains("EditorApplication.isPlayingOrWillChangePlaymode", StringComparison.Ordinal),
                 "138I-7: editor maze builder refuses to rebuild/dirty the scene during Play Mode");
             Check(bootstrap.Contains("SetPrivateField(publisher, \"_publishRateHz\", 10f)", StringComparison.Ordinal),
@@ -105,14 +107,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "138I-9: editor builder pins point-cloud publish rate to 10Hz");
         }
 
-        private static bool ContainsFullFidelityProfile(string source)
+        private static bool ContainsDefaultMazeProfile(string source)
         {
-            return source.Contains("OS-2-128", StringComparison.Ordinal)
-                   && source.Contains("2048x10", StringComparison.Ordinal)
+            return source.Contains("OS-1-32", StringComparison.Ordinal)
+                   && source.Contains("1024x10", StringComparison.Ordinal)
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(lidar,\s*""_columnStep"",\s*1\)")
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(lidar,\s*""_maxRaysPerScan"",\s*0\)")
-                   && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPoints"",\s*(?:FullFidelityPointCount|262144)\)")
+                   && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPoints"",\s*(?:DefaultLidarPointCount|32768)\)")
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPackedBytes"",\s*0\)")
+                   && Regex.IsMatch(source, @"Set(?:Private)?Field\(lidar,\s*""_maxRaycastCommandsPerFixedUpdate"",\s*\d+\)")
                    && source.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal);
         }
 

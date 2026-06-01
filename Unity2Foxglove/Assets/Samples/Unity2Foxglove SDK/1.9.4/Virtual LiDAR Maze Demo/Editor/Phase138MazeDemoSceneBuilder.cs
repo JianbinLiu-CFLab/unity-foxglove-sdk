@@ -34,9 +34,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         private const int CellsX = 8;
         private const int CellsZ = 8;
         private const float CellSize = 2f;
-        private const string FullFidelityModel = "OS-2-128";
-        private const string FullFidelityMode = "2048x10";
-        private const int FullFidelityPointCount = 128 * 2048;
+        private const string DefaultLidarModel = "OS-1-32";
+        private const string DefaultLidarMode = "1024x10";
+        private const int DefaultLidarPointCount = 32 * 1024;
 
         /// <summary>
         /// Summary text for this member.
@@ -85,13 +85,13 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 
             var sensorUnit = lidarImuUnit.gameObject.AddComponent<SensorUnitProfile>();
             SetField(sensorUnit, "_manager", manager);
-            SetField(sensorUnit, "_model", FullFidelityModel);
-            SetField(sensorUnit, "_mode", FullFidelityMode);
+            SetField(sensorUnit, "_model", DefaultLidarModel);
+            SetField(sensorUnit, "_mode", DefaultLidarMode);
 
             var publisher = lidarImuUnit.gameObject.AddComponent<FoxglovePointCloudPublisher>();
             SetField(publisher, "_manager", manager);
             SetField(publisher, "_frameId", "os_lidar");
-            SetField(publisher, "_maxPoints", FullFidelityPointCount);
+            SetField(publisher, "_maxPoints", DefaultLidarPointCount);
             SetField(publisher, "_maxPackedBytes", 0);
             SetField(publisher, "_publishRateHz", 10f);
             SetField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
@@ -122,6 +122,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidar, "_columnStep", 1);
             SetField(lidar, "_maxRaysPerScan", 0);
             SetField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
+            SetField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
 
             // 4. IMU on the shared Ouster-style sensor unit frame.

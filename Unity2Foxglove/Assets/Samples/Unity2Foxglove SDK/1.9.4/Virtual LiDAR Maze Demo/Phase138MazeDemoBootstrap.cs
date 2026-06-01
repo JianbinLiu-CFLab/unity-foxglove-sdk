@@ -27,9 +27,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
 /// <summary>Summary text for this member.</summary>
     public class Phase138MazeDemoBootstrap : MonoBehaviour
     {
-        private const string FullFidelityModel = "OS-2-128";
-        private const string FullFidelityMode = "2048x10";
-        private const int FullFidelityPointCount = 128 * 2048;
+        private const string DefaultLidarModel = "OS-1-32";
+        private const string DefaultLidarMode = "1024x10";
+        private const int DefaultLidarPointCount = 32 * 1024;
 
         private static bool s_warnedManagerNull;
 
@@ -51,12 +51,12 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
 
             var sensorUnit = lidarImuUnit.gameObject.AddComponent<SensorUnitProfile>();
             SetPrivateField(sensorUnit, "_manager", manager);
-            SetPrivateField(sensorUnit, "_model", FullFidelityModel);
-            SetPrivateField(sensorUnit, "_mode", FullFidelityMode);
+            SetPrivateField(sensorUnit, "_model", DefaultLidarModel);
+            SetPrivateField(sensorUnit, "_mode", DefaultLidarMode);
 
             var publisher = lidarImuUnit.gameObject.AddComponent<FoxglovePointCloudPublisher>();
             SetPrivateField(publisher, "_manager", manager);
-            SetPrivateField(publisher, "_maxPoints", FullFidelityPointCount);
+            SetPrivateField(publisher, "_maxPoints", DefaultLidarPointCount);
             SetPrivateField(publisher, "_maxPackedBytes", 0);
             SetPrivateField(publisher, "_publishRateHz", 10f);
             SetPrivateField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
@@ -90,6 +90,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(lidar, "_columnStep", 1);
             SetPrivateField(lidar, "_maxRaysPerScan", 0);
             SetPrivateField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
+            SetPrivateField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             SetPrivateField(lidar, "_publishEmptyFrames", false);
             SetPrivateField(lidar, "_drawDebugRays", false);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
