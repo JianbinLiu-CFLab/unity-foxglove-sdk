@@ -18,6 +18,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         public const string CameraCalibration = Ros2CdrCameraCalibrationBuilder.SchemaName;
         public const string LaserScan = Ros2CdrLaserScanBuilder.SchemaName;
         public const string PointCloud = Ros2CdrPointCloudBuilder.SchemaName;
+        public const string SensorPointCloud2 = Ros2CdrSensorPointCloud2Builder.SchemaName;
         public const string CompressedPointCloud = Ros2CdrCompressedPointCloudBuilder.SchemaName;
     }
 }

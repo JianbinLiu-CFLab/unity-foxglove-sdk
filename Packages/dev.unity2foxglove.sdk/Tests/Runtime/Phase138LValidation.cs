@@ -1,0 +1,270 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Phase 138L validation for SLAM PointCloud2 native pipeline boundaries.
+
+using System;
+using System.IO;
+using System.Linq;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+
+namespace Unity.FoxgloveSDK.Tests
+{
+    /// <summary>
+    /// Phase 138L checks for standard sensor_msgs/msg/PointCloud2 SLAM output.
+    /// </summary>
+    public static class Phase138LValidation
+    {
+        private static int _passed;
+
+        /// <summary>Runs all Phase 138L validation checks.</summary>
+        public static void Validate()
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== Phase 138L: SLAM PointCloud2 Native Pipeline ===");
+            _passed = 0;
+
+            ExistingRawRos2SchemaRemainsFoxglovePointCloud();
+            SensorPointCloud2BuilderWritesStandardPointCloud2();
+            NativeVirtualLidarPackedDataSkipsInvalidRaysWithoutPointCloudFrame();
+            PointCloud2NativeModeUsesStandardSchemaAndNativeQueue();
+            SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot();
+            ValidationRegistryWiresPhase138L();
+            VirtualLidarKeepsStaticBudgetInvariant();
+
+            Console.WriteLine($"Phase 138L: {_passed} checks passed.");
+        }
+
+        private static void ExistingRawRos2SchemaRemainsFoxglovePointCloud()
+        {
+            Check(Ros2CdrPointCloudBuilder.SchemaName == "foxglove_msgs/msg/PointCloud",
+                "138L-1A: existing Raw ROS2 CDR builder remains foxglove_msgs/msg/PointCloud");
+            Check(Ros2PublisherSchemaNames.PointCloud == Ros2CdrPointCloudBuilder.SchemaName,
+                "138L-1B: existing PointCloud publisher schema still maps to the Foxglove message");
+        }
+
+        private static void SensorPointCloud2BuilderWritesStandardPointCloud2()
+        {
+            var frame = BuildFullStrideFrame();
+            var packed = PointCloudPackedDataBuilder.Build(frame);
+            var payload = Ros2CdrSensorPointCloud2Builder.Serialize(frame);
+            var reader = new Ros2CdrTestReader(payload);
+
+            Check(Ros2CdrSensorPointCloud2Builder.SchemaName == "sensor_msgs/msg/PointCloud2",
+                "138L-2A: new builder declares standard sensor_msgs/msg/PointCloud2");
+
+            Check(reader.ReadInt32() == 1700000123, "138L-2B: PointCloud2 header stamp sec is written");
+            Check(reader.ReadUInt32() == 456789012U, "138L-2C: PointCloud2 header stamp nanosec is written");
+            Check(reader.ReadString() == "os_lidar", "138L-2D: PointCloud2 header frame_id is written");
+            Check(reader.ReadUInt32() == 1U, "138L-2E: PointCloud2 is unorganized by default");
+            Check(reader.ReadUInt32() == 2U, "138L-2F: PointCloud2 width equals point count");
+
+            var fields = Enumerable.Range(0, checked((int)reader.ReadUInt32()))
+                .Select(_ => ReadPointField(reader))
+                .ToArray();
+            Check(fields.Length == 8, "138L-2G: PointCloud2 field sequence preserves full SLAM stride");
+            Check(HasField(fields, "x", 0, 7)
+                  && HasField(fields, "y", 4, 7)
+                  && HasField(fields, "z", 8, 7)
+                  && HasField(fields, "intensity", 12, 7)
+                  && HasField(fields, "reflectivity", 16, 7)
+                  && HasField(fields, "ring", 20, 4)
+                  && HasField(fields, "time_offset", 22, 7)
+                  && HasField(fields, "t", 26, 6),
+                "138L-2H: PointCloud2 field offsets and datatypes match packed SLAM layout");
+
+            Check(!reader.ReadBool(), "138L-2I: PointCloud2 is little-endian");
+            Check(reader.ReadUInt32() == packed.PointStride, "138L-2J: point_step matches shared packed stride");
+            Check(reader.ReadUInt32() == packed.PointStride * 2U, "138L-2K: row_step matches point_step * width");
+            Check(reader.ReadByteArray().SequenceEqual(packed.Data), "138L-2L: PointCloud2 data bytes match shared packed data");
+            Check(reader.ReadBool(), "138L-2M: compacted PointCloud2 output is dense");
+        }
+
+        private static void NativeVirtualLidarPackedDataSkipsInvalidRaysWithoutPointCloudFrame()
+        {
+            var nativePoints = new[]
+            {
+                new VirtualLidarPointData
+                {
+                    X = 1f,
+                    Y = 2f,
+                    Z = 3f,
+                    Intensity = 0.5f,
+                    Reflectivity = 0.25f,
+                    Ring = 7,
+                    TimeOffsetSeconds = 0.001f,
+                    IsValid = 1
+                },
+                new VirtualLidarPointData
+                {
+                    X = 100f,
+                    Y = 200f,
+                    Z = 300f,
+                    Intensity = 9f,
+                    Reflectivity = 9f,
+                    Ring = 99,
+                    TimeOffsetSeconds = 9f,
+                    IsValid = 0
+                },
+                new VirtualLidarPointData
+                {
+                    X = 4f,
+                    Y = 5f,
+                    Z = 6f,
+                    Intensity = 0.75f,
+                    Reflectivity = 0.5f,
+                    Ring = 8,
+                    TimeOffsetSeconds = 0.002f,
+                    IsValid = 1
+                }
+            };
+            var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(nativePoints, emitAbsoluteTimeNs: true);
+            var expected = PointCloudPackedDataBuilder.Build(BuildFullStrideFrame());
+
+            Check(packed.PointStride == 30U, "138L-2N: native PointCloud2 packed stride is full SLAM stride");
+            Check(packed.Data.Length == 60, "138L-2O: native PointCloud2 packed data compacts valid rays only");
+            Check(packed.Data.SequenceEqual(expected.Data), "138L-2P: native PointCloud2 packed bytes match managed full-stride reference");
+            Check(packed.Fields.Count == expected.Fields.Count
+                  && packed.Fields.Select(field => field.Name).SequenceEqual(expected.Fields.Select(field => field.Name)),
+                "138L-2Q: native PointCloud2 packed fields match managed full-stride reference");
+        }
+
+        private static void PointCloud2NativeModeUsesStandardSchemaAndNativeQueue()
+        {
+            var mode = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudOutputMode.cs");
+            var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
+
+            Check(mode.Contains("PointCloud2Native", StringComparison.Ordinal)
+                  && mode.Contains("PointCloud2NativeTopic", StringComparison.Ordinal)
+                  && mode.Contains("PointCloud2NativeSchema", StringComparison.Ordinal),
+                "138L-2R: PointCloud2Native is an explicit output profile, not an overload of Raw");
+            Check(publisher.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", StringComparison.Ordinal)
+                  && publisher.Contains("Ros2CdrSensorPointCloud2Builder.Serialize", StringComparison.Ordinal),
+                "138L-2S: PointCloud2Native publishes standard sensor_msgs/msg/PointCloud2 CDR");
+            Check(publisher.Contains("CanQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal)
+                  && publisher.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal),
+                "138L-2T: PointCloud2Native exposes a native VirtualLidar queue entry point");
+            Check(lidar.Contains("UseNativePointCloudSnapshotPath", StringComparison.Ordinal)
+                  && lidar.Contains("TryPublishActiveNativePointCloud2Scan", StringComparison.Ordinal),
+                "138L-2U: VirtualLidar can bypass managed Points.Add for PointCloud2Native");
+            Check(editor.Contains("PointCloud2 Native", StringComparison.Ordinal),
+                "138L-2V: Inspector labels the SLAM PointCloud2 mode explicitly");
+        }
+
+        private static void SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot()
+        {
+            Check(FoxgloveRos2MsgSchemaCatalog.SourceFileCount == 41
+                  && FoxgloveRos2MsgSchemaCatalog.Entries.Count == 41,
+                "138L-2W: standard PointCloud2 support does not mutate the Foxglove ROS2 snapshot count");
+            Check(FoxgloveRos2MsgSchemaCatalog.TryGet(Ros2PublisherSchemaNames.SensorPointCloud2, out var entry)
+                  && entry.Content.Contains("sensor_msgs/PointField", StringComparison.Ordinal)
+                  && entry.Content.Contains("MSG: sensor_msgs/PointField", StringComparison.Ordinal),
+                "138L-2X: standard sensor_msgs/msg/PointCloud2 schema resolves for ROS2 publish");
+
+            var registry = new DefaultSchemaRegistry();
+            Ros2MsgSchemasSetup.RegisterSchemas(registry);
+            Check(registry.TryGetSchema(Ros2PublisherSchemaNames.SensorPointCloud2, "ros2msg", out var registered)
+                  && registered.Content.Contains("std_msgs/Header", StringComparison.Ordinal),
+                "138L-2Y: standard PointCloud2 schema is registered for CDR advertisement");
+        }
+
+        private static void ValidationRegistryWiresPhase138L()
+        {
+            var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+
+            Check(registry.Contains("--phase138l", StringComparison.Ordinal)
+                  && registry.Contains("Phase138LValidation.Validate", StringComparison.Ordinal),
+                "138L-3A: validation registry exposes --phase138l");
+            Check(project.Contains("Phase138LValidation.cs", StringComparison.Ordinal),
+                "138L-3B: test project compiles Phase138L validation");
+        }
+
+        private static void VirtualLidarKeepsStaticBudgetInvariant()
+        {
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+
+            Check(lidar.Contains("_maxRaycastCommandsPerFixedUpdate = 6144", StringComparison.Ordinal),
+                "138L-4A: VirtualLidar keeps the 138I static raycast budget cap");
+            Check(lidar.Contains("return Math.Max(1, _maxRaycastCommandsPerFixedUpdate / perColumn)", StringComparison.Ordinal),
+                "138L-4B: BudgetColumnsPerTick remains cap-based");
+            Check(lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal),
+                "138L-4C: scan timestamps remain physics-time anchored");
+        }
+
+        private static PointCloudFrame BuildFullStrideFrame()
+        {
+            var frame = new PointCloudFrame
+            {
+                UnixNs = 1_700_000_123_456_789_012UL,
+                FrameId = "os_lidar",
+                EmitAbsoluteTimeNs = true
+            };
+            frame.Points.Add(new PointCloudPoint(1f, 2f, 3f)
+            {
+                Intensity = 0.5f,
+                Reflectivity = 0.25f,
+                Ring = 7,
+                TimeOffsetSeconds = 0.001f
+            });
+            frame.Points.Add(new PointCloudPoint(4f, 5f, 6f)
+            {
+                Intensity = 0.75f,
+                Reflectivity = 0.5f,
+                Ring = 8,
+                TimeOffsetSeconds = 0.002f
+            });
+            return frame;
+        }
+
+        private static PointFieldRecord ReadPointField(Ros2CdrTestReader reader)
+        {
+            return new PointFieldRecord(
+                reader.ReadString(),
+                reader.ReadUInt32(),
+                reader.ReadUInt8(),
+                reader.ReadUInt32());
+        }
+
+        private static bool HasField(PointFieldRecord[] fields, string name, uint offset, byte datatype)
+        {
+            return fields.Any(field =>
+                field.Name == name
+                && field.Offset == offset
+                && field.Datatype == datatype
+                && field.Count == 1U);
+        }
+
+        private static string Read(string path) => File.ReadAllText(path);
+
+        private static void Check(bool condition, string label)
+        {
+            if (!condition)
+                throw new Exception("[FAIL] " + label);
+
+            _passed++;
+            Console.WriteLine("[PASS] " + label);
+        }
+
+        private sealed class PointFieldRecord
+        {
+            public PointFieldRecord(string name, uint offset, byte datatype, uint count)
+            {
+                Name = name;
+                Offset = offset;
+                Datatype = datatype;
+                Count = count;
+            }
+
+            public string Name { get; }
+            public uint Offset { get; }
+            public byte Datatype { get; }
+            public uint Count { get; }
+        }
+    }
+}

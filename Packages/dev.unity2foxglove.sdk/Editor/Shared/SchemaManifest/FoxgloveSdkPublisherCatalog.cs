@@ -76,6 +76,16 @@ namespace Unity.FoxgloveSDK.Editor
                 supportsRos2: true,
                 "Draco compressed point-cloud profile."),
             Concrete(
+                "Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher",
+                "dedicatedPublisher",
+                PointCloudOutputModeDefaults.PointCloud2NativeTopic,
+                "",
+                Ros2PublisherSchemaNames.SensorPointCloud2,
+                supportsJson: false,
+                supportsProtobuf: false,
+                supportsRos2: true,
+                "Native standard PointCloud2 SLAM profile."),
+            Concrete(
                 "Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher",
                 "dedicatedPublisher",
                 CameraOutputModeDefaults.JpegTopic,

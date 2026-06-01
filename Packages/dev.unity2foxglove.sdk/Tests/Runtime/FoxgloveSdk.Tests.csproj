@@ -134,6 +134,8 @@
     <Compile Include="Phase138JValidation.cs" />
     <!-- 138K: validate camera video encoder dimension hardening and video diagnostics. -->
     <Compile Include="Phase138KValidation.cs" />
+    <!-- 138L: validate standard sensor_msgs PointCloud2 SLAM pipeline boundaries. -->
+    <Compile Include="Phase138LValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
     <Compile Include="Phase108Validation.cs" />
     <Compile Include="Phase109Validation.cs" />

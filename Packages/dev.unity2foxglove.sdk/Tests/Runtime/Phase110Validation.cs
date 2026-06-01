@@ -391,7 +391,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "using ROS2;",
                 "ROS2UnityComponent",
                 "ROS2Node",
-                "std_msgs",
+                "std_msgs.msg",
                 "Ros2ForUnity"
             };
         }

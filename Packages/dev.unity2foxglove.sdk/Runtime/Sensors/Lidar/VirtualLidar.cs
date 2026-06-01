@@ -638,12 +638,12 @@ namespace Unity.FoxgloveSDK.Components
             var validPoints = 0;
             var ci = 0;
             var segmentStart = 0;
-            var useNativeDraco = UseNativeDracoPointCloudPath();
+            var useNativeSnapshot = UseNativePointCloudSnapshotPath();
             for (var k = 0; k < _pendingBatchCount; k++)
             {
                 while (ci < _pendingScanCrossingCount && k == _pendingScanCrossings[ci])
                 {
-                    AppendOrCopyPendingPointDataSegment(segmentStart, k - segmentStart, useNativeDraco, ref validPoints);
+                    AppendOrCopyPendingPointDataSegment(segmentStart, k - segmentStart, useNativeSnapshot, ref validPoints);
                     PublishActiveScan();
                     _pendingScanState = PendingScanState.Published;
                     StartNewScan(Time.fixedTimeAsDouble);
@@ -652,7 +652,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            AppendOrCopyPendingPointDataSegment(segmentStart, _pendingBatchCount - segmentStart, useNativeDraco, ref validPoints);
+            AppendOrCopyPendingPointDataSegment(segmentStart, _pendingBatchCount - segmentStart, useNativeSnapshot, ref validPoints);
             while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
             {
                 PublishActiveScan();
@@ -666,15 +666,15 @@ namespace Unity.FoxgloveSDK.Components
             ClearPendingScan();
         }
 
-        private bool UseNativeDracoPointCloudPath()
-            => _pointCloudPublisher != null && _pointCloudPublisher.CanQueueVirtualLidarDracoFrame;
+        private bool UseNativePointCloudSnapshotPath()
+            => _pointCloudPublisher != null && _pointCloudPublisher.CanQueueVirtualLidarNativeFrame;
 
-        private void AppendOrCopyPendingPointDataSegment(int sourceStart, int length, bool useNativeDraco, ref int validPoints)
+        private void AppendOrCopyPendingPointDataSegment(int sourceStart, int length, bool useNativeSnapshot, ref int validPoints)
         {
             if (length <= 0)
                 return;
 
-            if (useNativeDraco)
+            if (useNativeSnapshot)
             {
                 CopyPendingPointDataSegment(sourceStart, length);
                 return;
@@ -842,7 +842,7 @@ namespace Unity.FoxgloveSDK.Components
             };
             _activeScanValidPoints = 0;
             _activeScanPointSnapshotCount = 0;
-            if (UseNativeDracoPointCloudPath())
+            if (UseNativePointCloudSnapshotPath())
             {
                 if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _effectiveRayCount)
                     _activeScanPointSnapshot = new VirtualLidarPointData[_effectiveRayCount];
@@ -868,7 +868,8 @@ namespace Unity.FoxgloveSDK.Components
             var hasNativeSnapshot = _activeScanPointSnapshotCount > 0;
             if (_pointCloudPublisher != null && (_activeScanValidPoints > 0 || hasNativeSnapshot || _publishEmptyFrames))
             {
-                if (!TryPublishActiveNativeDracoScan())
+                if (!TryPublishActiveNativePointCloud2Scan()
+                    && !TryPublishActiveNativeDracoScan())
                     _pointCloudPublisher.SetFrame(_activeScanFrame);
             }
 
@@ -877,7 +878,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool TryPublishActiveNativeDracoScan()
         {
-            if (!UseNativeDracoPointCloudPath()
+            if (_pointCloudPublisher == null
+                || !_pointCloudPublisher.CanQueueVirtualLidarDracoFrame
                 || _activeScanPointSnapshot == null
                 || _activeScanPointSnapshotCount <= 0)
                 return false;
@@ -885,6 +887,29 @@ namespace Unity.FoxgloveSDK.Components
             var snapshot = _activeScanPointSnapshot;
             var snapshotCount = _activeScanPointSnapshotCount;
             if (!_pointCloudPublisher.TryQueueVirtualLidarDracoFrame(
+                    snapshot,
+                    snapshotCount,
+                    _activeScanFrame.UnixNs,
+                    _activeScanFrame.FrameId,
+                    _activeScanFrame.EmitAbsoluteTimeNs))
+                return false;
+
+            _activeScanPointSnapshot = null;
+            _activeScanPointSnapshotCount = 0;
+            return true;
+        }
+
+        private bool TryPublishActiveNativePointCloud2Scan()
+        {
+            if (_pointCloudPublisher == null
+                || !_pointCloudPublisher.CanQueueVirtualLidarPointCloud2NativeFrame
+                || _activeScanPointSnapshot == null
+                || _activeScanPointSnapshotCount <= 0)
+                return false;
+
+            var snapshot = _activeScanPointSnapshot;
+            var snapshotCount = _activeScanPointSnapshotCount;
+            if (!_pointCloudPublisher.TryQueueVirtualLidarPointCloud2NativeFrame(
                     snapshot,
                     snapshotCount,
                     _activeScanFrame.UnixNs,

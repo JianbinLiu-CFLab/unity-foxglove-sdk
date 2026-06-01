@@ -1579,7 +1579,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 return false;
             }
 
-            return BySchemaName.TryGetValue(schemaName, out entry);
+            return BySchemaName.TryGetValue(schemaName, out entry)
+                   || Ros2StandardMsgSchemaCatalog.TryGet(schemaName, out entry);
         }
 
         /// <summary>Register all ROS 2 .msg schemas in the supplied registry.</summary>
@@ -1598,6 +1599,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                     RawContent = null
                 });
             }
+
+            Ros2StandardMsgSchemaCatalog.RegisterSchemas(registry);
         }
 
         private static FoxgloveRos2MsgSchemaCatalogEntry Entry(

@@ -27,7 +27,10 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int DracoFailureWarningIntervalFrames = 120;
         private const int MaxCompletedDracoEncodeResults = 8;
+        private const int PointCloud2NativeFailureWarningIntervalFrames = 120;
+        private const int MaxCompletedPointCloud2NativeResults = 8;
         private const int DracoWorkerStopWaitMs = 5000;
+        private const int PointCloud2NativeWorkerStopWaitMs = 5000;
         private const int PointCloudDiagnosticsIntervalFrames = 60;
 
         [Header("Point Cloud Output")]
@@ -70,6 +73,17 @@ namespace Unity.FoxgloveSDK.Components
         private int _droppedCompletedDracoEncodeCount;
         private bool _dracoEncodeWorkerRunning;
         private bool _stopDracoEncodeWorker;
+        private readonly object _pointCloud2NativeGate = new object();
+        private readonly Queue<PointCloud2NativeResult> _completedPointCloud2Native = new Queue<PointCloud2NativeResult>();
+        private readonly ManualResetEventSlim _pointCloud2NativeWorkerIdle = new ManualResetEventSlim(true);
+        private PointCloud2NativeRequest _pendingPointCloud2Native;
+        private int _droppedCompletedPointCloud2NativeCount;
+        private bool _pointCloud2NativeWorkerRunning;
+        private bool _stopPointCloud2NativeWorker;
+        private int _pointCloud2NativeFailureCount;
+        private bool _warnedPointCloud2NativeFailure;
+        private bool _warnedPointCloud2NativeBacklog;
+        private bool _warnedPointCloud2NativeWorkerShutdown;
         private int _diagnosticFrames;
         private long _diagnosticPreparedPoints;
         private int _diagnosticDrops;
@@ -87,14 +101,29 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
         internal bool CanQueueVirtualLidarDracoFrame => _outputMode == PointCloudOutputMode.Draco;
+        internal bool CanQueueVirtualLidarPointCloud2NativeFrame => _outputMode == PointCloudOutputMode.PointCloud2Native;
+        internal bool CanQueueVirtualLidarNativeFrame => CanQueueVirtualLidarDracoFrame || CanQueueVirtualLidarPointCloud2NativeFrame;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
 
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
 
         public override bool SupportsRos2Encoding => true;
-        protected override string Ros2SchemaName => _outputMode == PointCloudOutputMode.Draco
-            ? Ros2PublisherSchemaNames.CompressedPointCloud
-            : Ros2PublisherSchemaNames.PointCloud;
+        protected override string Ros2SchemaName
+        {
+            get
+            {
+                switch (_outputMode)
+                {
+                    case PointCloudOutputMode.Draco:
+                        return Ros2PublisherSchemaNames.CompressedPointCloud;
+                    case PointCloudOutputMode.PointCloud2Native:
+                        return Ros2PublisherSchemaNames.SensorPointCloud2;
+                    case PointCloudOutputMode.Raw:
+                    default:
+                        return Ros2PublisherSchemaNames.PointCloud;
+                }
+            }
+        }
 
         protected virtual void Awake()
         {
@@ -113,12 +142,14 @@ namespace Unity.FoxgloveSDK.Components
             _hasSourceDrivenFrames = false;
             _warnedTransformFallbackSuppressed = false;
             StopDracoEncodeWorker(clearCompleted: true);
+            StopPointCloud2NativeWorker(clearCompleted: true);
             base.OnDisable();
         }
 
         private void OnDestroy()
         {
             StopDracoEncodeWorker(clearCompleted: true);
+            StopPointCloud2NativeWorker(clearCompleted: true);
         }
 
         /// <summary>
@@ -215,6 +246,40 @@ namespace Unity.FoxgloveSDK.Components
             return true;
         }
 
+        internal bool TryQueueVirtualLidarPointCloud2NativeFrame(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            ulong unixNs,
+            string frameId,
+            bool emitAbsoluteTimeNs)
+        {
+            if (!CanQueueVirtualLidarPointCloud2NativeFrame)
+                return false;
+
+            if (points != null && pointCount > 0)
+                MarkSourceDrivenPointCloud();
+
+            ResolveManager();
+            if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
+                return true;
+
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge)
+                return true;
+
+            QueueVirtualLidarPointCloud2Native(
+                points,
+                pointCount,
+                unixNs,
+                frameId,
+                emitAbsoluteTimeNs,
+                publishWebSocket,
+                publishBridge,
+                EffectiveEncoding);
+            return true;
+        }
+
         private bool ShouldQueueVirtualLidarDracoFrame(ulong unixNs)
         {
             var rateHz = _nativeDracoMaxPublishRateHz;
@@ -241,6 +306,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             DrainCompletedDracoEncode();
+            DrainCompletedPointCloud2Native();
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
@@ -298,6 +364,12 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            if (_outputMode == PointCloudOutputMode.PointCloud2Native)
+            {
+                PublishPointCloud2NativeFrame(frame, unixNs);
+                return;
+            }
+
             PublishRawFrame(frame, unixNs);
         }
 
@@ -327,6 +399,28 @@ namespace Unity.FoxgloveSDK.Components
             if (publishBridge)
             {
                 ros2Payload ??= Ros2CdrPointCloudBuilder.Serialize(frame);
+                PublishRos2Bridge(ros2Payload, unixNs);
+            }
+        }
+
+        private void PublishPointCloud2NativeFrame(PointCloudFrame frame, ulong unixNs)
+        {
+            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
+            {
+                publishWebSocket = ShouldPreparePublishPayload();
+                publishBridge = ShouldPrepareRos2BridgePayload();
+            }
+
+            byte[] ros2Payload = null;
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                ros2Payload = Ros2CdrSensorPointCloud2Builder.Serialize(frame);
+                PublishRos2(ros2Payload, unixNs);
+            }
+
+            if (publishBridge)
+            {
+                ros2Payload ??= Ros2CdrSensorPointCloud2Builder.Serialize(frame);
                 PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
@@ -388,6 +482,32 @@ namespace Unity.FoxgloveSDK.Components
             EnqueueDracoEncodeRequest(request);
         }
 
+        private void QueueVirtualLidarPointCloud2Native(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            ulong unixNs,
+            string frameId,
+            bool emitAbsoluteTimeNs,
+            bool publishWebSocket,
+            bool publishBridge,
+            PublisherEffectiveEncoding webSocketEncoding)
+        {
+            if (points == null || pointCount <= 0)
+                return;
+
+            RecordPointCloudPrepared(pointCount);
+            var request = new PointCloud2NativeRequest(
+                points,
+                pointCount,
+                unixNs,
+                string.IsNullOrEmpty(frameId) ? _frameId : frameId,
+                emitAbsoluteTimeNs,
+                publishWebSocket,
+                publishBridge,
+                webSocketEncoding);
+            EnqueuePointCloud2NativeRequest(request);
+        }
+
         internal void MarkSourceDrivenPointCloud()
         {
             _hasSourceDrivenFrames = true;
@@ -438,12 +558,65 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private void EnqueuePointCloud2NativeRequest(PointCloud2NativeRequest request)
+        {
+            var startWorker = false;
+            lock (_pointCloud2NativeGate)
+            {
+                if (_pendingPointCloud2Native != null && _logQosDrops && !_warnedPointCloud2NativeBacklog)
+                {
+                    Debug.LogWarning("[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.");
+                    _warnedPointCloud2NativeBacklog = true;
+                }
+
+                if (_pendingPointCloud2Native != null)
+                    RecordPointCloudDrop();
+
+                _pendingPointCloud2Native = request;
+                if (!_pointCloud2NativeWorkerRunning)
+                {
+                    _stopPointCloud2NativeWorker = false;
+                    _pointCloud2NativeWorkerRunning = true;
+                    _pointCloud2NativeWorkerIdle.Reset();
+                    startWorker = true;
+                }
+            }
+
+            if (!startWorker)
+                return;
+
+            try
+            {
+                StartPointCloud2NativeWorker();
+            }
+            catch (Exception ex)
+            {
+                lock (_pointCloud2NativeGate)
+                {
+                    _pointCloud2NativeWorkerRunning = false;
+                    _pointCloud2NativeWorkerIdle.Set();
+                }
+                LogPointCloud2NativeFailure("Unable to queue background PointCloud2 pack: " + ex.Message);
+            }
+        }
+
         private void StartDracoEncodeWorker()
         {
             var worker = new System.Threading.Thread(RunDracoEncodeWorker)
             {
                 IsBackground = true,
                 Name = "Foxglove Draco PointCloud Encode",
+                Priority = System.Threading.ThreadPriority.BelowNormal
+            };
+            worker.Start();
+        }
+
+        private void StartPointCloud2NativeWorker()
+        {
+            var worker = new System.Threading.Thread(RunPointCloud2NativeWorker)
+            {
+                IsBackground = true,
+                Name = "Foxglove PointCloud2 Native Pack",
                 Priority = System.Threading.ThreadPriority.BelowNormal
             };
             worker.Start();
@@ -497,6 +670,57 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 _dracoEncodeWorkerIdle.Set();
+            }
+        }
+
+        private void RunPointCloud2NativeWorker()
+        {
+            try
+            {
+                while (true)
+                {
+                    PointCloud2NativeRequest request;
+                    lock (_pointCloud2NativeGate)
+                    {
+                        if (_stopPointCloud2NativeWorker)
+                        {
+                            _pointCloud2NativeWorkerRunning = false;
+                            return;
+                        }
+
+                        request = _pendingPointCloud2Native;
+                        _pendingPointCloud2Native = null;
+                        if (request == null)
+                        {
+                            _pointCloud2NativeWorkerRunning = false;
+                            return;
+                        }
+                    }
+
+                    var result = EncodePointCloud2NativeRequest(request);
+                    lock (_pointCloud2NativeGate)
+                    {
+                        if (_stopPointCloud2NativeWorker)
+                            continue;
+
+                        while (_completedPointCloud2Native.Count >= MaxCompletedPointCloud2NativeResults)
+                        {
+                            _completedPointCloud2Native.Dequeue();
+                            _droppedCompletedPointCloud2NativeCount++;
+                        }
+
+                        _completedPointCloud2Native.Enqueue(result);
+                    }
+                }
+            }
+            finally
+            {
+                lock (_pointCloud2NativeGate)
+                {
+                    _pointCloud2NativeWorkerRunning = false;
+                }
+
+                _pointCloud2NativeWorkerIdle.Set();
             }
         }
 
@@ -558,6 +782,72 @@ namespace Unity.FoxgloveSDK.Components
                 bridgePayload,
                 error,
                 (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
+        }
+
+        private static PointCloud2NativeResult EncodePointCloud2NativeRequest(PointCloud2NativeRequest request)
+        {
+            var encodeStart = Stopwatch.GetTimestamp();
+            var success = false;
+            var error = "";
+            byte[] webSocketPayload = null;
+            byte[] bridgePayload = null;
+            var validCount = 0;
+            var payloadBytes = 0;
+
+            try
+            {
+                var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                    request.LidarPoints,
+                    request.LidarPointCount,
+                    request.EmitAbsoluteTimeNs);
+                validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
+
+                byte[] ros2Payload = null;
+                if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
+                {
+                    ros2Payload = BuildPointCloud2NativePayload(request, packed, validCount);
+                    webSocketPayload = ros2Payload;
+                }
+
+                if (request.PublishBridge)
+                {
+                    ros2Payload ??= BuildPointCloud2NativePayload(request, packed, validCount);
+                    bridgePayload = ros2Payload;
+                }
+
+                payloadBytes = ros2Payload?.Length ?? 0;
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                error = "Unable to serialize native PointCloud2 payload off thread: " + ex.Message;
+            }
+
+            return new PointCloud2NativeResult(
+                request,
+                success,
+                webSocketPayload,
+                bridgePayload,
+                error,
+                validCount,
+                payloadBytes,
+                (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
+        }
+
+        private static byte[] BuildPointCloud2NativePayload(
+            PointCloud2NativeRequest request,
+            PointCloudPackedData packed,
+            int validCount)
+        {
+            return Ros2CdrSensorPointCloud2Builder.Serialize(
+                request.UnixNs,
+                request.FrameId,
+                height: 1U,
+                width: checked((uint)validCount),
+                fields: packed.Fields,
+                pointStep: packed.PointStride,
+                data: packed.Data,
+                isDense: true);
         }
 
         private static void BuildDracoPublishPayloads(
@@ -629,6 +919,47 @@ namespace Unity.FoxgloveSDK.Components
             LogPointCloudDiagnosticsIfReady();
         }
 
+        private void DrainCompletedPointCloud2Native()
+        {
+            List<PointCloud2NativeResult> results = null;
+            int droppedCompletedResults;
+            lock (_pointCloud2NativeGate)
+            {
+                droppedCompletedResults = _droppedCompletedPointCloud2NativeCount;
+                _droppedCompletedPointCloud2NativeCount = 0;
+                if (_completedPointCloud2Native.Count > 0)
+                {
+                    results = new List<PointCloud2NativeResult>(_completedPointCloud2Native);
+                    _completedPointCloud2Native.Clear();
+                }
+            }
+
+            if (droppedCompletedResults > 0 && _logQosDrops)
+                Debug.LogWarning($"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {droppedCompletedResults}.");
+            if (droppedCompletedResults > 0)
+                RecordPointCloudDrop(droppedCompletedResults);
+
+            if (results == null || results.Count == 0)
+                return;
+
+            foreach (var result in results)
+            {
+                if (!result.Success)
+                {
+                    LogPointCloud2NativeFailure((string.IsNullOrWhiteSpace(result.Error) ? "Native PointCloud2 pack failed." : result.Error) + " PointCloud2Native mode publishes nothing.");
+                    continue;
+                }
+
+                _warnedPointCloud2NativeFailure = false;
+                _pointCloud2NativeFailureCount = 0;
+                _warnedPointCloud2NativeBacklog = false;
+                RecordPointCloud2NativeResult(result);
+                PublishCompletedPointCloud2NativePayload(result);
+            }
+
+            LogPointCloudDiagnosticsIfReady();
+        }
+
         private void StopDracoEncodeWorker(bool clearCompleted)
         {
             var shouldWait = false;
@@ -660,6 +991,37 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private void StopPointCloud2NativeWorker(bool clearCompleted)
+        {
+            var shouldWait = false;
+            lock (_pointCloud2NativeGate)
+            {
+                _stopPointCloud2NativeWorker = true;
+                _pendingPointCloud2Native = null;
+                shouldWait = _pointCloud2NativeWorkerRunning;
+                if (clearCompleted)
+                {
+                    _completedPointCloud2Native.Clear();
+                    _droppedCompletedPointCloud2NativeCount = 0;
+                }
+            }
+
+            if (!shouldWait)
+                return;
+
+            if (_pointCloud2NativeWorkerIdle.Wait(PointCloud2NativeWorkerStopWaitMs))
+            {
+                _warnedPointCloud2NativeWorkerShutdown = false;
+                return;
+            }
+
+            if (!_warnedPointCloud2NativeWorkerShutdown)
+            {
+                Debug.LogWarning("[Foxglove] PointCloud2 native worker is still stopping; native payload will be ignored when it returns.");
+                _warnedPointCloud2NativeWorkerShutdown = true;
+            }
+        }
+
         private void PublishCompletedDracoPayload(DracoEncodeResult result)
         {
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
@@ -670,6 +1032,15 @@ namespace Unity.FoxgloveSDK.Components
             {
                 PublishProto(result.WebSocketPayload, result.Request.UnixNs);
             }
+
+            if (result.Request.PublishBridge)
+                PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
+        }
+
+        private void PublishCompletedPointCloud2NativePayload(PointCloud2NativeResult result)
+        {
+            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
+                PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
 
             if (result.Request.PublishBridge)
                 PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
@@ -704,6 +1075,16 @@ namespace Unity.FoxgloveSDK.Components
 
             _warnedDracoFailure = true;
             Debug.LogWarning("[Foxglove] Draco point-cloud mode disabled: " + message);
+        }
+
+        private void LogPointCloud2NativeFailure(string message)
+        {
+            _pointCloud2NativeFailureCount++;
+            if (_warnedPointCloud2NativeFailure && _pointCloud2NativeFailureCount % PointCloud2NativeFailureWarningIntervalFrames != 0)
+                return;
+
+            _warnedPointCloud2NativeFailure = true;
+            Debug.LogWarning("[Foxglove] PointCloud2 native mode disabled: " + message);
         }
 
         /// <summary>
@@ -774,6 +1155,49 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Captures one background PointCloud2 pack request plus the publish routes
+        /// that should receive its completed CDR payload.
+        /// </summary>
+        private sealed class PointCloud2NativeRequest
+        {
+            public PointCloud2NativeRequest(
+                VirtualLidarPointData[] lidarPoints,
+                int lidarPointCount,
+                ulong unixNs,
+                string frameId,
+                bool emitAbsoluteTimeNs,
+                bool publishWebSocket,
+                bool publishBridge,
+                PublisherEffectiveEncoding webSocketEncoding)
+            {
+                LidarPoints = lidarPoints;
+                LidarPointCount = lidarPointCount;
+                UnixNs = unixNs;
+                FrameId = frameId;
+                EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
+                PublishWebSocket = publishWebSocket;
+                PublishBridge = publishBridge;
+                WebSocketEncoding = webSocketEncoding;
+            }
+
+            /// <summary>Native VirtualLidar snapshot used by the PointCloud2 pack path.</summary>
+            public VirtualLidarPointData[] LidarPoints { get; }
+            /// <summary>Number of source slots in <see cref="LidarPoints"/> to scan.</summary>
+            public int LidarPointCount { get; }
+            /// <summary>Timestamp associated with this payload/request, in nanoseconds.</summary>
+            public ulong UnixNs { get; }
+            /// <summary>Frame id written into the PointCloud2 header.</summary>
+            public string FrameId { get; }
+            /// <summary>When true, point field <c>t</c> is emitted in nanoseconds from scan start.</summary>
+            public bool EmitAbsoluteTimeNs { get; }
+            /// <summary>Whether websocket output is expected for this request.</summary>
+            public bool PublishWebSocket { get; }
+            /// <summary>Whether ROS2 bridge output is expected for this request.</summary>
+            public bool PublishBridge { get; }
+            public PublisherEffectiveEncoding WebSocketEncoding { get; }
+        }
+
+        /// <summary>
         /// Completed background Draco encode result, including prepared websocket and
         /// ROS2 bridge payload bytes for main-thread publish.
         /// </summary>
@@ -810,6 +1234,50 @@ namespace Unity.FoxgloveSDK.Components
             /// <summary>Error details when encode failed, or empty on success.</summary>
             public string Error { get; }
             /// <summary>Worker-thread native encode time.</summary>
+            public double EncodeMs { get; }
+        }
+
+        /// <summary>
+        /// Completed background PointCloud2 pack result with prepared CDR bytes for
+        /// main-thread publish.
+        /// </summary>
+        private sealed class PointCloud2NativeResult
+        {
+            public PointCloud2NativeResult(
+                PointCloud2NativeRequest request,
+                bool success,
+                byte[] webSocketPayload,
+                byte[] bridgePayload,
+                string error,
+                int validCount,
+                int payloadBytes,
+                double encodeMs)
+            {
+                Request = request;
+                Success = success;
+                WebSocketPayload = webSocketPayload;
+                BridgePayload = bridgePayload;
+                Error = error;
+                ValidCount = validCount;
+                PayloadBytes = payloadBytes;
+                EncodeMs = encodeMs;
+            }
+
+            /// <summary>Pack request associated with this completion result.</summary>
+            public PointCloud2NativeRequest Request { get; }
+            /// <summary>Whether pack and payload preparation completed successfully.</summary>
+            public bool Success { get; }
+            /// <summary>Websocket ROS2 CDR payload bytes produced for this completion.</summary>
+            public byte[] WebSocketPayload { get; }
+            /// <summary>ROS2 bridge CDR payload bytes produced for this completion.</summary>
+            public byte[] BridgePayload { get; }
+            /// <summary>Error details when packing failed, or empty on success.</summary>
+            public string Error { get; }
+            /// <summary>Number of compacted valid points in the CDR payload.</summary>
+            public int ValidCount { get; }
+            /// <summary>Serialized PointCloud2 payload bytes.</summary>
+            public int PayloadBytes { get; }
+            /// <summary>Worker-thread pack and CDR serialization time.</summary>
             public double EncodeMs { get; }
         }
 
@@ -853,6 +1321,16 @@ namespace Unity.FoxgloveSDK.Components
 
             _diagnosticCloneMsTotal += result.Request.CloneMs;
             _diagnosticCloneMsMax = Math.Max(_diagnosticCloneMsMax, result.Request.CloneMs);
+            _diagnosticEncodeMsTotal += result.EncodeMs;
+            _diagnosticEncodeMsMax = Math.Max(_diagnosticEncodeMsMax, result.EncodeMs);
+            _diagnosticEncodeResults++;
+        }
+
+        private void RecordPointCloud2NativeResult(PointCloud2NativeResult result)
+        {
+            if (!_logPerformanceDiagnostics || result == null)
+                return;
+
             _diagnosticEncodeMsTotal += result.EncodeMs;
             _diagnosticEncodeMsMax = Math.Max(_diagnosticEncodeMsMax, result.EncodeMs);
             _diagnosticEncodeResults++;

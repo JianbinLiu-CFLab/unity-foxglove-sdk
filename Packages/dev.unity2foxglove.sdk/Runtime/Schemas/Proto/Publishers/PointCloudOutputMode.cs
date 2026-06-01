@@ -12,7 +12,8 @@ namespace Unity.FoxgloveSDK.Components
     public enum PointCloudOutputMode
     {
         Raw = 0,
-        Draco = 1
+        Draco = 1,
+        PointCloud2Native = 2
     }
 
     /// <summary>
@@ -56,6 +57,15 @@ namespace Unity.FoxgloveSDK.Components
                         supportsJson: false,
                         supportsProtobuf: true);
 
+                case PointCloudOutputMode.PointCloud2Native:
+                    return new PointCloudOutputProfile(
+                        mode,
+                        "PointCloud2 Native",
+                        PointCloudOutputModeDefaults.PointCloud2NativeTopic,
+                        PointCloudOutputModeDefaults.PointCloud2NativeSchema,
+                        supportsJson: false,
+                        supportsProtobuf: false);
+
                 case PointCloudOutputMode.Raw:
                 default:
                     return new PointCloudOutputProfile(
@@ -78,9 +88,13 @@ namespace Unity.FoxgloveSDK.Components
         public const string RawTopic = "/unity/point_cloud";
         /// <summary>Default topic for Draco-compressed point-cloud output.</summary>
         public const string DracoTopic = "/unity/point_cloud_draco";
+        /// <summary>Default topic for standard ROS2 PointCloud2 output.</summary>
+        public const string PointCloud2NativeTopic = "/unity/point_cloud2";
         /// <summary>Schema name for raw foxglove.PointCloud output.</summary>
         public const string RawSchema = "foxglove.PointCloud";
         /// <summary>Schema name for Draco-compressed foxglove.CompressedPointCloud output.</summary>
         public const string DracoSchema = "foxglove.CompressedPointCloud";
+        /// <summary>Schema name for standard ROS2 PointCloud2 output.</summary>
+        public const string PointCloud2NativeSchema = "sensor_msgs/msg/PointCloud2";
     }
 }

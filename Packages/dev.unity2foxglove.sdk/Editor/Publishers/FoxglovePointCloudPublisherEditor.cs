@@ -21,7 +21,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly string[] PointCloudOutputModeLabels =
         {
             "Raw",
-            "Draco"
+            "Draco",
+            "PointCloud2 Native"
         };
 
         private DracoPointCloudNativeCheckResult _dracoCheck =
@@ -82,6 +83,12 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.HelpBox(
                     "Raw mode publishes foxglove.PointCloud and supports JSON or protobuf without external dependencies.",
+                    MessageType.Info);
+            }
+            else if (mode == PointCloudOutputMode.PointCloud2Native)
+            {
+                EditorGUILayout.HelpBox(
+                    "PointCloud2 Native mode publishes standard sensor_msgs/msg/PointCloud2 as ROS2 CDR for SLAM consumers. Virtual LiDAR source frames use a native snapshot path and background CDR packing.",
                     MessageType.Info);
             }
             else
@@ -214,7 +221,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (bridgeTopicOverride != null)
                 EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
             EditorGUILayout.HelpBox(
-                "Raw and Draco point clouds can mirror their ROS2 CDR payloads to the optional local bridge after the same QoS sampling step.",
+                "Raw, Draco, and PointCloud2 Native point clouds can mirror their ROS2 CDR payloads to the optional local bridge after the same source-frame timing step.",
                 MessageType.Info);
         }
 
