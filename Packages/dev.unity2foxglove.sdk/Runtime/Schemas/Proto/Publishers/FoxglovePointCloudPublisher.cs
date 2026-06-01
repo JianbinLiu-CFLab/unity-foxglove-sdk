@@ -472,7 +472,6 @@ namespace Unity.FoxgloveSDK.Components
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
             bool publishBridge,
-            bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding)
         {
             if (points == null || pointCount <= 0)
@@ -500,6 +499,7 @@ namespace Unity.FoxgloveSDK.Components
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
             bool publishBridge,
+            bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding)
         {
             if (points == null || pointCount <= 0)

@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
@@ -200,6 +201,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publisher.Contains("event Action<PointCloud2NativeFrame> PointCloud2NativeFrameReady", StringComparison.Ordinal)
                   && publisher.Contains("PointCloud2NativeFrameReady != null", StringComparison.Ordinal),
                 "138L-2Y: PointCloud2Native can prepare frames for optional DDS subscribers without websocket demand");
+            var dracoQueueTakesNativeFrameDemand = Regex.IsMatch(
+                publisher,
+                @"QueueVirtualLidarDracoEncode\s*\([^)]*bool\s+publishNativeFrame",
+                RegexOptions.Singleline);
+            var pointCloud2QueueTakesNativeFrameDemand = Regex.IsMatch(
+                publisher,
+                @"QueueVirtualLidarPointCloud2Native\s*\([^)]*bool\s+publishNativeFrame",
+                RegexOptions.Singleline);
+            Check(!dracoQueueTakesNativeFrameDemand && pointCloud2QueueTakesNativeFrameDemand,
+                "138L-2Yb: DDS native-frame demand stays on the PointCloud2 native queue, not the Draco queue");
         }
 
         private static void SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot()
