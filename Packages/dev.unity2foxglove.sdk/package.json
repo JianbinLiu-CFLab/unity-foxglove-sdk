@@ -3,7 +3,7 @@
   "version": "1.9.4",
   "displayName": "Unity2Foxglove SDK",
   "license": "Apache-2.0",
-  "description": "Real-time data streaming from Unity to Foxglove for visualization. MCAP compression DLLs (K4os LZ4 stack, System.IO.Pipelines, ZstdSharp) are bundled in Runtime/Plugins/compression/.",
+  "description": "Real-time data streaming from Unity to Foxglove for visualization. Bundled runtime DLLs include MCAP compression dependencies and StbImageWriteSharp for async JPEG camera encoding.",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1",

@@ -12,6 +12,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.4" />
     <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="StbImageWriteSharp" Version="1.16.7" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
 
   </ItemGroup>
@@ -130,6 +131,7 @@
     <Compile Include="Phase138DValidation.cs" />
     <Compile Include="Phase138FValidation.cs" />
     <Compile Include="Phase138IValidation.cs" />
+    <Compile Include="Phase138JValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
     <Compile Include="Phase108Validation.cs" />
     <Compile Include="Phase109Validation.cs" />

@@ -6,6 +6,8 @@
 // as foxglove.CompressedImage JPEG frames or FFmpeg-backed foxglove.CompressedVideo frames.
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
@@ -13,6 +15,7 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -37,6 +40,22 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private int _jpegQuality = 70;
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
         [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
+
+        [Header("Async JPEG")]
+        [Tooltip("Encode JPEG camera frames on a background worker using Unity-free buffers.")]
+        [SerializeField] private bool _useAsyncJpeg = true;
+        [Tooltip("Maximum number of raw readback frames waiting for JPEG encode.")]
+        [SerializeField, Min(1)] private int _maxJpegEncodeQueue = 2;
+        [Tooltip("Maximum number of encoded JPEG frames waiting for main-thread publish.")]
+        [SerializeField, Min(1)] private int _maxCompletedJpegQueue = 2;
+        [Tooltip("Maximum completed JPEG frames published from LateUpdate per frame.")]
+        [SerializeField, Min(1)] private int _maxCompletedJpegPublishesPerFrame = 1;
+        [Tooltip("Maximum pixels in a single JPEG capture; 0 means unlimited.")]
+        [SerializeField, Min(0)] private int _maxPixelsPerFrame;
+        [Tooltip("Log CameraDiag timing and queue counters for the JPEG path.")]
+        [SerializeField] private bool _logCameraDiagnostics;
+        [Tooltip("Minimum seconds between CameraDiag log lines.")]
+        [SerializeField, Min(0.1f)] private float _cameraDiagnosticsIntervalSeconds = 2f;
 
         [Header("FFmpeg Video")]
         [SerializeField] private string _ffmpegPath = "";
@@ -100,6 +119,8 @@ namespace Unity.FoxgloveSDK.Components
         private bool _destroyed;
         private int _captureGeneration;
         private bool _cleanupWhenReadbacksDrain;
+        private readonly object _readbackTimingGate = new object();
+        private readonly Dictionary<ulong, long> _readbackRequestTicks = new Dictionary<ulong, long>();
 
         // Video sidecar state
         private ICameraVideoEncoderSidecar _videoSidecar;
@@ -112,6 +133,34 @@ namespace Unity.FoxgloveSDK.Components
         private double _cooldownUntilSec;
         private int _backpressureSkipLogCount;
         private bool _backpressureBaselineInitialized;
+
+        // Async JPEG state
+        private const int JpegWorkerStopWaitMs = 500;
+        private DropOldestBoundedQueue<JpegEncodeRequest> _jpegEncodeQueue;
+        private DropOldestBoundedQueue<JpegEncodeResult> _completedJpegQueue;
+        private AutoResetEvent _jpegWorkerSignal;
+        private Thread _jpegWorker;
+        private volatile bool _jpegWorkerStopping;
+        private ulong _lastPublishedCaptureUnixNs;
+        private bool _warnedJpegWorkerFailure;
+        private bool _warnedJpegWorkerShutdown;
+        private double _nextCameraDiagLogSec;
+        private double _lastRenderMs;
+        private double _lastReadbackLatencyMs;
+        private double _lastReadbackCopyMs;
+        private double _lastJpegEncodeMs;
+        private double _lastSerializeMs;
+        private double _lastPublishDrainMs;
+        private int _lastJpegBytes;
+        private int _readbackBudgetSkipCount;
+        private int _encodeBudgetSkipCount;
+        private int _completedBudgetSkipCount;
+        private int _pixelBudgetSkipCount;
+        private int _noDemandJpegDropCount;
+        private int _droppedEncodeQueueCount;
+        private int _droppedCompletedJpegCount;
+        private int _droppedEncodedBudgetCount;
+        private int _droppedLateJpegCount;
 
         /// <summary>Defaults the topic to the current mode default if not set.</summary>
         private void Awake()
@@ -130,8 +179,11 @@ namespace Unity.FoxgloveSDK.Components
             _warnedVideoEncoderUnavailable = false;
             _lastLoggedStderr = null;
             ResetBackpressureState();
+            ResetJpegPipelineState();
             _sourceCam = GetComponent<Camera>();
             EnsureCaptureResources();
+            if (_useAsyncJpeg && ActiveProfile.Mode == CameraOutputMode.Jpeg)
+                EnsureJpegWorkerStarted();
         }
 
         /// <summary>
@@ -142,29 +194,39 @@ namespace Unity.FoxgloveSDK.Components
         {
             var profile = ActiveProfile;
             EnsureSidecarMatchesMode(profile);
+            DrainCompletedJpegFrames();
             DrainEncodedAccessUnits();
 
             if (_manager == null) return;
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
-            var maxPendingReadbacks = Math.Max(1, _maxPendingReadbacks);
-            if (_pendingRequests >= maxPendingReadbacks) return;
             if (!profile.IsVideo && !AllowJpegCaptureByBackpressure()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             if (!publishWebSocket && !publishBridge) return;
             if (profile.IsVideo && !EnsureVideoSidecarStarted(profile)) return;
+            if (!profile.IsVideo && !AllowJpegCaptureByFrameBudget())
+            {
+                LogCameraDiagnosticsIfNeeded();
+                return;
+            }
 
             EnsureCaptureResources();
             var renderUnixNs = CurrentLogTimeNs;
+            var renderStart = Stopwatch.GetTimestamp();
             _captureCam.Render();
+            _lastRenderMs = ElapsedMs(renderStart);
             var generation = _captureGeneration;
+            var captureWidth = _captureRT.width;
+            var captureHeight = _captureRT.height;
+            RememberReadbackStart(renderUnixNs, Stopwatch.GetTimestamp());
             _pendingRequests++;
-            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs));
+            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
         }
 
-        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs)
+        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
+            var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
             CompletePendingReadback();
 
             if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration) return;
@@ -182,7 +244,21 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            PublishJpegFrame(req, renderUnixNs);
+            var publishWebSocket = ShouldPreparePublishPayload();
+            var publishBridge = ShouldPrepareRos2BridgePayload();
+            if (!publishWebSocket && !publishBridge)
+            {
+                _noDemandJpegDropCount++;
+                return;
+            }
+
+            if (_useAsyncJpeg && EnsureJpegWorkerStarted())
+            {
+                QueueJpegFrame(req, renderUnixNs, captureWidth, captureHeight, publishWebSocket, publishBridge, EffectiveEncoding, readbackLatencyMs);
+                return;
+            }
+
+            PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight);
         }
 
         protected override void OnDisable()
@@ -191,6 +267,7 @@ namespace Unity.FoxgloveSDK.Components
             _captureGeneration++;
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
+            StopJpegWorker(clearQueues: true);
             if (_pendingRequests == 0)
                 CleanupResources();
             UnlockRuntimeOutputMode();
@@ -201,6 +278,7 @@ namespace Unity.FoxgloveSDK.Components
             _destroyed = true;
             _captureGeneration++;
             StopVideoSidecar();
+            StopJpegWorker(clearQueues: true);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             if (_pendingRequests == 0)
                 CleanupResources();
@@ -217,8 +295,175 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs)
+        private bool AllowJpegCaptureByFrameBudget()
         {
+            EnsureJpegQueues();
+            var result = CameraFrameBudgetPolicy.Evaluate(new CameraFrameBudgetInput
+            {
+                PendingReadbacks = _pendingRequests,
+                MaxPendingReadbacks = Math.Max(1, _maxPendingReadbacks),
+                EncodeQueueDepth = _useAsyncJpeg ? (_jpegEncodeQueue?.Count ?? 0) : 0,
+                MaxEncodeQueueDepth = _useAsyncJpeg ? Math.Max(1, _maxJpegEncodeQueue) : int.MaxValue,
+                CompletedQueueDepth = _useAsyncJpeg ? (_completedJpegQueue?.Count ?? 0) : 0,
+                MaxCompletedQueueDepth = _useAsyncJpeg ? Math.Max(1, _maxCompletedJpegQueue) : int.MaxValue,
+                Width = Math.Max(1, _width),
+                Height = Math.Max(1, _height),
+                MaxPixelsPerFrame = Math.Max(0, _maxPixelsPerFrame)
+            });
+
+            if (result.AllowCapture)
+                return true;
+
+            RecordCameraBudgetSkip(result.SkipReason);
+            return false;
+        }
+
+        private void RecordCameraBudgetSkip(CameraFrameBudgetSkipReason reason)
+        {
+            switch (reason)
+            {
+                case CameraFrameBudgetSkipReason.ReadbackQueueFull:
+                    _readbackBudgetSkipCount++;
+                    break;
+                case CameraFrameBudgetSkipReason.EncodeQueueFull:
+                    _encodeBudgetSkipCount++;
+                    break;
+                case CameraFrameBudgetSkipReason.CompletedQueueFull:
+                    _completedBudgetSkipCount++;
+                    break;
+                case CameraFrameBudgetSkipReason.PixelBudgetExceeded:
+                    _pixelBudgetSkipCount++;
+                    break;
+            }
+        }
+
+        private void QueueJpegFrame(
+            AsyncGPUReadbackRequest req,
+            ulong unixNs,
+            int captureWidth,
+            int captureHeight,
+            bool publishWebSocket,
+            bool publishBridge,
+            PublisherEffectiveEncoding webSocketEncoding,
+            double readbackLatencyMs)
+        {
+            EnsureJpegQueues();
+            var copyStart = Stopwatch.GetTimestamp();
+            var frameBytes = req.GetData<byte>().ToArray();
+            _lastReadbackLatencyMs = readbackLatencyMs;
+            _lastReadbackCopyMs = ElapsedMs(copyStart);
+
+            var request = new JpegEncodeRequest(
+                frameBytes,
+                Math.Max(1, captureWidth),
+                Math.Max(1, captureHeight),
+                Mathf.Clamp(_jpegQuality, 10, 100),
+                unixNs,
+                _frameId,
+                publishWebSocket,
+                publishBridge,
+                webSocketEncoding,
+                Math.Max(0, _maxEncodedBytes),
+                _captureGeneration);
+
+            if (_jpegEncodeQueue.Enqueue(request))
+                _droppedEncodeQueueCount++;
+
+            _jpegWorkerSignal?.Set();
+        }
+
+        private void DrainCompletedJpegFrames()
+        {
+            var queue = _completedJpegQueue;
+            if (queue == null)
+                return;
+
+            var drainStart = Stopwatch.GetTimestamp();
+            var maxDrain = Math.Max(1, _maxCompletedJpegPublishesPerFrame);
+            var drained = 0;
+            while (drained < maxDrain && queue.TryDequeue(out var result))
+            {
+                drained++;
+                PublishCompletedJpegFrame(result);
+            }
+
+            if (drained > 0)
+                _lastPublishDrainMs = ElapsedMs(drainStart);
+
+            LogCameraDiagnosticsIfNeeded();
+        }
+
+        private void PublishCompletedJpegFrame(JpegEncodeResult result)
+        {
+            if (result.Request.Generation != _captureGeneration)
+                return;
+
+            var captureUnixNs = result.Request.CaptureUnixNs;
+            if (!CameraJpegPublishOrderPolicy.ShouldPublish(captureUnixNs, _lastPublishedCaptureUnixNs))
+            {
+                _droppedLateJpegCount++;
+                return;
+            }
+
+            _lastJpegEncodeMs = result.EncodeMs;
+            _lastSerializeMs = result.SerializeMs;
+            _lastJpegBytes = result.JpegBytes;
+
+            if (result.DroppedByEncodedBudget)
+            {
+                _droppedEncodedBudgetCount++;
+                LogBackpressureSkip(
+                    $"[Foxglove] Camera frame dropped: encoded size {result.JpegBytes} exceeds budget {result.Request.MaxEncodedBytes}.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                LogJpegWorkerFailure(result.Error);
+                return;
+            }
+
+            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
+            {
+                PublishProto(result.WebSocketPayload, captureUnixNs);
+                _lastPublishedCaptureUnixNs = captureUnixNs;
+                _backpressureSkipLogCount = 0;
+            }
+            else if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
+            {
+                PublishRos2(result.WebSocketPayload, captureUnixNs);
+                _lastPublishedCaptureUnixNs = captureUnixNs;
+                _backpressureSkipLogCount = 0;
+            }
+            else if (result.Request.PublishWebSocket)
+            {
+                Publish(result.JsonMessage, captureUnixNs);
+                _lastPublishedCaptureUnixNs = captureUnixNs;
+                _backpressureSkipLogCount = 0;
+            }
+
+            if (result.Request.PublishBridge)
+            {
+                PublishRos2Bridge(result.BridgePayload, captureUnixNs);
+                _lastPublishedCaptureUnixNs = captureUnixNs;
+                _backpressureSkipLogCount = 0;
+            }
+
+            _warnedJpegWorkerFailure = false;
+        }
+
+        private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs, int captureWidth, int captureHeight)
+        {
+            captureWidth = Math.Max(1, captureWidth);
+            captureHeight = Math.Max(1, captureHeight);
+            if (_texture2D == null || _texture2D.width != captureWidth || _texture2D.height != captureHeight)
+            {
+                if (_texture2D != null)
+                    Destroy(_texture2D);
+
+                _texture2D = new Texture2D(captureWidth, captureHeight, TextureFormat.RGB24, false);
+            }
+
             if (_texture2D == null)
                 return;
 
@@ -562,6 +807,178 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private void EnsureJpegQueues()
+        {
+            var encodeCapacity = Math.Max(1, _maxJpegEncodeQueue);
+            if (_jpegEncodeQueue == null || _jpegEncodeQueue.Capacity != encodeCapacity)
+                _jpegEncodeQueue = new DropOldestBoundedQueue<JpegEncodeRequest>(encodeCapacity);
+
+            var completedCapacity = Math.Max(1, _maxCompletedJpegQueue);
+            if (_completedJpegQueue == null || _completedJpegQueue.Capacity != completedCapacity)
+                _completedJpegQueue = new DropOldestBoundedQueue<JpegEncodeResult>(completedCapacity);
+        }
+
+        private bool EnsureJpegWorkerStarted()
+        {
+            EnsureJpegQueues();
+            if (_jpegWorker != null && _jpegWorker.IsAlive)
+                return true;
+
+            try
+            {
+                if (_jpegWorkerSignal != null)
+                {
+                    _jpegWorkerSignal.Dispose();
+                    _jpegWorkerSignal = null;
+                }
+
+                _jpegWorkerStopping = false;
+                _jpegWorkerSignal = new AutoResetEvent(false);
+                _jpegWorker = new Thread(EncodeJpegWorkerLoop)
+                {
+                    IsBackground = true,
+                    Name = "FoxgloveCameraJpegEncoder"
+                };
+                _jpegWorker.Start();
+                _warnedJpegWorkerShutdown = false;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _jpegWorker = null;
+                LogJpegWorkerFailure("Unable to start JPEG worker: " + ex.Message);
+                return false;
+            }
+        }
+
+        private void StopJpegWorker(bool clearQueues)
+        {
+            _jpegWorkerStopping = true;
+            _jpegWorkerSignal?.Set();
+            var worker = _jpegWorker;
+            if (worker != null && worker.IsAlive && !worker.Join(JpegWorkerStopWaitMs))
+            {
+                if (!_warnedJpegWorkerShutdown)
+                {
+                    Debug.LogWarning("[Foxglove] Camera JPEG worker is still stopping; stale output will be ignored.");
+                    _warnedJpegWorkerShutdown = true;
+                }
+
+                if (clearQueues)
+                    ClearJpegQueues();
+                return;
+            }
+
+            _jpegWorker = null;
+            _jpegWorkerStopping = false;
+            if (_jpegWorkerSignal != null)
+            {
+                _jpegWorkerSignal.Dispose();
+                _jpegWorkerSignal = null;
+            }
+
+            if (clearQueues)
+                ClearJpegQueues();
+        }
+
+        private void ClearJpegQueues()
+        {
+            _jpegEncodeQueue?.Clear();
+            _completedJpegQueue?.Clear();
+            lock (_readbackTimingGate)
+                _readbackRequestTicks.Clear();
+        }
+
+        private void ResetJpegPipelineState()
+        {
+            EnsureJpegQueues();
+            ClearJpegQueues();
+            _lastPublishedCaptureUnixNs = 0;
+            _warnedJpegWorkerFailure = false;
+            _nextCameraDiagLogSec = 0;
+            _lastRenderMs = 0;
+            _lastReadbackLatencyMs = 0;
+            _lastReadbackCopyMs = 0;
+            _lastJpegEncodeMs = 0;
+            _lastSerializeMs = 0;
+            _lastPublishDrainMs = 0;
+            _lastJpegBytes = 0;
+            _readbackBudgetSkipCount = 0;
+            _encodeBudgetSkipCount = 0;
+            _completedBudgetSkipCount = 0;
+            _pixelBudgetSkipCount = 0;
+            _noDemandJpegDropCount = 0;
+            _droppedEncodeQueueCount = 0;
+            _droppedCompletedJpegCount = 0;
+            _droppedEncodedBudgetCount = 0;
+            _droppedLateJpegCount = 0;
+        }
+
+        private void RememberReadbackStart(ulong unixNs, long ticks)
+        {
+            lock (_readbackTimingGate)
+                _readbackRequestTicks[unixNs] = ticks;
+        }
+
+        private double TakeReadbackLatencyMs(ulong unixNs)
+        {
+            lock (_readbackTimingGate)
+            {
+                if (_readbackRequestTicks.TryGetValue(unixNs, out var ticks))
+                {
+                    _readbackRequestTicks.Remove(unixNs);
+                    return ElapsedMs(ticks);
+                }
+            }
+
+            return 0;
+        }
+
+        private void LogJpegWorkerFailure(string reason)
+        {
+            if (_warnedJpegWorkerFailure)
+                return;
+
+            _warnedJpegWorkerFailure = true;
+            Debug.LogWarning("[Foxglove] Camera JPEG worker disabled: " + (string.IsNullOrWhiteSpace(reason) ? "unknown failure" : reason));
+        }
+
+        private void LogCameraDiagnosticsIfNeeded()
+        {
+            if (!_logCameraDiagnostics)
+                return;
+
+            var now = Time.unscaledTimeAsDouble;
+            if (now < _nextCameraDiagLogSec)
+                return;
+
+            _nextCameraDiagLogSec = now + Math.Max(0.1f, _cameraDiagnosticsIntervalSeconds);
+            Debug.Log(
+                "[Foxglove][CameraDiag] " +
+                $"renderMs={_lastRenderMs:F2} readbackLatencyMs={_lastReadbackLatencyMs:F2} readbackCopyMs={_lastReadbackCopyMs:F2} " +
+                $"jpegMs={_lastJpegEncodeMs:F2} serializeMs={_lastSerializeMs:F2} publishDrainMs={_lastPublishDrainMs:F2} " +
+                $"bytes={_lastJpegBytes} pendingReadbacks={_pendingRequests} encodeQueue={_jpegEncodeQueue?.Count ?? 0} completedQueue={_completedJpegQueue?.Count ?? 0} " +
+                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount}) " +
+                $"drops(noDemand={_noDemandJpegDropCount},encodeQueue={_droppedEncodeQueueCount},completedQueue={_droppedCompletedJpegCount},encodedBudget={_droppedEncodedBudgetCount},late={_droppedLateJpegCount}).");
+            ResetCameraDiagnosticCounters();
+        }
+
+        private void ResetCameraDiagnosticCounters()
+        {
+            _readbackBudgetSkipCount = 0;
+            _encodeBudgetSkipCount = 0;
+            _completedBudgetSkipCount = 0;
+            _pixelBudgetSkipCount = 0;
+            _noDemandJpegDropCount = 0;
+            _droppedEncodeQueueCount = 0;
+            _droppedCompletedJpegCount = 0;
+            _droppedEncodedBudgetCount = 0;
+            _droppedLateJpegCount = 0;
+        }
+
+        private static double ElapsedMs(long startTicks)
+            => (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
+
         private bool AllowJpegCaptureByBackpressure()
         {
             if (!_enableBackpressureAdaptation)
@@ -677,6 +1094,238 @@ namespace Unity.FoxgloveSDK.Components
             _lastLoggedStderr = line;
             var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
             Debug.LogWarning("[Foxglove] " + profile.DisplayName + ": " + line);
+        }
+
+        private static JpegEncodeResult EncodeJpegRequest(JpegEncodeRequest request)
+        {
+            var encodeStart = Stopwatch.GetTimestamp();
+            byte[] jpeg;
+            try
+            {
+                // AsyncGPUReadback delivers rows in Unity texture order; JPEG viewers expect top-first rows.
+                jpeg = ManagedJpegEncoder.EncodeRgb24(
+                    request.Rgb24,
+                    request.Width,
+                    request.Height,
+                    request.Quality,
+                    flipVertical: true);
+            }
+            catch (Exception ex)
+            {
+                return JpegEncodeResult.Failure(request, ex.Message, ElapsedMs(encodeStart));
+            }
+
+            var encodeMs = ElapsedMs(encodeStart);
+            if (jpeg == null || jpeg.Length == 0)
+                return JpegEncodeResult.Failure(request, "JPEG encoder returned no bytes.", encodeMs);
+
+            if (request.MaxEncodedBytes > 0 && jpeg.Length > request.MaxEncodedBytes)
+                return JpegEncodeResult.EncodedBudgetDrop(request, jpeg.Length, encodeMs);
+
+            var serializeStart = Stopwatch.GetTimestamp();
+            byte[] webSocketPayload = null;
+            byte[] bridgePayload = null;
+            byte[] ros2Payload = null;
+            CompressedImageMessage jsonMessage = null;
+
+            try
+            {
+                if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
+                {
+                    webSocketPayload = CameraCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
+                }
+                else if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
+                {
+                    ros2Payload = Ros2CdrCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
+                    webSocketPayload = ros2Payload;
+                }
+                else if (request.PublishWebSocket)
+                {
+                    jsonMessage = new CompressedImageMessage
+                    {
+                        Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(request.CaptureUnixNs),
+                        FrameId = request.FrameId,
+                        Data = Convert.ToBase64String(jpeg),
+                        Format = "jpeg"
+                    };
+                }
+
+                if (request.PublishBridge)
+                {
+                    ros2Payload ??= Ros2CdrCompressedImageBuilder.Serialize(request.CaptureUnixNs, request.FrameId, jpeg, "jpeg");
+                    bridgePayload = ros2Payload;
+                }
+            }
+            catch (Exception ex)
+            {
+                return JpegEncodeResult.Failure(
+                    request,
+                    "Unable to serialize JPEG camera payload off thread: " + ex.Message,
+                    encodeMs,
+                    ElapsedMs(serializeStart),
+                    jpeg.Length);
+            }
+
+            return JpegEncodeResult.Completed(
+                request,
+                webSocketPayload,
+                bridgePayload,
+                jsonMessage,
+                jpeg.Length,
+                encodeMs,
+                ElapsedMs(serializeStart));
+        }
+
+        private sealed class JpegEncodeRequest
+        {
+            public JpegEncodeRequest(
+                byte[] rgb24,
+                int width,
+                int height,
+                int quality,
+                ulong captureUnixNs,
+                string frameId,
+                bool publishWebSocket,
+                bool publishBridge,
+                PublisherEffectiveEncoding webSocketEncoding,
+                int maxEncodedBytes,
+                int generation)
+            {
+                Rgb24 = rgb24;
+                Width = width;
+                Height = height;
+                Quality = quality;
+                CaptureUnixNs = captureUnixNs;
+                FrameId = frameId ?? "";
+                PublishWebSocket = publishWebSocket;
+                PublishBridge = publishBridge;
+                WebSocketEncoding = webSocketEncoding;
+                MaxEncodedBytes = maxEncodedBytes;
+                Generation = generation;
+            }
+
+            public byte[] Rgb24 { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public int Quality { get; }
+            public ulong CaptureUnixNs { get; }
+            public string FrameId { get; }
+            public bool PublishWebSocket { get; }
+            public bool PublishBridge { get; }
+            public PublisherEffectiveEncoding WebSocketEncoding { get; }
+            public int MaxEncodedBytes { get; }
+            public int Generation { get; }
+        }
+
+        private sealed class JpegEncodeResult
+        {
+            private JpegEncodeResult(
+                JpegEncodeRequest request,
+                bool success,
+                bool droppedByEncodedBudget,
+                byte[] webSocketPayload,
+                byte[] bridgePayload,
+                CompressedImageMessage jsonMessage,
+                int jpegBytes,
+                string error,
+                double encodeMs,
+                double serializeMs)
+            {
+                Request = request;
+                Success = success;
+                DroppedByEncodedBudget = droppedByEncodedBudget;
+                WebSocketPayload = webSocketPayload;
+                BridgePayload = bridgePayload;
+                JsonMessage = jsonMessage;
+                JpegBytes = jpegBytes;
+                Error = error;
+                EncodeMs = encodeMs;
+                SerializeMs = serializeMs;
+            }
+
+            public JpegEncodeRequest Request { get; }
+            public bool Success { get; }
+            public bool DroppedByEncodedBudget { get; }
+            public byte[] WebSocketPayload { get; }
+            public byte[] BridgePayload { get; }
+            public CompressedImageMessage JsonMessage { get; }
+            public int JpegBytes { get; }
+            public string Error { get; }
+            public double EncodeMs { get; }
+            public double SerializeMs { get; }
+
+            public static JpegEncodeResult Completed(
+                JpegEncodeRequest request,
+                byte[] webSocketPayload,
+                byte[] bridgePayload,
+                CompressedImageMessage jsonMessage,
+                int jpegBytes,
+                double encodeMs,
+                double serializeMs)
+                => new JpegEncodeResult(
+                    request,
+                    success: true,
+                    droppedByEncodedBudget: false,
+                    webSocketPayload,
+                    bridgePayload,
+                    jsonMessage,
+                    jpegBytes,
+                    error: null,
+                    encodeMs,
+                    serializeMs);
+
+            public static JpegEncodeResult Failure(
+                JpegEncodeRequest request,
+                string error,
+                double encodeMs,
+                double serializeMs = 0,
+                int jpegBytes = 0)
+                => new JpegEncodeResult(
+                    request,
+                    success: false,
+                    droppedByEncodedBudget: false,
+                    webSocketPayload: null,
+                    bridgePayload: null,
+                    jsonMessage: null,
+                    jpegBytes,
+                    error,
+                    encodeMs,
+                    serializeMs);
+
+            public static JpegEncodeResult EncodedBudgetDrop(JpegEncodeRequest request, int jpegBytes, double encodeMs)
+                => new JpegEncodeResult(
+                    request,
+                    success: false,
+                    droppedByEncodedBudget: true,
+                    webSocketPayload: null,
+                    bridgePayload: null,
+                    jsonMessage: null,
+                    jpegBytes,
+                    error: null,
+                    encodeMs,
+                    serializeMs: 0);
+        }
+
+        private void EncodeJpegWorkerLoop()
+        {
+            while (!_jpegWorkerStopping)
+            {
+                var queue = _jpegEncodeQueue;
+                if (queue != null && queue.TryDequeue(out var request))
+                {
+                    var result = EncodeJpegRequest(request);
+                    if (!_jpegWorkerStopping)
+                    {
+                        var completed = _completedJpegQueue;
+                        if (completed != null && completed.Enqueue(result))
+                            _droppedCompletedJpegCount++;
+                    }
+
+                    continue;
+                }
+
+                _jpegWorkerSignal?.WaitOne(50);
+            }
         }
     }
 }

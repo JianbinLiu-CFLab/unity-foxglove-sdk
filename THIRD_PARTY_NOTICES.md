@@ -229,6 +229,18 @@ SOFTWARE.
 
 ---
 
+## StbImageWriteSharp
+
+- **URL**: https://github.com/StbSharp/StbImageWriteSharp
+- **NuGet**: https://www.nuget.org/packages/StbImageWriteSharp
+- **Version**: 1.16.7
+- **License**: Public Domain
+- **Usage**: The compiled DLL is bundled at `Runtime/Plugins/StbImageWriteSharp.dll` and used as a Unity-free JPEG encoder for async camera publishing.
+
+StbImageWriteSharp is a C# port of `stb_image_write.h`. The upstream project README identifies the license as Public Domain.
+
+---
+
 ## ZstdSharp.Port
 
 - **URL**: https://github.com/oleg-st/ZstdSharp
