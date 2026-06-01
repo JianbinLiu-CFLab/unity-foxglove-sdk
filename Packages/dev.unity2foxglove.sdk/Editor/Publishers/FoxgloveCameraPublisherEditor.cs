@@ -59,6 +59,13 @@ namespace Unity.FoxgloveSDK.Editor
             var height = serializedObject.FindProperty("_height");
             var jpegQuality = serializedObject.FindProperty("_jpegQuality");
             var maxPendingReadbacks = serializedObject.FindProperty("_maxPendingReadbacks");
+            var useAsyncJpeg = serializedObject.FindProperty("_useAsyncJpeg");
+            var maxJpegEncodeQueue = serializedObject.FindProperty("_maxJpegEncodeQueue");
+            var maxCompletedJpegQueue = serializedObject.FindProperty("_maxCompletedJpegQueue");
+            var maxCompletedJpegPublishesPerFrame = serializedObject.FindProperty("_maxCompletedJpegPublishesPerFrame");
+            var maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
+            var logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
+            var cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
             var ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
             var openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
             var openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
@@ -128,7 +135,16 @@ namespace Unity.FoxgloveSDK.Editor
             }
             else
             {
-                DrawJpegSection(jpegQuality, maxPendingReadbacks);
+                DrawJpegSection(
+                    jpegQuality,
+                    maxPendingReadbacks,
+                    useAsyncJpeg,
+                    maxJpegEncodeQueue,
+                    maxCompletedJpegQueue,
+                    maxCompletedJpegPublishesPerFrame,
+                    maxPixelsPerFrame,
+                    logCameraDiagnostics,
+                    cameraDiagnosticsIntervalSeconds);
             }
 
             DrawPublishRateSection();
@@ -144,12 +160,33 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawJpegSection(
             SerializedProperty jpegQuality,
-            SerializedProperty maxPendingReadbacks)
+            SerializedProperty maxPendingReadbacks,
+            SerializedProperty useAsyncJpeg,
+            SerializedProperty maxJpegEncodeQueue,
+            SerializedProperty maxCompletedJpegQueue,
+            SerializedProperty maxCompletedJpegPublishesPerFrame,
+            SerializedProperty maxPixelsPerFrame,
+            SerializedProperty logCameraDiagnostics,
+            SerializedProperty cameraDiagnosticsIntervalSeconds)
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(jpegQuality, new GUIContent("JPEG Quality"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(useAsyncJpeg, new GUIContent("Use Async JPEG"));
+            using (new EditorGUI.DisabledScope(!useAsyncJpeg.boolValue))
+            {
+                EditorGUILayout.PropertyField(maxJpegEncodeQueue, new GUIContent("Max Encode Queue"));
+                EditorGUILayout.PropertyField(maxCompletedJpegQueue, new GUIContent("Max Completed Queue"));
+                EditorGUILayout.PropertyField(maxCompletedJpegPublishesPerFrame, new GUIContent("Max Completed Publishes / Frame"));
+            }
+
+            EditorGUILayout.PropertyField(maxPixelsPerFrame, new GUIContent("Max Pixels / Frame"));
+            EditorGUILayout.PropertyField(logCameraDiagnostics, new GUIContent("Log Camera Diagnostics"));
+            using (new EditorGUI.DisabledScope(!logCameraDiagnostics.boolValue))
+            {
+                EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, new GUIContent("Diagnostics Interval"));
+            }
         }
 
         private void DrawBackpressureSection(
@@ -732,7 +769,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             private void OnDisable()
             {
-                // Do not unregister PollInstallTask — the install runs to completion
+                // Do not unregister PollInstallTask - the install runs to completion
                 // even if the window is closed, preserving the _onInstalled callback.
             }
 

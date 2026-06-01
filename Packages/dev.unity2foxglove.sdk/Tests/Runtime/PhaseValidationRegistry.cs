@@ -16,6 +16,9 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     internal static class PhaseValidationRegistry
     {
+        /// <summary>
+        /// All validation definitions, including CI-safe and local evidence suites.
+        /// </summary>
         public static IReadOnlyList<PhaseValidationCase> All { get; } = new[]
         {
             DefaultOnly("Skeleton", SkeletonValidation.Validate),
@@ -178,6 +181,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase138f", "Phase 138F", Phase138FValidation.Validate),
             Ci("--phase138h", "Phase 138H", Phase138HValidation.Validate),
             Ci("--phase138i", "Phase 138I", Phase138IValidation.Validate, includeInDefault: false),
+            Ci("--phase138j", "Phase 138J", Phase138JValidation.Validate, includeInDefault: false),
             Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 
@@ -192,6 +196,9 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Duplicate validation flag registered: " + duplicate.Key);
         }
 
+        /// <summary>
+        /// Returns the default validation set for the current runtime.
+        /// </summary>
         public static IEnumerable<PhaseValidationCase> DefaultValidations(bool includeLocalEvidence)
         {
             return All.Where(item =>
@@ -200,16 +207,25 @@ namespace Unity.FoxgloveSDK.Tests
                     || (includeLocalEvidence && item.Category == ValidationCategory.LocalEvidence)));
         }
 
+        /// <summary>
+        /// Finds the first validation case matching CLI args.
+        /// </summary>
         public static PhaseValidationCase Find(IReadOnlyCollection<string> args)
         {
             return All.FirstOrDefault(item => item.Matches(args));
         }
 
+        /// <summary>
+        /// Builds a validation entry with default execution behavior.
+        /// </summary>
         private static PhaseValidationCase DefaultOnly(string name, System.Action run)
         {
             return new PhaseValidationCase(null, name, ValidationCategory.CiSafe, run, includeInDefault: true);
         }
 
+        /// <summary>
+        /// Builds a CI-safe validation entry with a command flag.
+        /// </summary>
         private static PhaseValidationCase Ci(
             string flag,
             string name,
@@ -219,11 +235,17 @@ namespace Unity.FoxgloveSDK.Tests
             return new PhaseValidationCase(flag, name, ValidationCategory.CiSafe, run, includeInDefault);
         }
 
+        /// <summary>
+        /// Builds a local-evidence validation entry with optional aliases.
+        /// </summary>
         private static PhaseValidationCase Local(string flag, string name, System.Action run, params string[] aliases)
         {
             return new PhaseValidationCase(flag, name, ValidationCategory.LocalEvidence, run, includeInDefault: true, aliases);
         }
 
+        /// <summary>
+        /// Builds a manual smoke validation entry.
+        /// </summary>
         private static PhaseValidationCase Manual(string flag, string name, System.Action run)
         {
             return new PhaseValidationCase(flag, name, ValidationCategory.ManualSmoke, run, includeInDefault: false);
