@@ -1,7 +1,6 @@
 # Local agent/tooling state
 .claude/
-SESSION_RECOVERY.local.md
-SESSION_RECOVERY.local
+AGENTS.md
 
 # Local reference checkout, not part of this Unity package repo
 foxglove-sdk/
