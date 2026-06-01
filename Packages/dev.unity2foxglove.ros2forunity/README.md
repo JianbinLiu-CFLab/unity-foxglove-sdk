@@ -192,7 +192,7 @@ The `/points` topic uses:
 sensor_msgs/msg/PointCloud2
 ```
 
-This sample is for high-throughput DDS validation with standard PointCloud2 consumers. The core SDK prepares the compacted full-stride payload before the R2FU sample receives it, so the sample does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`. If ROS2 For Unity requires main-thread publishing, the main-thread work should remain the final generated-message publish call.
+This sample is for high-throughput DDS validation with standard PointCloud2 consumers. The core SDK prepares the compacted full-stride payload before the R2FU sample receives it, so the sample does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`. Its source references are optional in simple scenes: the adapter retries auto-resolution in Play mode, and its runtime ROS2 node appends a unique suffix to avoid duplicate-node collisions. If ROS2 For Unity requires main-thread publishing, the main-thread work should remain the final generated-message publish call.
 
 Use the sample README and evidence template to record `ros2 topic info`, `ros2 topic hz`, `ros2 topic bw`, PointCloud2 field layout, payload bytes, publish-call timing, drop count, and Unity loop-health evidence. It does not replace the Draco Foxglove visualization path and does not add a ROS2 dependency to the core SDK.
 

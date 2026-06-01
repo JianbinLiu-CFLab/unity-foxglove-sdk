@@ -233,6 +233,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void R2fuSampleConsumesPreparedNativeFrames()
         {
             var sample = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase138VirtualLidarPointCloud2Smoke.cs");
+            var importedSample = Read("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/Virtual LiDAR PointCloud2 Digital Twin/Phase138VirtualLidarPointCloud2Smoke.cs");
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase129PointCloud2MessageBuilder.cs");
             var readme = Read("Packages/dev.unity2foxglove.ros2forunity/README.md");
 
@@ -249,8 +250,27 @@ namespace Unity.FoxgloveSDK.Tests
                 "138L-5C: R2FU sample exposes publish-call timing, drops, and standard schema evidence");
             Check(readme.Contains("Virtual LiDAR PointCloud2 Digital Twin", StringComparison.Ordinal)
                   && readme.Contains("PointCloud2 Native", StringComparison.Ordinal)
-                  && readme.Contains("does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`", StringComparison.Ordinal),
+                  && readme.Contains("does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`", StringComparison.Ordinal)
+                  && readme.Contains("retries auto-resolution", StringComparison.Ordinal)
+                  && readme.Contains("unique suffix", StringComparison.Ordinal),
                 "138L-5D: optional package README documents the prepared-frame DDS handoff boundary");
+            Check(sample.Contains("TryResolveAndSubscribe()", StringComparison.Ordinal)
+                  && sample.Contains("ResolveRetrySeconds", StringComparison.Ordinal)
+                  && !Regex.IsMatch(sample, @"if\s*\(_subscribed\)\s*TryEnsureRos2Ready\(\);", RegexOptions.Singleline),
+                "138L-5E: R2FU sample retries source binding without creating ROS2 nodes every Update");
+            Check(sample.Contains("BuildRuntimeNodeName", StringComparison.Ordinal)
+                  && sample.Contains("MaxNodeCreateAttempts", StringComparison.Ordinal)
+                  && sample.Contains("catch (InvalidOperationException", StringComparison.Ordinal)
+                  && sample.Contains("_effectiveNodeName", StringComparison.Ordinal),
+                "138L-5F: R2FU sample uses a safe runtime ROS2 node name and duplicate-name fallback");
+            Check(sample.Contains("RecordRos2SetupFailure", StringComparison.Ordinal)
+                  && sample.Contains("ROS2 PointCloud2 publish failed", StringComparison.Ordinal)
+                  && sample.Contains("_warnedRos2SetupFailure", StringComparison.Ordinal),
+                "138L-5G: R2FU sample records ROS2 setup/publish failures without throwing every frame");
+            Check(importedSample.Contains("TryResolveAndSubscribe()", StringComparison.Ordinal)
+                  && importedSample.Contains("BuildRuntimeNodeName", StringComparison.Ordinal)
+                  && importedSample.Contains("RecordRos2SetupFailure", StringComparison.Ordinal),
+                "138L-5H: imported Unity sample carries the same resilient DDS smoke backend");
         }
 
         private static void ValidationRegistryWiresPhase138L()

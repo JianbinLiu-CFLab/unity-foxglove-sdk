@@ -15,15 +15,17 @@ prepared PointCloud2 Native output to the ROS2 topic `/points` as
 1. Configure the scene's `FoxglovePointCloudPublisher` output mode as
    `PointCloud2 Native`.
 2. Add `Phase138VirtualLidarPointCloud2Smoke` to the same GameObject, or to a
-   nearby object in the sensor hierarchy.
-3. Assign the `FoxglovePointCloudPublisher` reference in the Inspector, or leave
-   empty for auto-resolution.
+   nearby object in the sensor hierarchy. The `Source` references can stay empty;
+   the component retries auto-resolution while Play mode is running.
+3. Assign `VirtualLidar` or `FoxglovePointCloudPublisher` manually only when the
+   scene contains multiple candidates and you want to pin a specific source.
 4. Press Play. The component subscribes to prepared native frames and publishes
    ROS2 `/points` at the configured publish interval.
 
 ## Default Configuration
 
-- Node: `phase138_virtual_lidar`
+- Node base: `phase138_virtual_lidar` (the runtime node appends a unique suffix,
+  shown as `Effective Node Name`, to avoid duplicate-node collisions)
 - Topic: `/points`
 - Publish interval: 0.1 s (10 Hz)
 - Data copy before publish: disabled by default
