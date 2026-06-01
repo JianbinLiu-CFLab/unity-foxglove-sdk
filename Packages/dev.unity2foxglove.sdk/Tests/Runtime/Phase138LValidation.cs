@@ -30,8 +30,10 @@ namespace Unity.FoxgloveSDK.Tests
             ExistingRawRos2SchemaRemainsFoxglovePointCloud();
             SensorPointCloud2BuilderWritesStandardPointCloud2();
             NativeVirtualLidarPackedDataSkipsInvalidRaysWithoutPointCloudFrame();
+            NativeFrameHandoffValidatesLayout();
             PointCloud2NativeModeUsesStandardSchemaAndNativeQueue();
             SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot();
+            R2fuSampleConsumesPreparedNativeFrames();
             ValidationRegistryWiresPhase138L();
             VirtualLidarKeepsStaticBudgetInvariant();
 
@@ -132,6 +134,47 @@ namespace Unity.FoxgloveSDK.Tests
                 "138L-2Q: native PointCloud2 packed fields match managed full-stride reference");
         }
 
+        private static void NativeFrameHandoffValidatesLayout()
+        {
+            var packed = PointCloudPackedDataBuilder.Build(BuildFullStrideFrame());
+            var handoff = new PointCloud2NativeFrame(
+                1_700_000_123_456_789_012UL,
+                "os_lidar",
+                height: 1U,
+                width: 2U,
+                fields: packed.Fields,
+                pointStep: packed.PointStride,
+                data: packed.Data,
+                isDense: true);
+
+            Check(handoff.FrameId == "os_lidar"
+                  && handoff.Width == 2U
+                  && handoff.RowStep == packed.PointStride * 2U
+                  && handoff.Data.SequenceEqual(packed.Data)
+                  && handoff.ValidCount == 2,
+                "138L-2R: schema-neutral PointCloud2NativeFrame carries layout and data for DDS handoff");
+
+            var rejected = false;
+            try
+            {
+                _ = new PointCloud2NativeFrame(
+                    1UL,
+                    "bad",
+                    height: 1U,
+                    width: 2U,
+                    fields: packed.Fields,
+                    pointStep: packed.PointStride,
+                    data: new byte[1],
+                    isDense: true);
+            }
+            catch (ArgumentException)
+            {
+                rejected = true;
+            }
+
+            Check(rejected, "138L-2S: PointCloud2NativeFrame rejects mismatched data length");
+        }
+
         private static void PointCloud2NativeModeUsesStandardSchemaAndNativeQueue()
         {
             var mode = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudOutputMode.cs");
@@ -142,35 +185,61 @@ namespace Unity.FoxgloveSDK.Tests
             Check(mode.Contains("PointCloud2Native", StringComparison.Ordinal)
                   && mode.Contains("PointCloud2NativeTopic", StringComparison.Ordinal)
                   && mode.Contains("PointCloud2NativeSchema", StringComparison.Ordinal),
-                "138L-2R: PointCloud2Native is an explicit output profile, not an overload of Raw");
+                "138L-2T: PointCloud2Native is an explicit output profile, not an overload of Raw");
             Check(publisher.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", StringComparison.Ordinal)
                   && publisher.Contains("Ros2CdrSensorPointCloud2Builder.Serialize", StringComparison.Ordinal),
-                "138L-2S: PointCloud2Native publishes standard sensor_msgs/msg/PointCloud2 CDR");
+                "138L-2U: PointCloud2Native publishes standard sensor_msgs/msg/PointCloud2 CDR");
             Check(publisher.Contains("CanQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal)
                   && publisher.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal),
-                "138L-2T: PointCloud2Native exposes a native VirtualLidar queue entry point");
+                "138L-2V: PointCloud2Native exposes a native VirtualLidar queue entry point");
             Check(lidar.Contains("UseNativePointCloudSnapshotPath", StringComparison.Ordinal)
                   && lidar.Contains("TryPublishActiveNativePointCloud2Scan", StringComparison.Ordinal),
-                "138L-2U: VirtualLidar can bypass managed Points.Add for PointCloud2Native");
+                "138L-2W: VirtualLidar can bypass managed Points.Add for PointCloud2Native");
             Check(editor.Contains("PointCloud2 Native", StringComparison.Ordinal),
-                "138L-2V: Inspector labels the SLAM PointCloud2 mode explicitly");
+                "138L-2X: Inspector labels the SLAM PointCloud2 mode explicitly");
+            Check(publisher.Contains("event Action<PointCloud2NativeFrame> PointCloud2NativeFrameReady", StringComparison.Ordinal)
+                  && publisher.Contains("PointCloud2NativeFrameReady != null", StringComparison.Ordinal),
+                "138L-2Y: PointCloud2Native can prepare frames for optional DDS subscribers without websocket demand");
         }
 
         private static void SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot()
         {
             Check(FoxgloveRos2MsgSchemaCatalog.SourceFileCount == 41
                   && FoxgloveRos2MsgSchemaCatalog.Entries.Count == 41,
-                "138L-2W: standard PointCloud2 support does not mutate the Foxglove ROS2 snapshot count");
+                "138L-2Z: standard PointCloud2 support does not mutate the Foxglove ROS2 snapshot count");
             Check(FoxgloveRos2MsgSchemaCatalog.TryGet(Ros2PublisherSchemaNames.SensorPointCloud2, out var entry)
                   && entry.Content.Contains("sensor_msgs/PointField", StringComparison.Ordinal)
                   && entry.Content.Contains("MSG: sensor_msgs/PointField", StringComparison.Ordinal),
-                "138L-2X: standard sensor_msgs/msg/PointCloud2 schema resolves for ROS2 publish");
+                "138L-2AA: standard sensor_msgs/msg/PointCloud2 schema resolves for ROS2 publish");
 
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             Check(registry.TryGetSchema(Ros2PublisherSchemaNames.SensorPointCloud2, "ros2msg", out var registered)
                   && registered.Content.Contains("std_msgs/Header", StringComparison.Ordinal),
-                "138L-2Y: standard PointCloud2 schema is registered for CDR advertisement");
+                "138L-2AB: standard PointCloud2 schema is registered for CDR advertisement");
+        }
+
+        private static void R2fuSampleConsumesPreparedNativeFrames()
+        {
+            var sample = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase138VirtualLidarPointCloud2Smoke.cs");
+            var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase129PointCloud2MessageBuilder.cs");
+            var readme = Read("Packages/dev.unity2foxglove.ros2forunity/README.md");
+
+            Check(sample.Contains("PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
+                  && sample.Contains("Phase138CPointCloud2MessageBuilder.Build(frame, _copyDataBeforePublish)", StringComparison.Ordinal)
+                  && !sample.Contains("LastFrame", StringComparison.Ordinal),
+                "138L-5A: R2FU sample consumes prepared native frames instead of VirtualLidar.LastFrame.Points");
+            Check(builder.Contains("Build(PointCloud2NativeFrame frame", StringComparison.Ordinal)
+                  && builder.Contains("Data = copyDataBeforePublish ? (byte[])frame.Data.Clone() : frame.Data", StringComparison.Ordinal),
+                "138L-5B: R2FU message builder maps prepared PointCloud2NativeFrame data without per-point packing");
+            Check(sample.Contains("_lastPublishCallMs", StringComparison.Ordinal)
+                  && sample.Contains("_droppedFrameCount", StringComparison.Ordinal)
+                  && sample.Contains("sensor_msgs/msg/PointCloud2", StringComparison.Ordinal),
+                "138L-5C: R2FU sample exposes publish-call timing, drops, and standard schema evidence");
+            Check(readme.Contains("Virtual LiDAR PointCloud2 Digital Twin", StringComparison.Ordinal)
+                  && readme.Contains("PointCloud2 Native", StringComparison.Ordinal)
+                  && readme.Contains("does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`", StringComparison.Ordinal),
+                "138L-5D: optional package README documents the prepared-frame DDS handoff boundary");
         }
 
         private static void ValidationRegistryWiresPhase138L()

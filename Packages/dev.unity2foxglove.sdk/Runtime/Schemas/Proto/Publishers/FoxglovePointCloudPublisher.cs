@@ -105,6 +105,13 @@ namespace Unity.FoxgloveSDK.Components
         internal bool CanQueueVirtualLidarNativeFrame => CanQueueVirtualLidarDracoFrame || CanQueueVirtualLidarPointCloud2NativeFrame;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
 
+        /// <summary>
+        /// Raised on the Unity main thread after the PointCloud2 native worker has
+        /// prepared packed data. Optional DDS adapters can publish the frame without
+        /// doing per-point work on the main thread.
+        /// </summary>
+        public event Action<PointCloud2NativeFrame> PointCloud2NativeFrameReady;
+
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
 
         public override bool SupportsRos2Encoding => true;
@@ -265,7 +272,8 @@ namespace Unity.FoxgloveSDK.Components
 
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge)
+            var publishNativeFrame = PointCloud2NativeFrameReady != null;
+            if (!publishWebSocket && !publishBridge && !publishNativeFrame)
                 return true;
 
             QueueVirtualLidarPointCloud2Native(
@@ -276,6 +284,7 @@ namespace Unity.FoxgloveSDK.Components
                 emitAbsoluteTimeNs,
                 publishWebSocket,
                 publishBridge,
+                publishNativeFrame,
                 EffectiveEncoding);
             return true;
         }
@@ -463,6 +472,7 @@ namespace Unity.FoxgloveSDK.Components
             bool emitAbsoluteTimeNs,
             bool publishWebSocket,
             bool publishBridge,
+            bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding)
         {
             if (points == null || pointCount <= 0)
@@ -504,6 +514,7 @@ namespace Unity.FoxgloveSDK.Components
                 emitAbsoluteTimeNs,
                 publishWebSocket,
                 publishBridge,
+                publishNativeFrame,
                 webSocketEncoding);
             EnqueuePointCloud2NativeRequest(request);
         }
@@ -791,6 +802,7 @@ namespace Unity.FoxgloveSDK.Components
             var error = "";
             byte[] webSocketPayload = null;
             byte[] bridgePayload = null;
+            PointCloud2NativeFrame nativeFrame = null;
             var validCount = 0;
             var payloadBytes = 0;
 
@@ -801,21 +813,22 @@ namespace Unity.FoxgloveSDK.Components
                     request.LidarPointCount,
                     request.EmitAbsoluteTimeNs);
                 validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
+                nativeFrame = BuildPointCloud2NativeFrame(request, packed, validCount);
 
                 byte[] ros2Payload = null;
                 if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
                 {
-                    ros2Payload = BuildPointCloud2NativePayload(request, packed, validCount);
+                    ros2Payload = BuildPointCloud2NativePayload(nativeFrame);
                     webSocketPayload = ros2Payload;
                 }
 
                 if (request.PublishBridge)
                 {
-                    ros2Payload ??= BuildPointCloud2NativePayload(request, packed, validCount);
+                    ros2Payload ??= BuildPointCloud2NativePayload(nativeFrame);
                     bridgePayload = ros2Payload;
                 }
 
-                payloadBytes = ros2Payload?.Length ?? 0;
+                payloadBytes = ros2Payload?.Length ?? nativeFrame.Data.Length;
                 success = true;
             }
             catch (Exception ex)
@@ -828,18 +841,19 @@ namespace Unity.FoxgloveSDK.Components
                 success,
                 webSocketPayload,
                 bridgePayload,
+                nativeFrame,
                 error,
                 validCount,
                 payloadBytes,
                 (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
         }
 
-        private static byte[] BuildPointCloud2NativePayload(
+        private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
             PointCloud2NativeRequest request,
             PointCloudPackedData packed,
             int validCount)
         {
-            return Ros2CdrSensorPointCloud2Builder.Serialize(
+            return new PointCloud2NativeFrame(
                 request.UnixNs,
                 request.FrameId,
                 height: 1U,
@@ -848,6 +862,19 @@ namespace Unity.FoxgloveSDK.Components
                 pointStep: packed.PointStride,
                 data: packed.Data,
                 isDense: true);
+        }
+
+        private static byte[] BuildPointCloud2NativePayload(PointCloud2NativeFrame frame)
+        {
+            return Ros2CdrSensorPointCloud2Builder.Serialize(
+                frame.UnixNs,
+                frame.FrameId,
+                frame.Height,
+                frame.Width,
+                frame.Fields,
+                frame.PointStep,
+                frame.Data,
+                frame.IsDense);
         }
 
         private static void BuildDracoPublishPayloads(
@@ -1044,6 +1071,22 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishBridge)
                 PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
+
+            if (result.Request.PublishNativeFrame && result.NativeFrame != null)
+            {
+                var handler = PointCloud2NativeFrameReady;
+                if (handler == null)
+                    return;
+
+                try
+                {
+                    handler(result.NativeFrame);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
+                }
+            }
         }
 
         private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
@@ -1168,6 +1211,7 @@ namespace Unity.FoxgloveSDK.Components
                 bool emitAbsoluteTimeNs,
                 bool publishWebSocket,
                 bool publishBridge,
+                bool publishNativeFrame,
                 PublisherEffectiveEncoding webSocketEncoding)
             {
                 LidarPoints = lidarPoints;
@@ -1177,6 +1221,7 @@ namespace Unity.FoxgloveSDK.Components
                 EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
                 PublishWebSocket = publishWebSocket;
                 PublishBridge = publishBridge;
+                PublishNativeFrame = publishNativeFrame;
                 WebSocketEncoding = webSocketEncoding;
             }
 
@@ -1194,6 +1239,8 @@ namespace Unity.FoxgloveSDK.Components
             public bool PublishWebSocket { get; }
             /// <summary>Whether ROS2 bridge output is expected for this request.</summary>
             public bool PublishBridge { get; }
+            /// <summary>Whether a schema-neutral native frame event is expected.</summary>
+            public bool PublishNativeFrame { get; }
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
         }
 
@@ -1248,6 +1295,7 @@ namespace Unity.FoxgloveSDK.Components
                 bool success,
                 byte[] webSocketPayload,
                 byte[] bridgePayload,
+                PointCloud2NativeFrame nativeFrame,
                 string error,
                 int validCount,
                 int payloadBytes,
@@ -1257,6 +1305,7 @@ namespace Unity.FoxgloveSDK.Components
                 Success = success;
                 WebSocketPayload = webSocketPayload;
                 BridgePayload = bridgePayload;
+                NativeFrame = nativeFrame;
                 Error = error;
                 ValidCount = validCount;
                 PayloadBytes = payloadBytes;
@@ -1271,6 +1320,8 @@ namespace Unity.FoxgloveSDK.Components
             public byte[] WebSocketPayload { get; }
             /// <summary>ROS2 bridge CDR payload bytes produced for this completion.</summary>
             public byte[] BridgePayload { get; }
+            /// <summary>Schema-neutral PointCloud2 frame for optional DDS adapters.</summary>
+            public PointCloud2NativeFrame NativeFrame { get; }
             /// <summary>Error details when packing failed, or empty on success.</summary>
             public string Error { get; }
             /// <summary>Number of compacted valid points in the CDR payload.</summary>

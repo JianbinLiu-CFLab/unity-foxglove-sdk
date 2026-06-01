@@ -10,11 +10,7 @@ using System;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
-/// <summary>
-/// Summary text for this member.
-/// </summary>
-
-/// <summary>Summary text for this member.</summary>
+/// <summary>Builds ROS2 PointCloud2 messages from Unity2Foxglove packed layouts.</summary>
 public static class Phase138CPointCloud2MessageBuilder
 {
     private const byte PointFieldInt8 = 1;
@@ -27,10 +23,30 @@ public static class Phase138CPointCloud2MessageBuilder
     private const byte PointFieldFloat64 = 8;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
+    /// <summary>Build a PointCloud2 message from a prepared native PointCloud2 frame.</summary>
+    public static sensor_msgs.msg.PointCloud2 Build(PointCloud2NativeFrame frame, bool copyDataBeforePublish)
+    {
+        if (frame == null)
+            throw new ArgumentNullException(nameof(frame));
 
+        return new sensor_msgs.msg.PointCloud2
+        {
+            Header = CreateHeader(
+                frame.FrameId,
+                (int)(frame.UnixNs / 1_000_000_000UL),
+                (uint)(frame.UnixNs % 1_000_000_000UL)),
+            Height = frame.Height,
+            Width = frame.Width,
+            Fields = CreateFields(frame.Fields),
+            Is_bigendian = false,
+            Point_step = frame.PointStep,
+            Row_step = frame.RowStep,
+            Data = copyDataBeforePublish ? (byte[])frame.Data.Clone() : frame.Data,
+            Is_dense = frame.IsDense
+        };
+    }
+
+    /// <summary>Build a PointCloud2 message from a managed frame fallback.</summary>
     public static sensor_msgs.msg.PointCloud2 Build(PointCloudFrame frame, string frameId, int sec, uint nanosec)
     {
         if (frame == null)
@@ -50,7 +66,7 @@ public static class Phase138CPointCloud2MessageBuilder
             Header = CreateHeader(frameId ?? string.Empty, sec, nanosec),
             Height = 1u,
             Width = width,
-            Fields = CreateFields(packed),
+            Fields = CreateFields(packed.Fields),
             Is_bigendian = false,
             Point_step = pointStep,
             Row_step = rowStep,
@@ -59,12 +75,12 @@ public static class Phase138CPointCloud2MessageBuilder
         };
     }
 
-    private static sensor_msgs.msg.PointField[] CreateFields(PointCloudPackedData packed)
+    private static sensor_msgs.msg.PointField[] CreateFields(System.Collections.Generic.IReadOnlyList<PointCloudPackedField> packedFields)
     {
-        var fields = new sensor_msgs.msg.PointField[packed.Fields.Count];
-        for (var i = 0; i < packed.Fields.Count; i++)
+        var fields = new sensor_msgs.msg.PointField[packedFields.Count];
+        for (var i = 0; i < packedFields.Count; i++)
         {
-            var field = packed.Fields[i];
+            var field = packedFields[i];
             fields[i] = new sensor_msgs.msg.PointField
             {
                 Name = field.Name,
@@ -116,4 +132,3 @@ public static class Phase138CPointCloud2MessageBuilder
     }
 #endif
 }
-

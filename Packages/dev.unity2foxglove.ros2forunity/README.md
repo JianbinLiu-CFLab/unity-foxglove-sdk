@@ -177,6 +177,25 @@ This sample is not a new RViz2 productization gate. It uses explicit source comp
 
 The default topics are conventional ROS2 names and can collide with real drivers or Nav2 stacks. Production projects should namespace them, for example `/unity/odom` or `/unity/camera/image_raw`.
 
+## Virtual LiDAR PointCloud2 Digital Twin
+
+The `Virtual LiDAR PointCloud2 Digital Twin` sample is the Phase 138L SLAM handoff route for live Unity LiDAR output. It subscribes to prepared `PointCloud2 Native` frames from `FoxglovePointCloudPublisher` and publishes:
+
+```text
+/tf
+/points
+```
+
+The `/points` topic uses:
+
+```text
+sensor_msgs/msg/PointCloud2
+```
+
+This sample is for high-throughput DDS validation with standard PointCloud2 consumers. The core SDK prepares the compacted full-stride payload before the R2FU sample receives it, so the sample does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`. If ROS2 For Unity requires main-thread publishing, the main-thread work should remain the final generated-message publish call.
+
+Use the sample README and evidence template to record `ros2 topic info`, `ros2 topic hz`, `ros2 topic bw`, PointCloud2 field layout, payload bytes, publish-call timing, drop count, and Unity loop-health evidence. It does not replace the Draco Foxglove visualization path and does not add a ROS2 dependency to the core SDK.
+
 ## Attribution Boundary
 
 RobotecAI ROS2 For Unity is an upstream Apache-2.0 project:
