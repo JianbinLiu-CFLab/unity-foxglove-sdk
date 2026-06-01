@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             NativeFrameHandoffValidatesLayout();
             PointCloud2NativeModeUsesStandardSchemaAndNativeQueue();
             SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot();
-            R2fuSampleConsumesPreparedNativeFrames();
+            R2fuProductBridgeConsumesPreparedNativeFrames();
             ValidationRegistryWiresPhase138L();
             VirtualLidarKeepsStaticBudgetInvariant();
 
@@ -230,47 +230,45 @@ namespace Unity.FoxgloveSDK.Tests
                 "138L-2AB: standard PointCloud2 schema is registered for CDR advertisement");
         }
 
-        private static void R2fuSampleConsumesPreparedNativeFrames()
+        private static void R2fuProductBridgeConsumesPreparedNativeFrames()
         {
-            var sample = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase138VirtualLidarPointCloud2Smoke.cs");
-            var importedSample = Read("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/Virtual LiDAR PointCloud2 Digital Twin/Phase138VirtualLidarPointCloud2Smoke.cs");
-            var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase129PointCloud2MessageBuilder.cs");
+            var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2MessageBuilder.cs");
+            var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
             var readme = Read("Packages/dev.unity2foxglove.ros2forunity/README.md");
+            var sampleReadme = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/README.md");
 
-            Check(sample.Contains("PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
-                  && sample.Contains("Phase138CPointCloud2MessageBuilder.Build(frame, _copyDataBeforePublish)", StringComparison.Ordinal)
-                  && !sample.Contains("LastFrame", StringComparison.Ordinal),
-                "138L-5A: R2FU sample consumes prepared native frames instead of VirtualLidar.LastFrame.Points");
+            Check(publisher.Contains("public bool IsPointCloud2NativeOutput", StringComparison.Ordinal)
+                  && publisher.Contains("public string PointCloud2NativeTopic", StringComparison.Ordinal)
+                  && publisher.Contains("public string PointCloudFrameId", StringComparison.Ordinal),
+                "138L-5A: core publisher exposes read-only product state for optional R2FU DDS adapters");
+            Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64\"", StringComparison.Ordinal)
+                  && asmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", StringComparison.Ordinal),
+                "138L-5B: native R2FU bridge compiles only when the ROS2 runtime symbol is active");
+            Check(bridge.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal)
+                  && bridge.Contains("FindObjectsByType<FoxglovePointCloudPublisher>", StringComparison.Ordinal)
+                  && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
+                "138L-5C: R2FU PointCloud2 bridge is an automatic product path gated by the Manager toggle");
+            Check(bridge.Contains("PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
+                  && bridge.Contains("CreatePublisher<sensor_msgs.msg.PointCloud2>(Topic)", StringComparison.Ordinal)
+                  && !bridge.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
+                "138L-5D: R2FU bridge consumes prepared native frames without requiring the Phase138 smoke component");
             Check(builder.Contains("Build(PointCloud2NativeFrame frame", StringComparison.Ordinal)
-                  && builder.Contains("Data = copyDataBeforePublish ? (byte[])frame.Data.Clone() : frame.Data", StringComparison.Ordinal),
-                "138L-5B: R2FU message builder maps prepared PointCloud2NativeFrame data without per-point packing");
-            Check(sample.Contains("_lastPublishCallMs", StringComparison.Ordinal)
-                  && sample.Contains("_droppedFrameCount", StringComparison.Ordinal)
-                  && sample.Contains("sensor_msgs/msg/PointCloud2", StringComparison.Ordinal),
-                "138L-5C: R2FU sample exposes publish-call timing, drops, and standard schema evidence");
-            Check(readme.Contains("Virtual LiDAR PointCloud2 Digital Twin", StringComparison.Ordinal)
-                  && readme.Contains("PointCloud2 Native", StringComparison.Ordinal)
-                  && readme.Contains("does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`", StringComparison.Ordinal)
-                  && readme.Contains("retries auto-resolution", StringComparison.Ordinal)
-                  && readme.Contains("unique suffix", StringComparison.Ordinal),
-                "138L-5D: optional package README documents the prepared-frame DDS handoff boundary");
-            Check(sample.Contains("TryResolveAndSubscribe()", StringComparison.Ordinal)
-                  && sample.Contains("ResolveRetrySeconds", StringComparison.Ordinal)
-                  && !Regex.IsMatch(sample, @"if\s*\(_subscribed\)\s*TryEnsureRos2Ready\(\);", RegexOptions.Singleline),
-                "138L-5E: R2FU sample retries source binding without creating ROS2 nodes every Update");
-            Check(sample.Contains("BuildRuntimeNodeName", StringComparison.Ordinal)
-                  && sample.Contains("MaxNodeCreateAttempts", StringComparison.Ordinal)
-                  && sample.Contains("catch (InvalidOperationException", StringComparison.Ordinal)
-                  && sample.Contains("_effectiveNodeName", StringComparison.Ordinal),
-                "138L-5F: R2FU sample uses a safe runtime ROS2 node name and duplicate-name fallback");
-            Check(sample.Contains("RecordRos2SetupFailure", StringComparison.Ordinal)
-                  && sample.Contains("ROS2 PointCloud2 publish failed", StringComparison.Ordinal)
-                  && sample.Contains("_warnedRos2SetupFailure", StringComparison.Ordinal),
-                "138L-5G: R2FU sample records ROS2 setup/publish failures without throwing every frame");
-            Check(importedSample.Contains("TryResolveAndSubscribe()", StringComparison.Ordinal)
-                  && importedSample.Contains("BuildRuntimeNodeName", StringComparison.Ordinal)
-                  && importedSample.Contains("RecordRos2SetupFailure", StringComparison.Ordinal),
-                "138L-5H: imported Unity sample carries the same resilient DDS smoke backend");
+                  && builder.Contains("Data = frame.Data", StringComparison.Ordinal)
+                  && !builder.Contains("PointCloudFrame", StringComparison.Ordinal),
+                "138L-5E: product message builder maps PointCloud2NativeFrame data without per-point packing");
+            Check(readme.Contains("No extra smoke component is required", StringComparison.Ordinal)
+                  && readme.Contains("ros2 topic info /points", StringComparison.Ordinal)
+                  && readme.Contains("ros2 topic hz /points", StringComparison.Ordinal)
+                  && readme.Contains("ros2 topic bw /points", StringComparison.Ordinal)
+                  && readme.Contains("ros2 topic echo /points --once", StringComparison.Ordinal),
+                "138L-5F: optional package README documents the product acceptance flow");
+            Check(sampleReadme.Contains("not required for the product path", StringComparison.Ordinal)
+                  && sampleReadme.Contains("FoxgloveManager", StringComparison.Ordinal)
+                  && sampleReadme.Contains("PointCloud2 Native", StringComparison.Ordinal)
+                  && sampleReadme.Contains("/points", StringComparison.Ordinal),
+                "138L-5G: Virtual LiDAR sample README no longer teaches manual smoke mounting as the default path");
         }
 
         private static void ValidationRegistryWiresPhase138L()

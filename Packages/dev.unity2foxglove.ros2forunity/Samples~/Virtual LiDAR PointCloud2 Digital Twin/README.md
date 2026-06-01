@@ -1,8 +1,16 @@
 # Virtual LiDAR PointCloud2 Digital Twin (ROS2)
 
-Optional ROS2 For Unity adapter sample that mirrors a VirtualLidar component's
-prepared PointCloud2 Native output to the ROS2 topic `/points` as
-`sensor_msgs/msg/PointCloud2`.
+Optional ROS2 For Unity diagnostic sample for the Phase 138L PointCloud2 Native
+handoff. It is not required for the product path.
+
+For the product path, configure the scene directly:
+
+1. On `FoxgloveManager`, enable `ROS2 Native (R2FU)`.
+2. On `FoxglovePointCloudPublisher`, choose `PointCloud2 Native`.
+3. Set topic `/points` and the desired frame id, for example `os_lidar`.
+
+With Unity in Play mode, `/points` should then appear as
+`sensor_msgs/msg/PointCloud2` without adding this smoke component.
 
 ## Prerequisites
 
@@ -10,17 +18,13 @@ prepared PointCloud2 Native output to the ROS2 topic `/points` as
 - `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package installed
 - `UNITY2FOXGLOVE_ROS2_FOR_UNITY` scripting define added to Project Settings
 
-## Setup
+## Optional Diagnostic Setup
 
-1. Configure the scene's `FoxglovePointCloudPublisher` output mode as
-   `PointCloud2 Native`.
-2. Add `Phase138VirtualLidarPointCloud2Smoke` to the same GameObject, or to a
-   nearby object in the sensor hierarchy. The `Source` references can stay empty;
-   the component retries auto-resolution while Play mode is running.
-3. Assign `VirtualLidar` or `FoxglovePointCloudPublisher` manually only when the
-   scene contains multiple candidates and you want to pin a specific source.
-4. Press Play. The component subscribes to prepared native frames and publishes
-   ROS2 `/points` at the configured publish interval.
+Add `Phase138VirtualLidarPointCloud2Smoke` only when you intentionally want a
+separate diagnostic harness that records publish-call timing and drop counters.
+Do not mount it for normal product acceptance, because the runtime bridge in the
+adapter package already publishes the configured `FoxglovePointCloudPublisher`
+topic.
 
 ## Default Configuration
 
@@ -32,8 +36,7 @@ prepared PointCloud2 Native output to the ROS2 topic `/points` as
 
 ## Important Note
 
-This sample is the Phase 138L native path. It does not read
+The Phase 138L product path and this optional diagnostic sample do not read
 `VirtualLidar.LastFrame.Points` and does not pack points on the Unity main
 thread. The core SDK worker prepares the packed PointCloud2 data and raises a
-schema-neutral handoff event; this sample only fills the generated ROS2 message
-and measures the `IPublisher.Publish` call.
+schema-neutral handoff event.

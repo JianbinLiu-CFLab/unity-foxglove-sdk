@@ -115,6 +115,19 @@ namespace Unity.FoxgloveSDK.Components
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
 
         public override bool SupportsRos2Encoding => true;
+
+        /// <summary>Current user-selected point-cloud output mode.</summary>
+        public PointCloudOutputMode OutputMode => _outputMode;
+
+        /// <summary>True when this publisher is configured for standard PointCloud2 native output.</summary>
+        public bool IsPointCloud2NativeOutput => _outputMode == PointCloudOutputMode.PointCloud2Native;
+
+        /// <summary>Resolved publisher topic for optional native ROS2 PointCloud2 adapters.</summary>
+        public string PointCloud2NativeTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
+
+        /// <summary>Resolved frame id for optional native ROS2 PointCloud2 adapters.</summary>
+        public string PointCloudFrameId => string.IsNullOrWhiteSpace(_frameId) ? "unity_world" : _frameId;
+
         protected override string Ros2SchemaName
         {
             get
@@ -200,7 +213,8 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null || frame == null) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge) return;
+            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
+            if (!publishWebSocket && !publishBridge && !publishNativeFrame) return;
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs);
             if (prepared == null || prepared.GetPointCount() == 0) return;
@@ -272,7 +286,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
-            var publishNativeFrame = PointCloud2NativeFrameReady != null;
+            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
             if (!publishWebSocket && !publishBridge && !publishNativeFrame)
                 return true;
 
@@ -320,7 +334,8 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge) return;
+            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
+            if (!publishWebSocket && !publishBridge && !publishNativeFrame) return;
 
             var unixNs = CurrentLogTimeNs;
             PointCloudFrame pendingFrame;
@@ -431,6 +446,39 @@ namespace Unity.FoxgloveSDK.Components
             {
                 ros2Payload ??= Ros2CdrSensorPointCloud2Builder.Serialize(frame);
                 PublishRos2Bridge(ros2Payload, unixNs);
+            }
+
+            if (ShouldPreparePointCloud2NativeFrame())
+                PublishPreparedPointCloud2NativeFrame(frame, unixNs);
+        }
+
+        private bool ShouldPreparePointCloud2NativeFrame()
+            => _outputMode == PointCloudOutputMode.PointCloud2Native
+               && PointCloud2NativeFrameReady != null;
+
+        private void PublishPreparedPointCloud2NativeFrame(PointCloudFrame frame, ulong unixNs)
+        {
+            var handler = PointCloud2NativeFrameReady;
+            if (handler == null || frame == null)
+                return;
+
+            try
+            {
+                var packed = PointCloudPackedDataBuilder.Build(frame);
+                var nativeFrame = new PointCloud2NativeFrame(
+                    unixNs,
+                    string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId,
+                    height: 1U,
+                    width: checked((uint)frame.GetPointCount()),
+                    fields: packed.Fields,
+                    pointStep: packed.PointStride,
+                    data: packed.Data,
+                    isDense: true);
+                handler(nativeFrame);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
             }
         }
 

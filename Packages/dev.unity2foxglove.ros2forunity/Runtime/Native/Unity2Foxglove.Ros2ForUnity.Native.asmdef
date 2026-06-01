@@ -1,0 +1,23 @@
+{
+  "name": "Unity2Foxglove.Ros2ForUnity.Native",
+  "rootNamespace": "Unity2Foxglove.Ros2ForUnity.Native",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Proto",
+    "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64"
+  ],
+  "includePlatforms": [
+    "Editor",
+    "WindowsStandalone64"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -177,12 +177,21 @@ This sample is not a new RViz2 productization gate. It uses explicit source comp
 
 The default topics are conventional ROS2 names and can collide with real drivers or Nav2 stacks. Production projects should namespace them, for example `/unity/odom` or `/unity/camera/image_raw`.
 
-## Virtual LiDAR PointCloud2 Digital Twin
+## PointCloud2 Native DDS Output
 
-The `Virtual LiDAR PointCloud2 Digital Twin` sample is the Phase 138L SLAM handoff route for live Unity LiDAR output. It subscribes to prepared `PointCloud2 Native` frames from `FoxglovePointCloudPublisher` and publishes:
+When the adapter package and Jazzy Win64 runtime package are installed, the
+Phase 138L PointCloud2 path is a product setting, not a sample component setup.
+In Unity:
+
+1. On `FoxgloveManager`, enable `ROS2 Native (R2FU)`.
+2. On `FoxglovePointCloudPublisher`, choose `PointCloud2 Native`.
+3. Set the publisher topic and frame id, for example topic `/points` and frame
+   `os_lidar`.
+
+The optional R2FU package automatically subscribes to prepared
+`PointCloud2 Native` frames and publishes:
 
 ```text
-/tf
 /points
 ```
 
@@ -192,9 +201,25 @@ The `/points` topic uses:
 sensor_msgs/msg/PointCloud2
 ```
 
-This sample is for high-throughput DDS validation with standard PointCloud2 consumers. The core SDK prepares the compacted full-stride payload before the R2FU sample receives it, so the sample does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`. Its source references are optional in simple scenes: the adapter retries auto-resolution in Play mode, and its runtime ROS2 node appends a unique suffix to avoid duplicate-node collisions. If ROS2 For Unity requires main-thread publishing, the main-thread work should remain the final generated-message publish call.
+No extra smoke component is required for the product path. The core SDK prepares
+the compacted full-stride payload before the R2FU bridge receives it, so the
+bridge does not rebuild the point cloud from `VirtualLidar.LastFrame.Points`. If
+ROS2 For Unity requires main-thread publishing, the main-thread work remains the
+final generated-message publish call.
 
-Use the sample README and evidence template to record `ros2 topic info`, `ros2 topic hz`, `ros2 topic bw`, PointCloud2 field layout, payload bytes, publish-call timing, drop count, and Unity loop-health evidence. It does not replace the Draco Foxglove visualization path and does not add a ROS2 dependency to the core SDK.
+Validate from an external ROS2 shell while Unity is in Play mode:
+
+```bash
+ros2 topic info /points
+ros2 topic hz /points
+ros2 topic bw /points
+ros2 topic echo /points --once
+```
+
+The `Virtual LiDAR PointCloud2 Digital Twin` sample remains available as an
+optional diagnostic harness, but it is not required for product acceptance. This
+path does not replace the Draco Foxglove visualization path and does not add a
+ROS2 dependency to the core SDK.
 
 ## Attribution Boundary
 
