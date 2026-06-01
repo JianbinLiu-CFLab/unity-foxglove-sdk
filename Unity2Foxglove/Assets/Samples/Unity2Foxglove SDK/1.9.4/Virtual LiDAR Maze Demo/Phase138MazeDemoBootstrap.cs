@@ -89,6 +89,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(lidar, "_pointCloudPublisher", publisher);
             SetPrivateField(lidar, "_columnStep", 1);
             SetPrivateField(lidar, "_maxRaysPerScan", 0);
+            SetPrivateField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
             SetPrivateField(lidar, "_publishEmptyFrames", false);
             SetPrivateField(lidar, "_drawDebugRays", false);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);

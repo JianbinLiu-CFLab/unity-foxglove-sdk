@@ -121,6 +121,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidar, "_pointCloudPublisher", publisher);
             SetField(lidar, "_columnStep", 1);
             SetField(lidar, "_maxRaysPerScan", 0);
+            SetField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
 
             // 4. IMU on the shared Ouster-style sensor unit frame.

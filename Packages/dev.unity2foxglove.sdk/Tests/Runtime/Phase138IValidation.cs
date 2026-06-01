@@ -29,12 +29,16 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
         private const string DemoBootstrapRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
+        private const string DemoVehicleRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
         private const string DemoReadmeRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/README.md";
         private const string ImportedDemoEditorRelativePath =
             "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
         private const string ImportedDemoBootstrapRelativePath =
             "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
+        private const string ImportedDemoVehicleRelativePath =
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
         private const string SmokeSceneRelativePath =
             "Unity2Foxglove/Assets/Scenes/Phase138_Foxglove_MCAP_Smoke.unity";
 
@@ -46,6 +50,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyOs2128FullFidelityPattern();
             VerifyFullFidelityMazeProfile();
+            VerifyVirtualLidarIgnoresDemoVehicleSelfHits();
             VerifyPointCloudQosPassThrough();
             VerifyOptInDiagnostics();
             VerifyAsyncRaycastStateMachine();
@@ -106,6 +111,34 @@ namespace Unity.FoxgloveSDK.Tests
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPoints"",\s*(?:FullFidelityPointCount|262144)\)")
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPackedBytes"",\s*0\)")
                    && source.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal);
+        }
+
+        private static void VerifyVirtualLidarIgnoresDemoVehicleSelfHits()
+        {
+            var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var vehicle = ReadRepoText(DemoVehicleRelativePath);
+            var editor = ReadRepoText(DemoEditorRelativePath);
+            var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
+            var importedVehicle = ReadRepoText(ImportedDemoVehicleRelativePath);
+            var importedEditor = ReadRepoText(ImportedDemoEditorRelativePath);
+            var importedBootstrap = ReadRepoText(ImportedDemoBootstrapRelativePath);
+            var smokeScene = ReadRepoText(SmokeSceneRelativePath);
+
+            Check(lidar.Contains("private LayerMask _layerMask = Physics.DefaultRaycastLayers", StringComparison.Ordinal),
+                "138I-33: VirtualLidar defaults to Unity default raycast layers instead of hitting Ignore Raycast objects");
+            Check(vehicle.Contains("IgnoreRaycastLayer = 2", StringComparison.Ordinal)
+                  && vehicle.Contains("SetLayerRecursively(root, IgnoreRaycastLayer)", StringComparison.Ordinal)
+                  && importedVehicle.Contains("IgnoreRaycastLayer = 2", StringComparison.Ordinal)
+                  && importedVehicle.Contains("SetLayerRecursively(root, IgnoreRaycastLayer)", StringComparison.Ordinal),
+                "138I-34: generated maze vehicles are placed on Ignore Raycast so LiDAR cannot self-occlude on the car body");
+            Check(editor.Contains("SetField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
+                  && bootstrap.Contains("SetPrivateField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
+                  && importedEditor.Contains("SetField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
+                  && importedBootstrap.Contains("SetPrivateField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
+                  && Regex.IsMatch(smokeScene, @"m_Layer:\s*2\s+m_Name:\s*Vehicle")
+                  && smokeScene.Contains("_columnStep: 1", StringComparison.Ordinal)
+                  && Regex.IsMatch(smokeScene, @"_layerMask:\s*\r?\n\s+serializedVersion:\s*2\s*\r?\n\s+m_Bits:\s*4294967291"),
+                "138I-35: baked smoke scene excludes the demo vehicle collider from LiDAR raycasts");
         }
 
         private static void VerifyPointCloudQosPassThrough()

@@ -117,6 +117,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidar, "_pointCloudPublisher", publisher);
             SetField(lidar, "_columnStep", 1);
             SetField(lidar, "_maxRaysPerScan", 0);
+            SetField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
             // Per-tick raycast budget keeps full-fidelity OS-2-128 off the main loop. The scan
             // rate falls out of it automatically (~1.2 Hz at 6144), trading Hz for a steady
             // main thread and a continuous, non-flickering point cloud.

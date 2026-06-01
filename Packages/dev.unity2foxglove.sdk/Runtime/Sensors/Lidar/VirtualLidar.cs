@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Components
                  "Set a value > 0 to cap rays per scan for performance; excess rays are " +
                  "uniformly subsampled. Raycasts run in parallel via RaycastCommand.")]
         [SerializeField, Min(0)] private int _maxRaysPerScan = 0;
-        [SerializeField] private LayerMask _layerMask = ~0;
+        [SerializeField] private LayerMask _layerMask = Physics.DefaultRaycastLayers;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
         [SerializeField, Min(1)] private int _scanSubSteps = 1;

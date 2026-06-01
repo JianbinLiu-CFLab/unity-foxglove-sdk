@@ -4192,7 +4192,7 @@ GameObject:
   - component: {fileID: 276030829}
   - component: {fileID: 276030828}
   - component: {fileID: 276030827}
-  m_Layer: 0
+  m_Layer: 2
   m_Name: Vehicle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19691,11 +19691,11 @@ MonoBehaviour:
   _scanRateSource: 0
   _scanRateHzOverride: 10
   _maxRangeMeters: 50
-  _columnStep: 4
+  _columnStep: 1
   _maxRaysPerScan: 0
   _layerMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294967291
   _publishEmptyFrames: 0
   _drawDebugRays: 0
   _scanSubSteps: 1
