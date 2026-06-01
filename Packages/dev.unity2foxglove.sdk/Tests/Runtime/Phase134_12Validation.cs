@@ -78,13 +78,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         /// <summary>
         /// Checks render-time timestamp propagation for primary and legacy camera paths.
+        /// Also guards the 138K signature that carries captured dimensions beside the timestamp.
         /// </summary>
         private static void CameraPublisherCarriesRenderTimestamp()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             Check(camera.Contains("var renderUnixNs = CurrentLogTimeNs;") && camera.Contains("OnReadbackComplete(req, generation, renderUnixNs"),
                 "134-12C-1: primary camera captures timestamp at render and passes it into readback callback");
-            Check(camera.Contains("PublishJpegFrame(req, renderUnixNs") && camera.Contains("SubmitVideoFrame(req, renderUnixNs)"),
+            Check(camera.Contains("PublishJpegFrame(req, renderUnixNs") && camera.Contains("SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight)"),
                 "134-12C-2: primary camera uses render timestamp for JPEG and video frame submission");
             Check(camera.Contains("ITimestampedCameraVideoEncoderSidecar timestampedSidecar") && camera.Contains("TrySubmitFrame(frameBytes, renderUnixNs)"),
                 "134-12C-3: primary camera submits video frames with render timestamps when sidecar supports it");

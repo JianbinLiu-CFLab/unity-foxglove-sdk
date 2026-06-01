@@ -132,6 +132,8 @@
     <Compile Include="Phase138FValidation.cs" />
     <Compile Include="Phase138IValidation.cs" />
     <Compile Include="Phase138JValidation.cs" />
+    <!-- 138K: validate camera video encoder dimension hardening and video diagnostics. -->
+    <Compile Include="Phase138KValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
     <Compile Include="Phase108Validation.cs" />
     <Compile Include="Phase109Validation.cs" />

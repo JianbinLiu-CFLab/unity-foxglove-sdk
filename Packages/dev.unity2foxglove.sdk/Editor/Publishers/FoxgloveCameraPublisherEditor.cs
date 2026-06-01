@@ -14,6 +14,10 @@ using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Inspector editor for <see cref="FoxgloveCameraPublisher"/> with separate
+    /// blocks for JPEG, FFmpeg, OpenH264, and native H.264 options.
+    /// </summary>
     [CustomEditor(typeof(FoxgloveCameraPublisher))]
     public class FoxgloveCameraPublisherEditor : UnityEditor.Editor
     {
@@ -73,6 +77,8 @@ namespace Unity.FoxgloveSDK.Editor
             var videoBitrateKbps = serializedObject.FindProperty("_videoBitrateKbps");
             var videoKeyframeInterval = serializedObject.FindProperty("_videoKeyframeInterval");
             var videoMaxOutputQueue = serializedObject.FindProperty("_videoMaxOutputQueue");
+            // Video diagnostics is a per-backend toggle for submit/drain evidence.
+            var logVideoDiagnostics = serializedObject.FindProperty("_logVideoDiagnostics");
             var logEncoderStderr = serializedObject.FindProperty("_logEncoderStderr");
             var enableBackpressure = serializedObject.FindProperty("_enableBackpressureAdaptation");
             var backpressureCooldown = serializedObject.FindProperty("_backpressureCooldownSeconds");
@@ -117,6 +123,7 @@ namespace Unity.FoxgloveSDK.Editor
                     maxPendingReadbacks,
                     openH264MaxInputQueue,
                     videoMaxOutputQueue,
+                    logVideoDiagnostics,
                     logEncoderStderr);
             }
             else if (mode == CameraOutputMode.H264MediaFoundationExperimental)
@@ -127,11 +134,12 @@ namespace Unity.FoxgloveSDK.Editor
                     videoKeyframeInterval,
                     maxPendingReadbacks,
                     videoMaxOutputQueue,
+                    logVideoDiagnostics,
                     logEncoderStderr);
             }
             else if (profile.IsVideo)
             {
-                DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logEncoderStderr);
+                DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logVideoDiagnostics, logEncoderStderr);
             }
             else
             {
@@ -202,6 +210,9 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(logBackpressureSkips, new GUIContent("Log Backpressure Skips"));
         }
 
+        /// <summary>
+        /// Draws FFmpeg-backed H.264/H.265 settings and diagnostics toggles.
+        /// </summary>
         private void DrawVideoSection(
             CameraOutputMode mode,
             string title,
@@ -210,6 +221,7 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty videoKeyframeInterval,
             SerializedProperty maxPendingReadbacks,
             SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logVideoDiagnostics,
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
@@ -254,9 +266,13 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Stderr"));
         }
 
+        /// <summary>
+        /// Draws OpenH264-specific video options and path/validation helpers.
+        /// </summary>
         private void DrawOpenH264VideoSection(
             string title,
             SerializedProperty openH264HelperPath,
@@ -266,6 +282,7 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty maxPendingReadbacks,
             SerializedProperty openH264MaxInputQueue,
             SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logVideoDiagnostics,
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
@@ -345,15 +362,20 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(openH264MaxInputQueue, new GUIContent("Max Input Queue"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }
 
+        /// <summary>
+        /// Draws Windows Media Foundation H.264 settings and warning guidance.
+        /// </summary>
         private static void DrawNativeH264Section(
             string title,
             SerializedProperty videoBitrateKbps,
             SerializedProperty videoKeyframeInterval,
             SerializedProperty maxPendingReadbacks,
             SerializedProperty videoMaxOutputQueue,
+            SerializedProperty logVideoDiagnostics,
             SerializedProperty logEncoderStderr)
         {
             EditorGUILayout.Space();
@@ -369,6 +391,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
             EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
             EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
         }
 
