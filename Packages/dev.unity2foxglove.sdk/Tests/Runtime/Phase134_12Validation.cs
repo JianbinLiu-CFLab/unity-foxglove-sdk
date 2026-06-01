@@ -78,6 +78,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         /// <summary>
         /// Checks render-time timestamp propagation for primary and legacy camera paths.
+        /// Also guards the 138K signature that carries captured dimensions beside the timestamp.
         /// </summary>
         private static void CameraPublisherCarriesRenderTimestamp()
         {

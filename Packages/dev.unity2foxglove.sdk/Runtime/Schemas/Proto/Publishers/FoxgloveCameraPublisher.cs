@@ -172,6 +172,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _droppedEncodedBudgetCount;
         private int _droppedLateJpegCount;
         private double _nextVideoDiagLogSec;
+        /// <summary>Elapsed milliseconds for the last video conversion/submission attempt.</summary>
         private double _lastVideoSubmitMs;
         private double _lastVideoDrainMs;
         private int _lastVideoAccessUnitBytes;
@@ -180,6 +181,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _videoDimensionMismatchDropCount;
         private int _videoSubmitFailureCount;
         private int _videoSidecarRestartCount;
+        /// <summary>Most recent video diagnostic reason to include in the next interval log.</summary>
         private string _lastVideoDiagnostic;
 
         /// <summary>Defaults the topic to the current mode default if not set.</summary>
@@ -579,6 +581,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Submits a rendered camera frame to the active video sidecar using the
+        /// dimensions captured with the same readback request.
+        /// </summary>
         private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var submitStart = Stopwatch.GetTimestamp();
@@ -651,6 +657,10 @@ namespace Unity.FoxgloveSDK.Components
             LogVideoDiagnosticsIfNeeded();
         }
 
+        /// <summary>
+        /// Rejects stale or malformed readbacks before they can reach a fixed-dimension
+        /// video encoder.
+        /// </summary>
         private bool ValidateCapturedVideoFrame(int captureWidth, int captureHeight, int rgb24ByteCount, out string error)
         {
             if (!CameraVideoFrameGeometry.TryGetRgb24FrameByteCount(captureWidth, captureHeight, out var expectedRgbBytes))
@@ -859,6 +869,10 @@ namespace Unity.FoxgloveSDK.Components
             _videoSidecarHeight = 0;
         }
 
+        /// <summary>
+        /// Keeps the running sidecar aligned with the locked mode and requested
+        /// dimensions, debouncing restarts while Inspector edits settle.
+        /// </summary>
         private bool EnsureSidecarMatchesMode(CameraVideoOutputProfile profile)
         {
             if (_videoSidecar == null)
@@ -1170,6 +1184,9 @@ namespace Unity.FoxgloveSDK.Components
             _droppedLateJpegCount = 0;
         }
 
+        /// <summary>
+        /// Drops one stale or mismatched video frame and records the reason for diagnostics.
+        /// </summary>
         private void RecordVideoDimensionMismatchDrop(string reason)
         {
             _videoDimensionMismatchDropCount++;
@@ -1207,6 +1224,9 @@ namespace Unity.FoxgloveSDK.Components
             ResetVideoDiagnosticCounters();
         }
 
+        /// <summary>
+        /// Clears video-specific diagnostics state on enable.
+        /// </summary>
         private void ResetVideoDiagnosticState()
         {
             _nextVideoDiagLogSec = 0;
@@ -1222,6 +1242,9 @@ namespace Unity.FoxgloveSDK.Components
             ResetVideoDiagnosticCounters();
         }
 
+        /// <summary>
+        /// Clears per-log-window video diagnostic counters and stale reason text.
+        /// </summary>
         private void ResetVideoDiagnosticCounters()
         {
             _videoFramesSubmittedCount = 0;
