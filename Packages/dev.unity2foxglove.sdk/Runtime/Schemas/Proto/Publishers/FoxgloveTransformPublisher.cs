@@ -26,6 +26,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _childFrameId = "";
         [Tooltip("Publish localPosition/localRotation instead of world transform. Use for a static child link (e.g. base_link -> sensor) under a moving parent.")]
         [SerializeField] private bool _useLocalTransform;
+        [Tooltip("Use the manager's physics-based sensor clock for TF timestamps so LiDAR/IMU point-cloud data and transforms share one timeline.")]
+        [SerializeField] private bool _useSharedSensorClock = true;
 
         public override bool SupportsProtobufEncoding => true;
         public override bool SupportsRos2Encoding => true;
@@ -50,7 +52,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
             if (!ShouldPrepareAnyPublishPayload()) return;
 
-            var unixNs = CurrentLogTimeNs;
+            var unixNs = CurrentTransformTimeNs();
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             var message = CreateMessage(unixNs);
@@ -79,7 +81,12 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         protected override FrameTransformMessage CreateMessage()
-            => CreateMessage(CurrentLogTimeNs);
+            => CreateMessage(CurrentTransformTimeNs());
+
+        private ulong CurrentTransformTimeNs()
+            => _useSharedSensorClock && _manager != null
+                ? _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)
+                : CurrentLogTimeNs;
 
         private FrameTransformMessage CreateMessage(ulong unixNs)
         {

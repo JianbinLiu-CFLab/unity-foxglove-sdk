@@ -25,6 +25,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs";
         private const string PointCloudPublisherEditorRelativePath =
             "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs";
+        private const string TransformPublisherRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs";
         private const string DemoEditorRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
         private const string DemoBootstrapRelativePath =
@@ -58,6 +60,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyValidationWiring();
             VerifyUnityDebugAliases();
             VerifyVirtualLidarMainThreadIsolation();
+            VerifyTransformPublisherUsesSensorClock();
             VerifyVirtualLidarStableSourceRateCap();
             VerifyVirtualLidarDracoBypassesManagedPointAppend();
             VerifyVirtualLidarPointSnapshotAsmdefBoundary();
@@ -244,11 +247,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && !buildJob.Contains("VirtualLidarHitData", StringComparison.Ordinal)
                   && lidar.Contains("var raycastHandle = RaycastCommand.ScheduleBatch", StringComparison.Ordinal)
                   && lidar.Contains("buildJob.Schedule(batchCount, 64, raycastHandle)", StringComparison.Ordinal)
+                  && lidar.Contains("WorldToLocal = _activeScanWorldToLocal", StringComparison.Ordinal)
                   && lidar.Contains("_pendingScanHandle.Complete()", StringComparison.Ordinal)
                   && !lidar.Contains("hit.collider == null", StringComparison.Ordinal)
                   && !lidar.Contains("_rayHits", StringComparison.Ordinal)
                   && !lidar.Contains("job.Schedule(_pendingBatchCount, 64).Complete()", StringComparison.Ordinal),
                 "138I-24: VirtualLidar chains raycast-to-point build work off the main-thread consume path");
+        }
+
+        private static void VerifyTransformPublisherUsesSensorClock()
+        {
+            var transform = ReadRepoText(TransformPublisherRelativePath);
+
+            Check(transform.Contains("_useSharedSensorClock", StringComparison.Ordinal)
+                  && transform.Contains("CurrentTransformTimeNs()", StringComparison.Ordinal)
+                  && transform.Contains("GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
+                  && !transform.Contains("var unixNs = CurrentLogTimeNs;", StringComparison.Ordinal),
+                "138I-36: TF timestamps use the shared sensor clock so LiDAR point clouds and transforms stay on one timeline");
         }
 
         private static void VerifyVirtualLidarStableSourceRateCap()
@@ -259,8 +274,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(lidar.Contains("_maxRaycastCommandsPerFixedUpdate", StringComparison.Ordinal)
                   && lidar.Contains("BudgetColumnsPerTick", StringComparison.Ordinal)
-                  && lidar.Contains("Math.Min((int)Math.Floor(_scanColumnProgress), budgetColumns)", StringComparison.Ordinal)
+                  && lidar.Contains("var remainingColumns = _scanColumnCount - _scanColumnCursor", StringComparison.Ordinal)
+                  && lidar.Contains("Math.Min(budgetColumns, remainingColumns)", StringComparison.Ordinal)
                   && lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
+                  && lidar.Contains("_activeScanWorldToLocal = Matrix4x4", StringComparison.Ordinal)
                   && !lidar.Contains("ComputeProtectedScanPeriodSeconds", StringComparison.Ordinal)
                   && !lidar.Contains("_protectMainThreadFrameRate", StringComparison.Ordinal)
                   && !lidar.Contains("_protectedScanRateHz", StringComparison.Ordinal)

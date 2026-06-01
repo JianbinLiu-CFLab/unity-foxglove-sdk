@@ -216,6 +216,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _activeScanPointSnapshotCount;
         private int _activeScanValidPoints;
         private double _activeScanStartPhysSeconds;
+        private float4x4 _activeScanWorldToLocal;
         private enum PendingScanState
         {
             Idle,
@@ -503,7 +504,15 @@ namespace Unity.FoxgloveSDK.Components
             if (_scanColumnProgress > maxProgress)
                 _scanColumnProgress = maxProgress;
 
-            var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress), budgetColumns);
+            // Keep one scheduled batch inside the current revolution. A completed scan has
+            // one reference pose; crossing into the next revolution inside the same build job
+            // would mix two scan frames through one world-to-local matrix.
+            var remainingColumns = _scanColumnCount - _scanColumnCursor;
+            if (remainingColumns <= 0 || remainingColumns > _scanColumnCount)
+                remainingColumns = _scanColumnCount;
+
+            var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress),
+                Math.Min(budgetColumns, remainingColumns));
             if (columnsToEmit <= 0)
                 return;
             _scanColumnProgress -= columnsToEmit;
@@ -519,12 +528,11 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            // One tick-end pose for the whole batch: a single worldToLocal keeps the build
-            // job unchanged (no per-ray matrix). One revolution => _scanColumnCount poses,
-            // enough for IMU de-skew. Per-column pose interpolation is a future option.
+            // Rays are cast from the current tick pose, but points are expressed in the
+            // active scan's reference pose. Otherwise a scan that spans multiple ticks
+            // stitches several local frames into one message and bends flat surfaces.
             var worldPos = transform.position;
             var worldRot = transform.rotation;
-            var worldToLocal = Matrix4x4.TRS(worldPos, worldRot, Vector3.one).inverse.ToFloat4x4();
             var queryParams = new QueryParameters(_layerMask.value);
 
             // Build one batch for all columns this tick (cap at one revolution).
@@ -583,7 +591,7 @@ namespace Unity.FoxgloveSDK.Components
                 Hits = _results,
                 RayTimeOffsets = _rayTimeOffsets,
                 RayRings = _rayRings,
-                WorldToLocal = worldToLocal,
+                WorldToLocal = _activeScanWorldToLocal,
                 MinRange = minRange,
                 MaxRange = _maxRangeMeters,
                 SyntheticIntensity = _syntheticIntensity,
@@ -806,6 +814,10 @@ namespace Unity.FoxgloveSDK.Components
             // and ResetScanState; StartNewScan must not clear it or a cross-revolution restart
             // would drop the in-tick remainder.
             _activeScanStartPhysSeconds = scanStartPhysSeconds;
+            _activeScanWorldToLocal = Matrix4x4
+                .TRS(transform.position, transform.rotation, Vector3.one)
+                .inverse
+                .ToFloat4x4();
             _activeScanFrame = new PointCloudFrame
             {
                 UnixNs = ComputeScanStartUnixNs(scanStartPhysSeconds),
