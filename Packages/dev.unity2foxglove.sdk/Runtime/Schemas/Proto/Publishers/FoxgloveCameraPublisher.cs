@@ -169,6 +169,10 @@ namespace Unity.FoxgloveSDK.Components
                 _topic = ActiveProfile.DefaultTopic;
         }
 
+        /// <summary>
+        /// Locks schema-affecting camera mode before registration so Play Mode does not
+        /// advertise one topic/schema and publish another after an Inspector change.
+        /// </summary>
         protected override void OnEnable()
         {
             LockRuntimeOutputMode();
@@ -216,6 +220,8 @@ namespace Unity.FoxgloveSDK.Components
             var renderStart = Stopwatch.GetTimestamp();
             _captureCam.Render();
             _lastRenderMs = ElapsedMs(renderStart);
+            // Snapshot the concrete render target size with the readback request. Inspector
+            // width/height can change while this callback is in flight.
             var generation = _captureGeneration;
             var captureWidth = _captureRT.width;
             var captureHeight = _captureRT.height;
@@ -224,6 +230,10 @@ namespace Unity.FoxgloveSDK.Components
             AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
         }
 
+        /// <summary>
+        /// Completes one local readback request and routes it using the generation and
+        /// dimensions captured when the request was issued.
+        /// </summary>
         private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
@@ -261,6 +271,10 @@ namespace Unity.FoxgloveSDK.Components
             PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight);
         }
 
+        /// <summary>
+        /// Invalidates stale callbacks and lets local readbacks drain without globally
+        /// waiting on unrelated AsyncGPUReadback work.
+        /// </summary>
         protected override void OnDisable()
         {
             base.OnDisable();
@@ -273,6 +287,10 @@ namespace Unity.FoxgloveSDK.Components
             UnlockRuntimeOutputMode();
         }
 
+        /// <summary>
+        /// Mirrors disable-time cleanup during object destruction while stale readback and
+        /// worker outputs are rejected by generation checks.
+        /// </summary>
         private void OnDestroy()
         {
             _destroyed = true;
@@ -295,6 +313,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Applies static resource caps before rendering so camera visualization cannot
+        /// consume unbounded readback or worker queue capacity.
+        /// </summary>
         private bool AllowJpegCaptureByFrameBudget()
         {
             EnsureJpegQueues();
@@ -337,6 +359,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Copies readback bytes on the main thread into an owned buffer before handing
+        /// work to the JPEG worker; the worker never touches Unity objects.
+        /// </summary>
         private void QueueJpegFrame(
             AsyncGPUReadbackRequest req,
             ulong unixNs,
@@ -372,6 +398,10 @@ namespace Unity.FoxgloveSDK.Components
             _jpegWorkerSignal?.Set();
         }
 
+        /// <summary>
+        /// Publishes a bounded number of completed worker results per frame to keep
+        /// worker catch-up from monopolizing the main loop.
+        /// </summary>
         private void DrainCompletedJpegFrames()
         {
             var queue = _completedJpegQueue;
@@ -393,6 +423,10 @@ namespace Unity.FoxgloveSDK.Components
             LogCameraDiagnosticsIfNeeded();
         }
 
+        /// <summary>
+        /// Rejects stale or out-of-order worker results before publishing the freshest
+        /// serialized JPEG payloads.
+        /// </summary>
         private void PublishCompletedJpegFrame(JpegEncodeResult result)
         {
             if (result.Request.Generation != _captureGeneration)
@@ -452,6 +486,10 @@ namespace Unity.FoxgloveSDK.Components
             _warnedJpegWorkerFailure = false;
         }
 
+        /// <summary>
+        /// Synchronous JPEG fallback path; it still uses captured readback dimensions
+        /// instead of mutable Inspector dimensions.
+        /// </summary>
         private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs, int captureWidth, int captureHeight)
         {
             captureWidth = Math.Max(1, captureWidth);
@@ -565,6 +603,10 @@ namespace Unity.FoxgloveSDK.Components
             DrainEncodedAccessUnits();
         }
 
+        /// <summary>
+        /// Starts explicit video modes only; video setup failure never falls through into
+        /// extra JPEG work during the same publish tick.
+        /// </summary>
         private bool EnsureVideoSidecarStarted(CameraVideoOutputProfile profile)
         {
             if (!profile.IsVideo)
@@ -747,6 +789,10 @@ namespace Unity.FoxgloveSDK.Components
             return 30;
         }
 
+        /// <summary>
+        /// Allocates Unity capture resources on the main thread using the current
+        /// Inspector-requested dimensions before each readback snapshots the actual RT size.
+        /// </summary>
         private void EnsureCaptureResources()
         {
             _sourceCam = _sourceCam != null ? _sourceCam : GetComponent<Camera>();
@@ -783,6 +829,10 @@ namespace Unity.FoxgloveSDK.Components
             _captureCam.enabled = false;
         }
 
+        /// <summary>
+        /// Destroys Unity-owned capture resources only after local pending readbacks are
+        /// drained or invalidated.
+        /// </summary>
         private void CleanupResources()
         {
             if (_captureCam != null)
@@ -818,6 +868,9 @@ namespace Unity.FoxgloveSDK.Components
                 _completedJpegQueue = new DropOldestBoundedQueue<JpegEncodeResult>(completedCapacity);
         }
 
+        /// <summary>
+        /// Lazily starts the background JPEG worker after demand and budget gates pass.
+        /// </summary>
         private bool EnsureJpegWorkerStarted()
         {
             EnsureJpegQueues();
@@ -851,6 +904,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Requests worker shutdown without blocking Play Mode indefinitely; late output is
+        /// discarded by queue clearing and generation checks.
+        /// </summary>
         private void StopJpegWorker(bool clearQueues)
         {
             _jpegWorkerStopping = true;
@@ -914,6 +971,10 @@ namespace Unity.FoxgloveSDK.Components
             _droppedLateJpegCount = 0;
         }
 
+        /// <summary>
+        /// Tracks readback latency for diagnostics without making timing data part of the
+        /// publish contract.
+        /// </summary>
         private void RememberReadbackStart(ulong unixNs, long ticks)
         {
             lock (_readbackTimingGate)
@@ -943,6 +1004,10 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning("[Foxglove] Camera JPEG worker disabled: " + (string.IsNullOrWhiteSpace(reason) ? "unknown failure" : reason));
         }
 
+        /// <summary>
+        /// Reports render, readback, encode, serialization and queue pressure separately
+        /// so camera cost can be attributed before future pipeline changes.
+        /// </summary>
         private void LogCameraDiagnosticsIfNeeded()
         {
             if (!_logCameraDiagnostics)
@@ -979,6 +1044,10 @@ namespace Unity.FoxgloveSDK.Components
         private static double ElapsedMs(long startTicks)
             => (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
 
+        /// <summary>
+        /// Optional transport-drop cooldown for legacy behavior; the 138J path relies on
+        /// static resource caps rather than frame-time feedback control.
+        /// </summary>
         private bool AllowJpegCaptureByBackpressure()
         {
             if (!_enableBackpressureAdaptation)
@@ -1096,6 +1165,10 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning("[Foxglove] " + profile.DisplayName + ": " + line);
         }
 
+        /// <summary>
+        /// Worker-side encode path operating only on owned buffers and pure managed
+        /// serializers; Unity APIs must stay out of this method.
+        /// </summary>
         private static JpegEncodeResult EncodeJpegRequest(JpegEncodeRequest request)
         {
             var encodeStart = Stopwatch.GetTimestamp();
@@ -1292,6 +1365,10 @@ namespace Unity.FoxgloveSDK.Components
                     encodeMs,
                     serializeMs);
 
+            /// <summary>
+            /// Records an encoded payload that was produced successfully but intentionally
+            /// dropped because it exceeded the configured byte budget.
+            /// </summary>
             public static JpegEncodeResult EncodedBudgetDrop(JpegEncodeRequest request, int jpegBytes, double encodeMs)
                 => new JpegEncodeResult(
                     request,
@@ -1306,6 +1383,10 @@ namespace Unity.FoxgloveSDK.Components
                     serializeMs: 0);
         }
 
+        /// <summary>
+        /// Background loop for stale-droppable visualization frames. It consumes owned
+        /// request buffers and posts completed payloads back to the main-thread drain.
+        /// </summary>
         private void EncodeJpegWorkerLoop()
         {
             while (!_jpegWorkerStopping)

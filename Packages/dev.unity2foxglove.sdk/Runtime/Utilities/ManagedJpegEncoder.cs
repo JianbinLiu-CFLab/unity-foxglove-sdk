@@ -10,8 +10,20 @@ using StbImageWriteSharp;
 
 namespace Unity.FoxgloveSDK.Util
 {
+    /// <summary>
+    /// Unity-free JPEG encoding helper used by the async camera JPEG pipeline.
+    /// </summary>
     public static class ManagedJpegEncoder
     {
+        /// <summary>
+        /// Encodes raw RGB24 bytes into JPEG without depending on Unity runtime APIs.
+        /// </summary>
+        /// <param name="rgb24">Packed RGB24 pixel data.</param>
+        /// <param name="width">Image width in pixels.</param>
+        /// <param name="height">Image height in pixels.</param>
+        /// <param name="quality">JPEG quality in [1,100].</param>
+        /// <param name="flipVertical">Whether to vertically flip rows before encoding.</param>
+        /// <returns>Encoded JPEG byte payload.</returns>
         public static byte[] EncodeRgb24(byte[] rgb24, int width, int height, int quality, bool flipVertical)
         {
             if (rgb24 == null)
@@ -38,9 +50,15 @@ namespace Unity.FoxgloveSDK.Util
             return stream.ToArray();
         }
 
+        /// <summary>
+        /// Clamps JPEG quality to a valid 1..100 range.
+        /// </summary>
         private static int ClampQuality(int quality)
             => quality < 1 ? 1 : quality > 100 ? 100 : quality;
 
+        /// <summary>
+        /// Returns a copy of the RGB24 buffer with row order reversed.
+        /// </summary>
         private static byte[] FlipRgb24Rows(byte[] source, int width, int height)
         {
             var stride = checked(width * 3);

@@ -9,11 +9,18 @@ using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Util
 {
+    /// <summary>
+    /// A small thread-safe bounded queue that drops the oldest element when over capacity.
+    /// Useful for keeping the freshest async work items during overload.
+    /// </summary>
     public sealed class DropOldestBoundedQueue<T>
     {
         private readonly object _gate = new object();
         private readonly Queue<T> _queue = new Queue<T>();
 
+        /// <summary>
+        /// Initializes a bounded queue with a positive capacity.
+        /// </summary>
         public DropOldestBoundedQueue(int capacity)
         {
             if (capacity < 1)
@@ -21,8 +28,14 @@ namespace Unity.FoxgloveSDK.Util
             Capacity = capacity;
         }
 
+        /// <summary>
+        /// Maximum number of items kept in the queue.
+        /// </summary>
         public int Capacity { get; }
 
+        /// <summary>
+        /// Current queue size.
+        /// </summary>
         public int Count
         {
             get
@@ -32,6 +45,9 @@ namespace Unity.FoxgloveSDK.Util
             }
         }
 
+        /// <summary>
+        /// Enqueues an item. If the queue is full, drops the oldest item and returns <c>true</c>.
+        /// </summary>
         public bool Enqueue(T item)
         {
             lock (_gate)
@@ -48,6 +64,9 @@ namespace Unity.FoxgloveSDK.Util
             }
         }
 
+        /// <summary>
+        /// Attempts to dequeue one item.
+        /// </summary>
         public bool TryDequeue(out T item)
         {
             lock (_gate)
@@ -63,6 +82,9 @@ namespace Unity.FoxgloveSDK.Util
             }
         }
 
+        /// <summary>
+        /// Clears all queued items.
+        /// </summary>
         public void Clear()
         {
             lock (_gate)

@@ -12,10 +12,16 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Phase 138J checks for async JPEG camera behavior and payload integrity.
+    /// </summary>
     public static class Phase138JValidation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Runs all validation checks for phase 138J.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -38,6 +44,9 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 138J: {_passed} checks passed.");
         }
 
+        /// <summary>
+        /// Confirms capture is allowed when queue counters are below caps.
+        /// </summary>
         private static void BudgetAllowsCaptureWhenQueuesAreBelowCaps()
         {
             var result = CameraFrameBudgetPolicy.Evaluate(new CameraFrameBudgetInput
@@ -57,6 +66,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.SkipReason == CameraFrameBudgetSkipReason.None, "138J-1A2: no skip reason when allowed");
         }
 
+        /// <summary>
+        /// Confirms readback-queue limit blocks capture at cap.
+        /// </summary>
         private static void BudgetSkipsReadbackQueueAtCap()
         {
             var result = CameraFrameBudgetPolicy.Evaluate(DefaultBudgetInput(pendingReadbacks: 1));
@@ -64,6 +76,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.SkipReason == CameraFrameBudgetSkipReason.ReadbackQueueFull, "138J-1B2: readback skip is classified");
         }
 
+        /// <summary>
+        /// Confirms encode-queue limit blocks capture at cap.
+        /// </summary>
         private static void BudgetSkipsEncodeQueueAtCap()
         {
             var result = CameraFrameBudgetPolicy.Evaluate(DefaultBudgetInput(encodeQueueDepth: 2));
@@ -71,6 +86,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.SkipReason == CameraFrameBudgetSkipReason.EncodeQueueFull, "138J-1C2: encode skip is classified");
         }
 
+        /// <summary>
+        /// Confirms completed-queue limit blocks capture at cap.
+        /// </summary>
         private static void BudgetSkipsCompletedQueueAtCap()
         {
             var result = CameraFrameBudgetPolicy.Evaluate(DefaultBudgetInput(completedQueueDepth: 2));
@@ -78,6 +96,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.SkipReason == CameraFrameBudgetSkipReason.CompletedQueueFull, "138J-1D2: completed skip is classified");
         }
 
+        /// <summary>
+        /// Confirms pixel budget rejects oversized frames.
+        /// </summary>
         private static void BudgetSkipsPixelBudgetWithoutRateInput()
         {
             var result = CameraFrameBudgetPolicy.Evaluate(DefaultBudgetInput(maxPixelsPerFrame: 10));
@@ -85,6 +106,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.SkipReason == CameraFrameBudgetSkipReason.PixelBudgetExceeded, "138J-1E2: pixel skip is classified");
         }
 
+        /// <summary>
+        /// Verifies bounded queue drops oldest item when overflowing.
+        /// </summary>
         private static void DropOldestQueueKeepsNewestFrames()
         {
             var queue = new DropOldestBoundedQueue<int>(capacity: 2);
@@ -97,6 +121,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.TryDequeue(out var second) && second == 3, "138J-2F: newest item is retained");
         }
 
+        /// <summary>
+        /// Verifies monotonicity policy for async JPEG publish order.
+        /// </summary>
         private static void MonotonicPolicyDropsLateResults()
         {
             ulong lastPublished = 100;
@@ -106,6 +133,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(CameraJpegPublishOrderPolicy.ShouldPublish(101, lastPublished), "138J-3C: newer timestamp publishes");
         }
 
+        /// <summary>
+        /// Encodes a tiny RGB24 sample and verifies JPEG framing markers.
+        /// </summary>
         private static void ManagedJpegEncoderProducesJpegBytes()
         {
             var rgb = new byte[]
@@ -123,6 +153,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(encoded.Contains((byte)0xc0) && encoded.Contains((byte)0xda), "138J-4D: JPEG contains SOF0 and SOS markers");
         }
 
+        /// <summary>
+        /// Verifies VGA input can be encoded within time budget.
+        /// </summary>
         private static void ManagedJpegEncoderHandlesVgaFramesWithoutWorkerStarvation()
         {
             const int width = 640;
@@ -148,6 +181,9 @@ namespace Unity.FoxgloveSDK.Tests
                 $"138J-4F: managed JPEG encoder avoids worker starvation at VGA ({sw.ElapsedMilliseconds}ms)");
         }
 
+        /// <summary>
+        /// Verifies async JPEG path does not call Unity APIs from worker thread.
+        /// </summary>
         private static void CameraPublisherWiresAsyncJpegWithoutUnityWorkerApis()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
@@ -177,6 +213,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        /// <summary>
+        /// Verifies the async JPEG request explicitly flips Unity readback row orientation.
+        /// </summary>
         private static void CameraPublisherFlipsUnityReadbackRowsForAsyncJpeg()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
@@ -191,6 +230,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "138J-6A: async JPEG path flips Unity readback rows before encoding");
         }
 
+        /// <summary>
+        /// Verifies captured dimensions are captured at render-time and preserved through readback.
+        /// </summary>
         private static void CameraPublisherCarriesCaptureDimensionsAcrossReadback()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
@@ -207,6 +249,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "138J-7D: JPEG encode request stores captured dimensions");
         }
 
+        /// <summary>
+        /// Returns a shared baseline budget fixture for assertions.
+        /// </summary>
         private static CameraFrameBudgetInput DefaultBudgetInput(
             int pendingReadbacks = 0,
             int encodeQueueDepth = 0,
@@ -227,8 +272,14 @@ namespace Unity.FoxgloveSDK.Tests
             };
         }
 
+        /// <summary>
+        /// Reads a file as plain text for source-level assertions.
+        /// </summary>
         private static string Read(string path) => File.ReadAllText(path);
 
+        /// <summary>
+        /// Increments pass count when condition is true, otherwise throws.
+        /// </summary>
         private static void Check(bool condition, string label)
         {
             if (!condition)

@@ -769,7 +769,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             private void OnDisable()
             {
-                // Do not unregister PollInstallTask — the install runs to completion
+                // Do not unregister PollInstallTask - the install runs to completion
                 // even if the window is closed, preserving the _onInstalled callback.
             }
 

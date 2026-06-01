@@ -10,10 +10,16 @@ using Foxglove.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Phase 134-12 regression checks for camera timestamping, sidecar wiring and shared helpers.
+    /// </summary>
     public static class Phase134_12Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Runs all assertions for phase 134-12.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -38,6 +44,9 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 134-12: {_passed} checks passed.");
         }
 
+        /// <summary>
+        /// Verifies camera publisher does not block on global readback wait APIs.
+        /// </summary>
         private static void CameraPublisherDoesNotUseGlobalReadbackWait(string path, string label)
         {
             var source = Read(path);
@@ -51,6 +60,9 @@ namespace Unity.FoxgloveSDK.Tests
                 $"134-12A-4: {label} keeps generation guard for stale callbacks");
         }
 
+        /// <summary>
+        /// Verifies Play Mode output mode locking remains active for camera schema setup.
+        /// </summary>
         private static void CameraPublisherLocksRuntimeOutputMode()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
@@ -64,6 +76,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12B-4: camera surfaces a clear warning for runtime mode switches");
         }
 
+        /// <summary>
+        /// Checks render-time timestamp propagation for primary and legacy camera paths.
+        /// </summary>
         private static void CameraPublisherCarriesRenderTimestamp()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
@@ -83,6 +98,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12C-6: legacy compressed video publisher drains timestamped access units");
         }
 
+        /// <summary>
+        /// Ensures timestamped encoder sidecar contract is present and implemented.
+        /// </summary>
         private static void TimestampedVideoSidecarContractIsWired()
         {
             var contract = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/ICameraVideoEncoderSidecar.cs");
@@ -111,6 +129,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        /// <summary>
+        /// Ensures camera compressed builders use shared timestamp conversion helpers.
+        /// </summary>
         private static void CompressedCameraBuildersUseTimestampHelper()
         {
             foreach (var path in new[]
@@ -127,6 +148,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        /// <summary>
+        /// Validates laser scan angle args and shared angle validation checks.
+        /// </summary>
         private static void LaserScanRejectsInvalidAngles()
         {
             ThrowsArgument(() => LaserScanMessageBuilder.CreateJson(1UL, "laser", double.NaN, 0.5, new[] { 1.0 }),
@@ -138,6 +162,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12F-3: LaserScan builder validates finite angles in both creation paths");
         }
 
+        /// <summary>
+        /// Verifies point cloud pending frame is written/read under a dedicated gate.
+        /// </summary>
         private static void PointCloudPendingFrameIsThreadSafe()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
@@ -149,6 +176,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12G-3: Update consumes and clears pending frame after demand gating");
         }
 
+        /// <summary>
+        /// Verifies transform publisher sanitization and shared conversion usage.
+        /// </summary>
         private static void TransformPublisherSanitizesAndSharesConversion()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs");
@@ -164,6 +194,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12H-5: transform publisher no longer uses raw parent frame id or inline timestamp conversion");
         }
 
+        /// <summary>
+        /// Verifies scene cube publisher reuses ROS2 payload and timestamp helpers.
+        /// </summary>
         private static void SceneCubePublisherReusesRos2Payload()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
@@ -177,8 +210,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12I-4: scene cube publisher no longer inlines timestamp conversion");
         }
 
+        /// <summary>
+        /// Reads a source file as UTF-8 text.
+        /// </summary>
         private static string Read(string path) => File.ReadAllText(path);
 
+        /// <summary>
+        /// Verifies an action throws <see cref="ArgumentException" />.
+        /// </summary>
         private static void ThrowsArgument(Action action, string label)
         {
             try
@@ -194,6 +233,9 @@ namespace Unity.FoxgloveSDK.Tests
             throw new Exception("[FAIL] " + label);
         }
 
+        /// <summary>
+        /// Tracks check progress and throws on failures.
+        /// </summary>
         private static void Check(bool condition, string label)
         {
             if (!condition)
