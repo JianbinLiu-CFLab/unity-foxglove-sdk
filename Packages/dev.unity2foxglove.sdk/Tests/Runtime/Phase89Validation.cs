@@ -13,20 +13,14 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validates the Phase 89 Raw/Draco point-cloud output-mode productization.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
+    /// <summary>Validation entry for the Phase 89 automated smoke checks.</summary>
     public static class Phase89Validation
     {
         private static int _passed;
 
         /// <summary>
-        /// Summary text for this member.
+        /// Run all Phase 89 checks and print validation progress to the console.
         /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         public static void Validate()
         {
             Console.WriteLine();

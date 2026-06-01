@@ -19,12 +19,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// TF tree: map -> base_link -> os_sensor -> os_lidar/os_imu.
     /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
     /// through the static maze with the point cloud accumulating (Decay time > 0).
+    ///
+    /// Mirrored copy of the package sample bootstrap for imported sample assets.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class Phase138MazeDemoBootstrap : MonoBehaviour
     {
         private const string DefaultLidarModel = "OS-1-32";

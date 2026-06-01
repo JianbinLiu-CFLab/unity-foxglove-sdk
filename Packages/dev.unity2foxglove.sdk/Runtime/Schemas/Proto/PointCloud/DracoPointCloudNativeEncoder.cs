@@ -16,9 +16,13 @@ namespace Foxglove.Schemas.PointCloud
     /// <summary>Encodes point-cloud XYZ data through the bundled native Draco plugin.</summary>
     public static class DracoPointCloudNativeEncoder
     {
+        /// <summary>Native library filename imported by P/Invoke.</summary>
         public const string NativeLibraryName = "Unity2FoxgloveDracoNative";
+        /// <summary>Bytes per point for XYZ payloads passed to the encoder.</summary>
         public const int XyzBytesPerPoint = 3 * sizeof(float);
+        /// <summary>Upper bound for packed input payload shared with point-cloud builders.</summary>
         public const int MaxInputBytes = PointCloudPackedDataBuilder.MaxPackedDataBytes;
+        /// <summary>Maximum number of points that fit in the packed input budget.</summary>
         public const int MaxInputPoints = MaxInputBytes / XyzBytesPerPoint;
 
         private const int MaxPayloadBytes = 64 * 1024 * 1024;
@@ -100,6 +104,10 @@ namespace Foxglove.Schemas.PointCloud
             return TryEncodeWithCapacity(xyz, pointCount, initialCapacity, out dracoPayload, out error);
         }
 
+        /// <summary>
+        /// Encode native VirtualLidar snapshot points and skip invalid points while preserving
+        /// only positions for Draco compression.
+        /// </summary>
         internal static bool TryEncodeVirtualLidarPoints(
             VirtualLidarPointData[] points,
             int pointCount,
@@ -148,6 +156,7 @@ namespace Foxglove.Schemas.PointCloud
             return TryEncodeWithCapacity(xyz, validCount, initialCapacity, out dracoPayload, out error);
         }
 
+        /// <summary>Validate point-count / byte-size limits before invoking native encode.</summary>
         internal static bool ValidateInputBudget(int pointCount, out string error)
         {
             var inputBytes = (long)pointCount * XyzBytesPerPoint;

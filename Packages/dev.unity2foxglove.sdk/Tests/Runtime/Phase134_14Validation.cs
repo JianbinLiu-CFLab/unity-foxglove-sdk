@@ -14,6 +14,10 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Regression checks for Phase 134-14 Draco input budget and point-cloud publisher
+    /// behavior.
+    /// </summary>
     public static class Phase134_14Validation
     {
         private static int _passed;

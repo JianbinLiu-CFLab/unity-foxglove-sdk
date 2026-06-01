@@ -24,12 +24,17 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         [ReadOnly] public NativeArray<RaycastHit> Hits;
         [ReadOnly] public NativeArray<float> RayTimeOffsets;
         [ReadOnly] public NativeArray<ushort> RayRings;
+
+        // One scan reference frame is used for the whole batch; changing this to a
+        // per-tick transform can bend a multi-tick revolution.
         [ReadOnly] public float4x4 WorldToLocal;
         [ReadOnly] public float MinRange;
         [ReadOnly] public float MaxRange;
         [ReadOnly] public float SyntheticIntensity;
         [ReadOnly] public float SyntheticReflectivity;
 
+        // The output keeps ray-slot order and marks misses invalid so the Draco worker
+        // can compact valid XYZ points off the main thread.
         [WriteOnly] public NativeArray<VirtualLidarPointData> Points;
 
         public void Execute(int index)

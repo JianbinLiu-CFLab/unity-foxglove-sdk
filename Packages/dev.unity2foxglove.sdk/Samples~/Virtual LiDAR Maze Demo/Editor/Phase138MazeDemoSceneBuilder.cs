@@ -35,11 +35,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         private const int DefaultLidarPointCount = 32 * 1024;
 
         /// <summary>
-        /// Public/member behavior description.
+        /// Rebuilds the preconfigured maze/vehicle demo scene from Unity's Foxglove menu.
         /// </summary>
-
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
-/// <summary>Public/member behavior description.</summary>
         public static void BuildScene()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

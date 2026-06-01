@@ -11,6 +11,10 @@ using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Custom inspector for point-cloud publish settings, including Draco checks and
+    /// transport mode hints.
+    /// </summary>
     [CustomEditor(typeof(FoxglovePointCloudPublisher))]
     public class FoxglovePointCloudPublisherEditor : UnityEditor.Editor
     {

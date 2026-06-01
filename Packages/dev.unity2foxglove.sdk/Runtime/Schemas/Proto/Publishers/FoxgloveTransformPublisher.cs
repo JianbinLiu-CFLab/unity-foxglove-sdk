@@ -38,9 +38,11 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrEmpty(_topic)) _topic = "/tf";
         }
 
+        /// <summary>Resolved child frame id used in generated frame transform messages.</summary>
         public string ResolvedChildFrameId =>
             SanitizeFrameId(_childFrameId, gameObject.name);
 
+        /// <summary>Resolved parent frame id used in generated frame transform messages.</summary>
         public string ResolvedParentFrameId =>
             SanitizeFrameId(_parentFrameId, "unity_world");
 

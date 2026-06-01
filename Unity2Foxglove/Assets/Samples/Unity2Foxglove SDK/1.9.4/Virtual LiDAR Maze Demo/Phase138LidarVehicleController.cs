@@ -17,11 +17,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// input or deterministic auto-wander, on both the new Input System and the
     /// legacy Input Manager.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class Phase138LidarVehicleController : MonoBehaviour
     {
         private const int IgnoreRaycastLayer = 2;
@@ -143,11 +138,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         /// and outputs a roof-mounted transform for the LiDAR sensor.
         /// Safe to call at runtime or from an editor tool.
         /// </summary>
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         public static GameObject BuildVehicle(Vector3 position, out Transform lidarMount)
         {
             return BuildVehicle(position, out _, out lidarMount);

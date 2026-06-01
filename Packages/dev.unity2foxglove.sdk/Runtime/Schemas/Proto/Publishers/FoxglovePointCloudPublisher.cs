@@ -87,19 +87,9 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
         internal bool CanQueueVirtualLidarDracoFrame => _outputMode == PointCloudOutputMode.Draco;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
 
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
 
         public override bool SupportsRos2Encoding => true;
         protected override string Ros2SchemaName => _outputMode == PointCloudOutputMode.Draco
@@ -132,14 +122,9 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Queue a decoded frame for the next publish tick. This is a
-        /// last-value-wins buffer: a new frame replaces stale pending data.
+        /// Queue a decoded frame for the next publish tick.
+        /// This is a last-value-wins buffer: a new frame replaces stale pending data.
         /// </summary>
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
-/// <summary>Public/member behavior description.</summary>
         public void SetFrame(PointCloudFrame frame)
         {
             if (frame != null)
@@ -165,11 +150,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Publish a decoded frame immediately, bypassing the regular Update cadence.
         /// </summary>
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
-/// <summary>Public/member behavior description.</summary>
+        /// <remarks>
+        /// Use the supplied timestamp to keep LiDAR timing aligned with IMU/TF inputs.
+        /// </remarks>
         public void PublishFrame(PointCloudFrame frame, ulong logTimeNs)
         {
             if (frame != null)
@@ -723,12 +706,12 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning("[Foxglove] Draco point-cloud mode disabled: " + message);
         }
 
+        /// <summary>
+        /// Captures one background Draco encode request plus the publish routes that
+        /// should receive its completed payload.
+        /// </summary>
         private sealed class DracoEncodeRequest
         {
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
             public DracoEncodeRequest(
                 PointCloudFrame frame,
                 ulong unixNs,
@@ -767,42 +750,35 @@ namespace Unity.FoxgloveSDK.Components
                 CloneMs = cloneMs;
             }
 
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Decoded point cloud frame provided directly to the encoder.</summary>
             public PointCloudFrame Frame { get; }
+            /// <summary>Native VirtualLidar snapshot used by the low-allocation Draco path.</summary>
             public VirtualLidarPointData[] LidarPoints { get; }
+            /// <summary>Number of valid source slots in <see cref="LidarPoints"/>.</summary>
             public int LidarPointCount { get; }
             public bool HasVirtualLidarSnapshot => LidarPoints != null;
+            /// <summary>Optional frame id override for source-driven virtual LiDAR snapshots.</summary>
             public string FrameId { get; }
+            /// <summary>When true, timestamp in output uses absolute nanoseconds for payload fields.</summary>
             public bool EmitAbsoluteTimeNs { get; }
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
 
+            /// <summary>Timestamp associated with this payload/request, in nanoseconds.</summary>
             public ulong UnixNs { get; }
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Whether websocket output is expected for this request.</summary>
             public bool PublishWebSocket { get; }
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Whether ROS2 bridge output is expected for this request.</summary>
             public bool PublishBridge { get; }
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
             /// <summary>Main-thread frame clone time before background Draco encode.</summary>
             public double CloneMs { get; }
         }
 
+        /// <summary>
+        /// Completed background Draco encode result, including prepared websocket and
+        /// ROS2 bridge payload bytes for main-thread publish.
+        /// </summary>
         private sealed class DracoEncodeResult
         {
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
             public DracoEncodeResult(
                 DracoEncodeRequest request,
                 PointCloudFrame frame,
@@ -821,27 +797,17 @@ namespace Unity.FoxgloveSDK.Components
                 EncodeMs = encodeMs;
             }
 
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Encode request associated with this completion result.</summary>
             public DracoEncodeRequest Request { get; }
+            /// <summary>Frame metadata used for diagnostics and fallback result handling.</summary>
             public PointCloudFrame Frame { get; }
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Whether encode and payload preparation completed successfully.</summary>
             public bool Success { get; }
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Websocket payload bytes produced for this completion.</summary>
             public byte[] WebSocketPayload { get; }
+            /// <summary>ROS2 bridge payload bytes produced for this completion.</summary>
             public byte[] BridgePayload { get; }
-            /// <summary>
-            /// Public/member behavior description.
-            /// </summary>
-
+            /// <summary>Error details when encode failed, or empty on success.</summary>
             public string Error { get; }
             /// <summary>Worker-thread native encode time.</summary>
             public double EncodeMs { get; }

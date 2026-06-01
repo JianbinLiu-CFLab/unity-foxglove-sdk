@@ -14,21 +14,10 @@ using UnityEngine.SceneManagement;
 namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 {
     /// <summary>
-    /// Editor tool that bakes the Virtual LiDAR Maze Demo into the active scene as
-    /// inspectable, pre-generated objects (no runtime auto-generation). Builds the
-    /// maze, a primitive car with a roof LiDAR/IMU unit, the
-    /// map -> base_link -> os_sensor -> os_lidar/os_imu TF tree, a
-    /// FoxgloveManager in RightHand mode, and an overview camera.
-    ///
-    /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
-    /// through the static maze. Use WASD to drive; raise Decay time to accumulate
-    /// the point cloud.
+    /// Mirrored copy of the package sample scene builder for imported sample assets.
+    /// Builds the preconfigured maze scene in the active scene and should stay in sync
+    /// with the Package sample version.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public static class Phase138MazeDemoSceneBuilder
     {
         private const int CellsX = 8;
@@ -39,11 +28,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         private const int DefaultLidarPointCount = 32 * 1024;
 
         /// <summary>
-        /// Summary text for this member.
+        /// Rebuilds the imported maze/vehicle demo scene from Unity's Foxglove menu.
         /// </summary>
-
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
-/// <summary>Summary text for this member.</summary>
         public static void BuildScene()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

@@ -217,6 +217,9 @@ namespace Unity.FoxgloveSDK.Components
         private int _activeScanValidPoints;
         private double _activeScanStartPhysSeconds;
         private float4x4 _activeScanWorldToLocal;
+
+        // Async scan batches advance through this small state machine so FixedUpdate
+        // schedules raycast/build work without waiting on it in the same tick.
         private enum PendingScanState
         {
             Idle,
@@ -225,6 +228,9 @@ namespace Unity.FoxgloveSDK.Components
             Published
         }
 
+        // Scheduled-batch bookkeeping. Crossings store revolution boundaries inside
+        // the pending batch, so a completed revolution can publish while partial
+        // columns continue accumulating into the next scan.
         private PendingScanState _pendingScanState;
         private JobHandle _pendingScanHandle;
         private int _pendingBatchCount;
@@ -520,6 +526,8 @@ namespace Unity.FoxgloveSDK.Components
             SchedulePendingScan(columnsToEmit);
         }
 
+        // Schedule the next column chunk. PhysX rays use the current tick pose, while
+        // the build job expresses hit points in the active scan's reference frame.
         private void SchedulePendingScan(int columnsToEmit)
         {
             if (_pendingScanState == PendingScanState.Scheduled)
@@ -602,6 +610,8 @@ namespace Unity.FoxgloveSDK.Components
             _pendingScanState = PendingScanState.Scheduled;
         }
 
+        // Complete the current chunk, append it to the active revolution, and publish
+        // any revolution boundary crossed by this batch.
         private void ConsumePendingScan()
         {
             if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
@@ -715,6 +725,8 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        // Shutdown/reset path: complete outstanding jobs before native buffers can be
+        // reused or disposed.
         private void DrainPendingScan()
         {
             if (_pendingScanState == PendingScanState.Scheduled)
@@ -723,6 +735,8 @@ namespace Unity.FoxgloveSDK.Components
             ClearPendingScan();
         }
 
+        // Clear only pending-batch state; active scan buffers may still hold a
+        // partial revolution.
         private void ClearPendingScan()
         {
             _pendingScanHandle = default;

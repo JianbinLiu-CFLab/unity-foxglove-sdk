@@ -139,11 +139,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         /// and outputs a roof-mounted transform for the LiDAR sensor.
         /// Safe to call at runtime or from an editor tool.
         /// </summary>
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
-/// <summary>Public/member behavior description.</summary>
         public static GameObject BuildVehicle(Vector3 position, out Transform lidarMount)
         {
             return BuildVehicle(position, out _, out lidarMount);
@@ -284,4 +279,3 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
-
