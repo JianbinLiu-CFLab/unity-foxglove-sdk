@@ -7,6 +7,8 @@
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
+using Foxglove.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -48,6 +50,9 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyVirtualLidarStableSourceRateCap();
             VerifyVirtualLidarDracoBypassesManagedPointAppend();
             VerifyVirtualLidarPointSnapshotAsmdefBoundary();
+            VerifyMetadataOnlyNativeDracoFrameCountsValidPoints();
+            VerifyVirtualLidarNativeDracoPublishRateCap();
+            VerifyManagedDracoRejectsMetadataOnlyFramesBeforePinning();
 
             Console.WriteLine("Phase 138I: all checks passed.");
             Console.WriteLine();
@@ -265,6 +270,47 @@ namespace Unity.FoxgloveSDK.Tests
                   && assemblyInfo.Contains("InternalsVisibleTo(\"Unity.FoxgloveSDK.Sensors\")", StringComparison.Ordinal)
                   && protoAssemblyInfo.Contains("InternalsVisibleTo(\"Unity.FoxgloveSDK.Sensors\")", StringComparison.Ordinal),
                 "138I-27: VirtualLidar Draco snapshot DTO lives below Sensors so Proto asmdef has no reverse dependency");
+        }
+
+        private static void VerifyMetadataOnlyNativeDracoFrameCountsValidPoints()
+        {
+            var metadataOnlyFrame = new PointCloudFrame
+            {
+                FrameId = "os_lidar",
+                ValidCount = 123
+            };
+
+            Check(metadataOnlyFrame.GetPointCount() == 123,
+                "138I-28: metadata-only native Draco frames count ValidCount without managed points");
+        }
+
+        private static void VerifyVirtualLidarNativeDracoPublishRateCap()
+        {
+            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var editor = ReadRepoText(DemoEditorRelativePath);
+            var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
+
+            Check(publisher.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
+                  && publisher.Contains("_lastNativeDracoPublishUnixNs", StringComparison.Ordinal)
+                  && publisher.Contains("ShouldQueueVirtualLidarDracoFrame(unixNs)", StringComparison.Ordinal)
+                  && publisher.Contains("RecordPointCloudDrop()", StringComparison.Ordinal),
+                "138I-29: VirtualLidar native Draco path has its own source-side publish cap and records dropped frames");
+            Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoPublishRateHz"",\s*2f\)")
+                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoPublishRateHz"",\s*2f\)"),
+                "138I-30: maze demo caps native Draco visualization to a stable 2Hz while keeping the main loop responsive");
+        }
+
+        private static void VerifyManagedDracoRejectsMetadataOnlyFramesBeforePinning()
+        {
+            var metadataOnlyFrame = new PointCloudFrame
+            {
+                FrameId = "os_lidar",
+                ValidCount = 123
+            };
+
+            Check(!DracoPointCloudNativeEncoder.TryEncode(metadataOnlyFrame, out _, out var error)
+                  && error.Contains("empty", StringComparison.OrdinalIgnoreCase),
+                "138I-31: managed Draco encoder rejects metadata-only frames before indexing managed points");
         }
 
         private static string ReadRepoText(string relativePath)

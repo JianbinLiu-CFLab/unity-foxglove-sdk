@@ -46,6 +46,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _logPerformanceDiagnostics;
         [SerializeField] private bool _includeSyntheticIntensity;
 
+        [Header("Draco")]
+        [Tooltip("Caps VirtualLidar native Draco snapshots before worker encoding. Lower this when full-resolution LiDAR makes Foxglove rendering or the main loop unstable.")]
+        [SerializeField, Min(0.1f)] private float _nativeDracoPublishRateHz = 2f;
+
         private PointCloudFrame _pendingFrame;
         private readonly object _pendingFrameGate = new object();
         private bool _warnedPointCloudBudget;
@@ -72,6 +76,7 @@ namespace Unity.FoxgloveSDK.Components
         private double _diagnosticEncodeMsTotal;
         private double _diagnosticEncodeMsMax;
         private int _diagnosticEncodeResults;
+        private ulong _lastNativeDracoPublishUnixNs;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -110,6 +115,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected override void OnDisable()
         {
+            _lastNativeDracoPublishUnixNs = 0UL;
             StopDracoEncodeWorker(clearCompleted: true);
             base.OnDisable();
         }
@@ -196,6 +202,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!publishWebSocket && !publishBridge)
                 return true;
 
+            if (!ShouldQueueVirtualLidarDracoFrame(unixNs))
+                return true;
+
             QueueVirtualLidarDracoEncode(
                 points,
                 pointCount,
@@ -205,6 +214,24 @@ namespace Unity.FoxgloveSDK.Components
                 publishWebSocket,
                 publishBridge,
                 EffectiveEncoding);
+            return true;
+        }
+
+        private bool ShouldQueueVirtualLidarDracoFrame(ulong unixNs)
+        {
+            var rateHz = Math.Max(0.1f, _nativeDracoPublishRateHz);
+            var intervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
+            var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
+
+            if (_lastNativeDracoPublishUnixNs != 0UL
+                && timestampNs >= _lastNativeDracoPublishUnixNs
+                && timestampNs - _lastNativeDracoPublishUnixNs < intervalNs)
+            {
+                RecordPointCloudDrop();
+                return false;
+            }
+
+            _lastNativeDracoPublishUnixNs = timestampNs;
             return true;
         }
 

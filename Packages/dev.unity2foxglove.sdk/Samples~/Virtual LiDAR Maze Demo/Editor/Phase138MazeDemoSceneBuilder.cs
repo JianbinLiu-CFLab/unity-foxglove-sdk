@@ -90,6 +90,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(publisher, "_maxPoints", FullFidelityPointCount);
             SetField(publisher, "_maxPackedBytes", 0);
             SetField(publisher, "_publishRateHz", 10f);
+            SetField(publisher, "_nativeDracoPublishRateHz", 2f);
             SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             // Draco output: compresses the cloud and runs the encode on a worker thread
             // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.

@@ -83,6 +83,12 @@ namespace Foxglove.Schemas.PointCloud
                 return false;
             }
 
+            if (frame.Points == null || frame.Points.Count == 0)
+            {
+                error = "Draco point-cloud frame is empty.";
+                return false;
+            }
+
             if (!ValidateInputBudget(pointCount, out error))
                 return false;
 

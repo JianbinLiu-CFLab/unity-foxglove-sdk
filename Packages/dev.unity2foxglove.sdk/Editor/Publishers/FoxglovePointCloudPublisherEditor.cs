@@ -142,7 +142,11 @@ namespace Unity.FoxgloveSDK.Editor
                 "Draco mode uses the bundled Windows native plugin Unity2FoxgloveDracoNative.dll. No helper executable or PATH setup is required.",
                 MessageType.Info);
             EditorGUILayout.HelpBox(
-                "Native Draco encode runs on a worker thread. The main thread still prepares QoS, clones frames, drains completed results, and packs Raw/ROS2 payloads when those outputs are active.",
+                "Native Draco encode runs on a worker thread. Managed frames still pass through QoS before encoding; Virtual LiDAR native snapshots can bypass that managed point append path.",
+                MessageType.Info);
+            DrawProperty("_nativeDracoPublishRateHz", "Native LiDAR Rate Hz");
+            EditorGUILayout.HelpBox(
+                "Virtual LiDAR can hand full-resolution Draco snapshots directly to the worker, bypassing the regular Update publish gate. This cap drops excess LiDAR snapshots before encoding so TF, camera, and IMU stay responsive.",
                 MessageType.Info);
 
             var checkRequested = false;

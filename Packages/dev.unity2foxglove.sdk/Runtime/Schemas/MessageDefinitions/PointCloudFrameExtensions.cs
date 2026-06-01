@@ -25,6 +25,9 @@ namespace Unity.FoxgloveSDK.Schemas
             if (frame.ValidCount < 0)
                 return count;
 
+            if (count == 0)
+                return Math.Max(0, frame.ValidCount);
+
             return Math.Max(0, Math.Min(frame.ValidCount, count));
         }
     }

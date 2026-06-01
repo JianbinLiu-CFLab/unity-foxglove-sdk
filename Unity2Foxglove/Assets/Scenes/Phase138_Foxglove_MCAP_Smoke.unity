@@ -945,6 +945,7 @@ MonoBehaviour:
   _voxelSizeMeters: 0.1
   _logQosDrops: 0
   _includeSyntheticIntensity: 0
+  _nativeDracoPublishRateHz: 2
 --- !u!1 &20880901
 GameObject:
   m_ObjectHideFlags: 0
