@@ -10,43 +10,31 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.FoxgloveSDK.Sensors;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
+using UnityEngine;
+#endif
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
-    /// <summary>Unmanaged output record consumed by VirtualLidar.</summary>
-    internal struct VirtualLidarPointData
-    {
-        public float X;
-        public float Y;
-        public float Z;
-        public float Intensity;
-        public float Reflectivity;
-        public float TimeOffsetSeconds;
-        public ushort Ring;
-        public byte IsValid;
-    }
-
-    /// <summary>Unmanaged cache of raycast outputs for Burst preprocessing.</summary>
-    internal struct VirtualLidarHitData
-    {
-        public float3 Point;
-        public float Distance;
-        public uint ColliderInstanceId;
-    }
-
+#if UNITY_5_3_OR_NEWER
     /// <summary>Builds point payload records from raycast results.</summary>
     [BurstCompile]
     internal struct VirtualLidarBuildPointsJob : IJobParallelFor
     {
-        [ReadOnly] public NativeArray<VirtualLidarHitData> Hits;
+        [ReadOnly] public NativeArray<RaycastHit> Hits;
         [ReadOnly] public NativeArray<float> RayTimeOffsets;
         [ReadOnly] public NativeArray<ushort> RayRings;
+
+        // One scan reference frame is used for the whole batch; changing this to a
+        // per-tick transform can bend a multi-tick revolution.
         [ReadOnly] public float4x4 WorldToLocal;
         [ReadOnly] public float MinRange;
         [ReadOnly] public float MaxRange;
         [ReadOnly] public float SyntheticIntensity;
         [ReadOnly] public float SyntheticReflectivity;
 
+        // The output keeps ray-slot order and marks misses invalid so the Draco worker
+        // can compact valid XYZ points off the main thread.
         [WriteOnly] public NativeArray<VirtualLidarPointData> Points;
 
         public void Execute(int index)
@@ -60,9 +48,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             }
 
             var hit = Hits[index];
-            if (hit.ColliderInstanceId != 0u && hit.Distance > 0f && hit.Distance >= MinRange && hit.Distance <= MaxRange)
+            if (hit.distance > 0f && hit.distance >= MinRange && hit.distance <= MaxRange)
             {
-                var local = math.mul(WorldToLocal, new float4(hit.Point, 1f)).xyz;
+                var local = math.mul(WorldToLocal, new float4(new float3(hit.point.x, hit.point.y, hit.point.z), 1f)).xyz;
                 var converted = CoordinateConverterFloat3.UnityToFoxglovePosition(local);
                 output.X = converted.x;
                 output.Y = converted.y;
@@ -77,5 +65,5 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             Points[index] = output;
         }
     }
-}
 #endif
+}

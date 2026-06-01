@@ -14,6 +14,10 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Regression checks for Phase 134-14 Draco input budget and point-cloud publisher
+    /// behavior.
+    /// </summary>
     public static class Phase134_14Validation
     {
         private static int _passed;
@@ -186,15 +190,17 @@ namespace Unity.FoxgloveSDK.Tests
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
 
-            Check(source.Contains("ThreadPool.QueueUserWorkItem(_ => RunDracoEncodeWorker())"),
-                "134-14J-1: Draco point-cloud encoding runs on a background worker");
-            Check(source.Contains("CloneFrameForBackgroundEncode(frame)"),
-                "134-14J-2: Draco worker receives a cloned point-cloud frame");
+            Check(source.Contains("StartDracoEncodeWorker")
+                  && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
+                  && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal"),
+                "134-14J-1: Draco point-cloud encoding runs on a below-normal background worker");
+            Check(!source.Contains("CloneFrameForBackgroundEncode"),
+                "134-14J-2: Draco worker reads the fresh per-scan frame directly without a main-thread clone");
             Check(source.Contains("_pendingDracoEncode = request"),
                 "134-14J-3: Draco pending work is last-value-wins");
             Check(source.Contains("DrainCompletedDracoEncode()"),
                 "134-14J-4: completed Draco work is drained from Update");
-            Check(source.Contains("PublishDracoPayload("),
+            Check(source.Contains("PublishCompletedDracoPayload("),
                 "134-14J-5: background encode result is published through a main-thread drain path");
             Check(source.Contains("DracoFailureWarningIntervalFrames"),
                 "134-14J-6: repeated Draco failures are throttled");

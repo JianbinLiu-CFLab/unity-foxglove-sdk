@@ -23,6 +23,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// </summary>
     public class Phase138MazeDemoBootstrap : MonoBehaviour
     {
+        private const string DefaultLidarModel = "OS-1-32";
+        private const string DefaultLidarMode = "1024x10";
+        private const int DefaultLidarPointCount = 32 * 1024;
+
         private static bool s_warnedManagerNull;
 
         private void Start()
@@ -43,14 +47,15 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
 
             var sensorUnit = lidarImuUnit.gameObject.AddComponent<SensorUnitProfile>();
             SetPrivateField(sensorUnit, "_manager", manager);
+            SetPrivateField(sensorUnit, "_model", DefaultLidarModel);
+            SetPrivateField(sensorUnit, "_mode", DefaultLidarMode);
 
             var publisher = lidarImuUnit.gameObject.AddComponent<FoxglovePointCloudPublisher>();
             SetPrivateField(publisher, "_manager", manager);
-            // Default to "no clipping": size the publish cap to the densest sensor in
-            // the registry so any model fits without being truncated (auto-scales as
-            // new/denser LiDARs are added). Uniform sampling keeps the cloud even if a
-            // user later lowers Max Points on the publisher to throttle bandwidth.
-            SetPrivateField(publisher, "_maxPoints", DensestRegistryRayCount());
+            SetPrivateField(publisher, "_maxPoints", DefaultLidarPointCount);
+            SetPrivateField(publisher, "_maxPackedBytes", 0);
+            SetPrivateField(publisher, "_publishRateHz", 10f);
+            SetPrivateField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
             SetPrivateField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             // Draco output: compresses the cloud and runs the encode on a worker thread
             // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
@@ -78,7 +83,13 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(lidar, "_sensorUnitProfile", sensorUnit);
             SetPrivateField(lidar, "_frameId", "os_lidar");
             SetPrivateField(lidar, "_pointCloudPublisher", publisher);
-            SetPrivateField(lidar, "_columnStep", 4);
+            SetPrivateField(lidar, "_columnStep", 1);
+            SetPrivateField(lidar, "_maxRaysPerScan", 0);
+            SetPrivateField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
+            // Per-tick raycast budget keeps LiDAR work off the main loop. The scan rate
+            // falls out of it automatically from rings-per-column, trading cloud Hz for
+            // a steady main thread and a continuous, non-flickering point cloud.
+            SetPrivateField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             SetPrivateField(lidar, "_publishEmptyFrames", false);
             SetPrivateField(lidar, "_drawDebugRays", false);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
@@ -151,18 +162,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             }
         }
 
-        /// <summary>Largest RayCount across all registered sensors (columnStep 4), min 4096.</summary>
-        private static int DensestRegistryRayCount()
-        {
-            var max = 4096;
-            foreach (var spec in Unity.FoxgloveSDK.Sensors.Lidar.LidarModelRegistry.All)
-            {
-                var rc = Unity.FoxgloveSDK.Sensors.Lidar.LidarScanPatternFactory.Create(spec, "", 4).RayCount;
-                if (rc > max) max = rc;
-            }
-            return max;
-        }
-
         private static void ApplySensorChildTransform(
             Transform child,
             LidarTIlExtrinsic childToSensor)
@@ -202,5 +201,3 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
-
-

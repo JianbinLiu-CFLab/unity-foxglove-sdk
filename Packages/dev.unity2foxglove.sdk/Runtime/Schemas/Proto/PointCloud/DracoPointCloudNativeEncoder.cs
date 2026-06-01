@@ -16,9 +16,13 @@ namespace Foxglove.Schemas.PointCloud
     /// <summary>Encodes point-cloud XYZ data through the bundled native Draco plugin.</summary>
     public static class DracoPointCloudNativeEncoder
     {
+        /// <summary>Native library filename imported by P/Invoke.</summary>
         public const string NativeLibraryName = "Unity2FoxgloveDracoNative";
+        /// <summary>Bytes per point for XYZ payloads passed to the encoder.</summary>
         public const int XyzBytesPerPoint = 3 * sizeof(float);
+        /// <summary>Upper bound for packed input payload shared with point-cloud builders.</summary>
         public const int MaxInputBytes = PointCloudPackedDataBuilder.MaxPackedDataBytes;
+        /// <summary>Maximum number of points that fit in the packed input budget.</summary>
         public const int MaxInputPoints = MaxInputBytes / XyzBytesPerPoint;
 
         private const int MaxPayloadBytes = 64 * 1024 * 1024;
@@ -83,6 +87,12 @@ namespace Foxglove.Schemas.PointCloud
                 return false;
             }
 
+            if (frame.Points == null || frame.Points.Count == 0)
+            {
+                error = "Draco point-cloud frame is empty.";
+                return false;
+            }
+
             if (!ValidateInputBudget(pointCount, out error))
                 return false;
 
@@ -94,6 +104,59 @@ namespace Foxglove.Schemas.PointCloud
             return TryEncodeWithCapacity(xyz, pointCount, initialCapacity, out dracoPayload, out error);
         }
 
+        /// <summary>
+        /// Encode native VirtualLidar snapshot points and skip invalid points while preserving
+        /// only positions for Draco compression.
+        /// </summary>
+        internal static bool TryEncodeVirtualLidarPoints(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            out byte[] dracoPayload,
+            out string error,
+            out int validCount)
+        {
+            dracoPayload = null;
+            error = "";
+            validCount = 0;
+
+            if (points == null || pointCount <= 0)
+            {
+                error = "Draco virtual LiDAR point snapshot is empty.";
+                return false;
+            }
+
+            pointCount = Math.Min(pointCount, points.Length);
+            var xyz = new float[checked(pointCount * 3)];
+            for (var i = 0; i < pointCount; i++)
+            {
+                var point = points[i];
+                if (point.IsValid == 0)
+                    continue;
+
+                var offset = validCount * 3;
+                xyz[offset] = point.X;
+                xyz[offset + 1] = point.Y;
+                xyz[offset + 2] = point.Z;
+                validCount++;
+            }
+
+            if (validCount == 0)
+            {
+                error = "Draco virtual LiDAR point snapshot has no valid points.";
+                return false;
+            }
+
+            if (!ValidateInputBudget(validCount, out error))
+                return false;
+
+            var initialCapacity = checked(Math.Min(
+                MaxPayloadBytes,
+                Math.Max(4096, validCount * XyzBytesPerPoint + OutputOverheadBytes)));
+
+            return TryEncodeWithCapacity(xyz, validCount, initialCapacity, out dracoPayload, out error);
+        }
+
+        /// <summary>Validate point-count / byte-size limits before invoking native encode.</summary>
         internal static bool ValidateInputBudget(int pointCount, out string error)
         {
             var inputBytes = (long)pointCount * XyzBytesPerPoint;

@@ -14,35 +14,31 @@ using UnityEngine.SceneManagement;
 namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 {
     /// <summary>
-    /// Editor tool that bakes the Virtual LiDAR Maze Demo into the active scene as
-    /// inspectable, pre-generated objects (no runtime auto-generation). Builds the
-    /// maze, a primitive car with a roof LiDAR/IMU unit, the
-    /// map -> base_link -> os_sensor -> os_lidar/os_imu TF tree, a
-    /// FoxgloveManager in RightHand mode, and an overview camera.
-    ///
-    /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
-    /// through the static maze. Use WASD to drive; raise Decay time to accumulate
-    /// the point cloud.
+    /// Mirrored copy of the package sample scene builder for imported sample assets.
+    /// Builds the preconfigured maze scene in the active scene and should stay in sync
+    /// with the Package sample version.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public static class Phase138MazeDemoSceneBuilder
     {
         private const int CellsX = 8;
         private const int CellsZ = 8;
         private const float CellSize = 2f;
+        private const string DefaultLidarModel = "OS-1-32";
+        private const string DefaultLidarMode = "1024x10";
+        private const int DefaultLidarPointCount = 32 * 1024;
 
         /// <summary>
-        /// Summary text for this member.
+        /// Rebuilds the imported maze/vehicle demo scene from Unity's Foxglove menu.
         /// </summary>
-
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
-/// <summary>Summary text for this member.</summary>
         public static void BuildScene()
         {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogWarning("[LidarMaze] Build Maze Demo Scene is disabled during Play Mode.");
+                return;
+            }
+
             // Clear previously generated demo roots, including any live
             // Phase138MazeDemoBootstrap so the baked scene is not rebuilt at Play.
             foreach (var rootName in new[]
@@ -76,20 +72,16 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 
             var sensorUnit = lidarImuUnit.gameObject.AddComponent<SensorUnitProfile>();
             SetField(sensorUnit, "_manager", manager);
+            SetField(sensorUnit, "_model", DefaultLidarModel);
+            SetField(sensorUnit, "_mode", DefaultLidarMode);
 
             var publisher = lidarImuUnit.gameObject.AddComponent<FoxglovePointCloudPublisher>();
             SetField(publisher, "_manager", manager);
             SetField(publisher, "_frameId", "os_lidar");
-            // Default to "no clipping": size the publish cap to the densest sensor in
-            // the registry so any model fits (auto-scales as new LiDARs are added).
-            // Uniform sampling keeps the cloud even if Max Points is later lowered.
-            var publishCap = 4096;
-            foreach (var spec in LidarModelRegistry.All)
-            {
-                var rc = LidarScanPatternFactory.Create(spec, "", 4).RayCount;
-                if (rc > publishCap) publishCap = rc;
-            }
-            SetField(publisher, "_maxPoints", publishCap);
+            SetField(publisher, "_maxPoints", DefaultLidarPointCount);
+            SetField(publisher, "_maxPackedBytes", 0);
+            SetField(publisher, "_publishRateHz", 10f);
+            SetField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
             SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             // Draco output: compresses the cloud and runs the encode on a worker thread
             // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
@@ -114,7 +106,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidar, "_sensorUnitProfile", sensorUnit);
             SetField(lidar, "_frameId", "os_lidar");
             SetField(lidar, "_pointCloudPublisher", publisher);
-            SetField(lidar, "_columnStep", 4);
+            SetField(lidar, "_columnStep", 1);
+            SetField(lidar, "_maxRaysPerScan", 0);
+            SetField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
+            SetField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
 
             // 4. IMU on the shared Ouster-style sensor unit frame.

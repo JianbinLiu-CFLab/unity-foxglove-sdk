@@ -10,6 +10,10 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Build-time registry of all phase-level validation entry points used by the
+    /// local validation harness and CI pipeline.
+    /// </summary>
     internal static class PhaseValidationRegistry
     {
         public static IReadOnlyList<PhaseValidationCase> All { get; } = new[]
@@ -173,6 +177,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase138d", "Phase 138D", Phase138DValidation.Validate),
             Ci("--phase138f", "Phase 138F", Phase138FValidation.Validate),
             Ci("--phase138h", "Phase 138H", Phase138HValidation.Validate),
+            Ci("--phase138i", "Phase 138I", Phase138IValidation.Validate, includeInDefault: false),
             Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 

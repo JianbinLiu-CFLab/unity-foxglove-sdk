@@ -20,6 +20,8 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// </summary>
     public class Phase138LidarVehicleController : MonoBehaviour
     {
+        private const int IgnoreRaycastLayer = 2;
+
         [SerializeField] private float _moveSpeed = 1.5f;
         [SerializeField] private float _turnRateDegPerSec = 90f;
         [SerializeField] private KeyCode _forwardKey = KeyCode.W;
@@ -137,11 +139,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         /// and outputs a roof-mounted transform for the LiDAR sensor.
         /// Safe to call at runtime or from an editor tool.
         /// </summary>
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
-/// <summary>Public/member behavior description.</summary>
         public static GameObject BuildVehicle(Vector3 position, out Transform lidarMount)
         {
             return BuildVehicle(position, out _, out lidarMount);
@@ -214,6 +211,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             mount.transform.localPosition = Vector3.zero;
             lidarMount = mount.transform;
 
+            SetLayerRecursively(root, IgnoreRaycastLayer);
             return root;
         }
 
@@ -269,7 +267,15 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 mat.SetColor("_BaseColor", color);
             renderer.sharedMaterial = mat;
         }
+
+        private static void SetLayerRecursively(GameObject go, int layer)
+        {
+            if (go == null)
+                return;
+
+            go.layer = layer;
+            foreach (Transform child in go.transform)
+                SetLayerRecursively(child.gameObject, layer);
+        }
     }
 }
-
-

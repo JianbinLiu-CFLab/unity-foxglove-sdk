@@ -13,20 +13,14 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validates the Phase 89 Raw/Draco point-cloud output-mode productization.
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
+    /// <summary>Validation entry for the Phase 89 automated smoke checks.</summary>
     public static class Phase89Validation
     {
         private static int _passed;
 
         /// <summary>
-        /// Summary text for this member.
+        /// Run all Phase 89 checks and print validation progress to the console.
         /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -97,9 +91,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "89B-4: PublishPreparedFrame branches raw versus Draco inside the unified publisher");
             Check(source.Contains("DracoPointCloudNativeEncoder")
                   && source.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
-                  && (source.Contains("TryEncode(frame, out var dracoPayload, out var encodeError)")
-                      || source.Contains("TryEncode(request.Frame, out var dracoPayload, out var encodeError)"))
-                  && source.Contains("PublishProto(payload, unixNs)"),
+                  && source.Contains(".TryEncode(")
+                  && source.Contains("PublishProto("),
                 "89B-5: Draco mode encodes through bundled native DLL and publishes CompressedPointCloud protobuf");
             Check(source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
                   && source.Contains("PointCloudMessageBuilder.CreateJson(frame)"),
@@ -107,10 +100,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("publishes nothing")
                   && source.Contains("LogDracoFailure"),
                 "89B-7: Draco failures log and do not fall back to raw");
-            Check(!source.Contains("Task.Run")
-                  && !source.Contains("BlockingCollection")
-                  && !source.Contains("ConcurrentQueue"),
-                "89B-8: Phase89 keeps synchronous native encode and adds no async worker queue");
+            Check(source.Contains("StartDracoEncodeWorker")
+                  && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
+                  && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal")
+                  && source.Contains("RunDracoEncodeWorker")
+                  && source.Contains("_pendingDracoEncode")
+                  && !source.Contains("Task.Run")
+                  && !source.Contains("BlockingCollection"),
+                "89B-8: Draco encode uses a last-value background worker without unbounded async queues");
         }
 
         private static void VerifyDracoNativeEncoder()
@@ -163,8 +160,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("Draco Help..."),
                 "89E-2: Draco Inspector section exposes native DLL check and help actions without helper path setup");
             Check(source.Contains("bundled Windows native plugin")
-                  && source.Contains("synchronous native encode"),
-                "89E-3: Inspector documents bundled DLL dependency and synchronous native encode limitation");
+                  && source.Contains("worker thread")
+                  && source.Contains("native snapshot"),
+                "89E-3: Inspector documents bundled DLL dependency and current worker/main-thread cost split");
             Check(source.Contains("General")
                   && source.Contains("Point Sources")
                   && source.Contains("Point Cloud QoS")
@@ -216,9 +214,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && combined.Contains("publishes nothing")
                   && combined.Contains("raw mode"),
                 "89G-2: docs state bundled Draco DLL behavior and no raw fallback");
-            Check(combined.Contains("synchronous native")
-                  && combined.Contains("Windows"),
-                "89G-3: docs mention Phase89 synchronous native encode limitation");
+            Check(combined.Contains("worker thread")
+                  && combined.Contains("main thread")
+                  && combined.Contains("Raw/ROS2")
+                  && !combined.Contains("synchronous native", StringComparison.OrdinalIgnoreCase),
+                "89G-3: docs describe current Draco worker behavior and main-thread preparation costs");
         }
 
         private static void VerifyBundledWindowsDracoNativePlugin()
@@ -295,4 +295,3 @@ namespace Unity.FoxgloveSDK.Tests
         }
     }
 }
-

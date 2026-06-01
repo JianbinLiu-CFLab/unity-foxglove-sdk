@@ -147,7 +147,7 @@ Raw mode publishes `foxglove.PointCloud` on `/unity/point_cloud` and supports JS
 
 Draco mode is optional and uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible plugin binaries log a warning and publish nothing; the publisher does not silently fall back to raw mode. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
 
-Phase 89 uses a synchronous native encode path. Large frames can block publish/update work while they encode, so validate with `Check Draco` and keep QoS budgets realistic.
+Draco native encode runs on a worker thread. Large frames can still spend main-thread time in QoS preparation, frame cloning, result draining, and Raw/ROS2 packing, so validate with `Check Draco`, keep QoS budgets realistic, and enable performance diagnostics for full-fidelity stress runs.
 
 ## 9. FoxgloveReplayObjectAdapter
 

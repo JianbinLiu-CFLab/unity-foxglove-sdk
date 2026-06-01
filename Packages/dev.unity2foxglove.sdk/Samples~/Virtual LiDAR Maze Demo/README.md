@@ -64,8 +64,15 @@ Set `_useAutoWander` on the vehicle controller for a hands-free demo.
 
 ## Performance
 
-- `columnStep=4` (default) balances quality and throughput.
-- Set `columnStep=1` on the VirtualLidar for a stress test (every laser column fired).
+- The generated demo defaults to `OS-1-32`, `1024x10`, `columnStep=1`, a 32768
+  point budget, and a per-`FixedUpdate` raycast budget. This keeps the main loop
+  responsive while still publishing a continuous Draco point cloud.
+- Heavier LiDAR profiles can still be selected in the Inspector. With the same
+  raycast budget, point-cloud rate falls automatically as rings-per-column
+  increases, so main-loop health wins over visualization Hz.
+- Draco output is the compressed visualization path and runs native encode work on
+  a worker thread. Raw/ROS2 PointCloud2 validation remains the full-stride path for
+  SLAM fields such as `ring`, `time_offset`, and absolute-ns `t`.
 
 ## Limitations
 

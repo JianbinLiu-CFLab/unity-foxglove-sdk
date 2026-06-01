@@ -50,7 +50,7 @@ For point clouds:
 
 Draco mode uses the bundled Windows native plugin `Unity2FoxgloveDracoNative.dll`. Missing or incompatible native plugin binaries mean Draco mode logs a warning and publishes nothing. Switch back to raw mode for dependency-free or unsupported-platform point clouds.
 
-Phase 89 uses a synchronous native Draco encode path. Large frames can block publish/update work while they encode; lower point budgets or return to raw mode while diagnosing.
+Draco native encode runs on a worker thread. Large frames can still block publish/update work through QoS preparation, frame cloning, result draining, or Raw/ROS2 packing; lower point budgets, enable performance diagnostics, or return to raw mode while diagnosing.
 
 For ROS2 output:
 
