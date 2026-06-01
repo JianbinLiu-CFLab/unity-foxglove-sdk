@@ -18,17 +18,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     internal sealed class Ros2ForUnityPointCloud2NativeBridge : MonoBehaviour
     {
         private const string BridgeObjectName = "Unity2Foxglove R2FU PointCloud2 Native Bridge";
+        private const string TfAnchorTopic = "/tf";
         private const float ScanIntervalSeconds = 0.5f;
         private const int MaxNodeCreateAttempts = 4;
         private const int WarningIntervalFrames = 240;
 
         private static Ros2ForUnityPointCloud2NativeBridge _instance;
+        private static bool _runtimeShuttingDown;
 
         private readonly Dictionary<int, Binding> _bindings = new Dictionary<int, Binding>();
         private ROS2UnityComponent _ros2Unity;
         private float _nextScanAt;
         private int _ros2FailureCount;
         private bool _warnedRos2Unavailable;
+        private bool _isStopping;
+        private bool _ros2RuntimeWasReady;
+
+        private bool IsShuttingDown => _isStopping || _runtimeShuttingDown || !Application.isPlaying;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            _instance = null;
+            _runtimeShuttingDown = false;
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -51,15 +64,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _instance = bridgeObject.AddComponent<Ros2ForUnityPointCloud2NativeBridge>();
         }
 
+        private void OnEnable()
+        {
+            _isStopping = false;
+            _ros2RuntimeWasReady = false;
+            _runtimeShuttingDown = false;
+            Application.quitting += OnApplicationQuitting;
+        }
+
+        private void OnDisable()
+        {
+            _isStopping = true;
+            ClearBindings();
+            Application.quitting -= OnApplicationQuitting;
+        }
+
+        private void OnApplicationQuit()
+        {
+            BeginShutdown();
+        }
+
         private void OnDestroy()
         {
-            ClearBindings();
+            BeginShutdown();
             if (_instance == this)
                 _instance = null;
         }
 
         private void Update()
         {
+            if (IsShuttingDown)
+            {
+                ClearBindings();
+                return;
+            }
+
             if (!Ros2NativeOutputPolicy.Enabled)
             {
                 ClearBindings();
@@ -124,6 +163,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool TryGetRos2Unity(out ROS2UnityComponent ros2Unity)
         {
             ros2Unity = null;
+            if (IsShuttingDown)
+                return false;
+
             if (_ros2Unity == null)
                 _ros2Unity = GetComponent<ROS2UnityComponent>() ?? gameObject.AddComponent<ROS2UnityComponent>();
 
@@ -131,17 +173,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (!_ros2Unity.Ok())
                 {
-                    RecordRos2Failure("ROS2 For Unity runtime is not ready; PointCloud2 Native DDS output is paused.");
+                    if (_ros2RuntimeWasReady)
+                    {
+                        BeginShutdown();
+                        return false;
+                    }
+
+                    if (!IsShuttingDown)
+                        RecordRos2Failure("ROS2 For Unity runtime is not ready; PointCloud2 Native DDS output is paused.");
+
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                RecordRos2Failure("ROS2 For Unity runtime check failed: " + ex.Message);
+                if (_ros2RuntimeWasReady)
+                {
+                    BeginShutdown();
+                    return false;
+                }
+
+                if (!IsShuttingDown)
+                    RecordRos2Failure("ROS2 For Unity runtime check failed: " + ex.Message);
+
                 return false;
             }
 
             _warnedRos2Unavailable = false;
+            _ros2RuntimeWasReady = true;
             ros2Unity = _ros2Unity;
             return true;
         }
@@ -154,6 +213,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             _warnedRos2Unavailable = true;
             Debug.LogWarning("[Foxglove][R2FU] " + message);
+        }
+
+        private void OnApplicationQuitting()
+        {
+            BeginShutdown();
+        }
+
+        private void BeginShutdown()
+        {
+            _isStopping = true;
+            _runtimeShuttingDown = true;
+            ClearBindings();
         }
 
         private void ClearBindings()
@@ -186,8 +257,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly FoxglovePointCloudPublisher _source;
             private ROS2Node _node;
             private IPublisher<sensor_msgs.msg.PointCloud2> _publisher;
+            private IPublisher<tf2_msgs.msg.TFMessage> _tfAnchorPublisher;
             private bool _subscribed;
             private bool _warnedPublishFailure;
+            private bool _readyLogged;
             private int _publishFailureCount;
 
             public Binding(
@@ -226,7 +299,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void OnPointCloud2NativeFrameReady(PointCloud2NativeFrame frame)
             {
-                if (frame == null || !Ros2NativeOutputPolicy.Enabled)
+                if (frame == null || !Ros2NativeOutputPolicy.Enabled || _owner.IsShuttingDown)
                     return;
 
                 if (!_owner.TryGetRos2Unity(out var ros2Unity))
@@ -237,6 +310,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 try
                 {
+                    PublishTfAnchor(frame);
                     _publisher.Publish(Ros2ForUnityPointCloud2MessageBuilder.Build(frame));
                     _warnedPublishFailure = false;
                 }
@@ -248,6 +322,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private bool TryEnsurePublisher(ROS2UnityComponent ros2Unity)
             {
+                if (_owner.IsShuttingDown)
+                    return false;
+
                 if (_node != null && _publisher != null)
                     return true;
 
@@ -259,12 +336,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         _node = ros2Unity.CreateNode(BuildNodeName(_source, attempt));
                         _publisher = _node.CreatePublisher<sensor_msgs.msg.PointCloud2>(Topic);
                         _warnedPublishFailure = false;
+                        LogReadyOnce();
                         return true;
                     }
                     catch (Exception ex)
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (_owner.IsShuttingDown)
+                            return false;
                     }
                 }
 
@@ -272,6 +353,108 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "Unable to create ROS2 PointCloud2 publisher for " + Topic + ": "
                     + (lastException == null ? "unknown failure" : lastException.Message));
                 return false;
+            }
+
+            private void LogReadyOnce()
+            {
+                if (_readyLogged)
+                    return;
+
+                _readyLogged = true;
+                Debug.Log(
+                    "[Foxglove][R2FU] PointCloud2 Native DDS ready: topic="
+                    + Topic
+                    + " tf="
+                    + DescribeTfAnchor()
+                    + ".");
+            }
+
+            private string DescribeTfAnchor()
+            {
+                if (!_source.PublishPointCloud2NativeTfAnchor)
+                    return "disabled";
+
+                var parentFrame = _source.PointCloud2NativeTfParentFrame;
+                var childFrame = _source.PointCloud2NativeTfChildFrame;
+                if (string.IsNullOrWhiteSpace(parentFrame)
+                    || string.IsNullOrWhiteSpace(childFrame)
+                    || string.Equals(parentFrame, childFrame, StringComparison.Ordinal))
+                {
+                    return "skipped parent=" + parentFrame + " child=" + childFrame;
+                }
+
+                return TfAnchorTopic + " " + parentFrame + "->" + childFrame;
+            }
+
+            private void PublishTfAnchor(PointCloud2NativeFrame frame)
+            {
+                if (!_source.PublishPointCloud2NativeTfAnchor || _node == null)
+                    return;
+
+                var parentFrame = _source.PointCloud2NativeTfParentFrame;
+                var childFrame = _source.PointCloud2NativeTfChildFrame;
+                if (string.IsNullOrWhiteSpace(parentFrame)
+                    || string.IsNullOrWhiteSpace(childFrame)
+                    || string.Equals(parentFrame, childFrame, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                try
+                {
+                    _tfAnchorPublisher ??= _node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic);
+                    _tfAnchorPublisher.Publish(BuildTfAnchorMessage(frame, parentFrame, childFrame));
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("ROS2 PointCloud2 TF anchor publish failed for " + childFrame + ": " + ex.Message);
+                }
+            }
+
+            private tf2_msgs.msg.TFMessage BuildTfAnchorMessage(
+                PointCloud2NativeFrame frame,
+                string parentFrame,
+                string childFrame)
+            {
+                var unixNs = frame == null ? 0UL : frame.UnixNs;
+                var translation = _source.PointCloud2NativeTfTranslation;
+                var rotation = _source.PointCloud2NativeTfRotation;
+
+                return new tf2_msgs.msg.TFMessage
+                {
+                    Transforms = new[]
+                    {
+                        new geometry_msgs.msg.TransformStamped
+                        {
+                            Header = new std_msgs.msg.Header
+                            {
+                                Stamp = new builtin_interfaces.msg.Time
+                                {
+                                    Sec = (int)(unixNs / 1_000_000_000UL),
+                                    Nanosec = (uint)(unixNs % 1_000_000_000UL)
+                                },
+                                Frame_id = parentFrame
+                            },
+                            Child_frame_id = childFrame,
+                            Transform = new geometry_msgs.msg.Transform
+                            {
+                                Translation = new geometry_msgs.msg.Vector3
+                                {
+                                    X = translation.x,
+                                    Y = translation.y,
+                                    Z = translation.z
+                                },
+                                Rotation = new geometry_msgs.msg.Quaternion
+                                {
+                                    X = rotation.x,
+                                    Y = rotation.y,
+                                    Z = rotation.z,
+                                    W = rotation.w
+                                }
+                            }
+                        }
+                    }
+                };
             }
 
             private void RecordPublishFailure(string message)
@@ -292,6 +475,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     catch (Exception) { }
                 }
 
+                if (_node != null && _tfAnchorPublisher != null)
+                {
+                    try { _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfAnchorPublisher); }
+                    catch (Exception) { }
+                }
+
                 if (_owner._ros2Unity != null && _node != null)
                 {
                     try { _owner._ros2Unity.RemoveNode(_node); }
@@ -299,6 +488,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
 
                 _publisher = null;
+                _tfAnchorPublisher = null;
                 _node = null;
             }
         }

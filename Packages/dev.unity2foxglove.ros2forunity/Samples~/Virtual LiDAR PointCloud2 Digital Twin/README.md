@@ -8,9 +8,12 @@ For the product path, configure the scene directly:
 1. On `FoxgloveManager`, enable `ROS2 Native (R2FU)`.
 2. On `FoxglovePointCloudPublisher`, choose `PointCloud2 Native`.
 3. Set topic `/points` and the desired frame id, for example `os_lidar`.
+4. Leave `Publish TF Anchor` enabled for RViz unless another TF tree already
+   owns that frame.
 
 With Unity in Play mode, `/points` should then appear as
-`sensor_msgs/msg/PointCloud2` without adding this smoke component.
+`sensor_msgs/msg/PointCloud2`, and `/tf` should carry the matching frame anchor,
+without adding this smoke component.
 
 ## Prerequisites
 
@@ -24,7 +27,7 @@ Add `Phase138VirtualLidarPointCloud2Smoke` only when you intentionally want a
 separate diagnostic harness that records publish-call timing and drop counters.
 Do not mount it for normal product acceptance, because the runtime bridge in the
 adapter package already publishes the configured `FoxglovePointCloudPublisher`
-topic.
+topic and TF anchor.
 
 ## Default Configuration
 

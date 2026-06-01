@@ -235,13 +235,18 @@ namespace Unity.FoxgloveSDK.Tests
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2MessageBuilder.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
             var readme = Read("Packages/dev.unity2foxglove.ros2forunity/README.md");
             var sampleReadme = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/README.md");
+            var rvizLauncher = Read("Scripts/smoke/launch_phase138l_rviz2.py");
 
             Check(publisher.Contains("public bool IsPointCloud2NativeOutput", StringComparison.Ordinal)
                   && publisher.Contains("public string PointCloud2NativeTopic", StringComparison.Ordinal)
-                  && publisher.Contains("public string PointCloudFrameId", StringComparison.Ordinal),
+                  && publisher.Contains("public string PointCloudFrameId", StringComparison.Ordinal)
+                  && publisher.Contains("public bool PublishPointCloud2NativeTfAnchor", StringComparison.Ordinal)
+                  && publisher.Contains("public string PointCloud2NativeTfParentFrame", StringComparison.Ordinal)
+                  && publisher.Contains("public string PointCloud2NativeTfChildFrame", StringComparison.Ordinal),
                 "138L-5A: core publisher exposes read-only product state for optional R2FU DDS adapters");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", StringComparison.Ordinal),
@@ -254,11 +259,27 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("CreatePublisher<sensor_msgs.msg.PointCloud2>(Topic)", StringComparison.Ordinal)
                   && !bridge.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
                 "138L-5D: R2FU bridge consumes prepared native frames without requiring the Phase138 smoke component");
+            Check(bridge.Contains("TfAnchorTopic = \"/tf\"", StringComparison.Ordinal)
+                  && bridge.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic)", StringComparison.Ordinal)
+                  && bridge.Contains("geometry_msgs.msg.TransformStamped", StringComparison.Ordinal)
+                  && bridge.Contains("PublishTfAnchor", StringComparison.Ordinal)
+                  && bridge.Contains("PointCloud2 Native DDS ready", StringComparison.Ordinal)
+                  && !publisher.Contains("tf2_msgs", StringComparison.Ordinal),
+                "138L-5Da: R2FU bridge publishes a product TF anchor while the core SDK stays ROS-free");
             Check(builder.Contains("Build(PointCloud2NativeFrame frame", StringComparison.Ordinal)
                   && builder.Contains("Data = frame.Data", StringComparison.Ordinal)
                   && !builder.Contains("PointCloudFrame", StringComparison.Ordinal),
                 "138L-5E: product message builder maps PointCloud2NativeFrame data without per-point packing");
+            Check(publisher.Contains("_publishPointCloud2NativeTfAnchor = true", StringComparison.Ordinal)
+                  && publisher.Contains("_pointCloud2NativeTfAnchorInitialized", StringComparison.Ordinal)
+                  && publisher.Contains("EnsurePointCloud2NativeTfAnchorInitialized", StringComparison.Ordinal)
+                  && editor.Contains("Publish TF Anchor", StringComparison.Ordinal)
+                  && editor.Contains("TF Parent Frame", StringComparison.Ordinal)
+                  && editor.Contains("TF Child Frame", StringComparison.Ordinal),
+                "138L-5Ea: PointCloud2 Native Inspector owns and migrates the default TF anchor product settings");
             Check(readme.Contains("No extra smoke component is required", StringComparison.Ordinal)
+                  && readme.Contains("Publish TF Anchor", StringComparison.Ordinal)
+                  && readme.Contains("/tf", StringComparison.Ordinal)
                   && readme.Contains("ros2 topic info /points", StringComparison.Ordinal)
                   && readme.Contains("ros2 topic hz /points", StringComparison.Ordinal)
                   && readme.Contains("ros2 topic bw /points", StringComparison.Ordinal)
@@ -267,8 +288,24 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sampleReadme.Contains("not required for the product path", StringComparison.Ordinal)
                   && sampleReadme.Contains("FoxgloveManager", StringComparison.Ordinal)
                   && sampleReadme.Contains("PointCloud2 Native", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Publish TF Anchor", StringComparison.Ordinal)
                   && sampleReadme.Contains("/points", StringComparison.Ordinal),
                 "138L-5G: Virtual LiDAR sample README no longer teaches manual smoke mounting as the default path");
+            Check(bridge.Contains("OnApplicationQuit", StringComparison.Ordinal)
+                  && bridge.Contains("Application.quitting", StringComparison.Ordinal)
+                  && bridge.Contains("IsShuttingDown", StringComparison.Ordinal)
+                  && bridge.Contains("_ros2RuntimeWasReady", StringComparison.Ordinal)
+                  && bridge.Contains("BeginShutdown();", StringComparison.Ordinal)
+                  && bridge.Contains("return false;", StringComparison.Ordinal),
+                "138L-5H: R2FU bridge suppresses expected runtime-not-ready noise during Play Mode shutdown");
+            Check(rvizLauncher.Contains("subprocess.TimeoutExpired", StringComparison.Ordinal)
+                  && rvizLauncher.Contains("--strict-topic-probe", StringComparison.Ordinal)
+                  && rvizLauncher.Contains("RViz2 can still launch", StringComparison.Ordinal)
+                  && rvizLauncher.Contains("static_transform_publisher", StringComparison.Ordinal)
+                  && rvizLauncher.Contains("--static-tf", StringComparison.Ordinal)
+                  && rvizLauncher.Contains("Static TF fallback", StringComparison.Ordinal)
+                  && rvizLauncher.Contains("--no-static-tf", StringComparison.Ordinal),
+                "138L-5I: RViz2 launcher keeps graph probe non-blocking and makes static TF fallback opt-in");
         }
 
         private static void ValidationRegistryWiresPhase138L()

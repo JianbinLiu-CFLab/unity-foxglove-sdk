@@ -38,6 +38,9 @@ namespace Unity.FoxgloveSDK.Editor
             DrawScriptField();
             DrawOutputModeSection(outputMode, topic);
             DrawGeneralSection();
+            if (GetMode(outputMode) == PointCloudOutputMode.PointCloud2Native)
+                DrawPointCloud2NativeTfAnchorSection();
+
             DrawPointSourcesSection();
             DrawPointCloudQosSection();
 
@@ -116,6 +119,27 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_useChildrenWhenSourcesEmpty", "Use Children When Sources Empty");
             DrawProperty("_includeInactiveChildren", "Include Inactive Children");
             DrawProperty("_includeSyntheticIntensity", "Include Synthetic Intensity");
+        }
+
+        private void DrawPointCloud2NativeTfAnchorSection()
+        {
+            var publishAnchor = serializedObject.FindProperty("_publishPointCloud2NativeTfAnchor");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("PointCloud2 Native TF", EditorStyles.boldLabel);
+            DrawProperty("_publishPointCloud2NativeTfAnchor", "Publish TF Anchor");
+
+            using (new EditorGUI.DisabledScope(publishAnchor != null && !publishAnchor.boolValue))
+            {
+                DrawProperty("_pointCloud2NativeTfParentFrame", "TF Parent Frame");
+                DrawProperty("_pointCloud2NativeTfChildFrame", "TF Child Frame");
+                DrawProperty("_pointCloud2NativeTfTranslation", "TF Translation");
+                DrawProperty("_pointCloud2NativeTfRotationEuler", "TF Rotation Euler");
+            }
+
+            EditorGUILayout.HelpBox(
+                "The product R2FU path publishes a small /tf anchor by default so RViz can resolve the PointCloud2 frame. Leave TF Child Frame empty to follow Frame Id; disable this when an external SLAM or robot TF tree owns the same frame.",
+                MessageType.Info);
         }
 
         private void DrawPointCloudQosSection()

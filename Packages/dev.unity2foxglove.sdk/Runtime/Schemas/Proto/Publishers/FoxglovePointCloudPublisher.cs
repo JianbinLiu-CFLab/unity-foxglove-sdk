@@ -49,6 +49,19 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _logPerformanceDiagnostics;
         [SerializeField] private bool _includeSyntheticIntensity;
 
+        [Header("PointCloud2 Native TF")]
+        [Tooltip("Publish a lightweight ROS2 TF anchor for PointCloud2 Native output so RViz can resolve the point-cloud frame without an extra helper component.")]
+        [SerializeField] private bool _publishPointCloud2NativeTfAnchor = true;
+        [Tooltip("Parent frame used when publishing the PointCloud2 Native TF anchor.")]
+        [SerializeField] private string _pointCloud2NativeTfParentFrame = "map";
+        [Tooltip("Child frame used when publishing the PointCloud2 Native TF anchor. Leave empty to follow Frame Id.")]
+        [SerializeField] private string _pointCloud2NativeTfChildFrame;
+        [Tooltip("TF anchor translation in ROS coordinates.")]
+        [SerializeField] private Vector3 _pointCloud2NativeTfTranslation;
+        [Tooltip("TF anchor rotation in degrees, applied as Unity Euler angles and published as the resulting quaternion.")]
+        [SerializeField] private Vector3 _pointCloud2NativeTfRotationEuler;
+        [SerializeField, HideInInspector] private bool _pointCloud2NativeTfAnchorInitialized;
+
         [Header("Draco")]
         [Tooltip("Optional cap for source-driven VirtualLidar native Draco snapshots. Set 0 to publish every completed source scan; main-loop protection belongs in the LiDAR raycast budget, not a fixed publisher rate.")]
         [SerializeField, Min(0f)] private float _nativeDracoMaxPublishRateHz;
@@ -126,7 +139,22 @@ namespace Unity.FoxgloveSDK.Components
         public string PointCloud2NativeTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
 
         /// <summary>Resolved frame id for optional native ROS2 PointCloud2 adapters.</summary>
-        public string PointCloudFrameId => string.IsNullOrWhiteSpace(_frameId) ? "unity_world" : _frameId;
+        public string PointCloudFrameId => SanitizeNonEmptyFrameId(_frameId, "unity_world");
+
+        /// <summary>True when PointCloud2 Native output should also publish a TF anchor.</summary>
+        public bool PublishPointCloud2NativeTfAnchor => IsPointCloud2NativeOutput && _publishPointCloud2NativeTfAnchor;
+
+        /// <summary>Resolved parent frame for the optional PointCloud2 Native TF anchor.</summary>
+        public string PointCloud2NativeTfParentFrame => SanitizeNonEmptyFrameId(_pointCloud2NativeTfParentFrame, "map");
+
+        /// <summary>Resolved child frame for the optional PointCloud2 Native TF anchor.</summary>
+        public string PointCloud2NativeTfChildFrame => SanitizeNonEmptyFrameId(_pointCloud2NativeTfChildFrame, PointCloudFrameId);
+
+        /// <summary>Translation for the optional PointCloud2 Native TF anchor.</summary>
+        public Vector3 PointCloud2NativeTfTranslation => _pointCloud2NativeTfTranslation;
+
+        /// <summary>Rotation for the optional PointCloud2 Native TF anchor.</summary>
+        public Quaternion PointCloud2NativeTfRotation => Quaternion.Euler(_pointCloud2NativeTfRotationEuler);
 
         protected override string Ros2SchemaName
         {
@@ -147,12 +175,34 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void Awake()
         {
+            EnsurePointCloud2NativeTfAnchorInitialized();
             if (string.IsNullOrEmpty(_topic)) _topic = DefaultTopic;
+        }
+
+        private void OnValidate()
+        {
+            EnsurePointCloud2NativeTfAnchorInitialized();
+        }
+
+        private void EnsurePointCloud2NativeTfAnchorInitialized()
+        {
+            if (_pointCloud2NativeTfAnchorInitialized)
+                return;
+
+            _publishPointCloud2NativeTfAnchor = true;
+            _pointCloud2NativeTfAnchorInitialized = true;
+        }
+
+        private static string SanitizeNonEmptyFrameId(string raw, string fallback)
+        {
+            var value = string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
+            return SanitizeFrameId(value, fallback);
         }
 
         protected override void Reset()
         {
             base.Reset();
+            EnsurePointCloud2NativeTfAnchorInitialized();
             _samplingMode = PointCloudSamplingMode.UniformStride;
         }
 

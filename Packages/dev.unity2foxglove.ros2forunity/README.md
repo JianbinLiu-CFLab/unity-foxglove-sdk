@@ -187,18 +187,27 @@ In Unity:
 2. On `FoxglovePointCloudPublisher`, choose `PointCloud2 Native`.
 3. Set the publisher topic and frame id, for example topic `/points` and frame
    `os_lidar`.
+4. Leave `Publish TF Anchor` enabled unless your own SLAM or robot TF tree
+   already publishes the same frame. By default this publishes `map -> <Frame Id>`.
 
 The optional R2FU package automatically subscribes to prepared
 `PointCloud2 Native` frames and publishes:
 
 ```text
 /points
+/tf
 ```
 
 The `/points` topic uses:
 
 ```text
 sensor_msgs/msg/PointCloud2
+```
+
+The `/tf` anchor topic uses:
+
+```text
+tf2_msgs/msg/TFMessage
 ```
 
 No extra smoke component is required for the product path. The core SDK prepares
@@ -214,6 +223,8 @@ ros2 topic info /points
 ros2 topic hz /points
 ros2 topic bw /points
 ros2 topic echo /points --once
+ros2 topic info /tf
+ros2 topic echo /tf --once
 ```
 
 The `Virtual LiDAR PointCloud2 Digital Twin` sample remains available as an
