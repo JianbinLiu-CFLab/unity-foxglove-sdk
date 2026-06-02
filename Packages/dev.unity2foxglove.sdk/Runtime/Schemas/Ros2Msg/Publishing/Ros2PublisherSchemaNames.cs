@@ -11,7 +11,10 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     /// </summary>
     public static class Ros2PublisherSchemaNames
     {
-        /// <summary>ROS2 schema name for transform publisher output.</summary>
+        /// <summary>
+        /// ROS2 schema name for transform publisher output, matching
+        /// <c>foxglove_msgs/TFMessage</c>.
+        /// </summary>
         public const string FrameTransform = Ros2CdrFrameTransformBuilder.SchemaName;
         /// <summary>ROS2 schema name for scene update publisher output.</summary>
         public const string SceneUpdate = Ros2CdrSceneUpdateBuilder.SchemaName;
