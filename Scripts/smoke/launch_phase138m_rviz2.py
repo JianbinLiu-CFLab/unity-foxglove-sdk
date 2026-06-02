@@ -416,16 +416,20 @@ from sensor_msgs.msg import Image
 topic = {raw_topic!r}
 result = {{"received": False}}
 
-def on_image(msg):
-    result["received"] = True
-    result["width"] = int(msg.width)
-    result["height"] = int(msg.height)
-    result["encoding"] = str(msg.encoding)
-    result["stamp"] = int(msg.header.stamp.sec) * 1000000000 + int(msg.header.stamp.nanosec)
-
 rclpy.init()
 node = rclpy.create_node("phase138m_raw_image_wait_probe")
-sub = node.create_subscription(Image, topic, on_image, 10)
+sub = node.create_subscription(
+    Image,
+    topic,
+    lambda msg: (
+        result.__setitem__("received", True),
+        result.__setitem__("width", int(msg.width)),
+        result.__setitem__("height", int(msg.height)),
+        result.__setitem__("encoding", str(msg.encoding)),
+        result.__setitem__("stamp", int(msg.header.stamp.sec) * 1000000000 + int(msg.header.stamp.nanosec)),
+    ),
+    10,
+)
 deadline = node.get_clock().now().nanoseconds + int({timeout_seconds!r} * 1000000000)
 while rclpy.ok() and not result["received"] and node.get_clock().now().nanoseconds < deadline:
     rclpy.spin_once(node, timeout_sec=0.1)
@@ -475,12 +479,14 @@ def image_republisher_main(args: argparse.Namespace) -> int:
         """CompressedImage to raw Image bridge for RViz2 display."""
 
         def __init__(self) -> None:
+            """Create publisher/subscriber state for one RViz helper node."""
             super().__init__("phase138m_rviz_image_republisher")
             self.publisher = self.create_publisher(Image, args.raw_image_topic, 10)
             self.subscription = self.create_subscription(CompressedImage, args.image_topic, self.on_image, 10)
             self.count = 0
 
         def on_image(self, msg: CompressedImage) -> None:
+            """Decode one CompressedImage and republish it as raw Image."""
             encoded = np.frombuffer(bytes(msg.data), dtype=np.uint8)
             bgr = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
             if bgr is None:
