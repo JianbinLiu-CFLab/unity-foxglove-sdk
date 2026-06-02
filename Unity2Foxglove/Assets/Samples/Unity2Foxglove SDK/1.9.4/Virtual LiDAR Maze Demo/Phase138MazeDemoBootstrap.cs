@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo
+// Purpose: Bootstraps the maze demo scene at runtime when no prebuilt scene exists.
 
 using System.Reflection;
-using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Samples.LidarMaze
@@ -19,8 +20,6 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
     /// TF tree: map -> base_link -> os_sensor -> os_lidar/os_imu.
     /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
     /// through the static maze with the point cloud accumulating (Decay time > 0).
-    ///
-    /// Mirrored copy of the package sample bootstrap for imported sample assets.
     /// </summary>
     public class Phase138MazeDemoBootstrap : MonoBehaviour
     {
@@ -58,10 +57,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(publisher, "_publishRateHz", 10f);
             SetPrivateField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
             SetPrivateField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
-            // Draco output: compresses the cloud and runs the encode on a worker thread
-            // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
-            SetPrivateField(publisher, "_outputMode", PointCloudOutputMode.Draco);
-            SetPrivateField(publisher, "_topic", "/unity/point_cloud_draco");
+            // Product SLAM path: PointCloud2 Native publishes standard PointCloud2
+            // through R2FU when the Manager's ROS2 Native output is enabled.
+            SetPrivateField(publisher, "_outputMode", PointCloudOutputMode.PointCloud2Native);
+            SetPrivateField(publisher, "_topic", "/unity/point_cloud2");
             SetPrivateField(publisher, "_frameId", "os_lidar");
             SetPrivateField(sensorUnit, "_pointCloudPublisher", publisher);
             publisher.enabled = false; // enable after verifying Runtime is ready
@@ -87,6 +86,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(lidar, "_columnStep", 1);
             SetPrivateField(lidar, "_maxRaysPerScan", 0);
             SetPrivateField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
+            // Per-tick raycast budget keeps LiDAR work off the main loop. The scan rate
+            // falls out of it automatically from rings-per-column, trading cloud Hz for
+            // a steady main thread and a continuous, non-flickering point cloud.
             SetPrivateField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             SetPrivateField(lidar, "_publishEmptyFrames", false);
             SetPrivateField(lidar, "_drawDebugRays", false);
@@ -134,20 +136,45 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(lidarPublisher, "_childFrameId", "os_lidar");
             SetPrivateField(lidarPublisher, "_useLocalTransform", true);
 
-            // 5. Static overview camera framing the whole maze.
+            // 5. Cart-mounted SLAM camera on the same sensor unit/profile clock.
+            var cartCameraMount = new GameObject("CartCameraMount").transform;
+            cartCameraMount.SetParent(lidarImuUnit, false);
+            ApplySensorChildTransform(cartCameraMount, sensorUnit.EffectiveCameraToSensor);
+
+            var sensorCamera = cartCameraMount.gameObject.AddComponent<Camera>();
+            sensorCamera.clearFlags = CameraClearFlags.Skybox;
+            sensorCamera.fieldOfView = 70f;
+            sensorCamera.nearClipPlane = 0.05f;
+            sensorCamera.farClipPlane = 80f;
+
+            var sensorCameraPublisher = cartCameraMount.gameObject.AddComponent<FoxgloveCameraPublisher>();
+            SetPrivateField(sensorCameraPublisher, "_manager", manager);
+            SetPrivateField(sensorCameraPublisher, "_sensorUnitProfile", sensorUnit);
+            SetPrivateField(sensorCameraPublisher, "_useSharedSensorClock", true);
+            SetPrivateField(sensorCameraPublisher, "_publishStandardRos2CompressedImage", true);
+            SetPrivateField(sensorCameraPublisher, "_topic", "/unity/sensor/camera/image/compressed");
+            SetPrivateField(sensorCameraPublisher, "_frameId", "os_camera");
+            SetPrivateField(sensorCameraPublisher, "_width", 640);
+            SetPrivateField(sensorCameraPublisher, "_height", 480);
+
+            var sensorCameraInfoPublisher = cartCameraMount.gameObject.AddComponent<FoxgloveCameraInfoPublisher>();
+            SetPrivateField(sensorCameraInfoPublisher, "_manager", manager);
+            SetPrivateField(sensorCameraInfoPublisher, "_sourceCamera", sensorCamera);
+            SetPrivateField(sensorCameraInfoPublisher, "_imagePublisher", sensorCameraPublisher);
+            SetPrivateField(sensorCameraInfoPublisher, "_sensorUnitProfile", sensorUnit);
+            SetPrivateField(sensorCameraInfoPublisher, "_useSharedSensorClock", true);
+            SetPrivateField(sensorCameraInfoPublisher, "_publishCameraTfAnchor", true);
+            SetPrivateField(sensorCameraInfoPublisher, "_topic", "/unity/sensor/camera/camera_info");
+            SetPrivateField(sensorCameraInfoPublisher, "_frameId", "os_camera");
+
+            // 6. Static overview camera framing the whole maze for the Unity Game view.
             var cameraGo = new GameObject("DemoCamera");
             var cam = cameraGo.AddComponent<Camera>();
             cam.clearFlags = CameraClearFlags.Skybox;
             cameraGo.transform.position = new Vector3(0f, 20f, -18f);
             cameraGo.transform.LookAt(Vector3.zero);
 
-            // Stream the overview camera to Foxglove as a JPEG image topic.
-            var cameraPublisher = cameraGo.AddComponent<FoxgloveCameraPublisher>();
-            SetPrivateField(cameraPublisher, "_manager", manager);
-            SetPrivateField(cameraPublisher, "_topic", "/unity/camera");
-            SetPrivateField(cameraPublisher, "_frameId", "unity_camera");
-
-            // 6. Verify FoxgloveManager.Runtime then enable publishing.
+            // 7. Verify FoxgloveManager.Runtime then enable publishing.
             var runtime = manager.Runtime;
             if (runtime != null)
             {
@@ -155,7 +182,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             }
             else if (!s_warnedManagerNull)
             {
-                Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null 鈥?point cloud publisher stays disabled.");
+                Debug.LogWarning("[LidarMaze] FoxgloveManager.Runtime is null point cloud publisher stays disabled.");
                 s_warnedManagerNull = true;
             }
         }

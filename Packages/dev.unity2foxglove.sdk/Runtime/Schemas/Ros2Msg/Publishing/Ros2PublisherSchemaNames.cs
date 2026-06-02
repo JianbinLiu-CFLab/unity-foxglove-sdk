@@ -22,6 +22,10 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         public const string CompressedImage = Ros2CdrCompressedImageBuilder.SchemaName;
         /// <summary>ROS2 schema name for camera calibration output.</summary>
         public const string CameraCalibration = Ros2CdrCameraCalibrationBuilder.SchemaName;
+        /// <summary>ROS2 schema name for standard compressed image output.</summary>
+        public const string SensorCompressedImage = Ros2CdrSensorCompressedImageBuilder.SchemaName;
+        /// <summary>ROS2 schema name for standard camera info output.</summary>
+        public const string SensorCameraInfo = Ros2CdrSensorCameraInfoBuilder.SchemaName;
         /// <summary>ROS2 schema name for laser scan publisher output.</summary>
         public const string LaserScan = Ros2CdrLaserScanBuilder.SchemaName;
         /// <summary>ROS2 schema name for foxglove point-cloud publisher output.</summary>

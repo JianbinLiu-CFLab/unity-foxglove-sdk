@@ -186,6 +186,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase138k", "Phase 138K", Phase138KValidation.Validate, includeInDefault: false),
             // 138L: standard sensor_msgs PointCloud2 SLAM pipeline.
             Ci("--phase138l", "Phase 138L", Phase138LValidation.Validate, includeInDefault: false),
+            // 138M: cart-mounted camera time sync and standard ROS camera schemas.
+            Ci("--phase138m", "Phase 138M", Phase138MValidation.Validate, includeInDefault: false),
             Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR Maze Demo (Editor)
+// Purpose: Builds a preconfigured maze scene with Virtual LiDAR + IMU demo components.
 
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -14,9 +15,15 @@ using UnityEngine.SceneManagement;
 namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
 {
     /// <summary>
-    /// Mirrored copy of the package sample scene builder for imported sample assets.
-    /// Builds the preconfigured maze scene in the active scene and should stay in sync
-    /// with the Package sample version.
+    /// Editor tool that bakes the Virtual LiDAR Maze Demo into the active scene as
+    /// inspectable, pre-generated objects (no runtime auto-generation). Builds the
+    /// maze, a primitive car with a roof LiDAR/IMU unit, the
+    /// map -> base_link -> os_sensor -> os_lidar/os_imu TF tree, a
+    /// FoxgloveManager in RightHand mode, and an overview camera.
+    ///
+    /// In Foxglove set the 3D panel Display frame to "map" to watch the car drive
+    /// through the static maze. Use WASD to drive; raise Decay time to accumulate
+    /// the point cloud.
     /// </summary>
     public static class Phase138MazeDemoSceneBuilder
     {
@@ -28,7 +35,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         private const int DefaultLidarPointCount = 32 * 1024;
 
         /// <summary>
-        /// Rebuilds the imported maze/vehicle demo scene from Unity's Foxglove menu.
+        /// Rebuilds the preconfigured maze/vehicle demo scene from Unity's Foxglove menu.
         /// </summary>
         [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
         public static void BuildScene()
@@ -83,10 +90,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(publisher, "_publishRateHz", 10f);
             SetField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
             SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
-            // Draco output: compresses the cloud and runs the encode on a worker thread
-            // (lower bandwidth). Publishes foxglove.CompressedPointCloud on /unity/point_cloud_draco.
-            SetField(publisher, "_outputMode", PointCloudOutputMode.Draco);
-            SetField(publisher, "_topic", "/unity/point_cloud_draco");
+            // Product SLAM path: PointCloud2 Native publishes standard PointCloud2
+            // through R2FU when the Manager's ROS2 Native output is enabled.
+            SetField(publisher, "_outputMode", PointCloudOutputMode.PointCloud2Native);
+            SetField(publisher, "_topic", "/unity/point_cloud2");
             SetField(sensorUnit, "_pointCloudPublisher", publisher);
 
             var rb = vehicleGo.AddComponent<Rigidbody>();
@@ -109,6 +116,9 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidar, "_columnStep", 1);
             SetField(lidar, "_maxRaysPerScan", 0);
             SetField(lidar, "_layerMask", (LayerMask)Physics.DefaultRaycastLayers);
+            // Per-tick raycast budget keeps LiDAR work off the main loop. The scan rate
+            // falls out of it automatically from rings-per-column, trading cloud Hz for
+            // a steady main thread and a continuous, non-flickering point cloud.
             SetField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
 
@@ -150,24 +160,39 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(lidarPub, "_childFrameId", "os_lidar");
             SetField(lidarPub, "_useLocalTransform", true);
 
-            // Optional: R2FU PointCloud2 mirror (Phase 138C smoke). Resolved by name
-            // across loaded assemblies (the smoke lives in Assembly-CSharp, not this
-            // editor assembly, so Type.GetType alone returns null). Added to the Vehicle
-            // only when the R2FU sample is imported; the smoke auto-finds the VirtualLidar.
-            var smokeType = FindTypeByName("Phase138VirtualLidarPointCloud2Smoke");
-            if (smokeType != null)
-            {
-                var smoke = vehicleGo.AddComponent(smokeType);
-                SetField(smoke, "_virtualLidar", lidar);
-                EditorUtility.SetDirty(smoke);
-            }
-            else
-            {
-                Debug.Log("[LidarMaze] Phase138VirtualLidarPointCloud2Smoke not found " +
-                          "(import the 'Virtual LiDAR PointCloud2 Digital Twin' R2FU sample to enable ROS2 output).");
-            }
+            // 5. Cart-mounted SLAM camera on the same sensor unit/profile clock.
+            var cartCameraMount = new GameObject("CartCameraMount");
+            Undo.RegisterCreatedObjectUndo(cartCameraMount, "Build Maze Demo");
+            cartCameraMount.transform.SetParent(lidarImuUnit, false);
+            ApplySensorChildTransform(cartCameraMount.transform, sensorUnit.EffectiveCameraToSensor);
 
-            // 5. Static overview camera framing the whole maze.
+            var sensorCam = cartCameraMount.AddComponent<Camera>();
+            sensorCam.clearFlags = CameraClearFlags.Skybox;
+            sensorCam.fieldOfView = 70f;
+            sensorCam.nearClipPlane = 0.05f;
+            sensorCam.farClipPlane = 80f;
+
+            var sensorCamPub = cartCameraMount.AddComponent<FoxgloveCameraPublisher>();
+            SetField(sensorCamPub, "_manager", manager);
+            SetField(sensorCamPub, "_sensorUnitProfile", sensorUnit);
+            SetField(sensorCamPub, "_useSharedSensorClock", true);
+            SetField(sensorCamPub, "_publishStandardRos2CompressedImage", true);
+            SetField(sensorCamPub, "_topic", "/unity/sensor/camera/image/compressed");
+            SetField(sensorCamPub, "_frameId", "os_camera");
+            SetField(sensorCamPub, "_width", 640);
+            SetField(sensorCamPub, "_height", 480);
+
+            var sensorCamInfoPub = cartCameraMount.AddComponent<FoxgloveCameraInfoPublisher>();
+            SetField(sensorCamInfoPub, "_manager", manager);
+            SetField(sensorCamInfoPub, "_sourceCamera", sensorCam);
+            SetField(sensorCamInfoPub, "_imagePublisher", sensorCamPub);
+            SetField(sensorCamInfoPub, "_sensorUnitProfile", sensorUnit);
+            SetField(sensorCamInfoPub, "_useSharedSensorClock", true);
+            SetField(sensorCamInfoPub, "_publishCameraTfAnchor", true);
+            SetField(sensorCamInfoPub, "_topic", "/unity/sensor/camera/camera_info");
+            SetField(sensorCamInfoPub, "_frameId", "os_camera");
+
+            // 6. Static overview camera framing the whole maze for the Unity Game view.
             var camGo = new GameObject("DemoCamera");
             Undo.RegisterCreatedObjectUndo(camGo, "Build Maze Demo");
             var cam = camGo.AddComponent<Camera>();
@@ -175,13 +200,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             camGo.transform.position = new Vector3(0f, 20f, -18f);
             camGo.transform.LookAt(Vector3.zero);
 
-            // Stream the overview camera to Foxglove as a JPEG image topic.
-            var camPub = camGo.AddComponent<FoxgloveCameraPublisher>();
-            SetField(camPub, "_manager", manager);
-            SetField(camPub, "_topic", "/unity/camera");
-            SetField(camPub, "_frameId", "unity_camera");
-
-            foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, unitPub, imu, imuPub, lidarPub, camPub })
+            foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, unitPub, imu, imuPub, lidarPub, sensorCamPub, sensorCamInfoPub })
                 EditorUtility.SetDirty(dirty);
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
 
@@ -227,15 +246,5 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
                 Debug.LogWarning($"[LidarMaze] Failed to set private field '{fieldName}' on {target.GetType().Name}");
         }
 
-        /// <summary>Find a type by simple name across all loaded assemblies (cross-assembly).</summary>
-        private static System.Type FindTypeByName(string name)
-        {
-            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var t = asm.GetType(name);
-                if (t != null) return t;
-            }
-            return null;
-        }
     }
 }

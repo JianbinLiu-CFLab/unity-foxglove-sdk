@@ -65,12 +65,24 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool IsUnsupportedGenericMember(FoxRunGenerationMember member)
         {
+            if (IsSupportedNullableMember(member))
+                return false;
+
             var looksGeneric = member.EmissionTypeName.IndexOf('<') >= 0
                                || member.RawObservedTypeName.IndexOf('`') >= 0;
             if (!looksGeneric)
                 return false;
 
             return !member.IsArray || !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType);
+        }
+
+        private static bool IsSupportedNullableMember(FoxRunGenerationMember member)
+        {
+            if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
+                return false;
+
+            return FoxRunCanonicalTypeNormalizer.IsNullableType(member.EmissionTypeName)
+                   || FoxRunCanonicalTypeNormalizer.IsNullableType(member.RawObservedTypeName);
         }
 
         private static bool IsBinaryLike(string typeName)

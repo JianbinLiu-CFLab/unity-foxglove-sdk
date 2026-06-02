@@ -19,7 +19,8 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _manager, _pointCloudPublisher;
         private SerializedProperty _profileSource, _metadataJson, _metadataMode;
         private SerializedProperty _vendor, _model, _mode;
-        private SerializedProperty _sensorFrameId, _lidarFrameId, _imuFrameId;
+        private SerializedProperty _sensorFrameId, _lidarFrameId, _imuFrameId,
+            _cameraFrameId, _cameraImageTopic, _cameraInfoTopic;
         private SerializedProperty _useLidarToSensorExtrinsic, _useImuToSensorExtrinsic,
             _useLidarToImuExtrinsic;
         private SerializedProperty _overrideLidarToSensor, _lidarToSensorRotationInputFormat,
@@ -28,6 +29,8 @@ namespace Unity.FoxgloveSDK.Editor
             _imuToSensorTranslationMeters, _imuToSensorRotation;
         private SerializedProperty _overrideLidarToImu, _lidarToImuRotationInputFormat,
             _lidarToImuTranslationMeters, _lidarToImuRotation;
+        private SerializedProperty _overrideCameraToSensor, _cameraToSensorRotationInputFormat,
+            _cameraToSensorTranslationMeters, _cameraToSensorRotation;
         private SerializedProperty _customPixelsPerColumn, _customFovTopDeg, _customFovBottomDeg,
             _customColumnsPerFrame, _customScanRateHz, _customMinRangeMeters;
 
@@ -44,6 +47,9 @@ namespace Unity.FoxgloveSDK.Editor
             _sensorFrameId = serializedObject.FindProperty("_sensorFrameId");
             _lidarFrameId = serializedObject.FindProperty("_lidarFrameId");
             _imuFrameId = serializedObject.FindProperty("_imuFrameId");
+            _cameraFrameId = serializedObject.FindProperty("_cameraFrameId");
+            _cameraImageTopic = serializedObject.FindProperty("_cameraImageTopic");
+            _cameraInfoTopic = serializedObject.FindProperty("_cameraInfoTopic");
             _useLidarToSensorExtrinsic = serializedObject.FindProperty("_useLidarToSensorExtrinsic");
             _useImuToSensorExtrinsic = serializedObject.FindProperty("_useImuToSensorExtrinsic");
             _useLidarToImuExtrinsic = serializedObject.FindProperty("_useLidarToImuExtrinsic");
@@ -59,6 +65,10 @@ namespace Unity.FoxgloveSDK.Editor
             _lidarToImuRotationInputFormat = serializedObject.FindProperty("_lidarToImuRotationInputFormat");
             _lidarToImuTranslationMeters = serializedObject.FindProperty("_lidarToImuTranslationMeters");
             _lidarToImuRotation = serializedObject.FindProperty("_lidarToImuRotation");
+            _overrideCameraToSensor = serializedObject.FindProperty("_overrideCameraToSensor");
+            _cameraToSensorRotationInputFormat = serializedObject.FindProperty("_cameraToSensorRotationInputFormat");
+            _cameraToSensorTranslationMeters = serializedObject.FindProperty("_cameraToSensorTranslationMeters");
+            _cameraToSensorRotation = serializedObject.FindProperty("_cameraToSensorRotation");
             _customPixelsPerColumn = serializedObject.FindProperty("_customPixelsPerColumn");
             _customFovTopDeg = serializedObject.FindProperty("_customFovTopDeg");
             _customFovBottomDeg = serializedObject.FindProperty("_customFovBottomDeg");
@@ -100,6 +110,9 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_sensorFrameId, new GUIContent("Sensor Frame Id"));
             EditorGUILayout.PropertyField(_lidarFrameId, new GUIContent("LiDAR Frame Id"));
             EditorGUILayout.PropertyField(_imuFrameId, new GUIContent("IMU Frame Id"));
+            EditorGUILayout.PropertyField(_cameraFrameId, new GUIContent("Camera Frame Id"));
+            EditorGUILayout.PropertyField(_cameraImageTopic, new GUIContent("Camera Image Topic"));
+            EditorGUILayout.PropertyField(_cameraInfoTopic, new GUIContent("CameraInfo Topic"));
 
             serializedObject.ApplyModifiedProperties();
             serializedObject.Update();
@@ -194,6 +207,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawReadonlyExtrinsic("Model LiDAR -> Sensor", "LiDAR->Sensor", profile.ModelLidarToSensor);
             DrawReadonlyExtrinsic("Model IMU -> Sensor", "IMU->Sensor", profile.ModelImuToSensor);
             DrawReadonlyExtrinsic("Model LiDAR -> IMU", "LiDAR->IMU", profile.ModelLidarToImu);
+            DrawReadonlyExtrinsic("Model Camera -> Sensor", "Camera->Sensor", profile.ModelCameraToSensor);
         }
 
         private void DrawExtrinsics()
@@ -245,6 +259,16 @@ namespace Unity.FoxgloveSDK.Editor
                     _lidarToImuRotation);
             }
 
+            DrawExtrinsicSection(
+                "Camera -> Sensor",
+                "Camera->Sensor",
+                "Override Model Camera->Sensor",
+                ((SensorUnitProfile)target).ModelCameraToSensor,
+                _overrideCameraToSensor,
+                _cameraToSensorTranslationMeters,
+                _cameraToSensorRotationInputFormat,
+                _cameraToSensorRotation);
+
             serializedObject.ApplyModifiedProperties();
             serializedObject.Update();
 
@@ -255,6 +279,7 @@ namespace Unity.FoxgloveSDK.Editor
                 DrawDerivedExtrinsicPreview("Derived IMU -> Sensor", "IMU->Sensor", profile.EffectiveImuToSensor);
             if (!_useLidarToImuExtrinsic.boolValue)
                 DrawDerivedExtrinsicPreview("Derived LiDAR -> IMU", "LiDAR->IMU", profile.EffectiveLidarToImu);
+            DrawDerivedExtrinsicPreview("Derived Camera -> IMU", "Camera->IMU", profile.EffectiveCameraToImu);
         }
 
         private static void DrawExtrinsicsHelp()

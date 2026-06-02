@@ -68,6 +68,12 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual string Ros2SchemaName => "";
 
         /// <summary>
+        /// Return true when a fallback is the intentional product encoding for
+        /// this publisher mode and should not be surfaced as a warning.
+        /// </summary>
+        protected virtual bool IsExpectedEncodingFallback(PublisherEncodingResolution resolution) => false;
+
+        /// <summary>
         /// True when this publisher can mirror a ROS 2 CDR payload to ROS2 Bridge.
         /// </summary>
         public virtual bool SupportsRos2BridgeOutput => SupportsRos2Encoding;
@@ -454,6 +460,7 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnIfEncodingFallback(PublisherEncodingResolution resolution)
         {
             if (!resolution.FellBack) return;
+            if (resolution.IsSupported && IsExpectedEncodingFallback(resolution)) return;
 
             var key = $"fallback:{resolution.RequestedLabel}:{resolution.EffectiveLabel}";
             if (_lastEncodingWarningKey == key) return;

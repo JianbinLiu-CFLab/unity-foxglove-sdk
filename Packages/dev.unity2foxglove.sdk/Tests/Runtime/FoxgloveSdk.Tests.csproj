@@ -29,6 +29,7 @@
     <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Camera/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/Ros2Msg/**/*.cs" />
     <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs;../../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs" />
@@ -136,6 +137,8 @@
     <Compile Include="Phase138KValidation.cs" />
     <!-- 138L: validate standard sensor_msgs PointCloud2 SLAM pipeline boundaries. -->
     <Compile Include="Phase138LValidation.cs" />
+    <!-- 138M: validate cart-mounted camera time sync and standard ROS camera schemas. -->
+    <Compile Include="Phase138MValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
     <Compile Include="Phase108Validation.cs" />
     <Compile Include="Phase109Validation.cs" />

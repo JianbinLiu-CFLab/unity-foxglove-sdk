@@ -52,6 +52,51 @@ uint8 datatype
 uint32 count
 ";
 
+        private const string CompressedImageContent =
+@"# sensor_msgs/msg/CompressedImage
+std_msgs/Header header
+string format
+uint8[] data
+================================================================================
+MSG: std_msgs/Header
+builtin_interfaces/Time stamp
+string frame_id
+================================================================================
+MSG: builtin_interfaces/Time
+int32 sec
+uint32 nanosec
+";
+
+        private const string CameraInfoContent =
+@"# sensor_msgs/msg/CameraInfo
+std_msgs/Header header
+uint32 height
+uint32 width
+string distortion_model
+float64[] d
+float64[9] k
+float64[9] r
+float64[12] p
+uint32 binning_x
+uint32 binning_y
+sensor_msgs/RegionOfInterest roi
+================================================================================
+MSG: std_msgs/Header
+builtin_interfaces/Time stamp
+string frame_id
+================================================================================
+MSG: builtin_interfaces/Time
+int32 sec
+uint32 nanosec
+================================================================================
+MSG: sensor_msgs/RegionOfInterest
+uint32 x_offset
+uint32 y_offset
+uint32 height
+uint32 width
+bool do_rectify
+";
+
         private static readonly FoxgloveRos2MsgSchemaCatalogEntry[] EntriesArray =
         {
             new FoxgloveRos2MsgSchemaCatalogEntry(
@@ -60,6 +105,20 @@ uint32 count
                 "sensor_msgs/msg/PointCloud2.msg",
                 "8084aa09f50d87844883185be4b8cd92e5483d7b20a1959312f3e67477add37d",
                 "point cloud",
+                hasDedicatedJsonOrProtobufPublisher: false),
+            new FoxgloveRos2MsgSchemaCatalogEntry(
+                "sensor_msgs/msg/CompressedImage",
+                CompressedImageContent,
+                "sensor_msgs/msg/CompressedImage.msg",
+                "4f54ea047c8a4e6fb5c3a91672ecedfb2f2e1b910fbcf0b22e930fb771ebd92e",
+                "camera",
+                hasDedicatedJsonOrProtobufPublisher: false),
+            new FoxgloveRos2MsgSchemaCatalogEntry(
+                "sensor_msgs/msg/CameraInfo",
+                CameraInfoContent,
+                "sensor_msgs/msg/CameraInfo.msg",
+                "5c9ee9c4c843473686361c20b226c8f5f3e844ca1a9ccf32e1c8aa0d637c0892",
+                "camera",
                 hasDedicatedJsonOrProtobufPublisher: false)
         };
 

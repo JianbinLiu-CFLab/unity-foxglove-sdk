@@ -134,6 +134,8 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Whether this publisher can emit ROS2 CDR payloads for compatible modes.</summary>
         public override bool SupportsRos2Encoding => true;
+        protected override bool IsExpectedEncodingFallback(PublisherEncodingResolution resolution)
+            => IsPointCloud2NativeOutput && resolution.Effective == PublisherEffectiveEncoding.Ros2;
 
         /// <summary>Current user-selected point-cloud output mode.</summary>
         public PointCloudOutputMode OutputMode => _outputMode;

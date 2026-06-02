@@ -157,6 +157,25 @@ namespace Unity.FoxgloveSDK.Tests
                         0f,
                         "Reflection",
                         2,
+                        string.Empty),
+                    new FoxRunGenerationMember(
+                        "Demo",
+                        "ListDiagnostics",
+                        "_nullable",
+                        "field",
+                        "System.Nullable`1[[System.Int32, mscorlib]]",
+                        "int?",
+                        true,
+                        false,
+                        "System.Int32",
+                        "/debug/nullable",
+                        10f,
+                        string.Empty,
+                        0,
+                        0f,
+                        0f,
+                        "Reflection",
+                        3,
                         string.Empty)
                 })
             });
@@ -166,6 +185,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "115F-B6: supported List<T> array-like members do not emit generic safety warnings");
             Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN007" && diagnostic.MemberName == "_dict"),
                 "115F-B7: unsupported generic members still emit generic safety warnings");
+            Check(!diagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN007" && diagnostic.MemberName == "_nullable"),
+                "115F-B8: supported Nullable<T> value members do not emit generic safety warnings");
         }
 
         private static void VerifyFixtureCoversHardEmissionTypes()

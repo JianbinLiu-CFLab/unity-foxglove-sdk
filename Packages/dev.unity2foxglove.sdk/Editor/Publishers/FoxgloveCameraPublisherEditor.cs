@@ -70,6 +70,9 @@ namespace Unity.FoxgloveSDK.Editor
             var maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
             var logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
             var cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
+            var sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
+            var useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
+            var publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
             var ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
             var openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
             var openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
@@ -109,6 +112,11 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(frameId, new GUIContent("Frame Id"));
             EditorGUILayout.PropertyField(width);
             EditorGUILayout.PropertyField(height);
+
+            DrawSensorCameraSection(
+                sensorUnitProfile,
+                useSharedSensorClock,
+                publishStandardRos2CompressedImage);
 
             var mode = GetMode(outputMode);
             var profile = CameraVideoOutputProfile.ForMode(mode);
@@ -195,6 +203,20 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, new GUIContent("Diagnostics Interval"));
             }
+        }
+
+        private static void DrawSensorCameraSection(
+            SerializedProperty sensorUnitProfile,
+            SerializedProperty useSharedSensorClock,
+            SerializedProperty publishStandardRos2CompressedImage)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Sensor Camera", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(sensorUnitProfile, new GUIContent("Sensor Unit Profile"));
+            EditorGUILayout.PropertyField(useSharedSensorClock, new GUIContent("Use Shared Sensor Clock"));
+            EditorGUILayout.PropertyField(
+                publishStandardRos2CompressedImage,
+                new GUIContent("Publish Standard ROS2 CompressedImage"));
         }
 
         private void DrawBackpressureSection(

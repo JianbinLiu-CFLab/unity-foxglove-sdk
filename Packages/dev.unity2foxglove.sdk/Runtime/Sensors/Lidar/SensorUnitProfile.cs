@@ -4,6 +4,7 @@
 // Module: Runtime/Sensors/Lidar
 
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Unity.FoxgloveSDK.Schemas.Camera;
 using UnityEngine;
 using NumericQuaternion = System.Numerics.Quaternion;
 using NumericVector3 = System.Numerics.Vector3;
@@ -16,7 +17,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("Foxglove/Sensors/Sensor Unit Profile")]
-    public class SensorUnitProfile : MonoBehaviour
+    public class SensorUnitProfile : MonoBehaviour, ISensorCameraProfile
     {
         /// <summary>Where the LiDAR scan geometry comes from.</summary>
         public enum ProfileSource
@@ -56,6 +57,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _sensorFrameId = "os_sensor";
         [SerializeField] private string _lidarFrameId = "os_lidar";
         [SerializeField] private string _imuFrameId = "os_imu";
+        [SerializeField] private string _cameraFrameId = "os_camera";
+        [SerializeField] private string _cameraImageTopic = "/unity/sensor/camera/image/compressed";
+        [SerializeField] private string _cameraInfoTopic = "/unity/sensor/camera/camera_info";
 
         [SerializeField] private bool _useLidarToSensorExtrinsic = true;
         [SerializeField] private bool _useImuToSensorExtrinsic = true;
@@ -75,6 +79,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private RotationInputFormat _lidarToImuRotationInputFormat = RotationInputFormat.Quaternion;
         [SerializeField] private Vector3 _lidarToImuTranslationMeters = new Vector3(0.002441f, 0.009725f, 0.030662f);
         [SerializeField] private Quaternion _lidarToImuRotation = new Quaternion(0f, 0f, 1f, 0f);
+
+        [SerializeField] private bool _overrideCameraToSensor;
+        [SerializeField] private RotationInputFormat _cameraToSensorRotationInputFormat = RotationInputFormat.Quaternion;
+        [SerializeField] private Vector3 _cameraToSensorTranslationMeters = Vector3.zero;
+        [SerializeField] private Quaternion _cameraToSensorRotation = Quaternion.identity;
 
         [SerializeField, Min(1)] private int _customPixelsPerColumn = 32;
         [SerializeField] private float _customFovTopDeg = 16.6f;
@@ -98,6 +107,19 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>IMU measurement frame, e.g. os_imu.</summary>
         public string ImuFrameId => string.IsNullOrWhiteSpace(_imuFrameId) ? "os_imu" : _imuFrameId;
 
+        /// <summary>Camera measurement frame, e.g. os_camera.</summary>
+        public string CameraFrameId => string.IsNullOrWhiteSpace(_cameraFrameId) ? "os_camera" : _cameraFrameId;
+
+        /// <summary>Default standard compressed image topic for the unit camera.</summary>
+        public string CameraImageTopic => string.IsNullOrWhiteSpace(_cameraImageTopic)
+            ? "/unity/sensor/camera/image/compressed"
+            : _cameraImageTopic;
+
+        /// <summary>Default standard CameraInfo topic for the unit camera.</summary>
+        public string CameraInfoTopic => string.IsNullOrWhiteSpace(_cameraInfoTopic)
+            ? "/unity/sensor/camera/camera_info"
+            : _cameraInfoTopic;
+
         /// <summary>Whether LiDAR-to-sensor is one of the two authored extrinsics.</summary>
         public bool UseLidarToSensorExtrinsic => _useLidarToSensorExtrinsic;
 
@@ -115,6 +137,9 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Inspector rotation input mode for the LiDAR-to-IMU override.</summary>
         public RotationInputFormat LidarToImuRotationFormat => _lidarToImuRotationInputFormat;
+
+        /// <summary>Inspector rotation input mode for the camera-to-sensor override.</summary>
+        public RotationInputFormat CameraToSensorRotationFormat => _cameraToSensorRotationInputFormat;
 
         /// <summary>The selected model's default LiDAR-to-sensor extrinsic.</summary>
         public LidarTIlExtrinsic ModelLidarToSensor
@@ -141,6 +166,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>The selected model's default LiDAR-to-IMU extrinsic derived from child-to-sensor metadata.</summary>
         public LidarTIlExtrinsic ModelLidarToImu
             => Compose(ModelLidarToSensor, Invert(ModelImuToSensor));
+
+        /// <summary>The selected model's default camera-to-sensor extrinsic.</summary>
+        public LidarTIlExtrinsic ModelCameraToSensor => LidarTIlExtrinsic.Identity;
 
         /// <summary>Effective LiDAR-to-sensor extrinsic after optional per-unit override.</summary>
         public LidarTIlExtrinsic EffectiveLidarToSensor
@@ -177,6 +205,19 @@ namespace Unity.FoxgloveSDK.Components
                     : Compose(AuthoredLidarToSensor, Invert(AuthoredImuToSensor));
             }
         }
+
+        /// <summary>Effective camera-to-sensor extrinsic after optional per-unit override.</summary>
+        public LidarTIlExtrinsic EffectiveCameraToSensor => AuthoredCameraToSensor;
+
+        /// <summary>Derived camera-to-IMU extrinsic, suitable for FAST-LIVO2-style configs.</summary>
+        public LidarTIlExtrinsic EffectiveCameraToImu
+            => Compose(AuthoredCameraToSensor, Invert(EffectiveImuToSensor));
+
+        /// <summary>Camera-to-sensor translation exposed through the schema-neutral camera profile contract.</summary>
+        public NumericVector3 CameraToSensorTranslationMeters => EffectiveCameraToSensor.TranslationMeters;
+
+        /// <summary>Camera-to-sensor rotation exposed through the schema-neutral camera profile contract.</summary>
+        public NumericQuaternion CameraToSensorRotation => EffectiveCameraToSensor.Rotation;
 
         /// <summary>Resolve the selected built-in model, if the source is BuiltInPreset.</summary>
         public bool TryGetBuiltinSpec(out LidarModelSpec spec)
@@ -261,6 +302,10 @@ namespace Unity.FoxgloveSDK.Components
         public void CopyModelLidarToImuToOverride()
             => CopyToUnityFields(ModelLidarToImu, out _lidarToImuTranslationMeters, out _lidarToImuRotation);
 
+        /// <summary>Copy current model default into the editable camera-to-sensor override fields.</summary>
+        public void CopyModelCameraToSensorToOverride()
+            => CopyToUnityFields(ModelCameraToSensor, out _cameraToSensorTranslationMeters, out _cameraToSensorRotation);
+
         /// <summary>Convert a numerics vector to a Unity vector.</summary>
         public static Vector3 ToUnityVector3(NumericVector3 value)
             => new Vector3(value.X, value.Y, value.Z);
@@ -313,6 +358,13 @@ namespace Unity.FoxgloveSDK.Components
                     ToNumericsVector3(_lidarToImuTranslationMeters),
                     ToNumericsQuaternion(_lidarToImuRotation))
                 : ModelLidarToImu;
+
+        private LidarTIlExtrinsic AuthoredCameraToSensor
+            => _overrideCameraToSensor
+                ? new LidarTIlExtrinsic(
+                    ToNumericsVector3(_cameraToSensorTranslationMeters),
+                    ToNumericsQuaternion(_cameraToSensorRotation))
+                : ModelCameraToSensor;
 
         private static float CleanNearZero(float value)
             => Mathf.Abs(value) < 1e-6f ? 0f : value;
