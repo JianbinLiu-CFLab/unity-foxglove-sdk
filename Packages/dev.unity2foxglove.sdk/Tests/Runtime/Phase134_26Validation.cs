@@ -9,6 +9,9 @@ using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_26Validation.
+    /// </summary>
     public static class Phase134_26Validation
     {
         private const string SmokePath =
@@ -20,6 +23,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

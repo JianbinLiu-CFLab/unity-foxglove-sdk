@@ -9,6 +9,9 @@ using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_24Validation.
+    /// </summary>
     public static class Phase134_24Validation
     {
         private const string ManualContextPath =
@@ -28,6 +31,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             _passed = 0;

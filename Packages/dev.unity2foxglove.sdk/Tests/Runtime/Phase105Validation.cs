@@ -10,10 +10,20 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validates the Phase100 cleanup boundary and the first wave of comment
+    /// governance checks that protect ROS2 bridge diagnostics, protocol
+    /// constants, defaults, editor drawers, and samples from undocumented API
+    /// drift.
+    /// </summary>
     public static class Phase105Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Runs the Phase105 validation suite and throws when any cleanup,
+        /// wiring, or required documentation target regresses.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

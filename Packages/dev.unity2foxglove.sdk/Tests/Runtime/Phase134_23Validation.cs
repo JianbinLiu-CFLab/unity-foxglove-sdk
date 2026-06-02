@@ -10,6 +10,9 @@ using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_23Validation.
+    /// </summary>
     public static class Phase134_23Validation
     {
         private const string PackageRoot = "Packages/dev.unity2foxglove.sdk";
@@ -18,6 +21,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             _passed = 0;

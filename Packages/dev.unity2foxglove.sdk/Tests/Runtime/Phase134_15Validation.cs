@@ -13,10 +13,16 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_15Validation.
+    /// </summary>
     public static class Phase134_15Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

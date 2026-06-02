@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Validate Phase 36 transport observability — stats snapshots,
+// Purpose: Validate Phase 36 transport observability —stats snapshots,
 // counters, immutability, and unsupported fallback.
 
 using System;
@@ -17,10 +17,16 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase36Validation.
+    /// </summary>
     public static class Phase36Validation
     {
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 36 Tests ---");
@@ -223,8 +229,17 @@ namespace Unity.FoxgloveSDK.Tests
             // No exception thrown = pass
         }
 
+        /// <summary>
+        /// Create a binary queued frame fixture.
+        /// </summary>
+        /// <param name="b">Byte payload.</param>
         private static QueuedFrame D(byte b) =>
             new(WsOpcode.Binary, new[] { b }, FramePriority.Data);
+
+        /// <summary>
+        /// Create a text queued frame fixture.
+        /// </summary>
+        /// <param name="b">Byte payload.</param>
         private static QueuedFrame C(byte b) =>
             new(WsOpcode.Text, new[] { b }, FramePriority.Control);
 
@@ -246,12 +261,41 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint> OnClientDisconnected;
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
             public void Start(string host, int port) { }
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
             public void Stop() { }
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SendText(uint clientId, string json) { }
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void BroadcastText(string json) { }
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void SendBinary(uint clientId, byte[] data) { }
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void BroadcastBinary(byte[] data) { }
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() { }
         }
 

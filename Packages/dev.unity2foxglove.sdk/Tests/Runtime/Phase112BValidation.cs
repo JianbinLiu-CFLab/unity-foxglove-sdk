@@ -14,12 +14,18 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase112BValidation.
+    /// </summary>
     public static class Phase112BValidation
     {
         private const string HelperPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveDebugOverlay.cs";
         private const string EnvelopePath = "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/FoxgloveDebugOverlayEnvelope.cs";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

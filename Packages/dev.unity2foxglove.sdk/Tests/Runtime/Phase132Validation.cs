@@ -12,6 +12,9 @@ using System.Text.Json;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase132Validation.
+    /// </summary>
     public static class Phase132Validation
     {
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
@@ -53,6 +56,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static int _passed;
         private static string _repoRoot;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

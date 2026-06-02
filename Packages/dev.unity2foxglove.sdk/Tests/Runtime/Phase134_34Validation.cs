@@ -9,10 +9,16 @@ using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_34Validation.
+    /// </summary>
     public static class Phase134_34Validation
     {
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 134-34 Tests ---");

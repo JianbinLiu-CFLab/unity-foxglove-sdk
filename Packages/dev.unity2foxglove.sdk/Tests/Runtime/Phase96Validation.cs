@@ -13,11 +13,17 @@ using Unity.FoxgloveSDK.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase96Validation.
+    /// </summary>
     public static class Phase96Validation
     {
         private const ulong SampleTimeNs = 1_700_096_000_000_000_000UL;
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

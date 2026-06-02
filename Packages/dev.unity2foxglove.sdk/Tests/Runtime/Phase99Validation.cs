@@ -17,6 +17,9 @@ using Unity.FoxgloveSDK.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase99Verdict.
+    /// </summary>
     public enum Phase99Verdict
     {
         Pass = 0,
@@ -24,6 +27,9 @@ namespace Unity.FoxgloveSDK.Tests
         Blocked = 2
     }
 
+    /// <summary>
+    /// Validation type for Phase99EvidenceStatus.
+    /// </summary>
     public enum Phase99EvidenceStatus
     {
         Pass = 0,
@@ -32,6 +38,9 @@ namespace Unity.FoxgloveSDK.Tests
         NotRun = 3
     }
 
+    /// <summary>
+    /// Validation type for Phase99Validation.
+    /// </summary>
     public static class Phase99Validation
     {
         public const int ReportSchemaVersion = 1;
@@ -51,6 +60,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -347,6 +359,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "99F-4: Phase99 validation is included in test project");
         }
 
+        /// <summary>
+        /// Validation method for Classify.
+        /// </summary>
+        /// <param name="evidence">Live evidence object to serialize.</param>
+        /// <returns>The value produced by the validation helper.</returns>
         public static Phase99Verdict Classify(IEnumerable<Phase99EvidenceItem> evidence)
         {
             var items = evidence?.ToList() ?? new List<Phase99EvidenceItem>();
@@ -483,6 +500,9 @@ namespace Unity.FoxgloveSDK.Tests
         }
     }
 
+    /// <summary>
+    /// Validation type for Phase99ReleaseGateReport.
+    /// </summary>
     public sealed class Phase99ReleaseGateReport
     {
         [JsonProperty("schemaVersion", Order = 1)]
@@ -532,6 +552,9 @@ namespace Unity.FoxgloveSDK.Tests
         public string FinalNotes { get; set; }
     }
 
+    /// <summary>
+    /// Validation type for Phase99EvidenceItem.
+    /// </summary>
     public sealed class Phase99EvidenceItem
     {
         public Phase99EvidenceItem(

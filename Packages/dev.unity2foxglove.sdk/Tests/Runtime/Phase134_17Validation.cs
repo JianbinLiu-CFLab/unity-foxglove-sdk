@@ -16,10 +16,16 @@ using Unity.FoxgloveSDK.SourceGenerators;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_17Validation.
+    /// </summary>
     public static class Phase134_17Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             _passed = 0;
@@ -374,6 +380,9 @@ namespace Unity.FoxgloveSDK.Tests
             return @"
 using Unity.FoxgloveSDK.Components;
 
+/// <summary>
+/// Validation type for InvalidTopicProbe.
+/// </summary>
 public partial class InvalidTopicProbe
 {
     [FoxRun(""" + topic + @""")]

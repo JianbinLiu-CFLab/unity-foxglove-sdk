@@ -11,8 +11,14 @@ using Google.Protobuf;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase48Validation.
+    /// </summary>
     public static class Phase48Validation
     {
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("=== Phase 48: Camera CompressedImage Protobuf Parity ===");

@@ -13,10 +13,16 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase34Validation.
+    /// </summary>
     public static class Phase34Validation
     {
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 34 Tests ---");
@@ -38,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("Phase 34: All checks passed.");
         }
 
-        // ── 34A: Attachment Records ──
+        // 鈹€鈹€ 34A: Attachment Records 鈹€鈹€
 
         private static void VerifyAttachmentRoundtrip()
         {
@@ -180,7 +186,7 @@ namespace Unity.FoxgloveSDK.Tests
             allBytes[dsOff + 7] = (byte)(fakeSize >> 56);
 
             using var ms = new MemoryStream(allBytes);
-            // Skip summary path — read the attachment directly.
+            // Skip summary path —read the attachment directly.
             var reader = new McapReader(ms);
             try
             {
@@ -248,7 +254,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        // ── 34B: Recorder Summary Integration ──
+        // 鈹€鈹€ 34B: Recorder Summary Integration 鈹€鈹€
 
         private static void VerifyRecorderAttachmentStatistics()
         {
@@ -321,7 +327,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(messages.Count == 2, "34B-3e: chunk still has 2 messages");
         }
 
-        // ── 34C: Footer Summary CRC ──
+        // 鈹€鈹€ 34C: Footer Summary CRC 鈹€鈹€
 
         private static void VerifySummaryCrcRoundtrip()
         {

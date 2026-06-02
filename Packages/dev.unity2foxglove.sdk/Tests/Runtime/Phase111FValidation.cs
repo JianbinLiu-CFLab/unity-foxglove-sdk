@@ -11,6 +11,9 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase111FValidation.
+    /// </summary>
     public static class Phase111FValidation
     {
         private const string RuntimeScripts =
@@ -21,6 +24,9 @@ namespace Unity.FoxgloveSDK.Tests
             "Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/ROS2 For Unity External Adapter";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

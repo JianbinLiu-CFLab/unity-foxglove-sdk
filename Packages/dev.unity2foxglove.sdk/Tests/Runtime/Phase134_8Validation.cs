@@ -12,10 +12,16 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_8Validation.
+    /// </summary>
     public static class Phase134_8Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -236,6 +242,12 @@ namespace Unity.FoxgloveSDK.Tests
                 set => throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for Seek.
+            /// </summary>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="loc">Reference point for the seek operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin loc) => throw new NotSupportedException();
         }
     }

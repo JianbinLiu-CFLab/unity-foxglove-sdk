@@ -21,6 +21,9 @@ using Unity.FoxgloveSDK.SourceGenerators;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase115EValidation.
+    /// </summary>
     public static class Phase115EValidation
     {
         private const string FixtureRelativePath = "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Fixtures/FoxRunGenerationModelFixture.cs";
@@ -28,6 +31,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

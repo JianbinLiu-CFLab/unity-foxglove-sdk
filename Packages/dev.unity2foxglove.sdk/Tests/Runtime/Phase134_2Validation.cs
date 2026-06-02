@@ -17,10 +17,16 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_2Validation.
+    /// </summary>
     public static class Phase134_2Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -309,22 +315,46 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
 
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
             public void Start(string host, int port) => IsRunning = true;
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
             public void Stop() => IsRunning = false;
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() { }
 
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void BroadcastText(string json)
             {
                 foreach (var clientId in _clients)
                     SendText(clientId, json);
             }
 
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void BroadcastBinary(byte[] data)
             {
                 foreach (var clientId in _clients)
                     SendBinary(clientId, data);
             }
 
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SendText(uint clientId, string json)
             {
                 if (!_texts.TryGetValue(clientId, out var list))
@@ -332,6 +362,11 @@ namespace Unity.FoxgloveSDK.Tests
                 list.Add(json);
             }
 
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void SendBinary(uint clientId, byte[] data)
             {
                 if (!_binaries.TryGetValue(clientId, out var list))
@@ -339,31 +374,63 @@ namespace Unity.FoxgloveSDK.Tests
                 list.Add(data);
             }
 
+            /// <summary>
+            /// Validation method for TextsFor.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public IReadOnlyList<string> TextsFor(uint clientId) =>
                 _texts.TryGetValue(clientId, out var list) ? list : Array.Empty<string>();
 
+            /// <summary>
+            /// Validation method for BinariesFor.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public IReadOnlyList<byte[]> BinariesFor(uint clientId) =>
                 _binaries.TryGetValue(clientId, out var list) ? list : Array.Empty<byte[]>();
 
+            /// <summary>
+            /// Validation method for ClearTexts.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
             public void ClearTexts(uint clientId)
             {
                 if (_texts.TryGetValue(clientId, out var list))
                     list.Clear();
             }
 
+            /// <summary>
+            /// Validation method for ClearBinaries.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
             public void ClearBinaries(uint clientId)
             {
                 if (_binaries.TryGetValue(clientId, out var list))
                     list.Clear();
             }
 
+            /// <summary>
+            /// Validation method for Connect.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
             public void Connect(uint clientId)
             {
                 _clients.Add(clientId);
                 OnClientConnected?.Invoke(clientId);
             }
 
+            /// <summary>
+            /// Validation method for Text.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void Text(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
+            /// <summary>
+            /// Validation method for Binary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void Binary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
         }
     }

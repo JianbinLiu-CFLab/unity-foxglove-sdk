@@ -11,10 +11,16 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase41Validation.
+    /// </summary>
     public static class Phase41Validation
     {
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 41 Tests ---");
@@ -41,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("Phase 41: All checks passed.");
         }
 
-        // ── Policy ──
+        // 鈹€鈹€ Policy 鈹€鈹€
 
         private static void TestFixedRateAlwaysPublishes()
         {
@@ -101,7 +107,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!changed, "41A-9: repeated NaN does not spam publishes (NaN.Equals(NaN) is true)");
         }
 
-        // ── Emitter / Backward Compat ──
+        // 鈹€鈹€ Emitter / Backward Compat 鈹€鈹€
 
         private static void TestEmitterOutputPolicyMetadata()
         {

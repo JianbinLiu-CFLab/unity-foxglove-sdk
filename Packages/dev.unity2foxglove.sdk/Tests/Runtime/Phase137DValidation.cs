@@ -12,10 +12,16 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase137DValidation.
+    /// </summary>
     public static class Phase137DValidation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 137D Tests ---");
@@ -51,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(typeof(McapRecordDecoder).GetMethod(m) != null,
                     "137D-3: McapRecordDecoder." + m + " exists");
 
-            // Overloaded methods — check via GetMethods
+            // Overloaded methods —check via GetMethods
             var allMethods = typeof(McapRecordDecoder).GetMethods()
                 .Select(m => m.Name).ToHashSet();
             foreach (var m in new[] { "DecodeSchema", "DecodeChannel" })

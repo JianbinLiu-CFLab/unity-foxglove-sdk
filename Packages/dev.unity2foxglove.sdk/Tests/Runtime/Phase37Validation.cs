@@ -12,10 +12,16 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase37Validation.
+    /// </summary>
     public static class Phase37Validation
     {
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 37 Tests ---");

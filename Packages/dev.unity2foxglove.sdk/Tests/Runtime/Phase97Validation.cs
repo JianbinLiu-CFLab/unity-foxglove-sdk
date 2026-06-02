@@ -15,11 +15,17 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase97Validation.
+    /// </summary>
     public static class Phase97Validation
     {
         private static readonly object EnvironmentGate = new object();
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -354,6 +360,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             public List<string> Calls { get; } = new List<string>();
 
+            /// <summary>
+            /// Validation method for Run.
+            /// </summary>
+            /// <param name="executable">Executable path launched by the validation helper.</param>
+            /// <param name="arguments">Command-line arguments passed to the validation helper.</param>
+            /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
             {
                 Calls.Add(executable + " " + arguments);
@@ -378,6 +391,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private sealed class LaunchFailureCommandRunner : IRos2BridgeCommandRunner
         {
+            /// <summary>
+            /// Validation method for Run.
+            /// </summary>
+            /// <param name="executable">Executable path launched by the validation helper.</param>
+            /// <param name="arguments">Command-line arguments passed to the validation helper.</param>
+            /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
                 => new Ros2BridgeCommandResult(-1, "", "", false, "file not found", 1);
 
@@ -404,6 +424,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             public bool Called { get; private set; }
 
+            /// <summary>
+            /// Validation method for Ping.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
+            /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs)
             {
                 Called = true;

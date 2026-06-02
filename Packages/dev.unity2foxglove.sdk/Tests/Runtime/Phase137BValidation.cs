@@ -12,10 +12,16 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase137BValidation.
+    /// </summary>
     public static class Phase137BValidation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 137B Tests ---");

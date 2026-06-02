@@ -12,6 +12,9 @@ using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase112Validation.
+    /// </summary>
     public static class Phase112Validation
     {
         private const string ManifestDir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest";
@@ -19,6 +22,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string PlayModeHookPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

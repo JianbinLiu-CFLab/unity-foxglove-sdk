@@ -9,6 +9,9 @@ using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase137EValidation.
+    /// </summary>
     public static class Phase137EValidation
     {
         private static readonly string Dir =
@@ -35,6 +38,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 137E Tests ---");

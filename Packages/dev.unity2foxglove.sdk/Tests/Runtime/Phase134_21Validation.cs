@@ -11,12 +11,18 @@ using System.Reflection;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_21Validation.
+    /// </summary>
     public static class Phase134_21Validation
     {
         private const string FactoryTypeName = "Unity2Foxglove.Ros2ForUnity.Unity2FoxgloveRos2ContextFactory";
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             _passed = 0;
