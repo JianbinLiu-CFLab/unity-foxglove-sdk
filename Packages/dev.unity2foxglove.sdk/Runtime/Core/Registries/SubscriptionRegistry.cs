@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Core/Registries
@@ -11,33 +11,18 @@ namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Tracks per-client subscription state.
-    /// Maps clientId 鈫?(subscriptionId 鈫?channelId).
+    /// Maps clientId -> (subscriptionId -> channelId).
     /// </summary>
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public class SubscriptionRegistry
     {
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         internal const int MaxSubscriptionsPerClient = 1024;
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         internal const int MaxTotalSubscriptions = 8192;
 
         private readonly Dictionary<uint, Dictionary<uint, uint>> _clients
             = new Dictionary<uint, Dictionary<uint, uint>>();
 
-        private readonly Dictionary<uint, List<(uint clientId, uint subscriptionId)>> _byChannel
-            = new Dictionary<uint, List<(uint clientId, uint subscriptionId)>>();
+        private readonly Dictionary<uint, HashSet<(uint clientId, uint subscriptionId)>> _byChannel
+            = new Dictionary<uint, HashSet<(uint clientId, uint subscriptionId)>>();
 
         private readonly object _lock = new object();
 
@@ -54,9 +39,6 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Try to apply a subscribe batch atomically. Over-budget batches are
         /// rejected without mutating client subscription or reverse-index state.
-        /// </summary>
-        /// <summary>
-        /// Summary text for this member.
         /// </summary>
 
         public bool TryAddSubscriptions(
@@ -134,9 +116,6 @@ namespace Unity.FoxgloveSDK.Core
         /// pairs that were removed, so callers can clean up graph entries using the
         /// same subscriptionId that HandleSubscribe added.
         /// </summary>
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public List<(uint subscriptionId, uint channelId)> RemoveSubscriptions(uint clientId, IEnumerable<uint> subscriptionIds)
         {
@@ -180,9 +159,6 @@ namespace Unity.FoxgloveSDK.Core
         /// Snapshot all (subscriptionId, channelId) pairs for a client and remove them,
         /// so callers can clean up graph entries before the data is gone.
         /// </summary>
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public List<(uint subscriptionId, uint channelId)> RemoveClientPreservingData(uint clientId)
         {
@@ -205,9 +181,6 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Remove all subscriptions targeting a channel and return removed
         /// client/subscription pairs for connection graph cleanup.
-        /// </summary>
-        /// <summary>
-        /// Summary text for this member.
         /// </summary>
 
         public List<(uint clientId, uint subscriptionId, uint channelId)> RemoveChannel(uint channelId)
@@ -239,9 +212,6 @@ namespace Unity.FoxgloveSDK.Core
         /// Snapshot of (clientId, subscriptionId) pairs subscribed to a given channel.
         /// Returns a materialized list so callers don't hold the lock.
         /// </summary>
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public List<(uint clientId, uint subscriptionId)> GetSubscribersForChannel(uint channelId)
         {
@@ -253,11 +223,6 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Copy subscribers for a channel into a caller-owned list.
         /// </summary>
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         public void CopySubscribersForChannel(uint channelId, List<(uint clientId, uint subscriptionId)> destination)
         {
             if (destination == null)
@@ -271,12 +236,8 @@ namespace Unity.FoxgloveSDK.Core
                     if (subscribers.Count == 0)
                         return;
 
-                    var seen = new HashSet<(uint, uint)>();
                     foreach (var subscriber in subscribers)
-                    {
-                        if (seen.Add(subscriber))
-                            destination.Add(subscriber);
-                    }
+                        destination.Add(subscriber);
                 }
             }
         }
@@ -284,11 +245,6 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Return whether any client is currently subscribed to a channel.
         /// </summary>
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
-
-/// <summary>Summary text for this member.</summary>
         public bool HasSubscribersForChannel(uint channelId)
         {
             lock (_lock)
@@ -338,12 +294,9 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (!_byChannel.TryGetValue(channelId, out var subscribers))
             {
-                subscribers = new List<(uint clientId, uint subscriptionId)>();
+                subscribers = new HashSet<(uint clientId, uint subscriptionId)>();
                 _byChannel[channelId] = subscribers;
             }
-
-            if (subscribers.Contains((clientId, subscriptionId)))
-                return;
 
             subscribers.Add((clientId, subscriptionId));
         }
@@ -353,28 +306,14 @@ namespace Unity.FoxgloveSDK.Core
             if (!_byChannel.TryGetValue(channelId, out var subscribers))
                 return;
 
-            for (var i = subscribers.Count - 1; i >= 0; i--)
-            {
-                var subscriber = subscribers[i];
-                if (subscriber.clientId == clientId && subscriber.subscriptionId == subscriptionId)
-                    subscribers.RemoveAt(i);
-            }
+            subscribers.Remove((clientId, subscriptionId));
 
             if (subscribers.Count == 0)
                 _byChannel.Remove(channelId);
         }
     }
-
-    /// <summary>
-    /// Summary text for this member.
-    /// </summary>
-
-/// <summary>Summary text for this member.</summary>
     public readonly struct SubscriptionRegistryChange
     {
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public SubscriptionRegistryChange(
             uint subscriptionId,
@@ -388,26 +327,12 @@ namespace Unity.FoxgloveSDK.Core
             PreviousChannelId = previousChannelId;
         }
 
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
-
         public uint SubscriptionId { get; }
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public uint ChannelId { get; }
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public bool HadPrevious { get; }
-        /// <summary>
-        /// Summary text for this member.
-        /// </summary>
 
         public uint PreviousChannelId { get; }
     }
 }
-

@@ -20,12 +20,28 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Default retained payload byte limit for no-index sequential fallback.</summary>
         public const long DefaultMaxPayloadBytes = 256L * 1024L * 1024L;
+        /// <summary>Default retained metadata record limit for streaming scans.</summary>
+        public const int DefaultMaxMetadataRecords = 10000;
+        /// <summary>Default retained metadata byte limit for streaming scans.</summary>
+        public const long DefaultMaxMetadataBytes = 64L * 1024L * 1024L;
+        /// <summary>Default retained attachment record limit for streaming scans.</summary>
+        public const int DefaultMaxAttachmentRecords = 10000;
+        /// <summary>Default retained attachment byte limit for streaming scans.</summary>
+        public const long DefaultMaxAttachmentBytes = 256L * 1024L * 1024L;
 
         /// <summary>Maximum retained messages. A value of 0 disables the count limit.</summary>
         public int MaxMessages = DefaultMaxMessages;
 
         /// <summary>Maximum retained payload bytes. A value of 0 disables the payload-byte limit.</summary>
         public long MaxPayloadBytes = DefaultMaxPayloadBytes;
+        /// <summary>Maximum retained metadata records. A value of 0 disables the count limit.</summary>
+        public int MaxMetadataRecords = DefaultMaxMetadataRecords;
+        /// <summary>Maximum retained metadata bytes. A value of 0 disables the byte limit.</summary>
+        public long MaxMetadataBytes = DefaultMaxMetadataBytes;
+        /// <summary>Maximum retained attachment records. A value of 0 disables the count limit.</summary>
+        public int MaxAttachmentRecords = DefaultMaxAttachmentRecords;
+        /// <summary>Maximum retained attachment bytes. A value of 0 disables the byte limit.</summary>
+        public long MaxAttachmentBytes = DefaultMaxAttachmentBytes;
 
         /// <summary>Default production limits. The returned instance may be customized by the caller.</summary>
         public static McapSequentialReadLimits Default => new McapSequentialReadLimits();
@@ -34,7 +50,11 @@ namespace Unity.FoxgloveSDK.IO
         public static McapSequentialReadLimits UnlimitedForTests => new McapSequentialReadLimits
         {
             MaxMessages = 0,
-            MaxPayloadBytes = 0
+            MaxPayloadBytes = 0,
+            MaxMetadataRecords = 0,
+            MaxMetadataBytes = 0,
+            MaxAttachmentRecords = 0,
+            MaxAttachmentBytes = 0
         };
 
         /// <summary>Validate limit values before a sequential scan starts.</summary>
@@ -44,6 +64,14 @@ namespace Unity.FoxgloveSDK.IO
                 throw new ArgumentOutOfRangeException(nameof(MaxMessages), "MaxMessages cannot be negative.");
             if (MaxPayloadBytes < 0)
                 throw new ArgumentOutOfRangeException(nameof(MaxPayloadBytes), "MaxPayloadBytes cannot be negative.");
+            if (MaxMetadataRecords < 0)
+                throw new ArgumentOutOfRangeException(nameof(MaxMetadataRecords), "MaxMetadataRecords cannot be negative.");
+            if (MaxMetadataBytes < 0)
+                throw new ArgumentOutOfRangeException(nameof(MaxMetadataBytes), "MaxMetadataBytes cannot be negative.");
+            if (MaxAttachmentRecords < 0)
+                throw new ArgumentOutOfRangeException(nameof(MaxAttachmentRecords), "MaxAttachmentRecords cannot be negative.");
+            if (MaxAttachmentBytes < 0)
+                throw new ArgumentOutOfRangeException(nameof(MaxAttachmentBytes), "MaxAttachmentBytes cannot be negative.");
         }
     }
 }

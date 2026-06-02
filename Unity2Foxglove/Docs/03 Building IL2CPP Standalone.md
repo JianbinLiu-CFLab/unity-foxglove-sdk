@@ -1,4 +1,4 @@
-﻿# 1. IL2CPP Build Guide
+# 1. IL2CPP Build Guide
 
 This document covers how to build the Unity2Foxglove Demo project as an IL2CPP standalone player and verify the SDK's behavior in an IL2CPP environment.
 

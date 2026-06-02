@@ -1,4 +1,4 @@
-﻿## 1. Purpose
+## 1. Purpose
 
 Use this page after Unity2Foxglove SDK is already installed. You do not need to rebuild the quick-start scene from [02_Installation_and_Quick_Start](02_Installation_and_Quick_Start.md) if you want a ready-made example.
 

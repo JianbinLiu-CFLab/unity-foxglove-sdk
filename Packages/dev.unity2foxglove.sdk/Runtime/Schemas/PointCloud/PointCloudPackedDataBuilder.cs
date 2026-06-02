@@ -102,11 +102,26 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     if (layout.HasRing) writer.Write(point.HasRing ? point.Ring : (ushort)0);
                     if (layout.HasTimeOffset) writer.Write(point.HasTimeOffset ? point.TimeOffsetSeconds : 0f);
                     if (layout.HasAbsoluteTime)
-                        writer.Write(point.HasTimeOffset ? (uint)Math.Round(Math.Max(0f, point.TimeOffsetSeconds) * 1e9) : 0u);
+                        writer.Write(point.HasTimeOffset ? TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds) : 0u);
                 }
 
                 return stream.ToArray();
             }
+        }
+
+        internal static uint TimeOffsetSecondsToNanoseconds(float timeOffsetSeconds)
+        {
+            if (float.IsNaN(timeOffsetSeconds) || float.IsInfinity(timeOffsetSeconds) || timeOffsetSeconds <= 0f)
+                return 0u;
+
+            var nanoseconds = decimal.Round(
+                (decimal)timeOffsetSeconds * 1_000_000_000m,
+                0,
+                MidpointRounding.AwayFromZero);
+            if (nanoseconds >= uint.MaxValue)
+                return uint.MaxValue;
+
+            return (uint)nanoseconds;
         }
 
         private static int ValidatePackedDataBudget(int pointCount, PointCloudLayout layout)

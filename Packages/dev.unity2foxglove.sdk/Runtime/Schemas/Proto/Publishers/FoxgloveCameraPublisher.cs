@@ -184,6 +184,7 @@ namespace Unity.FoxgloveSDK.Components
         private AutoResetEvent _jpegWorkerSignal;
         private Thread _jpegWorker;
         private volatile bool _jpegWorkerStopping;
+        private int _jpegWorkerGeneration;
         private ulong _lastPublishedCaptureUnixNs;
         private bool _warnedJpegWorkerFailure;
         private bool _warnedJpegWorkerShutdown;
@@ -456,7 +457,8 @@ namespace Unity.FoxgloveSDK.Components
                 _publishStandardRos2CompressedImage,
                 webSocketEncoding,
                 Math.Max(0, _maxEncodedBytes),
-                _captureGeneration);
+                _captureGeneration,
+                JpegWorkerGeneration);
 
             if (_jpegEncodeQueue.Enqueue(request))
                 _droppedEncodeQueueCount++;
@@ -939,7 +941,7 @@ namespace Unity.FoxgloveSDK.Components
                 unixNs = CurrentLogTimeNs;
             var payload = CameraCompressedVideoBuilder.Serialize(
                 unixNs,
-                _frameId,
+                ResolveFrameId(),
                 accessUnit,
                 videoFormat);
             PublishProto(payload, unixNs);
@@ -1113,20 +1115,18 @@ namespace Unity.FoxgloveSDK.Components
         private bool EnsureJpegWorkerStarted()
         {
             EnsureJpegQueues();
-            if (_jpegWorker != null && _jpegWorker.IsAlive)
+            if (_jpegWorker != null && _jpegWorker.IsAlive && !_jpegWorkerStopping)
                 return true;
 
             try
             {
-                if (_jpegWorkerSignal != null)
-                {
-                    _jpegWorkerSignal.Dispose();
-                    _jpegWorkerSignal = null;
-                }
+                var workerGeneration = Interlocked.Increment(ref _jpegWorkerGeneration);
 
                 _jpegWorkerStopping = false;
-                _jpegWorkerSignal = new AutoResetEvent(false);
-                _jpegWorker = new Thread(EncodeJpegWorkerLoop)
+                if (_jpegWorkerSignal == null)
+                    _jpegWorkerSignal = new AutoResetEvent(false);
+
+                _jpegWorker = new Thread(() => EncodeJpegWorkerLoop(workerGeneration))
                 {
                     IsBackground = true,
                     Name = "FoxgloveCameraJpegEncoder"
@@ -1150,6 +1150,7 @@ namespace Unity.FoxgloveSDK.Components
         private void StopJpegWorker(bool clearQueues)
         {
             _jpegWorkerStopping = true;
+            Interlocked.Increment(ref _jpegWorkerGeneration);
             _jpegWorkerSignal?.Set();
             var worker = _jpegWorker;
             if (worker != null && worker.IsAlive && !worker.Join(JpegWorkerStopWaitMs))
@@ -1162,6 +1163,8 @@ namespace Unity.FoxgloveSDK.Components
 
                 if (clearQueues)
                     ClearJpegQueues();
+                _jpegWorker = null;
+                _jpegWorkerStopping = false;
                 return;
             }
 
@@ -1583,7 +1586,8 @@ namespace Unity.FoxgloveSDK.Components
                 bool useStandardRos2CompressedImage,
                 PublisherEffectiveEncoding webSocketEncoding,
                 int maxEncodedBytes,
-                int generation)
+                int generation,
+                int jpegWorkerGeneration)
             {
                 Rgb24 = rgb24;
                 Width = width;
@@ -1598,6 +1602,7 @@ namespace Unity.FoxgloveSDK.Components
                 WebSocketEncoding = webSocketEncoding;
                 MaxEncodedBytes = maxEncodedBytes;
                 Generation = generation;
+                JpegWorkerGeneration = jpegWorkerGeneration;
             }
 
             public byte[] Rgb24 { get; }
@@ -1613,6 +1618,7 @@ namespace Unity.FoxgloveSDK.Components
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
             public int MaxEncodedBytes { get; }
             public int Generation { get; }
+            public int JpegWorkerGeneration { get; }
         }
 
         private sealed class JpegEncodeResult
@@ -1719,15 +1725,24 @@ namespace Unity.FoxgloveSDK.Components
         /// Background loop for stale-droppable visualization frames. It consumes owned
         /// request buffers and posts completed payloads back to the main-thread drain.
         /// </summary>
-        private void EncodeJpegWorkerLoop()
+        private int JpegWorkerGeneration => Volatile.Read(ref _jpegWorkerGeneration);
+
+        private void EncodeJpegWorkerLoop(int workerGeneration)
         {
-            while (!_jpegWorkerStopping)
+            while (!_jpegWorkerStopping && workerGeneration == JpegWorkerGeneration)
             {
                 var queue = _jpegEncodeQueue;
                 if (queue != null && queue.TryDequeue(out var request))
                 {
+                    if (request.Generation != _captureGeneration)
+                        continue;
+                    if (request.JpegWorkerGeneration != workerGeneration)
+                        continue;
+
                     var result = EncodeJpegRequest(request);
-                    if (!_jpegWorkerStopping)
+                    if (!_jpegWorkerStopping
+                        && workerGeneration == JpegWorkerGeneration
+                        && result.Request.JpegWorkerGeneration == workerGeneration)
                     {
                         var completed = _completedJpegQueue;
                         if (completed != null && completed.Enqueue(result))

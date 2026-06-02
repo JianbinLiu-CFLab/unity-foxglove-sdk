@@ -21,12 +21,32 @@ namespace Foxglove.Schemas.Video
         private const byte Sps = 7;
         private const byte Pps = 8;
         private const byte AccessUnitDelimiter = 9;
+        private const int DefaultMaxPendingAccessUnitBytes = 16 * 1024 * 1024;
 
         private readonly List<byte> _buffer = new List<byte>();
         private readonly List<byte> _currentAccessUnit = new List<byte>();
         private readonly Queue<byte[]> _completedAccessUnits = new Queue<byte[]>();
+        private readonly int _maxPendingAccessUnitBytes;
         private int _bufferStart;
         private bool _currentHasVcl;
+
+        /// <summary>Create a packetizer with the default pending access-unit byte cap.</summary>
+        public H264AnnexBAccessUnitPacketizer()
+            : this(DefaultMaxPendingAccessUnitBytes)
+        {
+        }
+
+        /// <summary>Create a packetizer with an explicit pending access-unit byte cap.</summary>
+        public H264AnnexBAccessUnitPacketizer(int maxPendingAccessUnitBytes)
+        {
+            _maxPendingAccessUnitBytes = Math.Max(1, maxPendingAccessUnitBytes);
+        }
+
+        /// <summary>Last drop or parse error observed by the packetizer.</summary>
+        public string LastError { get; private set; }
+
+        /// <summary>Number of pending access units dropped because they exceeded the byte cap.</summary>
+        public long DroppedAccessUnits { get; private set; }
 
         /// <summary>
         /// Appends a chunk of bytes from an Annex B H.264 stream.
@@ -35,6 +55,12 @@ namespace Foxglove.Schemas.Video
         {
             if (data == null || data.Length == 0)
                 return;
+
+            if (AvailableBufferBytes + data.Length > _maxPendingAccessUnitBytes)
+            {
+                DropPendingAccessUnit("Pending H.264 access unit exceeds configured byte limit.");
+                return;
+            }
 
             _buffer.AddRange(data);
             ParseBufferedBytes(flush: false);
@@ -170,6 +196,12 @@ namespace Foxglove.Schemas.Video
                 _currentHasVcl = false;
             }
 
+            if (_currentAccessUnit.Count + annexBNal.Length > _maxPendingAccessUnitBytes)
+            {
+                DropPendingAccessUnit("Pending H.264 access unit exceeds configured byte limit.");
+                return;
+            }
+
             _currentAccessUnit.AddRange(annexBNal);
             if (nalType == NonIdrSlice || nalType == IdrSlice)
                 _currentHasVcl = true;
@@ -181,6 +213,16 @@ namespace Foxglove.Schemas.Video
                 return;
 
             _completedAccessUnits.Enqueue(_currentAccessUnit.ToArray());
+        }
+
+        private void DropPendingAccessUnit(string error)
+        {
+            LastError = error;
+            DroppedAccessUnits++;
+            _currentAccessUnit.Clear();
+            _currentHasVcl = false;
+            _buffer.Clear();
+            _bufferStart = 0;
         }
 
         private void TrimNonAnnexBTail()

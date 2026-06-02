@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _pointCloud2NativeTfChildFrame;
         [Tooltip("TF anchor translation in ROS coordinates.")]
         [SerializeField] private Vector3 _pointCloud2NativeTfTranslation;
-        [Tooltip("TF anchor rotation in degrees, applied as Unity Euler angles and published as the resulting quaternion.")]
+        [Tooltip("TF anchor rotation in ROS roll/pitch/yaw degrees.")]
         [SerializeField] private Vector3 _pointCloud2NativeTfRotationEuler;
         [SerializeField, HideInInspector] private bool _pointCloud2NativeTfAnchorInitialized;
 
@@ -86,6 +86,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _droppedCompletedDracoEncodeCount;
         private bool _dracoEncodeWorkerRunning;
         private bool _stopDracoEncodeWorker;
+        private int _dracoEncodeWorkerGeneration;
         private readonly object _pointCloud2NativeGate = new object();
         private readonly Queue<PointCloud2NativeResult> _completedPointCloud2Native = new Queue<PointCloud2NativeResult>();
         private readonly ManualResetEventSlim _pointCloud2NativeWorkerIdle = new ManualResetEventSlim(true);
@@ -93,6 +94,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _droppedCompletedPointCloud2NativeCount;
         private bool _pointCloud2NativeWorkerRunning;
         private bool _stopPointCloud2NativeWorker;
+        private int _pointCloud2NativeWorkerGeneration;
         private int _pointCloud2NativeFailureCount;
         private bool _warnedPointCloud2NativeFailure;
         private bool _warnedPointCloud2NativeBacklog;
@@ -162,7 +164,10 @@ namespace Unity.FoxgloveSDK.Components
         public Vector3 PointCloud2NativeTfTranslation => _pointCloud2NativeTfTranslation;
 
         /// <summary>Rotation for the optional PointCloud2 Native TF anchor.</summary>
-        public Quaternion PointCloud2NativeTfRotation => Quaternion.Euler(_pointCloud2NativeTfRotationEuler);
+        public Quaternion PointCloud2NativeTfRotation => PointCloud2NativeTfRotationRos;
+
+        /// <summary>Rotation for the optional PointCloud2 Native TF anchor from ROS roll/pitch/yaw degrees.</summary>
+        public Quaternion PointCloud2NativeTfRotationRos => RosRollPitchYawDegreesToQuaternion(_pointCloud2NativeTfRotationEuler);
 
         protected override string Ros2SchemaName
         {
@@ -205,6 +210,26 @@ namespace Unity.FoxgloveSDK.Components
         {
             var value = string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
             return SanitizeFrameId(value, fallback);
+        }
+
+        private static Quaternion RosRollPitchYawDegreesToQuaternion(Vector3 rollPitchYawDegrees)
+        {
+            var roll = rollPitchYawDegrees.x * Math.PI / 180.0;
+            var pitch = rollPitchYawDegrees.y * Math.PI / 180.0;
+            var yaw = rollPitchYawDegrees.z * Math.PI / 180.0;
+
+            var cr = Math.Cos(roll * 0.5);
+            var sr = Math.Sin(roll * 0.5);
+            var cp = Math.Cos(pitch * 0.5);
+            var sp = Math.Sin(pitch * 0.5);
+            var cy = Math.Cos(yaw * 0.5);
+            var sy = Math.Sin(yaw * 0.5);
+
+            return new Quaternion(
+                (float)(sr * cp * cy - cr * sp * sy),
+                (float)(cr * sp * cy + sr * cp * sy),
+                (float)(cr * cp * sy - sr * sp * cy),
+                (float)(cr * cp * cy + sr * sp * sy));
         }
 
         protected override void Reset()
@@ -648,6 +673,7 @@ namespace Unity.FoxgloveSDK.Components
         private void EnqueueDracoEncodeRequest(DracoEncodeRequest request)
         {
             var startWorker = false;
+            var workerGeneration = 0;
             lock (_dracoEncodeGate)
             {
                 if (_pendingDracoEncode != null && _logQosDrops && !_warnedDracoBacklog)
@@ -659,14 +685,22 @@ namespace Unity.FoxgloveSDK.Components
                 if (_pendingDracoEncode != null)
                     RecordPointCloudDrop();
 
-                _pendingDracoEncode = request;
                 if (!_dracoEncodeWorkerRunning)
                 {
                     _stopDracoEncodeWorker = false;
+                    workerGeneration = unchecked(_dracoEncodeWorkerGeneration + 1);
+                    _dracoEncodeWorkerGeneration = workerGeneration;
                     _dracoEncodeWorkerRunning = true;
                     _dracoEncodeWorkerIdle.Reset();
                     startWorker = true;
                 }
+                else
+                {
+                    workerGeneration = _dracoEncodeWorkerGeneration;
+                }
+
+                request.Generation = workerGeneration;
+                _pendingDracoEncode = request;
             }
 
             if (!startWorker)
@@ -674,14 +708,17 @@ namespace Unity.FoxgloveSDK.Components
 
             try
             {
-                StartDracoEncodeWorker();
+                StartDracoEncodeWorker(workerGeneration);
             }
             catch (Exception ex)
             {
                 lock (_dracoEncodeGate)
                 {
-                    _dracoEncodeWorkerRunning = false;
-                    _dracoEncodeWorkerIdle.Set();
+                    if (workerGeneration == _dracoEncodeWorkerGeneration)
+                    {
+                        _dracoEncodeWorkerRunning = false;
+                        _dracoEncodeWorkerIdle.Set();
+                    }
                 }
                 LogDracoFailure("Unable to queue background Draco encode: " + ex.Message);
             }
@@ -690,6 +727,7 @@ namespace Unity.FoxgloveSDK.Components
         private void EnqueuePointCloud2NativeRequest(PointCloud2NativeRequest request)
         {
             var startWorker = false;
+            var workerGeneration = 0;
             lock (_pointCloud2NativeGate)
             {
                 if (_pendingPointCloud2Native != null && _logQosDrops && !_warnedPointCloud2NativeBacklog)
@@ -701,14 +739,22 @@ namespace Unity.FoxgloveSDK.Components
                 if (_pendingPointCloud2Native != null)
                     RecordPointCloudDrop();
 
-                _pendingPointCloud2Native = request;
                 if (!_pointCloud2NativeWorkerRunning)
                 {
                     _stopPointCloud2NativeWorker = false;
+                    workerGeneration = unchecked(_pointCloud2NativeWorkerGeneration + 1);
+                    _pointCloud2NativeWorkerGeneration = workerGeneration;
                     _pointCloud2NativeWorkerRunning = true;
                     _pointCloud2NativeWorkerIdle.Reset();
                     startWorker = true;
                 }
+                else
+                {
+                    workerGeneration = _pointCloud2NativeWorkerGeneration;
+                }
+
+                request.Generation = workerGeneration;
+                _pendingPointCloud2Native = request;
             }
 
             if (!startWorker)
@@ -716,20 +762,23 @@ namespace Unity.FoxgloveSDK.Components
 
             try
             {
-                StartPointCloud2NativeWorker();
+                StartPointCloud2NativeWorker(workerGeneration);
             }
             catch (Exception ex)
             {
                 lock (_pointCloud2NativeGate)
                 {
-                    _pointCloud2NativeWorkerRunning = false;
-                    _pointCloud2NativeWorkerIdle.Set();
+                    if (workerGeneration == _pointCloud2NativeWorkerGeneration)
+                    {
+                        _pointCloud2NativeWorkerRunning = false;
+                        _pointCloud2NativeWorkerIdle.Set();
+                    }
                 }
                 LogPointCloud2NativeFailure("Unable to queue background PointCloud2 pack: " + ex.Message);
             }
         }
 
-        private void StartDracoEncodeWorker()
+        private void StartDracoEncodeWorker(int workerGeneration)
         {
             var worker = new System.Threading.Thread(RunDracoEncodeWorker)
             {
@@ -737,12 +786,12 @@ namespace Unity.FoxgloveSDK.Components
                 Name = "Foxglove Draco PointCloud Encode",
                 Priority = System.Threading.ThreadPriority.BelowNormal
             };
-            worker.Start();
+            worker.Start(workerGeneration);
         }
 
-        private void StartPointCloud2NativeWorker()
+        private void StartPointCloud2NativeWorker(int workerGeneration)
         {
-            var worker = new System.Threading.Thread(RunPointCloud2NativeWorker)
+            var worker = new System.Threading.Thread(() => RunPointCloud2NativeWorker(workerGeneration))
             {
                 IsBackground = true,
                 Name = "Foxglove PointCloud2 Native Pack",
@@ -751,7 +800,12 @@ namespace Unity.FoxgloveSDK.Components
             worker.Start();
         }
 
-        private void RunDracoEncodeWorker()
+        private void RunDracoEncodeWorker(object state)
+        {
+            RunDracoEncodeWorker((int)state);
+        }
+
+        private void RunDracoEncodeWorker(int workerGeneration)
         {
             try
             {
@@ -760,9 +814,10 @@ namespace Unity.FoxgloveSDK.Components
                     DracoEncodeRequest request;
                     lock (_dracoEncodeGate)
                     {
-                        if (_stopDracoEncodeWorker)
+                        if (_stopDracoEncodeWorker || workerGeneration != _dracoEncodeWorkerGeneration)
                         {
-                            _dracoEncodeWorkerRunning = false;
+                            if (workerGeneration == _dracoEncodeWorkerGeneration)
+                                _dracoEncodeWorkerRunning = false;
                             return;
                         }
 
@@ -770,15 +825,21 @@ namespace Unity.FoxgloveSDK.Components
                         _pendingDracoEncode = null;
                         if (request == null)
                         {
-                            _dracoEncodeWorkerRunning = false;
+                            if (workerGeneration == _dracoEncodeWorkerGeneration)
+                                _dracoEncodeWorkerRunning = false;
                             return;
                         }
                     }
 
+                    if (request.Generation != workerGeneration)
+                        continue;
+
                     var result = EncodeDracoRequest(request);
                     lock (_dracoEncodeGate)
                     {
-                        if (_stopDracoEncodeWorker)
+                        if (_stopDracoEncodeWorker
+                            || workerGeneration != _dracoEncodeWorkerGeneration
+                            || request.Generation != workerGeneration)
                             continue;
 
                         while (_completedDracoEncodes.Count >= MaxCompletedDracoEncodeResults)
@@ -793,16 +854,22 @@ namespace Unity.FoxgloveSDK.Components
             }
             finally
             {
+                var signalIdle = false;
                 lock (_dracoEncodeGate)
                 {
-                    _dracoEncodeWorkerRunning = false;
+                    if (workerGeneration == _dracoEncodeWorkerGeneration)
+                    {
+                        _dracoEncodeWorkerRunning = false;
+                        signalIdle = true;
+                    }
                 }
 
-                _dracoEncodeWorkerIdle.Set();
+                if (signalIdle)
+                    _dracoEncodeWorkerIdle.Set();
             }
         }
 
-        private void RunPointCloud2NativeWorker()
+        private void RunPointCloud2NativeWorker(int workerGeneration)
         {
             try
             {
@@ -811,9 +878,10 @@ namespace Unity.FoxgloveSDK.Components
                     PointCloud2NativeRequest request;
                     lock (_pointCloud2NativeGate)
                     {
-                        if (_stopPointCloud2NativeWorker)
+                        if (_stopPointCloud2NativeWorker || workerGeneration != _pointCloud2NativeWorkerGeneration)
                         {
-                            _pointCloud2NativeWorkerRunning = false;
+                            if (workerGeneration == _pointCloud2NativeWorkerGeneration)
+                                _pointCloud2NativeWorkerRunning = false;
                             return;
                         }
 
@@ -821,15 +889,21 @@ namespace Unity.FoxgloveSDK.Components
                         _pendingPointCloud2Native = null;
                         if (request == null)
                         {
-                            _pointCloud2NativeWorkerRunning = false;
+                            if (workerGeneration == _pointCloud2NativeWorkerGeneration)
+                                _pointCloud2NativeWorkerRunning = false;
                             return;
                         }
                     }
 
+                    if (request.Generation != workerGeneration)
+                        continue;
+
                     var result = EncodePointCloud2NativeRequest(request);
                     lock (_pointCloud2NativeGate)
                     {
-                        if (_stopPointCloud2NativeWorker)
+                        if (_stopPointCloud2NativeWorker
+                            || workerGeneration != _pointCloud2NativeWorkerGeneration
+                            || request.Generation != workerGeneration)
                             continue;
 
                         while (_completedPointCloud2Native.Count >= MaxCompletedPointCloud2NativeResults)
@@ -844,12 +918,18 @@ namespace Unity.FoxgloveSDK.Components
             }
             finally
             {
+                var signalIdle = false;
                 lock (_pointCloud2NativeGate)
                 {
-                    _pointCloud2NativeWorkerRunning = false;
+                    if (workerGeneration == _pointCloud2NativeWorkerGeneration)
+                    {
+                        _pointCloud2NativeWorkerRunning = false;
+                        signalIdle = true;
+                    }
                 }
 
-                _pointCloud2NativeWorkerIdle.Set();
+                if (signalIdle)
+                    _pointCloud2NativeWorkerIdle.Set();
             }
         }
 
@@ -1134,6 +1214,14 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.LogWarning("[Foxglove] Draco point-cloud encode worker is still stopping; native encode will be ignored when it returns.");
                 _warnedDracoWorkerShutdown = true;
             }
+
+            lock (_dracoEncodeGate)
+            {
+                _dracoEncodeWorkerGeneration = unchecked(_dracoEncodeWorkerGeneration + 1);
+                _dracoEncodeWorkerRunning = false;
+                _stopDracoEncodeWorker = false;
+                _dracoEncodeWorkerIdle.Set();
+            }
         }
 
         private void StopPointCloud2NativeWorker(bool clearCompleted)
@@ -1164,6 +1252,14 @@ namespace Unity.FoxgloveSDK.Components
             {
                 Debug.LogWarning("[Foxglove] PointCloud2 native worker is still stopping; native payload will be ignored when it returns.");
                 _warnedPointCloud2NativeWorkerShutdown = true;
+            }
+
+            lock (_pointCloud2NativeGate)
+            {
+                _pointCloud2NativeWorkerGeneration = unchecked(_pointCloud2NativeWorkerGeneration + 1);
+                _pointCloud2NativeWorkerRunning = false;
+                _stopPointCloud2NativeWorker = false;
+                _pointCloud2NativeWorkerIdle.Set();
             }
         }
 
@@ -1315,6 +1411,8 @@ namespace Unity.FoxgloveSDK.Components
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
             /// <summary>Main-thread frame clone time before background Draco encode.</summary>
             public double CloneMs { get; }
+            /// <summary>Worker generation that owns this encode request.</summary>
+            public int Generation { get; set; }
         }
 
         /// <summary>
@@ -1363,6 +1461,8 @@ namespace Unity.FoxgloveSDK.Components
             public bool PublishNativeFrame { get; }
             /// <summary>Effective encoding for the WebSocket payload, when requested.</summary>
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
+            /// <summary>Worker generation that owns this pack request.</summary>
+            public int Generation { get; set; }
         }
 
         /// <summary>

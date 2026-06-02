@@ -43,7 +43,10 @@ namespace Unity.FoxgloveSDK.IO
             var compressed = new byte[(int)compSize];
             Buffer.BlockCopy(content, off, compressed, 0, (int)compSize);
 
-            var uncompressed = McapCompression.Decompress(compression, compressed, (int)uncompSize);
+            var maxOutputBytes = uncompressedSizeLimit > int.MaxValue
+                ? int.MaxValue
+                : (int)uncompressedSizeLimit;
+            var uncompressed = McapCompression.Decompress(compression, compressed, (int)uncompSize, maxOutputBytes);
             if (crc != 0)
                 crcValid = Crc32Helper.Compute(uncompressed) == crc;
             else

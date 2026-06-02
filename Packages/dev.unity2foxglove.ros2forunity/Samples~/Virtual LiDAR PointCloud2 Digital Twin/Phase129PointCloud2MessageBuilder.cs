@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Virtual LiDAR PointCloud2 Digital Twin sample

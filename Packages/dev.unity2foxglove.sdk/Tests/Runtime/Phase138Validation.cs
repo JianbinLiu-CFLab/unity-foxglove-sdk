@@ -91,11 +91,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var profile = LidarProfileLoader.CreateOs132Default();
 
-            // 4. columnStep=4 鈫?32 * (1024/4) = 8192 rays
+            // 4. columnStep=4 ->32 * (1024/4) = 8192 rays
             var gen4 = new LidarRayGenerator(profile, 4);
             Check(gen4.RayCount == 32 * (1024 / 4), "7.1-11: RayGenerator(step=4) RayCount == 8192");
 
-            // 5. columnStep=1 鈫?32768 rays
+            // 5. columnStep=1 ->32768 rays
             var gen1 = new LidarRayGenerator(profile, 1);
             Check(gen1.RayCount == 32 * 1024, "7.1-12: RayGenerator(step=1) RayCount == 32768");
 

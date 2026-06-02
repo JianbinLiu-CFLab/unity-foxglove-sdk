@@ -370,20 +370,10 @@ namespace Unity.FoxgloveSDK.Components
             => Mathf.Abs(value) < 1e-6f ? 0f : value;
 
         private static LidarTIlExtrinsic Invert(LidarTIlExtrinsic extrinsic)
-        {
-            var inverseRotation = NumericQuaternion.Inverse(extrinsic.Rotation);
-            var inverseTranslation = NumericVector3.Transform(-extrinsic.TranslationMeters, inverseRotation);
-            return new LidarTIlExtrinsic(inverseTranslation, inverseRotation);
-        }
+            => LidarExtrinsicMath.Invert(extrinsic);
 
         private static LidarTIlExtrinsic Compose(LidarTIlExtrinsic sourceToMid, LidarTIlExtrinsic midToTarget)
-        {
-            var rotation = NumericQuaternion.Concatenate(sourceToMid.Rotation, midToTarget.Rotation);
-            var translation =
-                NumericVector3.Transform(sourceToMid.TranslationMeters, midToTarget.Rotation) +
-                midToTarget.TranslationMeters;
-            return new LidarTIlExtrinsic(translation, rotation);
-        }
+            => LidarExtrinsicMath.Compose(sourceToMid, midToTarget);
 
         private void OnValidate()
         {

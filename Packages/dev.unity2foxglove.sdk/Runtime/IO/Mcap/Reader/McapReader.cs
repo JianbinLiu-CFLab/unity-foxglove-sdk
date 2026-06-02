@@ -96,6 +96,8 @@ namespace Unity.FoxgloveSDK.IO
                     chunkUncompressedSizeLimit: chunkUncompressedSizeLimit);
             if (footer.SummaryStart > footerOffset)
                 throw new InvalidDataException("Footer summary_start is past the footer record");
+            if (footer.SummaryStart < (ulong)(McapWriter.MagicLength + McapWriter.RecordHeaderLength))
+                throw new InvalidDataException("Footer summary_start is before the data section");
             if (footer.SummaryOffsetStart != 0 &&
                 (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
                 throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");

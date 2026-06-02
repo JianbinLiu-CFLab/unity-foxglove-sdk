@@ -25,6 +25,8 @@ namespace Foxglove.Schemas.Video
         public int KeyframeInterval = 30;
         public int MaxInputQueue = 2;
         public int MaxOutputQueue = 4;
+        public int MaxStderrLineBytes = 8192;
+        public int MaxStderrRetainedBytes = 8192;
 
         /// <summary>Returns the expected I420/YUV420 byte count for one raw helper input frame.</summary>
         public int FrameByteCount => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Width, Height);

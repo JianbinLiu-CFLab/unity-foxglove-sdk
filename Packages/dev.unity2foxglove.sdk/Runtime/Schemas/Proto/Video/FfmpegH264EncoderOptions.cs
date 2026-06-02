@@ -24,6 +24,8 @@ namespace Foxglove.Schemas.Video
         public string Preset = "ultrafast";
         public int MaxInputQueue = 2;
         public int MaxOutputQueue = 4;
+        public int MaxStderrLineBytes = 8192;
+        public int MaxStderrRetainedBytes = 8192;
 
         /// <summary>Returns the expected RGB24 byte count for one raw input frame.</summary>
         public int FrameByteCount

@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     writer.Write(point.Ring);
                     writer.Write(point.TimeOffsetSeconds);
                     if (emitAbsoluteTimeNs)
-                        writer.Write((uint)Math.Round(Math.Max(0f, point.TimeOffsetSeconds) * 1e9));
+                        writer.Write(PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
                 }
 
                 return new PointCloudPackedData(stride, fields, stream.ToArray());

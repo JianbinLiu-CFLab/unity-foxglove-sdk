@@ -6,9 +6,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -351,21 +353,69 @@ namespace Foxglove.Schemas.Video
         {
             try
             {
-                var reader = process.StandardError;
-                while (!token.IsCancellationRequested)
-                {
-                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
-                    if (line == null)
-                        break;
-
-                    LastStderrLine = line;
-                }
+                await ReadBoundedDiagnosticStream(
+                    process.StandardError.BaseStream,
+                    line => LastStderrLine = line,
+                    token,
+                    Math.Max(1, _options?.MaxStderrLineBytes ?? 8192),
+                    Math.Max(1, _options?.MaxStderrRetainedBytes ?? 8192)).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 if (!token.IsCancellationRequested)
                     LastError = ex.Message;
             }
+        }
+
+        private static async Task ReadBoundedDiagnosticStream(
+            Stream stream,
+            Action<string> publishLine,
+            CancellationToken token,
+            int maxLineBytes,
+            int maxRetainedBytes)
+        {
+            var buffer = new byte[Math.Min(4096, Math.Max(256, maxLineBytes))];
+            var retained = new List<byte>(Math.Min(maxLineBytes, maxRetainedBytes));
+            var lineLimit = Math.Max(1, Math.Min(maxLineBytes, maxRetainedBytes));
+            var truncated = false;
+
+            while (!token.IsCancellationRequested)
+            {
+                var read = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
+                if (read <= 0)
+                    break;
+
+                for (var i = 0; i < read; i++)
+                {
+                    var value = buffer[i];
+                    if (value == (byte)'\n')
+                    {
+                        PublishDiagnosticLine(retained, truncated, publishLine);
+                        retained.Clear();
+                        truncated = false;
+                        continue;
+                    }
+
+                    if (value == (byte)'\r')
+                        continue;
+
+                    if (retained.Count < lineLimit)
+                        retained.Add(value);
+                    else
+                        truncated = true;
+                }
+            }
+
+            if (retained.Count > 0 || truncated)
+                PublishDiagnosticLine(retained, truncated, publishLine);
+        }
+
+        private static void PublishDiagnosticLine(List<byte> retained, bool truncated, Action<string> publishLine)
+        {
+            var text = retained.Count == 0
+                ? string.Empty
+                : Encoding.UTF8.GetString(retained.ToArray());
+            publishLine(truncated ? text + " [truncated]" : text);
         }
 
         private void DrainPacketizer()

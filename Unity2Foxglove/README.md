@@ -1,4 +1,4 @@
-﻿# Unity2Foxglove Demo Project
+# Unity2Foxglove Demo Project
 
 > **Note: This is not the SDK itself.** This is a complete Unity project used to demonstrate and verify all features of the Unity2Foxglove SDK. The SDK package is located at `Packages/dev.unity2foxglove.sdk/`.
 

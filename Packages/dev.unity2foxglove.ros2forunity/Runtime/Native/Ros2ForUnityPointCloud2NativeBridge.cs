@@ -418,7 +418,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 var unixNs = frame == null ? 0UL : frame.UnixNs;
                 var translation = _source.PointCloud2NativeTfTranslation;
-                var rotation = _source.PointCloud2NativeTfRotation;
+                var rotation = _source.PointCloud2NativeTfRotationRos;
 
                 return new tf2_msgs.msg.TFMessage
                 {

@@ -1,4 +1,4 @@
-﻿# 1. Demo Troubleshooting
+# 1. Demo Troubleshooting
 
 This document summarizes common issues you may encounter with the demo project and their solutions.
 

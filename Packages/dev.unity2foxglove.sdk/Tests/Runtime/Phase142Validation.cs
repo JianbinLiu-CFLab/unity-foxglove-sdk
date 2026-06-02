@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "142-16: float.MaxValue vs float.MinValue reports changed");
         }
 
-        // publishMode=1 鈫?OnChange policy triggers ChangeExpr code path
+        // publishMode=1 ->OnChange policy triggers ChangeExpr code path
         private static FoxgloveSourceEmitter.TopicMember OnChange(string name, string type, string topic)
             => new(name, type, topic, 10f, "", publishMode: 1, changeEpsilon: 0.001f, forceIntervalSeconds: 0f);
 

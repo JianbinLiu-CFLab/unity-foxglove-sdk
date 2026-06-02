@@ -565,7 +565,7 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
                         _commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                        _rayTimeOffsets[batchCount] = timeOffset;
+                        _rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz);
                         _rayRings[batchCount] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
                     }
                     batchCount++;

@@ -20,9 +20,18 @@ namespace Unity.FoxgloveSDK.IO
     {
         /// <summary>Decompress MCAP chunk data using the specified compression algorithm.</summary>
         public static byte[] Decompress(string compression, byte[] data, int uncompressedSize)
+            => Decompress(compression, data, uncompressedSize, (int)McapReader.DefaultChunkUncompressedSizeLimit);
+
+        /// <summary>Decompress MCAP chunk data while bounding the retained output size.</summary>
+        public static byte[] Decompress(string compression, byte[] data, int uncompressedSize, int maxOutputBytes)
         {
             if (uncompressedSize < 0)
                 throw new InvalidDataException("Uncompressed chunk size cannot be negative.");
+            if (maxOutputBytes < 0)
+                throw new ArgumentOutOfRangeException(nameof(maxOutputBytes), "Maximum decompressed output bytes cannot be negative.");
+            if (maxOutputBytes > 0 && uncompressedSize > maxOutputBytes)
+                throw new InvalidDataException(
+                    $"Uncompressed chunk size {uncompressedSize} exceeds maximum output size {maxOutputBytes}.");
 
             switch (compression)
             {

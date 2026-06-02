@@ -288,7 +288,7 @@ namespace Unity.FoxgloveSDK.Components
             return new ImuSample(
                 timestampNs,
                 CoordinateConverter.UnityToFoxglovePosition(linearBody),
-                CoordinateConverter.UnityToFoxglovePosition(angularBody),
+                CoordinateConverter.UnityToFoxgloveAngularVelocity(angularBody),
                 CoordinateConverter.UnityToFoxgloveRotation(rotation));
         }
 

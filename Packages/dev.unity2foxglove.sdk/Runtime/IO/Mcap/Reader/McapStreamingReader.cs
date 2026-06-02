@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
@@ -66,6 +67,8 @@ namespace Unity.FoxgloveSDK.IO
 
             var beforeDataEnd = true;
             var retainedPayloadBytes = 0L;
+            var retainedMetadataBytes = 0L;
+            var retainedAttachmentBytes = 0L;
             while (TryReadRecordHeader(out var opcode, out var headerBytes, out var contentLength, out var recordStart))
             {
                 if (contentLength > McapReader.DefaultRecordSizeLimit)
@@ -90,7 +93,9 @@ namespace Unity.FoxgloveSDK.IO
                     (ulong)(headerBytes.Length + content.Length),
                     ref beforeDataEnd,
                     ref dataCrc,
-                    ref retainedPayloadBytes);
+                    ref retainedPayloadBytes,
+                    ref retainedMetadataBytes,
+                    ref retainedAttachmentBytes);
             }
 
             ApplyOrderingAndLimit(result.Messages, options);
@@ -107,7 +112,9 @@ namespace Unity.FoxgloveSDK.IO
             ulong recordLength,
             ref bool beforeDataEnd,
             ref uint dataCrc,
-            ref long retainedPayloadBytes)
+            ref long retainedPayloadBytes,
+            ref long retainedMetadataBytes,
+            ref long retainedAttachmentBytes)
         {
             switch (opcode)
             {
@@ -136,13 +143,20 @@ namespace Unity.FoxgloveSDK.IO
                         options.ChunkUncompressedSizeLimit);
                     if (!crcValid && options.ValidateCrcs)
                         throw new InvalidDataException("MCAP chunk CRC mismatch.");
-                    ProcessChunkRecords(result, options, filter, records, ref retainedPayloadBytes);
+                    ProcessChunkRecords(
+                        result,
+                        options,
+                        filter,
+                        records,
+                        ref retainedPayloadBytes,
+                        ref retainedMetadataBytes,
+                        ref retainedAttachmentBytes);
                     break;
                 case McapWriter.OpcodeAttachment:
                     var attachment = McapRecordDecoder.DecodeAttachment(content);
                     if (options.ValidateCrcs && !attachment.CrcValid)
                         throw new InvalidDataException("MCAP attachment CRC mismatch.");
-                    result.Attachments.Add(attachment);
+                    AddAttachment(result, attachment, ref retainedAttachmentBytes);
                     result.Summary.AttachmentIndexes.Add(new McapAttachmentIndex
                     {
                         Offset = recordStart,
@@ -156,7 +170,7 @@ namespace Unity.FoxgloveSDK.IO
                     break;
                 case McapWriter.OpcodeMetadata:
                     var metadata = McapRecordDecoder.DecodeMetadata(content);
-                    result.Metadata.Add(metadata);
+                    AddMetadata(result, metadata, ref retainedMetadataBytes);
                     result.Summary.MetadataIndexes.Add(new McapMetadataIndex
                     {
                         Offset = recordStart,
@@ -195,7 +209,9 @@ namespace Unity.FoxgloveSDK.IO
             McapReadOptions options,
             StreamingReadFilter filter,
             byte[] uncompressedRecords,
-            ref long retainedPayloadBytes)
+            ref long retainedPayloadBytes,
+            ref long retainedMetadataBytes,
+            ref long retainedAttachmentBytes)
         {
             var off = 0;
             while (off < uncompressedRecords.Length)
@@ -229,7 +245,7 @@ namespace Unity.FoxgloveSDK.IO
                     case McapWriter.OpcodeMetadata:
                     {
                         var content = Slice(uncompressedRecords, off, recordLength);
-                        result.Metadata.Add(McapRecordDecoder.DecodeMetadata(content));
+                        AddMetadata(result, McapRecordDecoder.DecodeMetadata(content), ref retainedMetadataBytes);
                         break;
                     }
                     case McapWriter.OpcodeAttachment:
@@ -238,7 +254,7 @@ namespace Unity.FoxgloveSDK.IO
                         var attachment = McapRecordDecoder.DecodeAttachment(content);
                         if (options.ValidateCrcs && !attachment.CrcValid)
                             throw new InvalidDataException("MCAP attachment CRC mismatch.");
-                        result.Attachments.Add(attachment);
+                        AddAttachment(result, attachment, ref retainedAttachmentBytes);
                         break;
                     }
                 }
@@ -266,6 +282,54 @@ namespace Unity.FoxgloveSDK.IO
 
             result.Messages.Add(message);
             retainedPayloadBytes += payloadBytes;
+        }
+
+        private void AddMetadata(
+            McapStreamingReadResult result,
+            McapMetadata metadata,
+            ref long retainedMetadataBytes)
+        {
+            var metadataBytes = EstimateMetadataBytes(metadata);
+            if (_limits.MaxMetadataRecords > 0 && result.Metadata.Count >= _limits.MaxMetadataRecords)
+                throw new InvalidOperationException("Streaming MCAP read exceeded MaxMetadataRecords=" + _limits.MaxMetadataRecords + ".");
+            if (_limits.MaxMetadataBytes > 0 && retainedMetadataBytes + metadataBytes > _limits.MaxMetadataBytes)
+                throw new InvalidOperationException("Streaming MCAP read exceeded MaxMetadataBytes=" + _limits.MaxMetadataBytes + ".");
+
+            result.Metadata.Add(metadata);
+            retainedMetadataBytes += metadataBytes;
+        }
+
+        private void AddAttachment(
+            McapStreamingReadResult result,
+            McapAttachment attachment,
+            ref long retainedAttachmentBytes)
+        {
+            var attachmentBytes = attachment?.Data?.LongLength ?? 0L;
+            if (_limits.MaxAttachmentRecords > 0 && result.Attachments.Count >= _limits.MaxAttachmentRecords)
+                throw new InvalidOperationException("Streaming MCAP read exceeded MaxAttachmentRecords=" + _limits.MaxAttachmentRecords + ".");
+            if (_limits.MaxAttachmentBytes > 0 && retainedAttachmentBytes + attachmentBytes > _limits.MaxAttachmentBytes)
+                throw new InvalidOperationException("Streaming MCAP read exceeded MaxAttachmentBytes=" + _limits.MaxAttachmentBytes + ".");
+
+            result.Attachments.Add(attachment);
+            retainedAttachmentBytes += attachmentBytes;
+        }
+
+        private static long EstimateMetadataBytes(McapMetadata metadata)
+        {
+            if (metadata == null)
+                return 0L;
+
+            long total = Encoding.UTF8.GetByteCount(metadata.Name ?? string.Empty);
+            if (metadata.Metadata == null)
+                return total;
+
+            foreach (var item in metadata.Metadata)
+            {
+                total += Encoding.UTF8.GetByteCount(item.Key ?? string.Empty);
+                total += Encoding.UTF8.GetByteCount(item.Value ?? string.Empty);
+            }
+
+            return total;
         }
 
         private static void ApplyOrderingAndLimit(List<McapMessage> messages, McapReadOptions options)
