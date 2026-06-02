@@ -13,6 +13,7 @@ using System.Text;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -44,6 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
             PacketizersRejectOversizedPendingAccessUnits();
             VideoSidecarStderrReadersAreBounded();
             WorkerTimeoutPathsUseGenerations();
+            CameraReadbackAndWorkerSignalsHaveExplicitLifecycleBoundaries();
             PointCloud2NativeTfRotationConventionIsExplicit();
 
             Console.WriteLine($"Phase 138P: {_passed} checks passed.");
@@ -187,9 +189,36 @@ namespace Unity.FoxgloveSDK.Tests
             var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(nativePoints, emitAbsoluteTimeNs: true);
             Check(packed.Data.Length == 60, "138P-8A: native PointCloud2 packing keeps only valid rows");
             Check(ReadSingle(packed.Data, 22) == 0.05f, "138P-8B: first valid row stores seconds offset");
-            Check(ReadUInt32(packed.Data, 26) == 50_000_000U, "138P-8C: absolute t field is derived from seconds");
+            Check(ReadUInt32(packed.Data, 26) == ExpectedNanoseconds(0.05f), "138P-8C: absolute t field is derived from seconds");
             Check(ReadSingle(packed.Data, 52) == 0.075f, "138P-8D: second valid row stores seconds offset after compaction");
-            Check(ReadUInt32(packed.Data, 56) == 75_000_000U, "138P-8E: compacted second row absolute t is derived from seconds");
+            Check(ReadUInt32(packed.Data, 56) == ExpectedNanoseconds(0.075f), "138P-8E: compacted second row absolute t is derived from seconds");
+
+            var packedBuilder = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+            var nsMethod = ExtractMethod(packedBuilder, "internal static uint TimeOffsetSecondsToNanoseconds");
+            Check(!nsMethod.Contains("decimal", StringComparison.Ordinal),
+                "138P-8F: hot-path time-offset nanosecond conversion avoids decimal arithmetic");
+
+            var converter = typeof(PointCloudPackedDataBuilder).GetMethod(
+                "TimeOffsetSecondsToNanoseconds",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Check((uint)converter.Invoke(null, new object[] { 0.0000000006f }) == 1U,
+                "138P-8G: nanosecond conversion rounds sub-nanosecond offsets away from zero");
+            Check((uint)converter.Invoke(null, new object[] { 1.2345678f }) == ExpectedNanoseconds(1.2345678f),
+                "138P-8H: nanosecond conversion uses double-first precision");
+            Check((uint)converter.Invoke(null, new object[] { 4.294967f }) == ExpectedNanoseconds(4.294967f),
+                "138P-8I: nanosecond conversion avoids premature float-product clamp");
+            Check((uint)converter.Invoke(null, new object[] { 10.0f }) == uint.MaxValue,
+                "138P-8J: nanosecond conversion clamps oversized offsets");
+            Check((uint)converter.Invoke(null, new object[] { float.NaN }) == 0U,
+                "138P-8K: nanosecond conversion rejects invalid offsets");
+
+            var managed = new PointCloudFrame { EmitAbsoluteTimeNs = true };
+            managed.Points.Add(new PointCloudPoint(1f, 2f, 3f) { Intensity = 0.5f, Reflectivity = 0.25f, Ring = 7, TimeOffsetSeconds = 0.05f });
+            managed.Points.Add(new PointCloudPoint(4f, 5f, 6f) { Intensity = 0.75f, Reflectivity = 0.5f, Ring = 8, TimeOffsetSeconds = 0.075f });
+            var managedPacked = PointCloudPackedDataBuilder.Build(managed);
+            Check(ReadUInt32(managedPacked.Data, 26) == ReadUInt32(packed.Data, 26)
+                  && ReadUInt32(managedPacked.Data, 56) == ReadUInt32(packed.Data, 56),
+                "138P-8L: managed and native PointCloud packers emit matching absolute t fields");
         }
 
         private static void SubscriptionRegistryUsesSetReverseIndex()
@@ -278,6 +307,39 @@ namespace Unity.FoxgloveSDK.Tests
                     reader.Read();
                 }), "138P-12D: streaming reader enforces metadata payload-byte cap");
             }
+
+            using (var stream = CreateStreamingMcap(attachmentCount: 0, attachmentBytes: 0, metadataCount: 2, metadataValueBytes: 4))
+            {
+                var limits = McapSequentialReadLimits.UnlimitedForTests;
+                SetField(limits, "MaxMetadataRecords", 1);
+                Check(Throws<InvalidOperationException>(() =>
+                {
+                    using var reader = new McapStreamingReader(stream, leaveOpen: true, limits);
+                    reader.Read();
+                }), "138P-12E: streaming reader enforces metadata count cap");
+            }
+
+            using (var stream = CreateStreamingMcap(attachmentCount: 1, attachmentBytes: 8, metadataCount: 0, metadataValueBytes: 0, insideChunk: true))
+            {
+                var limits = McapSequentialReadLimits.UnlimitedForTests;
+                SetField(limits, "MaxAttachmentBytes", 4L);
+                Check(Throws<InvalidOperationException>(() =>
+                {
+                    using var reader = new McapStreamingReader(stream, leaveOpen: true, limits);
+                    reader.Read();
+                }), "138P-12F: streaming reader enforces chunk attachment byte cap");
+            }
+
+            using (var stream = CreateStreamingMcap(attachmentCount: 0, attachmentBytes: 0, metadataCount: 1, metadataValueBytes: 16, insideChunk: true))
+            {
+                var limits = McapSequentialReadLimits.UnlimitedForTests;
+                SetField(limits, "MaxMetadataBytes", 4L);
+                Check(Throws<InvalidOperationException>(() =>
+                {
+                    using var reader = new McapStreamingReader(stream, leaveOpen: true, limits);
+                    reader.Read();
+                }), "138P-12G: streaming reader enforces chunk metadata byte cap");
+            }
         }
 
         private static void PacketizersRejectOversizedPendingAccessUnits()
@@ -322,10 +384,55 @@ namespace Unity.FoxgloveSDK.Tests
                   && camera.Contains("JpegWorkerGeneration", StringComparison.Ordinal)
                   && camera.Contains("request.Generation", StringComparison.Ordinal),
                 "138P-15A: camera JPEG worker timeout/restart is generation-guarded");
-            Check(pointcloud.Contains("_dracoEncodeWorkerGeneration", StringComparison.Ordinal)
-                  && pointcloud.Contains("_pointCloud2NativeWorkerGeneration", StringComparison.Ordinal)
+            Check(pointcloud.Contains("_dracoEncodeWorker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
+                  && pointcloud.Contains("_pointCloud2NativeWorker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
                   && pointcloud.Contains("request.Generation", StringComparison.Ordinal),
                 "138P-15B: pointcloud workers timeout/restart are generation-guarded");
+
+            var lifecycle = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");
+            Check(lifecycle.Contains("internal sealed class BackgroundWorkerLifecycle", StringComparison.Ordinal)
+                  && lifecycle.Contains("StartOrReuseLocked", StringComparison.Ordinal)
+                  && lifecycle.Contains("InvalidateTimedOutWorkerLocked", StringComparison.Ordinal)
+                  && pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
+                  && pointcloud.Contains("BackgroundWorkerLifecycle _pointCloud2NativeWorker", StringComparison.Ordinal)
+                  && pointcloud.Contains("StartOrReuseLocked(out startWorker)", StringComparison.Ordinal)
+                  && pointcloud.Contains("InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_dracoEncodeWorkerGeneration", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_pointCloud2NativeWorkerGeneration", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_dracoEncodeWorkerRunning", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_pointCloud2NativeWorkerRunning", StringComparison.Ordinal),
+                "138P-15E: pointcloud worker lifecycle state is centralized in a small helper");
+        }
+
+        private static void CameraReadbackAndWorkerSignalsHaveExplicitLifecycleBoundaries()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var readback = ExtractMethod(camera, "private void OnReadbackComplete");
+            var completeCount = CountOccurrences(readback, "CompletePendingReadback()");
+            Check(readback.Contains("finally", StringComparison.Ordinal)
+                  && completeCount == 1
+                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
+                     > readback.IndexOf("finally", StringComparison.Ordinal)
+                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
+                     > readback.IndexOf("SubmitVideoFrame", StringComparison.Ordinal)
+                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
+                     > readback.IndexOf("QueueJpegFrame", StringComparison.Ordinal)
+                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
+                     > readback.IndexOf("PublishJpegFrame", StringComparison.Ordinal),
+                "138P-15C: camera readback drains pending count after request data is consumed");
+
+            var ensureWorker = ExtractMethod(camera, "private bool EnsureJpegWorkerStarted");
+            var stopWorker = ExtractMethod(camera, "private void StopJpegWorker");
+            var loop = ExtractMethod(camera, "private void EncodeJpegWorkerLoop");
+            Check(ensureWorker.Contains("new AutoResetEvent(false)", StringComparison.Ordinal)
+                  && ensureWorker.Contains("EncodeJpegWorkerLoop(workerGeneration, workerSignal)", StringComparison.Ordinal)
+                  && loop.Contains("AutoResetEvent workerSignal", StringComparison.Ordinal)
+                  && loop.Contains("workerSignal.WaitOne", StringComparison.Ordinal)
+                  && loop.Contains("finally", StringComparison.Ordinal)
+                  && loop.Contains("workerSignal.Dispose()", StringComparison.Ordinal)
+                  && !loop.Contains("_jpegWorkerSignal?.WaitOne", StringComparison.Ordinal)
+                  && !stopWorker.Contains("_jpegWorkerSignal.Dispose()", StringComparison.Ordinal),
+                "138P-15D: camera JPEG worker signal is owned by one worker generation");
         }
 
         private static void PointCloud2NativeTfRotationConventionIsExplicit()
@@ -404,17 +511,27 @@ namespace Unity.FoxgloveSDK.Tests
             int attachmentCount,
             int attachmentBytes,
             int metadataCount,
-            int metadataValueBytes)
+            int metadataValueBytes,
+            bool insideChunk = false)
         {
             var stream = new MemoryStream();
             using (var writer = new McapWriter(stream, leaveOpen: true))
             {
                 writer.WriteMagic();
                 writer.WriteHeader("", "phase138p-streaming-limits");
-                for (var i = 0; i < attachmentCount; i++)
-                    writer.WriteAttachment((ulong)i, (ulong)i, "attachment" + i + ".bin", "application/octet-stream", new byte[attachmentBytes]);
-                for (var i = 0; i < metadataCount; i++)
-                    writer.WriteMetadata("metadata" + i, new Dictionary<string, string> { ["value"] = new string('x', metadataValueBytes) });
+                if (insideChunk)
+                {
+                    using var inner = new MemoryStream();
+                    using (var innerWriter = new McapWriter(inner, leaveOpen: true))
+                        WriteStreamingLimitRecords(innerWriter, attachmentCount, attachmentBytes, metadataCount, metadataValueBytes);
+                    var records = inner.ToArray();
+                    writer.WriteChunk(0, 0, (ulong)records.Length, 0, "", (ulong)records.Length, records);
+                }
+                else
+                {
+                    WriteStreamingLimitRecords(writer, attachmentCount, attachmentBytes, metadataCount, metadataValueBytes);
+                }
+
                 writer.WriteDataEnd();
                 writer.WriteFooter(0, 0, 0);
                 writer.WriteMagic();
@@ -422,6 +539,19 @@ namespace Unity.FoxgloveSDK.Tests
 
             stream.Position = 0;
             return stream;
+        }
+
+        private static void WriteStreamingLimitRecords(
+            McapWriter writer,
+            int attachmentCount,
+            int attachmentBytes,
+            int metadataCount,
+            int metadataValueBytes)
+        {
+            for (var i = 0; i < attachmentCount; i++)
+                writer.WriteAttachment((ulong)i, (ulong)i, "attachment" + i + ".bin", "application/octet-stream", new byte[attachmentBytes]);
+            for (var i = 0; i < metadataCount; i++)
+                writer.WriteMetadata("metadata" + i, new Dictionary<string, string> { ["value"] = new string('x', metadataValueBytes) });
         }
 
         private static void SetField(object target, string name, object value)
@@ -462,11 +592,33 @@ namespace Unity.FoxgloveSDK.Tests
             return result;
         }
 
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
+
         private static float ReadSingle(byte[] data, int offset)
             => BitConverter.ToSingle(data, offset);
 
         private static uint ReadUInt32(byte[] data, int offset)
             => BitConverter.ToUInt32(data, offset);
+
+        private static uint ExpectedNanoseconds(float seconds)
+        {
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds) || seconds <= 0f)
+                return 0u;
+
+            var nanoseconds = Math.Round((double)seconds * 1_000_000_000d, MidpointRounding.AwayFromZero);
+            return nanoseconds >= uint.MaxValue ? uint.MaxValue : (uint)nanoseconds;
+        }
 
         private static void WriteU64LE(byte[] data, int offset, ulong value)
         {

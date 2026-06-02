@@ -207,8 +207,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("Queue<DracoEncodeResult> _completedDracoEncodes")
                   && source.Contains("MaxCompletedDracoEncodeResults"),
                 "134-14J-7: completed Draco encode results use a bounded queue instead of a single overwrite slot");
+            var lifecycleSource = File.ReadAllText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");
             Check(source.Contains("StopDracoEncodeWorker(clearCompleted: true)")
-                  && source.Contains("ManualResetEventSlim"),
+                  && source.Contains("_dracoEncodeWorker.Idle.Wait(")
+                  && lifecycleSource.Contains("ManualResetEventSlim"),
                 "134-14J-8: Draco worker has an explicit disable/destroy shutdown path");
         }
 

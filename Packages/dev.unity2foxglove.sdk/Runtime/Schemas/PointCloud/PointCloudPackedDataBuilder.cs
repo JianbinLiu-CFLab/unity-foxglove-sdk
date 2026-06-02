@@ -114,9 +114,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             if (float.IsNaN(timeOffsetSeconds) || float.IsInfinity(timeOffsetSeconds) || timeOffsetSeconds <= 0f)
                 return 0u;
 
-            var nanoseconds = decimal.Round(
-                (decimal)timeOffsetSeconds * 1_000_000_000m,
-                0,
+            var nanoseconds = Math.Round(
+                (double)timeOffsetSeconds * 1_000_000_000d,
                 MidpointRounding.AwayFromZero);
             if (nanoseconds >= uint.MaxValue)
                 return uint.MaxValue;

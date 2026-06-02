@@ -300,39 +300,44 @@ namespace Unity.FoxgloveSDK.Components
         private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
-            CompletePendingReadback();
-
-            if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration) return;
-            if (req.hasError)
+            try
             {
-                Debug.LogWarning("[Foxglove] Camera AsyncGPUReadback failed.");
-                return;
-            }
-            if (_manager == null) return;
+                if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration) return;
+                if (req.hasError)
+                {
+                    Debug.LogWarning("[Foxglove] Camera AsyncGPUReadback failed.");
+                    return;
+                }
+                if (_manager == null) return;
 
-            var profile = ActiveProfile;
-            if (profile.IsVideo)
+                var profile = ActiveProfile;
+                if (profile.IsVideo)
+                {
+                    SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight);
+                    return;
+                }
+
+                var publishWebSocket = ShouldPreparePublishPayload();
+                var publishBridge = ShouldPrepareRos2BridgePayload();
+                var publishNativeFrame = HasSensorCompressedImageDemand();
+                if (!publishWebSocket && !publishBridge && !publishNativeFrame)
+                {
+                    _noDemandJpegDropCount++;
+                    return;
+                }
+
+                if (_useAsyncJpeg && EnsureJpegWorkerStarted())
+                {
+                    QueueJpegFrame(req, renderUnixNs, captureWidth, captureHeight, publishWebSocket, publishBridge, publishNativeFrame, EffectiveEncoding, readbackLatencyMs);
+                    return;
+                }
+
+                PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight);
+            }
+            finally
             {
-                SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight);
-                return;
+                CompletePendingReadback();
             }
-
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            var publishNativeFrame = HasSensorCompressedImageDemand();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame)
-            {
-                _noDemandJpegDropCount++;
-                return;
-            }
-
-            if (_useAsyncJpeg && EnsureJpegWorkerStarted())
-            {
-                QueueJpegFrame(req, renderUnixNs, captureWidth, captureHeight, publishWebSocket, publishBridge, publishNativeFrame, EffectiveEncoding, readbackLatencyMs);
-                return;
-            }
-
-            PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight);
         }
 
         /// <summary>
@@ -1118,15 +1123,16 @@ namespace Unity.FoxgloveSDK.Components
             if (_jpegWorker != null && _jpegWorker.IsAlive && !_jpegWorkerStopping)
                 return true;
 
+            AutoResetEvent workerSignal = null;
             try
             {
                 var workerGeneration = Interlocked.Increment(ref _jpegWorkerGeneration);
 
                 _jpegWorkerStopping = false;
-                if (_jpegWorkerSignal == null)
-                    _jpegWorkerSignal = new AutoResetEvent(false);
+                workerSignal = new AutoResetEvent(false);
+                _jpegWorkerSignal = workerSignal;
 
-                _jpegWorker = new Thread(() => EncodeJpegWorkerLoop(workerGeneration))
+                _jpegWorker = new Thread(() => EncodeJpegWorkerLoop(workerGeneration, workerSignal))
                 {
                     IsBackground = true,
                     Name = "FoxgloveCameraJpegEncoder"
@@ -1138,6 +1144,8 @@ namespace Unity.FoxgloveSDK.Components
             catch (Exception ex)
             {
                 _jpegWorker = null;
+                _jpegWorkerSignal = null;
+                workerSignal?.Dispose();
                 LogJpegWorkerFailure("Unable to start JPEG worker: " + ex.Message);
                 return false;
             }
@@ -1151,7 +1159,14 @@ namespace Unity.FoxgloveSDK.Components
         {
             _jpegWorkerStopping = true;
             Interlocked.Increment(ref _jpegWorkerGeneration);
-            _jpegWorkerSignal?.Set();
+            var signal = _jpegWorkerSignal;
+            try
+            {
+                signal?.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
             var worker = _jpegWorker;
             if (worker != null && worker.IsAlive && !worker.Join(JpegWorkerStopWaitMs))
             {
@@ -1164,17 +1179,16 @@ namespace Unity.FoxgloveSDK.Components
                 if (clearQueues)
                     ClearJpegQueues();
                 _jpegWorker = null;
+                if (ReferenceEquals(_jpegWorkerSignal, signal))
+                    _jpegWorkerSignal = null;
                 _jpegWorkerStopping = false;
                 return;
             }
 
             _jpegWorker = null;
             _jpegWorkerStopping = false;
-            if (_jpegWorkerSignal != null)
-            {
-                _jpegWorkerSignal.Dispose();
+            if (ReferenceEquals(_jpegWorkerSignal, signal))
                 _jpegWorkerSignal = null;
-            }
 
             if (clearQueues)
                 ClearJpegQueues();
@@ -1727,32 +1741,41 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private int JpegWorkerGeneration => Volatile.Read(ref _jpegWorkerGeneration);
 
-        private void EncodeJpegWorkerLoop(int workerGeneration)
+        private void EncodeJpegWorkerLoop(int workerGeneration, AutoResetEvent workerSignal)
         {
-            while (!_jpegWorkerStopping && workerGeneration == JpegWorkerGeneration)
+            try
             {
-                var queue = _jpegEncodeQueue;
-                if (queue != null && queue.TryDequeue(out var request))
+                while (!_jpegWorkerStopping && workerGeneration == JpegWorkerGeneration)
                 {
-                    if (request.Generation != _captureGeneration)
-                        continue;
-                    if (request.JpegWorkerGeneration != workerGeneration)
-                        continue;
-
-                    var result = EncodeJpegRequest(request);
-                    if (!_jpegWorkerStopping
-                        && workerGeneration == JpegWorkerGeneration
-                        && result.Request.JpegWorkerGeneration == workerGeneration)
+                    var queue = _jpegEncodeQueue;
+                    if (queue != null && queue.TryDequeue(out var request))
                     {
-                        var completed = _completedJpegQueue;
-                        if (completed != null && completed.Enqueue(result))
-                            _droppedCompletedJpegCount++;
+                        if (request.Generation != _captureGeneration)
+                            continue;
+                        if (request.JpegWorkerGeneration != workerGeneration)
+                            continue;
+
+                        var result = EncodeJpegRequest(request);
+                        if (!_jpegWorkerStopping
+                            && workerGeneration == JpegWorkerGeneration
+                            && result.Request.JpegWorkerGeneration == workerGeneration)
+                        {
+                            var completed = _completedJpegQueue;
+                            if (completed != null && completed.Enqueue(result))
+                                _droppedCompletedJpegCount++;
+                        }
+
+                        continue;
                     }
 
-                    continue;
+                    workerSignal.WaitOne(50);
                 }
-
-                _jpegWorkerSignal?.WaitOne(50);
+            }
+            finally
+            {
+                if (ReferenceEquals(_jpegWorkerSignal, workerSignal))
+                    _jpegWorkerSignal = null;
+                workerSignal.Dispose();
             }
         }
     }
