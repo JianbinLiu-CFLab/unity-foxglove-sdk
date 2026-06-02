@@ -327,6 +327,7 @@ def launch_rviz(
     log_prefix: str,
     startup_check_seconds: float = 1.5,
     window_wait_seconds: float = 0.0,
+    stdout_log_path: pathlib.Path | None = None,
 ) -> subprocess.Popen:
     """Launch RViz2 with the supplied config and optional visible-window timing."""
 
@@ -360,14 +361,24 @@ def launch_rviz(
     rviz_env["LIBGL_ALWAYS_SOFTWARE"] = "1"
 
     log_event(log_prefix, f"RViz2 launch request exe={rviz_exe} config={config}")
+    stdout_target = subprocess.DEVNULL
+    log_file = None
+    if stdout_log_path is not None:
+        stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = stdout_log_path.open("w", encoding="utf-8")
+        stdout_target = log_file
     popen_started = time.perf_counter()
-    process = subprocess.Popen(
-        [str(rviz_exe), "-d", str(config)],
-        cwd=str(ros2_root),
-        env=rviz_env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        process = subprocess.Popen(
+            [str(rviz_exe), "-d", str(config)],
+            cwd=str(ros2_root),
+            env=rviz_env,
+            stdout=stdout_target,
+            stderr=subprocess.STDOUT if log_file is not None else subprocess.DEVNULL,
+        )
+    finally:
+        if log_file is not None:
+            log_file.close()
     popen_elapsed = time.perf_counter() - popen_started
     total_elapsed = time.perf_counter() - launch_started
     log_event(
