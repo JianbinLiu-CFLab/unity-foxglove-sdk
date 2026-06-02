@@ -113,9 +113,13 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => SchemaNameOverride;
         protected virtual string SchemaNameOverride => ActiveProfile.SchemaName;
         protected virtual string DefaultTopic => ActiveProfile.DefaultTopic;
+        /// <summary>True when VirtualLidar may use the low-allocation Draco queue.</summary>
         internal bool CanQueueVirtualLidarDracoFrame => _outputMode == PointCloudOutputMode.Draco;
+        /// <summary>True when VirtualLidar may use the low-allocation PointCloud2 Native queue.</summary>
         internal bool CanQueueVirtualLidarPointCloud2NativeFrame => _outputMode == PointCloudOutputMode.PointCloud2Native;
+        /// <summary>True when any VirtualLidar native queue is active for this mode.</summary>
         internal bool CanQueueVirtualLidarNativeFrame => CanQueueVirtualLidarDracoFrame || CanQueueVirtualLidarPointCloud2NativeFrame;
+        /// <summary>Whether the selected output mode supports JSON payloads.</summary>
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
 
         /// <summary>
@@ -125,8 +129,10 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public event Action<PointCloud2NativeFrame> PointCloud2NativeFrameReady;
 
+        /// <summary>Whether the selected output mode supports protobuf payloads.</summary>
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
 
+        /// <summary>Whether this publisher can emit ROS2 CDR payloads for compatible modes.</summary>
         public override bool SupportsRos2Encoding => true;
 
         /// <summary>Current user-selected point-cloud output mode.</summary>
@@ -280,6 +286,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Queues a source VirtualLidar snapshot into the Draco worker when the
+        /// selected mode is compatible.
+        /// </summary>
         internal bool TryQueueVirtualLidarDracoFrame(
             VirtualLidarPointData[] points,
             int pointCount,
@@ -317,6 +327,10 @@ namespace Unity.FoxgloveSDK.Components
             return true;
         }
 
+        /// <summary>
+        /// Queues a source VirtualLidar snapshot into the PointCloud2 Native
+        /// worker when the selected mode is compatible.
+        /// </summary>
         internal bool TryQueueVirtualLidarPointCloud2NativeFrame(
             VirtualLidarPointData[] points,
             int pointCount,
@@ -617,6 +631,10 @@ namespace Unity.FoxgloveSDK.Components
             EnqueuePointCloud2NativeRequest(request);
         }
 
+        /// <summary>
+        /// Marks this publisher as source-driven so transform fallback frames do
+        /// not overwrite real LiDAR output.
+        /// </summary>
         internal void MarkSourceDrivenPointCloud()
         {
             _hasSourceDrivenFrames = true;
@@ -1278,6 +1296,7 @@ namespace Unity.FoxgloveSDK.Components
             public VirtualLidarPointData[] LidarPoints { get; }
             /// <summary>Number of valid source slots in <see cref="LidarPoints"/>.</summary>
             public int LidarPointCount { get; }
+            /// <summary>Whether this request bypasses the managed PointCloudFrame point list.</summary>
             public bool HasVirtualLidarSnapshot => LidarPoints != null;
             /// <summary>Optional frame id override for source-driven virtual LiDAR snapshots.</summary>
             public string FrameId { get; }
@@ -1290,6 +1309,7 @@ namespace Unity.FoxgloveSDK.Components
             public bool PublishWebSocket { get; }
             /// <summary>Whether ROS2 bridge output is expected for this request.</summary>
             public bool PublishBridge { get; }
+            /// <summary>Effective encoding for the WebSocket payload, when requested.</summary>
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
             /// <summary>Main-thread frame clone time before background Draco encode.</summary>
             public double CloneMs { get; }
@@ -1339,6 +1359,7 @@ namespace Unity.FoxgloveSDK.Components
             public bool PublishBridge { get; }
             /// <summary>Whether a schema-neutral native frame event is expected.</summary>
             public bool PublishNativeFrame { get; }
+            /// <summary>Effective encoding for the WebSocket payload, when requested.</summary>
             public PublisherEffectiveEncoding WebSocketEncoding { get; }
         }
 

@@ -28,6 +28,10 @@ namespace Unity.FoxgloveSDK.Editor
         private DracoPointCloudNativeCheckResult _dracoCheck =
             new DracoPointCloudNativeCheckResult(DracoPointCloudNativeStatus.NotChecked, "", "", 0);
 
+        /// <summary>
+        /// Draws the PointCloud publisher inspector and switches the visible
+        /// controls to match the selected output mode.
+        /// </summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -370,6 +374,9 @@ namespace Unity.FoxgloveSDK.Editor
         {
             private Vector2 _scroll;
 
+            /// <summary>
+            /// Opens the Draco help popup without changing the publisher state.
+            /// </summary>
             public static void ShowWindow()
             {
                 var window = CreateInstance<DracoHelpWindow>();

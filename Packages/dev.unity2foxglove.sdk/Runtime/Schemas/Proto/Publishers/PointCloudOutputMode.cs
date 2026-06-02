@@ -11,8 +11,11 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public enum PointCloudOutputMode
     {
+        /// <summary>Uncompressed foxglove.PointCloud output mode.</summary>
         Raw = 0,
+        /// <summary>Compressed foxglove.CompressedPointCloud output mode.</summary>
         Draco = 1,
+        /// <summary>Standard sensor_msgs/msg/PointCloud2 output mode for ROS2 consumers.</summary>
         PointCloud2Native = 2
     }
 
@@ -21,6 +24,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public readonly struct PointCloudOutputProfile
     {
+        /// <summary>
+        /// Creates a resolved point-cloud profile for the selected output mode.
+        /// </summary>
         internal PointCloudOutputProfile(
             PointCloudOutputMode mode,
             string displayName,
@@ -37,13 +43,22 @@ namespace Unity.FoxgloveSDK.Components
             SupportsProtobuf = supportsProtobuf;
         }
 
+        /// <summary>Point-cloud output mode represented by this profile.</summary>
         public PointCloudOutputMode Mode { get; }
+        /// <summary>Inspector label shown for this profile.</summary>
         public string DisplayName { get; }
+        /// <summary>Topic used when the publisher topic is left empty.</summary>
         public string DefaultTopic { get; }
+        /// <summary>Schema advertised for the selected profile.</summary>
         public string SchemaName { get; }
+        /// <summary>Whether JSON publishing is supported for the selected profile.</summary>
         public bool SupportsJson { get; }
+        /// <summary>Whether protobuf publishing is supported for the selected profile.</summary>
         public bool SupportsProtobuf { get; }
 
+        /// <summary>
+        /// Returns the resolved profile definition for a given output mode.
+        /// </summary>
         public static PointCloudOutputProfile ForMode(PointCloudOutputMode mode)
         {
             switch (mode)

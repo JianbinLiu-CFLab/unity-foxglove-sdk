@@ -11,6 +11,10 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Editor-facing registry metadata for SDK-owned publishers and their
+    /// advertised schema capabilities.
+    /// </summary>
     public static class FoxgloveSdkPublisherCatalog
     {
         private static readonly Unity2FoxgloveSdkTypedPublisherEntry[] EntriesArray =
@@ -141,6 +145,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "Generic protobuf typed publisher template; concrete schema is supplied by T.")
         };
 
+        /// <summary>Read-only publisher catalog used by schema manifest tooling.</summary>
         public static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
 
         private static Unity2FoxgloveSdkTypedPublisherEntry Concrete(

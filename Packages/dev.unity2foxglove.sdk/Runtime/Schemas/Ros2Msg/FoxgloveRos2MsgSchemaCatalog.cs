@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     /// <summary>One official Foxglove ROS 2 .msg schema catalog entry.</summary>
     public sealed class FoxgloveRos2MsgSchemaCatalogEntry
     {
+        /// <summary>
+        /// Creates a catalog entry for one bundled ROS 2 .msg schema definition.
+        /// </summary>
         public FoxgloveRos2MsgSchemaCatalogEntry(
             string schemaName,
             string content,
@@ -57,10 +60,15 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     /// <summary>Generated catalog for the bundled official Foxglove ROS 2 .msg snapshot.</summary>
     public static class FoxgloveRos2MsgSchemaCatalog
     {
+        /// <summary>Schema encoding identifier used when advertising these entries.</summary>
         public const string SchemaEncoding = "ros2msg";
+        /// <summary>Total number of entries in the bundled Foxglove ROS 2 snapshot.</summary>
         public const int SourceFileCount = 41;
+        /// <summary>Repository path that held the source message definitions.</summary>
         public const string SourceSnapshot = "third-party/foxglove-sdk/schemas/ros2";
+        /// <summary>SHA-256 checksum for the source snapshot tree.</summary>
         public const string SourceTreeSha256 = "b9703a7ea74cf053c92e9aa91d2dee90a7edd3e7657e1fd9af9e60e253a53882";
+        /// <summary>Upstream source commit used to generate this snapshot.</summary>
         public const string SourceCommit = "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba";
 
         private static readonly FoxgloveRos2MsgSchemaCatalogEntry[] EntriesArray =

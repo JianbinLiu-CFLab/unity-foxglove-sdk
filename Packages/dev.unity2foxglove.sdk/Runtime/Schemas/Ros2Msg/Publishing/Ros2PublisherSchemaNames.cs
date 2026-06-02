@@ -11,14 +11,21 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     /// </summary>
     public static class Ros2PublisherSchemaNames
     {
-        /// <summary>Official foxglove_msgs schema name for transform publisher output.</summary>
+        /// <summary>ROS2 schema name for transform publisher output.</summary>
         public const string FrameTransform = Ros2CdrFrameTransformBuilder.SchemaName;
+        /// <summary>ROS2 schema name for scene update publisher output.</summary>
         public const string SceneUpdate = Ros2CdrSceneUpdateBuilder.SchemaName;
+        /// <summary>ROS2 schema name for compressed image publisher output.</summary>
         public const string CompressedImage = Ros2CdrCompressedImageBuilder.SchemaName;
+        /// <summary>ROS2 schema name for camera calibration output.</summary>
         public const string CameraCalibration = Ros2CdrCameraCalibrationBuilder.SchemaName;
+        /// <summary>ROS2 schema name for laser scan publisher output.</summary>
         public const string LaserScan = Ros2CdrLaserScanBuilder.SchemaName;
+        /// <summary>ROS2 schema name for foxglove point-cloud publisher output.</summary>
         public const string PointCloud = Ros2CdrPointCloudBuilder.SchemaName;
+        /// <summary>ROS2 schema name for standard PointCloud2 output.</summary>
         public const string SensorPointCloud2 = Ros2CdrSensorPointCloud2Builder.SchemaName;
+        /// <summary>ROS2 schema name for compressed point-cloud output.</summary>
         public const string CompressedPointCloud = Ros2CdrCompressedPointCloudBuilder.SchemaName;
     }
 }

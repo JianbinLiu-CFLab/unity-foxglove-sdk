@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     /// <summary>Builds CDR payloads for standard ROS 2 sensor_msgs/msg/PointCloud2.</summary>
     public static class Ros2CdrSensorPointCloud2Builder
     {
+        /// <summary>ROS2 schema name serialized by this PointCloud2 CDR builder.</summary>
         public const string SchemaName = "sensor_msgs/msg/PointCloud2";
 
         private const byte PointFieldInt8 = 1;

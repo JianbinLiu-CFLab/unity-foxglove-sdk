@@ -65,6 +65,12 @@ uint32 count
 
         private static readonly Dictionary<string, FoxgloveRos2MsgSchemaCatalogEntry> BySchemaName = BuildSchemaNameMap();
 
+        /// <summary>
+        /// Resolves one bundled standard ROS 2 schema entry by schema name.
+        /// </summary>
+        /// <param name="schemaName">ROS 2 schema name to resolve.</param>
+        /// <param name="entry">Resolved schema entry, or null when not found.</param>
+        /// <returns><see langword="true"/> when the lookup succeeds; otherwise <see langword="false"/>.</returns>
         public static bool TryGet(string schemaName, out FoxgloveRos2MsgSchemaCatalogEntry entry)
         {
             if (schemaName == null)
@@ -76,6 +82,10 @@ uint32 count
             return BySchemaName.TryGetValue(schemaName, out entry);
         }
 
+        /// <summary>
+        /// Registers all bundled standard ROS 2 schemas with the provided registry.
+        /// </summary>
+        /// <param name="registry">Target schema registry. Null inputs are ignored.</param>
         public static void RegisterSchemas(ISchemaRegistry registry)
         {
             if (registry == null)
