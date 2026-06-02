@@ -180,7 +180,7 @@ The default topics are conventional ROS2 names and can collide with real drivers
 ## PointCloud2 Native DDS Output
 
 When the adapter package and Jazzy Win64 runtime package are installed, the
-Phase 138L PointCloud2 path is a product setting, not a sample component setup.
+The PointCloud2 Native path is a product setting, not a sample component setup.
 In Unity:
 
 1. On `FoxgloveManager`, enable `ROS2 Native (R2FU)`.

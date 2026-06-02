@@ -4,20 +4,19 @@
 #
 # Module: Scripts/smoke
 # Purpose: Launch RViz2 for Phase138L PointCloud2 Native product interaction.
+#
+# Launches RViz2 for the PointCloud2 Native product path while Unity is in Play mode.
+# Expected setup:
+# - FoxglovePointCloudPublisher output mode: PointCloud2 Native
+# - Default topic: /unity/point_cloud2
+# - Optional fixed frame override: --fixed-frame
+# - Optional static TF fallback: --static-tf and --no-static-tf
 
-"""Launch RViz2 for the Phase138L PointCloud2 Native product path.
-
-Use this when Unity is already in Play Mode and
-FoxglovePointCloudPublisher is configured as:
-
-  - Output Mode: PointCloud2 Native
-  - Topic: /unity/point_cloud2, or pass --points-topic for a different topic
-  - Frame Id: os_lidar, or pass --fixed-frame for a different frame
-  - Publish TF Anchor enabled on the PointCloud2 Native publisher
-
-The script writes a temporary RViz2 config with the selected PointCloud2 topic,
-then launches RViz2 using the pinned Windows ROS2 Jazzy environment.
-"""
+_DESCRIPTION = (
+    "Launch RViz2 for the PointCloud2 Native product path. "
+    "The script writes a temporary RViz2 config with the selected PointCloud2 topic "
+    "and then launches RViz2 using the pinned Windows ROS2 Jazzy environment."
+)
 
 from __future__ import annotations
 
@@ -41,7 +40,11 @@ DEFAULT_TF_PARENT_FRAME = "map"
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    """Parse launch arguments for RViz2 Phase 138L helper.
+
+    Returns an argparse namespace used by the caller and main launch flow.
+    """
+    parser = argparse.ArgumentParser(description=_DESCRIPTION.strip())
     parser.add_argument(
         "--ros2-root",
         default=str(ros2env.DEFAULT_ROS2_ROOT),
@@ -135,6 +138,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def normalize_topic(topic: str) -> str:
+    """Normalize a PointCloud2 topic into a leading-slash absolute topic name."""
     value = (topic or "").strip()
     if not value:
         raise ValueError("PointCloud2 topic must not be empty.")
@@ -142,6 +146,7 @@ def normalize_topic(topic: str) -> str:
 
 
 def normalize_frame(frame: str, label: str) -> str:
+    """Normalize and validate TF frame names used by launch arguments."""
     value = (frame or "").strip().strip("/")
     if not value:
         raise ValueError(f"{label} must not be empty.")
@@ -149,6 +154,7 @@ def normalize_frame(frame: str, label: str) -> str:
 
 
 def sanitize_config_suffix(value: str) -> str:
+    """Create a filesystem-safe suffix from a ROS topic or frame value."""
     suffix = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip("/"))
     return suffix or "pointcloud2"
 
@@ -159,6 +165,7 @@ def write_runtime_rviz_config(
     points_topic: str,
     fixed_frame: str,
 ) -> pathlib.Path:
+    """Write a temporary RViz config containing the selected PointCloud2 topic."""
     text = base_config.read_text(encoding="utf-8")
     text = text.replace("Value: /points", f"Value: {points_topic}")
     text = text.replace("Name: PointCloud2 /points", f"Name: PointCloud2 {points_topic}")
@@ -179,6 +186,7 @@ def probe_topic(
     timeout_seconds: float,
     strict: bool,
 ) -> bool:
+    """Optionally probe ROS2 topic info and return whether it is currently visible."""
     print(f"[phase138l-rviz] Probing ROS2 topic: {topic}")
     try:
         result = subprocess.run(
@@ -223,6 +231,7 @@ def launch_static_tf(
     parent_frame: str,
     child_frame: str,
 ) -> subprocess.Popen[str] | None:
+    """Launch a one-shot helper static-transform publisher when requested."""
     if parent_frame == child_frame:
         print(
             "[phase138l-rviz] Static TF skipped because parent and child frame are both "
@@ -263,6 +272,7 @@ def launch_static_tf(
 
 
 def main(argv: list[str]) -> int:
+    """Entry point for this smoke script. Returns process exit status."""
     args = parse_args(argv)
     workspace_root = ros2env.find_workspace_root()
     ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)

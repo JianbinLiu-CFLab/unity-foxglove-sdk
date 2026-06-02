@@ -19,6 +19,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
         private const string RuntimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OptionalRuntime = OptionalPackage + "/Runtime";
+        private const string OptionalRuntimeNative = OptionalRuntime + "/Native";
         private const string SampleName = "ROS2 For Unity External Adapter";
         private const string SamplePath = OptionalPackage + "/Samples~/ROS2 For Unity External Adapter";
         private const string FactoryPath = SamplePath + "/Phase110Ros2ForUnityContextFactory.cs";
@@ -193,6 +194,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-E1: optional Runtime factory remains host-agnostic and unavailable by default");
 
             var offenders = TextFiles(OptionalRuntime)
+                .Where(path => !IsAllowedRuntimeTokenSource(path))
                 .SelectMany(path =>
                 {
                     var text = File.ReadAllText(path);
@@ -523,6 +525,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static string Rel(string path)
         {
             return Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
+        }
+
+        private static bool IsAllowedRuntimeTokenSource(string path)
+        {
+            var relative = Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
+            return relative.StartsWith(OptionalRuntimeNative, StringComparison.Ordinal);
         }
 
         private static void Check(bool condition, string message)

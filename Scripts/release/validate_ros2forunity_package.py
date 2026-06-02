@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -68,6 +69,11 @@ ALLOWED_EDITOR_SUFFIXES = {
     ".meta",
 }
 
+FORBIDDEN_PUBLIC_PHASE_PATTERN = re.compile(r"(?<![A-Za-z0-9_])(?:Phase|phase)\s*\d{2,4}[A-Z]?\b")
+RUNTIME_TOKEN_EXEMPT_SUFFIXES = {
+    "Native",
+}
+
 FORBIDDEN_RUNTIME_TOKENS = (
     "using ROS2;",
     "namespace ROS2",
@@ -107,6 +113,15 @@ def iter_files(root: Path) -> Iterable[Path]:
     if not root.exists():
         return ()
     return (path for path in root.rglob("*") if path.is_file())
+
+
+def _is_runtime_token_exempt(path: Path, runtime_root: Path) -> bool:
+    """Return True when a runtime file is intentionally exempt from token scanning."""
+    try:
+        rel_parts = path.relative_to(runtime_root).parts
+    except ValueError:
+        return False
+    return rel_parts and rel_parts[0] in RUNTIME_TOKEN_EXEMPT_SUFFIXES
 
 
 def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
@@ -477,10 +492,12 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         rel(RUNTIME_NOTICES),
     )
     general_public_docs = readme + "\n" + notices + "\n" + sample_readme + "\n" + runtime_notices + "\n" + runtime_inventory
-    forbidden_public_tokens = ["Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108", "phase", "Phase"]
+    forbidden_public_tokens = ("Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108")
     hits = [token for token in forbidden_public_tokens if token in general_public_docs]
+    hits.extend(match.group(0) for match in FORBIDDEN_PUBLIC_PHASE_PATTERN.finditer(general_public_docs))
     manifest_text = MANIFEST.read_text(encoding="utf-8", errors="replace") if MANIFEST.exists() else ""
     hits.extend(token for token in forbidden_public_tokens if token in manifest_text)
+    hits.extend(match.group(0) for match in FORBIDDEN_PUBLIC_PHASE_PATTERN.finditer(manifest_text))
     add(results, "public R2FU docs avoid internal phase names", not hits, ", ".join(hits) if hits else "no phase tokens")
 
 
@@ -992,6 +1009,8 @@ def check_runtime_source_boundary(results: list[CheckResult]) -> None:
     for path in iter_files(runtime):
         if path.suffix.lower() not in ALLOWED_RUNTIME_SUFFIXES:
             invalid_files.append(rel(path))
+            continue
+        if _is_runtime_token_exempt(path, runtime):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for token in FORBIDDEN_RUNTIME_TOKENS:

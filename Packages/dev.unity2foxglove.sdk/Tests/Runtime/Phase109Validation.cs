@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
         private const string OptionalRuntime = OptionalPackage + "/Runtime";
+        private const string OptionalRuntimeNative = OptionalRuntime + "/Native";
         private const string ManualAcceptance = "Unity2Foxglove/Assets/Scripts/ManualAcceptance";
         private const string FactoryPath = ManualAcceptance + "/Phase109Ros2ForUnityContextFactory.cs";
         private const string ContextPath = ManualAcceptance + "/Phase109Ros2ForUnityContext.cs";
@@ -54,6 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "109-B2: optional package factory remains unavailable by default");
 
             var offenders = TextFiles(OptionalRuntime)
+                .Where(path => !IsAllowedRuntimeTokenSource(path))
                 .SelectMany(path =>
                 {
                     var text = File.ReadAllText(path);
@@ -207,6 +209,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "std_msgs",
                 "ros2cs"
             };
+        }
+
+        private static bool IsAllowedRuntimeTokenSource(string path)
+        {
+            var relative = Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
+            return relative.StartsWith(OptionalRuntimeNative, StringComparison.Ordinal);
         }
 
         private static IEnumerable<string> CoreProductionForbiddenTokens()

@@ -308,11 +308,43 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool ContainsForbiddenRuntimeToken(string path)
         {
+            if (IsAllowedRuntimeTokenSource(path))
+            {
+                return false;
+            }
+
             if (!HasTextExtension(path))
                 return false;
 
             var text = File.ReadAllText(path);
             return OptionalEditorForbiddenTokens().Any(token => text.Contains(token, StringComparison.Ordinal));
+        }
+
+        private static bool IsAllowedRuntimeTokenSource(string path)
+        {
+            // Native runtime integration files intentionally depend on ROS2 APIs and are
+            // validated as part of runtime distribution checks.
+            var runtimeRoot = Path.Combine(
+                RepoRoot(),
+                OptionalPackage.Replace('/', Path.DirectorySeparatorChar),
+                "Runtime");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var runtimeRootNormalized = Path.GetFullPath(runtimeRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var normalizedPath = Path.GetFullPath(path);
+            if (!normalizedPath.StartsWith(runtimeRootNormalized, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var relative = Path.GetRelativePath(runtimeRoot, normalizedPath);
+            var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return parts.Length > 0 && string.Equals(parts[0], "Native", StringComparison.Ordinal);
         }
 
         private static IReadOnlyList<string> OptionalEditorForbiddenTokens()

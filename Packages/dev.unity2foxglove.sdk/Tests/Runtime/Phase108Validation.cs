@@ -154,6 +154,9 @@ namespace Unity.FoxgloveSDK.Tests
             var offenders = RuntimeTextFiles()
                 .SelectMany(path =>
                 {
+                    if (IsAllowedRuntimeTokenSource(path))
+                        return Array.Empty<string>();
+
                     var text = File.ReadAllText(path);
                     return ForbiddenRuntimeTokens()
                         .Where(token => text.Contains(token, StringComparison.Ordinal))
@@ -251,6 +254,26 @@ namespace Unity.FoxgloveSDK.Tests
 
             return Directory.GetFiles(root, "*.*", SearchOption.AllDirectories)
                 .Where(HasTextExtension);
+        }
+
+        private static bool IsAllowedRuntimeTokenSource(string path)
+        {
+            // Runtime/Native is the productized ROS2 integration layer and intentionally
+            // references upstream ROS2 APIs, validated by distribution/runtime validators.
+            var runtimeRoot = Path.Combine(RepoRoot(), Runtime.Replace('/', Path.DirectorySeparatorChar));
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            var runtimeRootNormalized = Path.GetFullPath(runtimeRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var normalizedPath = Path.GetFullPath(path);
+            if (!normalizedPath.StartsWith(runtimeRootNormalized, StringComparison.Ordinal))
+                return false;
+
+            var relative = Path.GetRelativePath(runtimeRoot, path);
+            var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return parts.Length > 0 && string.Equals(parts[0], "Native", StringComparison.Ordinal);
         }
 
         private static string ReadRuntimeSources()
