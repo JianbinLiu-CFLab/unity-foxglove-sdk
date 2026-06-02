@@ -11,11 +11,17 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase126Validation.
+    /// </summary>
     public static class Phase126Validation
     {
         private const string ArchitectureScriptPath = "Scripts/architecture/analyze_coupling.py";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

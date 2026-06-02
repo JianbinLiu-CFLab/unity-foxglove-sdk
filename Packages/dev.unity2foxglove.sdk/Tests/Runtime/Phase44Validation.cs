@@ -21,8 +21,14 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Tests;
 using Unity.FoxgloveSDK.Transport;
 
+/// <summary>
+/// Validation type for Phase44Validation.
+/// </summary>
 public static class Phase44Validation
 {
+    /// <summary>
+    /// Validation method for Validate.
+    /// </summary>
     public static void Validate()
     {
         Console.WriteLine("=== Phase 44: Official Schema Coverage ===");
@@ -86,6 +92,10 @@ public static class Phase44Validation
             throw new Exception($"Phase 44: {failed} test(s) failed.");
     }
 
+    /// <summary>
+    /// Validation method for GenerateAllSchemasMcap.
+    /// </summary>
+    /// <param name="outputPath">Path where the validation output is written.</param>
     public static void GenerateAllSchemasMcap(string outputPath)
     {
         if (string.IsNullOrEmpty(outputPath))
@@ -218,15 +228,57 @@ public static class Phase44Validation
         public string LastBroadcastText;
         public readonly List<byte[]> SentBinaryFrames = new();
 
+        /// <summary>
+        /// Validation method for Start.
+        /// </summary>
+        /// <param name="host">Host address used by the validation client or listener.</param>
+        /// <param name="port">TCP port used by the validation client or listener.</param>
         public void Start(string host, int port) { }
+        /// <summary>
+        /// Validation method for Stop.
+        /// </summary>
         public void Stop() { }
+        /// <summary>
+        /// Validation method for SendText.
+        /// </summary>
+        /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+        /// <param name="json">JSON payload used by the transport stub.</param>
         public void SendText(uint clientId, string json) => LastSentText = json;
+        /// <summary>
+        /// Validation method for BroadcastText.
+        /// </summary>
+        /// <param name="json">JSON payload used by the transport stub.</param>
         public void BroadcastText(string json) => LastBroadcastText = json;
+        /// <summary>
+        /// Validation method for SendBinary.
+        /// </summary>
+        /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+        /// <param name="data">Binary payload used by the transport stub.</param>
         public void SendBinary(uint clientId, byte[] data) => SentBinaryFrames.Add(data);
+        /// <summary>
+        /// Validation method for BroadcastBinary.
+        /// </summary>
+        /// <param name="data">Binary payload used by the transport stub.</param>
         public void BroadcastBinary(byte[] data) { }
+        /// <summary>
+        /// Validation method for Disconnect.
+        /// </summary>
+        /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
         public void Disconnect(uint clientId) { }
+        /// <summary>
+        /// Validation method for Dispose.
+        /// </summary>
         public void Dispose() { }
+        /// <summary>
+        /// Validation method for SimulateConnect.
+        /// </summary>
+        /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
         public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
+        /// <summary>
+        /// Validation method for SimulateText.
+        /// </summary>
+        /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+        /// <param name="json">JSON payload used by the transport stub.</param>
         public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
     }
 }

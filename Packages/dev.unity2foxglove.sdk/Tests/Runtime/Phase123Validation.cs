@@ -13,10 +13,16 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase123Validation.
+    /// </summary>
     public static class Phase123Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             try
@@ -340,6 +346,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             public int SeekToStartCount { get; private set; }
 
+            /// <summary>
+            /// Validation method for ResetSeekToStartCount.
+            /// </summary>
             public void ResetSeekToStartCount()
             {
                 SeekToStartCount = 0;
@@ -355,15 +364,41 @@ namespace Unity.FoxgloveSDK.Tests
                 set => _inner.Position = value;
             }
 
+            /// <summary>
+            /// Validation method for Flush.
+            /// </summary>
             public override void Flush() => _inner.Flush();
+            /// <summary>
+            /// Validation method for Read.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+            /// <summary>
+            /// Validation method for Seek.
+            /// </summary>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="origin">Reference point for the seek operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin origin)
             {
                 if (offset == 0 && origin == SeekOrigin.Begin)
                     SeekToStartCount++;
                 return _inner.Seek(offset, origin);
             }
+            /// <summary>
+            /// Validation method for SetLength.
+            /// </summary>
+            /// <param name="value">Requested value for the stream operation.</param>
             public override void SetLength(long value) => _inner.SetLength(value);
+            /// <summary>
+            /// Validation method for Write.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
             public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
         }
 
@@ -386,10 +421,36 @@ namespace Unity.FoxgloveSDK.Tests
                 set => throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for Flush.
+            /// </summary>
             public override void Flush() => _inner.Flush();
+            /// <summary>
+            /// Validation method for Read.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+            /// <summary>
+            /// Validation method for Seek.
+            /// </summary>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="origin">Reference point for the seek operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            /// <summary>
+            /// Validation method for SetLength.
+            /// </summary>
+            /// <param name="value">Requested value for the stream operation.</param>
             public override void SetLength(long value) => throw new NotSupportedException();
+            /// <summary>
+            /// Validation method for Write.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
             public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
     }

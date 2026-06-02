@@ -19,11 +19,17 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase93Validation.
+    /// </summary>
     public static class Phase93Validation
     {
         private const ulong SampleTimeNs = 1_700_093_000_000_000_000UL;
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -43,6 +49,10 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 93: {_passed} checks passed.");
         }
 
+        /// <summary>
+        /// Validation method for GenerateRos2FullSchemaMcap.
+        /// </summary>
+        /// <param name="outputPath">Path where the validation output is written.</param>
         public static void GenerateRos2FullSchemaMcap(string outputPath)
         {
             if (string.IsNullOrWhiteSpace(outputPath))
@@ -58,6 +68,10 @@ namespace Unity.FoxgloveSDK.Tests
             WriteAllSchemaMcap(stream, registry);
         }
 
+        /// <summary>
+        /// Validation method for InspectRos2FullSchemaMcap.
+        /// </summary>
+        /// <param name="inputPath">Path read by the validation helper.</param>
         public static void InspectRos2FullSchemaMcap(string inputPath)
         {
             if (string.IsNullOrWhiteSpace(inputPath))
@@ -422,19 +436,57 @@ namespace Unity.FoxgloveSDK.Tests
             public readonly List<string> SentTexts = new List<string>();
             public readonly List<byte[]> SentBinaries = new List<byte[]>();
 
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
             public void Start(string host, int port) => IsRunning = true;
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
             public void Stop() => IsRunning = false;
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void BroadcastText(string json)
             {
                 LastBroadcastText = json;
                 SentTexts.Add(json);
             }
 
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void BroadcastBinary(byte[] data) { }
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SendText(uint clientId, string json) => SentTexts.Add(json);
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void SendBinary(uint clientId, byte[] data) => SentBinaries.Add(data);
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() { }
+            /// <summary>
+            /// Validation method for SimulateConnect.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
             public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
+            /// <summary>
+            /// Validation method for SimulateText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         }
     }

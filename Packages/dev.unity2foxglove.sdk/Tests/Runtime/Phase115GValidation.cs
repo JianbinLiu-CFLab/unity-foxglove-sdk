@@ -19,10 +19,16 @@ using Unity.FoxgloveSDK.SourceGenerators;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase115GValidation.
+    /// </summary>
     public static class Phase115GValidation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -323,6 +329,9 @@ namespace Unity.FoxgloveSDK.Tests
             return @"
 using Unity.FoxgloveSDK.Components;
 
+/// <summary>
+/// Validation type for EpsilonPolicyProbe.
+/// </summary>
 public partial class EpsilonPolicyProbe
 {
     [FoxRun(""/debug/epsilon/integer"", PublishMode = FoxRunPublishMode.OnChange, ChangeEpsilon = 1)]
@@ -339,8 +348,14 @@ public partial class EpsilonPolicyProbe
             return @"
 using Unity.FoxgloveSDK.Components;
 
+/// <summary>
+/// Validation type for NestedObjectProbe.
+/// </summary>
 public partial class NestedObjectProbe
 {
+    /// <summary>
+    /// Validation type for NestedPayload.
+    /// </summary>
     public sealed class NestedPayload
     {
         public int count;

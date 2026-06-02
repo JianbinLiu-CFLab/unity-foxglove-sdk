@@ -10,6 +10,9 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase137Validation.
+    /// </summary>
     public static class Phase137Validation
     {
         private static readonly string[] ExpectedFolders =
@@ -127,6 +130,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 137 Tests ---");

@@ -16,12 +16,18 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase115CValidation.
+    /// </summary>
     public static class Phase115CValidation
     {
         private const string ExpectedFoxRunFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
         private const string SdkFixtureHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -392,6 +398,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private sealed class ThrowingEnumerable : IEnumerable
         {
+            /// <summary>
+            /// Validation method for GetEnumerator.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public IEnumerator GetEnumerator()
             {
                 throw new InvalidOperationException("enumeration failed");

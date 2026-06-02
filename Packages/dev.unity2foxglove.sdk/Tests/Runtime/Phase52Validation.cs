@@ -22,6 +22,9 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase52Validation.
+    /// </summary>
     public static class Phase52Validation
     {
         private const int TestTimeoutMs = 5000;
@@ -30,6 +33,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string WrongToken = "phase52-wrong";
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 52 Tests ---");
@@ -953,14 +959,50 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
 
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
             public void Start(string host, int port) { }
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
             public void Stop() { }
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void BroadcastText(string json) { }
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void BroadcastBinary(byte[] data) { }
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SendText(uint clientId, string json) { }
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void SendBinary(uint clientId, byte[] data) { }
+            /// <summary>
+            /// Validation method for AddAllowedOrigin.
+            /// </summary>
+            /// <param name="origin">Reference point for the seek operation.</param>
             public void AddAllowedOrigin(string origin) => AddedOrigin = origin;
+            /// <summary>
+            /// Validation method for ClearAllowedOrigins.
+            /// </summary>
             public void ClearAllowedOrigins() => ClearCalled = true;
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() { }
         }
 
@@ -971,12 +1013,20 @@ namespace Unity.FoxgloveSDK.Tests
             public string LastWarning { get; private set; }
             public string LastError { get; private set; }
 
+            /// <summary>
+            /// Validation method for LogWarning.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogWarning(string message)
             {
                 WarningCount++;
                 LastWarning = message ?? string.Empty;
             }
 
+            /// <summary>
+            /// Validation method for LogError.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogError(string message)
             {
                 ErrorCount++;
@@ -996,23 +1046,49 @@ namespace Unity.FoxgloveSDK.Tests
                 set => throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for Flush.
+            /// </summary>
             public override void Flush() { }
 
+            /// <summary>
+            /// Validation method for Read.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override int Read(byte[] buffer, int offset, int count)
             {
                 throw new AggregateException(new ObjectDisposedException("MobileAuthenticatedStream"));
             }
 
+            /// <summary>
+            /// Validation method for Seek.
+            /// </summary>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="origin">Reference point for the seek operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin origin)
             {
                 throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for SetLength.
+            /// </summary>
+            /// <param name="value">Requested value for the stream operation.</param>
             public override void SetLength(long value)
             {
                 throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for Write.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
             public override void Write(byte[] buffer, int offset, int count) { }
         }
 
@@ -1035,23 +1111,49 @@ namespace Unity.FoxgloveSDK.Tests
                 set => throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for Flush.
+            /// </summary>
             public override void Flush() { }
 
+            /// <summary>
+            /// Validation method for Read.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override int Read(byte[] buffer, int offset, int count)
             {
                 throw _exception;
             }
 
+            /// <summary>
+            /// Validation method for Seek.
+            /// </summary>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="origin">Reference point for the seek operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin origin)
             {
                 throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for SetLength.
+            /// </summary>
+            /// <param name="value">Requested value for the stream operation.</param>
             public override void SetLength(long value)
             {
                 throw new NotSupportedException();
             }
 
+            /// <summary>
+            /// Validation method for Write.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
             public override void Write(byte[] buffer, int offset, int count) { }
         }
 
@@ -1070,6 +1172,10 @@ namespace Unity.FoxgloveSDK.Tests
             public string RootCaPath { get; }
             public string Password { get; }
 
+            /// <summary>
+            /// Validation method for Create.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public static Phase52CertificateFixture Create()
             {
                 var dir = Path.Combine(Path.GetTempPath(), "unity2foxglove-phase52-" + Guid.NewGuid().ToString("N"));
@@ -1099,6 +1205,9 @@ namespace Unity.FoxgloveSDK.Tests
                 return new Phase52CertificateFixture(dir, pfx, root, password);
             }
 
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose()
             {
                 try { Directory.Delete(DirectoryPath, recursive: true); } catch { }

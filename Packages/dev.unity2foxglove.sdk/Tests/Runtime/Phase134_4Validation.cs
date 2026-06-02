@@ -11,6 +11,9 @@ using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_4Validation.
+    /// </summary>
     public static class Phase134_4Validation
     {
         private const string PublisherBasePath =
@@ -24,6 +27,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -270,12 +276,20 @@ namespace Unity.FoxgloveSDK.Tests
             public int WarningCount;
             public string LastWarning = string.Empty;
 
+            /// <summary>
+            /// Validation method for LogWarning.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogWarning(string message)
             {
                 WarningCount++;
                 LastWarning = message ?? string.Empty;
             }
 
+            /// <summary>
+            /// Validation method for LogError.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogError(string message) { }
         }
 

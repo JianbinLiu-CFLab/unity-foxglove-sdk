@@ -11,12 +11,25 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validates the post-Phase105 documentation refresh, including vendored
+    /// R2FU patch markers, FoxRun schema evidence comments, replay governance,
+    /// and optional ROS2 facade boundaries.
+    /// </summary>
     public static class Phase115HValidation
     {
+        /// <summary>
+        /// Relative root for vendored ROS2 For Unity runtime scripts checked by
+        /// the local-patch governance rules.
+        /// </summary>
         private const string RuntimeScripts =
             "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts";
         private static int _passed;
 
+        /// <summary>
+        /// Runs the Phase115H governance suite and fails when post-105 comment
+        /// or vendored patch evidence is missing.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

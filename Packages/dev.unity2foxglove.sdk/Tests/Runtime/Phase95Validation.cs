@@ -15,11 +15,17 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase95Validation.
+    /// </summary>
     public static class Phase95Validation
     {
         private const ulong SampleTimeNs = 1_700_095_000_000_000_000UL;
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -360,6 +366,10 @@ namespace Unity.FoxgloveSDK.Tests
             public int ConnectFailuresRemaining;
             public int DisconnectCalls;
 
+            /// <summary>
+            /// Validation method for Create.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public IRos2BridgeSink Create()
             {
                 return new FakeSink(this);
@@ -368,9 +378,19 @@ namespace Unity.FoxgloveSDK.Tests
             private sealed class FakeSink : IRos2BridgeSink
             {
                 private readonly FakeSinkFactory _owner;
+                /// <summary>
+                /// Validation constructor for FakeSink.
+                /// </summary>
+                /// <param name="owner">Owning factory.</param>
                 public FakeSink(FakeSinkFactory owner) => _owner = owner;
                 public bool IsConnected { get; private set; }
 
+                /// <summary>
+                /// Validation method for Connect.
+                /// </summary>
+                /// <param name="host">Host address used by the validation client or listener.</param>
+                /// <param name="port">TCP port used by the validation client or listener.</param>
+                /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
                 public void Connect(string host, int port, int timeoutMs)
                 {
                     lock (_owner._gate)
@@ -385,6 +405,11 @@ namespace Unity.FoxgloveSDK.Tests
                     IsConnected = true;
                 }
 
+                /// <summary>
+                /// Validation method for Send.
+                /// </summary>
+                /// <param name="frame">ROS 2 bridge frame sent by the validation client.</param>
+                /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
                 public void Send(Ros2BridgeFrame frame, int timeoutMs)
                 {
                     if (!IsConnected)
@@ -395,6 +420,9 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
+                /// <summary>
+                /// Validation method for Disconnect.
+                /// </summary>
                 public void Disconnect()
                 {
                     IsConnected = false;
@@ -404,6 +432,9 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
+                /// <summary>
+                /// Validation method for Dispose.
+                /// </summary>
                 public void Dispose() => Disconnect();
             }
         }
@@ -416,6 +447,10 @@ namespace Unity.FoxgloveSDK.Tests
             public readonly ManualResetEventSlim StopStarted = new ManualResetEventSlim(false);
             public int DisposeCalls;
 
+            /// <summary>
+            /// Validation method for Create.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public IRos2BridgeSink Create()
             {
                 return new BlockingSink(this);
@@ -424,9 +459,19 @@ namespace Unity.FoxgloveSDK.Tests
             private sealed class BlockingSink : IRos2BridgeSink
             {
                 private readonly BlockingConnectSinkFactory _owner;
+                /// <summary>
+                /// Validation constructor for BlockingSink.
+                /// </summary>
+                /// <param name="owner">Owning factory.</param>
                 public BlockingSink(BlockingConnectSinkFactory owner) => _owner = owner;
                 public bool IsConnected { get; private set; }
 
+                /// <summary>
+                /// Validation method for Connect.
+                /// </summary>
+                /// <param name="host">Host address used by the validation client or listener.</param>
+                /// <param name="port">TCP port used by the validation client or listener.</param>
+                /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
                 public void Connect(string host, int port, int timeoutMs)
                 {
                     _owner.ConnectStarted.Set();
@@ -434,15 +479,26 @@ namespace Unity.FoxgloveSDK.Tests
                     IsConnected = true;
                 }
 
+                /// <summary>
+                /// Validation method for Send.
+                /// </summary>
+                /// <param name="frame">ROS 2 bridge frame sent by the validation client.</param>
+                /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
                 public void Send(Ros2BridgeFrame frame, int timeoutMs)
                 {
                 }
 
+                /// <summary>
+                /// Validation method for Disconnect.
+                /// </summary>
                 public void Disconnect()
                 {
                     IsConnected = false;
                 }
 
+                /// <summary>
+                /// Validation method for Dispose.
+                /// </summary>
                 public void Dispose()
                 {
                     Disconnect();

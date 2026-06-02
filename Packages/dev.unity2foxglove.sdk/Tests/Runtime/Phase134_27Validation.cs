@@ -10,6 +10,9 @@ using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_27Validation.
+    /// </summary>
     public static class Phase134_27Validation
     {
         private const string Phase130BuilderPath =
@@ -31,6 +34,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

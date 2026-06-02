@@ -20,12 +20,18 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase94Validation.
+    /// </summary>
     public static class Phase94Validation
     {
         private const ulong SampleTimeNs = 1_700_094_000_000_000_000UL;
         private const int LoopbackTimeoutMs = 10_000;
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -42,6 +48,11 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 94: {_passed} checks passed.");
         }
 
+        /// <summary>
+        /// Validation method for RunBridgeSendSmoke.
+        /// </summary>
+        /// <param name="host">Host address used by the validation client or listener.</param>
+        /// <param name="port">TCP port used by the validation client or listener.</param>
         public static void RunBridgeSendSmoke(string host, int port)
         {
             using var sink = new Ros2BridgeTcpClient();
@@ -406,9 +417,26 @@ namespace Unity.FoxgloveSDK.Tests
         {
             public readonly List<Ros2BridgeFrame> SentFrames = new List<Ros2BridgeFrame>();
             public bool IsConnected => true;
+            /// <summary>
+            /// Validation method for Connect.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
+            /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
             public void Connect(string host, int port, int timeoutMs) { }
+            /// <summary>
+            /// Validation method for Send.
+            /// </summary>
+            /// <param name="frame">ROS 2 bridge frame sent by the validation client.</param>
+            /// <param name="timeoutMs">Timeout in milliseconds for the validation operation.</param>
             public void Send(Ros2BridgeFrame frame, int timeoutMs) => SentFrames.Add(frame);
+            /// <summary>
+            /// Validation method for Disconnect.
+            /// </summary>
             public void Disconnect() { }
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() { }
         }
 

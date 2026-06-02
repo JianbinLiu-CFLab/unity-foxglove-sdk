@@ -12,6 +12,9 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase109Validation.
+    /// </summary>
     public static class Phase109Validation
     {
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
@@ -27,6 +30,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

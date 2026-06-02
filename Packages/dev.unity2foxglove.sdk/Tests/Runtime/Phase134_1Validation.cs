@@ -10,10 +10,16 @@ using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_1Validation.
+    /// </summary>
     public static class Phase134_1Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

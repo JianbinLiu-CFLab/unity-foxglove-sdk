@@ -13,8 +13,14 @@ using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase16Validation.
+    /// </summary>
     public static class Phase16Validation
     {
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 16 Tests ---");
@@ -28,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var pkgDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk");
 
-            // ── 16A: Package metadata ──
+            // 鈹€鈹€ 16A: Package metadata 鈹€鈹€
             var pkgJson = Path.Combine(pkgDir, "package.json");
             Assert(File.Exists(pkgJson), $"package.json exists at {pkgJson}");
 
@@ -38,13 +44,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("\"displayName\": \"Unity2Foxglove SDK\""), "package.json displayName correct");
             Assert(json.Contains("\"license\": \"Apache-2.0\""), "package.json license is Apache-2.0");
 
-            // ── 16A: LICENSE files ──
+            // 鈹€鈹€ 16A: LICENSE files 鈹€鈹€
             var pkgLicense = Path.Combine(pkgDir, "LICENSE");
             Assert(File.Exists(pkgLicense), $"Package LICENSE exists at {pkgLicense}");
             var rootLicense = Path.Combine(repoRoot, "LICENSE");
             Assert(File.Exists(rootLicense), $"Root LICENSE exists at {rootLicense}");
 
-            // ── 16C: .gitignore covers build artifacts ──
+            // 鈹€鈹€ 16C: .gitignore covers build artifacts 鈹€鈹€
             var gitignorePath = Path.Combine(repoRoot, ".gitignore");
             Assert(File.Exists(gitignorePath), ".gitignore exists");
             var gitignore = File.ReadAllText(gitignorePath);
@@ -52,13 +58,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gitignore.Contains("obj/") || gitignore.Contains("**/obj/"), ".gitignore covers obj/");
             Assert(gitignore.Contains("build/"), ".gitignore covers build/");
 
-            // ── 16D: CI workflows ──
+            // 鈹€鈹€ 16D: CI workflows 鈹€鈹€
             var ciDir = Path.Combine(repoRoot, ".github", "workflows");
             Assert(Directory.Exists(ciDir), ".github/workflows/ exists");
             Assert(File.Exists(Path.Combine(ciDir, "dotnet-tests.yml")), "dotnet-tests.yml exists");
             Assert(File.Exists(Path.Combine(ciDir, "package-check.yml")), "package-check.yml exists");
 
-            // ── asmdef consistency ──
+            // 鈹€鈹€ asmdef consistency 鈹€鈹€
             var asmdefPath = Path.Combine(pkgDir, "Runtime", "Unity.FoxgloveSDK.asmdef");
             Assert(File.Exists(asmdefPath), "Runtime asmdef exists");
             var asmdef = File.ReadAllText(asmdefPath);
@@ -520,6 +526,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(notices.Contains("does not claim authorship"), "third-party notices preserve upstream schema authorship");
         }
 
+        /// <summary>
+        /// Validation method for FindRepoRoot.
+        /// </summary>
+        /// <returns>The value produced by the validation helper.</returns>
         internal static string FindRepoRoot()
         {
             var dir = AppDomain.CurrentDomain.BaseDirectory;

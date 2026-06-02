@@ -15,10 +15,16 @@ using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase124Validation.
+    /// </summary>
     public static class Phase124Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             try
@@ -259,6 +265,12 @@ namespace Unity.FoxgloveSDK.Tests
             public int TryCreateCount;
             public int DecodeCount;
 
+            /// <summary>
+            /// Validation method for TryCreate.
+            /// </summary>
+            /// <param name="schema">Schema metadata supplied to the recorder stub.</param>
+            /// <param name="channel">Channel metadata supplied to the recorder stub.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
             {
                 TryCreateCount++;
@@ -276,6 +288,11 @@ namespace Unity.FoxgloveSDK.Tests
                     _owner = owner;
                 }
 
+                /// <summary>
+                /// Validation method for Decode.
+                /// </summary>
+                /// <param name="message">Diagnostic message recorded by the test double.</param>
+                /// <returns>The value produced by the validation helper.</returns>
                 public McapDecodedPayload Decode(McapDataLoaderMessage message)
                 {
                     _owner.DecodeCount++;

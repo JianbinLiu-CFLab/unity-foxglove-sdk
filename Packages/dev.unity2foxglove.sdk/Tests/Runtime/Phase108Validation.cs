@@ -14,6 +14,9 @@ using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase108Validation.
+    /// </summary>
     public static class Phase108Validation
     {
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
@@ -23,6 +26,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

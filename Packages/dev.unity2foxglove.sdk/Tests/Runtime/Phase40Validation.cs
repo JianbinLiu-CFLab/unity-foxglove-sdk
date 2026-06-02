@@ -10,10 +10,16 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase40Validation.
+    /// </summary>
     public static class Phase40Validation
     {
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 40 Tests ---");
@@ -34,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("Phase 40: All checks passed.");
         }
 
-        // ── Policy ──
+        // 鈹€鈹€ Policy 鈹€鈹€
 
         private static void TestDisabledPolicyAlwaysAllows()
         {
@@ -93,7 +99,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(r2.AllowCapture, "40A-7c: subsequent evaluation also allows capture");
         }
 
-        // ── Payload Budget ──
+        // 鈹€鈹€ Payload Budget 鈹€鈹€
 
         private static void TestBudgetZeroIsUnlimited()
         {

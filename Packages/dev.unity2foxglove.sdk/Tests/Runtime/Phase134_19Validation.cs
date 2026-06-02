@@ -10,12 +10,18 @@ using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_19Validation.
+    /// </summary>
     public static class Phase134_19Validation
     {
         private const string CompressedSha256 = "DAB5F2A872777F9A58B69BFA9FBCF20D9F82F2D6EC91383FD70BFF49BD34AC9F";
         private const string DllSha256 = "2076CB5675EC6C1A4C70E7A2A322552F547B6EEED649D6DFCD9E02A543B24691";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             _passed = 0;

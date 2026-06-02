@@ -14,6 +14,9 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase125Validation.
+    /// </summary>
     public static class Phase125Validation
     {
         private static readonly string[] ProductizedSchemas =
@@ -29,6 +32,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             try

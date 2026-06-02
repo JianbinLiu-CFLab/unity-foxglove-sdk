@@ -14,12 +14,18 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase120BValidation.
+    /// </summary>
     public static class Phase120BValidation
     {
         private const string Token = "phase120b-token";
         private const string SourceId = "phase120b-source";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             try

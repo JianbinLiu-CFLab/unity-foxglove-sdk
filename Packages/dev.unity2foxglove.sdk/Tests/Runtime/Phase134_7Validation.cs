@@ -18,6 +18,9 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_7Validation.
+    /// </summary>
     public static class Phase134_7Validation
     {
         private const uint ClientId = 7;
@@ -25,6 +28,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -257,14 +263,48 @@ namespace Unity.FoxgloveSDK.Tests
             public FoxgloveAssetRegistry Assets { get; } = new();
             public int AppliedPlaybackControls { get; private set; }
 
+            /// <summary>
+            /// Validation method for EnablePlayback.
+            /// </summary>
             public void EnablePlayback() => PlaybackEnabled = true;
+            /// <summary>
+            /// Validation method for GetPlaybackStartNs.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public ulong GetPlaybackStartNs() => 0UL;
+            /// <summary>
+            /// Validation method for GetPlaybackEndNs.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public ulong GetPlaybackEndNs() => 10_000_000UL;
+            /// <summary>
+            /// Validation method for ApplyPlaybackCommand.
+            /// </summary>
+            /// <param name="cmd">Playback command requested by the validation case.</param>
+            /// <param name="speed">Replay speed multiplier requested by the command.</param>
+            /// <param name="hasSeek">Whether the command carries an explicit seek target.</param>
+            /// <param name="seekNs">Requested seek timestamp in nanoseconds.</param>
             public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs) { }
+            /// <summary>
+            /// Validation method for ReplaySeek.
+            /// </summary>
+            /// <param name="timeNs">Timestamp in nanoseconds carried by the replay event.</param>
             public void ReplaySeek(ulong timeNs) { }
+            /// <summary>
+            /// Validation method for ReplayPlay.
+            /// </summary>
             public void ReplayPlay() { }
+            /// <summary>
+            /// Validation method for ReplayPause.
+            /// </summary>
             public void ReplayPause() { }
 
+            /// <summary>
+            /// Validation method for GetPlaybackState.
+            /// </summary>
+            /// <param name="didSeek">Whether the replay operation performed a seek.</param>
+            /// <param name="requestId">Request identifier associated with the replay response.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
                 => State(didSeek, requestId);
 
@@ -299,18 +339,47 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
 
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
             public void Start(string host, int port) => IsRunning = true;
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
             public void Stop() => IsRunning = false;
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() => Stop();
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void BroadcastText(string json) { }
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SendText(uint clientId, string json) { }
 
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void BroadcastBinary(byte[] data)
             {
                 foreach (var clientId in _connectedClients)
                     SendBinary(clientId, data);
             }
 
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void SendBinary(uint clientId, byte[] data)
             {
                 if (!_sentBinaries.TryGetValue(clientId, out var frames))
@@ -322,19 +391,36 @@ namespace Unity.FoxgloveSDK.Tests
                 frames.Add(data);
             }
 
+            /// <summary>
+            /// Validation method for BinariesFor.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public IReadOnlyList<byte[]> BinariesFor(uint clientId)
                 => _sentBinaries.TryGetValue(clientId, out var frames)
                     ? frames
                     : Array.Empty<byte[]>();
 
+            /// <summary>
+            /// Validation method for ClearBinary.
+            /// </summary>
             public void ClearBinary() => _sentBinaries.Clear();
 
+            /// <summary>
+            /// Validation method for Connect.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
             public void Connect(uint clientId)
             {
                 _connectedClients.Add(clientId);
                 OnClientConnected?.Invoke(clientId);
             }
 
+            /// <summary>
+            /// Validation method for Binary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void Binary(uint clientId, byte[] data)
                 => OnBinaryReceived?.Invoke(clientId, data);
         }

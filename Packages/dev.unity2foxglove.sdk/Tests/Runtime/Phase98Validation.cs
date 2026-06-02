@@ -20,6 +20,9 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase98Validation.
+    /// </summary>
     public static class Phase98Validation
     {
         private const ulong SampleTimeNs = 1_700_098_000_000_000_000UL;
@@ -51,6 +54,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -68,6 +74,12 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 98: {_passed} checks passed.");
         }
 
+        /// <summary>
+        /// Validation method for SendAllSchemaSamples.
+        /// </summary>
+        /// <param name="host">Host address used by the validation client or listener.</param>
+        /// <param name="port">TCP port used by the validation client or listener.</param>
+        /// <returns>The value produced by the validation helper.</returns>
         public static Phase98SendSummary SendAllSchemaSamples(string host, int port)
         {
             var frames = BuildAllSchemaFrames().ToList();
@@ -90,6 +102,14 @@ namespace Unity.FoxgloveSDK.Tests
             };
         }
 
+        /// <summary>
+        /// Validation method for GenerateLiveEvidence.
+        /// </summary>
+        /// <param name="jsonPath">Path where live-evidence JSON is written.</param>
+        /// <param name="host">Host address used by the validation client or listener.</param>
+        /// <param name="port">TCP port used by the validation client or listener.</param>
+        /// <param name="ros2Path">Path to the ROS 2 CLI used by the live-evidence helper.</param>
+        /// <returns>The value produced by the validation helper.</returns>
         public static Phase98LiveEvidence GenerateLiveEvidence(string jsonPath, string host, int port, string ros2Path)
         {
             if (string.IsNullOrWhiteSpace(jsonPath))
@@ -616,6 +636,9 @@ namespace Unity.FoxgloveSDK.Tests
         }
     }
 
+    /// <summary>
+    /// Validation type for Phase98SendSummary.
+    /// </summary>
     public sealed class Phase98SendSummary
     {
         public int SentFrames { get; set; }
@@ -624,6 +647,9 @@ namespace Unity.FoxgloveSDK.Tests
         public string LastSchema { get; set; }
     }
 
+    /// <summary>
+    /// Validation type for Phase98LiveEvidence.
+    /// </summary>
     public sealed class Phase98LiveEvidence
     {
         [JsonProperty("schemaVersion")]
@@ -660,6 +686,9 @@ namespace Unity.FoxgloveSDK.Tests
         public string[] Ros2Commands { get; set; }
     }
 
+    /// <summary>
+    /// Validation type for Phase98TopicEvidence.
+    /// </summary>
     public sealed class Phase98TopicEvidence
     {
         public Phase98TopicEvidence(string topic, string schemaName, string status, int payloadBytes)
@@ -683,6 +712,9 @@ namespace Unity.FoxgloveSDK.Tests
         public int PayloadBytes { get; }
     }
 
+    /// <summary>
+    /// Validation type for Phase98AllSchemaEvidence.
+    /// </summary>
     public sealed class Phase98AllSchemaEvidence
     {
         [JsonProperty("sentFrames")]

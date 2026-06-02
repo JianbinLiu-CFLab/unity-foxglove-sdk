@@ -17,10 +17,16 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase134_3Validation.
+    /// </summary>
     public static class Phase134_3Validation
     {
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -329,7 +335,15 @@ namespace Unity.FoxgloveSDK.Tests
             public readonly List<string> Warnings = new();
             public readonly List<string> Errors = new();
 
+            /// <summary>
+            /// Validation method for LogWarning.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogWarning(string message) => Warnings.Add(message ?? string.Empty);
+            /// <summary>
+            /// Validation method for LogError.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogError(string message) => Errors.Add(message ?? string.Empty);
         }
 
@@ -350,6 +364,9 @@ namespace Unity.FoxgloveSDK.Tests
                 set => _inner.Position = value;
             }
 
+            /// <summary>
+            /// Validation method for Flush.
+            /// </summary>
             public override void Flush()
             {
                 if (ThrowOnFlush)
@@ -357,15 +374,38 @@ namespace Unity.FoxgloveSDK.Tests
                 _inner.Flush();
             }
 
+            /// <summary>
+            /// Validation method for Read.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override int Read(byte[] buffer, int offset, int count)
                 => _inner.Read(buffer, offset, count);
 
+            /// <summary>
+            /// Validation method for Seek.
+            /// </summary>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="origin">Reference point for the seek operation.</param>
+            /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin origin)
                 => _inner.Seek(offset, origin);
 
+            /// <summary>
+            /// Validation method for SetLength.
+            /// </summary>
+            /// <param name="value">Requested value for the stream operation.</param>
             public override void SetLength(long value)
                 => _inner.SetLength(value);
 
+            /// <summary>
+            /// Validation method for Write.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
+            /// <param name="offset">Zero-based offset used by the stream operation.</param>
+            /// <param name="count">Number of bytes to read or write.</param>
             public override void Write(byte[] buffer, int offset, int count)
             {
                 if (ThrowOnWrite)
@@ -373,6 +413,10 @@ namespace Unity.FoxgloveSDK.Tests
                 _inner.Write(buffer, offset, count);
             }
 
+            /// <summary>
+            /// Validation method for Write.
+            /// </summary>
+            /// <param name="buffer">Buffer used by the stream operation.</param>
             public override void Write(ReadOnlySpan<byte> buffer)
             {
                 if (ThrowOnWrite)
@@ -384,6 +428,10 @@ namespace Unity.FoxgloveSDK.Tests
         private sealed class Phase134_3Clock : IFoxgloveClock
         {
             public ulong NowNs { get; private set; }
+            /// <summary>
+            /// Validation method for AdvanceNs.
+            /// </summary>
+            /// <param name="deltaNs">Nanoseconds to advance the fake clock.</param>
             public void AdvanceNs(ulong deltaNs) => NowNs += deltaNs;
         }
 
@@ -395,15 +443,51 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
 
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
             public void Start(string host, int port) => IsRunning = true;
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
             public void Stop() => IsRunning = false;
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
             public void Dispose() => Stop();
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void BroadcastText(string json) { }
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void BroadcastBinary(byte[] data) { }
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
             public void SendText(uint clientId, string json) { }
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
             public void SendBinary(uint clientId, byte[] data) { }
+            /// <summary>
+            /// Validation method for ClearDataQueues.
+            /// </summary>
             public void ClearDataQueues() { }
 
+            /// <summary>
+            /// Validation method for GetStatsSnapshot.
+            /// </summary>
+            /// <returns>The value produced by the validation helper.</returns>
             public TransportStatsSnapshot GetStatsSnapshot()
             {
                 return new TransportStatsSnapshot

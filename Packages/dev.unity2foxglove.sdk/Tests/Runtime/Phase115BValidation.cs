@@ -18,6 +18,9 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase115BValidation.
+    /// </summary>
     public static class Phase115BValidation
     {
         private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
@@ -37,6 +40,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string AggregateGeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/SchemaManifest/Unity2FoxgloveSchemaManifestGenerator.cs";
         private static int _passed;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();
@@ -485,11 +491,19 @@ namespace Unity.FoxgloveSDK.Tests
             public string LastWarning { get; private set; } = string.Empty;
             public string LastError { get; private set; } = string.Empty;
 
+            /// <summary>
+            /// Validation method for LogWarning.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogWarning(string message)
             {
                 LastWarning = message ?? string.Empty;
             }
 
+            /// <summary>
+            /// Validation method for LogError.
+            /// </summary>
+            /// <param name="message">Diagnostic message recorded by the test double.</param>
             public void LogError(string message)
             {
                 LastError = message ?? string.Empty;

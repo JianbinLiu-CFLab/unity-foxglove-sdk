@@ -12,23 +12,56 @@ using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validates Phase 134-5 replay adapter and FoxRun hub hardening, including
+    /// null-safe mapping repair, source-failure isolation, schema registry
+    /// guards, and contract policy normalization.
+    /// </summary>
     public static class Phase134_5Validation
     {
+        /// <summary>
+        /// Replay adapter source path inspected for null-safe mapping and
+        /// runtime guard behavior.
+        /// </summary>
         private const string ReplayAdapterPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs";
+        /// <summary>
+        /// FoxRun hub source path inspected for source isolation and fallback
+        /// scan safeguards.
+        /// </summary>
         private const string FoxRunHubPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs";
+        /// <summary>
+        /// Debug overlay path used to verify replay suppression and recoverable
+        /// exception handling.
+        /// </summary>
         private const string DebugOverlayPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveDebugOverlay.cs";
+        /// <summary>
+        /// Schema registry path inspected for static synchronization and test
+        /// hook visibility.
+        /// </summary>
         private const string SchemaInfoRegistryPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs";
+        /// <summary>
+        /// Schema metadata path inspected for recoverable JSON parse failure
+        /// coverage.
+        /// </summary>
         private const string SchemaMcapMetadataPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs";
+        /// <summary>
+        /// Contract policy path inspected for non-negative metadata
+        /// normalization.
+        /// </summary>
         private const string SchemaContractInfoPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaContractInfo.cs";
 
         private static int _passed;
 
+        /// <summary>
+        /// Runs the Phase134-5 hardening suite and fails on replay, FoxRun, or
+        /// schema-governance regressions.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine();

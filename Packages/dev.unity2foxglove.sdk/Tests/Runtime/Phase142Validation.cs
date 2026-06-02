@@ -13,6 +13,9 @@ using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase142Validation.
+    /// </summary>
     public static class Phase142Validation
     {
         private const string SourceGeneratorPath =
@@ -20,6 +23,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passCount;
 
+        /// <summary>
+        /// Validation method for Validate.
+        /// </summary>
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 142 Tests ---");
@@ -103,7 +109,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "142-16: float.MaxValue vs float.MinValue reports changed");
         }
 
-        // publishMode=1 → OnChange policy triggers ChangeExpr code path
+        // publishMode=1 鈫?OnChange policy triggers ChangeExpr code path
         private static FoxgloveSourceEmitter.TopicMember OnChange(string name, string type, string topic)
             => new(name, type, topic, 10f, "", publishMode: 1, changeEpsilon: 0.001f, forceIntervalSeconds: 0f);
 
@@ -216,7 +222,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNoNewDiagnosticIds()
         {
             var generatorSource = File.ReadAllText(SourceGeneratorPath);
-            // Match string-literal "FOXRUN014" / "FOXRUN015" — avoids false-positive on comments
+            // Match string-literal "FOXRUN014" / "FOXRUN015" —avoids false-positive on comments
             Check(!generatorSource.Contains("\"FOXRUN014\"", StringComparison.Ordinal),
                 "142-37: source generator contains no FOXRUN014 diagnostic descriptor");
             Check(!generatorSource.Contains("\"FOXRUN015\"", StringComparison.Ordinal),
