@@ -68,6 +68,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedDracoFailure;
         private readonly PointCloudPublishState _publishState = new PointCloudPublishState();
         private readonly PointCloudQoSReducer _qosReducer = new PointCloudQoSReducer();
+        private readonly TransformPointCloudSource _transformPointCloudSource = new TransformPointCloudSource();
         private int _dracoFailureCount;
         private bool _warnedDracoBacklog;
         private bool _warnedDracoWorkerShutdown;
@@ -410,7 +411,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var frame = pendingFrame != null
                 ? PrepareFrameForQoS(pendingFrame, unixNs)
-                : PrepareFrameForQoS(PointCloudTransformFrameBuilder.Build(
+                : PrepareFrameForQoS(_transformPointCloudSource.CreateFrameFromTransforms(
                     unixNs,
                     SanitizeFrameId(_frameId, "unity_world"),
                     transform,

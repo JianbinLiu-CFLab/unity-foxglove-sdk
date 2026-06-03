@@ -16,9 +16,9 @@ namespace Unity.FoxgloveSDK.Components
     /// Converts configured Unity transforms into a sparse fallback point-cloud
     /// frame when no source-driven LiDAR frame is available.
     /// </summary>
-    internal static class PointCloudTransformFrameBuilder
+    internal sealed class TransformPointCloudSource
     {
-        public static PointCloudFrame Build(
+        public PointCloudFrame CreateFrameFromTransforms(
             ulong unixNs,
             string frameId,
             Transform rootTransform,
