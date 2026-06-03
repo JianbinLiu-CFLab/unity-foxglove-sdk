@@ -378,12 +378,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void WorkerTimeoutPathsUseGenerations()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var cameraPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
             var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
-            Check(camera.Contains("_jpegWorkerGeneration", StringComparison.Ordinal)
-                  && camera.Contains("JpegWorkerGeneration", StringComparison.Ordinal)
-                  && camera.Contains("request.Generation", StringComparison.Ordinal),
+            Check(camera.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
+                  && cameraPipeline.Contains("_workerGeneration", StringComparison.Ordinal)
+                  && cameraPipeline.Contains("WorkerGeneration", StringComparison.Ordinal)
+                  && cameraPipeline.Contains("Interlocked.Increment(ref _workerGeneration)", StringComparison.Ordinal)
+                  && cameraPipeline.Contains("request.Generation != _currentCaptureGeneration()", StringComparison.Ordinal)
+                  && cameraPipeline.Contains("request.JpegWorkerGeneration != workerGeneration", StringComparison.Ordinal),
                 "138P-15A: camera JPEG worker timeout/restart is generation-guarded");
             Check(pipeline.Contains("_worker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
                   && pipeline.Contains("request.Generation", StringComparison.Ordinal)
@@ -409,6 +413,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraReadbackAndWorkerSignalsHaveExplicitLifecycleBoundaries()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var cameraPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
             var readback = ExtractMethod(camera, "private void OnReadbackComplete");
             var completeCount = CountOccurrences(readback, "CompletePendingReadback()");
             Check(readback.Contains("finally", StringComparison.Ordinal)
@@ -423,17 +428,17 @@ namespace Unity.FoxgloveSDK.Tests
                      > readback.IndexOf("PublishJpegFrame", StringComparison.Ordinal),
                 "138P-15C: camera readback drains pending count after request data is consumed");
 
-            var ensureWorker = ExtractMethod(camera, "private bool EnsureJpegWorkerStarted");
+            var ensureWorker = ExtractMethod(cameraPipeline, "public bool Start");
             var stopWorker = ExtractMethod(camera, "private void StopJpegWorker");
-            var loop = ExtractMethod(camera, "private void EncodeJpegWorkerLoop");
+            var loop = ExtractMethod(cameraPipeline, "private void EncodeJpegWorkerLoop");
             Check(ensureWorker.Contains("new AutoResetEvent(false)", StringComparison.Ordinal)
                   && ensureWorker.Contains("EncodeJpegWorkerLoop(workerGeneration, workerSignal)", StringComparison.Ordinal)
                   && loop.Contains("AutoResetEvent workerSignal", StringComparison.Ordinal)
                   && loop.Contains("workerSignal.WaitOne", StringComparison.Ordinal)
                   && loop.Contains("finally", StringComparison.Ordinal)
                   && loop.Contains("workerSignal.Dispose()", StringComparison.Ordinal)
-                  && !loop.Contains("_jpegWorkerSignal?.WaitOne", StringComparison.Ordinal)
-                  && !stopWorker.Contains("_jpegWorkerSignal.Dispose()", StringComparison.Ordinal),
+                  && !loop.Contains("_workerSignal?.WaitOne", StringComparison.Ordinal)
+                  && !stopWorker.Contains("_workerSignal.Dispose()", StringComparison.Ordinal),
                 "138P-15D: camera JPEG worker signal is owned by one worker generation");
         }
 

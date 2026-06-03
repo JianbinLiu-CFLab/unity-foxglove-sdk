@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesVideoSidecarOptions();
             CameraPublisherDelegatesVideoSidecarLifecycle();
             CameraPublisherDelegatesJpegWorkerPayloads();
+            CameraPublisherDelegatesJpegPipelineLifecycle();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -149,12 +150,40 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("internal static class CameraJpegWorkerEncoder", StringComparison.Ordinal)
                   && helper.Contains("EncodeJpegRequest(", StringComparison.Ordinal),
                 "138Q-5A: camera JPEG worker payload and encoder logic live outside the publisher");
-            Check(camera.Contains("DropOldestBoundedQueue<JpegEncodeRequest>", StringComparison.Ordinal)
-                  && camera.Contains("CameraJpegWorkerEncoder.EncodeJpegRequest(request)", StringComparison.Ordinal)
+            Check(camera.Contains("JpegEncodeRequest(", StringComparison.Ordinal)
+                  && camera.Contains("JpegEncodeResult", StringComparison.Ordinal)
+                  && camera.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
                   && !camera.Contains("private sealed class JpegEncodeRequest", StringComparison.Ordinal)
                   && !camera.Contains("private sealed class JpegEncodeResult", StringComparison.Ordinal)
                   && !camera.Contains("private static JpegEncodeResult EncodeJpegRequest", StringComparison.Ordinal),
                 "138Q-5B: FoxgloveCameraPublisher delegates JPEG worker payload and encode details");
+        }
+
+        private static void CameraPublisherDelegatesJpegPipelineLifecycle()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
+
+            Check(pipeline.Contains("internal sealed class CameraJpegPipeline", StringComparison.Ordinal)
+                  && pipeline.Contains("DropOldestBoundedQueue<JpegEncodeRequest> _encodeQueue", StringComparison.Ordinal)
+                  && pipeline.Contains("DropOldestBoundedQueue<JpegEncodeResult> _completedQueue", StringComparison.Ordinal)
+                  && pipeline.Contains("AutoResetEvent _workerSignal", StringComparison.Ordinal)
+                  && pipeline.Contains("Thread _worker", StringComparison.Ordinal)
+                  && pipeline.Contains("Start()", StringComparison.Ordinal)
+                  && pipeline.Contains("Queue(", StringComparison.Ordinal)
+                  && pipeline.Contains("Drain(", StringComparison.Ordinal)
+                  && pipeline.Contains("Stop(", StringComparison.Ordinal),
+                "138Q-5C: camera JPEG queue/thread lifecycle lives in a focused pipeline");
+            Check(camera.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPipeline.Start()", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPipeline.Queue(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPipeline.Drain(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPipeline.Stop(", StringComparison.Ordinal)
+                  && !camera.Contains("DropOldestBoundedQueue<JpegEncodeRequest> _jpegEncodeQueue", StringComparison.Ordinal)
+                  && !camera.Contains("DropOldestBoundedQueue<JpegEncodeResult> _completedJpegQueue", StringComparison.Ordinal)
+                  && !camera.Contains("private Thread _jpegWorker", StringComparison.Ordinal)
+                  && !camera.Contains("EncodeJpegWorkerLoop", StringComparison.Ordinal),
+                "138Q-5D: FoxgloveCameraPublisher delegates repeated JPEG worker lifecycle code");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()

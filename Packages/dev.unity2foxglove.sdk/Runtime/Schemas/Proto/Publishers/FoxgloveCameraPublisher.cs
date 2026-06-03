@@ -7,7 +7,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
@@ -171,12 +170,7 @@ namespace Unity.FoxgloveSDK.Components
 
         // Async JPEG state
         private const int JpegWorkerStopWaitMs = 500;
-        private DropOldestBoundedQueue<JpegEncodeRequest> _jpegEncodeQueue;
-        private DropOldestBoundedQueue<JpegEncodeResult> _completedJpegQueue;
-        private AutoResetEvent _jpegWorkerSignal;
-        private Thread _jpegWorker;
-        private volatile bool _jpegWorkerStopping;
-        private int _jpegWorkerGeneration;
+        private CameraJpegPipeline _jpegPipeline;
         private ulong _lastPublishedCaptureUnixNs;
         private bool _warnedJpegWorkerFailure;
         private bool _warnedJpegWorkerShutdown;
@@ -385,9 +379,9 @@ namespace Unity.FoxgloveSDK.Components
             {
                 PendingReadbacks = _pendingRequests,
                 MaxPendingReadbacks = Math.Max(1, _maxPendingReadbacks),
-                EncodeQueueDepth = _useAsyncJpeg ? (_jpegEncodeQueue?.Count ?? 0) : 0,
+                EncodeQueueDepth = _useAsyncJpeg ? (_jpegPipeline?.EncodeQueueDepth ?? 0) : 0,
                 MaxEncodeQueueDepth = _useAsyncJpeg ? Math.Max(1, _maxJpegEncodeQueue) : int.MaxValue,
-                CompletedQueueDepth = _useAsyncJpeg ? (_completedJpegQueue?.Count ?? 0) : 0,
+                CompletedQueueDepth = _useAsyncJpeg ? (_jpegPipeline?.CompletedQueueDepth ?? 0) : 0,
                 MaxCompletedQueueDepth = _useAsyncJpeg ? Math.Max(1, _maxCompletedJpegQueue) : int.MaxValue,
                 Width = Math.Max(1, _width),
                 Height = Math.Max(1, _height),
@@ -455,12 +449,10 @@ namespace Unity.FoxgloveSDK.Components
                 webSocketEncoding,
                 Math.Max(0, _maxEncodedBytes),
                 _captureGeneration,
-                JpegWorkerGeneration);
+                _jpegPipeline.WorkerGeneration);
 
-            if (_jpegEncodeQueue.Enqueue(request))
+            if (_jpegPipeline.Queue(request))
                 _droppedEncodeQueueCount++;
-
-            _jpegWorkerSignal?.Set();
         }
 
         /// <summary>
@@ -469,18 +461,16 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void DrainCompletedJpegFrames()
         {
-            var queue = _completedJpegQueue;
-            if (queue == null)
+            if (_jpegPipeline == null)
                 return;
 
             var drainStart = Stopwatch.GetTimestamp();
-            var maxDrain = Math.Max(1, _maxCompletedJpegPublishesPerFrame);
-            var drained = 0;
-            while (drained < maxDrain && queue.TryDequeue(out var result))
-            {
-                drained++;
-                PublishCompletedJpegFrame(result);
-            }
+            var drained = _jpegPipeline.Drain(
+                Math.Max(1, _maxCompletedJpegPublishesPerFrame),
+                PublishCompletedJpegFrame,
+                out var droppedCompleted);
+            if (droppedCompleted > 0)
+                _droppedCompletedJpegCount += droppedCompleted;
 
             if (drained > 0)
                 _lastPublishDrainMs = ElapsedMs(drainStart);
@@ -962,13 +952,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnsureJpegQueues()
         {
-            var encodeCapacity = Math.Max(1, _maxJpegEncodeQueue);
-            if (_jpegEncodeQueue == null || _jpegEncodeQueue.Capacity != encodeCapacity)
-                _jpegEncodeQueue = new DropOldestBoundedQueue<JpegEncodeRequest>(encodeCapacity);
-
-            var completedCapacity = Math.Max(1, _maxCompletedJpegQueue);
-            if (_completedJpegQueue == null || _completedJpegQueue.Capacity != completedCapacity)
-                _completedJpegQueue = new DropOldestBoundedQueue<JpegEncodeResult>(completedCapacity);
+            if (_jpegPipeline == null)
+                _jpegPipeline = new CameraJpegPipeline(() => _captureGeneration, JpegWorkerStopWaitMs);
+            _jpegPipeline.Configure(Math.Max(1, _maxJpegEncodeQueue), Math.Max(1, _maxCompletedJpegQueue));
         }
 
         /// <summary>
@@ -977,35 +963,14 @@ namespace Unity.FoxgloveSDK.Components
         private bool EnsureJpegWorkerStarted()
         {
             EnsureJpegQueues();
-            if (_jpegWorker != null && _jpegWorker.IsAlive && !_jpegWorkerStopping)
-                return true;
-
-            AutoResetEvent workerSignal = null;
-            try
+            if (_jpegPipeline.Start())
             {
-                var workerGeneration = Interlocked.Increment(ref _jpegWorkerGeneration);
-
-                _jpegWorkerStopping = false;
-                workerSignal = new AutoResetEvent(false);
-                _jpegWorkerSignal = workerSignal;
-
-                _jpegWorker = new Thread(() => EncodeJpegWorkerLoop(workerGeneration, workerSignal))
-                {
-                    IsBackground = true,
-                    Name = "FoxgloveCameraJpegEncoder"
-                };
-                _jpegWorker.Start();
                 _warnedJpegWorkerShutdown = false;
                 return true;
             }
-            catch (Exception ex)
-            {
-                _jpegWorker = null;
-                _jpegWorkerSignal = null;
-                workerSignal?.Dispose();
-                LogJpegWorkerFailure("Unable to start JPEG worker: " + ex.Message);
-                return false;
-            }
+
+            LogJpegWorkerFailure("Unable to start JPEG worker: " + _jpegPipeline.LastStartError);
+            return false;
         }
 
         /// <summary>
@@ -1014,47 +979,39 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void StopJpegWorker(bool clearQueues)
         {
-            _jpegWorkerStopping = true;
-            Interlocked.Increment(ref _jpegWorkerGeneration);
-            var signal = _jpegWorkerSignal;
-            try
+            if (_jpegPipeline == null)
             {
-                signal?.Set();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            var worker = _jpegWorker;
-            if (worker != null && worker.IsAlive && !worker.Join(JpegWorkerStopWaitMs))
-            {
-                if (!_warnedJpegWorkerShutdown)
-                {
-                    Debug.LogWarning("[Foxglove] Camera JPEG worker is still stopping; stale output will be ignored.");
-                    _warnedJpegWorkerShutdown = true;
-                }
-
                 if (clearQueues)
                     ClearJpegQueues();
-                _jpegWorker = null;
-                if (ReferenceEquals(_jpegWorkerSignal, signal))
-                    _jpegWorkerSignal = null;
-                _jpegWorkerStopping = false;
                 return;
             }
 
-            _jpegWorker = null;
-            _jpegWorkerStopping = false;
-            if (ReferenceEquals(_jpegWorkerSignal, signal))
-                _jpegWorkerSignal = null;
+            if (_jpegPipeline.Stop(clearQueues))
+            {
+                _warnedJpegWorkerShutdown = false;
+                if (clearQueues)
+                    ClearReadbackTiming();
+                return;
+            }
+
+            if (!_warnedJpegWorkerShutdown)
+            {
+                Debug.LogWarning("[Foxglove] Camera JPEG worker is still stopping; stale output will be ignored.");
+                _warnedJpegWorkerShutdown = true;
+            }
 
             if (clearQueues)
-                ClearJpegQueues();
+                ClearReadbackTiming();
         }
 
         private void ClearJpegQueues()
         {
-            _jpegEncodeQueue?.Clear();
-            _completedJpegQueue?.Clear();
+            _jpegPipeline?.Clear();
+            ClearReadbackTiming();
+        }
+
+        private void ClearReadbackTiming()
+        {
             lock (_readbackTimingGate)
                 _readbackRequestTicks.Clear();
         }
@@ -1135,7 +1092,7 @@ namespace Unity.FoxgloveSDK.Components
                 "[Foxglove][CameraDiag] " +
                 $"renderMs={_lastRenderMs:F2} readbackLatencyMs={_lastReadbackLatencyMs:F2} readbackCopyMs={_lastReadbackCopyMs:F2} " +
                 $"jpegMs={_lastJpegEncodeMs:F2} serializeMs={_lastSerializeMs:F2} publishDrainMs={_lastPublishDrainMs:F2} " +
-                $"bytes={_lastJpegBytes} pendingReadbacks={_pendingRequests} encodeQueue={_jpegEncodeQueue?.Count ?? 0} completedQueue={_completedJpegQueue?.Count ?? 0} " +
+                $"bytes={_lastJpegBytes} pendingReadbacks={_pendingRequests} encodeQueue={_jpegPipeline?.EncodeQueueDepth ?? 0} completedQueue={_jpegPipeline?.CompletedQueueDepth ?? 0} " +
                 $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount}) " +
                 $"drops(noDemand={_noDemandJpegDropCount},encodeQueue={_droppedEncodeQueueCount},completedQueue={_droppedCompletedJpegCount},encodedBudget={_droppedEncodedBudgetCount},late={_droppedLateJpegCount}).");
             ResetCameraDiagnosticCounters();
@@ -1330,48 +1287,5 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning("[Foxglove] " + profile.DisplayName + ": " + line);
         }
 
-        /// <summary>
-        /// Background loop for stale-droppable visualization frames. It consumes owned
-        /// request buffers and posts completed payloads back to the main-thread drain.
-        /// </summary>
-        private int JpegWorkerGeneration => Volatile.Read(ref _jpegWorkerGeneration);
-
-        private void EncodeJpegWorkerLoop(int workerGeneration, AutoResetEvent workerSignal)
-        {
-            try
-            {
-                while (!_jpegWorkerStopping && workerGeneration == JpegWorkerGeneration)
-                {
-                    var queue = _jpegEncodeQueue;
-                    if (queue != null && queue.TryDequeue(out var request))
-                    {
-                        if (request.Generation != _captureGeneration)
-                            continue;
-                        if (request.JpegWorkerGeneration != workerGeneration)
-                            continue;
-
-                        var result = CameraJpegWorkerEncoder.EncodeJpegRequest(request);
-                        if (!_jpegWorkerStopping
-                            && workerGeneration == JpegWorkerGeneration
-                            && result.Request.JpegWorkerGeneration == workerGeneration)
-                        {
-                            var completed = _completedJpegQueue;
-                            if (completed != null && completed.Enqueue(result))
-                                _droppedCompletedJpegCount++;
-                        }
-
-                        continue;
-                    }
-
-                    workerSignal.WaitOne(50);
-                }
-            }
-            finally
-            {
-                if (ReferenceEquals(_jpegWorkerSignal, workerSignal))
-                    _jpegWorkerSignal = null;
-                workerSignal.Dispose();
-            }
-        }
     }
 }

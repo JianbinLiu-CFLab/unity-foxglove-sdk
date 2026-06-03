@@ -187,21 +187,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherWiresAsyncJpegWithoutUnityWorkerApis()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
 
             Check(source.Contains("CameraFrameBudgetPolicy.Evaluate", StringComparison.Ordinal),
                 "138J-5A: camera scheduler uses CameraFrameBudgetPolicy");
-            Check(source.Contains("ManagedJpegEncoder.EncodeRgb24", StringComparison.Ordinal),
+            Check(payloads.Contains("ManagedJpegEncoder.EncodeRgb24", StringComparison.Ordinal),
                 "138J-5B: camera JPEG worker uses the Unity-free encoder");
             Check(source.Contains("lastPublishedCaptureUnixNs", StringComparison.Ordinal),
                 "138J-5C: camera tracks monotonic JPEG publish order");
-            Check(source.Contains("Convert.ToBase64String", StringComparison.Ordinal)
+            Check(payloads.Contains("Convert.ToBase64String", StringComparison.Ordinal)
                   && source.Contains("serializeMs", StringComparison.Ordinal),
                 "138J-5D: JSON/base64 path remains visible to CameraDiag");
 
-            var workerStart = source.IndexOf("EncodeJpegWorkerLoop", StringComparison.Ordinal);
+            var workerStart = pipeline.IndexOf("EncodeJpegWorkerLoop", StringComparison.Ordinal);
             if (workerStart >= 0)
             {
-                var workerBlock = source.Substring(workerStart);
+                var workerBlock = pipeline.Substring(workerStart);
                 Check(!workerBlock.Contains("Texture2D", StringComparison.Ordinal)
                       && !workerBlock.Contains("ImageConversion", StringComparison.Ordinal)
                       && !workerBlock.Contains("UnityEngine.", StringComparison.Ordinal),
@@ -218,12 +220,13 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private static void CameraPublisherFlipsUnityReadbackRowsForAsyncJpeg()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
-            var encodeRequestStart = source.IndexOf("private static JpegEncodeResult EncodeJpegRequest", StringComparison.Ordinal);
-            var encoderCallStart = source.IndexOf("ManagedJpegEncoder.EncodeRgb24", encodeRequestStart, StringComparison.Ordinal);
-            var encoderCallEnd = source.IndexOf(");", encoderCallStart, StringComparison.Ordinal);
-            var encoderCall = encodeRequestStart >= 0 && encoderCallStart >= 0 && encoderCallEnd > encoderCallStart
-                ? source.Substring(encoderCallStart, encoderCallEnd - encoderCallStart)
+            var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
+            var encoderCallStart = payloads.IndexOf("ManagedJpegEncoder.EncodeRgb24", StringComparison.Ordinal);
+            var encoderCallEnd = encoderCallStart >= 0
+                ? payloads.IndexOf(");", encoderCallStart, StringComparison.Ordinal)
+                : -1;
+            var encoderCall = encoderCallStart >= 0 && encoderCallEnd > encoderCallStart
+                ? payloads.Substring(encoderCallStart, encoderCallEnd - encoderCallStart)
                 : "";
 
             Check(encoderCall.Contains("flipVertical: true", StringComparison.Ordinal),
