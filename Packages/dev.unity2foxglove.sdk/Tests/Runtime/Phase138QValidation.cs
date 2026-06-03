@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
             PointCloudPublisherDelegatesPublishDiagnostics();
             PointCloudPublisherDelegatesTransformFallbackBuilder();
+            PointCloudPublisherDelegatesRosTfMath();
             VirtualLidarDelegatesScanLayout();
             VirtualLidarDelegatesScanClock();
 
@@ -320,6 +321,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("private PointCloudFrame CreateFrameFromTransforms", StringComparison.Ordinal)
                   && !pointcloud.Contains("private void AddPoint", StringComparison.Ordinal),
                 "138Q-12B: FoxglovePointCloudPublisher delegates transform fallback scan and point append");
+        }
+
+        private static void PointCloudPublisherDelegatesRosTfMath()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var math = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/RosTransformMath.cs");
+
+            Check(math.Contains("public static class RosTransformMath", StringComparison.Ordinal)
+                  && math.Contains("RollPitchYawDegreesToQuaternion(", StringComparison.Ordinal)
+                  && math.Contains("System.Numerics", StringComparison.Ordinal),
+                "138Q-14A: ROS roll/pitch/yaw quaternion math lives in a Unity-free helper");
+            Check(pointcloud.Contains("RosTransformMath.RollPitchYawDegreesToQuaternion", StringComparison.Ordinal)
+                  && pointcloud.Contains("new Quaternion(q.X, q.Y, q.Z, q.W)", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private static Quaternion RosRollPitchYawDegreesToQuaternion", StringComparison.Ordinal),
+                "138Q-14B: FoxglovePointCloudPublisher delegates ROS RPY math and only adapts to Unity Quaternion");
         }
 
         private static void VirtualLidarDelegatesScanLayout()

@@ -152,7 +152,17 @@ namespace Unity.FoxgloveSDK.Components
         public Quaternion PointCloud2NativeTfRotation => PointCloud2NativeTfRotationRos;
 
         /// <summary>Rotation for the optional PointCloud2 Native TF anchor from ROS roll/pitch/yaw degrees.</summary>
-        public Quaternion PointCloud2NativeTfRotationRos => RosRollPitchYawDegreesToQuaternion(_pointCloud2NativeTfRotationEuler);
+        public Quaternion PointCloud2NativeTfRotationRos
+        {
+            get
+            {
+                var q = RosTransformMath.RollPitchYawDegreesToQuaternion(
+                    _pointCloud2NativeTfRotationEuler.x,
+                    _pointCloud2NativeTfRotationEuler.y,
+                    _pointCloud2NativeTfRotationEuler.z);
+                return new Quaternion(q.X, q.Y, q.Z, q.W);
+            }
+        }
 
         protected override string Ros2SchemaName
         {
@@ -195,26 +205,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             var value = string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
             return SanitizeFrameId(value, fallback);
-        }
-
-        private static Quaternion RosRollPitchYawDegreesToQuaternion(Vector3 rollPitchYawDegrees)
-        {
-            var roll = rollPitchYawDegrees.x * Math.PI / 180.0;
-            var pitch = rollPitchYawDegrees.y * Math.PI / 180.0;
-            var yaw = rollPitchYawDegrees.z * Math.PI / 180.0;
-
-            var cr = Math.Cos(roll * 0.5);
-            var sr = Math.Sin(roll * 0.5);
-            var cp = Math.Cos(pitch * 0.5);
-            var sp = Math.Sin(pitch * 0.5);
-            var cy = Math.Cos(yaw * 0.5);
-            var sy = Math.Sin(yaw * 0.5);
-
-            return new Quaternion(
-                (float)(sr * cp * cy - cr * sp * sy),
-                (float)(cr * sp * cy + sr * cp * sy),
-                (float)(cr * cp * sy - sr * sp * cy),
-                (float)(cr * cp * cy + sr * sp * sy));
         }
 
         protected override void Reset()
