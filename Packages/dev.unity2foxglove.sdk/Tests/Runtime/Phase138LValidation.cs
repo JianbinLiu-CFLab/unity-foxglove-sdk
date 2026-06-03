@@ -323,10 +323,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VirtualLidarKeepsStaticBudgetInvariant()
         {
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var buffers = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanBuffers.cs");
 
             Check(lidar.Contains("_maxRaycastCommandsPerFixedUpdate = 6144", StringComparison.Ordinal),
                 "138L-4A: VirtualLidar keeps the 138I static raycast budget cap");
-            Check(lidar.Contains("return Math.Max(1, _maxRaycastCommandsPerFixedUpdate / perColumn)", StringComparison.Ordinal),
+            Check(lidar.Contains("_scanBuffers.BudgetColumnsPerTick(_maxRaycastCommandsPerFixedUpdate)", StringComparison.Ordinal)
+                  && buffers.Contains("return Math.Max(1, maxRaycastCommandsPerFixedUpdate / perColumn)", StringComparison.Ordinal),
                 "138L-4B: BudgetColumnsPerTick remains cap-based");
             Check(lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal),
                 "138L-4C: scan timestamps remain physics-time anchored");

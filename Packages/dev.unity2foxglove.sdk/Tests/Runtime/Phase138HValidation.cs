@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "138H-6: VirtualLidar restarts each completed scan from the actual physics time (steady, non-superseding scan timestamps)");
             Check(source.Contains("_scanCrossings") && source.Contains("GetSubArray"),
                 "138H-7: per-tick batch casts one ScheduleBatch slice and publishes at revolution crossings");
-            Check(source.Contains("_columnRays"),
+            Check(source.Contains("_scanBuffers.ColumnRays"),
                 "138H-8: VirtualLidar buckets rays by column (removes the per-column O(N) scan)");
             Check(source.Contains("RaycastCommand.ScheduleBatch") &&
                   source.Contains("_pointCloudPublisher.SetFrame(_activeScanFrame)"),

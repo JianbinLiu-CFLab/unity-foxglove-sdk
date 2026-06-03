@@ -196,13 +196,13 @@ namespace Unity.FoxgloveSDK.Components
         private float _scanPeriod;
 
         private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
+        private readonly VirtualLidarScanBuffers _scanBuffers = new VirtualLidarScanBuffers();
 
         // Stream state.
         private bool _hasPrevPose;
         private double _prevFixedTime;
         private double _scanColumnProgress;
         private int _scanColumnCursor;
-        private int _scanColumnCount;
         private PointCloudFrame _activeScanFrame;
         private VirtualLidarPointData[] _activeScanPointSnapshot;
         private int _activeScanPointSnapshotCount;
@@ -233,25 +233,9 @@ namespace Unity.FoxgloveSDK.Components
         private int _pendingScanId;
 
         private readonly LidarScanDiagnostics _scanDiagnostics = new LidarScanDiagnostics();
-        // Rays grouped by column (built once) so a tick batch gathers a column's rays in
-        // O(rays-in-column) instead of scanning all rays per column (the O(N^2) hot path).
-        private int[][] _columnRays;
         // Ray-index positions inside the current tick batch where a revolution completes.
         private readonly System.Collections.Generic.List<int> _scanCrossings =
             new System.Collections.Generic.List<int>();
-
-        // Batched-raycast buffers (reused each scan; raycasts run on worker threads).
-        private NativeArray<RaycastCommand> _commands;
-        private NativeArray<RaycastHit> _results;
-        private NativeArray<float> _rayTimeOffsets;
-        private NativeArray<ushort> _rayRings;
-        private NativeArray<VirtualLidarPointData> _pointData;
-        private int[] _rayColumns;
-        private int _rawRayCount;       // pattern.RayCount
-        private int _effectiveRayCount; // rays actually cast per scan (after budget)
-        private int _rayStride;         // subsampling stride into the pattern
-        private int _spinEffectiveColumns; // RayCount/Rings for spinning, else 0
-        private int _maxRaysPerColumn = 1; // most rays in any single column (per-tick budget unit)
 
         private void Start()
         {
@@ -319,46 +303,19 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             DisposeScanBuffers();
-
-            var layout = VirtualLidarScanLayout.Build(_scanPattern, _maxRaysPerScan);
-            _rawRayCount = layout.RawRayCount;
-            _rayStride = layout.RayStride;
-            _effectiveRayCount = layout.EffectiveRayCount;
-            _spinEffectiveColumns = layout.SpinEffectiveColumns;
-            _scanColumnCount = layout.ScanColumnCount;
-            _rayColumns = layout.RayColumns;
-            _columnRays = layout.ColumnRays;
-            _maxRaysPerColumn = layout.MaxRaysPerColumn;
-
-            _commands = new NativeArray<RaycastCommand>(_effectiveRayCount, Allocator.Persistent);
-            _results = new NativeArray<RaycastHit>(_effectiveRayCount, Allocator.Persistent);
-            _rayTimeOffsets = new NativeArray<float>(_effectiveRayCount, Allocator.Persistent);
-            _rayRings = new NativeArray<ushort>(_effectiveRayCount, Allocator.Persistent);
-            _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
-            _activeScanPointSnapshot = new VirtualLidarPointData[_effectiveRayCount];
+            _scanBuffers.Allocate(_scanPattern, _maxRaysPerScan);
+            _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
             _activeScanPointSnapshotCount = 0;
 
-            _pendingScanCrossings = new int[Math.Max(1, _scanColumnCount)];
+            _pendingScanCrossings = new int[Math.Max(1, _scanBuffers.ScanColumnCount)];
         }
 
         private void DisposeScanBuffers()
         {
             DrainPendingScan();
-            if (_commands.IsCreated) _commands.Dispose();
-            if (_results.IsCreated) _results.Dispose();
-            if (_rayTimeOffsets.IsCreated) _rayTimeOffsets.Dispose();
-            if (_rayRings.IsCreated) _rayRings.Dispose();
-            if (_pointData.IsCreated) _pointData.Dispose();
-            _rayColumns = null;
-            _columnRays = null;
+            _scanBuffers.Dispose();
             _activeScanPointSnapshot = null;
             _activeScanPointSnapshotCount = 0;
-            _commands = default;
-            _results = default;
-            _rayTimeOffsets = default;
-            _rayRings = default;
-            _pointData = default;
-            _scanColumnCount = 0;
         }
 
         private void OnDestroy()
@@ -412,10 +369,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private void FixedUpdate()
         {
-            if (_scanPattern == null || !_commands.IsCreated || _effectiveRayCount <= 0)
+            if (_scanPattern == null || !_scanBuffers.IsCreated || _scanBuffers.EffectiveRayCount <= 0)
                 return;
 
-            if (_scanPeriod <= 0f || _scanColumnCount <= 0)
+            if (_scanPeriod <= 0f || _scanBuffers.ScanColumnCount <= 0)
                 return;
 
             EnsureScanClock(Time.fixedTimeAsDouble);
@@ -439,7 +396,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             // Columns this scan rate wants to advance this tick; carry the remainder.
-            _scanColumnProgress += dt * _scanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
+            _scanColumnProgress += dt * _scanBuffers.ScanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
 
             // Hard cap on per-tick raycast work — the real fix. PhysX must finish the batch
             // within one fixed step or RaycastCommand.Complete() blocks the physics loop and
@@ -449,16 +406,16 @@ namespace Unity.FoxgloveSDK.Components
 
             // Never let the backlog grow past one revolution, or a slow start would burst a
             // giant batch and reintroduce the very stall we are preventing.
-            var maxProgress = _scanColumnCount + budgetColumns;
+            var maxProgress = _scanBuffers.ScanColumnCount + budgetColumns;
             if (_scanColumnProgress > maxProgress)
                 _scanColumnProgress = maxProgress;
 
             // Keep one scheduled batch inside the current revolution. A completed scan has
             // one reference pose; crossing into the next revolution inside the same build job
             // would mix two scan frames through one world-to-local matrix.
-            var remainingColumns = _scanColumnCount - _scanColumnCursor;
-            if (remainingColumns <= 0 || remainingColumns > _scanColumnCount)
-                remainingColumns = _scanColumnCount;
+            var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor;
+            if (remainingColumns <= 0 || remainingColumns > _scanBuffers.ScanColumnCount)
+                remainingColumns = _scanBuffers.ScanColumnCount;
 
             var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress),
                 Math.Min(budgetColumns, remainingColumns));
@@ -489,33 +446,33 @@ namespace Unity.FoxgloveSDK.Components
             // Build one batch for all columns this tick (cap at one revolution).
             _scanCrossings.Clear();
             var batchCount = 0;
-            for (var c = 0; c < columnsToEmit && batchCount < _effectiveRayCount; c++)
+            for (var c = 0; c < columnsToEmit && batchCount < _scanBuffers.EffectiveRayCount; c++)
             {
-                var rays = _columnRays[_scanColumnCursor];
-                for (var r = 0; r < rays.Length && batchCount < _effectiveRayCount; r++)
+                var rays = _scanBuffers.ColumnRays[_scanColumnCursor];
+                for (var r = 0; r < rays.Length && batchCount < _scanBuffers.EffectiveRayCount; r++)
                 {
                     var k = rays[r];
-                    var index = k * _rayStride;
-                    if (index >= _rawRayCount) index = _rawRayCount - 1;
+                    var index = k * _scanBuffers.RayStride;
+                    if (index >= _scanBuffers.RawRayCount) index = _scanBuffers.RawRayCount - 1;
 
                     if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
                     {
-                        _commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                        _rayTimeOffsets[batchCount] = 0f;
-                        _rayRings[batchCount] = 0;
+                        _scanBuffers.Commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                        _scanBuffers.RayTimeOffsets[batchCount] = 0f;
+                        _scanBuffers.RayRings[batchCount] = 0;
                     }
                     else
                     {
                         var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
-                        _commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                        _rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz);
-                        _rayRings[batchCount] = _spinEffectiveColumns > 0 ? (ushort)(index / _spinEffectiveColumns) : (ushort)0;
+                        _scanBuffers.Commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                        _scanBuffers.RayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz);
+                        _scanBuffers.RayRings[batchCount] = _scanBuffers.SpinEffectiveColumns > 0 ? (ushort)(index / _scanBuffers.SpinEffectiveColumns) : (ushort)0;
                     }
                     batchCount++;
                 }
 
                 _scanColumnCursor++;
-                if (_scanColumnCursor >= _scanColumnCount)
+                if (_scanColumnCursor >= _scanBuffers.ScanColumnCount)
                 {
                     _scanCrossings.Add(batchCount);
                     _scanColumnCursor = 0;
@@ -530,24 +487,24 @@ namespace Unity.FoxgloveSDK.Components
                 _pendingScanCrossings[i] = _scanCrossings[i];
 
             _pendingBatchCount = batchCount;
-            _pendingProfileHash = ComputeScanProfileHash();
+            _pendingProfileHash = _scanBuffers.ComputeProfileHash();
             _pendingScanId = ++_nextPendingScanId;
             var raycastHandle = RaycastCommand.ScheduleBatch(
-                _commands.GetSubArray(0, batchCount),
-                _results.GetSubArray(0, batchCount),
+                _scanBuffers.Commands.GetSubArray(0, batchCount),
+                _scanBuffers.Results.GetSubArray(0, batchCount),
                 64);
             var minRange = (float)_scanPattern.MinRangeMeters;
             var buildJob = new VirtualLidarBuildPointsJob
             {
-                Hits = _results,
-                RayTimeOffsets = _rayTimeOffsets,
-                RayRings = _rayRings,
+                Hits = _scanBuffers.Results,
+                RayTimeOffsets = _scanBuffers.RayTimeOffsets,
+                RayRings = _scanBuffers.RayRings,
                 WorldToLocal = _activeScanWorldToLocal,
                 MinRange = minRange,
                 MaxRange = _maxRangeMeters,
                 SyntheticIntensity = _syntheticIntensity,
                 SyntheticReflectivity = _syntheticReflectivity,
-                Points = _pointData
+                Points = _scanBuffers.PointData
             };
             _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
             _pendingScanState = PendingScanState.Scheduled;
@@ -565,7 +522,7 @@ namespace Unity.FoxgloveSDK.Components
             var completeMs = DiagnosticElapsedMs(completeStart);
             _pendingScanState = PendingScanState.Consumed;
 
-            if (_pendingProfileHash != ComputeScanProfileHash())
+            if (_pendingProfileHash != _scanBuffers.ComputeProfileHash())
             {
                 RecordLidarDiagnostics(_pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: true);
                 ClearPendingScan();
@@ -631,15 +588,15 @@ namespace Unity.FoxgloveSDK.Components
             if (length <= 0)
                 return;
 
-            if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _effectiveRayCount)
-                _activeScanPointSnapshot = new VirtualLidarPointData[_effectiveRayCount];
+            if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _scanBuffers.EffectiveRayCount)
+                _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
 
             var writableLength = Math.Min(length, _activeScanPointSnapshot.Length - _activeScanPointSnapshotCount);
             if (writableLength <= 0)
                 return;
 
             NativeArray<VirtualLidarPointData>.Copy(
-                _pointData,
+                _scanBuffers.PointData,
                 sourceStart,
                 _activeScanPointSnapshot,
                 _activeScanPointSnapshotCount,
@@ -652,7 +609,7 @@ namespace Unity.FoxgloveSDK.Components
             var end = Math.Min(_pendingBatchCount, sourceStart + length);
             for (var k = sourceStart; k < end; k++)
             {
-                var point = _pointData[k];
+                var point = _scanBuffers.PointData[k];
                 if (point.IsValid == 0)
                     continue;
 
@@ -688,19 +645,6 @@ namespace Unity.FoxgloveSDK.Components
             _pendingScanCrossingCount = 0;
             _pendingProfileHash = 0;
             _pendingScanId = 0;
-        }
-
-        private int ComputeScanProfileHash()
-        {
-            unchecked
-            {
-                var hash = 17;
-                hash = hash * 31 + _rawRayCount;
-                hash = hash * 31 + _effectiveRayCount;
-                hash = hash * 31 + _rayStride;
-                hash = hash * 31 + _scanColumnCount;
-                return hash;
-            }
         }
 
         private long DiagnosticStart()
@@ -770,14 +714,14 @@ namespace Unity.FoxgloveSDK.Components
             _activeScanPointSnapshotCount = 0;
             if (UseNativePointCloudSnapshotPath())
             {
-                if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _effectiveRayCount)
-                    _activeScanPointSnapshot = new VirtualLidarPointData[_effectiveRayCount];
+                if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _scanBuffers.EffectiveRayCount)
+                    _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
             }
             else
             {
                 _activeScanFrame.Points.Clear();
-                if (_activeScanFrame.Points.Capacity < _effectiveRayCount)
-                    _activeScanFrame.Points.Capacity = _effectiveRayCount;
+                if (_activeScanFrame.Points.Capacity < _scanBuffers.EffectiveRayCount)
+                    _activeScanFrame.Points.Capacity = _scanBuffers.EffectiveRayCount;
             }
         }
 
@@ -853,10 +797,7 @@ namespace Unity.FoxgloveSDK.Components
         // i.e. ~1.2 Hz full-fidelity at 50 Hz physics — slow but rock-steady, with TF/camera
         // and the main loop fully protected.
         private int BudgetColumnsPerTick()
-        {
-            var perColumn = Math.Max(1, _maxRaysPerColumn);
-            return Math.Max(1, _maxRaycastCommandsPerFixedUpdate / perColumn);
-        }
+            => _scanBuffers.BudgetColumnsPerTick(_maxRaycastCommandsPerFixedUpdate);
 
         private void EnsureScanClock(double physNow)
         {

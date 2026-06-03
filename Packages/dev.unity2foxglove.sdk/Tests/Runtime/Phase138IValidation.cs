@@ -289,7 +289,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(lidar.Contains("_maxRaycastCommandsPerFixedUpdate", StringComparison.Ordinal)
                   && lidar.Contains("BudgetColumnsPerTick", StringComparison.Ordinal)
-                  && lidar.Contains("var remainingColumns = _scanColumnCount - _scanColumnCursor", StringComparison.Ordinal)
+                  && lidar.Contains("var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor", StringComparison.Ordinal)
                   && lidar.Contains("Math.Min(budgetColumns, remainingColumns)", StringComparison.Ordinal)
                   && lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
                   && lidar.Contains("_activeScanWorldToLocal = Matrix4x4", StringComparison.Ordinal)

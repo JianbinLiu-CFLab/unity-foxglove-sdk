@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesPublishState();
             PointCloudPublisherDelegatesRosTfMath();
             VirtualLidarDelegatesScanLayout();
+            VirtualLidarDelegatesScanBuffers();
             VirtualLidarDelegatesScanClock();
             VirtualLidarDelegatesUnityNumericsConversions();
 
@@ -413,17 +414,46 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanLayout.cs");
+            var buffers = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanBuffers.cs");
 
             Check(helper.Contains("internal readonly struct VirtualLidarScanLayout", StringComparison.Ordinal)
                   && helper.Contains("Build(", StringComparison.Ordinal)
                   && helper.Contains("ColumnRays", StringComparison.Ordinal)
                   && helper.Contains("MaxRaysPerColumn", StringComparison.Ordinal),
                 "138Q-8A: virtual LiDAR scan layout calculation lives in a focused helper");
-            Check(lidar.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal)
-                  && lidar.Contains("layout.ColumnRays", StringComparison.Ordinal)
+            Check(buffers.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal)
+                  && buffers.Contains("layout.ColumnRays", StringComparison.Ordinal)
+                  && lidar.Contains("_scanBuffers.ColumnRays", StringComparison.Ordinal)
                   && !lidar.Contains("var columnCounts = new int[_scanColumnCount]", StringComparison.Ordinal)
                   && !lidar.Contains("Bucket ray indices by column once", StringComparison.Ordinal),
                 "138Q-8B: VirtualLidar delegates scan column bucketing");
+        }
+
+        private static void VirtualLidarDelegatesScanBuffers()
+        {
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanBuffers.cs");
+
+            Check(helper.Contains("internal sealed class VirtualLidarScanBuffers", StringComparison.Ordinal)
+                  && helper.Contains(": IDisposable", StringComparison.Ordinal)
+                  && helper.Contains("NativeArray<RaycastCommand>", StringComparison.Ordinal)
+                  && helper.Contains("NativeArray<RaycastHit>", StringComparison.Ordinal)
+                  && helper.Contains("NativeArray<float>", StringComparison.Ordinal)
+                  && helper.Contains("NativeArray<ushort>", StringComparison.Ordinal)
+                  && helper.Contains("NativeArray<VirtualLidarPointData>", StringComparison.Ordinal)
+                  && helper.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal),
+                "138Q-19A: VirtualLidar persistent scan buffers live in a focused disposable helper");
+            Check(lidar.Contains("VirtualLidarScanBuffers _scanBuffers", StringComparison.Ordinal)
+                  && lidar.Contains("_scanBuffers.Allocate(", StringComparison.Ordinal)
+                  && lidar.Contains("_scanBuffers.Dispose()", StringComparison.Ordinal)
+                  && lidar.Contains("_scanBuffers.ComputeProfileHash()", StringComparison.Ordinal)
+                  && lidar.Contains("_scanBuffers.BudgetColumnsPerTick(", StringComparison.Ordinal)
+                  && !lidar.Contains("private NativeArray<RaycastCommand> _commands", StringComparison.Ordinal)
+                  && !lidar.Contains("private NativeArray<RaycastHit> _results", StringComparison.Ordinal)
+                  && !lidar.Contains("private NativeArray<float> _rayTimeOffsets", StringComparison.Ordinal)
+                  && !lidar.Contains("private NativeArray<ushort> _rayRings", StringComparison.Ordinal)
+                  && !lidar.Contains("private NativeArray<VirtualLidarPointData> _pointData", StringComparison.Ordinal),
+                "138Q-19B: VirtualLidar delegates NativeArray ownership and budget/profile math");
         }
 
         private static void VirtualLidarDelegatesScanClock()
