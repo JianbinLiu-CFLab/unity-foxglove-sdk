@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesRosTfMath();
             VirtualLidarDelegatesScanLayout();
             VirtualLidarDelegatesScanClock();
+            VirtualLidarDelegatesUnityNumericsConversions();
 
             Console.WriteLine($"Phase 138Q: {_passed} checks passed.");
         }
@@ -419,6 +420,29 @@ namespace Unity.FoxgloveSDK.Tests
                   && !lidar.Contains("_scanEpochPhysSeconds", StringComparison.Ordinal)
                   && !lidar.Contains("private ulong ComputeScanStartUnixNs", StringComparison.Ordinal),
                 "138Q-10B: VirtualLidar delegates scan clock epoch and timestamp math");
+        }
+
+        private static void VirtualLidarDelegatesUnityNumericsConversions()
+        {
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var sensorUnit = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/SensorUnitProfile.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarUnityNumericsConversions.cs");
+
+            Check(helper.Contains("internal static class LidarUnityNumericsConversions", StringComparison.Ordinal)
+                  && helper.Contains("ToUnityVector3(", StringComparison.Ordinal)
+                  && helper.Contains("ToNumericsVector3(", StringComparison.Ordinal)
+                  && helper.Contains("ToUnityQuaternion(", StringComparison.Ordinal)
+                  && helper.Contains("ToCleanUnityQuaternion(", StringComparison.Ordinal)
+                  && helper.Contains("ToNumericsQuaternion(", StringComparison.Ordinal),
+                "138Q-17A: LiDAR Unity/Numerics conversion math lives in a focused helper");
+            Check(lidar.Contains("LidarUnityNumericsConversions.ToUnityVector3", StringComparison.Ordinal)
+                  && lidar.Contains("LidarUnityNumericsConversions.ToUnityQuaternion", StringComparison.Ordinal)
+                  && lidar.Contains("LidarUnityNumericsConversions.ToNumericsVector3", StringComparison.Ordinal)
+                  && lidar.Contains("LidarUnityNumericsConversions.ToNumericsQuaternion", StringComparison.Ordinal)
+                  && sensorUnit.Contains("LidarUnityNumericsConversions.ToCleanUnityQuaternion", StringComparison.Ordinal)
+                  && !lidar.Contains("new System.Numerics.Vector3(value.x, value.y, value.z)", StringComparison.Ordinal)
+                  && !sensorUnit.Contains("private static float CleanNearZero", StringComparison.Ordinal),
+                "138Q-17B: VirtualLidar and SensorUnitProfile delegate duplicated Unity/Numerics conversions");
         }
 
         private static string Read(string relativePath)

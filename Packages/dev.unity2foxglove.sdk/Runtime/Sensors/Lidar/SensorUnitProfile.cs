@@ -308,26 +308,19 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Convert a numerics vector to a Unity vector.</summary>
         public static Vector3 ToUnityVector3(NumericVector3 value)
-            => new Vector3(value.X, value.Y, value.Z);
+            => LidarUnityNumericsConversions.ToUnityVector3(value);
 
         /// <summary>Convert a Unity vector to a numerics vector.</summary>
         public static NumericVector3 ToNumericsVector3(Vector3 value)
-            => new NumericVector3(value.x, value.y, value.z);
+            => LidarUnityNumericsConversions.ToNumericsVector3(value);
 
         /// <summary>Convert a numerics quaternion to a normalized Unity quaternion.</summary>
         public static Quaternion ToUnityQuaternion(NumericQuaternion value)
-        {
-            var normalized = LidarTIlExtrinsic.NormalizeRotation(value);
-            return new Quaternion(
-                CleanNearZero(normalized.X),
-                CleanNearZero(normalized.Y),
-                CleanNearZero(normalized.Z),
-                CleanNearZero(normalized.W));
-        }
+            => LidarUnityNumericsConversions.ToCleanUnityQuaternion(value);
 
         /// <summary>Convert a Unity quaternion to a normalized numerics quaternion.</summary>
         public static NumericQuaternion ToNumericsQuaternion(Quaternion value)
-            => LidarTIlExtrinsic.NormalizeRotation(new NumericQuaternion(value.x, value.y, value.z, value.w));
+            => LidarUnityNumericsConversions.ToNumericsQuaternion(value);
 
         private static void CopyToUnityFields(
             LidarTIlExtrinsic extrinsic,
@@ -365,9 +358,6 @@ namespace Unity.FoxgloveSDK.Components
                     ToNumericsVector3(_cameraToSensorTranslationMeters),
                     ToNumericsQuaternion(_cameraToSensorRotation))
                 : ModelCameraToSensor;
-
-        private static float CleanNearZero(float value)
-            => Mathf.Abs(value) < 1e-6f ? 0f : value;
 
         private static LidarTIlExtrinsic Invert(LidarTIlExtrinsic extrinsic)
             => LidarExtrinsicMath.Invert(extrinsic);

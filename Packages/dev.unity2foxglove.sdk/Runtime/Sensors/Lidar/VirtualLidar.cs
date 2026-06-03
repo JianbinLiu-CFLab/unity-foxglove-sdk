@@ -177,23 +177,19 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Convert a numerics vector to a Unity vector.</summary>
         public static Vector3 ToUnityVector3(System.Numerics.Vector3 value)
-            => new Vector3(value.X, value.Y, value.Z);
+            => LidarUnityNumericsConversions.ToUnityVector3(value);
 
         /// <summary>Convert a numerics quaternion to a normalized Unity quaternion.</summary>
         public static Quaternion ToUnityQuaternion(System.Numerics.Quaternion value)
-        {
-            var normalized = LidarTIlExtrinsic.NormalizeRotation(value);
-            return new Quaternion(normalized.X, normalized.Y, normalized.Z, normalized.W);
-        }
+            => LidarUnityNumericsConversions.ToUnityQuaternion(value);
 
         /// <summary>Convert a Unity vector to a numerics vector.</summary>
         public static System.Numerics.Vector3 ToNumericsVector3(Vector3 value)
-            => new System.Numerics.Vector3(value.x, value.y, value.z);
+            => LidarUnityNumericsConversions.ToNumericsVector3(value);
 
         /// <summary>Convert a Unity quaternion to a normalized numerics quaternion.</summary>
         public static System.Numerics.Quaternion ToNumericsQuaternion(Quaternion value)
-            => LidarTIlExtrinsic.NormalizeRotation(
-                new System.Numerics.Quaternion(value.x, value.y, value.z, value.w));
+            => LidarUnityNumericsConversions.ToNumericsQuaternion(value);
 
         private ILidarScanPattern _scanPattern;
         private int _frameCounter;
