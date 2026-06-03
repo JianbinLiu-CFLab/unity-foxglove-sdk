@@ -692,7 +692,22 @@ namespace Unity.FoxgloveSDK.Components
             if (!profile.IsVideo)
                 return false;
 
-            if (_videoSidecarSession.EnsureStarted(profile, CreateVideoSidecarConfig(), DrainEncodedAccessUnits, out var error))
+            if (_videoSidecarSession.EnsureStarted(
+                profile,
+                CameraVideoSidecarConfigFactory.Create(
+                    _ffmpegPath,
+                    _openH264HelperPath,
+                    _openH264DllPath,
+                    _width,
+                    _height,
+                    EffectivePublishRateHz,
+                    _videoBitrateKbps,
+                    _videoKeyframeInterval,
+                    _maxPendingReadbacks,
+                    _openH264MaxInputQueue,
+                    _videoMaxOutputQueue),
+                DrainEncodedAccessUnits,
+                out var error))
             {
                 _warnedVideoEncoderUnavailable = false;
                 _diagnostics.ResetVideoDimensionMismatchWarning();
@@ -703,23 +718,9 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
-        private int DesiredVideoWidth => Math.Max(1, _width);
+        private int DesiredVideoWidth => CameraVideoSidecarConfigFactory.ResolveDimension(_width);
 
-        private int DesiredVideoHeight => Math.Max(1, _height);
-
-        private CameraVideoSidecarConfig CreateVideoSidecarConfig()
-            => new CameraVideoSidecarConfig(
-                _ffmpegPath,
-                _openH264HelperPath,
-                _openH264DllPath,
-                DesiredVideoWidth,
-                DesiredVideoHeight,
-                ResolveEncoderFrameRate(),
-                _videoBitrateKbps,
-                _videoKeyframeInterval,
-                _maxPendingReadbacks,
-                _openH264MaxInputQueue,
-                _videoMaxOutputQueue);
+        private int DesiredVideoHeight => CameraVideoSidecarConfigFactory.ResolveDimension(_height);
 
         private void DrainEncodedAccessUnits()
         {
@@ -786,16 +787,6 @@ namespace Unity.FoxgloveSDK.Components
 
             return result.AllowCapture;
         }
-
-        private int ResolveEncoderFrameRate()
-        {
-            var rate = EffectivePublishRateHz;
-            if (rate > 0f && rate < 1000f)
-                return Mathf.Max(1, Mathf.RoundToInt(rate));
-
-            return 30;
-        }
-
         /// <summary>
         /// Allocates Unity capture resources on the main thread using the current
         /// Inspector-requested dimensions before each readback snapshots the actual RT size.

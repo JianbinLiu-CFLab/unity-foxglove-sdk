@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
             ManagerDelegatesSharedSensorClockState();
             VirtualLidarDelegatesScanDiagnostics();
             CameraPublisherDelegatesVideoSidecarOptions();
+            CameraPublisherDelegatesVideoSidecarConfigFactory();
             CameraPublisherDelegatesVideoSidecarLifecycle();
             CameraPublisherDelegatesJpegWorkerPayloads();
             CameraPublisherDelegatesJpegPipelineLifecycle();
@@ -108,6 +109,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private OpenH264EncoderOptions CreateOpenH264Options", StringComparison.Ordinal)
                   && !camera.Contains("private MediaFoundationH264EncoderOptions CreateMediaFoundationH264Options", StringComparison.Ordinal),
                 "138Q-3B: camera video sidecar session delegates option construction");
+        }
+
+        private static void CameraPublisherDelegatesVideoSidecarConfigFactory()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarConfigFactory.cs");
+
+            Check(helper.Contains("internal static class CameraVideoSidecarConfigFactory", StringComparison.Ordinal)
+                  && helper.Contains("Create(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveDimension(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveFrameRate(", StringComparison.Ordinal)
+                  && helper.Contains("CameraVideoSidecarConfig", StringComparison.Ordinal),
+                "138Q-3E: camera video sidecar config and frame-rate resolution live in a focused factory");
+            Check(camera.Contains("CameraVideoSidecarConfigFactory.Create(", StringComparison.Ordinal)
+                  && camera.Contains("CameraVideoSidecarConfigFactory.ResolveDimension(", StringComparison.Ordinal)
+                  && !camera.Contains("private CameraVideoSidecarConfig CreateVideoSidecarConfig", StringComparison.Ordinal)
+                  && !camera.Contains("private int ResolveEncoderFrameRate", StringComparison.Ordinal),
+                "138Q-3F: FoxgloveCameraPublisher delegates sidecar config creation");
         }
 
         private static void CameraPublisherDelegatesVideoSidecarLifecycle()
