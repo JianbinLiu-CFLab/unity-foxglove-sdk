@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesVideoSidecarLifecycle();
             CameraPublisherDelegatesJpegWorkerPayloads();
             CameraPublisherDelegatesJpegPipelineLifecycle();
+            CameraPublisherDelegatesPublishDiagnostics();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -186,6 +187,32 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private Thread _jpegWorker", StringComparison.Ordinal)
                   && !camera.Contains("EncodeJpegWorkerLoop", StringComparison.Ordinal),
                 "138Q-5D: FoxgloveCameraPublisher delegates repeated JPEG worker lifecycle code");
+        }
+
+        private static void CameraPublisherDelegatesPublishDiagnostics()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
+
+            Check(diagnostics.Contains("internal sealed class CameraPublishDiagnostics", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordCameraBudgetSkip(", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordJpegEncodeResult(", StringComparison.Ordinal)
+                  && diagnostics.Contains("LogCameraIfNeeded(", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordVideoDimensionMismatchDrop(", StringComparison.Ordinal)
+                  && diagnostics.Contains("LogVideoIfNeeded(", StringComparison.Ordinal)
+                  && diagnostics.Contains("ResetVideoState(", StringComparison.Ordinal),
+                "138Q-11A: camera publish diagnostics live in a focused helper");
+            Check(camera.Contains("CameraPublishDiagnostics _diagnostics", StringComparison.Ordinal)
+                  && camera.Contains("_diagnostics.RecordCameraBudgetSkip(", StringComparison.Ordinal)
+                  && camera.Contains("_diagnostics.RecordJpegEncodeResult(", StringComparison.Ordinal)
+                  && camera.Contains("_diagnostics.LogCameraIfNeeded(", StringComparison.Ordinal)
+                  && camera.Contains("_diagnostics.RecordVideoDimensionMismatchDrop(", StringComparison.Ordinal)
+                  && camera.Contains("_diagnostics.LogVideoIfNeeded(", StringComparison.Ordinal)
+                  && !camera.Contains("_lastRenderMs", StringComparison.Ordinal)
+                  && !camera.Contains("_videoSubmitFailureCount", StringComparison.Ordinal)
+                  && !camera.Contains("private void LogCameraDiagnosticsIfNeeded", StringComparison.Ordinal)
+                  && !camera.Contains("private void LogVideoDiagnosticsIfNeeded", StringComparison.Ordinal),
+                "138Q-11B: FoxgloveCameraPublisher delegates camera/video diagnostic counters");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()

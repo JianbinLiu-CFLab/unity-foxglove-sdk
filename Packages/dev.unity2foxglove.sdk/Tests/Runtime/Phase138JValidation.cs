@@ -189,6 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
 
             Check(source.Contains("CameraFrameBudgetPolicy.Evaluate", StringComparison.Ordinal),
                 "138J-5A: camera scheduler uses CameraFrameBudgetPolicy");
@@ -197,7 +198,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("lastPublishedCaptureUnixNs", StringComparison.Ordinal),
                 "138J-5C: camera tracks monotonic JPEG publish order");
             Check(payloads.Contains("Convert.ToBase64String", StringComparison.Ordinal)
-                  && source.Contains("serializeMs", StringComparison.Ordinal),
+                  && diagnostics.Contains("serializeMs", StringComparison.Ordinal),
                 "138J-5D: JSON/base64 path remains visible to CameraDiag");
 
             var workerStart = pipeline.IndexOf("EncodeJpegWorkerLoop", StringComparison.Ordinal);

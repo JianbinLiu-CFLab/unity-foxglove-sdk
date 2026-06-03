@@ -158,8 +158,8 @@ namespace Unity.FoxgloveSDK.Components
 
         // Video sidecar state
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
+        private readonly CameraPublishDiagnostics _diagnostics = new CameraPublishDiagnostics();
         private bool _warnedVideoEncoderUnavailable;
-        private bool _warnedVideoDimensionMismatch;
         private string _lastLoggedStderr;
 
         // JPEG backpressure state
@@ -174,35 +174,6 @@ namespace Unity.FoxgloveSDK.Components
         private ulong _lastPublishedCaptureUnixNs;
         private bool _warnedJpegWorkerFailure;
         private bool _warnedJpegWorkerShutdown;
-        private double _nextCameraDiagLogSec;
-        private double _lastRenderMs;
-        private double _lastReadbackLatencyMs;
-        private double _lastReadbackCopyMs;
-        private double _lastJpegEncodeMs;
-        private double _lastSerializeMs;
-        private double _lastPublishDrainMs;
-        private int _lastJpegBytes;
-        private int _readbackBudgetSkipCount;
-        private int _encodeBudgetSkipCount;
-        private int _completedBudgetSkipCount;
-        private int _pixelBudgetSkipCount;
-        private int _noDemandJpegDropCount;
-        private int _droppedEncodeQueueCount;
-        private int _droppedCompletedJpegCount;
-        private int _droppedEncodedBudgetCount;
-        private int _droppedLateJpegCount;
-        private double _nextVideoDiagLogSec;
-        /// <summary>Elapsed milliseconds for the last video conversion/submission attempt.</summary>
-        private double _lastVideoSubmitMs;
-        private double _lastVideoDrainMs;
-        private int _lastVideoAccessUnitBytes;
-        private int _videoFramesSubmittedCount;
-        private int _videoAccessUnitsPublishedCount;
-        private int _videoDimensionMismatchDropCount;
-        private int _videoSubmitFailureCount;
-        private int _videoSidecarRestartCount;
-        /// <summary>Most recent video diagnostic reason to include in the next interval log.</summary>
-        private string _lastVideoDiagnostic;
 
         /// <summary>Defaults the topic to the current mode default if not set.</summary>
         private void Awake()
@@ -258,7 +229,7 @@ namespace Unity.FoxgloveSDK.Components
             if (profile.IsVideo && !EnsureVideoSidecarStarted(profile)) return;
             if (!profile.IsVideo && !AllowJpegCaptureByFrameBudget())
             {
-                LogCameraDiagnosticsIfNeeded();
+                EmitCameraDiagnosticsIfNeeded();
                 return;
             }
 
@@ -268,7 +239,7 @@ namespace Unity.FoxgloveSDK.Components
                 renderUnixNs = ResolveCameraCaptureUnixNs();
             var renderStart = Stopwatch.GetTimestamp();
             _captureCam.Render();
-            _lastRenderMs = ElapsedMs(renderStart);
+            _diagnostics.RecordRenderMs(ElapsedMs(renderStart));
             // Snapshot the concrete render target size with the readback request. Inspector
             // width/height can change while this callback is in flight.
             var generation = _captureGeneration;
@@ -308,7 +279,7 @@ namespace Unity.FoxgloveSDK.Components
                 var publishNativeFrame = HasSensorCompressedImageDemand();
                 if (!publishWebSocket && !publishBridge && !publishNativeFrame)
                 {
-                    _noDemandJpegDropCount++;
+                    _diagnostics.RecordNoDemandJpegDrop();
                     return;
                 }
 
@@ -391,27 +362,8 @@ namespace Unity.FoxgloveSDK.Components
             if (result.AllowCapture)
                 return true;
 
-            RecordCameraBudgetSkip(result.SkipReason);
+            _diagnostics.RecordCameraBudgetSkip(result.SkipReason);
             return false;
-        }
-
-        private void RecordCameraBudgetSkip(CameraFrameBudgetSkipReason reason)
-        {
-            switch (reason)
-            {
-                case CameraFrameBudgetSkipReason.ReadbackQueueFull:
-                    _readbackBudgetSkipCount++;
-                    break;
-                case CameraFrameBudgetSkipReason.EncodeQueueFull:
-                    _encodeBudgetSkipCount++;
-                    break;
-                case CameraFrameBudgetSkipReason.CompletedQueueFull:
-                    _completedBudgetSkipCount++;
-                    break;
-                case CameraFrameBudgetSkipReason.PixelBudgetExceeded:
-                    _pixelBudgetSkipCount++;
-                    break;
-            }
         }
 
         /// <summary>
@@ -432,8 +384,7 @@ namespace Unity.FoxgloveSDK.Components
             EnsureJpegQueues();
             var copyStart = Stopwatch.GetTimestamp();
             var frameBytes = req.GetData<byte>().ToArray();
-            _lastReadbackLatencyMs = readbackLatencyMs;
-            _lastReadbackCopyMs = ElapsedMs(copyStart);
+            _diagnostics.RecordReadbackCopy(readbackLatencyMs, ElapsedMs(copyStart));
 
             var request = new JpegEncodeRequest(
                 frameBytes,
@@ -452,7 +403,7 @@ namespace Unity.FoxgloveSDK.Components
                 _jpegPipeline.WorkerGeneration);
 
             if (_jpegPipeline.Queue(request))
-                _droppedEncodeQueueCount++;
+                _diagnostics.RecordEncodeQueueDrop();
         }
 
         /// <summary>
@@ -470,12 +421,12 @@ namespace Unity.FoxgloveSDK.Components
                 PublishCompletedJpegFrame,
                 out var droppedCompleted);
             if (droppedCompleted > 0)
-                _droppedCompletedJpegCount += droppedCompleted;
+                _diagnostics.RecordCompletedJpegDrops(droppedCompleted);
 
             if (drained > 0)
-                _lastPublishDrainMs = ElapsedMs(drainStart);
+                _diagnostics.RecordPublishDrainMs(ElapsedMs(drainStart));
 
-            LogCameraDiagnosticsIfNeeded();
+            EmitCameraDiagnosticsIfNeeded();
         }
 
         /// <summary>
@@ -490,17 +441,15 @@ namespace Unity.FoxgloveSDK.Components
             var captureUnixNs = result.Request.CaptureUnixNs;
             if (!CameraJpegPublishOrderPolicy.ShouldPublish(captureUnixNs, _lastPublishedCaptureUnixNs))
             {
-                _droppedLateJpegCount++;
+                _diagnostics.RecordLateJpegDrop();
                 return;
             }
 
-            _lastJpegEncodeMs = result.EncodeMs;
-            _lastSerializeMs = result.SerializeMs;
-            _lastJpegBytes = result.JpegBytes;
+            _diagnostics.RecordJpegEncodeResult(result.EncodeMs, result.SerializeMs, result.JpegBytes);
 
             if (result.DroppedByEncodedBudget)
             {
-                _droppedEncodedBudgetCount++;
+                _diagnostics.RecordEncodedBudgetDrop();
                 LogBackpressureSkip(
                     $"[Foxglove] Camera frame dropped: encoded size {result.JpegBytes} exceeds budget {result.Request.MaxEncodedBytes}.");
                 return;
@@ -676,7 +625,7 @@ namespace Unity.FoxgloveSDK.Components
             var sidecar = _videoSidecarSession.Sidecar;
             if (sidecar == null)
             {
-                _videoSubmitFailureCount++;
+                _diagnostics.RecordVideoSubmitFailure();
                 LogVideoEncoderUnavailable(ActiveProfile, "Video encoder is not running.");
                 FinishVideoSubmitDiagnostic(submitStart);
                 return;
@@ -684,7 +633,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!sidecar.IsRunning)
             {
-                _videoSubmitFailureCount++;
+                _diagnostics.RecordVideoSubmitFailure();
                 LogVideoEncoderUnavailable(ActiveProfile, _videoSidecarSession.DescribeFailure("Video encoder process exited."));
                 FinishVideoSubmitDiagnostic(submitStart);
                 return;
@@ -694,7 +643,7 @@ namespace Unity.FoxgloveSDK.Components
             captureHeight = Math.Max(1, captureHeight);
             if (!ValidateCapturedVideoFrame(captureWidth, captureHeight, req.GetData<byte>().Length, out var dimensionError))
             {
-                _lastVideoSubmitMs = ElapsedMs(submitStart);
+                _diagnostics.RecordVideoSubmitMs(ElapsedMs(submitStart));
                 RecordVideoDimensionMismatchDrop(dimensionError);
                 return;
             }
@@ -711,7 +660,7 @@ namespace Unity.FoxgloveSDK.Components
                         flipVertical: true,
                         out var conversionError))
                 {
-                    _videoSubmitFailureCount++;
+                    _diagnostics.RecordVideoSubmitFailure();
                     LogVideoEncoderUnavailable(ActiveProfile, conversionError);
                     FinishVideoSubmitDiagnostic(submitStart);
                     return;
@@ -723,21 +672,21 @@ namespace Unity.FoxgloveSDK.Components
             var submitted = _videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs);
             if (!submitted)
             {
-                _videoSubmitFailureCount++;
+                _diagnostics.RecordVideoSubmitFailure();
                 LogVideoEncoderUnavailable(ActiveProfile, _videoSidecarSession.DescribeFailure("Video encoder refused the frame."));
                 FinishVideoSubmitDiagnostic(submitStart);
                 return;
             }
 
-            _videoFramesSubmittedCount++;
-            _lastVideoSubmitMs = ElapsedMs(submitStart);
+            _diagnostics.RecordVideoFrameSubmitted();
+            _diagnostics.RecordVideoSubmitMs(ElapsedMs(submitStart));
             DrainEncodedAccessUnits();
         }
 
         private void FinishVideoSubmitDiagnostic(long submitStart)
         {
-            _lastVideoSubmitMs = ElapsedMs(submitStart);
-            LogVideoDiagnosticsIfNeeded();
+            _diagnostics.RecordVideoSubmitMs(ElapsedMs(submitStart));
+            EmitVideoDiagnosticsIfNeeded();
         }
 
         /// <summary>
@@ -780,7 +729,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_videoSidecarSession.EnsureStarted(profile, CreateVideoSidecarConfig(), DrainEncodedAccessUnits, out var error))
             {
                 _warnedVideoEncoderUnavailable = false;
-                _warnedVideoDimensionMismatch = false;
+                _diagnostics.ResetVideoDimensionMismatchWarning();
                 return true;
             }
 
@@ -812,8 +761,8 @@ namespace Unity.FoxgloveSDK.Components
             if (!_videoSidecarSession.TryDrain(() => CurrentLogTimeNs, PublishVideoAccessUnit, LogEncoderStderrIfNeeded))
                 return;
 
-            _lastVideoDrainMs = ElapsedMs(drainStart);
-            LogVideoDiagnosticsIfNeeded();
+            _diagnostics.RecordVideoDrainMs(ElapsedMs(drainStart));
+            EmitVideoDiagnosticsIfNeeded();
         }
 
         private void PublishVideoAccessUnit(byte[] accessUnit, ulong unixNs, string videoFormat)
@@ -829,8 +778,7 @@ namespace Unity.FoxgloveSDK.Components
                 accessUnit,
                 videoFormat);
             PublishProto(payload, unixNs);
-            _lastVideoAccessUnitBytes = accessUnit.Length;
-            _videoAccessUnitsPublishedCount++;
+            _diagnostics.RecordVideoAccessUnitPublished(accessUnit.Length);
         }
 
         private void StopVideoSidecar()
@@ -855,19 +803,19 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (!string.IsNullOrEmpty(result.Diagnostic))
-                _lastVideoDiagnostic = result.Diagnostic;
+                _diagnostics.RecordVideoDiagnostic(result.Diagnostic);
 
             if (result.DroppedWhilePending)
             {
-                _videoDimensionMismatchDropCount++;
-                LogVideoDiagnosticsIfNeeded();
+                _diagnostics.RecordVideoDimensionMismatchDrop(result.Diagnostic, warnOnce: false);
+                EmitVideoDiagnosticsIfNeeded();
                 return false;
             }
 
             if (result.Restarted)
             {
-                _videoSidecarRestartCount++;
-                LogVideoDiagnosticsIfNeeded();
+                _diagnostics.RecordVideoSidecarRestart();
+                EmitVideoDiagnosticsIfNeeded();
             }
 
             return result.AllowCapture;
@@ -1022,23 +970,7 @@ namespace Unity.FoxgloveSDK.Components
             ClearJpegQueues();
             _lastPublishedCaptureUnixNs = 0;
             _warnedJpegWorkerFailure = false;
-            _nextCameraDiagLogSec = 0;
-            _lastRenderMs = 0;
-            _lastReadbackLatencyMs = 0;
-            _lastReadbackCopyMs = 0;
-            _lastJpegEncodeMs = 0;
-            _lastSerializeMs = 0;
-            _lastPublishDrainMs = 0;
-            _lastJpegBytes = 0;
-            _readbackBudgetSkipCount = 0;
-            _encodeBudgetSkipCount = 0;
-            _completedBudgetSkipCount = 0;
-            _pixelBudgetSkipCount = 0;
-            _noDemandJpegDropCount = 0;
-            _droppedEncodeQueueCount = 0;
-            _droppedCompletedJpegCount = 0;
-            _droppedEncodedBudgetCount = 0;
-            _droppedLateJpegCount = 0;
+            _diagnostics.ResetCameraState();
         }
 
         /// <summary>
@@ -1078,37 +1010,18 @@ namespace Unity.FoxgloveSDK.Components
         /// Reports render, readback, encode, serialization and queue pressure separately
         /// so camera cost can be attributed before future pipeline changes.
         /// </summary>
-        private void LogCameraDiagnosticsIfNeeded()
+        private void EmitCameraDiagnosticsIfNeeded()
         {
-            if (!_logCameraDiagnostics)
-                return;
-
-            var now = Time.unscaledTimeAsDouble;
-            if (now < _nextCameraDiagLogSec)
-                return;
-
-            _nextCameraDiagLogSec = now + Math.Max(0.1f, _cameraDiagnosticsIntervalSeconds);
-            Debug.Log(
-                "[Foxglove][CameraDiag] " +
-                $"renderMs={_lastRenderMs:F2} readbackLatencyMs={_lastReadbackLatencyMs:F2} readbackCopyMs={_lastReadbackCopyMs:F2} " +
-                $"jpegMs={_lastJpegEncodeMs:F2} serializeMs={_lastSerializeMs:F2} publishDrainMs={_lastPublishDrainMs:F2} " +
-                $"bytes={_lastJpegBytes} pendingReadbacks={_pendingRequests} encodeQueue={_jpegPipeline?.EncodeQueueDepth ?? 0} completedQueue={_jpegPipeline?.CompletedQueueDepth ?? 0} " +
-                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount}) " +
-                $"drops(noDemand={_noDemandJpegDropCount},encodeQueue={_droppedEncodeQueueCount},completedQueue={_droppedCompletedJpegCount},encodedBudget={_droppedEncodedBudgetCount},late={_droppedLateJpegCount}).");
-            ResetCameraDiagnosticCounters();
-        }
-
-        private void ResetCameraDiagnosticCounters()
-        {
-            _readbackBudgetSkipCount = 0;
-            _encodeBudgetSkipCount = 0;
-            _completedBudgetSkipCount = 0;
-            _pixelBudgetSkipCount = 0;
-            _noDemandJpegDropCount = 0;
-            _droppedEncodeQueueCount = 0;
-            _droppedCompletedJpegCount = 0;
-            _droppedEncodedBudgetCount = 0;
-            _droppedLateJpegCount = 0;
+            _diagnostics.LogCameraIfNeeded(
+                _logCameraDiagnostics,
+                Time.unscaledTimeAsDouble,
+                _cameraDiagnosticsIntervalSeconds,
+                _pendingRequests,
+                _jpegPipeline?.EncodeQueueDepth ?? 0,
+                _jpegPipeline?.CompletedQueueDepth ?? 0,
+                out var message);
+            if (message != null)
+                Debug.Log(message);
         }
 
         /// <summary>
@@ -1116,39 +1029,29 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void RecordVideoDimensionMismatchDrop(string reason)
         {
-            _videoDimensionMismatchDropCount++;
-            _lastVideoDiagnostic = reason;
-            if (!_warnedVideoDimensionMismatch)
-            {
-                _warnedVideoDimensionMismatch = true;
+            if (_diagnostics.RecordVideoDimensionMismatchDrop(reason, warnOnce: true))
                 Debug.LogWarning("[Foxglove] Camera video frame dropped: " + reason);
-            }
 
-            LogVideoDiagnosticsIfNeeded();
+            EmitVideoDiagnosticsIfNeeded();
         }
 
         /// <summary>
         /// Reports video submission and drain evidence separately from JPEG diagnostics.
         /// </summary>
-        private void LogVideoDiagnosticsIfNeeded()
+        private void EmitVideoDiagnosticsIfNeeded()
         {
-            if (!_logVideoDiagnostics)
-                return;
-
-            var now = Time.unscaledTimeAsDouble;
-            if (now < _nextVideoDiagLogSec)
-                return;
-
-            _nextVideoDiagLogSec = now + Math.Max(0.1f, _cameraDiagnosticsIntervalSeconds);
             var profile = CameraVideoOutputProfile.ForMode(_videoSidecarSession.Mode);
-            Debug.Log(
-                "[Foxglove][VideoDiag] " +
-                $"mode={profile.DisplayName} width={_videoSidecarSession.Width} height={_videoSidecarSession.Height} " +
-                $"videoSubmitMs={_lastVideoSubmitMs:F2} videoDrainMs={_lastVideoDrainMs:F2} accessUnitBytes={_lastVideoAccessUnitBytes} " +
-                $"pendingReadbacks={_pendingRequests} framesSubmitted={_videoFramesSubmittedCount} accessUnitsPublished={_videoAccessUnitsPublishedCount} " +
-                $"dimensionMismatch={_videoDimensionMismatchDropCount} submitFailures={_videoSubmitFailureCount} sidecarRestarts={_videoSidecarRestartCount} " +
-                $"lastDiagnostic={_lastVideoDiagnostic ?? ""}.");
-            ResetVideoDiagnosticCounters();
+            _diagnostics.LogVideoIfNeeded(
+                _logVideoDiagnostics,
+                Time.unscaledTimeAsDouble,
+                _cameraDiagnosticsIntervalSeconds,
+                profile.DisplayName,
+                _videoSidecarSession.Width,
+                _videoSidecarSession.Height,
+                _pendingRequests,
+                out var message);
+            if (message != null)
+                Debug.Log(message);
         }
 
         /// <summary>
@@ -1156,27 +1059,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void ResetVideoDiagnosticState()
         {
-            _nextVideoDiagLogSec = 0;
-            _lastVideoSubmitMs = 0;
-            _lastVideoDrainMs = 0;
-            _lastVideoAccessUnitBytes = 0;
-            _lastVideoDiagnostic = "";
-            _warnedVideoDimensionMismatch = false;
+            _diagnostics.ResetVideoState();
             _videoSidecarSession.ResetRestartState();
-            ResetVideoDiagnosticCounters();
-        }
-
-        /// <summary>
-        /// Clears per-log-window video diagnostic counters and stale reason text.
-        /// </summary>
-        private void ResetVideoDiagnosticCounters()
-        {
-            _videoFramesSubmittedCount = 0;
-            _videoAccessUnitsPublishedCount = 0;
-            _videoDimensionMismatchDropCount = 0;
-            _videoSubmitFailureCount = 0;
-            _videoSidecarRestartCount = 0;
-            _lastVideoDiagnostic = "";
         }
 
         private static double ElapsedMs(long startTicks)
