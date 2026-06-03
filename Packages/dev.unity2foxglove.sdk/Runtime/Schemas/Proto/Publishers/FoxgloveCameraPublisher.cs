@@ -90,22 +90,16 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Publish JPEG as the standard ROS2 compressed camera image schema when ROS2 encoding is selected.")]
         [SerializeField] private bool _publishStandardRos2CompressedImage;
 
-        private CameraOutputMode _runtimeOutputMode;
-        private bool _runtimeOutputModeInitialized;
-        private bool _warnedRuntimeOutputModeSwitch;
+        private readonly CameraOutputModeRuntimeLock _outputModeRuntimeLock = new CameraOutputModeRuntimeLock();
 
         private CameraOutputMode ResolvedOutputMode
         {
             get
             {
-                if (Application.isPlaying && _runtimeOutputModeInitialized)
-                {
-                    if (_outputMode != _runtimeOutputMode)
-                        WarnRuntimeOutputModeSwitch();
-                    return _runtimeOutputMode;
-                }
-
-                return _outputMode;
+                var mode = _outputModeRuntimeLock.Resolve(_outputMode, Application.isPlaying, out var warning);
+                if (!string.IsNullOrEmpty(warning))
+                    Debug.LogWarning(warning);
+                return mode;
             }
         }
 
@@ -1028,28 +1022,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private void LockRuntimeOutputMode()
         {
-            _runtimeOutputMode = _outputMode;
-            _runtimeOutputModeInitialized = true;
-            _warnedRuntimeOutputModeSwitch = false;
+            _outputModeRuntimeLock.Lock(_outputMode);
         }
 
         private void UnlockRuntimeOutputMode()
         {
-            _runtimeOutputModeInitialized = false;
-            _warnedRuntimeOutputModeSwitch = false;
-        }
-
-        private void WarnRuntimeOutputModeSwitch()
-        {
-            if (_warnedRuntimeOutputModeSwitch)
-                return;
-
-            _warnedRuntimeOutputModeSwitch = true;
-            var active = CameraVideoOutputProfile.ForMode(_runtimeOutputMode).DisplayName;
-            var requested = CameraVideoOutputProfile.ForMode(_outputMode).DisplayName;
-            Debug.LogWarning(
-                "[Foxglove] Camera output mode changes during Play Mode are ignored to avoid stale channel advertisements. " +
-                $"Restart Play Mode to switch from {active} to {requested}.");
+            _outputModeRuntimeLock.Unlock();
         }
 
         private void LogEncoderStderrIfNeeded(ICameraVideoEncoderSidecar sidecar)

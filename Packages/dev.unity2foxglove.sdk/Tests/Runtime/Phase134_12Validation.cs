@@ -66,13 +66,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherLocksRuntimeOutputMode()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
-            Check(source.Contains("private CameraOutputMode _runtimeOutputMode"),
+            var runtimeLock = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputModeRuntimeLock.cs");
+            Check(runtimeLock.Contains("internal sealed class CameraOutputModeRuntimeLock")
+                  && runtimeLock.Contains("private CameraOutputMode _lockedMode"),
                 "134-12B-1: camera publisher tracks the Play Mode output mode");
-            Check(source.Contains("Application.isPlaying && _runtimeOutputModeInitialized"),
+            Check(source.Contains("_outputModeRuntimeLock.Resolve(_outputMode, Application.isPlaying"),
                 "134-12B-2: camera schema resolves through the locked Play Mode mode");
             Check(source.Contains("LockRuntimeOutputMode();") && source.IndexOf("LockRuntimeOutputMode();", StringComparison.Ordinal) < source.IndexOf("base.OnEnable();", StringComparison.Ordinal),
                 "134-12B-3: camera locks output mode before base registration can advertise schema");
-            Check(source.Contains("Camera output mode changes during Play Mode are ignored"),
+            Check(runtimeLock.Contains("Camera output mode changes during Play Mode are ignored"),
                 "134-12B-4: camera surfaces a clear warning for runtime mode switches");
         }
 

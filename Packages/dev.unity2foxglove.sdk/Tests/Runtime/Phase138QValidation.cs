@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesBackpressureGate();
             CameraPublisherDelegatesReadbackTiming();
             CameraPublisherDelegatesCaptureResources();
+            CameraPublisherDelegatesOutputModeRuntimeLock();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -128,6 +129,26 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_videoSidecarWidth", StringComparison.Ordinal)
                   && !camera.Contains("_videoSidecarHeight", StringComparison.Ordinal),
                 "138Q-3D: FoxgloveCameraPublisher delegates video sidecar lifecycle state");
+        }
+
+        private static void CameraPublisherDelegatesOutputModeRuntimeLock()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputModeRuntimeLock.cs");
+
+            Check(helper.Contains("internal sealed class CameraOutputModeRuntimeLock", StringComparison.Ordinal)
+                  && helper.Contains("Resolve(", StringComparison.Ordinal)
+                  && helper.Contains("Lock(", StringComparison.Ordinal)
+                  && helper.Contains("Unlock(", StringComparison.Ordinal)
+                  && helper.Contains("Camera output mode changes during Play Mode are ignored", StringComparison.Ordinal),
+                "138Q-20A: camera runtime output-mode lock state lives in a focused helper");
+            Check(camera.Contains("CameraOutputModeRuntimeLock _outputModeRuntimeLock", StringComparison.Ordinal)
+                  && camera.Contains("_outputModeRuntimeLock.Resolve(", StringComparison.Ordinal)
+                  && camera.Contains("_outputModeRuntimeLock.Lock(", StringComparison.Ordinal)
+                  && camera.Contains("_outputModeRuntimeLock.Unlock(", StringComparison.Ordinal)
+                  && !camera.Contains("private CameraOutputMode _runtimeOutputMode", StringComparison.Ordinal)
+                  && !camera.Contains("_warnedRuntimeOutputModeSwitch", StringComparison.Ordinal),
+                "138Q-20B: FoxgloveCameraPublisher delegates Play Mode output-mode locking");
         }
 
         private static void PointCloudPublisherDelegatesWorkerPayloadTypes()
