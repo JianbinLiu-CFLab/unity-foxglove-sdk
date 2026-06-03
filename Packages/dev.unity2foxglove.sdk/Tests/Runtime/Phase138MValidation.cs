@@ -138,6 +138,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherHasSensorClockAndStandardImageMode()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var resolver = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
 
             Check(source.Contains("_sensorUnitProfile", StringComparison.Ordinal)
@@ -148,7 +149,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
                   && source.Contains("ResolveFrameId", StringComparison.Ordinal),
                 "138M-4B: camera capture timestamp and frame id resolve through sensor mode");
-            Check(source.Contains("Ros2CdrSensorCompressedImageBuilder.Serialize", StringComparison.Ordinal)
+            Check(resolver.Contains("Ros2CdrSensorCompressedImageBuilder.Serialize", StringComparison.Ordinal)
+                  && source.Contains("CameraSensorProfileResolver.SerializeCompressedImage", StringComparison.Ordinal)
                   && source.Contains("SensorCompressedImageReady", StringComparison.Ordinal)
                   && source.Contains("SensorCompressedImageFrame", StringComparison.Ordinal),
                 "138M-4C: camera publisher emits standard ROS compressed-image payloads and DDS handoff frames");
@@ -198,6 +200,7 @@ namespace Unity.FoxgloveSDK.Tests
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraMessageBuilder.cs");
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
             var coreCamera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var coreCameraResolver = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             var coreInfo = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
 
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64\"", StringComparison.Ordinal)
@@ -217,6 +220,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "138M-6D: R2FU camera message builder maps schema-neutral frames to generated ROS2 messages");
             Check(!coreCamera.Contains("sensor_msgs", StringComparison.Ordinal)
                   && !coreCamera.Contains("tf2_msgs", StringComparison.Ordinal)
+                  && !coreCameraResolver.Contains("sensor_msgs", StringComparison.Ordinal)
+                  && !coreCameraResolver.Contains("tf2_msgs", StringComparison.Ordinal)
                   && !coreInfo.Contains("sensor_msgs", StringComparison.Ordinal)
                   && !coreInfo.Contains("tf2_msgs", StringComparison.Ordinal),
                 "138M-6E: core camera publishers remain ROS-type free");

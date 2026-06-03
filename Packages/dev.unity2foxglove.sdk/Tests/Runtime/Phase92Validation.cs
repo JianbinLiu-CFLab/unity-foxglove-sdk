@@ -345,9 +345,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckPublisher(string fileName, string schemaNameToken, string builderToken, string publishToken)
         {
             var source = ReadPublisher(fileName);
+            var builderSource = fileName == "FoxgloveCameraPublisher.cs"
+                ? source + ReadPublisher("CameraSensorProfileResolver.cs")
+                : source;
             Check(source.Contains("SupportsRos2Encoding")
                   && source.Contains(schemaNameToken)
-                  && source.Contains(builderToken)
+                  && builderSource.Contains(builderToken)
                   && source.Contains(publishToken),
                 "92D-source: " + fileName + " productizes ROS2");
         }

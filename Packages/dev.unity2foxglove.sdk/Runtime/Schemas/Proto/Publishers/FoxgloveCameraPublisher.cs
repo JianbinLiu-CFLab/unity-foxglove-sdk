@@ -545,7 +545,9 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private bool HasSensorCompressedImageDemand()
-            => IsStandardRos2CompressedImageOutput && SensorCompressedImageReady != null;
+            => CameraSensorProfileResolver.HasCompressedImageDemand(
+                IsStandardRos2CompressedImageOutput,
+                SensorCompressedImageReady != null);
 
         private ulong ResolveCameraCaptureUnixNs()
             => _useSharedSensorClock && _manager != null
@@ -553,34 +555,31 @@ namespace Unity.FoxgloveSDK.Components
                 : CurrentLogTimeNs;
 
         private string ResolveFrameId()
-            => ResolveSensorProfile() != null
-                ? ResolveSensorProfile().CameraFrameId
-                : (string.IsNullOrWhiteSpace(_frameId) ? "unity_camera" : _frameId);
+            => CameraSensorProfileResolver.ResolveFrameId(_sensorUnitProfile, _frameId);
 
         private string ResolveSensorCameraImageTopic()
-            => ResolveSensorProfile() != null
-                ? ResolveSensorProfile().CameraImageTopic
-                : (string.IsNullOrWhiteSpace(_topic) ? "/unity/sensor/camera/image/compressed" : _topic);
+            => CameraSensorProfileResolver.ResolveImageTopic(_sensorUnitProfile, _topic);
 
         private ISensorCameraProfile ResolveSensorProfile()
-            => _sensorUnitProfile as ISensorCameraProfile;
+            => CameraSensorProfileResolver.ResolveProfile(_sensorUnitProfile);
 
         private void ApplySensorProfileDefaults()
         {
-            var profile = ResolveSensorProfile();
-            if (profile == null || !_publishStandardRos2CompressedImage)
-                return;
-
-            if (string.IsNullOrWhiteSpace(_topic) || _topic == ActiveProfile.DefaultTopic)
-                _topic = profile.CameraImageTopic;
-            if (string.IsNullOrWhiteSpace(_frameId) || _frameId == "unity_camera")
-                _frameId = profile.CameraFrameId;
+            CameraSensorProfileResolver.ApplyDefaults(
+                _sensorUnitProfile,
+                _publishStandardRos2CompressedImage,
+                ActiveProfile.DefaultTopic,
+                ref _topic,
+                ref _frameId);
         }
 
         private byte[] SerializeRos2CompressedImage(ulong unixNs, string frameId, byte[] jpeg)
-            => _publishStandardRos2CompressedImage
-                ? Ros2CdrSensorCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, "jpeg")
-                : Ros2CdrCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, "jpeg");
+            => CameraSensorProfileResolver.SerializeCompressedImage(
+                _publishStandardRos2CompressedImage,
+                unixNs,
+                frameId,
+                jpeg,
+                "jpeg");
 
         /// <summary>
         /// Submits a rendered camera frame to the active video sidecar using the

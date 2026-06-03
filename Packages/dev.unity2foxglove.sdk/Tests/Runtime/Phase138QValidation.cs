@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesReadbackTiming();
             CameraPublisherDelegatesCaptureResources();
             CameraPublisherDelegatesOutputModeRuntimeLock();
+            CameraPublisherDelegatesSensorProfileResolver();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -311,6 +312,30 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private RenderTexture _captureRT", StringComparison.Ordinal)
                   && !camera.Contains("private Texture2D _texture2D", StringComparison.Ordinal),
                 "138Q-18B: FoxgloveCameraPublisher delegates Unity capture object ownership");
+        }
+
+        private static void CameraPublisherDelegatesSensorProfileResolver()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
+
+            Check(helper.Contains("internal static class CameraSensorProfileResolver", StringComparison.Ordinal)
+                  && helper.Contains("ResolveProfile(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveFrameId(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveImageTopic(", StringComparison.Ordinal)
+                  && helper.Contains("ApplyDefaults(", StringComparison.Ordinal)
+                  && helper.Contains("HasCompressedImageDemand(", StringComparison.Ordinal)
+                  && helper.Contains("SerializeCompressedImage(", StringComparison.Ordinal),
+                "138Q-22A: camera sensor profile/topic/frame/ROS image helpers live outside the publisher");
+            Check(camera.Contains("CameraSensorProfileResolver.ResolveProfile(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.ResolveFrameId(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.ResolveImageTopic(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.ApplyDefaults(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.HasCompressedImageDemand(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.SerializeCompressedImage(", StringComparison.Ordinal)
+                  && !camera.Contains("Ros2CdrSensorCompressedImageBuilder.Serialize", StringComparison.Ordinal)
+                  && !camera.Contains("Ros2CdrCompressedImageBuilder.Serialize", StringComparison.Ordinal),
+                "138Q-22B: FoxgloveCameraPublisher delegates sensor camera profile resolution");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()
