@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesJpegWorkerPayloads();
             CameraPublisherDelegatesJpegPipelineLifecycle();
             CameraPublisherDelegatesPublishDiagnostics();
+            CameraPublisherDelegatesBackpressureGate();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -214,6 +215,29 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private void LogCameraDiagnosticsIfNeeded", StringComparison.Ordinal)
                   && !camera.Contains("private void LogVideoDiagnosticsIfNeeded", StringComparison.Ordinal),
                 "138Q-11B: FoxgloveCameraPublisher delegates camera/video diagnostic counters");
+        }
+
+        private static void CameraPublisherDelegatesBackpressureGate()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var gate = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraBackpressureGate.cs");
+
+            Check(gate.Contains("internal sealed class CameraBackpressureGate", StringComparison.Ordinal)
+                  && gate.Contains("CameraBackpressurePolicy.Evaluate", StringComparison.Ordinal)
+                  && gate.Contains("AllowCapture(", StringComparison.Ordinal)
+                  && gate.Contains("ResetSkipLogCount(", StringComparison.Ordinal)
+                  && gate.Contains("Reset()", StringComparison.Ordinal),
+                "138Q-13A: camera backpressure runtime state lives in a focused helper");
+            Check(camera.Contains("CameraBackpressureGate _backpressureGate", StringComparison.Ordinal)
+                  && camera.Contains("_backpressureGate.AllowCapture(", StringComparison.Ordinal)
+                  && camera.Contains("_backpressureGate.ResetSkipLogCount()", StringComparison.Ordinal)
+                  && camera.Contains("_backpressureGate.Reset()", StringComparison.Ordinal)
+                  && !camera.Contains("_lastDropCount", StringComparison.Ordinal)
+                  && !camera.Contains("_cooldownUntilSec", StringComparison.Ordinal)
+                  && !camera.Contains("_backpressureSkipLogCount", StringComparison.Ordinal)
+                  && !camera.Contains("_backpressureBaselineInitialized", StringComparison.Ordinal)
+                  && !camera.Contains("private void LogBackpressureSkip", StringComparison.Ordinal),
+                "138Q-13B: FoxgloveCameraPublisher delegates backpressure baseline, cooldown, and skip logging state");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()

@@ -159,14 +159,9 @@ namespace Unity.FoxgloveSDK.Components
         // Video sidecar state
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private readonly CameraPublishDiagnostics _diagnostics = new CameraPublishDiagnostics();
+        private readonly CameraBackpressureGate _backpressureGate = new CameraBackpressureGate();
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
-
-        // JPEG backpressure state
-        private long _lastDropCount;
-        private double _cooldownUntilSec;
-        private int _backpressureSkipLogCount;
-        private bool _backpressureBaselineInitialized;
 
         // Async JPEG state
         private const int JpegWorkerStopWaitMs = 500;
@@ -450,7 +445,7 @@ namespace Unity.FoxgloveSDK.Components
             if (result.DroppedByEncodedBudget)
             {
                 _diagnostics.RecordEncodedBudgetDrop();
-                LogBackpressureSkip(
+                EmitBackpressureWarning(
                     $"[Foxglove] Camera frame dropped: encoded size {result.JpegBytes} exceeds budget {result.Request.MaxEncodedBytes}.");
                 return;
             }
@@ -465,33 +460,33 @@ namespace Unity.FoxgloveSDK.Components
             {
                 SensorCompressedImageReady?.Invoke(result.SensorFrame);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
 
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 PublishProto(result.WebSocketPayload, captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
             else if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
             {
                 PublishRos2(result.WebSocketPayload, captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
             else if (result.Request.PublishWebSocket)
             {
                 Publish(result.JsonMessage, captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
 
             if (result.Request.PublishBridge)
             {
                 PublishRos2Bridge(result.BridgePayload, captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
 
             _warnedJpegWorkerFailure = false;
@@ -525,7 +520,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (CameraBackpressurePolicy.ExceedsBudget(jpeg, _maxEncodedBytes))
             {
-                LogBackpressureSkip(
+                EmitBackpressureWarning(
                     $"[Foxglove] Camera frame dropped: encoded size {jpeg.Length} exceeds budget {_maxEncodedBytes}.");
                 return;
             }
@@ -540,13 +535,13 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var payload = CameraCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, "jpeg");
                 PublishProto(payload, unixNs);
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
                 ros2Payload = SerializeRos2CompressedImage(unixNs, frameId, jpeg);
                 PublishRos2(ros2Payload, unixNs);
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
             else if (publishWebSocket)
             {
@@ -559,21 +554,21 @@ namespace Unity.FoxgloveSDK.Components
                 };
 
                 Publish(msg, unixNs);
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
 
             if (publishBridge)
             {
                 ros2Payload ??= SerializeRos2CompressedImage(unixNs, frameId, jpeg);
                 PublishRos2Bridge(ros2Payload, unixNs);
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
 
             if (publishNativeFrame)
             {
                 SensorCompressedImageReady?.Invoke(new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg"));
                 _lastPublishedCaptureUnixNs = unixNs;
-                _backpressureSkipLogCount = 0;
+                _backpressureGate.ResetSkipLogCount();
             }
         }
 
@@ -1073,53 +1068,36 @@ namespace Unity.FoxgloveSDK.Components
         private bool AllowJpegCaptureByBackpressure()
         {
             if (!_enableBackpressureAdaptation)
-            {
-                _backpressureBaselineInitialized = false;
-                return true;
-            }
+                return _backpressureGate.AllowCapture(
+                    enabled: false,
+                    statsSupported: false,
+                    totalDroppedDataFrames: 0,
+                    currentTimeSec: 0,
+                    cooldownSeconds: _backpressureCooldownSeconds,
+                    logSkips: _logBackpressureSkips,
+                    warning: out _);
 
             var stats = _manager.GetTransportStatsSnapshot();
-            var currentDrop = stats.Supported ? stats.TotalDroppedDataFrames : _lastDropCount;
-            var now = Time.unscaledTimeAsDouble;
-            if (stats.Supported && !_backpressureBaselineInitialized)
-            {
-                _lastDropCount = currentDrop;
-                _cooldownUntilSec = now;
-                _backpressureBaselineInitialized = true;
-            }
-
-            var result = CameraBackpressurePolicy.Evaluate(
-                enabled: true,
-                currentTimeSec: now,
-                cooldownSec: _backpressureCooldownSeconds,
-                previousDropCount: _lastDropCount,
-                currentDropCount: currentDrop,
-                currentCooldownUntilSec: _cooldownUntilSec);
-
-            _lastDropCount = result.NextDropCount;
-            _cooldownUntilSec = result.NextCooldownUntilSec;
-
-            if (result.AllowCapture)
-                return true;
-
-            LogBackpressureSkip("[Foxglove] Camera capture skipped by backpressure cooldown.");
-            return false;
+            var allowCapture = _backpressureGate.AllowCapture(
+                _enableBackpressureAdaptation,
+                stats.Supported,
+                stats.TotalDroppedDataFrames,
+                Time.unscaledTimeAsDouble,
+                _backpressureCooldownSeconds,
+                _logBackpressureSkips,
+                out var warning);
+            if (!string.IsNullOrEmpty(warning))
+                Debug.LogWarning(warning);
+            return allowCapture;
         }
 
         private void ResetBackpressureState()
-        {
-            _lastDropCount = 0;
-            _cooldownUntilSec = 0;
-            _backpressureSkipLogCount = 0;
-            _backpressureBaselineInitialized = false;
-        }
+            => _backpressureGate.Reset();
 
-        private void LogBackpressureSkip(string message)
+        private void EmitBackpressureWarning(string message)
         {
-            if (!_logBackpressureSkips || _backpressureSkipLogCount >= 10) return;
-
-            _backpressureSkipLogCount++;
-            Debug.LogWarning(message);
+            if (_backpressureGate.TryRecordSkipWarning(_logBackpressureSkips, message, out var warning))
+                Debug.LogWarning(warning);
         }
 
         private void LogVideoEncoderUnavailable(CameraVideoOutputProfile profile, string reason)
