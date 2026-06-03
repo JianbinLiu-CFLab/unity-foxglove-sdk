@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
                     || IndexOf(preflight, "GetOrRegisterChannel") < IndexOf(preflight, "HasChannelDemand(channelId)"),
                 "73B-9: manager registers/adverts the channel before checking demand");
 
-            Check(IndexOf(pointCloudSource, "ShouldPreparePublishPayload()") < IndexOf(pointCloudSource, "_pendingFrame = null"),
+            Check(IndexOf(pointCloudSource, "ShouldPreparePublishPayload()") < IndexOf(pointCloudSource, "_pendingFrameSlot.Take()"),
                 "73B-10: point cloud pending frame is not cleared before demand guard");
 
             Check(sessionSource.Contains("CopySubscribersForChannel")
@@ -292,7 +292,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(pointUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-8: point cloud preflights after cadence");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "73G-9: point cloud preflights before frame QoS copy");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "PointCloudTransformFrameBuilder.Build", "73G-10: point cloud preflights before child transform scan");
-            CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "_pendingFrame = null", "73G-11: point cloud preflights before pending frame consumption");
+            CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "_pendingFrameSlot.Take()", "73G-11: point cloud preflights before pending frame consumption");
         }
 
         private static bool InvokeHasSubscribers(MethodInfo method, SubscriptionRegistry registry, uint channelId)

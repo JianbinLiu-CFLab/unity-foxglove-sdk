@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesPublishDiagnostics();
             PointCloudPublisherDelegatesTransformFallbackBuilder();
             PointCloudPublisherDelegatesPublishState();
+            PointCloudPublisherDelegatesPendingFrameSlot();
             PointCloudPublisherDelegatesRosTfMath();
             VirtualLidarDelegatesScanLayout();
             VirtualLidarDelegatesScanBuffers();
@@ -431,6 +432,34 @@ namespace Unity.FoxgloveSDK.Tests
                 "138Q-15B: FoxglovePointCloudPublisher delegates source/fallback and prepared-demand state");
         }
 
+        private static void PointCloudPublisherDelegatesPendingFrameSlot()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var slot = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPendingFrameSlot.cs");
+
+            Check(slot.Contains("internal sealed class PointCloudPendingFrameSlot", StringComparison.Ordinal)
+                  && slot.Contains("private readonly object _gate = new object();", StringComparison.Ordinal)
+                  && slot.Contains("SetFrame(", StringComparison.Ordinal)
+                  && slot.Contains("Take()", StringComparison.Ordinal)
+                  && slot.Contains("ResetReplacementWarning()", StringComparison.Ordinal)
+                  && slot.Contains("PointCloud pending frame replaced", StringComparison.Ordinal),
+                "138Q-21A: point-cloud pending frame slot and replacement warning state live in a focused helper");
+            Check(pointcloud.Contains("PointCloudPendingFrameSlot _pendingFrameSlot", StringComparison.Ordinal)
+                  && pointcloud.Contains("_pendingFrameSlot.SetFrame(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_pendingFrameSlot.Take()", StringComparison.Ordinal)
+                  && pointcloud.Contains("_pendingFrameSlot.ResetReplacementWarning()", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private PointCloudFrame _pendingFrame", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_pendingFrameGate", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_warnedPendingDrop", StringComparison.Ordinal),
+                "138Q-21B: FoxglovePointCloudPublisher delegates pending frame ownership");
+
+            var update = SliceMethod(pointcloud, "protected virtual void Update()");
+            Check(IndexOf(update, "ShouldPreparePublishPayload()") >= 0
+                  && IndexOf(update, "_pendingFrameSlot.Take()") >= 0
+                  && IndexOf(update, "ShouldPreparePublishPayload()") < IndexOf(update, "_pendingFrameSlot.Take()"),
+                "138Q-21C: point-cloud pending frame is consumed only after demand preflight");
+        }
+
         private static void VirtualLidarDelegatesScanLayout()
         {
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
@@ -527,6 +556,37 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(relativePath))
                 return "";
             return File.ReadAllText(relativePath);
+        }
+
+        private static int IndexOf(string text, string pattern)
+            => text.IndexOf(pattern, StringComparison.Ordinal);
+
+        private static string SliceMethod(string source, string signature)
+        {
+            var index = source.IndexOf(signature, StringComparison.Ordinal);
+            if (index < 0)
+                return "";
+
+            var brace = source.IndexOf('{', index);
+            if (brace < 0)
+                return "";
+
+            var depth = 0;
+            for (var i = brace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                {
+                    depth++;
+                }
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(index, i - index + 1);
+                }
+            }
+
+            return source.Substring(index);
         }
 
         private static void Check(bool condition, string label)

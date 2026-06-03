@@ -175,11 +175,22 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PointCloudPendingFrameIsThreadSafe()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            Check(source.Contains("private readonly object _pendingFrameGate = new object();"),
+            var slot = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPendingFrameSlot.cs");
+            var setFrame = SliceMethod(slot, "public bool SetFrame");
+            var take = SliceMethod(slot, "public PointCloudFrame Take");
+            var reset = SliceMethod(slot, "public void ResetReplacementWarning");
+            Check(source.Contains("PointCloudPendingFrameSlot _pendingFrameSlot")
+                  && slot.Contains("private readonly object _gate = new object();"),
                 "134-12G-1: point cloud publisher protects pending frames with an explicit gate");
-            Check(source.Contains("lock (_pendingFrameGate)") && source.Contains("_pendingFrame = frame;"),
+            Check(source.Contains("_pendingFrameSlot.SetFrame(frame")
+                  && LockedBlockContains(setFrame, "_frame != null")
+                  && LockedBlockContains(setFrame, "_frame = frame;")
+                  && LockedBlockContains(setFrame, "_warnedReplacementDrop"),
                 "134-12G-2: SetFrame publishes pending frame under the gate");
-            Check(source.Contains("pendingFrame = _pendingFrame;") && source.Contains("_pendingFrame = null;"),
+            Check(source.Contains("var pendingFrame = _pendingFrameSlot.Take();")
+                  && LockedBlockContains(take, "var frame = _frame;")
+                  && LockedBlockContains(take, "_frame = null;")
+                  && LockedBlockContains(reset, "_warnedReplacementDrop = false;"),
                 "134-12G-3: Update consumes and clears pending frame after demand gating");
         }
 
@@ -221,6 +232,71 @@ namespace Unity.FoxgloveSDK.Tests
         /// Reads a source file as UTF-8 text.
         /// </summary>
         private static string Read(string path) => File.ReadAllText(path);
+
+        /// <summary>
+        /// Slices one method body from source text.
+        /// </summary>
+        private static string SliceMethod(string source, string signature)
+        {
+            var index = source.IndexOf(signature, StringComparison.Ordinal);
+            if (index < 0)
+                return "";
+
+            var brace = source.IndexOf('{', index);
+            if (brace < 0)
+                return "";
+
+            var depth = 0;
+            for (var i = brace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                {
+                    depth++;
+                }
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(index, i - index + 1);
+                }
+            }
+
+            return source.Substring(index);
+        }
+
+        /// <summary>
+        /// Verifies a pattern appears inside the first lock (_gate) block in a method.
+        /// </summary>
+        private static bool LockedBlockContains(string method, string pattern)
+        {
+            var lockIndex = method.IndexOf("lock (_gate)", StringComparison.Ordinal);
+            if (lockIndex < 0)
+                return false;
+
+            var brace = method.IndexOf('{', lockIndex);
+            if (brace < 0)
+                return false;
+
+            var depth = 0;
+            for (var i = brace; i < method.Length; i++)
+            {
+                if (method[i] == '{')
+                {
+                    depth++;
+                }
+                else if (method[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        var block = method.Substring(brace, i - brace + 1);
+                        return block.Contains(pattern);
+                    }
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Verifies an action throws <see cref="ArgumentException" />.

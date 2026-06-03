@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Tests
             var update = Slice(source, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "83D-6: Update preflights demand before QoS copy");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "PointCloudTransformFrameBuilder.Build", "83D-7: Update preflights demand before transform scan");
-            CheckOrdered(update, "ShouldPreparePublishPayload()", "_pendingFrame = null", "83D-8: Update preflights demand before pending-frame consumption");
+            CheckOrdered(update, "ShouldPreparePublishPayload()", "_pendingFrameSlot.Take()", "83D-8: Update preflights demand before pending-frame consumption");
 
             var publishFrame = Slice(source, "public void PublishFrame", "protected virtual void Update()");
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "83D-9: PublishFrame preflights demand before QoS copy");
@@ -113,7 +113,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "83D-11: PublishFrame keeps null and manager guards");
 
             var setFrame = Slice(source, "public void SetFrame", "public void PublishFrame");
-            Check(setFrame.Contains("_pendingFrame != null") && setFrame.Contains("_pendingFrame = frame"),
+            var slot = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPendingFrameSlot.cs");
+            Check(setFrame.Contains("_pendingFrameSlot.SetFrame(frame")
+                  && slot.Contains("_frame != null")
+                  && slot.Contains("_frame = frame"),
                 "83D-12: SetFrame documents and preserves last-value-wins pending frame replacement");
         }
 
