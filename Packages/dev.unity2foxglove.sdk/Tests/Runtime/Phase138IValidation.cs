@@ -163,6 +163,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var lidar = ReadRepoText(VirtualLidarRelativePath);
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var pointCloudDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
 
             Check(lidar.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal)
                   && lidar.Contains("[LidarDiag]", StringComparison.Ordinal)
@@ -171,10 +172,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && lidar.Contains("overrun", StringComparison.Ordinal),
                 "138I-12: VirtualLidar exposes opt-in no-stacktrace throughput diagnostics");
             Check(publisher.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal)
-                  && publisher.Contains("[PointCloudDiag]", StringComparison.Ordinal)
-                  && publisher.Contains("cloneMs", StringComparison.Ordinal)
-                  && publisher.Contains("encodeMs", StringComparison.Ordinal)
-                  && publisher.Contains("drop", StringComparison.Ordinal),
+                  && publisher.Contains("PointCloudPublishDiagnostics _diagnostics", StringComparison.Ordinal)
+                  && pointCloudDiagnostics.Contains("[PointCloudDiag]", StringComparison.Ordinal)
+                  && pointCloudDiagnostics.Contains("cloneMs", StringComparison.Ordinal)
+                  && pointCloudDiagnostics.Contains("encodeMs", StringComparison.Ordinal)
+                  && pointCloudDiagnostics.Contains("drop", StringComparison.Ordinal),
                 "138I-13: point-cloud publisher exposes opt-in clone/encode/drop diagnostics");
             Check(!lidar.Contains("SetField(lidar, \"_logPerformanceDiagnostics\", true", StringComparison.Ordinal)
                   && !publisher.Contains("SetPrivateField(publisher, \"_logPerformanceDiagnostics\", true", StringComparison.Ordinal),
@@ -233,15 +235,17 @@ namespace Unity.FoxgloveSDK.Tests
             var lidar = ReadRepoText(VirtualLidarRelativePath);
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
             var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarScanDiagnostics.cs");
+            var pointCloudDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
             var encoders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
             Check(!lidar.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && !publisher.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && !diagnostics.Contains("using System.Diagnostics;", StringComparison.Ordinal)
+                  && !pointCloudDiagnostics.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && !encoders.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && diagnostics.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
-                  && publisher.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
+                  && !publisher.Contains("Stopwatch", StringComparison.Ordinal)
                   && encoders.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
                   && publisher.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
                   && pipeline.Contains("Priority = ThreadPriority.BelowNormal", StringComparison.Ordinal),
@@ -311,8 +315,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
                   && publisher.Contains("QueueVirtualLidarDracoEncode", StringComparison.Ordinal)
                   && publisher.Contains("VirtualLidarPointData[]", StringComparison.Ordinal)
-                  && publisher.Contains("RecordPointCloudPrepared(pointCount)", StringComparison.Ordinal)
-                  && publisher.Contains("private void RecordPointCloudPrepared(int pointCount)", StringComparison.Ordinal)
+                  && publisher.Contains("_diagnostics.RecordPrepared(_logPerformanceDiagnostics, pointCount)", StringComparison.Ordinal)
                   && workerEncoder.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf", StringComparison.Ordinal)
                   && encoder.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal)
                   && encoder.Contains("VirtualLidarPointData[]", StringComparison.Ordinal),
@@ -362,7 +365,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("_lastNativeDracoPublishUnixNs", StringComparison.Ordinal)
                   && publisher.Contains("rateHz <= 0f", StringComparison.Ordinal)
                   && publisher.Contains("ShouldQueueVirtualLidarDracoFrame(unixNs)", StringComparison.Ordinal)
-                  && publisher.Contains("RecordPointCloudDrop()", StringComparison.Ordinal),
+                  && publisher.Contains("_diagnostics.RecordDrop(_logPerformanceDiagnostics)", StringComparison.Ordinal),
                 "138I-29: VirtualLidar native Draco path has an optional source-side publish cap and records dropped frames");
             Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
                   && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")

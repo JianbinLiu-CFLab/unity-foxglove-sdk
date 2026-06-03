@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
+            PointCloudPublisherDelegatesPublishDiagnostics();
             VirtualLidarDelegatesScanLayout();
 
             Console.WriteLine($"Phase 138Q: {_passed} checks passed.");
@@ -225,6 +226,31 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
                   && !pointcloud.Contains("BackgroundWorkerLifecycle _pointCloud2NativeWorker", StringComparison.Ordinal),
                 "138Q-7B: FoxglovePointCloudPublisher delegates repeated worker lifecycle code");
+        }
+
+        private static void PointCloudPublisherDelegatesPublishDiagnostics()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
+
+            Check(diagnostics.Contains("internal sealed class PointCloudPublishDiagnostics", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordPrepared(", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordDrop(", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordEncodeResult(", StringComparison.Ordinal)
+                  && diagnostics.Contains("RecordPointCloud2NativeResult(", StringComparison.Ordinal)
+                  && diagnostics.Contains("LogIfReady(", StringComparison.Ordinal),
+                "138Q-9A: point-cloud publish diagnostics live in a focused helper");
+            Check(pointcloud.Contains("PointCloudPublishDiagnostics _diagnostics", StringComparison.Ordinal)
+                  && pointcloud.Contains("_diagnostics.RecordPrepared(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_diagnostics.RecordDrop(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_diagnostics.RecordEncodeResult(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_diagnostics.RecordPointCloud2NativeResult(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_diagnostics.LogIfReady(", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_diagnosticFrames", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_diagnosticDrops", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private void RecordPointCloudPrepared", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private void LogPointCloudDiagnosticsIfReady", StringComparison.Ordinal),
+                "138Q-9B: FoxglovePointCloudPublisher delegates publish diagnostic counters");
         }
 
         private static void VirtualLidarDelegatesScanLayout()

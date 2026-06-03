@@ -13,7 +13,6 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
-using Stopwatch = System.Diagnostics.Stopwatch;
 using UVector3 = UnityEngine.Vector3;
 
 namespace Unity.FoxgloveSDK.Components
@@ -30,7 +29,6 @@ namespace Unity.FoxgloveSDK.Components
         private const int MaxCompletedPointCloud2NativeResults = 8;
         private const int DracoWorkerStopWaitMs = 5000;
         private const int PointCloud2NativeWorkerStopWaitMs = 5000;
-        private const int PointCloudDiagnosticsIntervalFrames = 60;
 
         [Header("Point Cloud Output")]
         [SerializeField] private PointCloudOutputMode _outputMode = PointCloudOutputMode.Draco;
@@ -94,14 +92,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedPointCloud2NativeFailure;
         private bool _warnedPointCloud2NativeBacklog;
         private bool _warnedPointCloud2NativeWorkerShutdown;
-        private int _diagnosticFrames;
-        private long _diagnosticPreparedPoints;
-        private int _diagnosticDrops;
-        private double _diagnosticCloneMsTotal;
-        private double _diagnosticCloneMsMax;
-        private double _diagnosticEncodeMsTotal;
-        private double _diagnosticEncodeMsMax;
-        private int _diagnosticEncodeResults;
+        private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private ulong _lastNativeDracoPublishUnixNs;
         private bool _hasSourceDrivenFrames;
         private bool _warnedTransformFallbackSuppressed;
@@ -273,7 +264,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (hadPendingFrame && frame != null)
-                RecordPointCloudDrop();
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
         }
 
         /// <summary>
@@ -300,7 +291,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 PublishPreparedFrame(prepared, logTimeNs);
-                LogPointCloudDiagnosticsIfReady();
+                _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
             }
             finally
             {
@@ -402,7 +393,7 @@ namespace Unity.FoxgloveSDK.Components
                 && timestampNs >= _lastNativeDracoPublishUnixNs
                 && timestampNs - _lastNativeDracoPublishUnixNs < intervalNs)
             {
-                RecordPointCloudDrop();
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
                 return false;
             }
 
@@ -456,7 +447,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 PublishPreparedFrame(frame, unixNs);
-                LogPointCloudDiagnosticsIfReady();
+                _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
             }
             finally
             {
@@ -466,7 +457,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
         {
-            RecordPointCloudPrepared(frame);
+            _diagnostics.RecordPrepared(_logPerformanceDiagnostics, frame);
 
             if (_outputMode == PointCloudOutputMode.Draco)
             {
@@ -611,7 +602,7 @@ namespace Unity.FoxgloveSDK.Components
             if (points == null || pointCount <= 0)
                 return;
 
-            RecordPointCloudPrepared(pointCount);
+            _diagnostics.RecordPrepared(_logPerformanceDiagnostics, pointCount);
             var request = new DracoEncodeRequest(
                 points,
                 pointCount,
@@ -639,7 +630,7 @@ namespace Unity.FoxgloveSDK.Components
             if (points == null || pointCount <= 0)
                 return;
 
-            RecordPointCloudPrepared(pointCount);
+            _diagnostics.RecordPrepared(_logPerformanceDiagnostics, pointCount);
             var request = new PointCloud2NativeRequest(
                 points,
                 pointCount,
@@ -676,7 +667,7 @@ namespace Unity.FoxgloveSDK.Components
                     _warnedDracoBacklog = true;
                 }
 
-                RecordPointCloudDrop();
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
             }
 
             if (!queued)
@@ -694,7 +685,7 @@ namespace Unity.FoxgloveSDK.Components
                     _warnedPointCloud2NativeBacklog = true;
                 }
 
-                RecordPointCloudDrop();
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
             }
 
             if (!queued)
@@ -707,7 +698,7 @@ namespace Unity.FoxgloveSDK.Components
             if (droppedCompletedResults > 0 && _logQosDrops)
                 Debug.LogWarning($"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {droppedCompletedResults}.");
             if (droppedCompletedResults > 0)
-                RecordPointCloudDrop(droppedCompletedResults);
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics, droppedCompletedResults);
 
             if (results == null || results.Count == 0)
                 return;
@@ -723,11 +714,11 @@ namespace Unity.FoxgloveSDK.Components
                 _warnedDracoFailure = false;
                 _dracoFailureCount = 0;
                 _warnedDracoBacklog = false;
-                RecordPointCloudEncodeResult(result);
+                _diagnostics.RecordEncodeResult(_logPerformanceDiagnostics, result);
                 PublishCompletedDracoPayload(result);
             }
 
-            LogPointCloudDiagnosticsIfReady();
+            _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
         }
 
         private void DrainCompletedPointCloud2Native()
@@ -736,7 +727,7 @@ namespace Unity.FoxgloveSDK.Components
             if (droppedCompletedResults > 0 && _logQosDrops)
                 Debug.LogWarning($"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {droppedCompletedResults}.");
             if (droppedCompletedResults > 0)
-                RecordPointCloudDrop(droppedCompletedResults);
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics, droppedCompletedResults);
 
             if (results == null || results.Count == 0)
                 return;
@@ -752,11 +743,11 @@ namespace Unity.FoxgloveSDK.Components
                 _warnedPointCloud2NativeFailure = false;
                 _pointCloud2NativeFailureCount = 0;
                 _warnedPointCloud2NativeBacklog = false;
-                RecordPointCloud2NativeResult(result);
+                _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
                 PublishCompletedPointCloud2NativePayload(result);
             }
 
-            LogPointCloudDiagnosticsIfReady();
+            _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
         }
 
         private void StopDracoEncodeWorker(bool clearCompleted)
@@ -872,90 +863,14 @@ namespace Unity.FoxgloveSDK.Components
             Debug.LogWarning("[Foxglove] PointCloud2 native mode disabled: " + message);
         }
 
-        private long DiagnosticStart()
-            => _logPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
-
-        private double DiagnosticElapsedMs(long startTicks)
-            => startTicks == 0L
-                ? 0d
-                : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
-
-        private void RecordPointCloudPrepared(PointCloudFrame frame)
+        private void LogPointCloudDiagnosticMessage(string format, object[] args)
         {
-            if (frame == null)
-                return;
-
-            RecordPointCloudPrepared(frame.GetPointCount());
-        }
-
-        private void RecordPointCloudPrepared(int pointCount)
-        {
-            if (!_logPerformanceDiagnostics)
-                return;
-
-            _diagnosticFrames++;
-            _diagnosticPreparedPoints += Math.Max(0, pointCount);
-        }
-
-        private void RecordPointCloudDrop(int count = 1)
-        {
-            if (!_logPerformanceDiagnostics)
-                return;
-
-            _diagnosticDrops += Math.Max(1, count);
-        }
-
-        private void RecordPointCloudEncodeResult(DracoEncodeResult result)
-        {
-            if (!_logPerformanceDiagnostics || result == null)
-                return;
-
-            _diagnosticCloneMsTotal += result.Request.CloneMs;
-            _diagnosticCloneMsMax = Math.Max(_diagnosticCloneMsMax, result.Request.CloneMs);
-            _diagnosticEncodeMsTotal += result.EncodeMs;
-            _diagnosticEncodeMsMax = Math.Max(_diagnosticEncodeMsMax, result.EncodeMs);
-            _diagnosticEncodeResults++;
-        }
-
-        private void RecordPointCloud2NativeResult(PointCloud2NativeResult result)
-        {
-            if (!_logPerformanceDiagnostics || result == null)
-                return;
-
-            _diagnosticEncodeMsTotal += result.EncodeMs;
-            _diagnosticEncodeMsMax = Math.Max(_diagnosticEncodeMsMax, result.EncodeMs);
-            _diagnosticEncodeResults++;
-        }
-
-        private void LogPointCloudDiagnosticsIfReady()
-        {
-            if (!_logPerformanceDiagnostics || _diagnosticFrames < PointCloudDiagnosticsIntervalFrames)
-                return;
-
-            var frameDivisor = Math.Max(1, _diagnosticFrames);
-            var encodeDivisor = Math.Max(1, _diagnosticEncodeResults);
             Debug.LogFormat(
                 LogType.Log,
                 LogOption.NoStacktrace,
                 this,
-                "[PointCloudDiag] prepared={0} points={1} avgPoints={2:F0} cloneMs avg={3:F2} max={4:F2} encodeMs avg={5:F2} max={6:F2} drop={7}",
-                _diagnosticFrames,
-                _diagnosticPreparedPoints,
-                (double)_diagnosticPreparedPoints / frameDivisor,
-                _diagnosticCloneMsTotal / encodeDivisor,
-                _diagnosticCloneMsMax,
-                _diagnosticEncodeMsTotal / encodeDivisor,
-                _diagnosticEncodeMsMax,
-                _diagnosticDrops);
-
-            _diagnosticFrames = 0;
-            _diagnosticPreparedPoints = 0;
-            _diagnosticDrops = 0;
-            _diagnosticCloneMsTotal = 0d;
-            _diagnosticCloneMsMax = 0d;
-            _diagnosticEncodeMsTotal = 0d;
-            _diagnosticEncodeMsMax = 0d;
-            _diagnosticEncodeResults = 0;
+                format,
+                args);
         }
 
         protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
