@@ -5,11 +5,13 @@
 // Purpose: Publish body-frame virtual IMU samples from Rigidbody motion.
 
 using System;
+using System.Collections.Generic;
 using Foxglove.Schemas;
 using UnityEngine;
 using Unity.FoxgloveSDK.Core;
-using Unity.FoxgloveSDK.Sensors.Imu;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Imu;
+using Unity.FoxgloveSDK.Sensors.Imu;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -21,10 +23,14 @@ namespace Unity.FoxgloveSDK.Components
     public class VirtualImu : MonoBehaviour
     {
         private const string DefaultTopic = "/imu/data";
+        private const string DefaultImuNativeTopic = "/imu/data";
         private const string DefaultFrameId = "imu_link";
         private const int MinQueueSamples = 8;
         private const int MaxQueueSamples = 512;
         private const int DefaultTargetRateHz = 200;
+        private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
+        private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
+        private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
 
         private readonly ImuSampleQueue _queue = new ImuSampleQueue();
 
@@ -34,6 +40,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Tooltip("Topic for imu data. Default: /imu/data.")] private string _topic = DefaultTopic;
         [SerializeField, Tooltip("Reference frame id for each IMU sample.")] private string _frameId = DefaultFrameId;
         [SerializeField, Tooltip("Enable streaming as soon as this component starts.")] private bool _publishOnStart = true;
+        [SerializeField, Tooltip("Enable publishing sensor_msgs/msg/Imu on native ROS2 DDS.")] private bool _publishImuNative;
+        [SerializeField, Tooltip("Native ROS2 DDS IMU topic. Default: /imu/data.")] private string _imuNativeTopic = DefaultImuNativeTopic;
+        [SerializeField, Tooltip("IMU orientation covariance (9 values, diagonal default).")] private double[] _imuOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
+        [SerializeField, Tooltip("IMU angular velocity covariance (9 values, diagonal default).")] private double[] _imuAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
+        [SerializeField, Tooltip("IMU linear acceleration covariance (9 values, diagonal default).")] private double[] _imuLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
         [SerializeField, Tooltip("Include orientation in each IMU message.")] private bool _includeOrientation = true;
         [SerializeField, Min(0), Tooltip(
             "If greater than 0, set Time.fixedDeltaTime globally to 1 / value for higher IMU rate.\n"
@@ -68,8 +79,27 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool PublishEnabled => _publishOnStart && _publishing;
 
+        public bool IsImuNativeOutput => _publishImuNative && isActiveAndEnabled;
+
+        public string ImuNativeTopic
+        {
+            get
+            {
+                var topic = string.IsNullOrWhiteSpace(_imuNativeTopic) ? DefaultImuNativeTopic : _imuNativeTopic.Trim();
+                return topic.StartsWith("/", StringComparison.Ordinal) ? topic : "/" + topic;
+            }
+        }
+
+        public IReadOnlyList<double> ImuOrientationCovariance => _imuOrientationCovariance;
+        public IReadOnlyList<double> ImuAngularVelocityCovariance => _imuAngularVelocityCovariance;
+        public IReadOnlyList<double> ImuLinearAccelerationCovariance => _imuLinearAccelerationCovariance;
+
+        public event Action<ImuNativeFrame> ImuNativeFrameReady;
+
         private void Start()
         {
+            NormalizeSerializedConfiguration();
+
             if (_rigidbody == null)
                 _rigidbody = GetComponent<Rigidbody>();
 
@@ -210,6 +240,18 @@ namespace Unity.FoxgloveSDK.Components
             while (_queue.Count > 0)
             {
                 var sample = _queue.Dequeue();
+                ImuNativeFrame nativeFrame = null;
+                if (_publishImuNative && ImuNativeFrameReady != null)
+                {
+                    nativeFrame = CreateNativeFrame(
+                        sample.TimestampNs,
+                        _frameId,
+                        sample.LinearAcceleration,
+                        sample.AngularVelocity,
+                        sample.Orientation,
+                        _includeOrientation);
+                }
+
                 var bytes = ImuMessageBuilder.Serialize(
                     sample.TimestampNs,
                     _frameId,
@@ -219,10 +261,18 @@ namespace Unity.FoxgloveSDK.Components
                     _includeOrientation);
 
                 _manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);
+
+                if (nativeFrame != null)
+                    ImuNativeFrameReady?.Invoke(nativeFrame);
             }
         }
 
         private void OnValidate()
+        {
+            NormalizeSerializedConfiguration();
+        }
+
+        private void NormalizeSerializedConfiguration()
         {
             if (_globalPhysicsRateHzOverride < 0)
                 _globalPhysicsRateHzOverride = 0;
@@ -233,6 +283,12 @@ namespace Unity.FoxgloveSDK.Components
                 _topic = DefaultTopic;
             if (string.IsNullOrWhiteSpace(_frameId))
                 _frameId = DefaultFrameId;
+            if (string.IsNullOrWhiteSpace(_imuNativeTopic))
+                _imuNativeTopic = DefaultImuNativeTopic;
+
+            _imuOrientationCovariance = NormalizeCovariance(_imuOrientationCovariance, DefaultOrientationCovariance);
+            _imuAngularVelocityCovariance = NormalizeCovariance(_imuAngularVelocityCovariance, DefaultAngularVelocityCovariance);
+            _imuLinearAccelerationCovariance = NormalizeCovariance(_imuLinearAccelerationCovariance, DefaultLinearAccelerationCovariance);
         }
 
         private int ComputeMaxQueuedSamples()
@@ -290,6 +346,44 @@ namespace Unity.FoxgloveSDK.Components
                 CoordinateConverter.UnityToFoxglovePosition(linearBody),
                 CoordinateConverter.UnityToFoxgloveAngularVelocity(angularBody),
                 CoordinateConverter.UnityToFoxgloveRotation(rotation));
+        }
+
+        private static ImuNativeFrame CreateNativeFrame(
+            ulong timestampNs,
+            string frameId,
+            Vector3 linearAcceleration,
+            Vector3 angularVelocity,
+            Quaternion orientation,
+            bool hasOrientation)
+        {
+            return new ImuNativeFrame(
+                timestampNs,
+                frameId,
+                ToNumerics(linearAcceleration),
+                ToNumerics(angularVelocity),
+                ToNumerics(orientation),
+                hasOrientation);
+        }
+
+        private static System.Numerics.Vector3 ToNumerics(Vector3 value)
+            => new System.Numerics.Vector3(value.x, value.y, value.z);
+
+        private static System.Numerics.Quaternion ToNumerics(Quaternion value)
+            => new System.Numerics.Quaternion(value.x, value.y, value.z, value.w);
+
+        private static double[] NormalizeCovariance(double[] values, double[] fallback)
+        {
+            if (values == null || values.Length != 9)
+                return (double[])fallback.Clone();
+
+            var normalized = (double[])values.Clone();
+            for (var i = 0; i < normalized.Length; i++)
+            {
+                if (normalized[i] < 0d || double.IsNaN(normalized[i]) || double.IsInfinity(normalized[i]))
+                    normalized[i] = 0d;
+            }
+
+            return normalized;
         }
 
         private readonly struct ImuSample
