@@ -198,6 +198,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
         private readonly VirtualLidarScanBuffers _scanBuffers = new VirtualLidarScanBuffers();
         private readonly VirtualLidarScanFramePublisher _scanFramePublisher = new VirtualLidarScanFramePublisher();
+        private VirtualLidarScanScheduler _scanScheduler;
 
         // Stream state.
         private bool _hasPrevPose;
@@ -211,32 +212,7 @@ namespace Unity.FoxgloveSDK.Components
         private double _activeScanStartPhysSeconds;
         private float4x4 _activeScanWorldToLocal;
 
-        // Async scan batches advance through this small state machine so FixedUpdate
-        // schedules raycast/build work without waiting on it in the same tick.
-        private enum PendingScanState
-        {
-            Idle,
-            Scheduled,
-            Consumed,
-            Published
-        }
-
-        // Scheduled-batch bookkeeping. Crossings store revolution boundaries inside
-        // the pending batch, so a completed revolution can publish while partial
-        // columns continue accumulating into the next scan.
-        private PendingScanState _pendingScanState;
-        private JobHandle _pendingScanHandle;
-        private int _pendingBatchCount;
-        private int[] _pendingScanCrossings = Array.Empty<int>();
-        private int _pendingScanCrossingCount;
-        private int _pendingProfileHash;
-        private int _nextPendingScanId;
-        private int _pendingScanId;
-
-        private readonly LidarScanDiagnostics _scanDiagnostics = new LidarScanDiagnostics();
-        // Ray-index positions inside the current tick batch where a revolution completes.
-        private readonly System.Collections.Generic.List<int> _scanCrossings =
-            new System.Collections.Generic.List<int>();
+        private VirtualLidarScanScheduler ScanScheduler => _scanScheduler ??= new VirtualLidarScanScheduler(this);
 
         private void Start()
         {
@@ -307,13 +283,11 @@ namespace Unity.FoxgloveSDK.Components
             _scanBuffers.Allocate(_scanPattern, _maxRaysPerScan);
             _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
             _activeScanPointSnapshotCount = 0;
-
-            _pendingScanCrossings = new int[Math.Max(1, _scanBuffers.ScanColumnCount)];
         }
 
         private void DisposeScanBuffers()
         {
-            DrainPendingScan();
+            ScanScheduler.DrainPendingScan();
             _scanBuffers.Dispose();
             _activeScanPointSnapshot = null;
             _activeScanPointSnapshotCount = 0;
@@ -378,7 +352,20 @@ namespace Unity.FoxgloveSDK.Components
 
             EnsureScanClock(Time.fixedTimeAsDouble);
 
-            ConsumePendingScan();
+            ScanScheduler.ConsumePendingScan(
+                _logPerformanceDiagnostics,
+                Time.fixedDeltaTime,
+                UseNativePointCloudSnapshotPath(),
+                _scanBuffers,
+                ref _activeScanFrame,
+                ref _activeScanPointSnapshot,
+                ref _activeScanPointSnapshotCount,
+                ref _activeScanValidPoints,
+                () =>
+                {
+                    PublishActiveScan();
+                    StartNewScan(Time.fixedTimeAsDouble);
+                });
 
             if (_activeScanFrame == null)
                 StartNewScan(Time.fixedTimeAsDouble);
@@ -399,7 +386,7 @@ namespace Unity.FoxgloveSDK.Components
             // Columns this scan rate wants to advance this tick; carry the remainder.
             _scanColumnProgress += dt * _scanBuffers.ScanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
 
-            // Hard cap on per-tick raycast work — the real fix. PhysX must finish the batch
+            // Hard cap on per-tick raycast work: the real fix. PhysX must finish the batch
             // within one fixed step or RaycastCommand.Complete() blocks the physics loop and
             // starves TF/camera/render. When the budget can not keep up with the nominal scan
             // rate, the scan just spans more ticks (lower effective Hz), never a stall.
@@ -424,276 +411,21 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             _scanColumnProgress -= columnsToEmit;
 
-            SchedulePendingScan(columnsToEmit);
-        }
-
-        // Schedule the next column chunk. PhysX rays use the current tick pose, while
-        // the build job expresses hit points in the active scan's reference frame.
-        private void SchedulePendingScan(int columnsToEmit)
-        {
-            if (_pendingScanState == PendingScanState.Scheduled)
-            {
-                RecordLidarDiagnostics(0, 0, 0d, 0d, 0d, asyncOverrun: true);
-                return;
-            }
-
-            // Rays are cast from the current tick pose, but points are expressed in the
-            // active scan's reference pose. Otherwise a scan that spans multiple ticks
-            // stitches several local frames into one message and bends flat surfaces.
-            var worldPos = transform.position;
-            var worldRot = transform.rotation;
-            var queryParams = new QueryParameters(_layerMask.value);
-
-            // Build one batch for all columns this tick (cap at one revolution).
-            _scanCrossings.Clear();
-            var batchCount = 0;
-            var commands = _scanBuffers.Commands;
-            var results = _scanBuffers.Results;
-            var rayTimeOffsets = _scanBuffers.RayTimeOffsets;
-            var rayRings = _scanBuffers.RayRings;
-            var pointData = _scanBuffers.PointData;
-            for (var c = 0; c < columnsToEmit && batchCount < _scanBuffers.EffectiveRayCount; c++)
-            {
-                var rays = _scanBuffers.ColumnRays[_scanColumnCursor];
-                for (var r = 0; r < rays.Length && batchCount < _scanBuffers.EffectiveRayCount; r++)
-                {
-                    var k = rays[r];
-                    var index = k * _scanBuffers.RayStride;
-                    if (index >= _scanBuffers.RawRayCount) index = _scanBuffers.RawRayCount - 1;
-
-                    if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
-                    {
-                        commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                        rayTimeOffsets[batchCount] = 0f;
-                        rayRings[batchCount] = 0;
-                    }
-                    else
-                    {
-                        var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
-                        commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                        rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz);
-                        rayRings[batchCount] = _scanBuffers.SpinEffectiveColumns > 0 ? (ushort)(index / _scanBuffers.SpinEffectiveColumns) : (ushort)0;
-                    }
-                    batchCount++;
-                }
-
-                _scanColumnCursor++;
-                if (_scanColumnCursor >= _scanBuffers.ScanColumnCount)
-                {
-                    _scanCrossings.Add(batchCount);
-                    _scanColumnCursor = 0;
-                }
-            }
-
-            if (batchCount <= 0)
-                return;
-
-            _pendingScanCrossingCount = Math.Min(_scanCrossings.Count, _pendingScanCrossings.Length);
-            for (var i = 0; i < _pendingScanCrossingCount; i++)
-                _pendingScanCrossings[i] = _scanCrossings[i];
-
-            _pendingBatchCount = batchCount;
-            _pendingProfileHash = _scanBuffers.ComputeProfileHash();
-            _pendingScanId = ++_nextPendingScanId;
-            var raycastHandle = RaycastCommand.ScheduleBatch(
-                commands.GetSubArray(0, batchCount),
-                results.GetSubArray(0, batchCount),
-                64);
-            var minRange = (float)_scanPattern.MinRangeMeters;
-            var buildJob = new VirtualLidarBuildPointsJob
-            {
-                Hits = results,
-                RayTimeOffsets = rayTimeOffsets,
-                RayRings = rayRings,
-                WorldToLocal = _activeScanWorldToLocal,
-                MinRange = minRange,
-                MaxRange = _maxRangeMeters,
-                SyntheticIntensity = _syntheticIntensity,
-                SyntheticReflectivity = _syntheticReflectivity,
-                Points = pointData
-            };
-            _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
-            _pendingScanState = PendingScanState.Scheduled;
-        }
-
-        // Complete the current chunk, append it to the active revolution, and publish
-        // any revolution boundary crossed by this batch.
-        private void ConsumePendingScan()
-        {
-            if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
-                return;
-
-            var completeStart = DiagnosticStart();
-            _pendingScanHandle.Complete();
-            var completeMs = DiagnosticElapsedMs(completeStart);
-            _pendingScanState = PendingScanState.Consumed;
-
-            if (_pendingProfileHash != _scanBuffers.ComputeProfileHash())
-            {
-                RecordLidarDiagnostics(_pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: true);
-                ClearPendingScan();
-                return;
-            }
-
-            // BuildPointsJob is now chained behind RaycastCommand; any remaining wait is
-            // included in completeMs, and there is no separate main-thread build phase here.
-            var buildMs = 0d;
-
-            // Distribute points to the active frame, publishing each completed revolution.
-            var appendStart = DiagnosticStart();
-            var validPoints = 0;
-            var ci = 0;
-            var segmentStart = 0;
-            var useNativeSnapshot = UseNativePointCloudSnapshotPath();
-            for (var k = 0; k < _pendingBatchCount; k++)
-            {
-                while (ci < _pendingScanCrossingCount && k == _pendingScanCrossings[ci])
-                {
-                    AppendOrCopyPendingPointDataSegment(segmentStart, k - segmentStart, useNativeSnapshot, ref validPoints);
-                    PublishActiveScan();
-                    _pendingScanState = PendingScanState.Published;
-                    StartNewScan(Time.fixedTimeAsDouble);
-                    segmentStart = k;
-                    ci++;
-                }
-            }
-
-            AppendOrCopyPendingPointDataSegment(segmentStart, _pendingBatchCount - segmentStart, useNativeSnapshot, ref validPoints);
-            while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
-            {
-                PublishActiveScan();
-                _pendingScanState = PendingScanState.Published;
-                StartNewScan(Time.fixedTimeAsDouble);
-                ci++;
-            }
-
-            var appendMs = DiagnosticElapsedMs(appendStart);
-            RecordLidarDiagnostics(_pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false);
-            ClearPendingScan();
-        }
-
-        private bool UseNativePointCloudSnapshotPath()
-            => _pointCloudPublisher != null && _pointCloudPublisher.CanQueueVirtualLidarNativeFrame;
-
-        private void AppendOrCopyPendingPointDataSegment(int sourceStart, int length, bool useNativeSnapshot, ref int validPoints)
-        {
-            if (length <= 0)
-                return;
-
-            if (useNativeSnapshot)
-            {
-                CopyPendingPointDataSegment(sourceStart, length);
-                return;
-            }
-
-            AppendPendingPointDataSegment(sourceStart, length, ref validPoints);
-        }
-
-        private void CopyPendingPointDataSegment(int sourceStart, int length)
-        {
-            if (length <= 0)
-                return;
-
-            if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _scanBuffers.EffectiveRayCount)
-                _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
-
-            var writableLength = Math.Min(length, _activeScanPointSnapshot.Length - _activeScanPointSnapshotCount);
-            if (writableLength <= 0)
-                return;
-
-            NativeArray<VirtualLidarPointData>.Copy(
-                _scanBuffers.PointData,
-                sourceStart,
-                _activeScanPointSnapshot,
-                _activeScanPointSnapshotCount,
-                writableLength);
-            _activeScanPointSnapshotCount += writableLength;
-        }
-
-        private void AppendPendingPointDataSegment(int sourceStart, int length, ref int validPoints)
-        {
-            var end = Math.Min(_pendingBatchCount, sourceStart + length);
-            for (var k = sourceStart; k < end; k++)
-            {
-                var point = _scanBuffers.PointData[k];
-                if (point.IsValid == 0)
-                    continue;
-
-                _activeScanFrame.Points.Add(new PointCloudPoint(point.X, point.Y, point.Z)
-                {
-                    Intensity = point.Intensity,
-                    Reflectivity = point.Reflectivity,
-                    TimeOffsetSeconds = point.TimeOffsetSeconds,
-                    Ring = point.Ring
-                });
-                _activeScanValidPoints++;
-                validPoints++;
-            }
-        }
-
-        // Shutdown/reset path: complete outstanding jobs before native buffers can be
-        // reused or disposed.
-        private void DrainPendingScan()
-        {
-            if (_pendingScanState == PendingScanState.Scheduled)
-                _pendingScanHandle.Complete();
-
-            ClearPendingScan();
-        }
-
-        // Clear only pending-batch state; active scan buffers may still hold a
-        // partial revolution.
-        private void ClearPendingScan()
-        {
-            _pendingScanHandle = default;
-            _pendingScanState = PendingScanState.Idle;
-            _pendingBatchCount = 0;
-            _pendingScanCrossingCount = 0;
-            _pendingProfileHash = 0;
-            _pendingScanId = 0;
-        }
-
-        private long DiagnosticStart()
-            => _scanDiagnostics.Start(_logPerformanceDiagnostics);
-
-        private double DiagnosticElapsedMs(long startTicks)
-            => _scanDiagnostics.ElapsedMs(startTicks);
-
-        private void RecordLidarDiagnostics(
-            int rayCount,
-            int validPointCount,
-            double completeMs,
-            double buildMs,
-            double appendMs,
-            bool asyncOverrun)
-        {
-            if (!_scanDiagnostics.Record(
+            ScanScheduler.SchedulePendingScan(
+                columnsToEmit,
                 _logPerformanceDiagnostics,
-                _pendingScanId,
-                rayCount,
-                validPointCount,
-                completeMs,
-                buildMs,
-                appendMs,
-                asyncOverrun,
                 Time.fixedDeltaTime,
-                out var snapshot))
-                return;
-
-            Debug.LogFormat(
-                LogType.Log,
-                LogOption.NoStacktrace,
-                this,
-                "[LidarDiag] scanId={0} scans={1} rays={2} valid={3} completeMs avg={4:F2} max={5:F2} buildMs avg={6:F2} appendMs avg={7:F2} overrun={8}",
-                snapshot.ScanId,
-                snapshot.Scans,
-                snapshot.Rays,
-                snapshot.ValidPoints,
-                snapshot.CompleteMsAverage,
-                snapshot.CompleteMsMax,
-                snapshot.BuildMsAverage,
-                snapshot.AppendMsAverage,
-                snapshot.Overruns);
+                _frameCounter,
+                ref _scanColumnCursor,
+                transform.position,
+                transform.rotation,
+                _layerMask,
+                _maxRangeMeters,
+                _syntheticIntensity,
+                _syntheticReflectivity,
+                _scanPattern,
+                _activeScanWorldToLocal,
+                _scanBuffers);
         }
 
         private void StartNewScan(double scanStartPhysSeconds)
@@ -731,6 +463,9 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private bool UseNativePointCloudSnapshotPath()
+            => _pointCloudPublisher != null && _pointCloudPublisher.CanQueueVirtualLidarNativeFrame;
+
         private void PublishActiveScan()
         {
             if (_activeScanFrame == null)
@@ -750,7 +485,7 @@ namespace Unity.FoxgloveSDK.Components
 
         // Largest number of whole columns whose rays fit inside one FixedUpdate's raycast
         // budget. With OS-2-128 (128 rays/column) and a 6144 budget that is 48 columns/tick,
-        // i.e. ~1.2 Hz full-fidelity at 50 Hz physics — slow but rock-steady, with TF/camera
+        // i.e. ~1.2 Hz full-fidelity at 50 Hz physics: slow but rock-steady, with TF/camera
         // and the main loop fully protected.
         private int BudgetColumnsPerTick()
             => _scanBuffers.BudgetColumnsPerTick(_maxRaycastCommandsPerFixedUpdate);
