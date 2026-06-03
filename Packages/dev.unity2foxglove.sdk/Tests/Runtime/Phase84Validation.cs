@@ -88,15 +88,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPublisherSourceIntegration()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var reducer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudQoSReducer.cs");
 
             Check(source.Contains("_voxelSizeMeters"),
                 "84D-1: point cloud publisher exposes voxel size");
-            Check(source.Contains("PointCloudSamplingMode.VoxelGrid"),
+            Check(source.Contains("_qosReducer.PrepareFrameForQoS")
+                  && reducer.Contains("PointCloudSamplingMode.VoxelGrid"),
                 "84D-2: point cloud publisher routes VoxelGrid mode");
-            Check(source.Contains("BuildVoxelSampleIndices"),
+            Check(reducer.Contains("BuildVoxelSampleIndices"),
                 "84D-3: point cloud publisher delegates voxel sampling to PointCloudQoS");
 
-            var prepare = Slice(source, "protected virtual PointCloudFrame PrepareFrameForQoS", "private void WarnPointCloudReduced");
+            var prepare = Slice(reducer, "public PointCloudFrame PrepareFrameForQoS", "private void WarnPointCloudReduced");
             CheckOrdered(prepare, "PointCloudSamplingMode.VoxelGrid", "BuildVoxelSampleIndices",
                 "84D-4: PrepareFrameForQoS checks VoxelGrid before voxel sampling");
             CheckOrdered(prepare, "BuildVoxelSampleIndices", "BuildUniformSampleIndices",

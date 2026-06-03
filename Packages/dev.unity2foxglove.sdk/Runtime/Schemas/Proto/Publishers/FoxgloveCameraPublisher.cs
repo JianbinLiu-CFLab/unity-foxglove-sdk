@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Components
 
         // Video sidecar state
         private readonly CameraPublishDiagnostics _diagnostics = new CameraPublishDiagnostics();
-        private readonly CameraVideoPublishPipeline _videoPublishPipeline;
+        private CameraVideoPublishPipeline _videoPublishPipeline;
         private readonly CameraBackpressureGate _backpressureGate = new CameraBackpressureGate();
 
         // Async JPEG state
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrEmpty(_topic))
                 _topic = ActiveProfile.DefaultTopic;
             _jpegPublishPipeline = new CameraJpegPublishPipeline(() => _captureGeneration, _diagnostics);
-            _videoPublishPipeline = new CameraVideoPublishPipeline(_diagnostics);
+            _videoPublishPipeline = new CameraVideoPublishPipeline(_diagnostics, Debug.LogWarning);
         }
 
         /// <summary>
@@ -326,7 +326,7 @@ namespace Unity.FoxgloveSDK.Components
             return _jpegPublishPipeline != null && _jpegPublishPipeline.AllowCaptureByFrameBudget(
                 _useAsyncJpeg,
                 _pendingRequests,
-                _maxPendingReadbacks,
+                Math.Max(1, _maxPendingReadbacks),
                 _jpegPublishPipeline.EncodeQueueDepth,
                 _maxJpegEncodeQueue,
                 _jpegPublishPipeline.CompletedQueueDepth,
@@ -571,8 +571,10 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
+            var readbackData = req.GetData<byte>();
             var result = _videoPublishPipeline.SubmitVideoFrame(
-                req.GetData<byte>().ToArray(),
+                () => readbackData.ToArray(),
+                readbackData.Length,
                 renderUnixNs,
                 captureWidth,
                 captureHeight);
@@ -619,7 +621,7 @@ namespace Unity.FoxgloveSDK.Components
                     EffectivePublishRateHz,
                     _videoBitrateKbps,
                     _videoKeyframeInterval,
-                    _maxPendingReadbacks,
+                    Math.Max(1, _maxPendingReadbacks),
                     _openH264MaxInputQueue,
                     _videoMaxOutputQueue),
                 DrainEncodedAccessUnits,

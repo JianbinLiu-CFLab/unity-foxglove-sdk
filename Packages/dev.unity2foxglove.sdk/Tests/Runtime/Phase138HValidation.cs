@@ -22,6 +22,10 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string VirtualLidarRelativePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs";
+        private const string VirtualLidarScanSchedulerRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs";
+        private const string VirtualLidarScanFramePublisherRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs";
         private const string SensorUnitProfileRelativePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/SensorUnitProfile.cs";
         private const string SensorUnitProfileEditorRelativePath =
@@ -80,6 +84,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var repoRoot = Phase16Validation.FindRepoRoot();
             var source = ReadText(repoRoot, VirtualLidarRelativePath);
+            var schedulerSource = ReadText(repoRoot, VirtualLidarScanSchedulerRelativePath);
+            var framePublisherSource = ReadText(repoRoot, VirtualLidarScanFramePublisherRelativePath);
 
             Check(source.Contains("_scanSubSteps"), "138H-3: VirtualLidar exposes configurable _scanSubSteps");
             Check(source.Contains("_activeScanStartPhysSeconds"),
@@ -88,12 +94,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "138H-5: VirtualLidar advances the streaming scan by columns per tick");
             Check(source.Contains("StartNewScan(Time.fixedTimeAsDouble)"),
                 "138H-6: VirtualLidar restarts each completed scan from the actual physics time (steady, non-superseding scan timestamps)");
-            Check(source.Contains("_scanCrossings") && source.Contains("GetSubArray"),
+            Check(schedulerSource.Contains("_scanCrossings") && schedulerSource.Contains("GetSubArray"),
                 "138H-7: per-tick batch casts one ScheduleBatch slice and publishes at revolution crossings");
-            Check(source.Contains("_scanBuffers.ColumnRays"),
+            Check(schedulerSource.Contains("scanBuffers.ColumnRays"),
                 "138H-8: VirtualLidar buckets rays by column (removes the per-column O(N) scan)");
-            Check(source.Contains("RaycastCommand.ScheduleBatch") &&
-                  source.Contains("_pointCloudPublisher.SetFrame(_activeScanFrame)"),
+            Check(schedulerSource.Contains("RaycastCommand.ScheduleBatch") &&
+                  framePublisherSource.Contains("pointCloudPublisher.SetFrame(activeScanFrame)"),
                 "138H-9: streaming worker writes managed frame buffer and publishes via publisher SetFrame");
         }
 

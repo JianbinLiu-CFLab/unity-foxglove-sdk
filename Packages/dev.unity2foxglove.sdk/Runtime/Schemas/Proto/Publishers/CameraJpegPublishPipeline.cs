@@ -126,17 +126,16 @@ namespace Unity.FoxgloveSDK.Components
             int height,
             int maxPixelsPerFrame)
         {
-            if (!useAsyncJpeg)
-                return true;
+            EnsureQueues(maxEncodeQueue, maxCompletedQueue);
 
             var result = CameraFrameBudgetPolicy.Evaluate(new CameraFrameBudgetInput
             {
                 PendingReadbacks = pendingRequests,
                 MaxPendingReadbacks = Math.Max(1, maxPendingReadbacks),
-                EncodeQueueDepth = encodeQueueDepth,
-                MaxEncodeQueueDepth = Math.Max(1, maxEncodeQueue),
-                CompletedQueueDepth = completedQueueDepth,
-                MaxCompletedQueueDepth = Math.Max(1, maxCompletedQueue),
+                EncodeQueueDepth = useAsyncJpeg ? encodeQueueDepth : 0,
+                MaxEncodeQueueDepth = useAsyncJpeg ? Math.Max(1, maxEncodeQueue) : int.MaxValue,
+                CompletedQueueDepth = useAsyncJpeg ? completedQueueDepth : 0,
+                MaxCompletedQueueDepth = useAsyncJpeg ? Math.Max(1, maxCompletedQueue) : int.MaxValue,
                 Width = Math.Max(1, width),
                 Height = Math.Max(1, height),
                 MaxPixelsPerFrame = Math.Max(0, maxPixelsPerFrame)

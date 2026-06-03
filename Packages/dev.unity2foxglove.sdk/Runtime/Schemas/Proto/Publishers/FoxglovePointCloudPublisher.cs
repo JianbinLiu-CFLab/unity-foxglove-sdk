@@ -65,29 +65,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _suppressTransformFallbackAfterSourceFrames = true;
 
         private readonly PointCloudPendingFrameSlot _pendingFrameSlot = new PointCloudPendingFrameSlot();
-        private bool _warnedDracoFailure;
         private readonly PointCloudPublishState _publishState = new PointCloudPublishState();
-        private readonly PointCloudQoSReducer _qosReducer = new PointCloudQoSReducer();
+        private readonly PointCloudQoSReducer _qosReducer = new PointCloudQoSReducer(Debug.LogWarning);
         private readonly TransformPointCloudSource _transformPointCloudSource = new TransformPointCloudSource();
-        private int _dracoFailureCount;
-        private bool _warnedDracoBacklog;
-        private bool _warnedDracoWorkerShutdown;
-        private readonly BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline =
-            new BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult>(
-                "Foxglove Draco PointCloud Encode",
-                MaxCompletedDracoEncodeResults,
-                DracoWorkerStopWaitMs,
-                PointCloudWorkerEncoders.EncodeDracoRequest);
-        private readonly BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline =
-            new BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult>(
-                "Foxglove PointCloud2 Native Pack",
-                MaxCompletedPointCloud2NativeResults,
-                PointCloud2NativeWorkerStopWaitMs,
-                PointCloudWorkerEncoders.EncodePointCloud2NativeRequest);
-        private int _pointCloud2NativeFailureCount;
-        private bool _warnedPointCloud2NativeFailure;
-        private bool _warnedPointCloud2NativeBacklog;
-        private bool _warnedPointCloud2NativeWorkerShutdown;
+        private PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline;
+        private PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline;
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private ulong _lastNativeDracoPublishUnixNs;
 
@@ -178,6 +160,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void Awake()
         {
+            EnsureEncodePipelines();
             EnsurePointCloud2NativeTfAnchorInitialized();
             if (string.IsNullOrEmpty(_topic)) _topic = DefaultTopic;
         }
@@ -214,15 +197,15 @@ namespace Unity.FoxgloveSDK.Components
             _lastNativeDracoPublishUnixNs = 0UL;
             _publishState.ResetSourceDriven();
             _publishState.ClearPreparedDemand();
-            StopDracoEncodeWorker(clearCompleted: true);
-            StopPointCloud2NativeWorker(clearCompleted: true);
+            _dracoEncodePipeline?.Stop(clearCompleted: true);
+            _pointCloud2NativePipeline?.Stop(clearCompleted: true);
             base.OnDisable();
         }
 
         private void OnDestroy()
         {
-            StopDracoEncodeWorker(clearCompleted: true);
-            StopPointCloud2NativeWorker(clearCompleted: true);
+            _dracoEncodePipeline?.Stop(clearCompleted: true);
+            _pointCloud2NativePipeline?.Stop(clearCompleted: true);
         }
 
         /// <summary>
@@ -381,8 +364,15 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (_manager == null) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
-            DrainCompletedDracoEncode();
-            DrainCompletedPointCloud2Native();
+            EnsureEncodePipelines();
+            _dracoEncodePipeline.Drain(
+                _logQosDrops,
+                dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
+                () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
+            _pointCloud2NativePipeline.Drain(
+                _logQosDrops,
+                dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
+                () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
@@ -640,132 +630,67 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnqueueDracoEncodeRequest(DracoEncodeRequest request)
         {
-            var queued = _dracoEncodePipeline.Enqueue(request, out var replacedPending, out var startError);
-            if (replacedPending)
-            {
-                if (_logQosDrops && !_warnedDracoBacklog)
-                {
-                    Debug.LogWarning("[Foxglove] Draco point-cloud encode request replaced; stale pending encode dropped.");
-                    _warnedDracoBacklog = true;
-                }
-
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
-            }
-
-            if (!queued)
-                LogDracoFailure("Unable to queue background Draco encode: " + startError);
+            EnsureEncodePipelines();
+            _dracoEncodePipeline.Queue(
+                request,
+                _logQosDrops,
+                () => _diagnostics.RecordDrop(_logPerformanceDiagnostics));
         }
 
         private void EnqueuePointCloud2NativeRequest(PointCloud2NativeRequest request)
         {
-            var queued = _pointCloud2NativePipeline.Enqueue(request, out var replacedPending, out var startError);
-            if (replacedPending)
-            {
-                if (_logQosDrops && !_warnedPointCloud2NativeBacklog)
-                {
-                    Debug.LogWarning("[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.");
-                    _warnedPointCloud2NativeBacklog = true;
-                }
-
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
-            }
-
-            if (!queued)
-                LogPointCloud2NativeFailure("Unable to queue background PointCloud2 pack: " + startError);
+            EnsureEncodePipelines();
+            _pointCloud2NativePipeline.Queue(
+                request,
+                _logQosDrops,
+                () => _diagnostics.RecordDrop(_logPerformanceDiagnostics));
         }
 
-        private void DrainCompletedDracoEncode()
+        private void EnsureEncodePipelines()
         {
-            var results = _dracoEncodePipeline.Drain(out var droppedCompletedResults);
-            if (droppedCompletedResults > 0 && _logQosDrops)
-                Debug.LogWarning($"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {droppedCompletedResults}.");
-            if (droppedCompletedResults > 0)
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics, droppedCompletedResults);
-
-            if (results == null || results.Count == 0)
-                return;
-
-            foreach (var result in results)
+            if (_dracoEncodePipeline == null)
             {
-                if (!result.Success)
-                {
-                    LogDracoFailure((string.IsNullOrWhiteSpace(result.Error) ? "Native Draco encode failed." : result.Error) + " Draco mode publishes nothing.");
-                    continue;
-                }
-
-                _warnedDracoFailure = false;
-                _dracoFailureCount = 0;
-                _warnedDracoBacklog = false;
-                _diagnostics.RecordEncodeResult(_logPerformanceDiagnostics, result);
-                PublishCompletedDracoPayload(result);
+                _dracoEncodePipeline = new PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult>(
+                    "Foxglove Draco PointCloud Encode",
+                    MaxCompletedDracoEncodeResults,
+                    DracoWorkerStopWaitMs,
+                    PointCloudWorkerEncoders.EncodeDracoRequest,
+                    result => result.Success,
+                    result => (string.IsNullOrWhiteSpace(result.Error) ? "Native Draco encode failed." : result.Error) + " Draco mode publishes nothing.",
+                    message => "[Foxglove] Draco point-cloud mode disabled: " + message,
+                    PublishCompletedDracoPayload,
+                    Debug.LogWarning,
+                    "[Foxglove] Draco point-cloud encode request replaced; stale pending encode dropped.",
+                    "Unable to queue background Draco encode: ",
+                    dropped => $"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {dropped}.",
+                    "[Foxglove] Draco point-cloud encode worker is still stopping; native encode will be ignored when it returns.",
+                    DracoFailureWarningIntervalFrames);
             }
 
-            _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
-        }
-
-        private void DrainCompletedPointCloud2Native()
-        {
-            var results = _pointCloud2NativePipeline.Drain(out var droppedCompletedResults);
-            if (droppedCompletedResults > 0 && _logQosDrops)
-                Debug.LogWarning($"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {droppedCompletedResults}.");
-            if (droppedCompletedResults > 0)
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics, droppedCompletedResults);
-
-            if (results == null || results.Count == 0)
-                return;
-
-            foreach (var result in results)
+            if (_pointCloud2NativePipeline == null)
             {
-                if (!result.Success)
-                {
-                    LogPointCloud2NativeFailure((string.IsNullOrWhiteSpace(result.Error) ? "Native PointCloud2 pack failed." : result.Error) + " PointCloud2Native mode publishes nothing.");
-                    continue;
-                }
-
-                _warnedPointCloud2NativeFailure = false;
-                _pointCloud2NativeFailureCount = 0;
-                _warnedPointCloud2NativeBacklog = false;
-                _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
-                PublishCompletedPointCloud2NativePayload(result);
-            }
-
-            _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
-        }
-
-        private void StopDracoEncodeWorker(bool clearCompleted)
-        {
-            if (_dracoEncodePipeline.Stop(clearCompleted, out var waitedForWorker))
-            {
-                if (waitedForWorker)
-                    _warnedDracoWorkerShutdown = false;
-                return;
-            }
-
-            if (!_warnedDracoWorkerShutdown)
-            {
-                Debug.LogWarning("[Foxglove] Draco point-cloud encode worker is still stopping; native encode will be ignored when it returns.");
-                _warnedDracoWorkerShutdown = true;
-            }
-        }
-
-        private void StopPointCloud2NativeWorker(bool clearCompleted)
-        {
-            if (_pointCloud2NativePipeline.Stop(clearCompleted, out var waitedForWorker))
-            {
-                if (waitedForWorker)
-                    _warnedPointCloud2NativeWorkerShutdown = false;
-                return;
-            }
-
-            if (!_warnedPointCloud2NativeWorkerShutdown)
-            {
-                Debug.LogWarning("[Foxglove] PointCloud2 native worker is still stopping; native payload will be ignored when it returns.");
-                _warnedPointCloud2NativeWorkerShutdown = true;
+                _pointCloud2NativePipeline = new PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult>(
+                    "Foxglove PointCloud2 Native Pack",
+                    MaxCompletedPointCloud2NativeResults,
+                    PointCloud2NativeWorkerStopWaitMs,
+                    PointCloudWorkerEncoders.EncodePointCloud2NativeRequest,
+                    result => result.Success,
+                    result => (string.IsNullOrWhiteSpace(result.Error) ? "Native PointCloud2 pack failed." : result.Error) + " PointCloud2Native mode publishes nothing.",
+                    message => "[Foxglove] PointCloud2 native mode disabled: " + message,
+                    PublishCompletedPointCloud2NativePayload,
+                    Debug.LogWarning,
+                    "[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.",
+                    "Unable to queue background PointCloud2 pack: ",
+                    dropped => $"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {dropped}.",
+                    "[Foxglove] PointCloud2 native worker is still stopping; native payload will be ignored when it returns.",
+                    PointCloud2NativeFailureWarningIntervalFrames);
             }
         }
 
         private void PublishCompletedDracoPayload(DracoEncodeResult result)
         {
+            _diagnostics.RecordEncodeResult(_logPerformanceDiagnostics, result);
+
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
             {
                 PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
@@ -781,6 +706,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishCompletedPointCloud2NativePayload(PointCloud2NativeResult result)
         {
+            _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
                 PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
 
@@ -817,26 +743,6 @@ namespace Unity.FoxgloveSDK.Components
         private bool TryGetPreparedPublishDemand(out bool publishWebSocket, out bool publishBridge)
         {
             return _publishState.TryGetPreparedDemand(out publishWebSocket, out publishBridge);
-        }
-
-        private void LogDracoFailure(string message)
-        {
-            _dracoFailureCount++;
-            if (_warnedDracoFailure && _dracoFailureCount % DracoFailureWarningIntervalFrames != 0)
-                return;
-
-            _warnedDracoFailure = true;
-            Debug.LogWarning("[Foxglove] Draco point-cloud mode disabled: " + message);
-        }
-
-        private void LogPointCloud2NativeFailure(string message)
-        {
-            _pointCloud2NativeFailureCount++;
-            if (_warnedPointCloud2NativeFailure && _pointCloud2NativeFailureCount % PointCloud2NativeFailureWarningIntervalFrames != 0)
-                return;
-
-            _warnedPointCloud2NativeFailure = true;
-            Debug.LogWarning("[Foxglove] PointCloud2 native mode disabled: " + message);
         }
 
         private void LogPointCloudDiagnosticMessage(string format, object[] args)

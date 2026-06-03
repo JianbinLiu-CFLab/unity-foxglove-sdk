@@ -9,7 +9,6 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Util;
-using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -43,13 +42,15 @@ namespace Unity.FoxgloveSDK.Components
     internal sealed class CameraVideoPublishPipeline
     {
         private readonly CameraPublishDiagnostics _diagnostics;
+        private readonly Action<string> _logWarning;
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
 
-        public CameraVideoPublishPipeline(CameraPublishDiagnostics diagnostics)
+        public CameraVideoPublishPipeline(CameraPublishDiagnostics diagnostics, Action<string> logWarning = null)
         {
             _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
+            _logWarning = logWarning ?? (_ => { });
         }
 
         public int SidecarWidth => _videoSidecarSession.Width;
@@ -90,13 +91,14 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         public CameraVideoSubmitResult SubmitVideoFrame(
-            byte[] frameBytes,
+            Func<byte[]> frameBytesFactory,
+            int frameByteLength,
             ulong renderUnixNs,
             int captureWidth,
             int captureHeight)
         {
             var submitStart = Stopwatch.GetTimestamp();
-            if (frameBytes == null || frameBytes.Length == 0)
+            if (frameByteLength <= 0)
                 return new CameraVideoSubmitResult(CameraVideoSubmitOutcome.FrameDataMissing, "Video frame data is empty.", 0d);
 
             var sidecar = _videoSidecarSession.Sidecar;
@@ -127,15 +129,29 @@ namespace Unity.FoxgloveSDK.Components
             if (!CameraVideoFrameValidator.TryValidateCapturedFrame(
                 captureWidth,
                 captureHeight,
-                frameBytes.Length,
+                frameByteLength,
                 _videoSidecarSession.Width,
                 _videoSidecarSession.Height,
                 out var dimensionError))
             {
-                _diagnostics.RecordVideoSubmitFailure();
                 var result = new CameraVideoSubmitResult(
                     CameraVideoSubmitOutcome.DimensionMismatch,
                     dimensionError,
+                    ElapsedMs(submitStart));
+                _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
+                return result;
+            }
+
+            if (frameBytesFactory == null)
+                throw new ArgumentNullException(nameof(frameBytesFactory));
+
+            var frameBytes = frameBytesFactory();
+            if (frameBytes == null || frameBytes.Length == 0)
+            {
+                _diagnostics.RecordVideoSubmitFailure();
+                var result = new CameraVideoSubmitResult(
+                    CameraVideoSubmitOutcome.FrameDataMissing,
+                    "Video frame data is empty.",
                     ElapsedMs(submitStart));
                 _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
                 return result;
@@ -231,7 +247,7 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
 
             _warnedVideoEncoderUnavailable = true;
-            Debug.LogWarning("[Foxglove] " + profile.DisplayName + " camera video disabled: " + reason);
+            _logWarning("[Foxglove] " + profile.DisplayName + " camera video disabled: " + reason);
             return true;
         }
 
@@ -251,7 +267,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             _lastLoggedStderr = line;
-            Debug.LogWarning("[Foxglove] " + videoDisplayName + ": " + line);
+            _logWarning("[Foxglove] " + videoDisplayName + ": " + line);
         }
 
         public static double ElapsedMs(long startTicks)

@@ -74,9 +74,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyUnifiedPointCloudPublisher()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var encodePipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             Check(source.Contains("[Header(\"Point Cloud Output\")]")
                   && source.Contains("_outputMode = PointCloudOutputMode.Draco")
-                  && source.Contains("_warnedDracoFailure"),
+                  && source.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
+                  && !source.Contains("_helperExecutablePath"),
                 "89B-1: point-cloud publisher exposes Raw/Draco output fields without a helper path");
             Check(source.Contains("ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode)")
                   && source.Contains("SchemaNameOverride => ActiveProfile.SchemaName")
@@ -100,11 +102,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("PointCloudMessageBuilder.CreateJson(frame)"),
                 "89B-6: raw mode preserves existing PointCloud protobuf and JSON builders");
             Check(source.Contains("publishes nothing")
-                  && source.Contains("LogDracoFailure"),
+                  && source.Contains("Draco point-cloud mode disabled")
+                  && encodePipeline.Contains("formatFailureWarning"),
                 "89B-7: Draco failures log and do not fall back to raw");
             var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
-            Check(source.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
-                  && source.Contains("_dracoEncodePipeline.Enqueue(request,")
+            Check(source.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
+                  && source.Contains("_dracoEncodePipeline.Queue(")
+                  && encodePipeline.Contains("BackgroundEncodePipeline<TRequest, TResult> _pipeline")
+                  && encodePipeline.Contains("_pipeline.Enqueue(request,")
                   && pipeline.Contains("Last-value-wins background encode pipeline")
                   && pipeline.Contains("Priority = ThreadPriority.BelowNormal")
                   && !source.Contains("Task.Run")

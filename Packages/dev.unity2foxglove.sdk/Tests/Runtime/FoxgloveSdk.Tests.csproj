@@ -26,7 +26,7 @@
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
     <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
-    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs;../../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
+    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;../../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;../../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs;../../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
     <Compile Include="../../Runtime/Schemas/Camera/**/*.cs" />

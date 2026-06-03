@@ -134,8 +134,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Math.Abs(halfAtTenHz - 0.05f) < 1e-6f,
                 "138P-6C: normalized scan offsets are scaled by scan period");
 
-            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
-            Check(lidar.Contains("LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz)", StringComparison.Ordinal),
+            var scheduler = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
+            Check(scheduler.Contains("LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, scanPattern.ScanRateHz)", StringComparison.Ordinal),
                 "138P-6D: VirtualLidar stores point offsets as seconds before packing");
         }
 
@@ -378,11 +378,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void WorkerTimeoutPathsUseGenerations()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var cameraPublishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var cameraPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
             var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloudPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
-            Check(camera.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
+            Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
+                  && cameraPublishPipeline.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
                   && cameraPipeline.Contains("_workerGeneration", StringComparison.Ordinal)
                   && cameraPipeline.Contains("WorkerGeneration", StringComparison.Ordinal)
                   && cameraPipeline.Contains("Interlocked.Increment(ref _workerGeneration)", StringComparison.Ordinal)
@@ -392,8 +395,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(pipeline.Contains("_worker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
                   && pipeline.Contains("request.Generation", StringComparison.Ordinal)
                   && pipeline.Contains("_worker.InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
-                  && pointcloud.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
-                  && pointcloud.Contains("BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal),
+                  && pointcloudPipeline.Contains("BackgroundEncodePipeline<TRequest, TResult> _pipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal),
                 "138P-15B: pointcloud workers timeout/restart are generation-guarded");
 
             var lifecycle = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");

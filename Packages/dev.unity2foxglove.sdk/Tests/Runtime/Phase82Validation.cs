@@ -305,6 +305,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCameraIntegrationSource()
         {
             var publisherSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var videoPipelineSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             Check(sessionSource.Contains("ICameraVideoEncoderSidecar _sidecar"),
@@ -322,9 +323,16 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(publisherSource, "ShouldPreparePublishPayload()", "_captureResources.CaptureCamera.Render()",
                 "82D-6: demand preflight remains before camera render");
             var submitIndex = publisherSource.IndexOf("private void SubmitVideoFrame", StringComparison.Ordinal);
-            var trySubmitIndex = publisherSource.IndexOf("_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs)", submitIndex, StringComparison.Ordinal);
-            var drainIndex = publisherSource.IndexOf("DrainEncodedAccessUnits();", trySubmitIndex, StringComparison.Ordinal);
-            Check(submitIndex >= 0 && trySubmitIndex > submitIndex && drainIndex > trySubmitIndex,
+            var pipelineSubmitIndex = submitIndex >= 0
+                ? publisherSource.IndexOf("_videoPublishPipeline.SubmitVideoFrame(", submitIndex, StringComparison.Ordinal)
+                : -1;
+            var drainIndex = pipelineSubmitIndex >= 0
+                ? publisherSource.IndexOf("DrainEncodedAccessUnits();", pipelineSubmitIndex, StringComparison.Ordinal)
+                : -1;
+            Check(videoPipelineSource.Contains("_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs)")
+                  && submitIndex >= 0
+                  && pipelineSubmitIndex > submitIndex
+                  && drainIndex > pipelineSubmitIndex,
                 "82D-7: camera publisher drains encoded video immediately after sidecar submit");
         }
 

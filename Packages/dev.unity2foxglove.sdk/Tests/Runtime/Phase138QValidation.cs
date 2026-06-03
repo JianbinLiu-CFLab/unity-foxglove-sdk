@@ -73,14 +73,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VirtualLidarDelegatesScanDiagnostics()
         {
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var scheduler = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarScanDiagnostics.cs");
 
             Check(helper.Contains("internal sealed class LidarScanDiagnostics", StringComparison.Ordinal)
                   && helper.Contains("Record(", StringComparison.Ordinal)
                   && helper.Contains("Reset()", StringComparison.Ordinal),
                 "138Q-2A: LiDAR scan diagnostics live in a focused helper");
-            Check(lidar.Contains("LidarScanDiagnostics _scanDiagnostics", StringComparison.Ordinal)
-                  && lidar.Contains("_scanDiagnostics.Record(", StringComparison.Ordinal)
+            Check(scheduler.Contains("LidarScanDiagnostics _scanDiagnostics", StringComparison.Ordinal)
+                  && scheduler.Contains("_scanDiagnostics.Record(", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticScans", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticCompleteMsTotal", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticBuildMsTotal", StringComparison.Ordinal)
@@ -133,6 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherDelegatesVideoFrameValidation()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoFrameValidator.cs");
 
             Check(helper.Contains("internal static class CameraVideoFrameValidator", StringComparison.Ordinal)
@@ -140,7 +142,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("CameraVideoFrameGeometry.TryGetRgb24FrameByteCount", StringComparison.Ordinal)
                   && helper.Contains("dimensionMismatch=sidecar", StringComparison.Ordinal),
                 "138Q-3G: camera video readback/frame geometry validation lives in a focused helper");
-            Check(camera.Contains("CameraVideoFrameValidator.TryValidateCapturedFrame(", StringComparison.Ordinal)
+            Check(pipeline.Contains("CameraVideoFrameValidator.TryValidateCapturedFrame(", StringComparison.Ordinal)
+                  && camera.Contains("CameraVideoPublishPipeline _videoPublishPipeline", StringComparison.Ordinal)
                   && !camera.Contains("private bool ValidateCapturedVideoFrame", StringComparison.Ordinal)
                   && !camera.Contains("CameraVideoFrameGeometry.TryGetRgb24FrameByteCount", StringComparison.Ordinal)
                   && !camera.Contains("dimensionMismatch=byteCount", StringComparison.Ordinal),
@@ -150,6 +153,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherDelegatesVideoSidecarLifecycle()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var session = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
 
             Check(session.Contains("internal sealed class CameraVideoSidecarSession", StringComparison.Ordinal)
@@ -158,11 +162,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && session.Contains("Stop(", StringComparison.Ordinal)
                   && session.Contains("TryDrain(", StringComparison.Ordinal),
                 "138Q-3C: camera video sidecar lifecycle lives in a focused session helper");
-            Check(camera.Contains("CameraVideoSidecarSession _videoSidecarSession", StringComparison.Ordinal)
-                  && camera.Contains("_videoSidecarSession.EnsureStarted(", StringComparison.Ordinal)
-                  && camera.Contains("_videoSidecarSession.EnsureMatchesMode(", StringComparison.Ordinal)
-                  && camera.Contains("_videoSidecarSession.Stop(", StringComparison.Ordinal)
-                  && camera.Contains("_videoSidecarSession.TryDrain(", StringComparison.Ordinal)
+            Check(pipeline.Contains("CameraVideoSidecarSession _videoSidecarSession", StringComparison.Ordinal)
+                  && pipeline.Contains("_videoSidecarSession.EnsureStarted(", StringComparison.Ordinal)
+                  && pipeline.Contains("_videoSidecarSession.EnsureMatchesMode(", StringComparison.Ordinal)
+                  && pipeline.Contains("_videoSidecarSession.Stop(", StringComparison.Ordinal)
+                  && pipeline.Contains("_videoSidecarSession.TryDrain(", StringComparison.Ordinal)
+                  && camera.Contains("CameraVideoPublishPipeline _videoPublishPipeline", StringComparison.Ordinal)
                   && !camera.Contains("ICameraVideoEncoderSidecar _videoSidecar", StringComparison.Ordinal)
                   && !camera.Contains("CameraOutputMode _videoSidecarMode", StringComparison.Ordinal)
                   && !camera.Contains("_videoSidecarWidth", StringComparison.Ordinal)
@@ -214,6 +219,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherDelegatesJpegWorkerPayloads()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var publishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
 
             Check(helper.Contains("internal sealed class JpegEncodeRequest", StringComparison.Ordinal)
@@ -221,9 +227,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("internal static class CameraJpegWorkerEncoder", StringComparison.Ordinal)
                   && helper.Contains("EncodeJpegRequest(", StringComparison.Ordinal),
                 "138Q-5A: camera JPEG worker payload and encoder logic live outside the publisher");
-            Check(camera.Contains("JpegEncodeRequest(", StringComparison.Ordinal)
-                  && camera.Contains("JpegEncodeResult", StringComparison.Ordinal)
-                  && camera.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
+            Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline.TryQueueFrame(", StringComparison.Ordinal)
+                  && publishPipeline.Contains("JpegEncodeRequest(", StringComparison.Ordinal)
+                  && publishPipeline.Contains("JpegEncodeResult", StringComparison.Ordinal)
+                  && publishPipeline.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
                   && !camera.Contains("private sealed class JpegEncodeRequest", StringComparison.Ordinal)
                   && !camera.Contains("private sealed class JpegEncodeResult", StringComparison.Ordinal)
                   && !camera.Contains("private static JpegEncodeResult EncodeJpegRequest", StringComparison.Ordinal),
@@ -233,6 +241,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherDelegatesJpegPipelineLifecycle()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var publishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
 
             Check(pipeline.Contains("internal sealed class CameraJpegPipeline", StringComparison.Ordinal)
@@ -245,11 +254,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("Drain(", StringComparison.Ordinal)
                   && pipeline.Contains("Stop(", StringComparison.Ordinal),
                 "138Q-5C: camera JPEG queue/thread lifecycle lives in a focused pipeline");
-            Check(camera.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
-                  && camera.Contains("_jpegPipeline.Start()", StringComparison.Ordinal)
-                  && camera.Contains("_jpegPipeline.Queue(", StringComparison.Ordinal)
-                  && camera.Contains("_jpegPipeline.Drain(", StringComparison.Ordinal)
-                  && camera.Contains("_jpegPipeline.Stop(", StringComparison.Ordinal)
+            Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline.EnsureWorkerStarted(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline.TryQueueFrame(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline.DrainCompleted(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline?.StopWorker(", StringComparison.Ordinal)
+                  && publishPipeline.Contains("CameraJpegPipeline _jpegPipeline", StringComparison.Ordinal)
+                  && publishPipeline.Contains("_jpegPipeline.Start()", StringComparison.Ordinal)
+                  && publishPipeline.Contains("_jpegPipeline.Queue(", StringComparison.Ordinal)
+                  && publishPipeline.Contains("_jpegPipeline.Drain(", StringComparison.Ordinal)
+                  && publishPipeline.Contains("_jpegPipeline.Stop(", StringComparison.Ordinal)
                   && !camera.Contains("DropOldestBoundedQueue<JpegEncodeRequest> _jpegEncodeQueue", StringComparison.Ordinal)
                   && !camera.Contains("DropOldestBoundedQueue<JpegEncodeResult> _completedJpegQueue", StringComparison.Ordinal)
                   && !camera.Contains("private Thread _jpegWorker", StringComparison.Ordinal)
@@ -260,6 +274,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherDelegatesPublishDiagnostics()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var jpegPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
+            var videoPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
 
             Check(diagnostics.Contains("internal sealed class CameraPublishDiagnostics", StringComparison.Ordinal)
@@ -271,11 +287,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && diagnostics.Contains("ResetVideoState(", StringComparison.Ordinal),
                 "138Q-11A: camera publish diagnostics live in a focused helper");
             Check(camera.Contains("CameraPublishDiagnostics _diagnostics", StringComparison.Ordinal)
-                  && camera.Contains("_diagnostics.RecordCameraBudgetSkip(", StringComparison.Ordinal)
                   && camera.Contains("_diagnostics.RecordJpegEncodeResult(", StringComparison.Ordinal)
                   && camera.Contains("_diagnostics.LogCameraIfNeeded(", StringComparison.Ordinal)
                   && camera.Contains("_diagnostics.RecordVideoDimensionMismatchDrop(", StringComparison.Ordinal)
                   && camera.Contains("_diagnostics.LogVideoIfNeeded(", StringComparison.Ordinal)
+                  && jpegPipeline.Contains("_diagnostics.RecordCameraBudgetSkip(", StringComparison.Ordinal)
+                  && videoPipeline.Contains("_diagnostics.ResetVideoState()", StringComparison.Ordinal)
+                  && videoPipeline.Contains("_diagnostics.RecordVideoSubmitFailure()", StringComparison.Ordinal)
+                  && videoPipeline.Contains("_diagnostics.RecordVideoFrameSubmitted()", StringComparison.Ordinal)
                   && !camera.Contains("_lastRenderMs", StringComparison.Ordinal)
                   && !camera.Contains("_videoSubmitFailureCount", StringComparison.Ordinal)
                   && !camera.Contains("private void LogCameraDiagnosticsIfNeeded", StringComparison.Ordinal)
@@ -309,6 +328,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherDelegatesReadbackTiming()
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var jpegPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var timing = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraReadbackTiming.cs");
 
             Check(timing.Contains("internal sealed class CameraReadbackTiming", StringComparison.Ordinal)
@@ -317,10 +337,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && timing.Contains("Clear(", StringComparison.Ordinal)
                   && timing.Contains("Dictionary<ulong, long>", StringComparison.Ordinal),
                 "138Q-16A: camera readback timing state lives in a focused helper");
-            Check(camera.Contains("CameraReadbackTiming _readbackTiming", StringComparison.Ordinal)
-                  && camera.Contains("_readbackTiming.Remember(", StringComparison.Ordinal)
-                  && camera.Contains("_readbackTiming.TakeLatencyMs(", StringComparison.Ordinal)
-                  && camera.Contains("_readbackTiming.Clear()", StringComparison.Ordinal)
+            Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline?.RememberReadbackStart(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline.TakeReadbackLatencyMs(", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline?.ClearReadbackTiming()", StringComparison.Ordinal)
+                  && jpegPipeline.Contains("CameraReadbackTiming _readbackTiming", StringComparison.Ordinal)
+                  && jpegPipeline.Contains("_readbackTiming.Remember(", StringComparison.Ordinal)
+                  && jpegPipeline.Contains("_readbackTiming.TakeLatencyMs(", StringComparison.Ordinal)
+                  && jpegPipeline.Contains("_readbackTiming.Clear()", StringComparison.Ordinal)
                   && !camera.Contains("_readbackTimingGate", StringComparison.Ordinal)
                   && !camera.Contains("_readbackRequestTicks", StringComparison.Ordinal),
                 "138Q-16B: FoxgloveCameraPublisher delegates readback latency bookkeeping");
@@ -396,6 +420,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PointCloudPublisherDelegatesBackgroundEncodePipelines()
         {
             var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloudPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
             Check(pipeline.Contains("internal sealed class BackgroundEncodePipeline<TRequest, TResult>", StringComparison.Ordinal)
@@ -405,10 +430,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("Drain(", StringComparison.Ordinal)
                   && pipeline.Contains("Stop(", StringComparison.Ordinal),
                 "138Q-7A: reusable background encode pipeline owns worker queue lifecycle");
-            Check(pointcloud.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
-                  && pointcloud.Contains("BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal)
-                  && pointcloud.Contains("_dracoEncodePipeline.Enqueue(request,", StringComparison.Ordinal)
-                  && pointcloud.Contains("_pointCloud2NativePipeline.Enqueue(request,", StringComparison.Ordinal)
+            Check(pointcloudPipeline.Contains("internal sealed class PointCloudEncodePipeline<TRequest, TResult>", StringComparison.Ordinal)
+                  && pointcloudPipeline.Contains("BackgroundEncodePipeline<TRequest, TResult> _pipeline", StringComparison.Ordinal)
+                  && pointcloudPipeline.Contains("_pipeline.Enqueue(request,", StringComparison.Ordinal)
+                  && pointcloudPipeline.Contains("_pipeline.Drain(", StringComparison.Ordinal)
+                  && pointcloudPipeline.Contains("_pipeline.Stop(", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("_dracoEncodePipeline.Queue(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_pointCloud2NativePipeline.Queue(", StringComparison.Ordinal)
                   && !pointcloud.Contains("RunDracoEncodeWorker", StringComparison.Ordinal)
                   && !pointcloud.Contains("RunPointCloud2NativeWorker", StringComparison.Ordinal)
                   && !pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
@@ -446,12 +476,13 @@ namespace Unity.FoxgloveSDK.Tests
             var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var builder = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudTransformFrameBuilder.cs");
 
-            Check(builder.Contains("internal static class PointCloudTransformFrameBuilder", StringComparison.Ordinal)
-                  && builder.Contains("Build(", StringComparison.Ordinal)
+            Check(builder.Contains("internal sealed class TransformPointCloudSource", StringComparison.Ordinal)
+                  && builder.Contains("CreateFrameFromTransforms(", StringComparison.Ordinal)
                   && builder.Contains("AddPoint(", StringComparison.Ordinal)
                   && builder.Contains("CoordinateConverter.UnityToFoxglovePosition", StringComparison.Ordinal),
                 "138Q-12A: point-cloud transform fallback frame builder lives in a focused helper");
-            Check(pointcloud.Contains("PointCloudTransformFrameBuilder.Build(", StringComparison.Ordinal)
+            Check(pointcloud.Contains("TransformPointCloudSource _transformPointCloudSource", StringComparison.Ordinal)
+                  && pointcloud.Contains("_transformPointCloudSource.CreateFrameFromTransforms(", StringComparison.Ordinal)
                   && !pointcloud.Contains("private PointCloudFrame CreateFrameFromTransforms", StringComparison.Ordinal)
                   && !pointcloud.Contains("private void AddPoint", StringComparison.Ordinal),
                 "138Q-12B: FoxglovePointCloudPublisher delegates transform fallback scan and point append");
@@ -527,6 +558,7 @@ namespace Unity.FoxgloveSDK.Tests
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanLayout.cs");
             var buffers = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanBuffers.cs");
+            var scheduler = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
 
             Check(helper.Contains("internal readonly struct VirtualLidarScanLayout", StringComparison.Ordinal)
                   && helper.Contains("Build(", StringComparison.Ordinal)
@@ -535,7 +567,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "138Q-8A: virtual LiDAR scan layout calculation lives in a focused helper");
             Check(buffers.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal)
                   && buffers.Contains("layout.ColumnRays", StringComparison.Ordinal)
-                  && lidar.Contains("_scanBuffers.ColumnRays", StringComparison.Ordinal)
+                  && scheduler.Contains("scanBuffers.ColumnRays[scanColumnCursor]", StringComparison.Ordinal)
                   && !lidar.Contains("var columnCounts = new int[_scanColumnCount]", StringComparison.Ordinal)
                   && !lidar.Contains("Bucket ray indices by column once", StringComparison.Ordinal),
                 "138Q-8B: VirtualLidar delegates scan column bucketing");
@@ -545,6 +577,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanBuffers.cs");
+            var scheduler = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
 
             Check(helper.Contains("internal sealed class VirtualLidarScanBuffers", StringComparison.Ordinal)
                   && helper.Contains(": IDisposable", StringComparison.Ordinal)
@@ -558,8 +591,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(lidar.Contains("VirtualLidarScanBuffers _scanBuffers", StringComparison.Ordinal)
                   && lidar.Contains("_scanBuffers.Allocate(", StringComparison.Ordinal)
                   && lidar.Contains("_scanBuffers.Dispose()", StringComparison.Ordinal)
-                  && lidar.Contains("_scanBuffers.ComputeProfileHash()", StringComparison.Ordinal)
                   && lidar.Contains("_scanBuffers.BudgetColumnsPerTick(", StringComparison.Ordinal)
+                  && scheduler.Contains("scanBuffers.ComputeProfileHash()", StringComparison.Ordinal)
+                  && scheduler.Contains("RaycastCommand.ScheduleBatch(", StringComparison.Ordinal)
+                  && scheduler.Contains("DrainPendingScan()", StringComparison.Ordinal)
                   && !lidar.Contains("private NativeArray<RaycastCommand> _commands", StringComparison.Ordinal)
                   && !lidar.Contains("private NativeArray<RaycastHit> _results", StringComparison.Ordinal)
                   && !lidar.Contains("private NativeArray<float> _rayTimeOffsets", StringComparison.Ordinal)

@@ -10,6 +10,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 
@@ -276,7 +277,8 @@ namespace Unity.FoxgloveSDK.Components
             ref PointCloudFrame activeScanFrame,
             ref VirtualLidarPointData[] activeScanPointSnapshot,
             ref int activeScanPointSnapshotCount,
-            ref int activeScanValidPoints)
+            ref int activeScanValidPoints,
+            ref int validPoints)
         {
             if (length <= 0)
                 return;
@@ -297,7 +299,8 @@ namespace Unity.FoxgloveSDK.Components
                 sourceStart,
                 length,
                 ref activeScanFrame,
-                ref activeScanValidPoints);
+                ref activeScanValidPoints,
+                ref validPoints);
         }
 
         private void CopyPendingPointDataSegment(
@@ -331,7 +334,8 @@ namespace Unity.FoxgloveSDK.Components
             int sourceStart,
             int length,
             ref PointCloudFrame activeScanFrame,
-            ref int activeScanValidPoints)
+            ref int activeScanValidPoints,
+            ref int validPoints)
         {
             var end = Math.Min(_pendingBatchCount, sourceStart + length);
             for (var k = sourceStart; k < end; k++)
@@ -348,6 +352,7 @@ namespace Unity.FoxgloveSDK.Components
                     Ring = point.Ring
                 });
                 activeScanValidPoints++;
+                validPoints++;
             }
         }
 

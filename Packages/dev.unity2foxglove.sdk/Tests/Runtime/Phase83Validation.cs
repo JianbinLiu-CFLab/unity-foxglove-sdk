@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var update = Slice(source, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "83D-6: Update preflights demand before QoS copy");
-            CheckOrdered(update, "ShouldPreparePublishPayload()", "PointCloudTransformFrameBuilder.Build", "83D-7: Update preflights demand before transform scan");
+            CheckOrdered(update, "ShouldPreparePublishPayload()", "_transformPointCloudSource.CreateFrameFromTransforms", "83D-7: Update preflights demand before transform scan");
             CheckOrdered(update, "ShouldPreparePublishPayload()", "_pendingFrameSlot.Take()", "83D-8: Update preflights demand before pending-frame consumption");
 
             var publishFrame = Slice(source, "public void PublishFrame", "protected virtual void Update()");

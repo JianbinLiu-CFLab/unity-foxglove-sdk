@@ -5,14 +5,20 @@
 // Purpose: Shared QoS reduction for point-cloud payload preparation.
 
 using System;
-using Foxglove.Schemas.PointCloud;
-using UnityEngine;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
     internal sealed class PointCloudQoSReducer
     {
+        private readonly Action<string> _logWarning;
         private bool _warnedPointCloudBudget;
+
+        public PointCloudQoSReducer(Action<string> logWarning = null)
+        {
+            _logWarning = logWarning ?? (_ => { });
+        }
 
         public void Reset()
         {
@@ -111,7 +117,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!logQosDrops) return;
             if (_warnedPointCloudBudget) return;
 
-            Debug.LogWarning(
+            _logWarning(
                 $"[Foxglove] PointCloud frame reduced from {originalPoints} to {Math.Max(0, outputPoints)} points.");
             _warnedPointCloudBudget = true;
         }

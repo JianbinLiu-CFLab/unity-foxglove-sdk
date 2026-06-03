@@ -92,10 +92,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPointCloudPublisherAppliesProgrammaticPointBudget()
         {
             var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var qosReducer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudQoSReducer.cs");
             var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
             var sharedBuilder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
 
-            Check(publisher.Contains("PrepareFrameForQoS") && publisher.Contains("ComputeEffectivePointBudget"),
+            Check(publisher.Contains("PrepareFrameForQoS")
+                  && publisher.Contains("_qosReducer.PrepareFrameForQoS")
+                  && publisher.Contains("_maxPoints")
+                  && publisher.Contains("_maxPackedBytes")
+                  && qosReducer.Contains("PointCloudQoS.ComputeEffectivePointBudget"),
                 "57E-1: point cloud publisher applies serialized point/byte budgets to programmatic frames");
             Check(builder.Contains("MaxPackedDataBytes") && sharedBuilder.Contains("ValidatePackedDataBudget"),
                 "57E-2: point cloud builder preflights packed data size before allocating the byte buffer");
