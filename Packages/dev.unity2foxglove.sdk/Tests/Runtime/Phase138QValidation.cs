@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesJpegPipelineLifecycle();
             CameraPublisherDelegatesPublishDiagnostics();
             CameraPublisherDelegatesBackpressureGate();
+            CameraPublisherDelegatesReadbackTiming();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -240,6 +241,26 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_backpressureBaselineInitialized", StringComparison.Ordinal)
                   && !camera.Contains("private void LogBackpressureSkip", StringComparison.Ordinal),
                 "138Q-13B: FoxgloveCameraPublisher delegates backpressure baseline, cooldown, and skip logging state");
+        }
+
+        private static void CameraPublisherDelegatesReadbackTiming()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var timing = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraReadbackTiming.cs");
+
+            Check(timing.Contains("internal sealed class CameraReadbackTiming", StringComparison.Ordinal)
+                  && timing.Contains("Remember(", StringComparison.Ordinal)
+                  && timing.Contains("TakeLatencyMs(", StringComparison.Ordinal)
+                  && timing.Contains("Clear(", StringComparison.Ordinal)
+                  && timing.Contains("Dictionary<ulong, long>", StringComparison.Ordinal),
+                "138Q-16A: camera readback timing state lives in a focused helper");
+            Check(camera.Contains("CameraReadbackTiming _readbackTiming", StringComparison.Ordinal)
+                  && camera.Contains("_readbackTiming.Remember(", StringComparison.Ordinal)
+                  && camera.Contains("_readbackTiming.TakeLatencyMs(", StringComparison.Ordinal)
+                  && camera.Contains("_readbackTiming.Clear()", StringComparison.Ordinal)
+                  && !camera.Contains("_readbackTimingGate", StringComparison.Ordinal)
+                  && !camera.Contains("_readbackRequestTicks", StringComparison.Ordinal),
+                "138Q-16B: FoxgloveCameraPublisher delegates readback latency bookkeeping");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()

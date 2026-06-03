@@ -6,7 +6,6 @@
 // as foxglove.CompressedImage JPEG frames or FFmpeg-backed foxglove.CompressedVideo frames.
 
 using System;
-using System.Collections.Generic;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
@@ -153,8 +152,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _destroyed;
         private int _captureGeneration;
         private bool _cleanupWhenReadbacksDrain;
-        private readonly object _readbackTimingGate = new object();
-        private readonly Dictionary<ulong, long> _readbackRequestTicks = new Dictionary<ulong, long>();
+        private readonly CameraReadbackTiming _readbackTiming = new CameraReadbackTiming();
 
         // Video sidecar state
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
@@ -955,8 +953,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ClearReadbackTiming()
         {
-            lock (_readbackTimingGate)
-                _readbackRequestTicks.Clear();
+            _readbackTiming.Clear();
         }
 
         private void ResetJpegPipelineState()
@@ -974,22 +971,12 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void RememberReadbackStart(ulong unixNs, long ticks)
         {
-            lock (_readbackTimingGate)
-                _readbackRequestTicks[unixNs] = ticks;
+            _readbackTiming.Remember(unixNs, ticks);
         }
 
         private double TakeReadbackLatencyMs(ulong unixNs)
         {
-            lock (_readbackTimingGate)
-            {
-                if (_readbackRequestTicks.TryGetValue(unixNs, out var ticks))
-                {
-                    _readbackRequestTicks.Remove(unixNs);
-                    return ElapsedMs(ticks);
-                }
-            }
-
-            return 0;
+            return _readbackTiming.TakeLatencyMs(unixNs);
         }
 
         private void LogJpegWorkerFailure(string reason)
