@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             VirtualLidarDelegatesScanDiagnostics();
             CameraPublisherDelegatesVideoSidecarOptions();
             CameraPublisherDelegatesVideoSidecarConfigFactory();
+            CameraPublisherDelegatesVideoFrameValidation();
             CameraPublisherDelegatesVideoSidecarLifecycle();
             CameraPublisherDelegatesJpegWorkerPayloads();
             CameraPublisherDelegatesJpegPipelineLifecycle();
@@ -127,6 +128,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private CameraVideoSidecarConfig CreateVideoSidecarConfig", StringComparison.Ordinal)
                   && !camera.Contains("private int ResolveEncoderFrameRate", StringComparison.Ordinal),
                 "138Q-3F: FoxgloveCameraPublisher delegates sidecar config creation");
+        }
+
+        private static void CameraPublisherDelegatesVideoFrameValidation()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoFrameValidator.cs");
+
+            Check(helper.Contains("internal static class CameraVideoFrameValidator", StringComparison.Ordinal)
+                  && helper.Contains("TryValidateCapturedFrame(", StringComparison.Ordinal)
+                  && helper.Contains("CameraVideoFrameGeometry.TryGetRgb24FrameByteCount", StringComparison.Ordinal)
+                  && helper.Contains("dimensionMismatch=sidecar", StringComparison.Ordinal),
+                "138Q-3G: camera video readback/frame geometry validation lives in a focused helper");
+            Check(camera.Contains("CameraVideoFrameValidator.TryValidateCapturedFrame(", StringComparison.Ordinal)
+                  && !camera.Contains("private bool ValidateCapturedVideoFrame", StringComparison.Ordinal)
+                  && !camera.Contains("CameraVideoFrameGeometry.TryGetRgb24FrameByteCount", StringComparison.Ordinal)
+                  && !camera.Contains("dimensionMismatch=byteCount", StringComparison.Ordinal),
+                "138Q-3H: FoxgloveCameraPublisher delegates video frame validation");
         }
 
         private static void CameraPublisherDelegatesVideoSidecarLifecycle()

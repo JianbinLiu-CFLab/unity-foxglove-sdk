@@ -607,7 +607,13 @@ namespace Unity.FoxgloveSDK.Components
 
             captureWidth = Math.Max(1, captureWidth);
             captureHeight = Math.Max(1, captureHeight);
-            if (!ValidateCapturedVideoFrame(captureWidth, captureHeight, req.GetData<byte>().Length, out var dimensionError))
+            if (!CameraVideoFrameValidator.TryValidateCapturedFrame(
+                    captureWidth,
+                    captureHeight,
+                    req.GetData<byte>().Length,
+                    _videoSidecarSession.Width,
+                    _videoSidecarSession.Height,
+                    out var dimensionError))
             {
                 _diagnostics.RecordVideoSubmitMs(ElapsedMs(submitStart));
                 RecordVideoDimensionMismatchDrop(dimensionError);
@@ -653,34 +659,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             _diagnostics.RecordVideoSubmitMs(ElapsedMs(submitStart));
             EmitVideoDiagnosticsIfNeeded();
-        }
-
-        /// <summary>
-        /// Rejects stale or malformed readbacks before they can reach a fixed-dimension
-        /// video encoder.
-        /// </summary>
-        private bool ValidateCapturedVideoFrame(int captureWidth, int captureHeight, int rgb24ByteCount, out string error)
-        {
-            if (!CameraVideoFrameGeometry.TryGetRgb24FrameByteCount(captureWidth, captureHeight, out var expectedRgbBytes))
-            {
-                error = $"dimensionMismatch=capturedUnsupported captured={captureWidth}x{captureHeight} bytes={rgb24ByteCount}";
-                return false;
-            }
-
-            if (rgb24ByteCount != expectedRgbBytes)
-            {
-                error = $"dimensionMismatch=byteCount captured={captureWidth}x{captureHeight} bytes={rgb24ByteCount} expectedBytes={expectedRgbBytes}";
-                return false;
-            }
-
-            if (_videoSidecarSession.Width != captureWidth || _videoSidecarSession.Height != captureHeight)
-            {
-                error = $"dimensionMismatch=sidecar captured={captureWidth}x{captureHeight} sidecar={_videoSidecarSession.Width}x{_videoSidecarSession.Height}";
-                return false;
-            }
-
-            error = "";
-            return true;
         }
 
         /// <summary>
