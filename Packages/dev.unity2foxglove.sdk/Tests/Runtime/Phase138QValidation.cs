@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
             PointCloudPublisherDelegatesPublishDiagnostics();
             VirtualLidarDelegatesScanLayout();
+            VirtualLidarDelegatesScanClock();
 
             Console.WriteLine($"Phase 138Q: {_passed} checks passed.");
         }
@@ -268,6 +269,28 @@ namespace Unity.FoxgloveSDK.Tests
                   && !lidar.Contains("var columnCounts = new int[_scanColumnCount]", StringComparison.Ordinal)
                   && !lidar.Contains("Bucket ray indices by column once", StringComparison.Ordinal),
                 "138Q-8B: VirtualLidar delegates scan column bucketing");
+        }
+
+        private static void VirtualLidarDelegatesScanClock()
+        {
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanClock.cs");
+
+            Check(helper.Contains("internal sealed class VirtualLidarScanClock", StringComparison.Ordinal)
+                  && helper.Contains("bool IsInitialized", StringComparison.Ordinal)
+                  && helper.Contains("EnsureInitialized(", StringComparison.Ordinal)
+                  && helper.Contains("GetScanStartUnixNs(", StringComparison.Ordinal)
+                  && helper.Contains("FoxgloveTimeUtil.NowUnixTimeNs()", StringComparison.Ordinal),
+                "138Q-10A: virtual LiDAR scan clock epoch state lives in a focused helper");
+            Check(lidar.Contains("VirtualLidarScanClock _scanClock", StringComparison.Ordinal)
+                  && lidar.Contains("_scanClock.IsInitialized", StringComparison.Ordinal)
+                  && lidar.Contains("_scanClock.EnsureInitialized(", StringComparison.Ordinal)
+                  && lidar.Contains("_scanClock.GetScanStartUnixNs(", StringComparison.Ordinal)
+                  && !lidar.Contains("_scanClockInitialized", StringComparison.Ordinal)
+                  && !lidar.Contains("_scanEpochUnixNs", StringComparison.Ordinal)
+                  && !lidar.Contains("_scanEpochPhysSeconds", StringComparison.Ordinal)
+                  && !lidar.Contains("private ulong ComputeScanStartUnixNs", StringComparison.Ordinal),
+                "138Q-10B: VirtualLidar delegates scan clock epoch and timestamp math");
         }
 
         private static string Read(string relativePath)

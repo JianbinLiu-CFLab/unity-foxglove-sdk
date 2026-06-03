@@ -199,10 +199,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _frameCounter;
         private float _scanPeriod;
 
-        // Uniform sensor clock: single epoch shared across LiDAR scan lifecycle.
-        private bool _scanClockInitialized;
-        private ulong _scanEpochUnixNs;
-        private double _scanEpochPhysSeconds;
+        private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
 
         // Stream state.
         private bool _hasPrevPose;
@@ -767,7 +764,7 @@ namespace Unity.FoxgloveSDK.Components
                 .ToFloat4x4();
             _activeScanFrame = new PointCloudFrame
             {
-                UnixNs = ComputeScanStartUnixNs(scanStartPhysSeconds),
+                UnixNs = _scanClock.GetScanStartUnixNs(scanStartPhysSeconds),
                 FrameId = _frameId,
                 ValidCount = 0,
                 // SLAM front-ends (FAST-LIO/LIVO2) consume the Ouster-style absolute-ns `t`.
@@ -855,18 +852,6 @@ namespace Unity.FoxgloveSDK.Components
             return true;
         }
 
-        private ulong ComputeScanStartUnixNs(double scanStartPhysSeconds)
-        {
-            if (!_scanClockInitialized)
-                return FoxgloveTimeUtil.NowUnixTimeNs();
-
-            var deltaSeconds = scanStartPhysSeconds - _scanEpochPhysSeconds;
-            if (deltaSeconds < 0d)
-                deltaSeconds = 0d;
-
-            return checked(_scanEpochUnixNs + (ulong)Math.Round(deltaSeconds * 1e9));
-        }
-
         // Largest number of whole columns whose rays fit inside one FixedUpdate's raycast
         // budget. With OS-2-128 (128 rays/column) and a 6144 budget that is 48 columns/tick,
         // i.e. ~1.2 Hz full-fidelity at 50 Hz physics — slow but rock-steady, with TF/camera
@@ -879,15 +864,14 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnsureScanClock(double physNow)
         {
-            if (_scanClockInitialized)
+            if (_scanClock.IsInitialized)
                 return;
 
-            _scanClockInitialized = true;
-            _scanEpochPhysSeconds = physNow;
-            _scanEpochUnixNs = _manager == null
-                ? FoxgloveTimeUtil.NowUnixTimeNs()
-                : _manager.GetSharedSensorClockUnixTime(physNow);
-            _scanColumnProgress = 0d;
+            Func<double, ulong> resolveUnixNs = _manager == null
+                ? null
+                : _manager.GetSharedSensorClockUnixTime;
+            if (_scanClock.EnsureInitialized(physNow, resolveUnixNs))
+                _scanColumnProgress = 0d;
         }
 
         private void ResetScanState(double physNow)
