@@ -65,9 +65,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _suppressTransformFallbackAfterSourceFrames = true;
 
         private readonly PointCloudPendingFrameSlot _pendingFrameSlot = new PointCloudPendingFrameSlot();
-        private bool _warnedPointCloudBudget;
         private bool _warnedDracoFailure;
         private readonly PointCloudPublishState _publishState = new PointCloudPublishState();
+        private readonly PointCloudQoSReducer _qosReducer = new PointCloudQoSReducer();
         private int _dracoFailureCount;
         private bool _warnedDracoBacklog;
         private bool _warnedDracoWorkerShutdown;
@@ -850,92 +850,15 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
         {
-            if (frame == null)
-                return null;
-
-            var pointCount = frame.GetPointCount();
-            var stride = PointCloudQoS.ComputePackedStride(frame);
-            var pointBudget = PointCloudQoS.ComputeEffectivePointBudget(
-                pointCount,
+            return _qosReducer.PrepareFrameForQoS(
+                frame,
+                unixNs,
+                string.IsNullOrWhiteSpace(_frameId) ? "unity_world" : _frameId,
                 _maxPoints,
-                Math.Max(0, _maxPackedBytes),
-                stride);
-
-            if (pointBudget <= 0)
-            {
-                WarnPointCloudReduced(pointCount, pointBudget);
-                return null;
-            }
-
-            var useVoxelGrid = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters > 0f;
-            var forceUniformFallback = _samplingMode == PointCloudSamplingMode.VoxelGrid && _voxelSizeMeters <= 0f;
-
-            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && pointCount <= pointBudget)
-            {
-                _warnedPointCloudBudget = false;
-                return frame;
-            }
-
-            var copy = new PointCloudFrame
-            {
-                UnixNs = frame.UnixNs == 0 ? unixNs : frame.UnixNs,
-                FrameId = string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId
-            };
-
-            if (useVoxelGrid)
-            {
-                var voxelIndices = PointCloudQoS.BuildVoxelSampleIndices(frame, _voxelSizeMeters);
-                if (voxelIndices.Length <= pointBudget)
-                {
-                    foreach (var index in voxelIndices)
-                        copy.Points.Add(frame.Points[index]);
-                }
-                else
-                {
-                    var indices = PointCloudQoS.BuildUniformSampleIndices(voxelIndices.Length, pointBudget);
-                    foreach (var index in indices)
-                        copy.Points.Add(frame.Points[voxelIndices[index]]);
-                }
-            }
-            else if (pointCount <= pointBudget && !forceUniformFallback)
-            {
-                for (var i = 0; i < pointCount; i++)
-                    copy.Points.Add(frame.Points[i]);
-            }
-            else if (_samplingMode == PointCloudSamplingMode.FirstPoints)
-            {
-                var count = Math.Min(pointCount, pointBudget);
-                for (var i = 0; i < count; i++)
-                    copy.Points.Add(frame.Points[i]);
-            }
-            else
-            {
-                var indices = PointCloudQoS.BuildUniformSampleIndices(pointCount, pointBudget);
-                foreach (var index in indices)
-                    copy.Points.Add(frame.Points[index]);
-            }
-
-            if (pointCount > pointBudget)
-                WarnPointCloudReduced(pointCount, pointBudget);
-            else
-            {
-                _warnedPointCloudBudget = false;
-            }
-
-            copy.ValidCount = copy.Points.Count;
-
-            return copy;
+                _maxPackedBytes,
+                _samplingMode,
+                _voxelSizeMeters,
+                _logQosDrops);
         }
-
-        private void WarnPointCloudReduced(int originalPoints, int outputPoints)
-        {
-            if (!_logQosDrops) return;
-            if (_warnedPointCloudBudget) return;
-
-            Debug.LogWarning(
-                $"[Foxglove] PointCloud frame reduced from {originalPoints} to {Math.Max(0, outputPoints)} points.");
-            _warnedPointCloudBudget = true;
-        }
-
     }
 }
