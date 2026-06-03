@@ -65,7 +65,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPointCloudDemandCaching()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            Check(source.Contains("_hasPreparedPublishDemand") && source.Contains("SetPreparedPublishDemand") && source.Contains("ClearPreparedPublishDemand"),
+            var state = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishState.cs");
+            Check(source.Contains("PointCloudPublishState _publishState")
+                  && source.Contains("SetPreparedPublishDemand")
+                  && source.Contains("ClearPreparedPublishDemand")
+                  && state.Contains("_hasPreparedPublishDemand")
+                  && state.Contains("SetPreparedDemand")
+                  && state.Contains("ClearPreparedDemand"),
                 "100B-1: point-cloud publisher caches demand for one prepared frame");
             Check(source.Contains("TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge)"),
                 "100B-2: raw/Draco helpers reuse cached demand when called from Update/PublishFrame");

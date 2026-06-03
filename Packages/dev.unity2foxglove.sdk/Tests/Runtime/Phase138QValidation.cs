@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
             PointCloudPublisherDelegatesPublishDiagnostics();
             PointCloudPublisherDelegatesTransformFallbackBuilder();
+            PointCloudPublisherDelegatesPublishState();
             PointCloudPublisherDelegatesRosTfMath();
             VirtualLidarDelegatesScanLayout();
             VirtualLidarDelegatesScanClock();
@@ -336,6 +337,28 @@ namespace Unity.FoxgloveSDK.Tests
                   && pointcloud.Contains("new Quaternion(q.X, q.Y, q.Z, q.W)", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static Quaternion RosRollPitchYawDegreesToQuaternion", StringComparison.Ordinal),
                 "138Q-14B: FoxglovePointCloudPublisher delegates ROS RPY math and only adapts to Unity Quaternion");
+        }
+
+        private static void PointCloudPublisherDelegatesPublishState()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var state = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishState.cs");
+
+            Check(state.Contains("internal sealed class PointCloudPublishState", StringComparison.Ordinal)
+                  && state.Contains("MarkSourceDriven(", StringComparison.Ordinal)
+                  && state.Contains("ResetSourceDriven(", StringComparison.Ordinal)
+                  && state.Contains("ShouldSuppressTransformFallback(", StringComparison.Ordinal)
+                  && state.Contains("SetPreparedDemand(", StringComparison.Ordinal)
+                  && state.Contains("TryGetPreparedDemand(", StringComparison.Ordinal),
+                "138Q-15A: point-cloud source/fallback and prepared-demand state lives in a focused helper");
+            Check(pointcloud.Contains("PointCloudPublishState _publishState", StringComparison.Ordinal)
+                  && pointcloud.Contains("_publishState.MarkSourceDriven()", StringComparison.Ordinal)
+                  && pointcloud.Contains("_publishState.ShouldSuppressTransformFallback(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_publishState.SetPreparedDemand(", StringComparison.Ordinal)
+                  && pointcloud.Contains("_publishState.TryGetPreparedDemand(", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_hasPreparedPublishDemand", StringComparison.Ordinal)
+                  && !pointcloud.Contains("_hasSourceDrivenFrames", StringComparison.Ordinal),
+                "138Q-15B: FoxglovePointCloudPublisher delegates source/fallback and prepared-demand state");
         }
 
         private static void VirtualLidarDelegatesScanLayout()

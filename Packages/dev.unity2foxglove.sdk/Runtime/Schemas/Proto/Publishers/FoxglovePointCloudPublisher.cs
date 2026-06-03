@@ -69,9 +69,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedPointCloudBudget;
         private bool _warnedPendingDrop;
         private bool _warnedDracoFailure;
-        private bool _hasPreparedPublishDemand;
-        private bool _preparedPublishWebSocket;
-        private bool _preparedPublishBridge;
+        private readonly PointCloudPublishState _publishState = new PointCloudPublishState();
         private int _dracoFailureCount;
         private bool _warnedDracoBacklog;
         private bool _warnedDracoWorkerShutdown;
@@ -93,8 +91,6 @@ namespace Unity.FoxgloveSDK.Components
         private bool _warnedPointCloud2NativeWorkerShutdown;
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private ulong _lastNativeDracoPublishUnixNs;
-        private bool _hasSourceDrivenFrames;
-        private bool _warnedTransformFallbackSuppressed;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -217,8 +213,8 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnDisable()
         {
             _lastNativeDracoPublishUnixNs = 0UL;
-            _hasSourceDrivenFrames = false;
-            _warnedTransformFallbackSuppressed = false;
+            _publishState.ResetSourceDriven();
+            _publishState.ClearPreparedDemand();
             StopDracoEncodeWorker(clearCompleted: true);
             StopPointCloud2NativeWorker(clearCompleted: true);
             base.OnDisable();
@@ -420,10 +416,9 @@ namespace Unity.FoxgloveSDK.Components
 
             if (pendingFrame == null && ShouldSuppressTransformFallback())
             {
-                if (_logQosDrops && !_warnedTransformFallbackSuppressed)
+                if (_logQosDrops && _publishState.ShouldLogTransformFallbackSuppressedWarning())
                 {
                     Debug.LogWarning("[Foxglove] PointCloud transform fallback suppressed after source-driven frames; real LiDAR/source frames will own this topic.");
-                    _warnedTransformFallbackSuppressed = true;
                 }
                 return;
             }
@@ -651,11 +646,11 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         internal void MarkSourceDrivenPointCloud()
         {
-            _hasSourceDrivenFrames = true;
+            _publishState.MarkSourceDriven();
         }
 
         private bool ShouldSuppressTransformFallback()
-            => _suppressTransformFallbackAfterSourceFrames && _hasSourceDrivenFrames;
+            => _publishState.ShouldSuppressTransformFallback(_suppressTransformFallbackAfterSourceFrames);
 
         private void EnqueueDracoEncodeRequest(DracoEncodeRequest request)
         {
@@ -825,23 +820,17 @@ namespace Unity.FoxgloveSDK.Components
 
         private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
         {
-            _preparedPublishWebSocket = publishWebSocket;
-            _preparedPublishBridge = publishBridge;
-            _hasPreparedPublishDemand = true;
+            _publishState.SetPreparedDemand(publishWebSocket, publishBridge);
         }
 
         private void ClearPreparedPublishDemand()
         {
-            _hasPreparedPublishDemand = false;
-            _preparedPublishWebSocket = false;
-            _preparedPublishBridge = false;
+            _publishState.ClearPreparedDemand();
         }
 
         private bool TryGetPreparedPublishDemand(out bool publishWebSocket, out bool publishBridge)
         {
-            publishWebSocket = _preparedPublishWebSocket;
-            publishBridge = _preparedPublishBridge;
-            return _hasPreparedPublishDemand;
+            return _publishState.TryGetPreparedDemand(out publishWebSocket, out publishBridge);
         }
 
         private void LogDracoFailure(string message)
