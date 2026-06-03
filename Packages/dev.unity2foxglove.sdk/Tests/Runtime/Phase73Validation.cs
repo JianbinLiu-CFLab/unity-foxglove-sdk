@@ -291,7 +291,7 @@ namespace Unity.FoxgloveSDK.Tests
             var pointUpdate = Slice(pointSource, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
             CheckOrdered(pointUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-8: point cloud preflights after cadence");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "PrepareFrameForQoS", "73G-9: point cloud preflights before frame QoS copy");
-            CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "CreateFrameFromTransforms", "73G-10: point cloud preflights before child transform scan");
+            CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "PointCloudTransformFrameBuilder.Build", "73G-10: point cloud preflights before child transform scan");
             CheckOrdered(pointUpdate, "ShouldPreparePublishPayload()", "_pendingFrame = null", "73G-11: point cloud preflights before pending frame consumption");
         }
 

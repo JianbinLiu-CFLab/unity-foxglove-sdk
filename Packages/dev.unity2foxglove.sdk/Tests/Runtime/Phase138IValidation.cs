@@ -382,7 +382,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publisher.Contains("_suppressTransformFallbackAfterSourceFrames", StringComparison.Ordinal)
                   && publisher.Contains("MarkSourceDrivenPointCloud", StringComparison.Ordinal)
                   && publisher.Contains("ShouldSuppressTransformFallback()", StringComparison.Ordinal)
-                  && publisher.Contains("CreateFrameFromTransforms(unixNs)", StringComparison.Ordinal)
+                  && publisher.Contains("PointCloudTransformFrameBuilder.Build(", StringComparison.Ordinal)
                   && publisher.Contains("PointCloud transform fallback suppressed", StringComparison.Ordinal),
                 "138I-31: source-driven point clouds suppress sparse transform fallback frames that would overwrite LiDAR data");
         }

@@ -13,7 +13,6 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
-using UVector3 = UnityEngine.Vector3;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -439,7 +438,19 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            var frame = pendingFrame != null ? PrepareFrameForQoS(pendingFrame, unixNs) : PrepareFrameForQoS(CreateFrameFromTransforms(unixNs), unixNs);
+            var frame = pendingFrame != null
+                ? PrepareFrameForQoS(pendingFrame, unixNs)
+                : PrepareFrameForQoS(PointCloudTransformFrameBuilder.Build(
+                    unixNs,
+                    SanitizeFrameId(_frameId, "unity_world"),
+                    transform,
+                    _pointSources,
+                    _useChildrenWhenSourcesEmpty,
+                    _includeInactiveChildren,
+                    _includeSyntheticIntensity,
+                    _maxPoints,
+                    Manager != null ? Manager.ActiveCoordinateMode : CoordinateMode.LeftHand),
+                    unixNs);
             _warnedPendingDrop = false;
             if (frame == null || frame.GetPointCount() == 0) return;
 
@@ -962,47 +973,5 @@ namespace Unity.FoxgloveSDK.Components
             _warnedPointCloudBudget = true;
         }
 
-        private PointCloudFrame CreateFrameFromTransforms(ulong unixNs)
-        {
-            var frame = new PointCloudFrame
-            {
-                UnixNs = unixNs,
-                FrameId = SanitizeFrameId(_frameId, "unity_world")
-            };
-
-            var added = 0;
-            if (_pointSources != null && _pointSources.Length > 0)
-            {
-                foreach (var source in _pointSources)
-                    AddPoint(frame, source, ref added);
-            }
-            else if (_useChildrenWhenSourcesEmpty)
-            {
-                for (var i = 0; i < transform.childCount; i++)
-                {
-                    var child = transform.GetChild(i);
-                    if (!_includeInactiveChildren && !child.gameObject.activeInHierarchy)
-                        continue;
-                    AddPoint(frame, child, ref added);
-                }
-            }
-
-            return frame;
-        }
-
-        private void AddPoint(PointCloudFrame frame, Transform source, ref int added)
-        {
-            if (source == null || added >= Math.Max(1, _maxPoints)) return;
-
-            UVector3 pos = Manager != null && Manager.ActiveCoordinateMode == CoordinateMode.RightHand
-                ? CoordinateConverter.UnityToFoxglovePosition(source.position)
-                : source.position;
-
-            var point = new PointCloudPoint(pos.x, pos.y, pos.z);
-            if (_includeSyntheticIntensity)
-                point.Intensity = added;
-            frame.Points.Add(point);
-            added++;
-        }
     }
 }

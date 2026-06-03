@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
             PointCloudPublisherDelegatesPublishDiagnostics();
+            PointCloudPublisherDelegatesTransformFallbackBuilder();
             VirtualLidarDelegatesScanLayout();
             VirtualLidarDelegatesScanClock();
 
@@ -279,6 +280,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("private void RecordPointCloudPrepared", StringComparison.Ordinal)
                   && !pointcloud.Contains("private void LogPointCloudDiagnosticsIfReady", StringComparison.Ordinal),
                 "138Q-9B: FoxglovePointCloudPublisher delegates publish diagnostic counters");
+        }
+
+        private static void PointCloudPublisherDelegatesTransformFallbackBuilder()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var builder = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudTransformFrameBuilder.cs");
+
+            Check(builder.Contains("internal static class PointCloudTransformFrameBuilder", StringComparison.Ordinal)
+                  && builder.Contains("Build(", StringComparison.Ordinal)
+                  && builder.Contains("AddPoint(", StringComparison.Ordinal)
+                  && builder.Contains("CoordinateConverter.UnityToFoxglovePosition", StringComparison.Ordinal),
+                "138Q-12A: point-cloud transform fallback frame builder lives in a focused helper");
+            Check(pointcloud.Contains("PointCloudTransformFrameBuilder.Build(", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private PointCloudFrame CreateFrameFromTransforms", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private void AddPoint", StringComparison.Ordinal),
+                "138Q-12B: FoxglovePointCloudPublisher delegates transform fallback scan and point append");
         }
 
         private static void VirtualLidarDelegatesScanLayout()
