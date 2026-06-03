@@ -306,12 +306,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var publisherSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
-            Check(publisherSource.Contains("ICameraVideoEncoderSidecar _videoSidecar"),
+            var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
+            Check(sessionSource.Contains("ICameraVideoEncoderSidecar _sidecar"),
                 "82D-1: camera publisher stores codec-neutral sidecar");
-            Check(publisherSource.Contains("CameraOutputMode.H264MediaFoundationExperimental"),
+            Check(sessionSource.Contains("CameraOutputMode.H264MediaFoundationExperimental"),
                 "82D-2: camera publisher routes native H.264 mode");
-            Check(publisherSource.Contains("MediaFoundationH264EncoderSidecar")
-                  && publisherSource.Contains("CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options(")
+            Check(sessionSource.Contains("MediaFoundationH264EncoderSidecar")
+                  && sessionSource.Contains("CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options(")
                   && factorySource.Contains("MediaFoundationH264EncoderOptions"),
                 "82D-3: camera publisher starts the Media Foundation sidecar");
             Check(factorySource.Contains("CreateMediaFoundationH264Options"),
@@ -321,7 +322,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(publisherSource, "ShouldPreparePublishPayload()", "_captureCam.Render()",
                 "82D-6: demand preflight remains before camera render");
             var submitIndex = publisherSource.IndexOf("private void SubmitVideoFrame", StringComparison.Ordinal);
-            var trySubmitIndex = publisherSource.IndexOf("sidecar.TrySubmitFrame(frameBytes)", submitIndex, StringComparison.Ordinal);
+            var trySubmitIndex = publisherSource.IndexOf("_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs)", submitIndex, StringComparison.Ordinal);
             var drainIndex = publisherSource.IndexOf("DrainEncodedAccessUnits();", trySubmitIndex, StringComparison.Ordinal);
             Check(submitIndex >= 0 && trySubmitIndex > submitIndex && drainIndex > trySubmitIndex,
                 "82D-7: camera publisher drains encoded video immediately after sidecar submit");

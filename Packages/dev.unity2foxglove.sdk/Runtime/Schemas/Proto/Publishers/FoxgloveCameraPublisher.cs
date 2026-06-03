@@ -158,18 +158,10 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<ulong, long> _readbackRequestTicks = new Dictionary<ulong, long>();
 
         // Video sidecar state
-        private ICameraVideoEncoderSidecar _videoSidecar;
-        private CameraOutputMode _videoSidecarMode = CameraOutputMode.Jpeg;
-        private int _videoSidecarWidth;
-        private int _videoSidecarHeight;
+        private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private bool _warnedVideoEncoderUnavailable;
         private bool _warnedVideoDimensionMismatch;
         private string _lastLoggedStderr;
-        private bool _videoSidecarRestartPending;
-        private int _pendingVideoSidecarWidth;
-        private int _pendingVideoSidecarHeight;
-        private double _videoSidecarRestartDueSec;
-        private const double VideoSidecarRestartDebounceSeconds = 0.25d;
 
         // JPEG backpressure state
         private long _lastDropCount;
@@ -691,7 +683,7 @@ namespace Unity.FoxgloveSDK.Components
         private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var submitStart = Stopwatch.GetTimestamp();
-            var sidecar = _videoSidecar;
+            var sidecar = _videoSidecarSession.Sidecar;
             if (sidecar == null)
             {
                 _videoSubmitFailureCount++;
@@ -703,7 +695,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!sidecar.IsRunning)
             {
                 _videoSubmitFailureCount++;
-                LogVideoEncoderUnavailable(ActiveProfile, DescribeVideoEncoderFailure(sidecar, "Video encoder process exited."));
+                LogVideoEncoderUnavailable(ActiveProfile, _videoSidecarSession.DescribeFailure("Video encoder process exited."));
                 FinishVideoSubmitDiagnostic(submitStart);
                 return;
             }
@@ -718,7 +710,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var frameBytes = req.GetData<byte>().ToArray();
-            if (_videoSidecarMode == CameraOutputMode.H264OpenH264)
+            if (_videoSidecarSession.IsOpenH264Mode)
             {
                 var i420 = new byte[captureWidth * captureHeight * 3 / 2];
                 if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(
@@ -738,13 +730,11 @@ namespace Unity.FoxgloveSDK.Components
                 frameBytes = i420;
             }
 
-            var submitted = sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar
-                ? timestampedSidecar.TrySubmitFrame(frameBytes, renderUnixNs)
-                : sidecar.TrySubmitFrame(frameBytes);
+            var submitted = _videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs);
             if (!submitted)
             {
                 _videoSubmitFailureCount++;
-                LogVideoEncoderUnavailable(ActiveProfile, DescribeVideoEncoderFailure(sidecar, "Video encoder refused the frame."));
+                LogVideoEncoderUnavailable(ActiveProfile, _videoSidecarSession.DescribeFailure("Video encoder refused the frame."));
                 FinishVideoSubmitDiagnostic(submitStart);
                 return;
             }
@@ -778,9 +768,9 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (_videoSidecarWidth != captureWidth || _videoSidecarHeight != captureHeight)
+            if (_videoSidecarSession.Width != captureWidth || _videoSidecarSession.Height != captureHeight)
             {
-                error = $"dimensionMismatch=sidecar captured={captureWidth}x{captureHeight} sidecar={_videoSidecarWidth}x{_videoSidecarHeight}";
+                error = $"dimensionMismatch=sidecar captured={captureWidth}x{captureHeight} sidecar={_videoSidecarSession.Width}x{_videoSidecarSession.Height}";
                 return false;
             }
 
@@ -797,82 +787,14 @@ namespace Unity.FoxgloveSDK.Components
             if (!profile.IsVideo)
                 return false;
 
-            if (_videoSidecar != null && _videoSidecar.IsRunning && _videoSidecarMode == profile.Mode)
-                return true;
-
-            StopVideoSidecar();
-            _videoSidecarMode = profile.Mode;
-            var sidecarWidth = DesiredVideoWidth;
-            var sidecarHeight = DesiredVideoHeight;
-
-            var started = false;
-            switch (profile.Codec)
-            {
-                case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264Ffmpeg:
-                    var h264 = new FfmpegH264EncoderSidecar();
-                    _videoSidecar = h264;
-                    started = h264.Start(CameraVideoSidecarOptionsFactory.CreateH264Options(
-                        _ffmpegPath,
-                        sidecarWidth,
-                        sidecarHeight,
-                        ResolveEncoderFrameRate(),
-                        _videoBitrateKbps,
-                        _videoKeyframeInterval,
-                        _maxPendingReadbacks,
-                        _videoMaxOutputQueue));
-                    break;
-                case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264OpenH264:
-                    var openH264 = new OpenH264EncoderSidecar();
-                    _videoSidecar = openH264;
-                    started = openH264.Start(CameraVideoSidecarOptionsFactory.CreateOpenH264Options(
-                        _openH264HelperPath,
-                        _openH264DllPath,
-                        sidecarWidth,
-                        sidecarHeight,
-                        ResolveEncoderFrameRate(),
-                        _videoBitrateKbps,
-                        _videoKeyframeInterval,
-                        _openH264MaxInputQueue,
-                        _videoMaxOutputQueue));
-                    break;
-                case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264MediaFoundationExperimental:
-                    var nativeH264 = new MediaFoundationH264EncoderSidecar();
-                    _videoSidecar = nativeH264;
-                    started = nativeH264.Start(CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options(
-                        sidecarWidth,
-                        sidecarHeight,
-                        ResolveEncoderFrameRate(),
-                        _videoBitrateKbps,
-                        _videoKeyframeInterval,
-                        _maxPendingReadbacks,
-                        _videoMaxOutputQueue));
-                    break;
-                case CameraVideoCodec.H265:
-                    var h265 = new FfmpegH265EncoderSidecar();
-                    _videoSidecar = h265;
-                    started = h265.Start(CameraVideoSidecarOptionsFactory.CreateH265Options(
-                        _ffmpegPath,
-                        sidecarWidth,
-                        sidecarHeight,
-                        ResolveEncoderFrameRate(),
-                        _videoBitrateKbps,
-                        _videoKeyframeInterval,
-                        _maxPendingReadbacks,
-                        _videoMaxOutputQueue));
-                    break;
-            }
-
-            if (started)
+            if (_videoSidecarSession.EnsureStarted(profile, CreateVideoSidecarConfig(), DrainEncodedAccessUnits, out var error))
             {
                 _warnedVideoEncoderUnavailable = false;
                 _warnedVideoDimensionMismatch = false;
-                _videoSidecarWidth = sidecarWidth;
-                _videoSidecarHeight = sidecarHeight;
                 return true;
             }
 
-            LogVideoEncoderUnavailable(profile, _videoSidecar?.LastError ?? "Failed to start video encoder.");
-            StopVideoSidecar();
+            LogVideoEncoderUnavailable(profile, error);
             return false;
         }
 
@@ -880,31 +802,26 @@ namespace Unity.FoxgloveSDK.Components
 
         private int DesiredVideoHeight => Math.Max(1, _height);
 
+        private CameraVideoSidecarConfig CreateVideoSidecarConfig()
+            => new CameraVideoSidecarConfig(
+                _ffmpegPath,
+                _openH264HelperPath,
+                _openH264DllPath,
+                DesiredVideoWidth,
+                DesiredVideoHeight,
+                ResolveEncoderFrameRate(),
+                _videoBitrateKbps,
+                _videoKeyframeInterval,
+                _maxPendingReadbacks,
+                _openH264MaxInputQueue,
+                _videoMaxOutputQueue);
+
         private void DrainEncodedAccessUnits()
         {
             var drainStart = Stopwatch.GetTimestamp();
-            var sidecar = _videoSidecar;
-            if (sidecar == null)
+            if (!_videoSidecarSession.TryDrain(() => CurrentLogTimeNs, PublishVideoAccessUnit, LogEncoderStderrIfNeeded))
                 return;
 
-            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
-            var videoFormat = profile.Codec == CameraVideoCodec.H264
-                ? CameraCompressedVideoBuilder.H264Format
-                : profile.Codec == CameraVideoCodec.H265
-                    ? CameraCompressedVideoBuilder.H265Format
-                    : profile.VideoFormat;
-            if (sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar)
-            {
-                while (timestampedSidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
-                    PublishVideoAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat);
-            }
-            else
-            {
-                while (sidecar.TryDequeueAccessUnit(out var accessUnit))
-                    PublishVideoAccessUnit(accessUnit, CurrentLogTimeNs, videoFormat);
-            }
-
-            LogEncoderStderrIfNeeded(sidecar);
             _lastVideoDrainMs = ElapsedMs(drainStart);
             LogVideoDiagnosticsIfNeeded();
         }
@@ -927,22 +844,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private void StopVideoSidecar()
-        {
-            if (_videoSidecar == null)
-            {
-                _videoSidecarWidth = 0;
-                _videoSidecarHeight = 0;
-                return;
-            }
-
-            DrainEncodedAccessUnits();
-            _videoSidecar.Dispose();
-            DrainEncodedAccessUnits();
-            _videoSidecar = null;
-            _videoSidecarMode = CameraOutputMode.Jpeg;
-            _videoSidecarWidth = 0;
-            _videoSidecarHeight = 0;
-        }
+            => _videoSidecarSession.Stop(DrainEncodedAccessUnits);
 
         /// <summary>
         /// Keeps the running sidecar aligned with the locked mode and requested
@@ -950,52 +852,35 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private bool EnsureSidecarMatchesMode(CameraVideoOutputProfile profile)
         {
-            if (_videoSidecar == null)
-                return true;
-
-            if (!profile.IsVideo || _videoSidecarMode != profile.Mode)
+            var result = _videoSidecarSession.EnsureMatchesMode(
+                profile,
+                DesiredVideoWidth,
+                DesiredVideoHeight,
+                Time.unscaledTimeAsDouble,
+                DrainEncodedAccessUnits);
+            if (result.ResetEncoderWarning)
             {
-                StopVideoSidecar();
                 _warnedVideoEncoderUnavailable = false;
                 _lastLoggedStderr = null;
-                _videoSidecarRestartPending = false;
-                return true;
             }
 
-            var desiredWidth = DesiredVideoWidth;
-            var desiredHeight = DesiredVideoHeight;
-            if (_videoSidecarWidth == desiredWidth && _videoSidecarHeight == desiredHeight)
-            {
-                _videoSidecarRestartPending = false;
-                return true;
-            }
+            if (!string.IsNullOrEmpty(result.Diagnostic))
+                _lastVideoDiagnostic = result.Diagnostic;
 
-            var now = Time.unscaledTimeAsDouble;
-            if (!_videoSidecarRestartPending
-                || _pendingVideoSidecarWidth != desiredWidth
-                || _pendingVideoSidecarHeight != desiredHeight)
-            {
-                _videoSidecarRestartPending = true;
-                _pendingVideoSidecarWidth = desiredWidth;
-                _pendingVideoSidecarHeight = desiredHeight;
-                _videoSidecarRestartDueSec = now + VideoSidecarRestartDebounceSeconds;
-                _lastVideoDiagnostic = $"dimensionMismatch=sidecarRestartPending sidecar={_videoSidecarWidth}x{_videoSidecarHeight} desired={desiredWidth}x{desiredHeight}";
-            }
-
-            if (now < _videoSidecarRestartDueSec)
+            if (result.DroppedWhilePending)
             {
                 _videoDimensionMismatchDropCount++;
                 LogVideoDiagnosticsIfNeeded();
                 return false;
             }
 
-            StopVideoSidecar();
-            _videoSidecarRestartPending = false;
-            _warnedVideoEncoderUnavailable = false;
-            _lastLoggedStderr = null;
-            _videoSidecarRestartCount++;
-            LogVideoDiagnosticsIfNeeded();
-            return true;
+            if (result.Restarted)
+            {
+                _videoSidecarRestartCount++;
+                LogVideoDiagnosticsIfNeeded();
+            }
+
+            return result.AllowCapture;
         }
 
         private int ResolveEncoderFrameRate()
@@ -1298,10 +1183,10 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             _nextVideoDiagLogSec = now + Math.Max(0.1f, _cameraDiagnosticsIntervalSeconds);
-            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
+            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarSession.Mode);
             Debug.Log(
                 "[Foxglove][VideoDiag] " +
-                $"mode={profile.DisplayName} width={_videoSidecarWidth} height={_videoSidecarHeight} " +
+                $"mode={profile.DisplayName} width={_videoSidecarSession.Width} height={_videoSidecarSession.Height} " +
                 $"videoSubmitMs={_lastVideoSubmitMs:F2} videoDrainMs={_lastVideoDrainMs:F2} accessUnitBytes={_lastVideoAccessUnitBytes} " +
                 $"pendingReadbacks={_pendingRequests} framesSubmitted={_videoFramesSubmittedCount} accessUnitsPublished={_videoAccessUnitsPublishedCount} " +
                 $"dimensionMismatch={_videoDimensionMismatchDropCount} submitFailures={_videoSubmitFailureCount} sidecarRestarts={_videoSidecarRestartCount} " +
@@ -1320,10 +1205,7 @@ namespace Unity.FoxgloveSDK.Components
             _lastVideoAccessUnitBytes = 0;
             _lastVideoDiagnostic = "";
             _warnedVideoDimensionMismatch = false;
-            _videoSidecarRestartPending = false;
-            _pendingVideoSidecarWidth = 0;
-            _pendingVideoSidecarHeight = 0;
-            _videoSidecarRestartDueSec = 0;
+            _videoSidecarSession.ResetRestartState();
             ResetVideoDiagnosticCounters();
         }
 
@@ -1434,22 +1316,6 @@ namespace Unity.FoxgloveSDK.Components
                 $"Restart Play Mode to switch from {active} to {requested}.");
         }
 
-        private static string DescribeVideoEncoderFailure(ICameraVideoEncoderSidecar sidecar, string fallback)
-        {
-            var reason = string.IsNullOrWhiteSpace(sidecar?.LastError) ? fallback : sidecar.LastError;
-            var diagnostic = sidecar?.LastDiagnosticLine;
-            if (!string.IsNullOrWhiteSpace(diagnostic)
-                && (string.IsNullOrWhiteSpace(reason)
-                    || reason.IndexOf(diagnostic, StringComparison.OrdinalIgnoreCase) < 0))
-            {
-                reason = string.IsNullOrWhiteSpace(reason)
-                    ? diagnostic
-                    : reason + " Last diagnostic: " + diagnostic;
-            }
-
-            return string.IsNullOrWhiteSpace(reason) ? fallback : reason;
-        }
-
         private void LogEncoderStderrIfNeeded(ICameraVideoEncoderSidecar sidecar)
         {
             if (!_logEncoderStderr || sidecar == null)
@@ -1460,7 +1326,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             _lastLoggedStderr = line;
-            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarMode);
+            var profile = CameraVideoOutputProfile.ForMode(_videoSidecarSession.Mode);
             Debug.LogWarning("[Foxglove] " + profile.DisplayName + ": " + line);
         }
 

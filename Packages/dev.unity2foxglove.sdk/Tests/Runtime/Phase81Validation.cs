@@ -56,17 +56,18 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var factory = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
+            var session = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             Check(publisher.Contains("_openH264HelperPath") && publisher.Contains("_openH264DllPath"),
                 "81B-1: camera publisher serializes OpenH264 helper and DLL paths");
             Check(publisher.Contains("_openH264MaxInputQueue"),
                 "81B-2: camera publisher exposes an OpenH264 input queue limit");
-            Check(publisher.Contains("OpenH264EncoderSidecar")
-                  && publisher.Contains("CameraVideoSidecarOptionsFactory.CreateOpenH264Options(")
+            Check(session.Contains("OpenH264EncoderSidecar")
+                  && session.Contains("CameraVideoSidecarOptionsFactory.CreateOpenH264Options(")
                   && factory.Contains("OpenH264EncoderOptions"),
                 "81B-3: camera publisher routes OpenH264 mode to OpenH264 sidecar");
             Check(publisher.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420"),
                 "81B-4: camera publisher converts RGB24 readback data to I420 for OpenH264");
-            Check(publisher.Contains("CameraCompressedVideoBuilder.H264Format"),
+            Check(session.Contains("CameraCompressedVideoBuilder.H264Format"),
                 "81B-5: OpenH264 mode publishes format=h264");
 
             var iface = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/ICameraVideoEncoderSidecar.cs");

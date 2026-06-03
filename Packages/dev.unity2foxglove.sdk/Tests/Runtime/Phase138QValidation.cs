@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
             ManagerDelegatesSharedSensorClockState();
             VirtualLidarDelegatesScanDiagnostics();
             CameraPublisherDelegatesVideoSidecarOptions();
+            CameraPublisherDelegatesVideoSidecarLifecycle();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
 
             Console.WriteLine($"Phase 138Q: {_passed} checks passed.");
@@ -70,6 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
+            var session = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
 
             Check(helper.Contains("internal static class CameraVideoSidecarOptionsFactory", StringComparison.Ordinal)
                   && helper.Contains("CreateH264Options", StringComparison.Ordinal)
@@ -77,15 +79,39 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("CreateOpenH264Options", StringComparison.Ordinal)
                   && helper.Contains("CreateMediaFoundationH264Options", StringComparison.Ordinal),
                 "138Q-3A: camera video sidecar options live in a focused factory");
-            Check(camera.Contains("CameraVideoSidecarOptionsFactory.CreateH264Options", StringComparison.Ordinal)
-                  && camera.Contains("CameraVideoSidecarOptionsFactory.CreateH265Options", StringComparison.Ordinal)
-                  && camera.Contains("CameraVideoSidecarOptionsFactory.CreateOpenH264Options", StringComparison.Ordinal)
-                  && camera.Contains("CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options", StringComparison.Ordinal)
+            Check(session.Contains("CameraVideoSidecarOptionsFactory.CreateH264Options", StringComparison.Ordinal)
+                  && session.Contains("CameraVideoSidecarOptionsFactory.CreateH265Options", StringComparison.Ordinal)
+                  && session.Contains("CameraVideoSidecarOptionsFactory.CreateOpenH264Options", StringComparison.Ordinal)
+                  && session.Contains("CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options", StringComparison.Ordinal)
+                  && !camera.Contains("CameraVideoSidecarOptionsFactory.Create", StringComparison.Ordinal)
                   && !camera.Contains("private FfmpegH264EncoderOptions CreateH264Options", StringComparison.Ordinal)
                   && !camera.Contains("private FfmpegH265EncoderOptions CreateH265Options", StringComparison.Ordinal)
                   && !camera.Contains("private OpenH264EncoderOptions CreateOpenH264Options", StringComparison.Ordinal)
                   && !camera.Contains("private MediaFoundationH264EncoderOptions CreateMediaFoundationH264Options", StringComparison.Ordinal),
-                "138Q-3B: FoxgloveCameraPublisher delegates video sidecar option construction");
+                "138Q-3B: camera video sidecar session delegates option construction");
+        }
+
+        private static void CameraPublisherDelegatesVideoSidecarLifecycle()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var session = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
+
+            Check(session.Contains("internal sealed class CameraVideoSidecarSession", StringComparison.Ordinal)
+                  && session.Contains("EnsureStarted(", StringComparison.Ordinal)
+                  && session.Contains("EnsureMatchesMode(", StringComparison.Ordinal)
+                  && session.Contains("Stop(", StringComparison.Ordinal)
+                  && session.Contains("TryDrain(", StringComparison.Ordinal),
+                "138Q-3C: camera video sidecar lifecycle lives in a focused session helper");
+            Check(camera.Contains("CameraVideoSidecarSession _videoSidecarSession", StringComparison.Ordinal)
+                  && camera.Contains("_videoSidecarSession.EnsureStarted(", StringComparison.Ordinal)
+                  && camera.Contains("_videoSidecarSession.EnsureMatchesMode(", StringComparison.Ordinal)
+                  && camera.Contains("_videoSidecarSession.Stop(", StringComparison.Ordinal)
+                  && camera.Contains("_videoSidecarSession.TryDrain(", StringComparison.Ordinal)
+                  && !camera.Contains("ICameraVideoEncoderSidecar _videoSidecar", StringComparison.Ordinal)
+                  && !camera.Contains("CameraOutputMode _videoSidecarMode", StringComparison.Ordinal)
+                  && !camera.Contains("_videoSidecarWidth", StringComparison.Ordinal)
+                  && !camera.Contains("_videoSidecarHeight", StringComparison.Ordinal),
+                "138Q-3D: FoxgloveCameraPublisher delegates video sidecar lifecycle state");
         }
 
         private static void PointCloudPublisherDelegatesWorkerPayloadTypes()

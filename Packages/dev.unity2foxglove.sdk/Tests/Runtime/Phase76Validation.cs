@@ -187,14 +187,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
+            var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             Check(!string.IsNullOrEmpty(source), "76D-1: FoxgloveCameraPublisher source exists");
-            Check(source.Contains("CameraVideoCodec.H265"), "76D-2: camera routes H.265 video codec");
-            Check(source.Contains("FfmpegH265EncoderSidecar"), "76D-3: camera integrates H.265 FFmpeg sidecar");
-            Check(source.Contains("CameraVideoSidecarOptionsFactory.CreateH265Options(")
+            Check(sessionSource.Contains("CameraVideoCodec.H265"), "76D-2: camera routes H.265 video codec");
+            Check(sessionSource.Contains("FfmpegH265EncoderSidecar"), "76D-3: camera integrates H.265 FFmpeg sidecar");
+            Check(sessionSource.Contains("CameraVideoSidecarOptionsFactory.CreateH265Options(")
                   && factorySource.Contains("FfmpegH265EncoderOptions"),
                 "76D-4: camera creates H.265 FFmpeg options through factory");
-            Check(source.Contains("CameraCompressedVideoBuilder.H265Format"), "76D-5: camera publishes format=h265");
-            Check(source.Contains("profile.VideoFormat"), "76D-6: camera serializes video using resolved profile format");
+            Check(sessionSource.Contains("CameraCompressedVideoBuilder.H265Format"), "76D-5: camera publishes format=h265");
+            Check(sessionSource.Contains("profile.VideoFormat"), "76D-6: camera serializes video using resolved profile format");
 
             var lateUpdate = Slice(source, "private void LateUpdate()", "private void OnReadbackComplete");
             CheckOrdered(lateUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "76D-7: demand preflight happens after cadence");
@@ -202,7 +203,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(lateUpdate, "ShouldPreparePublishPayload()", "_captureCam.Render()", "76D-9: demand preflight happens before render");
             CheckOrdered(lateUpdate, "ShouldPreparePublishPayload()", "AsyncGPUReadback.Request", "76D-10: demand preflight happens before GPU readback");
 
-            var sidecarStart = Slice(source, "private bool EnsureVideoSidecarStarted", "private void DrainEncodedAccessUnits");
+            var sidecarStart = Slice(sessionSource, "public bool EnsureStarted", "public bool TrySubmitFrame");
             Check(!sidecarStart.Contains("EncodeToJPG") && !sidecarStart.Contains("CameraCompressedImageBuilder"),
                 "76D-11: H.265 failure path does not fall back to JPEG");
         }

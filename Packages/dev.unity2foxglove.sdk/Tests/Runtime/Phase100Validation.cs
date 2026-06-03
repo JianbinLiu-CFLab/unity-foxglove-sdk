@@ -98,11 +98,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyVideoTailDrainOnStop()
         {
             var camera = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var cameraSession = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             var legacy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedVideoCameraPublisher.cs");
 
-            Check(MethodBodyContainsBefore(camera, "StopVideoSidecar", "DrainEncodedAccessUnits();", ".Dispose()"),
+            Check(camera.Contains("_videoSidecarSession.Stop(DrainEncodedAccessUnits)", StringComparison.Ordinal)
+                  && MethodBodyContainsBefore(cameraSession, "Stop", "drain?.Invoke();", ".Dispose()"),
                 "100D-1: camera video sidecar drains queued access units before dispose");
-            Check(CountInMethod(camera, "StopVideoSidecar", "DrainEncodedAccessUnits();") >= 2,
+            Check(CountInMethod(cameraSession, "Stop", "drain?.Invoke();") >= 2,
                 "100D-2: camera video sidecar drains again after dispose for tail packets");
             Check(MethodBodyContainsBefore(legacy, "StopSidecar", "DrainEncodedAccessUnits();", ".Dispose()"),
                 "100D-3: legacy compressed-video sidecar drains queued access units before dispose");
