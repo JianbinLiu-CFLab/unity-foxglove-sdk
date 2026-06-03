@@ -225,12 +225,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "92D-2: camera ROS2 support is limited to JPEG mode");
 
             var pointCloud = ReadPublisher("FoxglovePointCloudPublisher.cs");
+            var pointCloudWorkers = ReadPublisher("PointCloudWorkerEncoders.cs");
             Check(pointCloud.Contains("Ros2PublisherSchemaNames.PointCloud")
                   && pointCloud.Contains("Ros2PublisherSchemaNames.CompressedPointCloud")
-                  && pointCloud.Contains("Ros2CdrPointCloudBuilder.Serialize")
-                  && pointCloud.Contains("Ros2CdrCompressedPointCloudBuilder.Serialize")
-                  && pointCloud.Contains("DracoPointCloudNativeEncoder.TryEncode")
-                  && !pointCloud.Contains("new byte[] { 1, 2, 3, 4 }"),
+                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest(request)")
+                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest(request)")
+                  && pointCloudWorkers.Contains("Ros2CdrSensorPointCloud2Builder.Serialize")
+                  && pointCloudWorkers.Contains("Ros2CdrCompressedPointCloudBuilder.Serialize")
+                  && pointCloudWorkers.Contains("DracoPointCloudNativeEncoder.TryEncode")
+                  && !pointCloud.Contains("new byte[] { 1, 2, 3, 4 }")
+                  && !pointCloudWorkers.Contains("new byte[] { 1, 2, 3, 4 }"),
                 "92D-3: point-cloud raw and Draco modes map to distinct real ROS2 payload paths");
 
             var spike = ReadPublisher("FoxgloveCompressedPointCloudPublisher.cs");

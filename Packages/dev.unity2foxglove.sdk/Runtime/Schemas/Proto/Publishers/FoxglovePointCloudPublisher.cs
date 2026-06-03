@@ -786,7 +786,7 @@ namespace Unity.FoxgloveSDK.Components
                     if (request.Generation != workerGeneration)
                         continue;
 
-                    var result = EncodeDracoRequest(request);
+                    var result = PointCloudWorkerEncoders.EncodeDracoRequest(request);
                     lock (_dracoEncodeWorker.Gate)
                     {
                         if (_dracoEncodeWorker.ShouldStopLocked(workerGeneration)
@@ -841,7 +841,7 @@ namespace Unity.FoxgloveSDK.Components
                     if (request.Generation != workerGeneration)
                         continue;
 
-                    var result = EncodePointCloud2NativeRequest(request);
+                    var result = PointCloudWorkerEncoders.EncodePointCloud2NativeRequest(request);
                     lock (_pointCloud2NativeWorker.Gate)
                     {
                         if (_pointCloud2NativeWorker.ShouldStopLocked(workerGeneration)
@@ -866,176 +866,6 @@ namespace Unity.FoxgloveSDK.Components
 
                 if (signalIdle)
                     _pointCloud2NativeWorker.Idle.Set();
-            }
-        }
-
-        private static DracoEncodeResult EncodeDracoRequest(DracoEncodeRequest request)
-        {
-            var encodeStart = Stopwatch.GetTimestamp();
-            var success = false;
-            var error = "";
-            byte[] dracoPayload = null;
-            var metadataFrame = request.Frame;
-            var validCount = 0;
-
-            if (request.HasVirtualLidarSnapshot)
-            {
-                success = DracoPointCloudNativeEncoder.TryEncodeVirtualLidarPoints(
-                    request.LidarPoints,
-                    request.LidarPointCount,
-                    out dracoPayload,
-                    out error,
-                    out validCount);
-                metadataFrame = new PointCloudFrame
-                {
-                    UnixNs = request.UnixNs,
-                    FrameId = request.FrameId,
-                    ValidCount = validCount,
-                    EmitAbsoluteTimeNs = request.EmitAbsoluteTimeNs
-                };
-            }
-            else
-            {
-                success = DracoPointCloudNativeEncoder.TryEncode(request.Frame, out dracoPayload, out error);
-            }
-
-            byte[] webSocketPayload = null;
-            byte[] bridgePayload = null;
-            if (success)
-            {
-                try
-                {
-                    BuildDracoPublishPayloads(
-                        request,
-                        metadataFrame,
-                        dracoPayload,
-                        out webSocketPayload,
-                        out bridgePayload);
-                }
-                catch (Exception ex)
-                {
-                    success = false;
-                    error = "Unable to serialize compressed point-cloud payload off thread: " + ex.Message;
-                }
-            }
-
-            return new DracoEncodeResult(
-                request,
-                metadataFrame,
-                success,
-                webSocketPayload,
-                bridgePayload,
-                error,
-                (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
-        }
-
-        private static PointCloud2NativeResult EncodePointCloud2NativeRequest(PointCloud2NativeRequest request)
-        {
-            var encodeStart = Stopwatch.GetTimestamp();
-            var success = false;
-            var error = "";
-            byte[] webSocketPayload = null;
-            byte[] bridgePayload = null;
-            PointCloud2NativeFrame nativeFrame = null;
-            var validCount = 0;
-            var payloadBytes = 0;
-
-            try
-            {
-                var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
-                    request.LidarPoints,
-                    request.LidarPointCount,
-                    request.EmitAbsoluteTimeNs);
-                validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
-                nativeFrame = BuildPointCloud2NativeFrame(request, packed, validCount);
-
-                byte[] ros2Payload = null;
-                if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-                {
-                    ros2Payload = BuildPointCloud2NativePayload(nativeFrame);
-                    webSocketPayload = ros2Payload;
-                }
-
-                if (request.PublishBridge)
-                {
-                    ros2Payload ??= BuildPointCloud2NativePayload(nativeFrame);
-                    bridgePayload = ros2Payload;
-                }
-
-                payloadBytes = ros2Payload?.Length ?? nativeFrame.Data.Length;
-                success = true;
-            }
-            catch (Exception ex)
-            {
-                error = "Unable to serialize native PointCloud2 payload off thread: " + ex.Message;
-            }
-
-            return new PointCloud2NativeResult(
-                request,
-                success,
-                webSocketPayload,
-                bridgePayload,
-                nativeFrame,
-                error,
-                validCount,
-                payloadBytes,
-                (Stopwatch.GetTimestamp() - encodeStart) * 1000d / Stopwatch.Frequency);
-        }
-
-        private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
-            PointCloud2NativeRequest request,
-            PointCloudPackedData packed,
-            int validCount)
-        {
-            return new PointCloud2NativeFrame(
-                request.UnixNs,
-                request.FrameId,
-                height: 1U,
-                width: checked((uint)validCount),
-                fields: packed.Fields,
-                pointStep: packed.PointStride,
-                data: packed.Data,
-                isDense: true);
-        }
-
-        private static byte[] BuildPointCloud2NativePayload(PointCloud2NativeFrame frame)
-        {
-            return Ros2CdrSensorPointCloud2Builder.Serialize(
-                frame.UnixNs,
-                frame.FrameId,
-                frame.Height,
-                frame.Width,
-                frame.Fields,
-                frame.PointStep,
-                frame.Data,
-                frame.IsDense);
-        }
-
-        private static void BuildDracoPublishPayloads(
-            DracoEncodeRequest request,
-            PointCloudFrame frame,
-            byte[] dracoPayload,
-            out byte[] webSocketPayload,
-            out byte[] bridgePayload)
-        {
-            webSocketPayload = null;
-            bridgePayload = null;
-            byte[] ros2Payload = null;
-
-            if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
-                webSocketPayload = ros2Payload;
-            }
-            else if (request.PublishWebSocket)
-            {
-                webSocketPayload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
-            }
-
-            if (request.PublishBridge)
-            {
-                ros2Payload ??= Ros2CdrCompressedPointCloudBuilder.Serialize(frame, dracoPayload);
-                bridgePayload = ros2Payload;
             }
         }
 

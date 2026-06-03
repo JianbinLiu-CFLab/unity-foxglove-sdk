@@ -27,7 +27,10 @@ namespace Unity.FoxgloveSDK.Tests
             VirtualLidarDelegatesScanDiagnostics();
             CameraPublisherDelegatesVideoSidecarOptions();
             CameraPublisherDelegatesVideoSidecarLifecycle();
+            CameraPublisherDelegatesJpegWorkerPayloads();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
+            PointCloudPublisherDelegatesWorkerEncoders();
+            VirtualLidarDelegatesScanLayout();
 
             Console.WriteLine($"Phase 138Q: {_passed} checks passed.");
         }
@@ -131,6 +134,59 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("private sealed class PointCloud2NativeRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class PointCloud2NativeResult", StringComparison.Ordinal),
                 "138Q-4B: FoxglovePointCloudPublisher uses external worker payload records");
+        }
+
+        private static void CameraPublisherDelegatesJpegWorkerPayloads()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
+
+            Check(helper.Contains("internal sealed class JpegEncodeRequest", StringComparison.Ordinal)
+                  && helper.Contains("internal sealed class JpegEncodeResult", StringComparison.Ordinal)
+                  && helper.Contains("internal static class CameraJpegWorkerEncoder", StringComparison.Ordinal)
+                  && helper.Contains("EncodeJpegRequest(", StringComparison.Ordinal),
+                "138Q-5A: camera JPEG worker payload and encoder logic live outside the publisher");
+            Check(camera.Contains("DropOldestBoundedQueue<JpegEncodeRequest>", StringComparison.Ordinal)
+                  && camera.Contains("CameraJpegWorkerEncoder.EncodeJpegRequest(request)", StringComparison.Ordinal)
+                  && !camera.Contains("private sealed class JpegEncodeRequest", StringComparison.Ordinal)
+                  && !camera.Contains("private sealed class JpegEncodeResult", StringComparison.Ordinal)
+                  && !camera.Contains("private static JpegEncodeResult EncodeJpegRequest", StringComparison.Ordinal),
+                "138Q-5B: FoxgloveCameraPublisher delegates JPEG worker payload and encode details");
+        }
+
+        private static void PointCloudPublisherDelegatesWorkerEncoders()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+
+            Check(helper.Contains("internal static class PointCloudWorkerEncoders", StringComparison.Ordinal)
+                  && helper.Contains("EncodeDracoRequest(", StringComparison.Ordinal)
+                  && helper.Contains("EncodePointCloud2NativeRequest(", StringComparison.Ordinal)
+                  && helper.Contains("BuildPointCloud2NativePayload(", StringComparison.Ordinal),
+                "138Q-6A: point-cloud worker encode/build logic lives outside the publisher");
+            Check(pointcloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest(request)", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest(request)", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private static DracoEncodeResult EncodeDracoRequest", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private static PointCloud2NativeResult EncodePointCloud2NativeRequest", StringComparison.Ordinal)
+                  && !pointcloud.Contains("private static byte[] BuildPointCloud2NativePayload", StringComparison.Ordinal),
+                "138Q-6B: FoxglovePointCloudPublisher delegates worker encode/build details");
+        }
+
+        private static void VirtualLidarDelegatesScanLayout()
+        {
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanLayout.cs");
+
+            Check(helper.Contains("internal readonly struct VirtualLidarScanLayout", StringComparison.Ordinal)
+                  && helper.Contains("Build(", StringComparison.Ordinal)
+                  && helper.Contains("ColumnRays", StringComparison.Ordinal)
+                  && helper.Contains("MaxRaysPerColumn", StringComparison.Ordinal),
+                "138Q-7A: virtual LiDAR scan layout calculation lives in a focused helper");
+            Check(lidar.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal)
+                  && lidar.Contains("layout.ColumnRays", StringComparison.Ordinal)
+                  && !lidar.Contains("var columnCounts = new int[_scanColumnCount]", StringComparison.Ordinal)
+                  && !lidar.Contains("Bucket ray indices by column once", StringComparison.Ordinal),
+                "138Q-7B: VirtualLidar delegates scan column bucketing");
         }
 
         private static string Read(string relativePath)

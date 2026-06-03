@@ -327,15 +327,15 @@ namespace Unity.FoxgloveSDK.Components
 
             DisposeScanBuffers();
 
-            _rawRayCount = Math.Max(1, _scanPattern.RayCount);
-            var budget = _maxRaysPerScan <= 0 ? _rawRayCount : Math.Min(_rawRayCount, _maxRaysPerScan);
-            budget = Math.Max(1, budget);
-            _rayStride = Math.Max(1, (_rawRayCount + budget - 1) / budget);          // ceil
-            _effectiveRayCount = (_rawRayCount + _rayStride - 1) / _rayStride;        // ceil
-
-            _spinEffectiveColumns = _scanPattern is Sensors.Lidar.SpinningScanPattern spin && spin.Rings > 0
-                ? spin.RayCount / spin.Rings
-                : 0;
+            var layout = VirtualLidarScanLayout.Build(_scanPattern, _maxRaysPerScan);
+            _rawRayCount = layout.RawRayCount;
+            _rayStride = layout.RayStride;
+            _effectiveRayCount = layout.EffectiveRayCount;
+            _spinEffectiveColumns = layout.SpinEffectiveColumns;
+            _scanColumnCount = layout.ScanColumnCount;
+            _rayColumns = layout.RayColumns;
+            _columnRays = layout.ColumnRays;
+            _maxRaysPerColumn = layout.MaxRaysPerColumn;
 
             _commands = new NativeArray<RaycastCommand>(_effectiveRayCount, Allocator.Persistent);
             _results = new NativeArray<RaycastHit>(_effectiveRayCount, Allocator.Persistent);
@@ -344,46 +344,6 @@ namespace Unity.FoxgloveSDK.Components
             _pointData = new NativeArray<VirtualLidarPointData>(_effectiveRayCount, Allocator.Persistent);
             _activeScanPointSnapshot = new VirtualLidarPointData[_effectiveRayCount];
             _activeScanPointSnapshotCount = 0;
-            _rayColumns = new int[_effectiveRayCount];
-            _scanColumnCount = 0;
-
-            var rawColumns = _spinEffectiveColumns > 0 ? _spinEffectiveColumns : Math.Max(1, _rawRayCount);
-            for (var k = 0; k < _effectiveRayCount; k++)
-            {
-                var index = k * _rayStride;
-                if (index >= _rawRayCount)
-                    index = _rawRayCount - 1;
-
-                var column = index % rawColumns;
-                if (column < 0 || column >= rawColumns)
-                    column = 0;
-
-                _rayColumns[k] = column;
-                if (column >= _scanColumnCount)
-                    _scanColumnCount = column + 1;
-            }
-
-            if (_scanColumnCount <= 0)
-                _scanColumnCount = Math.Max(1, rawColumns);
-
-            // Bucket ray indices by column once (CSR-style jagged array) for O(1) column gather.
-            var columnCounts = new int[_scanColumnCount];
-            for (var k = 0; k < _effectiveRayCount; k++)
-                columnCounts[_rayColumns[k]]++;
-            _columnRays = new int[_scanColumnCount][];
-            _maxRaysPerColumn = 1;
-            for (var c = 0; c < _scanColumnCount; c++)
-            {
-                _columnRays[c] = new int[columnCounts[c]];
-                if (columnCounts[c] > _maxRaysPerColumn)
-                    _maxRaysPerColumn = columnCounts[c];
-            }
-            var columnFill = new int[_scanColumnCount];
-            for (var k = 0; k < _effectiveRayCount; k++)
-            {
-                var c = _rayColumns[k];
-                _columnRays[c][columnFill[c]++] = k;
-            }
 
             _pendingScanCrossings = new int[Math.Max(1, _scanColumnCount)];
         }

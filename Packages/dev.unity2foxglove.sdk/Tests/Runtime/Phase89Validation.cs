@@ -89,9 +89,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("PublishDracoFrame(frame, unixNs)")
                   && source.Contains("PublishRawFrame(frame, unixNs)"),
                 "89B-4: PublishPreparedFrame branches raw versus Draco inside the unified publisher");
-            Check(source.Contains("DracoPointCloudNativeEncoder")
-                  && source.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
-                  && source.Contains(".TryEncode(")
+            var worker = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            Check(source.Contains("PointCloudWorkerEncoders.EncodeDracoRequest(request)")
+                  && worker.Contains("DracoPointCloudNativeEncoder")
+                  && worker.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
+                  && worker.Contains(".TryEncode(")
                   && source.Contains("PublishProto("),
                 "89B-5: Draco mode encodes through bundled native DLL and publishes CompressedPointCloud protobuf");
             Check(source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
