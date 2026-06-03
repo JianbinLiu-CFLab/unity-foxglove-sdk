@@ -446,6 +446,11 @@ namespace Unity.FoxgloveSDK.Components
             // Build one batch for all columns this tick (cap at one revolution).
             _scanCrossings.Clear();
             var batchCount = 0;
+            var commands = _scanBuffers.Commands;
+            var results = _scanBuffers.Results;
+            var rayTimeOffsets = _scanBuffers.RayTimeOffsets;
+            var rayRings = _scanBuffers.RayRings;
+            var pointData = _scanBuffers.PointData;
             for (var c = 0; c < columnsToEmit && batchCount < _scanBuffers.EffectiveRayCount; c++)
             {
                 var rays = _scanBuffers.ColumnRays[_scanColumnCursor];
@@ -457,16 +462,16 @@ namespace Unity.FoxgloveSDK.Components
 
                     if (!_scanPattern.TryGetRay(index, _frameCounter, out var localDir, out var timeOffset))
                     {
-                        _scanBuffers.Commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                        _scanBuffers.RayTimeOffsets[batchCount] = 0f;
-                        _scanBuffers.RayRings[batchCount] = 0;
+                        commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                        rayTimeOffsets[batchCount] = 0f;
+                        rayRings[batchCount] = 0;
                     }
                     else
                     {
                         var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
-                        _scanBuffers.Commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
-                        _scanBuffers.RayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz);
-                        _scanBuffers.RayRings[batchCount] = _scanBuffers.SpinEffectiveColumns > 0 ? (ushort)(index / _scanBuffers.SpinEffectiveColumns) : (ushort)0;
+                        commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, _maxRangeMeters);
+                        rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, _scanPattern.ScanRateHz);
+                        rayRings[batchCount] = _scanBuffers.SpinEffectiveColumns > 0 ? (ushort)(index / _scanBuffers.SpinEffectiveColumns) : (ushort)0;
                     }
                     batchCount++;
                 }
@@ -490,21 +495,21 @@ namespace Unity.FoxgloveSDK.Components
             _pendingProfileHash = _scanBuffers.ComputeProfileHash();
             _pendingScanId = ++_nextPendingScanId;
             var raycastHandle = RaycastCommand.ScheduleBatch(
-                _scanBuffers.Commands.GetSubArray(0, batchCount),
-                _scanBuffers.Results.GetSubArray(0, batchCount),
+                commands.GetSubArray(0, batchCount),
+                results.GetSubArray(0, batchCount),
                 64);
             var minRange = (float)_scanPattern.MinRangeMeters;
             var buildJob = new VirtualLidarBuildPointsJob
             {
-                Hits = _scanBuffers.Results,
-                RayTimeOffsets = _scanBuffers.RayTimeOffsets,
-                RayRings = _scanBuffers.RayRings,
+                Hits = results,
+                RayTimeOffsets = rayTimeOffsets,
+                RayRings = rayRings,
                 WorldToLocal = _activeScanWorldToLocal,
                 MinRange = minRange,
                 MaxRange = _maxRangeMeters,
                 SyntheticIntensity = _syntheticIntensity,
                 SyntheticReflectivity = _syntheticReflectivity,
-                Points = _scanBuffers.PointData
+                Points = pointData
             };
             _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
             _pendingScanState = PendingScanState.Scheduled;

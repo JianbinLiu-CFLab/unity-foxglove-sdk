@@ -6,6 +6,7 @@
 
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
 
