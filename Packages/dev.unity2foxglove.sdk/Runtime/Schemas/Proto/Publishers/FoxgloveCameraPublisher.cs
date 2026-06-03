@@ -159,8 +159,22 @@ namespace Unity.FoxgloveSDK.Components
             ApplySensorProfileDefaults();
             if (string.IsNullOrEmpty(_topic))
                 _topic = ActiveProfile.DefaultTopic;
-            _jpegPublishPipeline = new CameraJpegPublishPipeline(() => _captureGeneration, _diagnostics);
-            _videoPublishPipeline = new CameraVideoPublishPipeline(_diagnostics, Debug.LogWarning);
+            EnsureJpegPublishPipeline();
+            EnsureVideoPublishPipeline();
+        }
+
+        private CameraJpegPublishPipeline EnsureJpegPublishPipeline()
+        {
+            if (_jpegPublishPipeline == null)
+                _jpegPublishPipeline = new CameraJpegPublishPipeline(() => _captureGeneration, _diagnostics);
+            return _jpegPublishPipeline;
+        }
+
+        private CameraVideoPublishPipeline EnsureVideoPublishPipeline()
+        {
+            if (_videoPublishPipeline == null)
+                _videoPublishPipeline = new CameraVideoPublishPipeline(_diagnostics, Debug.LogWarning);
+            return _videoPublishPipeline;
         }
 
         /// <summary>
@@ -323,7 +337,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private bool AllowJpegCaptureByFrameBudget()
         {
-            return _jpegPublishPipeline != null && _jpegPublishPipeline.AllowCaptureByFrameBudget(
+            EnsureJpegPublishPipeline();
+            return _jpegPublishPipeline.AllowCaptureByFrameBudget(
                 _useAsyncJpeg,
                 _pendingRequests,
                 Math.Max(1, _maxPendingReadbacks),
@@ -351,9 +366,7 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEffectiveEncoding webSocketEncoding,
             double readbackLatencyMs)
         {
-            if (_jpegPublishPipeline == null)
-                return;
-
+            EnsureJpegPublishPipeline();
             var copyStart = Stopwatch.GetTimestamp();
             var frameBytes = req.GetData<byte>().ToArray();
             _jpegPublishPipeline.TryQueueFrame(
@@ -380,9 +393,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void DrainCompletedJpegFrames()
         {
-            if (_jpegPublishPipeline == null)
-                return;
-
+            EnsureJpegPublishPipeline();
             var drained = _jpegPublishPipeline.DrainCompleted(
                 _maxCompletedJpegPublishesPerFrame,
                 PublishCompletedJpegFrame,
@@ -461,8 +472,7 @@ namespace Unity.FoxgloveSDK.Components
                 _backpressureGate.ResetSkipLogCount();
             }
 
-            if (_jpegPublishPipeline != null)
-                _jpegPublishPipeline.ResetWorkerFailure();
+            EnsureJpegPublishPipeline().ResetWorkerFailure();
         }
 
         /// <summary>
@@ -572,6 +582,7 @@ namespace Unity.FoxgloveSDK.Components
         private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var readbackData = req.GetData<byte>();
+            EnsureVideoPublishPipeline();
             var result = _videoPublishPipeline.SubmitVideoFrame(
                 () => readbackData.ToArray(),
                 readbackData.Length,
@@ -610,6 +621,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!profile.IsVideo)
                 return false;
 
+            EnsureVideoPublishPipeline();
             if (_videoPublishPipeline.EnsureVideoSidecarStarted(
                 profile,
                 CameraVideoSidecarConfigFactory.Create(
@@ -641,6 +653,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainEncodedAccessUnits()
         {
+            EnsureVideoPublishPipeline();
             if (!_videoPublishPipeline.TryDrainEncodedAccessUnits(
                 () => CurrentLogTimeNs,
                 PublishVideoAccessUnit,
@@ -671,7 +684,10 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private void StopVideoSidecar()
-            => _videoPublishPipeline.StopVideoSidecar(DrainEncodedAccessUnits);
+        {
+            EnsureVideoPublishPipeline();
+            _videoPublishPipeline.StopVideoSidecar(DrainEncodedAccessUnits);
+        }
 
         /// <summary>
         /// Keeps the running sidecar aligned with the locked mode and requested
@@ -679,6 +695,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private bool EnsureSidecarMatchesMode(CameraVideoOutputProfile profile)
         {
+            EnsureVideoPublishPipeline();
             var result = _videoPublishPipeline.EnsureSidecarMatchesMode(
                 profile,
                 DesiredVideoWidth,
@@ -734,8 +751,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private bool EnsureJpegWorkerStarted()
         {
-            return _jpegPublishPipeline != null
-                && _jpegPublishPipeline.EnsureWorkerStarted(reason =>
+            EnsureJpegPublishPipeline();
+            return _jpegPublishPipeline.EnsureWorkerStarted(reason =>
                 {
                     if (!string.IsNullOrEmpty(reason))
                         LogJpegWorkerFailure(reason);
@@ -765,7 +782,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ResetJpegPipelineState()
         {
-            _jpegPublishPipeline?.ResetState();
+            EnsureJpegPublishPipeline().ResetState();
             _lastPublishedCaptureUnixNs = 0;
             _diagnostics.ResetCameraState();
         }
@@ -776,17 +793,20 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void RememberReadbackStart(ulong unixNs, long ticks)
         {
-            _jpegPublishPipeline?.RememberReadbackStart(unixNs, ticks);
+            EnsureJpegPublishPipeline();
+            _jpegPublishPipeline.RememberReadbackStart(unixNs, ticks);
         }
 
         private double TakeReadbackLatencyMs(ulong unixNs)
         {
-            return _jpegPublishPipeline != null ? _jpegPublishPipeline.TakeReadbackLatencyMs(unixNs) : double.PositiveInfinity;
+            EnsureJpegPublishPipeline();
+            return _jpegPublishPipeline.TakeReadbackLatencyMs(unixNs);
         }
 
         private void LogJpegWorkerFailure(string reason)
         {
-            _jpegPublishPipeline?.TryLogWorkerFailure(msg =>
+            EnsureJpegPublishPipeline();
+            _jpegPublishPipeline.TryLogWorkerFailure(msg =>
             {
                 if (!string.IsNullOrWhiteSpace(msg))
                     Debug.LogWarning(msg);
@@ -827,6 +847,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void EmitVideoDiagnosticsIfNeeded()
         {
+            EnsureVideoPublishPipeline();
             var profile = CameraVideoOutputProfile.ForMode(_videoPublishPipeline.Mode);
             _diagnostics.LogVideoIfNeeded(
                 _logVideoDiagnostics,
@@ -846,7 +867,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void ResetVideoDiagnosticState()
         {
-            _videoPublishPipeline.ResetState();
+            EnsureVideoPublishPipeline().ResetState();
         }
 
         private static double ElapsedMs(long startTicks)
@@ -893,6 +914,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void LogVideoEncoderUnavailable(CameraVideoOutputProfile profile, string reason)
         {
+            EnsureVideoPublishPipeline();
             _videoPublishPipeline.TryLogVideoEncoderUnavailable(profile, reason);
         }
 
@@ -911,6 +933,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!_logEncoderStderr || sidecar == null)
                 return;
 
+            EnsureVideoPublishPipeline();
             _videoPublishPipeline.LogEncoderStderrIfNeeded(
                 _logEncoderStderr,
                 sidecar,

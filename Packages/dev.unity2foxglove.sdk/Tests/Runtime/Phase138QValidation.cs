@@ -173,6 +173,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_videoSidecarWidth", StringComparison.Ordinal)
                   && !camera.Contains("_videoSidecarHeight", StringComparison.Ordinal),
                 "138Q-3D: FoxgloveCameraPublisher delegates video sidecar lifecycle state");
+            var drain = SliceMethod(camera, "private void DrainEncodedAccessUnits()");
+            var submit = SliceMethod(camera, "private void SubmitVideoFrame(");
+            Check(camera.Contains("private CameraVideoPublishPipeline EnsureVideoPublishPipeline()", StringComparison.Ordinal)
+                  && IndexOf(drain, "EnsureVideoPublishPipeline();") >= 0
+                  && IndexOf(drain, "EnsureVideoPublishPipeline();") < IndexOf(drain, "_videoPublishPipeline.TryDrainEncodedAccessUnits(")
+                  && IndexOf(submit, "EnsureVideoPublishPipeline();") >= 0
+                  && IndexOf(submit, "EnsureVideoPublishPipeline();") < IndexOf(submit, "_videoPublishPipeline.SubmitVideoFrame("),
+                "138Q-3D2: camera video pipeline is lazily restored before runtime drain/submit use");
         }
 
         private static void CameraPublisherDelegatesOutputModeRuntimeLock()
@@ -269,6 +277,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private Thread _jpegWorker", StringComparison.Ordinal)
                   && !camera.Contains("EncodeJpegWorkerLoop", StringComparison.Ordinal),
                 "138Q-5D: FoxgloveCameraPublisher delegates repeated JPEG worker lifecycle code");
+            var queue = SliceMethod(camera, "private void QueueJpegFrame(");
+            var drain = SliceMethod(camera, "private void DrainCompletedJpegFrames()");
+            Check(camera.Contains("private CameraJpegPublishPipeline EnsureJpegPublishPipeline()", StringComparison.Ordinal)
+                  && IndexOf(queue, "EnsureJpegPublishPipeline();") >= 0
+                  && IndexOf(queue, "EnsureJpegPublishPipeline();") < IndexOf(queue, "_jpegPublishPipeline.TryQueueFrame(")
+                  && IndexOf(drain, "EnsureJpegPublishPipeline();") >= 0
+                  && IndexOf(drain, "EnsureJpegPublishPipeline();") < IndexOf(drain, "_jpegPublishPipeline.DrainCompleted("),
+                "138Q-5D2: camera JPEG pipeline is lazily restored before runtime queue/drain use");
         }
 
         private static void CameraPublisherDelegatesPublishDiagnostics()
@@ -338,7 +354,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && timing.Contains("Dictionary<ulong, long>", StringComparison.Ordinal),
                 "138Q-16A: camera readback timing state lives in a focused helper");
             Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
-                  && camera.Contains("_jpegPublishPipeline?.RememberReadbackStart(", StringComparison.Ordinal)
+                  && camera.Contains("EnsureJpegPublishPipeline();", StringComparison.Ordinal)
+                  && camera.Contains("_jpegPublishPipeline.RememberReadbackStart(", StringComparison.Ordinal)
                   && camera.Contains("_jpegPublishPipeline.TakeReadbackLatencyMs(", StringComparison.Ordinal)
                   && camera.Contains("_jpegPublishPipeline?.ClearReadbackTiming()", StringComparison.Ordinal)
                   && jpegPipeline.Contains("CameraReadbackTiming _readbackTiming", StringComparison.Ordinal)
