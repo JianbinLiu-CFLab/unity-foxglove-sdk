@@ -144,14 +144,11 @@ namespace Unity.FoxgloveSDK.Components
         public int SensorCameraCaptureHeight => Math.Max(1, _height);
 
         // Capture state
-        private Camera _sourceCam;
-        private Camera _captureCam;
-        private RenderTexture _captureRT;
-        private Texture2D _texture2D;
         private int _pendingRequests;
         private bool _destroyed;
         private int _captureGeneration;
         private bool _cleanupWhenReadbacksDrain;
+        private readonly CameraCaptureResources _captureResources = new CameraCaptureResources();
         private readonly CameraReadbackTiming _readbackTiming = new CameraReadbackTiming();
 
         // Video sidecar state
@@ -193,7 +190,6 @@ namespace Unity.FoxgloveSDK.Components
             ResetBackpressureState();
             ResetJpegPipelineState();
             ResetVideoDiagnosticState();
-            _sourceCam = GetComponent<Camera>();
             EnsureCaptureResources();
             if (_useAsyncJpeg && ActiveProfile.Mode == CameraOutputMode.Jpeg)
                 EnsureJpegWorkerStarted();
@@ -231,16 +227,17 @@ namespace Unity.FoxgloveSDK.Components
             if (_useSharedSensorClock)
                 renderUnixNs = ResolveCameraCaptureUnixNs();
             var renderStart = Stopwatch.GetTimestamp();
-            _captureCam.Render();
+            _captureResources.CaptureCamera.Render();
             _diagnostics.RecordRenderMs(ElapsedMs(renderStart));
             // Snapshot the concrete render target size with the readback request. Inspector
             // width/height can change while this callback is in flight.
+            var captureRenderTexture = _captureResources.CaptureRenderTexture;
             var generation = _captureGeneration;
-            var captureWidth = _captureRT.width;
-            var captureHeight = _captureRT.height;
+            var captureWidth = captureRenderTexture.width;
+            var captureHeight = captureRenderTexture.height;
             RememberReadbackStart(renderUnixNs, Stopwatch.GetTimestamp());
             _pendingRequests++;
-            AsyncGPUReadback.Request(_captureRT, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
+            AsyncGPUReadback.Request(captureRenderTexture, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
         }
 
         /// <summary>
@@ -496,24 +493,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs, int captureWidth, int captureHeight)
         {
-            captureWidth = Math.Max(1, captureWidth);
-            captureHeight = Math.Max(1, captureHeight);
-            if (_texture2D == null || _texture2D.width != captureWidth || _texture2D.height != captureHeight)
-            {
-                if (_texture2D != null)
-                    Destroy(_texture2D);
-
-                _texture2D = new Texture2D(captureWidth, captureHeight, TextureFormat.RGB24, false);
-            }
-
-            if (_texture2D == null)
-                return;
-
-            var data = req.GetData<byte>();
-            _texture2D.LoadRawTextureData(data);
-            _texture2D.Apply(false);
-
-            var jpeg = _texture2D.EncodeToJPG(_jpegQuality);
+            var jpeg = _captureResources.EncodeJpeg(req, captureWidth, captureHeight, _jpegQuality);
             if (jpeg == null || jpeg.Length == 0) return;
 
             if (CameraBackpressurePolicy.ExceedsBudget(jpeg, _maxEncodedBytes))
@@ -829,38 +809,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void EnsureCaptureResources()
         {
-            _sourceCam = _sourceCam != null ? _sourceCam : GetComponent<Camera>();
-            var width = Math.Max(1, _width);
-            var height = Math.Max(1, _height);
-
-            if (_captureRT == null || _captureRT.width != width || _captureRT.height != height)
-            {
-                if (_captureRT != null)
-                    _captureRT.Release();
-
-                _captureRT = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
-                _captureRT.Create();
-            }
-
-            if (_texture2D == null || _texture2D.width != width || _texture2D.height != height)
-            {
-                if (_texture2D != null)
-                    Destroy(_texture2D);
-
-                _texture2D = new Texture2D(width, height, TextureFormat.RGB24, false);
-            }
-
-            if (_captureCam == null)
-            {
-                var go = new GameObject("_FoxgloveCaptureCam");
-                go.transform.SetParent(transform, false);
-                _captureCam = go.AddComponent<Camera>();
-                _captureCam.enabled = false;
-            }
-
-            _captureCam.CopyFrom(_sourceCam);
-            _captureCam.targetTexture = _captureRT;
-            _captureCam.enabled = false;
+            _captureResources.Ensure(this, transform, Math.Max(1, _width), Math.Max(1, _height));
         }
 
         /// <summary>
@@ -869,26 +818,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void CleanupResources()
         {
-            if (_captureCam != null)
-                _captureCam.targetTexture = null;
-
-            if (_captureRT != null)
-            {
-                _captureRT.Release();
-                _captureRT = null;
-            }
-
-            if (_captureCam != null)
-            {
-                Destroy(_captureCam.gameObject);
-                _captureCam = null;
-            }
-
-            if (_texture2D != null)
-            {
-                Destroy(_texture2D);
-                _texture2D = null;
-            }
+            _captureResources.Cleanup();
         }
 
         private void EnsureJpegQueues()

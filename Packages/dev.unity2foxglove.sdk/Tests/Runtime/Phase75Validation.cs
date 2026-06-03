@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var lateUpdate = Slice(source, "private void LateUpdate()", "private void OnReadbackComplete");
             CheckOrdered(lateUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "75B-18: demand preflight happens after cadence");
-            CheckOrdered(lateUpdate, "ShouldPreparePublishPayload()", "_captureCam.Render()", "75B-19: demand preflight happens before render");
+            CheckOrdered(lateUpdate, "ShouldPreparePublishPayload()", "_captureResources.CaptureCamera.Render()", "75B-19: demand preflight happens before render");
             CheckOrdered(lateUpdate, "ShouldPreparePublishPayload()", "AsyncGPUReadback.Request", "75B-20: demand preflight happens before GPU readback");
 
             var h264FailurePath = Slice(source, "private bool EnsureVideoSidecarStarted", "private void DrainEncodedAccessUnits");

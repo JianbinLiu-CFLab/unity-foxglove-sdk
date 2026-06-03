@@ -319,7 +319,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "82D-4: camera publisher creates native H.264 options");
             CheckOrdered(publisherSource, "ShouldPreparePublishPayload()", "EnsureVideoSidecarStarted(profile)",
                 "82D-5: demand preflight remains before native sidecar startup");
-            CheckOrdered(publisherSource, "ShouldPreparePublishPayload()", "_captureCam.Render()",
+            CheckOrdered(publisherSource, "ShouldPreparePublishPayload()", "_captureResources.CaptureCamera.Render()",
                 "82D-6: demand preflight remains before camera render");
             var submitIndex = publisherSource.IndexOf("private void SubmitVideoFrame", StringComparison.Ordinal);
             var trySubmitIndex = publisherSource.IndexOf("_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs)", submitIndex, StringComparison.Ordinal);

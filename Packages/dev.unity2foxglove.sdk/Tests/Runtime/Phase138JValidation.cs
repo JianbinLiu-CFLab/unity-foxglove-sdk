@@ -241,8 +241,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
 
-            Check(source.Contains("var captureWidth = _captureRT.width", StringComparison.Ordinal)
-                  && source.Contains("var captureHeight = _captureRT.height", StringComparison.Ordinal),
+            Check(source.Contains("var captureWidth = captureRenderTexture.width", StringComparison.Ordinal)
+                  && source.Contains("var captureHeight = captureRenderTexture.height", StringComparison.Ordinal),
                 "138J-7A: camera snapshots render texture dimensions before readback");
             Check(source.Contains("OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight)", StringComparison.Ordinal),
                 "138J-7B: readback callback carries captured dimensions");

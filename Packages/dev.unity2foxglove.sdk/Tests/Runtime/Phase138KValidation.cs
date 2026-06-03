@@ -75,12 +75,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherSurfacesVideoDiagnostics()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
 
-            Check(source.Contains("[Foxglove][VideoDiag]", StringComparison.Ordinal),
+            Check(source.Contains("CameraPublishDiagnostics _diagnostics", StringComparison.Ordinal)
+                  && diagnostics.Contains("[Foxglove][VideoDiag]", StringComparison.Ordinal),
                 "138K-4A: video path exposes VideoDiag logs");
-            Check(source.Contains("dimensionMismatch", StringComparison.Ordinal)
-                  && source.Contains("videoSubmitMs", StringComparison.Ordinal)
-                  && source.Contains("videoDrainMs", StringComparison.Ordinal),
+            Check(source.Contains("EmitVideoDiagnosticsIfNeeded()", StringComparison.Ordinal)
+                  && diagnostics.Contains("dimensionMismatch", StringComparison.Ordinal)
+                  && diagnostics.Contains("videoSubmitMs", StringComparison.Ordinal)
+                  && diagnostics.Contains("videoDrainMs", StringComparison.Ordinal),
                 "138K-4B: VideoDiag reports dimension, submit, and drain evidence");
         }
 

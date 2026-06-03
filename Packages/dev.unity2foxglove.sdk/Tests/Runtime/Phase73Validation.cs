@@ -278,7 +278,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(cameraSource.Contains("_maxPendingReadbacks = 1"),
                 "73G-1: new camera publisher default max pending readbacks is one");
             CheckOrdered(cameraLateUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-2: camera preflights after cadence");
-            CheckOrdered(cameraLateUpdate, "ShouldPreparePublishPayload()", "_captureCam.Render()", "73G-3: camera preflights before render");
+            CheckOrdered(cameraLateUpdate, "ShouldPreparePublishPayload()", "_captureResources.CaptureCamera.Render()", "73G-3: camera preflights before render");
             CheckOrdered(cameraLateUpdate, "ShouldPreparePublishPayload()", "AsyncGPUReadback.Request", "73G-4: camera preflights before GPU readback");
 
             var sceneSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");

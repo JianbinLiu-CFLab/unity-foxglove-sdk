@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesPublishDiagnostics();
             CameraPublisherDelegatesBackpressureGate();
             CameraPublisherDelegatesReadbackTiming();
+            CameraPublisherDelegatesCaptureResources();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
             PointCloudPublisherDelegatesBackgroundEncodePipelines();
@@ -262,6 +263,31 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_readbackTimingGate", StringComparison.Ordinal)
                   && !camera.Contains("_readbackRequestTicks", StringComparison.Ordinal),
                 "138Q-16B: FoxgloveCameraPublisher delegates readback latency bookkeeping");
+        }
+
+        private static void CameraPublisherDelegatesCaptureResources()
+        {
+            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var resources = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+
+            Check(resources.Contains("internal sealed class CameraCaptureResources", StringComparison.Ordinal)
+                  && resources.Contains("RenderTexture _captureRenderTexture", StringComparison.Ordinal)
+                  && resources.Contains("Texture2D _texture2D", StringComparison.Ordinal)
+                  && resources.Contains("Ensure(", StringComparison.Ordinal)
+                  && resources.Contains("Cleanup()", StringComparison.Ordinal)
+                  && resources.Contains("EncodeJpeg(", StringComparison.Ordinal),
+                "138Q-18A: camera Unity capture resources live in a focused helper");
+            Check(camera.Contains("CameraCaptureResources _captureResources", StringComparison.Ordinal)
+                  && camera.Contains("_captureResources.Ensure(", StringComparison.Ordinal)
+                  && camera.Contains("_captureResources.Cleanup()", StringComparison.Ordinal)
+                  && camera.Contains("_captureResources.CaptureCamera.Render()", StringComparison.Ordinal)
+                  && camera.Contains("_captureResources.CaptureRenderTexture", StringComparison.Ordinal)
+                  && camera.Contains("_captureResources.EncodeJpeg(", StringComparison.Ordinal)
+                  && !camera.Contains("private Camera _sourceCam", StringComparison.Ordinal)
+                  && !camera.Contains("private Camera _captureCam", StringComparison.Ordinal)
+                  && !camera.Contains("private RenderTexture _captureRT", StringComparison.Ordinal)
+                  && !camera.Contains("private Texture2D _texture2D", StringComparison.Ordinal),
+                "138Q-18B: FoxgloveCameraPublisher delegates Unity capture object ownership");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()
