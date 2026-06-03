@@ -811,22 +811,54 @@ namespace Unity.FoxgloveSDK.Components
                 case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264Ffmpeg:
                     var h264 = new FfmpegH264EncoderSidecar();
                     _videoSidecar = h264;
-                    started = h264.Start(CreateH264Options(sidecarWidth, sidecarHeight));
+                    started = h264.Start(CameraVideoSidecarOptionsFactory.CreateH264Options(
+                        _ffmpegPath,
+                        sidecarWidth,
+                        sidecarHeight,
+                        ResolveEncoderFrameRate(),
+                        _videoBitrateKbps,
+                        _videoKeyframeInterval,
+                        _maxPendingReadbacks,
+                        _videoMaxOutputQueue));
                     break;
                 case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264OpenH264:
                     var openH264 = new OpenH264EncoderSidecar();
                     _videoSidecar = openH264;
-                    started = openH264.Start(CreateOpenH264Options(sidecarWidth, sidecarHeight));
+                    started = openH264.Start(CameraVideoSidecarOptionsFactory.CreateOpenH264Options(
+                        _openH264HelperPath,
+                        _openH264DllPath,
+                        sidecarWidth,
+                        sidecarHeight,
+                        ResolveEncoderFrameRate(),
+                        _videoBitrateKbps,
+                        _videoKeyframeInterval,
+                        _openH264MaxInputQueue,
+                        _videoMaxOutputQueue));
                     break;
                 case CameraVideoCodec.H264 when profile.Mode == CameraOutputMode.H264MediaFoundationExperimental:
                     var nativeH264 = new MediaFoundationH264EncoderSidecar();
                     _videoSidecar = nativeH264;
-                    started = nativeH264.Start(CreateMediaFoundationH264Options(sidecarWidth, sidecarHeight));
+                    started = nativeH264.Start(CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options(
+                        sidecarWidth,
+                        sidecarHeight,
+                        ResolveEncoderFrameRate(),
+                        _videoBitrateKbps,
+                        _videoKeyframeInterval,
+                        _maxPendingReadbacks,
+                        _videoMaxOutputQueue));
                     break;
                 case CameraVideoCodec.H265:
                     var h265 = new FfmpegH265EncoderSidecar();
                     _videoSidecar = h265;
-                    started = h265.Start(CreateH265Options(sidecarWidth, sidecarHeight));
+                    started = h265.Start(CameraVideoSidecarOptionsFactory.CreateH265Options(
+                        _ffmpegPath,
+                        sidecarWidth,
+                        sidecarHeight,
+                        ResolveEncoderFrameRate(),
+                        _videoBitrateKbps,
+                        _videoKeyframeInterval,
+                        _maxPendingReadbacks,
+                        _videoMaxOutputQueue));
                     break;
             }
 
@@ -847,66 +879,6 @@ namespace Unity.FoxgloveSDK.Components
         private int DesiredVideoWidth => Math.Max(1, _width);
 
         private int DesiredVideoHeight => Math.Max(1, _height);
-
-        private FfmpegH264EncoderOptions CreateH264Options(int width, int height)
-        {
-            return new FfmpegH264EncoderOptions
-            {
-                FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath,
-                Width = width,
-                Height = height,
-                FrameRate = ResolveEncoderFrameRate(),
-                BitrateKbps = Math.Max(1, _videoBitrateKbps),
-                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
-                MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
-                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
-            };
-        }
-
-        private FfmpegH265EncoderOptions CreateH265Options(int width, int height)
-        {
-            return new FfmpegH265EncoderOptions
-            {
-                FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath,
-                Width = width,
-                Height = height,
-                FrameRate = ResolveEncoderFrameRate(),
-                BitrateKbps = Math.Max(1, _videoBitrateKbps),
-                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
-                MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
-                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
-            };
-        }
-
-        private OpenH264EncoderOptions CreateOpenH264Options(int width, int height)
-        {
-            return new OpenH264EncoderOptions
-            {
-                HelperExecutablePath = _openH264HelperPath,
-                OpenH264DllPath = _openH264DllPath,
-                Width = width,
-                Height = height,
-                FrameRate = ResolveEncoderFrameRate(),
-                BitrateKbps = Math.Max(1, _videoBitrateKbps),
-                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
-                MaxInputQueue = Math.Max(1, _openH264MaxInputQueue),
-                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
-            };
-        }
-
-        private MediaFoundationH264EncoderOptions CreateMediaFoundationH264Options(int width, int height)
-        {
-            return new MediaFoundationH264EncoderOptions
-            {
-                Width = width,
-                Height = height,
-                FrameRate = ResolveEncoderFrameRate(),
-                BitrateKbps = Math.Max(1, _videoBitrateKbps),
-                KeyframeInterval = Math.Max(1, _videoKeyframeInterval),
-                MaxInputQueue = Math.Max(1, _maxPendingReadbacks),
-                MaxOutputQueue = Math.Max(1, _videoMaxOutputQueue)
-            };
-        }
 
         private void DrainEncodedAccessUnits()
         {

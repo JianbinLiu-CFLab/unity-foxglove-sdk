@@ -13,7 +13,6 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
-using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -240,16 +239,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _nextPendingScanId;
         private int _pendingScanId;
 
-        private const int DiagnosticLogIntervalTicks = 60;
-        private int _diagnosticTicks;
-        private int _diagnosticScans;
-        private long _diagnosticRays;
-        private long _diagnosticValidPoints;
-        private int _diagnosticOverruns;
-        private double _diagnosticCompleteMsTotal;
-        private double _diagnosticCompleteMsMax;
-        private double _diagnosticBuildMsTotal;
-        private double _diagnosticAppendMsTotal;
+        private readonly LidarScanDiagnostics _scanDiagnostics = new LidarScanDiagnostics();
         // Rays grouped by column (built once) so a tick batch gathers a column's rays in
         // O(rays-in-column) instead of scanning all rays per column (the O(N^2) hot path).
         private int[][] _columnRays;
@@ -761,12 +751,10 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private long DiagnosticStart()
-            => _logPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+            => _scanDiagnostics.Start(_logPerformanceDiagnostics);
 
         private double DiagnosticElapsedMs(long startTicks)
-            => startTicks == 0L
-                ? 0d
-                : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
+            => _scanDiagnostics.ElapsedMs(startTicks);
 
         private void RecordLidarDiagnostics(
             int rayCount,
@@ -776,48 +764,33 @@ namespace Unity.FoxgloveSDK.Components
             double appendMs,
             bool asyncOverrun)
         {
-            if (!_logPerformanceDiagnostics)
+            if (!_scanDiagnostics.Record(
+                _logPerformanceDiagnostics,
+                _pendingScanId,
+                rayCount,
+                validPointCount,
+                completeMs,
+                buildMs,
+                appendMs,
+                asyncOverrun,
+                Time.fixedDeltaTime,
+                out var snapshot))
                 return;
 
-            _diagnosticTicks++;
-            _diagnosticScans++;
-            _diagnosticRays += Math.Max(0, rayCount);
-            _diagnosticValidPoints += Math.Max(0, validPointCount);
-            _diagnosticCompleteMsTotal += completeMs;
-            _diagnosticCompleteMsMax = Math.Max(_diagnosticCompleteMsMax, completeMs);
-            _diagnosticBuildMsTotal += buildMs;
-            _diagnosticAppendMsTotal += appendMs;
-            if (asyncOverrun || completeMs > Time.fixedDeltaTime * 1000d)
-                _diagnosticOverruns++;
-
-            if (_diagnosticTicks < DiagnosticLogIntervalTicks)
-                return;
-
-            var divisor = Math.Max(1, _diagnosticScans);
             Debug.LogFormat(
                 LogType.Log,
                 LogOption.NoStacktrace,
                 this,
                 "[LidarDiag] scanId={0} scans={1} rays={2} valid={3} completeMs avg={4:F2} max={5:F2} buildMs avg={6:F2} appendMs avg={7:F2} overrun={8}",
-                _pendingScanId,
-                _diagnosticScans,
-                _diagnosticRays,
-                _diagnosticValidPoints,
-                _diagnosticCompleteMsTotal / divisor,
-                _diagnosticCompleteMsMax,
-                _diagnosticBuildMsTotal / divisor,
-                _diagnosticAppendMsTotal / divisor,
-                _diagnosticOverruns);
-
-            _diagnosticTicks = 0;
-            _diagnosticScans = 0;
-            _diagnosticRays = 0;
-            _diagnosticValidPoints = 0;
-            _diagnosticOverruns = 0;
-            _diagnosticCompleteMsTotal = 0d;
-            _diagnosticCompleteMsMax = 0d;
-            _diagnosticBuildMsTotal = 0d;
-            _diagnosticAppendMsTotal = 0d;
+                snapshot.ScanId,
+                snapshot.Scans,
+                snapshot.Rays,
+                snapshot.ValidPoints,
+                snapshot.CompleteMsAverage,
+                snapshot.CompleteMsMax,
+                snapshot.BuildMsAverage,
+                snapshot.AppendMsAverage,
+                snapshot.Overruns);
         }
 
         private void StartNewScan(double scanStartPhysSeconds)

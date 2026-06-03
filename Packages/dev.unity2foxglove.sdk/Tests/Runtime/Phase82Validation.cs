@@ -305,13 +305,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCameraIntegrationSource()
         {
             var publisherSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             Check(publisherSource.Contains("ICameraVideoEncoderSidecar _videoSidecar"),
                 "82D-1: camera publisher stores codec-neutral sidecar");
             Check(publisherSource.Contains("CameraOutputMode.H264MediaFoundationExperimental"),
                 "82D-2: camera publisher routes native H.264 mode");
-            Check(publisherSource.Contains("MediaFoundationH264EncoderSidecar") && publisherSource.Contains("MediaFoundationH264EncoderOptions"),
+            Check(publisherSource.Contains("MediaFoundationH264EncoderSidecar")
+                  && publisherSource.Contains("CameraVideoSidecarOptionsFactory.CreateMediaFoundationH264Options(")
+                  && factorySource.Contains("MediaFoundationH264EncoderOptions"),
                 "82D-3: camera publisher starts the Media Foundation sidecar");
-            Check(publisherSource.Contains("CreateMediaFoundationH264Options"),
+            Check(factorySource.Contains("CreateMediaFoundationH264Options"),
                 "82D-4: camera publisher creates native H.264 options");
             CheckOrdered(publisherSource, "ShouldPreparePublishPayload()", "EnsureVideoSidecarStarted(profile)",
                 "82D-5: demand preflight remains before native sidecar startup");

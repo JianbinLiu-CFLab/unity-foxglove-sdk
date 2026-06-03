@@ -163,10 +163,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
             new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
 
-        private const ulong SensorClockNanosPerSecond = 1_000_000_000UL;
-        private bool _sensorClockInitialized;
-        private ulong _sensorClockEpochUnixNs;
-        private double _sensorClockEpochPhysSeconds;
+        private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
         /// <summary>Current nanosecond timestamp for publish calls.</summary>
         public ulong NowNs => _runtime?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
@@ -179,22 +176,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="physicsTimeSeconds">Unity physics timeline time in seconds.</param>
         /// <returns>Nanoseconds, anchored once per play session.</returns>
         public ulong GetSharedSensorClockUnixTime(double physicsTimeSeconds)
-        {
-            if (!_sensorClockInitialized)
-            {
-                _sensorClockInitialized = true;
-                _sensorClockEpochPhysSeconds = physicsTimeSeconds;
-                _sensorClockEpochUnixNs = NowNs;
-            }
-
-            var deltaSeconds = physicsTimeSeconds - _sensorClockEpochPhysSeconds;
-            if (deltaSeconds <= 0d)
-            {
-                return _sensorClockEpochUnixNs;
-            }
-
-            return checked(_sensorClockEpochUnixNs + (ulong)System.Math.Round(deltaSeconds * SensorClockNanosPerSecond));
-        }
+            => _sharedSensorClock.GetUnixTime(physicsTimeSeconds, NowNs);
 
         /// <summary>Fires when a Foxglove client connects on the main thread.</summary>
         public event System.Action<uint> OnClientConnected;

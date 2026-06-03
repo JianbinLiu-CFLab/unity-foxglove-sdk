@@ -186,10 +186,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCameraPublisherSource()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             Check(!string.IsNullOrEmpty(source), "76D-1: FoxgloveCameraPublisher source exists");
             Check(source.Contains("CameraVideoCodec.H265"), "76D-2: camera routes H.265 video codec");
             Check(source.Contains("FfmpegH265EncoderSidecar"), "76D-3: camera integrates H.265 FFmpeg sidecar");
-            Check(source.Contains("FfmpegH265EncoderOptions"), "76D-4: camera creates H.265 FFmpeg options");
+            Check(source.Contains("CameraVideoSidecarOptionsFactory.CreateH265Options(")
+                  && factorySource.Contains("FfmpegH265EncoderOptions"),
+                "76D-4: camera creates H.265 FFmpeg options through factory");
             Check(source.Contains("CameraCompressedVideoBuilder.H265Format"), "76D-5: camera publishes format=h265");
             Check(source.Contains("profile.VideoFormat"), "76D-6: camera serializes video using resolved profile format");
 

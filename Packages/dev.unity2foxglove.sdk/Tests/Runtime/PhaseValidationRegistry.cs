@@ -189,6 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
             // 138M: cart-mounted camera time sync and standard ROS camera schemas.
             Ci("--phase138m", "Phase 138M", Phase138MValidation.Validate, includeInDefault: false),
             Ci("--phase138p", "Phase 138P", Phase138PValidation.Validate, includeInDefault: false),
+            Ci("--phase138q", "Phase 138Q", Phase138QValidation.Validate, includeInDefault: false),
             Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 

@@ -64,12 +64,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var repoRoot = Phase16Validation.FindRepoRoot();
             var managerSource = ReadText(repoRoot, FoxgloveManagerRelativePath);
+            var clockSource = ReadText(repoRoot,
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveSharedSensorClock.cs");
 
             Check(managerSource.Contains("GetSharedSensorClockUnixTime"),
                 "138H-1: FoxgloveManager exposes shared sensor clock API");
-            Check(Regex.IsMatch(managerSource,
-                        @"_sensorClockInitialized|_sensorClockEpochUnixNs|_sensorClockEpochPhysSeconds"),
-                    "138H-2: FoxgloveManager stores shared clock epoch state");
+            Check(managerSource.Contains("FoxgloveSharedSensorClock")
+                  && managerSource.Contains("_sharedSensorClock.GetUnixTime(physicsTimeSeconds, NowNs)")
+                  && Regex.IsMatch(clockSource,
+                      @"_initialized|_epochUnixNs|_epochPhysSeconds"),
+                "138H-2: shared clock epoch state lives behind FoxgloveManager API");
         }
 
         private static void VerifyStreamingLiDARState()

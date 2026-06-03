@@ -76,6 +76,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCameraPublisherSource()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             Check(!string.IsNullOrEmpty(source), "75B-1: FoxgloveCameraPublisher source exists");
             Check(source.Contains("_outputMode = CameraOutputMode.Jpeg"), "75B-2: camera defaults to JPEG mode");
             Check(source.Contains("CameraVideoOutputProfile.ForMode"), "75B-3: camera resolves schema through profile");
@@ -89,7 +90,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!source.Contains("_h264MaxOutputQueue"), "75B-11: camera does not use H.264-specific queue field");
 
             Check(source.Contains("FfmpegH264EncoderSidecar"), "75B-12: camera integrates H.264 FFmpeg sidecar");
-            Check(source.Contains("FfmpegH264EncoderOptions"), "75B-13: camera creates H.264 FFmpeg options");
+            Check(source.Contains("CameraVideoSidecarOptionsFactory.CreateH264Options(")
+                  && factorySource.Contains("FfmpegH264EncoderOptions"),
+                "75B-13: camera creates H.264 FFmpeg options through factory");
             Check(source.Contains("CameraCompressedVideoBuilder.Serialize"), "75B-14: camera serializes CompressedVideo in H.264 mode");
             Check(source.Contains("CameraCompressedVideoBuilder.H264Format"), "75B-15: camera publishes format=h264");
             Check(source.Contains("StopVideoSidecar") || source.Contains("StopSidecar"),

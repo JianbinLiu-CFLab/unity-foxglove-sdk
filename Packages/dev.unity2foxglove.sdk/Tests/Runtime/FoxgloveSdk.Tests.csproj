@@ -140,6 +140,7 @@
     <!-- 138M: validate cart-mounted camera time sync and standard ROS camera schemas. -->
     <Compile Include="Phase138MValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
+    <Compile Include="Phase138QValidation.cs" />
     <Compile Include="Phase107Validation.cs" />
     <Compile Include="Phase108Validation.cs" />
     <Compile Include="Phase109Validation.cs" />
