@@ -197,6 +197,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
         private readonly VirtualLidarScanBuffers _scanBuffers = new VirtualLidarScanBuffers();
+        private readonly VirtualLidarScanFramePublisher _scanFramePublisher = new VirtualLidarScanFramePublisher();
 
         // Stream state.
         private bool _hasPrevPose;
@@ -735,66 +736,16 @@ namespace Unity.FoxgloveSDK.Components
             if (_activeScanFrame == null)
                 return;
 
-            _activeScanFrame.ValidCount = _activeScanValidPoints > 0
-                ? _activeScanValidPoints
-                : _activeScanPointSnapshotCount;
+            _scanFramePublisher.TryPublishActiveScan(
+                _pointCloudPublisher,
+                _publishEmptyFrames,
+                _activeScanFrame,
+                _activeScanValidPoints,
+                ref _activeScanPointSnapshot,
+                ref _activeScanPointSnapshotCount);
+
             LastFrame = _activeScanFrame;
-
-            var hasNativeSnapshot = _activeScanPointSnapshotCount > 0;
-            if (_pointCloudPublisher != null && (_activeScanValidPoints > 0 || hasNativeSnapshot || _publishEmptyFrames))
-            {
-                if (!TryPublishActiveNativePointCloud2Scan()
-                    && !TryPublishActiveNativeDracoScan())
-                    _pointCloudPublisher.SetFrame(_activeScanFrame);
-            }
-
             _frameCounter++;
-        }
-
-        private bool TryPublishActiveNativeDracoScan()
-        {
-            if (_pointCloudPublisher == null
-                || !_pointCloudPublisher.CanQueueVirtualLidarDracoFrame
-                || _activeScanPointSnapshot == null
-                || _activeScanPointSnapshotCount <= 0)
-                return false;
-
-            var snapshot = _activeScanPointSnapshot;
-            var snapshotCount = _activeScanPointSnapshotCount;
-            if (!_pointCloudPublisher.TryQueueVirtualLidarDracoFrame(
-                    snapshot,
-                    snapshotCount,
-                    _activeScanFrame.UnixNs,
-                    _activeScanFrame.FrameId,
-                    _activeScanFrame.EmitAbsoluteTimeNs))
-                return false;
-
-            _activeScanPointSnapshot = null;
-            _activeScanPointSnapshotCount = 0;
-            return true;
-        }
-
-        private bool TryPublishActiveNativePointCloud2Scan()
-        {
-            if (_pointCloudPublisher == null
-                || !_pointCloudPublisher.CanQueueVirtualLidarPointCloud2NativeFrame
-                || _activeScanPointSnapshot == null
-                || _activeScanPointSnapshotCount <= 0)
-                return false;
-
-            var snapshot = _activeScanPointSnapshot;
-            var snapshotCount = _activeScanPointSnapshotCount;
-            if (!_pointCloudPublisher.TryQueueVirtualLidarPointCloud2NativeFrame(
-                    snapshot,
-                    snapshotCount,
-                    _activeScanFrame.UnixNs,
-                    _activeScanFrame.FrameId,
-                    _activeScanFrame.EmitAbsoluteTimeNs))
-                return false;
-
-            _activeScanPointSnapshot = null;
-            _activeScanPointSnapshotCount = 0;
-            return true;
         }
 
         // Largest number of whole columns whose rays fit inside one FixedUpdate's raycast
