@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             CameraPublisherDelegatesJpegWorkerPayloads();
             PointCloudPublisherDelegatesWorkerPayloadTypes();
             PointCloudPublisherDelegatesWorkerEncoders();
+            PointCloudPublisherDelegatesBackgroundEncodePipelines();
             VirtualLidarDelegatesScanLayout();
 
             Console.WriteLine($"Phase 138Q: {_passed} checks passed.");
@@ -127,8 +128,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("internal sealed class PointCloud2NativeRequest", StringComparison.Ordinal)
                   && helper.Contains("internal sealed class PointCloud2NativeResult", StringComparison.Ordinal),
                 "138Q-4A: point-cloud worker payload records live outside the publisher");
-            Check(pointcloud.Contains("Queue<DracoEncodeResult> _completedDracoEncodes", StringComparison.Ordinal)
-                  && pointcloud.Contains("Queue<PointCloud2NativeResult> _completedPointCloud2Native", StringComparison.Ordinal)
+            Check(pointcloud.Contains("DracoEncodeRequest(", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloud2NativeRequest(", StringComparison.Ordinal)
+                  && pointcloud.Contains("DracoEncodeResult", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloud2NativeResult", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class DracoEncodeRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class DracoEncodeResult", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class PointCloud2NativeRequest", StringComparison.Ordinal)
@@ -164,12 +167,35 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("EncodePointCloud2NativeRequest(", StringComparison.Ordinal)
                   && helper.Contains("BuildPointCloud2NativePayload(", StringComparison.Ordinal),
                 "138Q-6A: point-cloud worker encode/build logic lives outside the publisher");
-            Check(pointcloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest(request)", StringComparison.Ordinal)
-                  && pointcloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest(request)", StringComparison.Ordinal)
+            Check(pointcloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest", StringComparison.Ordinal)
+                  && pointcloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static DracoEncodeResult EncodeDracoRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static PointCloud2NativeResult EncodePointCloud2NativeRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static byte[] BuildPointCloud2NativePayload", StringComparison.Ordinal),
                 "138Q-6B: FoxglovePointCloudPublisher delegates worker encode/build details");
+        }
+
+        private static void PointCloudPublisherDelegatesBackgroundEncodePipelines()
+        {
+            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
+
+            Check(pipeline.Contains("internal sealed class BackgroundEncodePipeline<TRequest, TResult>", StringComparison.Ordinal)
+                  && pipeline.Contains("BackgroundWorkerLifecycle _worker", StringComparison.Ordinal)
+                  && pipeline.Contains("Func<TRequest, TResult> _encode", StringComparison.Ordinal)
+                  && pipeline.Contains("Enqueue(", StringComparison.Ordinal)
+                  && pipeline.Contains("Drain(", StringComparison.Ordinal)
+                  && pipeline.Contains("Stop(", StringComparison.Ordinal),
+                "138Q-7A: reusable background encode pipeline owns worker queue lifecycle");
+            Check(pointcloud.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("_dracoEncodePipeline.Enqueue(request,", StringComparison.Ordinal)
+                  && pointcloud.Contains("_pointCloud2NativePipeline.Enqueue(request,", StringComparison.Ordinal)
+                  && !pointcloud.Contains("RunDracoEncodeWorker", StringComparison.Ordinal)
+                  && !pointcloud.Contains("RunPointCloud2NativeWorker", StringComparison.Ordinal)
+                  && !pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
+                  && !pointcloud.Contains("BackgroundWorkerLifecycle _pointCloud2NativeWorker", StringComparison.Ordinal),
+                "138Q-7B: FoxglovePointCloudPublisher delegates repeated worker lifecycle code");
         }
 
         private static void VirtualLidarDelegatesScanLayout()
@@ -181,12 +207,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("Build(", StringComparison.Ordinal)
                   && helper.Contains("ColumnRays", StringComparison.Ordinal)
                   && helper.Contains("MaxRaysPerColumn", StringComparison.Ordinal),
-                "138Q-7A: virtual LiDAR scan layout calculation lives in a focused helper");
+                "138Q-8A: virtual LiDAR scan layout calculation lives in a focused helper");
             Check(lidar.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal)
                   && lidar.Contains("layout.ColumnRays", StringComparison.Ordinal)
                   && !lidar.Contains("var columnCounts = new int[_scanColumnCount]", StringComparison.Ordinal)
                   && !lidar.Contains("Bucket ray indices by column once", StringComparison.Ordinal),
-                "138Q-7B: VirtualLidar delegates scan column bucketing");
+                "138Q-8B: VirtualLidar delegates scan column bucketing");
         }
 
         private static string Read(string relativePath)

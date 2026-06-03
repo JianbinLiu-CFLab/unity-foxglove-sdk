@@ -228,8 +228,9 @@ namespace Unity.FoxgloveSDK.Tests
             var pointCloudWorkers = ReadPublisher("PointCloudWorkerEncoders.cs");
             Check(pointCloud.Contains("Ros2PublisherSchemaNames.PointCloud")
                   && pointCloud.Contains("Ros2PublisherSchemaNames.CompressedPointCloud")
-                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest(request)")
-                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest(request)")
+                  && pointCloud.Contains("Ros2CdrPointCloudBuilder.Serialize")
+                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
+                  && pointCloud.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest")
                   && pointCloudWorkers.Contains("Ros2CdrSensorPointCloud2Builder.Serialize")
                   && pointCloudWorkers.Contains("Ros2CdrCompressedPointCloudBuilder.Serialize")
                   && pointCloudWorkers.Contains("DracoPointCloudNativeEncoder.TryEncode")

@@ -189,14 +189,17 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pipelineSource = File.ReadAllText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
-            Check(source.Contains("StartDracoEncodeWorker")
-                  && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
-                  && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal"),
+            Check(source.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
+                  && pipelineSource.Contains("new Thread(() => RunWorker(workerGeneration))")
+                  && pipelineSource.Contains("Priority = ThreadPriority.BelowNormal"),
                 "134-14J-1: Draco point-cloud encoding runs on a below-normal background worker");
             Check(!source.Contains("CloneFrameForBackgroundEncode"),
                 "134-14J-2: Draco worker reads the fresh per-scan frame directly without a main-thread clone");
-            Check(source.Contains("_pendingDracoEncode = request"),
+            Check(source.Contains("_dracoEncodePipeline.Enqueue(request,")
+                  && pipelineSource.Contains("_pending = request"),
                 "134-14J-3: Draco pending work is last-value-wins");
             Check(source.Contains("DrainCompletedDracoEncode()"),
                 "134-14J-4: completed Draco work is drained from Update");
@@ -204,13 +207,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-14J-5: background encode result is published through a main-thread drain path");
             Check(source.Contains("DracoFailureWarningIntervalFrames"),
                 "134-14J-6: repeated Draco failures are throttled");
-            Check(source.Contains("Queue<DracoEncodeResult> _completedDracoEncodes")
-                  && source.Contains("MaxCompletedDracoEncodeResults"),
+            Check(source.Contains("MaxCompletedDracoEncodeResults")
+                  && pipelineSource.Contains("Queue<TResult> _completed")
+                  && pipelineSource.Contains("_completed.Count >= _completedCapacity"),
                 "134-14J-7: completed Draco encode results use a bounded queue instead of a single overwrite slot");
             var lifecycleSource = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");
             Check(source.Contains("StopDracoEncodeWorker(clearCompleted: true)")
-                  && source.Contains("_dracoEncodeWorker.Idle.Wait(")
+                  && source.Contains("_dracoEncodePipeline.Stop(clearCompleted,")
+                  && pipelineSource.Contains("_worker.Idle.Wait(_stopWaitMs)")
                   && lifecycleSource.Contains("ManualResetEventSlim"),
                 "134-14J-8: Draco worker has an explicit disable/destroy shutdown path");
         }

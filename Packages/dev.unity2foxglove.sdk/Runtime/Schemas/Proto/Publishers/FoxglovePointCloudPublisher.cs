@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
@@ -79,14 +78,18 @@ namespace Unity.FoxgloveSDK.Components
         private int _dracoFailureCount;
         private bool _warnedDracoBacklog;
         private bool _warnedDracoWorkerShutdown;
-        private readonly BackgroundWorkerLifecycle _dracoEncodeWorker = new BackgroundWorkerLifecycle();
-        private readonly Queue<DracoEncodeResult> _completedDracoEncodes = new Queue<DracoEncodeResult>();
-        private DracoEncodeRequest _pendingDracoEncode;
-        private int _droppedCompletedDracoEncodeCount;
-        private readonly BackgroundWorkerLifecycle _pointCloud2NativeWorker = new BackgroundWorkerLifecycle();
-        private readonly Queue<PointCloud2NativeResult> _completedPointCloud2Native = new Queue<PointCloud2NativeResult>();
-        private PointCloud2NativeRequest _pendingPointCloud2Native;
-        private int _droppedCompletedPointCloud2NativeCount;
+        private readonly BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline =
+            new BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult>(
+                "Foxglove Draco PointCloud Encode",
+                MaxCompletedDracoEncodeResults,
+                DracoWorkerStopWaitMs,
+                PointCloudWorkerEncoders.EncodeDracoRequest);
+        private readonly BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline =
+            new BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult>(
+                "Foxglove PointCloud2 Native Pack",
+                MaxCompletedPointCloud2NativeResults,
+                PointCloud2NativeWorkerStopWaitMs,
+                PointCloudWorkerEncoders.EncodePointCloud2NativeRequest);
         private int _pointCloud2NativeFailureCount;
         private bool _warnedPointCloud2NativeFailure;
         private bool _warnedPointCloud2NativeBacklog;
@@ -664,226 +667,43 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnqueueDracoEncodeRequest(DracoEncodeRequest request)
         {
-            var startWorker = false;
-            var workerGeneration = 0;
-            lock (_dracoEncodeWorker.Gate)
+            var queued = _dracoEncodePipeline.Enqueue(request, out var replacedPending, out var startError);
+            if (replacedPending)
             {
-                if (_pendingDracoEncode != null && _logQosDrops && !_warnedDracoBacklog)
+                if (_logQosDrops && !_warnedDracoBacklog)
                 {
                     Debug.LogWarning("[Foxglove] Draco point-cloud encode request replaced; stale pending encode dropped.");
                     _warnedDracoBacklog = true;
                 }
 
-                if (_pendingDracoEncode != null)
-                    RecordPointCloudDrop();
-
-                workerGeneration = _dracoEncodeWorker.StartOrReuseLocked(out startWorker);
-                request.Generation = workerGeneration;
-                _pendingDracoEncode = request;
+                RecordPointCloudDrop();
             }
 
-            if (!startWorker)
-                return;
-
-            try
-            {
-                StartDracoEncodeWorker(workerGeneration);
-            }
-            catch (Exception ex)
-            {
-                lock (_dracoEncodeWorker.Gate)
-                    _dracoEncodeWorker.MarkStartFailedIfCurrentLocked(workerGeneration);
-                LogDracoFailure("Unable to queue background Draco encode: " + ex.Message);
-            }
+            if (!queued)
+                LogDracoFailure("Unable to queue background Draco encode: " + startError);
         }
 
         private void EnqueuePointCloud2NativeRequest(PointCloud2NativeRequest request)
         {
-            var startWorker = false;
-            var workerGeneration = 0;
-            lock (_pointCloud2NativeWorker.Gate)
+            var queued = _pointCloud2NativePipeline.Enqueue(request, out var replacedPending, out var startError);
+            if (replacedPending)
             {
-                if (_pendingPointCloud2Native != null && _logQosDrops && !_warnedPointCloud2NativeBacklog)
+                if (_logQosDrops && !_warnedPointCloud2NativeBacklog)
                 {
                     Debug.LogWarning("[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.");
                     _warnedPointCloud2NativeBacklog = true;
                 }
 
-                if (_pendingPointCloud2Native != null)
-                    RecordPointCloudDrop();
-
-                workerGeneration = _pointCloud2NativeWorker.StartOrReuseLocked(out startWorker);
-                request.Generation = workerGeneration;
-                _pendingPointCloud2Native = request;
+                RecordPointCloudDrop();
             }
 
-            if (!startWorker)
-                return;
-
-            try
-            {
-                StartPointCloud2NativeWorker(workerGeneration);
-            }
-            catch (Exception ex)
-            {
-                lock (_pointCloud2NativeWorker.Gate)
-                    _pointCloud2NativeWorker.MarkStartFailedIfCurrentLocked(workerGeneration);
-                LogPointCloud2NativeFailure("Unable to queue background PointCloud2 pack: " + ex.Message);
-            }
-        }
-
-        private void StartDracoEncodeWorker(int workerGeneration)
-        {
-            var worker = new System.Threading.Thread(RunDracoEncodeWorker)
-            {
-                IsBackground = true,
-                Name = "Foxglove Draco PointCloud Encode",
-                Priority = System.Threading.ThreadPriority.BelowNormal
-            };
-            worker.Start(workerGeneration);
-        }
-
-        private void StartPointCloud2NativeWorker(int workerGeneration)
-        {
-            var worker = new System.Threading.Thread(() => RunPointCloud2NativeWorker(workerGeneration))
-            {
-                IsBackground = true,
-                Name = "Foxglove PointCloud2 Native Pack",
-                Priority = System.Threading.ThreadPriority.BelowNormal
-            };
-            worker.Start();
-        }
-
-        private void RunDracoEncodeWorker(object state)
-        {
-            RunDracoEncodeWorker((int)state);
-        }
-
-        private void RunDracoEncodeWorker(int workerGeneration)
-        {
-            try
-            {
-                while (true)
-                {
-                    DracoEncodeRequest request;
-                    lock (_dracoEncodeWorker.Gate)
-                    {
-                        if (_dracoEncodeWorker.ShouldStopLocked(workerGeneration))
-                        {
-                            _dracoEncodeWorker.MarkStoppedIfCurrentLocked(workerGeneration);
-                            return;
-                        }
-
-                        request = _pendingDracoEncode;
-                        _pendingDracoEncode = null;
-                        if (request == null)
-                        {
-                            _dracoEncodeWorker.MarkStoppedIfCurrentLocked(workerGeneration);
-                            return;
-                        }
-                    }
-
-                    if (request.Generation != workerGeneration)
-                        continue;
-
-                    var result = PointCloudWorkerEncoders.EncodeDracoRequest(request);
-                    lock (_dracoEncodeWorker.Gate)
-                    {
-                        if (_dracoEncodeWorker.ShouldStopLocked(workerGeneration)
-                            || request.Generation != workerGeneration)
-                            continue;
-
-                        while (_completedDracoEncodes.Count >= MaxCompletedDracoEncodeResults)
-                        {
-                            _completedDracoEncodes.Dequeue();
-                            _droppedCompletedDracoEncodeCount++;
-                        }
-
-                        _completedDracoEncodes.Enqueue(result);
-                    }
-                }
-            }
-            finally
-            {
-                var signalIdle = false;
-                lock (_dracoEncodeWorker.Gate)
-                    signalIdle = _dracoEncodeWorker.MarkStoppedIfCurrentLocked(workerGeneration);
-
-                if (signalIdle)
-                    _dracoEncodeWorker.Idle.Set();
-            }
-        }
-
-        private void RunPointCloud2NativeWorker(int workerGeneration)
-        {
-            try
-            {
-                while (true)
-                {
-                    PointCloud2NativeRequest request;
-                    lock (_pointCloud2NativeWorker.Gate)
-                    {
-                        if (_pointCloud2NativeWorker.ShouldStopLocked(workerGeneration))
-                        {
-                            _pointCloud2NativeWorker.MarkStoppedIfCurrentLocked(workerGeneration);
-                            return;
-                        }
-
-                        request = _pendingPointCloud2Native;
-                        _pendingPointCloud2Native = null;
-                        if (request == null)
-                        {
-                            _pointCloud2NativeWorker.MarkStoppedIfCurrentLocked(workerGeneration);
-                            return;
-                        }
-                    }
-
-                    if (request.Generation != workerGeneration)
-                        continue;
-
-                    var result = PointCloudWorkerEncoders.EncodePointCloud2NativeRequest(request);
-                    lock (_pointCloud2NativeWorker.Gate)
-                    {
-                        if (_pointCloud2NativeWorker.ShouldStopLocked(workerGeneration)
-                            || request.Generation != workerGeneration)
-                            continue;
-
-                        while (_completedPointCloud2Native.Count >= MaxCompletedPointCloud2NativeResults)
-                        {
-                            _completedPointCloud2Native.Dequeue();
-                            _droppedCompletedPointCloud2NativeCount++;
-                        }
-
-                        _completedPointCloud2Native.Enqueue(result);
-                    }
-                }
-            }
-            finally
-            {
-                var signalIdle = false;
-                lock (_pointCloud2NativeWorker.Gate)
-                    signalIdle = _pointCloud2NativeWorker.MarkStoppedIfCurrentLocked(workerGeneration);
-
-                if (signalIdle)
-                    _pointCloud2NativeWorker.Idle.Set();
-            }
+            if (!queued)
+                LogPointCloud2NativeFailure("Unable to queue background PointCloud2 pack: " + startError);
         }
 
         private void DrainCompletedDracoEncode()
         {
-            List<DracoEncodeResult> results = null;
-            int droppedCompletedResults;
-            lock (_dracoEncodeWorker.Gate)
-            {
-                droppedCompletedResults = _droppedCompletedDracoEncodeCount;
-                _droppedCompletedDracoEncodeCount = 0;
-                if (_completedDracoEncodes.Count > 0)
-                {
-                    results = new List<DracoEncodeResult>(_completedDracoEncodes);
-                    _completedDracoEncodes.Clear();
-                }
-            }
-
+            var results = _dracoEncodePipeline.Drain(out var droppedCompletedResults);
             if (droppedCompletedResults > 0 && _logQosDrops)
                 Debug.LogWarning($"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {droppedCompletedResults}.");
             if (droppedCompletedResults > 0)
@@ -912,19 +732,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainCompletedPointCloud2Native()
         {
-            List<PointCloud2NativeResult> results = null;
-            int droppedCompletedResults;
-            lock (_pointCloud2NativeWorker.Gate)
-            {
-                droppedCompletedResults = _droppedCompletedPointCloud2NativeCount;
-                _droppedCompletedPointCloud2NativeCount = 0;
-                if (_completedPointCloud2Native.Count > 0)
-                {
-                    results = new List<PointCloud2NativeResult>(_completedPointCloud2Native);
-                    _completedPointCloud2Native.Clear();
-                }
-            }
-
+            var results = _pointCloud2NativePipeline.Drain(out var droppedCompletedResults);
             if (droppedCompletedResults > 0 && _logQosDrops)
                 Debug.LogWarning($"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {droppedCompletedResults}.");
             if (droppedCompletedResults > 0)
@@ -953,25 +761,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private void StopDracoEncodeWorker(bool clearCompleted)
         {
-            var shouldWait = false;
-            lock (_dracoEncodeWorker.Gate)
+            if (_dracoEncodePipeline.Stop(clearCompleted, out var waitedForWorker))
             {
-                _dracoEncodeWorker.RequestStopLocked();
-                _pendingDracoEncode = null;
-                shouldWait = _dracoEncodeWorker.IsRunning;
-                if (clearCompleted)
-                {
-                    _completedDracoEncodes.Clear();
-                    _droppedCompletedDracoEncodeCount = 0;
-                }
-            }
-
-            if (!shouldWait)
-                return;
-
-            if (_dracoEncodeWorker.Idle.Wait(DracoWorkerStopWaitMs))
-            {
-                _warnedDracoWorkerShutdown = false;
+                if (waitedForWorker)
+                    _warnedDracoWorkerShutdown = false;
                 return;
             }
 
@@ -980,32 +773,14 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.LogWarning("[Foxglove] Draco point-cloud encode worker is still stopping; native encode will be ignored when it returns.");
                 _warnedDracoWorkerShutdown = true;
             }
-
-            lock (_dracoEncodeWorker.Gate)
-                _dracoEncodeWorker.InvalidateTimedOutWorkerLocked();
         }
 
         private void StopPointCloud2NativeWorker(bool clearCompleted)
         {
-            var shouldWait = false;
-            lock (_pointCloud2NativeWorker.Gate)
+            if (_pointCloud2NativePipeline.Stop(clearCompleted, out var waitedForWorker))
             {
-                _pointCloud2NativeWorker.RequestStopLocked();
-                _pendingPointCloud2Native = null;
-                shouldWait = _pointCloud2NativeWorker.IsRunning;
-                if (clearCompleted)
-                {
-                    _completedPointCloud2Native.Clear();
-                    _droppedCompletedPointCloud2NativeCount = 0;
-                }
-            }
-
-            if (!shouldWait)
-                return;
-
-            if (_pointCloud2NativeWorker.Idle.Wait(PointCloud2NativeWorkerStopWaitMs))
-            {
-                _warnedPointCloud2NativeWorkerShutdown = false;
+                if (waitedForWorker)
+                    _warnedPointCloud2NativeWorkerShutdown = false;
                 return;
             }
 
@@ -1014,9 +789,6 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.LogWarning("[Foxglove] PointCloud2 native worker is still stopping; native payload will be ignored when it returns.");
                 _warnedPointCloud2NativeWorkerShutdown = true;
             }
-
-            lock (_pointCloud2NativeWorker.Gate)
-                _pointCloud2NativeWorker.InvalidateTimedOutWorkerLocked();
         }
 
         private void PublishCompletedDracoPayload(DracoEncodeResult result)

@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("PublishRawFrame(frame, unixNs)"),
                 "89B-4: PublishPreparedFrame branches raw versus Draco inside the unified publisher");
             var worker = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
-            Check(source.Contains("PointCloudWorkerEncoders.EncodeDracoRequest(request)")
+            Check(source.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
                   && worker.Contains("DracoPointCloudNativeEncoder")
                   && worker.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
                   && worker.Contains(".TryEncode(")
@@ -102,11 +102,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("publishes nothing")
                   && source.Contains("LogDracoFailure"),
                 "89B-7: Draco failures log and do not fall back to raw");
-            Check(source.Contains("StartDracoEncodeWorker")
-                  && source.Contains("new System.Threading.Thread(RunDracoEncodeWorker)")
-                  && source.Contains("Priority = System.Threading.ThreadPriority.BelowNormal")
-                  && source.Contains("RunDracoEncodeWorker")
-                  && source.Contains("_pendingDracoEncode")
+            var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
+            Check(source.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
+                  && source.Contains("_dracoEncodePipeline.Enqueue(request,")
+                  && pipeline.Contains("Last-value-wins background encode pipeline")
+                  && pipeline.Contains("Priority = ThreadPriority.BelowNormal")
                   && !source.Contains("Task.Run")
                   && !source.Contains("BlockingCollection"),
                 "89B-8: Draco encode uses a last-value background worker without unbounded async queues");

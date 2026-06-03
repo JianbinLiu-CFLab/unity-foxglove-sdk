@@ -5,6 +5,7 @@
 
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -12,7 +13,7 @@ namespace Unity.FoxgloveSDK.Components
     /// Captures one background Draco encode request plus the publish routes that
     /// should receive its completed payload.
     /// </summary>
-    internal sealed class DracoEncodeRequest
+    internal sealed class DracoEncodeRequest : IBackgroundEncodeRequest
     {
         public DracoEncodeRequest(
             PointCloudFrame frame,
@@ -70,7 +71,7 @@ namespace Unity.FoxgloveSDK.Components
     /// Captures one background PointCloud2 pack request plus the publish routes
     /// that should receive its completed CDR payload.
     /// </summary>
-    internal sealed class PointCloud2NativeRequest
+    internal sealed class PointCloud2NativeRequest : IBackgroundEncodeRequest
     {
         public PointCloud2NativeRequest(
             VirtualLidarPointData[] lidarPoints,

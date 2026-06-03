@@ -379,24 +379,26 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
             Check(camera.Contains("_jpegWorkerGeneration", StringComparison.Ordinal)
                   && camera.Contains("JpegWorkerGeneration", StringComparison.Ordinal)
                   && camera.Contains("request.Generation", StringComparison.Ordinal),
                 "138P-15A: camera JPEG worker timeout/restart is generation-guarded");
-            Check(pointcloud.Contains("_dracoEncodeWorker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
-                  && pointcloud.Contains("_pointCloud2NativeWorker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
-                  && pointcloud.Contains("request.Generation", StringComparison.Ordinal),
+            Check(pipeline.Contains("_worker.ShouldStopLocked(workerGeneration)", StringComparison.Ordinal)
+                  && pipeline.Contains("request.Generation", StringComparison.Ordinal)
+                  && pipeline.Contains("_worker.InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
+                  && pointcloud.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && pointcloud.Contains("BackgroundEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline", StringComparison.Ordinal),
                 "138P-15B: pointcloud workers timeout/restart are generation-guarded");
 
             var lifecycle = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");
             Check(lifecycle.Contains("internal sealed class BackgroundWorkerLifecycle", StringComparison.Ordinal)
                   && lifecycle.Contains("StartOrReuseLocked", StringComparison.Ordinal)
                   && lifecycle.Contains("InvalidateTimedOutWorkerLocked", StringComparison.Ordinal)
-                  && pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
-                  && pointcloud.Contains("BackgroundWorkerLifecycle _pointCloud2NativeWorker", StringComparison.Ordinal)
-                  && pointcloud.Contains("StartOrReuseLocked(out startWorker)", StringComparison.Ordinal)
-                  && pointcloud.Contains("InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
+                  && pipeline.Contains("private readonly BackgroundWorkerLifecycle _worker", StringComparison.Ordinal)
+                  && pipeline.Contains("StartOrReuseLocked(out startWorker)", StringComparison.Ordinal)
+                  && pipeline.Contains("InvalidateTimedOutWorkerLocked()", StringComparison.Ordinal)
                   && !pointcloud.Contains("_dracoEncodeWorkerGeneration", StringComparison.Ordinal)
                   && !pointcloud.Contains("_pointCloud2NativeWorkerGeneration", StringComparison.Ordinal)
                   && !pointcloud.Contains("_dracoEncodeWorkerRunning", StringComparison.Ordinal)

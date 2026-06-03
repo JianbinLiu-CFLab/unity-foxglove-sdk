@@ -116,7 +116,8 @@ namespace Unity.FoxgloveSDK.Tests
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPoints"",\s*(?:DefaultLidarPointCount|32768)\)")
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(publisher,\s*""_maxPackedBytes"",\s*0\)")
                    && Regex.IsMatch(source, @"Set(?:Private)?Field\(lidar,\s*""_maxRaycastCommandsPerFixedUpdate"",\s*\d+\)")
-                   && source.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal);
+                   && (source.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
+                       || source.Contains("PointCloudOutputMode.PointCloud2Native", StringComparison.Ordinal));
         }
 
         private static void VerifyVirtualLidarIgnoresDemoVehicleSelfHits()
@@ -210,8 +211,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && !combined.Contains("native encode is synchronous", StringComparison.OrdinalIgnoreCase),
                 "138I-19: UI/docs no longer claim Draco native encode is synchronous on the main thread");
             Check(combined.Contains("worker thread", StringComparison.OrdinalIgnoreCase)
-                  && combined.Contains("Raw/ROS2", StringComparison.Ordinal),
-                "138I-20: UI/docs distinguish background Draco visualization from full-stride Raw/ROS2 validation");
+                  && combined.Contains("PointCloud2 Native", StringComparison.Ordinal)
+                  && combined.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal),
+                "138I-20: UI/docs distinguish background Draco visualization from full-stride PointCloud2 Native ROS2 validation");
         }
 
         private static void VerifyValidationWiring()
@@ -230,13 +232,19 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var lidar = ReadRepoText(VirtualLidarRelativePath);
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarScanDiagnostics.cs");
+            var encoders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
             Check(!lidar.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && !publisher.Contains("using System.Diagnostics;", StringComparison.Ordinal)
-                  && lidar.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
+                  && !diagnostics.Contains("using System.Diagnostics;", StringComparison.Ordinal)
+                  && !encoders.Contains("using System.Diagnostics;", StringComparison.Ordinal)
+                  && diagnostics.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
                   && publisher.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
-                  && publisher.Contains("new System.Threading.Thread(RunDracoEncodeWorker)", StringComparison.Ordinal)
-                  && publisher.Contains("Priority = System.Threading.ThreadPriority.BelowNormal", StringComparison.Ordinal),
+                  && encoders.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
+                  && publisher.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && pipeline.Contains("Priority = ThreadPriority.BelowNormal", StringComparison.Ordinal),
                 "138I-23: Stopwatch and Draco thread priority references avoid ambiguous UnityEngine names");
         }
 
@@ -294,6 +302,7 @@ namespace Unity.FoxgloveSDK.Tests
             var lidar = ReadRepoText(VirtualLidarRelativePath);
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
             var encoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
+            var workerEncoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
 
             Check(lidar.Contains("VirtualLidarPointData[] _activeScanPointSnapshot", StringComparison.Ordinal)
                   && lidar.Contains("CopyPendingPointDataSegment", StringComparison.Ordinal)
@@ -304,7 +313,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("VirtualLidarPointData[]", StringComparison.Ordinal)
                   && publisher.Contains("RecordPointCloudPrepared(pointCount)", StringComparison.Ordinal)
                   && publisher.Contains("private void RecordPointCloudPrepared(int pointCount)", StringComparison.Ordinal)
-                  && publisher.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf", StringComparison.Ordinal)
+                  && workerEncoder.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf", StringComparison.Ordinal)
                   && encoder.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal)
                   && encoder.Contains("VirtualLidarPointData[]", StringComparison.Ordinal),
                 "138I-26: VirtualLidar Draco path bypasses managed per-point append and encodes from an off-thread snapshot");
