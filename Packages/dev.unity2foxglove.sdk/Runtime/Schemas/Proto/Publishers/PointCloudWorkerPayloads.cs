@@ -82,7 +82,9 @@ namespace Unity.FoxgloveSDK.Components
             bool publishWebSocket,
             bool publishBridge,
             bool publishNativeFrame,
-            PublisherEffectiveEncoding webSocketEncoding)
+            PublisherEffectiveEncoding webSocketEncoding,
+            string nativeTopic = null,
+            PointCloudMotionCompensationRequest motionCompensation = null)
         {
             LidarPoints = lidarPoints;
             LidarPointCount = lidarPointCount;
@@ -93,6 +95,8 @@ namespace Unity.FoxgloveSDK.Components
             PublishBridge = publishBridge;
             PublishNativeFrame = publishNativeFrame;
             WebSocketEncoding = webSocketEncoding;
+            NativeTopic = nativeTopic;
+            MotionCompensation = motionCompensation;
         }
 
         public VirtualLidarPointData[] LidarPoints { get; }
@@ -104,6 +108,9 @@ namespace Unity.FoxgloveSDK.Components
         public bool PublishBridge { get; }
         public bool PublishNativeFrame { get; }
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
+        public string NativeTopic { get; }
+        public PointCloudMotionCompensationRequest MotionCompensation { get; }
+        public bool HasMotionCompensation => MotionCompensation != null;
         public int Generation { get; set; }
     }
 
@@ -152,6 +159,7 @@ namespace Unity.FoxgloveSDK.Components
             byte[] webSocketPayload,
             byte[] bridgePayload,
             PointCloud2NativeFrame nativeFrame,
+            PointCloud2NativeFrame motionCompensatedNativeFrame,
             string error,
             int validCount,
             int payloadBytes,
@@ -162,6 +170,7 @@ namespace Unity.FoxgloveSDK.Components
             WebSocketPayload = webSocketPayload;
             BridgePayload = bridgePayload;
             NativeFrame = nativeFrame;
+            MotionCompensatedNativeFrame = motionCompensatedNativeFrame;
             Error = error;
             ValidCount = validCount;
             PayloadBytes = payloadBytes;
@@ -173,6 +182,7 @@ namespace Unity.FoxgloveSDK.Components
         public byte[] WebSocketPayload { get; }
         public byte[] BridgePayload { get; }
         public PointCloud2NativeFrame NativeFrame { get; }
+        public PointCloud2NativeFrame MotionCompensatedNativeFrame { get; }
         public string Error { get; }
         public int ValidCount { get; }
         public int PayloadBytes { get; }

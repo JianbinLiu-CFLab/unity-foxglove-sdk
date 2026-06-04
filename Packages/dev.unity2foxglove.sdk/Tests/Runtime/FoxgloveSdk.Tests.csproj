@@ -141,6 +141,7 @@
     <!-- 138M: validate cart-mounted camera time sync and standard ROS camera schemas. -->
     <Compile Include="Phase138MValidation.cs" />
     <Compile Include="Phase138TValidation.cs" />
+    <Compile Include="Phase138UValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
     <Compile Include="Phase138QValidation.cs" />
     <!-- 138S: validate VirtualImu native DDS output contracts. -->

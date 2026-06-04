@@ -255,12 +255,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             private readonly Ros2ForUnityPointCloud2NativeBridge _owner;
             private readonly FoxglovePointCloudPublisher _source;
+            private readonly Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>> _publishers =
+                new Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>>(StringComparer.Ordinal);
+            private readonly HashSet<string> _readyLoggedTopics = new HashSet<string>(StringComparer.Ordinal);
             private ROS2Node _node;
-            private IPublisher<sensor_msgs.msg.PointCloud2> _publisher;
             private IPublisher<tf2_msgs.msg.TFMessage> _tfAnchorPublisher;
             private bool _subscribed;
             private bool _warnedPublishFailure;
-            private bool _readyLogged;
             private int _publishFailureCount;
 
             public Binding(
@@ -305,27 +306,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (!_owner.TryGetRos2Unity(out var ros2Unity))
                     return;
 
-                if (!TryEnsurePublisher(ros2Unity))
+                var frameTopic = ResolveFrameTopic(frame);
+                if (!TryEnsurePublisher(ros2Unity, frameTopic, out var publisher))
                     return;
 
                 try
                 {
                     PublishTfAnchor(frame);
-                    _publisher.Publish(Ros2ForUnityPointCloud2MessageBuilder.Build(frame));
+                    publisher.Publish(Ros2ForUnityPointCloud2MessageBuilder.Build(frame));
                     _warnedPublishFailure = false;
                 }
                 catch (Exception ex)
                 {
-                    RecordPublishFailure("ROS2 PointCloud2 publish failed for " + Topic + ": " + ex.Message);
+                    RecordPublishFailure("ROS2 PointCloud2 publish failed for " + frameTopic + ": " + ex.Message);
                 }
             }
 
-            private bool TryEnsurePublisher(ROS2UnityComponent ros2Unity)
+            private bool TryEnsurePublisher(
+                ROS2UnityComponent ros2Unity,
+                string topic,
+                out IPublisher<sensor_msgs.msg.PointCloud2> publisher)
             {
+                publisher = null;
                 if (_owner.IsShuttingDown)
                     return false;
 
-                if (_node != null && _publisher != null)
+                if (_node != null && _publishers.TryGetValue(topic, out publisher) && publisher != null)
                     return true;
 
                 Exception lastException = null;
@@ -333,10 +339,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     try
                     {
-                        _node = ros2Unity.CreateNode(BuildNodeName(_source, attempt));
-                        _publisher = _node.CreatePublisher<sensor_msgs.msg.PointCloud2>(Topic);
+                        _node ??= ros2Unity.CreateNode(BuildNodeName(_source, attempt));
+                        publisher = _node.CreatePublisher<sensor_msgs.msg.PointCloud2>(topic);
+                        _publishers[topic] = publisher;
                         _warnedPublishFailure = false;
-                        LogReadyOnce();
+                        LogReady(topic);
                         return true;
                     }
                     catch (Exception ex)
@@ -350,20 +357,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
 
                 RecordPublishFailure(
-                    "Unable to create ROS2 PointCloud2 publisher for " + Topic + ": "
+                    "Unable to create ROS2 PointCloud2 publisher for " + topic + ": "
                     + (lastException == null ? "unknown failure" : lastException.Message));
                 return false;
             }
 
-            private void LogReadyOnce()
+            private string ResolveFrameTopic(PointCloud2NativeFrame frame)
             {
-                if (_readyLogged)
+                if (frame != null && !string.IsNullOrWhiteSpace(frame.Topic))
+                    return NormalizeTopic(frame.Topic);
+
+                return Topic;
+            }
+
+            private void LogReady(string topic)
+            {
+                if (_readyLoggedTopics.Contains(topic))
                     return;
 
-                _readyLogged = true;
+                _readyLoggedTopics.Add(topic);
                 Debug.Log(
                     "[Foxglove][R2FU] PointCloud2 Native DDS ready: topic="
-                    + Topic
+                    + topic
                     + " tf="
                     + DescribeTfAnchor()
                     + ".");
@@ -469,10 +484,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void CleanupRos2()
             {
-                if (_node != null && _publisher != null)
+                if (_node != null)
                 {
-                    try { _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_publisher); }
-                    catch (Exception) { }
+                    foreach (var publisher in _publishers.Values)
+                    {
+                        try { _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(publisher); }
+                        catch (Exception) { }
+                    }
                 }
 
                 if (_node != null && _tfAnchorPublisher != null)
@@ -487,7 +505,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     catch (Exception) { }
                 }
 
-                _publisher = null;
+                _publishers.Clear();
+                _readyLoggedTopics.Clear();
                 _tfAnchorPublisher = null;
                 _node = null;
             }

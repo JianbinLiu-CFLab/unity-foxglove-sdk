@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraVideoAccessUnitsUseResolvedFrameId()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var publishVideo = ExtractMethod(camera, "private void PublishVideoAccessUnit");
 
             Check(publishVideo.Contains("ResolveFrameId()", StringComparison.Ordinal)
@@ -704,6 +704,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string Read(string path)
             => File.ReadAllText(path);
+
+        private static string ReadCameraPublisherSources()
+        {
+            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            var output = "";
+            foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
+                output += File.ReadAllText(file) + "\n";
+            return output;
+        }
 
         private static void Check(bool condition, string label)
         {

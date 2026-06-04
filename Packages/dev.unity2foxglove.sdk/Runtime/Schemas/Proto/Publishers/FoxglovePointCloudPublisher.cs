@@ -13,6 +13,8 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
+using NumericsQuaternion = System.Numerics.Quaternion;
+using NumericsVector3 = System.Numerics.Vector3;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -58,6 +60,14 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private Vector3 _pointCloud2NativeTfRotationEuler;
         [SerializeField, HideInInspector] private bool _pointCloud2NativeTfAnchorInitialized;
 
+        [Header("Motion Compensation")]
+        [Tooltip("Emit an optional deskewed PointCloud2 visualization stream. Leave disabled for raw SLAM input.")]
+        [SerializeField] private bool _enableMotionCompensation;
+        [SerializeField] private PointCloudMotionCompensationOutputPolicy _motionCompensationOutputPolicy = PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic;
+        [SerializeField] private string _deskewedPointCloud2NativeTopic = PointCloudMotionCompensationOptions.DefaultDeskewedTopic;
+        [SerializeField] private PointCloudMotionCompensationReferenceTime _motionCompensationReferenceTime = PointCloudMotionCompensationReferenceTime.ScanMidpoint;
+        [SerializeField] private PointCloudMotionCompensationSource _motionCompensationSource = PointCloudMotionCompensationSource.SensorTransform;
+
         [Header("Draco")]
         [Tooltip("Optional cap for source-driven VirtualLidar native Draco snapshots. Set 0 to publish every completed source scan; main-loop protection belongs in the LiDAR raycast budget, not a fixed publisher rate.")]
         [SerializeField, Min(0f)] private float _nativeDracoMaxPublishRateHz;
@@ -71,7 +81,9 @@ namespace Unity.FoxgloveSDK.Components
         private PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline;
         private PointCloudEncodePipeline<PointCloud2NativeRequest, PointCloud2NativeResult> _pointCloud2NativePipeline;
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
+        private readonly SensorMotionPoseHistory _motionPoseHistory = new SensorMotionPoseHistory();
         private ulong _lastNativeDracoPublishUnixNs;
+        private int _motionCompensationWarningCount;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -109,6 +121,18 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Resolved publisher topic for optional native ROS2 PointCloud2 adapters.</summary>
         public string PointCloud2NativeTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
+
+        /// <summary>True when a deskewed visualization PointCloud2 stream is enabled.</summary>
+        public bool EnableMotionCompensatedPointCloud2 => IsPointCloud2NativeOutput && _enableMotionCompensation;
+
+        /// <summary>Resolved deskewed visualization topic for optional native ROS2 PointCloud2 adapters.</summary>
+        public string MotionCompensatedPointCloud2Topic
+            => PointCloudMotionCompensationOptions.NormalizeTopic(
+                _deskewedPointCloud2NativeTopic,
+                PointCloudMotionCompensationOptions.DefaultDeskewedTopic);
+
+        /// <summary>Resolved motion-compensation output policy.</summary>
+        public PointCloudMotionCompensationOutputPolicy MotionCompensationOutputPolicy => _motionCompensationOutputPolicy;
 
         /// <summary>Resolved frame id for optional native ROS2 PointCloud2 adapters.</summary>
         public string PointCloudFrameId => SanitizeNonEmptyFrameId(_frameId, "unity_world");
@@ -195,6 +219,8 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnDisable()
         {
             _lastNativeDracoPublishUnixNs = 0UL;
+            _motionCompensationWarningCount = 0;
+            _motionPoseHistory.Clear();
             _publishState.ResetSourceDriven();
             _publishState.ClearPreparedDemand();
             _dracoEncodePipeline?.Stop(clearCompleted: true);
@@ -206,6 +232,22 @@ namespace Unity.FoxgloveSDK.Components
         {
             _dracoEncodePipeline?.Stop(clearCompleted: true);
             _pointCloud2NativePipeline?.Stop(clearCompleted: true);
+        }
+
+        protected virtual void FixedUpdate()
+        {
+            if (!IsPointCloud2NativeOutput || !_enableMotionCompensation)
+                return;
+
+            ResolveManager();
+            var unixNs = _manager == null
+                ? CurrentLogTimeNs
+                : _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble);
+
+            _motionPoseHistory.Add(
+                unixNs,
+                new NumericsVector3(transform.position.x, transform.position.y, transform.position.z),
+                new NumericsQuaternion(transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w));
         }
 
         /// <summary>
@@ -323,7 +365,19 @@ namespace Unity.FoxgloveSDK.Components
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame)
+            var motionSettings = ResolveMotionCompensationSettings();
+            var publishRaw = motionSettings.PreserveRawOutput;
+            var motionCompensation = TryCreateMotionCompensationRequest(
+                points,
+                pointCount,
+                unixNs,
+                motionSettings,
+                publishNativeFrame);
+
+            if (!publishRaw && motionCompensation == null)
+                return true;
+
+            if (publishRaw && !publishWebSocket && !publishBridge && !publishNativeFrame && motionCompensation == null)
                 return true;
 
             QueueVirtualLidarPointCloud2Native(
@@ -332,10 +386,12 @@ namespace Unity.FoxgloveSDK.Components
                 unixNs,
                 frameId,
                 emitAbsoluteTimeNs,
-                publishWebSocket,
-                publishBridge,
-                publishNativeFrame,
-                EffectiveEncoding);
+                publishRaw && publishWebSocket,
+                publishRaw && publishBridge,
+                publishRaw && publishNativeFrame,
+                EffectiveEncoding,
+                publishRaw ? PointCloud2NativeTopic : null,
+                motionCompensation);
             return true;
         }
 
@@ -522,7 +578,8 @@ namespace Unity.FoxgloveSDK.Components
                     fields: packed.Fields,
                     pointStep: packed.PointStride,
                     data: packed.Data,
-                    isDense: true);
+                    isDense: true,
+                    topic: PointCloud2NativeTopic);
                 handler(nativeFrame);
             }
             catch (Exception ex)
@@ -597,7 +654,9 @@ namespace Unity.FoxgloveSDK.Components
             bool publishWebSocket,
             bool publishBridge,
             bool publishNativeFrame,
-            PublisherEffectiveEncoding webSocketEncoding)
+            PublisherEffectiveEncoding webSocketEncoding,
+            string nativeTopic = null,
+            PointCloudMotionCompensationRequest motionCompensation = null)
         {
             if (points == null || pointCount <= 0)
                 return;
@@ -612,8 +671,103 @@ namespace Unity.FoxgloveSDK.Components
                 publishWebSocket,
                 publishBridge,
                 publishNativeFrame,
-                webSocketEncoding);
+                webSocketEncoding,
+                nativeTopic,
+                motionCompensation);
             EnqueuePointCloud2NativeRequest(request);
+        }
+
+        private PointCloudMotionCompensationSettings ResolveMotionCompensationSettings()
+        {
+            return new PointCloudMotionCompensationSettings(
+                _enableMotionCompensation,
+                _motionCompensationOutputPolicy,
+                _deskewedPointCloud2NativeTopic,
+                _motionCompensationReferenceTime,
+                _motionCompensationSource);
+        }
+
+        private PointCloudMotionCompensationRequest TryCreateMotionCompensationRequest(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            ulong unixNs,
+            PointCloudMotionCompensationSettings settings,
+            bool publishNativeFrame)
+        {
+            if (!settings.EmitDeskewedOutput || !publishNativeFrame)
+                return null;
+
+            if (points == null || pointCount <= 0)
+                return null;
+
+            if (!TryGetPointTimeRange(points, pointCount, unixNs, out var firstUnixNs, out var lastUnixNs))
+            {
+                WarnMotionCompensation("skipped: valid point time offsets are absent");
+                return null;
+            }
+
+            if (!_motionPoseHistory.Covers(firstUnixNs, lastUnixNs))
+            {
+                WarnMotionCompensation("skipped: pose history does not cover the whole scan interval");
+                return null;
+            }
+
+            if (settings.IsLikelySlamReplacementTopic(PointCloud2NativeTopic))
+            {
+                WarnMotionCompensation(
+                    "ReplaceOutput is publishing deskewed visualization data on a likely SLAM topic; FAST-LIO2/LIVO2 should subscribe to raw output instead.");
+            }
+
+            return new PointCloudMotionCompensationRequest(
+                settings.ResolveDeskewedTopic(PointCloud2NativeTopic),
+                settings.ReferenceTime,
+                PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame,
+                _motionPoseHistory.Snapshot());
+        }
+
+        private void WarnMotionCompensation(string reason)
+        {
+            _motionCompensationWarningCount++;
+            if (_motionCompensationWarningCount != 1 && _motionCompensationWarningCount % PointCloud2NativeFailureWarningIntervalFrames != 0)
+                return;
+
+            Debug.LogWarning("[Foxglove] PointCloud2 motion compensation " + reason);
+        }
+
+        private static bool TryGetPointTimeRange(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            ulong unixNs,
+            out ulong firstUnixNs,
+            out ulong lastUnixNs)
+        {
+            firstUnixNs = unixNs;
+            lastUnixNs = unixNs;
+            var found = false;
+            var count = Math.Min(pointCount, points.Length);
+            for (var i = 0; i < count; i++)
+            {
+                var point = points[i];
+                if (point.IsValid == 0)
+                    continue;
+
+                var offsetNs = PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds);
+                var pointUnixNs = checked(unixNs + offsetNs);
+                if (!found)
+                {
+                    firstUnixNs = pointUnixNs;
+                    lastUnixNs = pointUnixNs;
+                    found = true;
+                    continue;
+                }
+
+                if (pointUnixNs < firstUnixNs)
+                    firstUnixNs = pointUnixNs;
+                if (pointUnixNs > lastUnixNs)
+                    lastUnixNs = pointUnixNs;
+            }
+
+            return found;
         }
 
         /// <summary>
@@ -714,19 +868,30 @@ namespace Unity.FoxgloveSDK.Components
                 PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
 
             if (result.Request.PublishNativeFrame && result.NativeFrame != null)
-            {
-                var handler = PointCloud2NativeFrameReady;
-                if (handler == null)
-                    return;
+                PublishPointCloud2NativeFrameReady(result.NativeFrame);
 
-                try
-                {
-                    handler(result.NativeFrame);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
-                }
+            if (result.MotionCompensatedNativeFrame != null)
+                PublishPointCloud2NativeFrameReady(result.MotionCompensatedNativeFrame);
+            else if (result.Request.HasMotionCompensation && !string.IsNullOrWhiteSpace(result.Error))
+                WarnMotionCompensation("skipped: " + result.Error);
+        }
+
+        private void PublishPointCloud2NativeFrameReady(PointCloud2NativeFrame frame)
+        {
+            if (frame == null)
+                return;
+
+            var handler = PointCloud2NativeFrameReady;
+            if (handler == null)
+                return;
+
+            try
+            {
+                handler(frame);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
             }
         }
 

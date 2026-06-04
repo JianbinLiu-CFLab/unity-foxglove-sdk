@@ -24,7 +24,9 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             IReadOnlyList<PointCloudPackedField> fields,
             uint pointStep,
             byte[] data,
-            bool isDense)
+            bool isDense,
+            string topic = null,
+            bool isMotionCompensatedVisualization = false)
         {
             if (height == 0U)
                 throw new ArgumentOutOfRangeException(nameof(height));
@@ -51,6 +53,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             Data = data;
             IsDense = isDense;
             ValidCount = checked((int)((ulong)height * width));
+            Topic = topic ?? string.Empty;
+            IsMotionCompensatedVisualization = isMotionCompensatedVisualization;
         }
 
         /// <summary>Frame timestamp, in Unix nanoseconds.</summary>
@@ -85,5 +89,11 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         /// <summary>Number of compacted valid points in the payload.</summary>
         public int ValidCount { get; }
+
+        /// <summary>Optional per-frame output topic override for native DDS adapters.</summary>
+        public string Topic { get; }
+
+        /// <summary>True when this frame is a deskewed visualization stream, not raw sensor truth.</summary>
+        public bool IsMotionCompensatedVisualization { get; }
     }
 }

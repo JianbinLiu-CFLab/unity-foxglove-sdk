@@ -43,7 +43,10 @@ namespace Unity.FoxgloveSDK.Editor
             DrawOutputModeSection(outputMode, topic);
             DrawGeneralSection();
             if (GetMode(outputMode) == PointCloudOutputMode.PointCloud2Native)
+            {
                 DrawPointCloud2NativeTfAnchorSection();
+                DrawMotionCompensationSection();
+            }
 
             DrawPointSourcesSection();
             DrawPointCloudQosSection();
@@ -144,6 +147,27 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.HelpBox(
                 "The product R2FU path publishes a small /tf anchor by default so RViz can resolve the PointCloud2 frame. Leave TF Child Frame empty to follow Frame Id; disable this when an external SLAM or robot TF tree owns the same frame.",
                 MessageType.Info);
+        }
+
+        private void DrawMotionCompensationSection()
+        {
+            var enabled = serializedObject.FindProperty("_enableMotionCompensation");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Motion Compensation", EditorStyles.boldLabel);
+            DrawProperty("_enableMotionCompensation", "Enable Deskew");
+
+            using (new EditorGUI.DisabledScope(enabled == null || !enabled.boolValue))
+            {
+                DrawProperty("_motionCompensationOutputPolicy", "Output Policy");
+                DrawProperty("_deskewedPointCloud2NativeTopic", "Deskewed Topic");
+                DrawProperty("_motionCompensationReferenceTime", "Reference Time");
+                DrawProperty("_motionCompensationSource", "Motion Source");
+            }
+
+            EditorGUILayout.HelpBox(
+                "Deskew is a visualization/output transform. Keep raw rolling PointCloud2 as the input for SLAM front ends such as FAST-LIO2 or LIVO2 that deskew from IMU and per-point time.",
+                MessageType.Warning);
         }
 
         private void DrawPointCloudQosSection()

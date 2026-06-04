@@ -86,6 +86,7 @@ namespace Unity.FoxgloveSDK.Components
             byte[] webSocketPayload = null;
             byte[] bridgePayload = null;
             PointCloud2NativeFrame nativeFrame = null;
+            PointCloud2NativeFrame motionCompensatedNativeFrame = null;
             var validCount = 0;
             var payloadBytes = 0;
 
@@ -112,6 +113,38 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 payloadBytes = ros2Payload?.Length ?? nativeFrame.Data.Length;
+
+                if (request.HasMotionCompensation)
+                {
+                    if (!PointCloudMotionCompensator.TryCompensateVirtualLidar(
+                            request.LidarPoints,
+                            request.LidarPointCount,
+                            request.UnixNs,
+                            request.MotionCompensation,
+                            out var compensated,
+                            out var compensationError))
+                    {
+                        error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
+                    }
+                    else
+                    {
+                        var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                            compensated.Points,
+                            compensated.PointCount,
+                            request.EmitAbsoluteTimeNs);
+                        var compensatedValidCount = compensatedPacked.PointStride == 0U
+                            ? 0
+                            : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
+                        motionCompensatedNativeFrame = BuildPointCloud2NativeFrame(
+                            request,
+                            compensatedPacked,
+                            compensatedValidCount,
+                            compensated.ReferenceUnixNs,
+                            request.MotionCompensation.Topic,
+                            isMotionCompensatedVisualization: true);
+                    }
+                }
+
                 success = true;
             }
             catch (Exception ex)
@@ -125,6 +158,7 @@ namespace Unity.FoxgloveSDK.Components
                 webSocketPayload,
                 bridgePayload,
                 nativeFrame,
+                motionCompensatedNativeFrame,
                 error,
                 validCount,
                 payloadBytes,
@@ -135,16 +169,33 @@ namespace Unity.FoxgloveSDK.Components
             PointCloud2NativeRequest request,
             PointCloudPackedData packed,
             int validCount)
+            => BuildPointCloud2NativeFrame(
+                request,
+                packed,
+                validCount,
+                request.UnixNs,
+                request.NativeTopic,
+                isMotionCompensatedVisualization: false);
+
+        private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
+            PointCloud2NativeRequest request,
+            PointCloudPackedData packed,
+            int validCount,
+            ulong unixNs,
+            string topic,
+            bool isMotionCompensatedVisualization)
         {
             return new PointCloud2NativeFrame(
-                request.UnixNs,
+                unixNs,
                 request.FrameId,
                 height: 1U,
                 width: checked((uint)validCount),
                 fields: packed.Fields,
                 pointStep: packed.PointStride,
                 data: packed.Data,
-                isDense: true);
+                isDense: true,
+                topic: topic,
+                isMotionCompensatedVisualization: isMotionCompensatedVisualization);
         }
 
         private static byte[] BuildPointCloud2NativePayload(PointCloud2NativeFrame frame)
