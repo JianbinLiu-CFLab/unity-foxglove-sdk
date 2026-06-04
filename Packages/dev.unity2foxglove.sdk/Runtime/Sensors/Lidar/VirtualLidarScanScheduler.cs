@@ -12,6 +12,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 
 namespace Unity.FoxgloveSDK.Components
@@ -83,10 +84,14 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            // Rays are cast from the current tick pose, but points are expressed in the
-            // active scan's reference pose. Otherwise a scan that spans multiple ticks
-            // stitches several local frames into one message and bends flat surfaces.
+            // Rays are cast from the current tick pose. The build job keeps both the
+            // active scan-reference coordinates for legacy visualization and the
+            // acquisition-time coordinates needed by raw PointCloud2 Native streams.
             var queryParams = new QueryParameters(layerMask.value);
+            var acquisitionWorldToLocal = Matrix4x4
+                .TRS(worldPos, worldRot, Vector3.one)
+                .inverse
+                .ToFloat4x4();
 
             // Build one batch for all columns this tick (cap at one revolution).
             _scanCrossings.Clear();
@@ -159,6 +164,7 @@ namespace Unity.FoxgloveSDK.Components
                 RayTimeOffsets = rayTimeOffsets,
                 RayRings = rayRings,
                 WorldToLocal = activeScanWorldToLocal,
+                AcquisitionWorldToLocal = acquisitionWorldToLocal,
                 MinRange = minRange,
                 MaxRange = maxRangeMeters,
                 SyntheticIntensity = syntheticIntensity,

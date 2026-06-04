@@ -181,6 +181,7 @@ namespace Unity.FoxgloveSDK.Tests
             var mode = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudOutputMode.cs");
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var lidarFramePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
 
             Check(mode.Contains("PointCloud2Native", StringComparison.Ordinal)
@@ -194,7 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal),
                 "138L-2V: PointCloud2Native exposes a native VirtualLidar queue entry point");
             Check(lidar.Contains("UseNativePointCloudSnapshotPath", StringComparison.Ordinal)
-                  && lidar.Contains("TryPublishActiveNativePointCloud2Scan", StringComparison.Ordinal),
+                  && lidarFramePublisher.Contains("TryPublishNativePointCloud2Scan", StringComparison.Ordinal),
                 "138L-2W: VirtualLidar can bypass managed Points.Add for PointCloud2Native");
             Check(editor.Contains("PointCloud2 Native", StringComparison.Ordinal),
                 "138L-2X: Inspector labels the SLAM PointCloud2 mode explicitly");
@@ -255,8 +256,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("FindObjectsByType<FoxglovePointCloudPublisher>", StringComparison.Ordinal)
                   && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
                 "138L-5C: R2FU PointCloud2 bridge is an automatic product path gated by the Manager toggle");
-            Check(bridge.Contains("PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
-                  && bridge.Contains("CreatePublisher<sensor_msgs.msg.PointCloud2>(Topic)", StringComparison.Ordinal)
+            Check(bridge.Contains("_source.PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
+                  && bridge.Contains("CreatePublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal)
                   && !bridge.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
                 "138L-5D: R2FU bridge consumes prepared native frames without requiring the Phase138 smoke component");
             Check(bridge.Contains("TfAnchorTopic = \"/tf\"", StringComparison.Ordinal)

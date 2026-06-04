@@ -25,9 +25,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         [ReadOnly] public NativeArray<float> RayTimeOffsets;
         [ReadOnly] public NativeArray<ushort> RayRings;
 
-        // One scan reference frame is used for the whole batch; changing this to a
-        // per-tick transform can bend a multi-tick revolution.
+        // WorldToLocal is fixed for the scan reference. AcquisitionWorldToLocal
+        // is the current batch pose for raw rolling PointCloud2 Native output.
         [ReadOnly] public float4x4 WorldToLocal;
+        [ReadOnly] public float4x4 AcquisitionWorldToLocal;
         [ReadOnly] public float MinRange;
         [ReadOnly] public float MaxRange;
         [ReadOnly] public float SyntheticIntensity;
@@ -50,16 +51,23 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             var hit = Hits[index];
             if (hit.distance > 0f && hit.distance >= MinRange && hit.distance <= MaxRange)
             {
-                var local = math.mul(WorldToLocal, new float4(new float3(hit.point.x, hit.point.y, hit.point.z), 1f)).xyz;
+                var world = new float4(new float3(hit.point.x, hit.point.y, hit.point.z), 1f);
+                var local = math.mul(WorldToLocal, world).xyz;
+                var acquisitionLocal = math.mul(AcquisitionWorldToLocal, world).xyz;
                 var converted = CoordinateConverterFloat3.UnityToFoxglovePosition(local);
+                var acquisitionConverted = CoordinateConverterFloat3.UnityToFoxglovePosition(acquisitionLocal);
                 output.X = converted.x;
                 output.Y = converted.y;
                 output.Z = converted.z;
+                output.AcquisitionX = acquisitionConverted.x;
+                output.AcquisitionY = acquisitionConverted.y;
+                output.AcquisitionZ = acquisitionConverted.z;
                 output.Intensity = SyntheticIntensity;
                 output.Reflectivity = SyntheticReflectivity;
                 output.TimeOffsetSeconds = index < RayTimeOffsets.Length ? RayTimeOffsets[index] : 0f;
                 output.Ring = index < RayRings.Length ? RayRings[index] : (ushort)0;
                 output.IsValid = 1;
+                output.HasAcquisitionFrame = 1;
             }
 
             Points[index] = output;

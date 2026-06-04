@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableMotionCompensation;
         [SerializeField] private PointCloudMotionCompensationOutputPolicy _motionCompensationOutputPolicy = PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic;
         [SerializeField] private string _deskewedPointCloud2NativeTopic = PointCloudMotionCompensationOptions.DefaultDeskewedTopic;
-        [SerializeField] private PointCloudMotionCompensationReferenceTime _motionCompensationReferenceTime = PointCloudMotionCompensationReferenceTime.ScanMidpoint;
+        [SerializeField] private PointCloudMotionCompensationReferenceTime _motionCompensationReferenceTime = PointCloudMotionCompensationReferenceTime.ScanStart;
         [SerializeField] private PointCloudMotionCompensationSource _motionCompensationSource = PointCloudMotionCompensationSource.SensorTransform;
 
         [Header("Draco")]
@@ -243,11 +243,13 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = _manager == null
                 ? CurrentLogTimeNs
                 : _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble);
+            var foxglovePosition = CoordinateConverter.UnityToFoxglovePosition(transform.position);
+            var foxgloveRotation = CoordinateConverter.UnityToFoxgloveRotation(transform.rotation);
 
             _motionPoseHistory.Add(
                 unixNs,
-                new NumericsVector3(transform.position.x, transform.position.y, transform.position.z),
-                new NumericsQuaternion(transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w));
+                new NumericsVector3(foxglovePosition.x, foxglovePosition.y, foxglovePosition.z),
+                new NumericsQuaternion(foxgloveRotation.x, foxgloveRotation.y, foxgloveRotation.z, foxgloveRotation.w));
         }
 
         /// <summary>
@@ -703,12 +705,6 @@ namespace Unity.FoxgloveSDK.Components
             if (!TryGetPointTimeRange(points, pointCount, unixNs, out var firstUnixNs, out var lastUnixNs))
             {
                 WarnMotionCompensation("skipped: valid point time offsets are absent");
-                return null;
-            }
-
-            if (!_motionPoseHistory.Covers(firstUnixNs, lastUnixNs))
-            {
-                WarnMotionCompensation("skipped: pose history does not cover the whole scan interval");
                 return null;
             }
 

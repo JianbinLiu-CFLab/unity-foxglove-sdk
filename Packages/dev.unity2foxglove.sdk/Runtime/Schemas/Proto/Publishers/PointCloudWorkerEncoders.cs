@@ -95,7 +95,8 @@ namespace Unity.FoxgloveSDK.Components
                 var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
                     request.LidarPoints,
                     request.LidarPointCount,
-                    request.EmitAbsoluteTimeNs);
+                    request.EmitAbsoluteTimeNs,
+                    useAcquisitionFrameCoordinates: true);
                 validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
                 nativeFrame = BuildPointCloud2NativeFrame(request, packed, validCount);
 

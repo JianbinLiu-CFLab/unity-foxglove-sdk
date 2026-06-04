@@ -18,9 +18,8 @@ namespace Unity.FoxgloveSDK.Components
         AcquisitionTimeSensorFrame,
         /// <summary>
         /// Each raw point is already expressed in one scan reference sensor frame.
-        /// Current VirtualLidar native snapshots use this convention: raycasts are
-        /// launched from per-tick poses, then hit positions are transformed through
-        /// the active scan's world-to-local matrix before packing.
+        /// This is kept for legacy callers that intentionally publish pre-aligned
+        /// visualization points; raw PointCloud2 Native uses acquisition-time points.
         /// </summary>
         ScanReferenceSensorFrame
     }
@@ -104,6 +103,14 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            if (request.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
+            {
+                var referenceOutput = new VirtualLidarPointData[pointCount];
+                CopyReferenceFramePoints(source, pointCount, referenceOutput);
+                result = new PointCloudMotionCompensationResult(referenceOutput, pointCount, firstUnixNs);
+                return true;
+            }
+
             var referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             if (request.PoseSamples.Length < 2
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, firstUnixNs, out _)
@@ -115,12 +122,6 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var output = new VirtualLidarPointData[pointCount];
-            if (request.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
-            {
-                CopyReferenceFramePoints(source, pointCount, output);
-                result = new PointCloudMotionCompensationResult(output, pointCount, referenceUnixNs);
-                return true;
-            }
 
             if (!Matrix4x4.Invert(LocalToWorld(referencePose), out var worldToReference))
             {
@@ -152,11 +153,15 @@ namespace Unity.FoxgloveSDK.Components
                     transformsByOffsetNs[offsetNs] = sensorToReference;
                 }
 
-                var transformed = Vector3.Transform(new Vector3(point.X, point.Y, point.Z), sensorToReference);
+                var transformed = Vector3.Transform(GetAcquisitionPoint(point), sensorToReference);
                 point.X = transformed.X;
                 point.Y = transformed.Y;
                 point.Z = transformed.Z;
+                point.AcquisitionX = transformed.X;
+                point.AcquisitionY = transformed.Y;
+                point.AcquisitionZ = transformed.Z;
                 point.TimeOffsetSeconds = 0f;
+                point.HasAcquisitionFrame = 0;
                 output[i] = point;
             }
 
@@ -173,9 +178,20 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var point = source[i];
                 if (point.IsValid != 0)
+                {
                     point.TimeOffsetSeconds = 0f;
+                    point.HasAcquisitionFrame = 0;
+                }
                 output[i] = point;
             }
+        }
+
+        private static Vector3 GetAcquisitionPoint(VirtualLidarPointData point)
+        {
+            if (point.HasAcquisitionFrame == 0)
+                return new Vector3(point.X, point.Y, point.Z);
+
+            return new Vector3(point.AcquisitionX, point.AcquisitionY, point.AcquisitionZ);
         }
 
         private static bool TryGetTimeRange(

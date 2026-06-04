@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Components
                 enabled: false,
                 outputPolicy: PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic,
                 deskewedTopic: DefaultDeskewedTopic,
-                referenceTime: PointCloudMotionCompensationReferenceTime.ScanMidpoint,
+                referenceTime: PointCloudMotionCompensationReferenceTime.ScanStart,
                 motionSource: PointCloudMotionCompensationSource.SensorTransform);
 
         public static string NormalizeTopic(string topic, string fallback)

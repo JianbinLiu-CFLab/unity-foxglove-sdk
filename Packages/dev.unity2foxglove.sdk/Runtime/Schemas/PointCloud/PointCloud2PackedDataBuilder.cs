@@ -22,12 +22,13 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// </summary>
         internal static PointCloudPackedData BuildVirtualLidarFullStride(
             IReadOnlyList<VirtualLidarPointData> points,
-            bool emitAbsoluteTimeNs)
+            bool emitAbsoluteTimeNs,
+            bool useAcquisitionFrameCoordinates = false)
         {
             if (points == null)
                 throw new ArgumentNullException(nameof(points));
 
-            return BuildVirtualLidarFullStride(points, points.Count, emitAbsoluteTimeNs);
+            return BuildVirtualLidarFullStride(points, points.Count, emitAbsoluteTimeNs, useAcquisitionFrameCoordinates);
         }
 
         /// <summary>
@@ -37,7 +38,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         internal static PointCloudPackedData BuildVirtualLidarFullStride(
             IReadOnlyList<VirtualLidarPointData> points,
             int pointCount,
-            bool emitAbsoluteTimeNs)
+            bool emitAbsoluteTimeNs,
+            bool useAcquisitionFrameCoordinates = false)
         {
             if (points == null)
                 throw new ArgumentNullException(nameof(points));
@@ -58,9 +60,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     if (point.IsValid == 0)
                         continue;
 
-                    writer.Write(point.X);
-                    writer.Write(point.Y);
-                    writer.Write(point.Z);
+                    var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
+                    writer.Write(useAcquisition ? point.AcquisitionX : point.X);
+                    writer.Write(useAcquisition ? point.AcquisitionY : point.Y);
+                    writer.Write(useAcquisition ? point.AcquisitionZ : point.Z);
                     writer.Write(point.Intensity);
                     writer.Write(point.Reflectivity);
                     writer.Write(point.Ring);

@@ -46,6 +46,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "138U-1D: default deskewed topic is stable");
             Check(PointCloudMotionCompensationOptions.IsLikelySlamInputTopic("/unity/point_cloud2"),
                 "138U-1E: normal product topic is flagged as risky for ReplaceOutput");
+            Check(options.ReferenceTime == PointCloudMotionCompensationReferenceTime.ScanStart,
+                "138U-1Ea: default deskewed visualization uses scan-start reference time");
 
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             Check(publisher.Contains("_enableMotionCompensation", StringComparison.Ordinal),
@@ -53,12 +55,28 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publisher.Contains("_deskewedPointCloud2NativeTopic", StringComparison.Ordinal),
                 "138U-1G: point cloud publisher stores deskewed topic");
             Check(publisher.Contains("PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame", StringComparison.Ordinal),
-                "138U-1H: publisher records current VirtualLidar scan-reference coordinate contract");
+                "138U-1H: publisher routes deskew through scan-reference coordinates");
             Check(publisher.Contains("FixedUpdate()", StringComparison.Ordinal)
                   && publisher.Contains("_motionPoseHistory.Add", StringComparison.Ordinal),
                 "138U-1I: pose history is sampled on FixedUpdate/main-thread cadence");
             Check(publisher.Contains("GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)", StringComparison.Ordinal),
                 "138U-1J: pose history uses the same shared physics clock as VirtualLidar scans");
+            Check(publisher.Contains("CoordinateConverter.UnityToFoxglovePosition", StringComparison.Ordinal)
+                  && publisher.Contains("CoordinateConverter.UnityToFoxgloveRotation", StringComparison.Ordinal),
+                "138U-1K: pose history uses the same Foxglove coordinate system as native points");
+
+            var pointData = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/VirtualLidarPointData.cs");
+            Check(pointData.Contains("AcquisitionX", StringComparison.Ordinal)
+                  && pointData.Contains("HasAcquisitionFrame", StringComparison.Ordinal),
+                "138U-1L: native LiDAR point data keeps acquisition-time coordinates");
+
+            var buildJob = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarBuildPointsJob.cs");
+            Check(buildJob.Contains("AcquisitionWorldToLocal", StringComparison.Ordinal),
+                "138U-1M: build job records per-batch acquisition-frame coordinates");
+
+            var workerEncoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            Check(workerEncoders.Contains("useAcquisitionFrameCoordinates: true", StringComparison.Ordinal),
+                "138U-1N: raw PointCloud2 Native packing uses rolling acquisition coordinates");
         }
 
         private static void PoseHistoryInterpolation()
@@ -85,19 +103,27 @@ namespace Unity.FoxgloveSDK.Tests
                     X = 0f,
                     Y = 0f,
                     Z = 0f,
+                    AcquisitionX = 0f,
+                    AcquisitionY = 0f,
+                    AcquisitionZ = 0f,
                     TimeOffsetSeconds = 0f,
-                    IsValid = 1
+                    IsValid = 1,
+                    HasAcquisitionFrame = 1
                 },
                 new VirtualLidarPointData
                 {
-                    X = 1f,
+                    X = 99f,
                     Y = 0f,
                     Z = 0f,
+                    AcquisitionX = 1f,
+                    AcquisitionY = 0f,
+                    AcquisitionZ = 0f,
                     Intensity = 0.5f,
                     Reflectivity = 0.25f,
                     TimeOffsetSeconds = 0.1f,
                     Ring = 7,
-                    IsValid = 1
+                    IsValid = 1,
+                    HasAcquisitionFrame = 1
                 }
             };
             var poses = new[]
@@ -120,27 +146,45 @@ namespace Unity.FoxgloveSDK.Tests
                     out var error),
                 "138U-3A: motion compensator succeeds for covered translation case" + error);
             Check(Math.Abs(result.Points[1].X - 2f) < 0.0001f,
-                "138U-3B: translation-only deskew applies acquisition pose into reference frame");
+                "138U-3B: translation-only deskew uses acquisition-frame XYZ, not scan-reference XYZ");
             Check(result.Points[1].TimeOffsetSeconds == 0f,
                 "138U-3C: deskewed rolling time offset is reset");
             Check(result.Points[1].Intensity == 0.5f && result.Points[1].Reflectivity == 0.25f && result.Points[1].Ring == 7,
                 "138U-3D: deskew preserves intensity, reflectivity, and ring");
+            Check(result.Points[1].HasAcquisitionFrame == 0,
+                "138U-3E: deskewed output is marked as one reference-frame cloud");
+
+            var rawPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                points,
+                points.Length,
+                emitAbsoluteTimeNs: false,
+                useAcquisitionFrameCoordinates: true);
+            Check(Math.Abs(BitConverter.ToSingle(rawPacked.Data, 26) - 1f) < 0.0001f,
+                "138U-3F: raw PointCloud2 packing selects acquisition-frame XYZ");
+
+            var referencePacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                points,
+                points.Length,
+                emitAbsoluteTimeNs: false);
+            Check(Math.Abs(BitConverter.ToSingle(referencePacked.Data, 26) - 99f) < 0.0001f,
+                "138U-3G: scan-reference packing keeps closed visualization XYZ");
 
             var referenceRequest = new PointCloudMotionCompensationRequest(
                 "/deskewed",
-                PointCloudMotionCompensationReferenceTime.ScanStart,
+                PointCloudMotionCompensationReferenceTime.ScanMidpoint,
                 PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame,
-                poses);
+                Array.Empty<SensorMotionPoseSample>());
             Check(PointCloudMotionCompensator.TryCompensateVirtualLidar(
                     points,
                     points.Length,
                     1_000_000_000UL,
                     referenceRequest,
                     out var referenceResult,
-                    out _)
-                  && Math.Abs(referenceResult.Points[1].X - 1f) < 0.0001f
+                  out _)
+                  && Math.Abs(referenceResult.Points[1].X - 99f) < 0.0001f
+                  && referenceResult.ReferenceUnixNs == 1_000_000_000UL
                   && referenceResult.Points[1].TimeOffsetSeconds == 0f,
-                "138U-3E: current scan-reference VirtualLidar contract avoids double transform and resets time");
+                "138U-3H: scan-reference deskew branch publishes closed scan-start visualization XYZ without pose history");
         }
 
         private static void NativeFrameAndBridgeTopicRouting()
