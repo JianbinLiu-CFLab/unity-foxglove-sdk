@@ -73,6 +73,8 @@ namespace Unity.FoxgloveSDK.Editor
             var sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
             var useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
             var publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
+            var publishStandardRos2RawImage = serializedObject.FindProperty("_publishStandardRos2RawImage");
+            var sensorCameraRawImageTopic = serializedObject.FindProperty("_sensorCameraRawImageTopic");
             var ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
             var openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
             var openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
@@ -116,7 +118,9 @@ namespace Unity.FoxgloveSDK.Editor
             DrawSensorCameraSection(
                 sensorUnitProfile,
                 useSharedSensorClock,
-                publishStandardRos2CompressedImage);
+                publishStandardRos2CompressedImage,
+                publishStandardRos2RawImage,
+                sensorCameraRawImageTopic);
 
             var mode = GetMode(outputMode);
             var profile = CameraVideoOutputProfile.ForMode(mode);
@@ -208,7 +212,9 @@ namespace Unity.FoxgloveSDK.Editor
         private static void DrawSensorCameraSection(
             SerializedProperty sensorUnitProfile,
             SerializedProperty useSharedSensorClock,
-            SerializedProperty publishStandardRos2CompressedImage)
+            SerializedProperty publishStandardRos2CompressedImage,
+            SerializedProperty publishStandardRos2RawImage,
+            SerializedProperty sensorCameraRawImageTopic)
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Sensor Camera", EditorStyles.boldLabel);
@@ -217,6 +223,12 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(
                 publishStandardRos2CompressedImage,
                 new GUIContent("Publish Standard ROS2 CompressedImage"));
+            EditorGUILayout.PropertyField(
+                publishStandardRos2RawImage,
+                new GUIContent("Publish Standard ROS2 Raw Image"));
+            EditorGUILayout.PropertyField(
+                sensorCameraRawImageTopic,
+                new GUIContent("Sensor Camera Raw Image Topic"));
         }
 
         private void DrawBackpressureSection(

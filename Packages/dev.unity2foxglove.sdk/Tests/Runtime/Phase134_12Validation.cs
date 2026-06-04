@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Foxglove.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -234,7 +235,25 @@ namespace Unity.FoxgloveSDK.Tests
         /// <summary>
         /// Reads a source file as UTF-8 text.
         /// </summary>
-        private static string Read(string path) => File.ReadAllText(path);
+        private static string Read(string path)
+        {
+            if (path.EndsWith("FoxgloveCameraPublisher.cs", StringComparison.Ordinal))
+                return ReadCameraPublisherSources(path);
+
+            return File.ReadAllText(path);
+        }
+
+        private static string ReadCameraPublisherSources(string cameraPublisherPath)
+        {
+            var dir = Path.GetDirectoryName(cameraPublisherPath);
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
+        }
 
         /// <summary>
         /// Slices one method body from source text.

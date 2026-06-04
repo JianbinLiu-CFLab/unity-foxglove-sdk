@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCameraPublisherClampsReadbackLifecycle()
         {
-            var camera = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
 
             Check(camera.Contains("[SerializeField, Min(1)] private int _maxPendingReadbacks"),
                 "57D-1: camera publisher inspector clamps max pending readbacks to at least one");
@@ -117,6 +117,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
         {
             return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
+            var output = "";
+            foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
+                output += File.ReadAllText(file) + "\n";
+            return output;
         }
 
         private static string RepoPath(string relativePath)

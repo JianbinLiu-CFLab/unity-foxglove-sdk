@@ -137,7 +137,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherHasSensorClockAndStandardImageMode()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var source = ReadCameraPublisherSources();
             var resolver = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
 
@@ -197,9 +197,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OptionalR2fuCameraBridgeStaysInOptionalPackage()
         {
             var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraNativeBridge.cs");
+            var nativeSource = ReadDirectory("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native");
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraMessageBuilder.cs");
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
-            var coreCamera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var coreCamera = ReadCameraPublisherSources();
             var coreCameraResolver = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             var coreInfo = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
 
@@ -210,9 +211,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("FindObjectsByType<FoxgloveCameraInfoPublisher>", StringComparison.Ordinal)
                   && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
                 "138M-6B: R2FU camera bridge is automatic and gated by the Manager ROS2 Native toggle");
-            Check(bridge.Contains("CreatePublisher<sensor_msgs.msg.CompressedImage>", StringComparison.Ordinal)
-                  && bridge.Contains("CreatePublisher<sensor_msgs.msg.CameraInfo>", StringComparison.Ordinal)
-                  && bridge.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic)", StringComparison.Ordinal),
+            Check(nativeSource.Contains("CreatePublisher<sensor_msgs.msg.CompressedImage>", StringComparison.Ordinal)
+                  && nativeSource.Contains("CreatePublisher<sensor_msgs.msg.CameraInfo>", StringComparison.Ordinal)
+                  && nativeSource.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic)", StringComparison.Ordinal),
                 "138M-6C: R2FU camera bridge publishes standard image, CameraInfo, and /tf");
             Check(builder.Contains("BuildCompressedImage(SensorCompressedImageFrame frame", StringComparison.Ordinal)
                   && builder.Contains("BuildCameraInfo(SensorCameraInfoFrame frame", StringComparison.Ordinal)
@@ -300,6 +301,23 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string path) => File.ReadAllText(path);
+
+        private static string ReadDirectory(string path)
+        {
+            var output = "";
+            foreach (var file in Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories))
+                output += File.ReadAllText(file) + "\n";
+            return output;
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            var output = "";
+            foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
+                output += File.ReadAllText(file) + "\n";
+            return output;
+        }
 
         private static void Check(bool condition, string label)
         {

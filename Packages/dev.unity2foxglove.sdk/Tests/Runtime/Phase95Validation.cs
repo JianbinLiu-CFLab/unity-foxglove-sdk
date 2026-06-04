@@ -219,7 +219,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             foreach (var file in ProductPublisherFiles())
             {
-                var source = ReadRepoText(file);
+                var source = ReadProductPublisherText(file);
                 Check(source.Contains("ShouldPrepareAnyPublishPayload") || source.Contains("ShouldPrepareRos2BridgePayload"),
                     "95E-6: publisher uses bridge-aware prepare gate " + Path.GetFileName(file));
                 Check(source.Contains("PublishRos2Bridge"),
@@ -357,6 +357,37 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new FileNotFoundException("Required validation source file was not found.", path);
 
             return File.ReadAllText(path);
+        }
+
+        private static string ReadProductPublisherText(string relativePath)
+        {
+            if (relativePath.EndsWith("FoxgloveCameraPublisher.cs", StringComparison.Ordinal))
+                return ReadCameraPublisherSources();
+
+            return ReadRepoText(relativePath);
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+
+            var dir = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Schemas",
+                "Proto",
+                "Publishers");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
         private sealed class FakeSinkFactory

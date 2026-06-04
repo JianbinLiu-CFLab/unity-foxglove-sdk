@@ -61,19 +61,37 @@ namespace Unity.FoxgloveSDK.Components
         {
             width = Math.Max(1, width);
             height = Math.Max(1, height);
-            if (_texture2D == null || _texture2D.width != width || _texture2D.height != height)
-            {
-                DestroyUnityObject(_texture2D);
-                _texture2D = new Texture2D(width, height, TextureFormat.RGB24, false);
-            }
-
-            if (_texture2D == null)
+            if (!EnsureTexture(width, height))
                 return null;
 
             var data = req.GetData<byte>();
             _texture2D.LoadRawTextureData(data);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
+        }
+
+        public byte[] EncodeJpeg(byte[] rgb24Readback, int width, int height, int quality)
+        {
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
+            var expectedBytes = width * height * 3;
+            if (rgb24Readback == null || rgb24Readback.Length < expectedBytes || !EnsureTexture(width, height))
+                return null;
+
+            _texture2D.LoadRawTextureData(rgb24Readback);
+            _texture2D.Apply(false);
+            return _texture2D.EncodeToJPG(quality);
+        }
+
+        private bool EnsureTexture(int width, int height)
+        {
+            if (_texture2D == null || _texture2D.width != width || _texture2D.height != height)
+            {
+                DestroyUnityObject(_texture2D);
+                _texture2D = new Texture2D(width, height, TextureFormat.RGB24, false);
+            }
+
+            return _texture2D != null;
         }
 
         public void Cleanup()

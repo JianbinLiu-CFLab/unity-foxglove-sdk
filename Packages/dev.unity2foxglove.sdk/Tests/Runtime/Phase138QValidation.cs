@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesVideoSidecarOptions()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             var session = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
 
@@ -115,7 +115,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesVideoSidecarConfigFactory()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarConfigFactory.cs");
 
             Check(helper.Contains("internal static class CameraVideoSidecarConfigFactory", StringComparison.Ordinal)
@@ -133,7 +133,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesVideoFrameValidation()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoFrameValidator.cs");
 
@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesVideoSidecarLifecycle()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var session = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
 
@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesOutputModeRuntimeLock()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputModeRuntimeLock.cs");
 
             Check(helper.Contains("internal sealed class CameraOutputModeRuntimeLock", StringComparison.Ordinal)
@@ -226,7 +226,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesJpegWorkerPayloads()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var publishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
 
@@ -248,7 +248,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesJpegPipelineLifecycle()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var publishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
 
@@ -289,7 +289,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesPublishDiagnostics()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var jpegPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var videoPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
@@ -320,7 +320,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesBackpressureGate()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var gate = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraBackpressureGate.cs");
 
             Check(gate.Contains("internal sealed class CameraBackpressureGate", StringComparison.Ordinal)
@@ -343,7 +343,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesReadbackTiming()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var jpegPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
             var timing = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraReadbackTiming.cs");
 
@@ -369,7 +369,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesCaptureResources()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var resources = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
 
             Check(resources.Contains("internal sealed class CameraCaptureResources", StringComparison.Ordinal)
@@ -394,7 +394,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherDelegatesSensorProfileResolver()
         {
-            var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadCameraPublisherSources();
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
 
             Check(helper.Contains("internal static class CameraSensorProfileResolver", StringComparison.Ordinal)
@@ -670,6 +670,15 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(relativePath))
                 return "";
             return File.ReadAllText(relativePath);
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            var output = "";
+            foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
+                output += File.ReadAllText(file) + "\n";
+            return output;
         }
 
         private static int IndexOf(string text, string pattern)

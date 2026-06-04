@@ -304,7 +304,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCameraIntegrationSource()
         {
-            var publisherSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var publisherSource = ReadCameraPublisherSources();
             var videoPipelineSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
@@ -521,6 +521,29 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
 
             return File.ReadAllText(full);
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            var root = FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root.");
+
+            var dir = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Schemas",
+                "Proto",
+                "Publishers");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
         private static string FindRepoRoot()

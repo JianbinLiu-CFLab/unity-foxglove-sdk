@@ -61,6 +61,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return message;
         }
 
+        public static sensor_msgs.msg.Image BuildImage(SensorRawImageFrame frame)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            var message = new sensor_msgs.msg.Image
+            {
+                Header = CreateHeader(
+                    frame.FrameId,
+                    (int)(frame.UnixNs / 1_000_000_000UL),
+                    (uint)(frame.UnixNs % 1_000_000_000UL)),
+                Height = checked((uint)frame.Height),
+                Width = checked((uint)frame.Width),
+                Encoding = frame.Encoding,
+                Is_bigendian = frame.IsBigendian,
+                Step = checked((uint)frame.Step),
+                Data = frame.Data
+            };
+            return message;
+        }
+
         private static std_msgs.msg.Header CreateHeader(string frameId, int sec, uint nanosec)
         {
             return new std_msgs.msg.Header

@@ -75,7 +75,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCameraPublisherSource()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var source = ReadCameraPublisherSources();
             var factorySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarOptionsFactory.cs");
             var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             Check(!string.IsNullOrEmpty(source), "75B-1: FoxgloveCameraPublisher source exists");
@@ -235,6 +235,29 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var value = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)?.GetValue(target);
             return value is bool b && b;
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            var root = FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root.");
+
+            var dir = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Schemas",
+                "Proto",
+                "Publishers");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
         private static void CheckOrdered(string text, string first, string second, string name)

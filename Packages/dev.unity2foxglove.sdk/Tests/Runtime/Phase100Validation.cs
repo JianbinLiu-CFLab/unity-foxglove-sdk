@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Ros2Bridge;
@@ -91,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCameraLifecycleSource(string relativePath, string label)
         {
-            var source = ReadRepoText(relativePath);
+            var source = ReadProductPublisherText(relativePath);
             Check(source.Contains("_captureGeneration") && source.Contains("_cleanupWhenReadbacksDrain"),
                 "100C-1: " + label + " tracks capture generation and deferred cleanup");
             Check(source.Contains("OnReadbackComplete(req, generation")
@@ -103,7 +104,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyVideoTailDrainOnStop()
         {
-            var camera = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var camera = ReadProductPublisherText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var cameraSession = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             var legacy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedVideoCameraPublisher.cs");
 
@@ -255,6 +256,26 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
         {
             return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        private static string ReadProductPublisherText(string relativePath)
+        {
+            if (relativePath.EndsWith("FoxgloveCameraPublisher.cs", StringComparison.Ordinal))
+                return ReadCameraPublisherSources();
+
+            return ReadRepoText(relativePath);
+        }
+
+        private static string ReadCameraPublisherSources()
+        {
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
         private static string RepoPath(string relativePath)

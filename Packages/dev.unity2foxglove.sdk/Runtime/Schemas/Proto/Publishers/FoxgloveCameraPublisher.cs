@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Components
     /// or optional FFmpeg-backed H.264/H.265 compressed video.
     /// </summary>
     [RequireComponent(typeof(Camera))]
-    public class FoxgloveCameraPublisher : FoxglovePublisherBase
+    public partial class FoxgloveCameraPublisher : FoxglovePublisherBase
     {
         [Header("Camera Output")]
         [SerializeField] private CameraOutputMode _outputMode = CameraOutputMode.Jpeg;
@@ -89,6 +89,12 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _useSharedSensorClock = true;
         [Tooltip("Publish JPEG as the standard ROS2 compressed camera image schema when ROS2 encoding is selected.")]
         [SerializeField] private bool _publishStandardRos2CompressedImage;
+        [Tooltip("Publish raw standard ROS2 Image frames for native ROS2 output when enabled.")]
+        [SerializeField] private bool _publishStandardRos2RawImage;
+        [Tooltip("Default raw topic when no override profile topic is set.")]
+        [SerializeField] private string _sensorCameraRawImageTopic = "/unity/sensor/camera/image";
+
+        private bool _rawBandwidthWarningIssued;
 
         private readonly CameraOutputModeRuntimeLock _outputModeRuntimeLock = new CameraOutputModeRuntimeLock();
 
@@ -120,13 +126,20 @@ namespace Unity.FoxgloveSDK.Components
         /// Optional ROS2 adapters translate this core-SDK DTO into native ROS messages.
         /// </summary>
         public event Action<SensorCompressedImageFrame> SensorCompressedImageReady;
+        /// <summary>Raised after a ROS2 raw image frame is built from readback data.</summary>
+        public event Action<SensorRawImageFrame> SensorRawImageReady;
 
         /// <summary>Whether this component is configured for standard ROS2 compressed image output.</summary>
         public bool IsStandardRos2CompressedImageOutput
             => ActiveProfile.Mode == CameraOutputMode.Jpeg && _publishStandardRos2CompressedImage;
+        /// <summary>Whether this component is configured for standard ROS2 raw image output.</summary>
+        public bool IsStandardRos2RawImageOutput
+            => _publishStandardRos2RawImage;
 
         /// <summary>Resolved topic for the standard camera image stream.</summary>
         public string SensorCameraImageTopic => ResolveSensorCameraImageTopic();
+        /// <summary>Resolved topic for the standard raw camera image stream.</summary>
+        public string SensorCameraRawImageTopic => ResolveSensorCameraRawImageTopic();
 
         /// <summary>Resolved frame ID for this camera stream.</summary>
         public string SensorCameraFrameId => ResolveFrameId();
@@ -163,20 +176,6 @@ namespace Unity.FoxgloveSDK.Components
             EnsureVideoPublishPipeline();
         }
 
-        private CameraJpegPublishPipeline EnsureJpegPublishPipeline()
-        {
-            if (_jpegPublishPipeline == null)
-                _jpegPublishPipeline = new CameraJpegPublishPipeline(() => _captureGeneration, _diagnostics);
-            return _jpegPublishPipeline;
-        }
-
-        private CameraVideoPublishPipeline EnsureVideoPublishPipeline()
-        {
-            if (_videoPublishPipeline == null)
-                _videoPublishPipeline = new CameraVideoPublishPipeline(_diagnostics, Debug.LogWarning);
-            return _videoPublishPipeline;
-        }
-
         /// <summary>
         /// Locks schema-affecting camera mode before registration so Play Mode does not
         /// advertise one topic/schema and publish another after an Inspector change.
@@ -195,6 +194,7 @@ namespace Unity.FoxgloveSDK.Components
             EnsureCaptureResources();
             if (_useAsyncJpeg && ActiveProfile.Mode == CameraOutputMode.Jpeg)
                 EnsureJpegWorkerStarted();
+            _rawBandwidthWarningIssued = false;
         }
 
         /// <summary>
@@ -216,8 +216,12 @@ namespace Unity.FoxgloveSDK.Components
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             var publishNativeFrame = HasSensorCompressedImageDemand();
-            if (!publishWebSocket && !publishBridge && !publishNativeFrame) return;
-            if (profile.IsVideo && !EnsureVideoSidecarStarted(profile)) return;
+            var publishRawFrame = HasSensorRawImageDemand();
+            if (!publishWebSocket && !publishBridge && !publishNativeFrame && !publishRawFrame) return;
+            LogRawBandwidthWarningIfNeeded();
+
+            var requestVideoOutput = profile.IsVideo && (publishWebSocket || publishBridge);
+            if (requestVideoOutput && !EnsureVideoSidecarStarted(profile)) return;
             if (!profile.IsVideo && !AllowJpegCaptureByFrameBudget())
             {
                 EmitCameraDiagnosticsIfNeeded();
@@ -260,28 +264,61 @@ namespace Unity.FoxgloveSDK.Components
                 if (_manager == null) return;
 
                 var profile = ActiveProfile;
-                if (profile.IsVideo)
-                {
-                    SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight);
-                    return;
-                }
+                var publishRawFrame = HasSensorRawImageDemand();
 
                 var publishWebSocket = ShouldPreparePublishPayload();
                 var publishBridge = ShouldPrepareRos2BridgePayload();
                 var publishNativeFrame = HasSensorCompressedImageDemand();
-                if (!publishWebSocket && !publishBridge && !publishNativeFrame)
+                var publishJpegFrame = publishWebSocket || publishBridge || publishNativeFrame;
+                var publishVideo = profile.IsVideo && (publishWebSocket || publishBridge);
+                if (publishVideo)
+                {
+                    SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight);
+                    if (publishRawFrame)
+                    {
+                        var rawBytes = req.GetData<byte>().ToArray();
+                        PublishRawFrame(rawBytes, renderUnixNs, captureWidth, captureHeight);
+                    }
+                    return;
+                }
+
+                if (!publishJpegFrame && !publishRawFrame)
                 {
                     _diagnostics.RecordNoDemandJpegDrop();
                     return;
                 }
 
-                if (_useAsyncJpeg && EnsureJpegWorkerStarted())
+                var frameBytes = publishRawFrame || (_useAsyncJpeg && publishJpegFrame)
+                    ? req.GetData<byte>().ToArray()
+                    : null;
+                if (!publishJpegFrame)
                 {
-                    QueueJpegFrame(req, renderUnixNs, captureWidth, captureHeight, publishWebSocket, publishBridge, publishNativeFrame, EffectiveEncoding, readbackLatencyMs);
+                    if (frameBytes != null)
+                        PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);
                     return;
                 }
 
-                PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight);
+                if (_useAsyncJpeg && EnsureJpegWorkerStarted())
+                {
+                    QueueJpegFrame(
+                        req,
+                        renderUnixNs,
+                        captureWidth,
+                        captureHeight,
+                        publishWebSocket,
+                        publishBridge,
+                        publishNativeFrame,
+                        EffectiveEncoding,
+                        readbackLatencyMs,
+                        frameBytes);
+                    if (publishRawFrame && frameBytes != null)
+                        PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);
+                    return;
+                }
+
+                PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight, frameBytes);
+                if (publishRawFrame && frameBytes != null)
+                    PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);
             }
             finally
             {
@@ -331,217 +368,15 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        /// <summary>
-        /// Applies static resource caps before rendering so camera visualization cannot
-        /// consume unbounded readback or worker queue capacity.
-        /// </summary>
-        private bool AllowJpegCaptureByFrameBudget()
-        {
-            EnsureJpegPublishPipeline();
-            return _jpegPublishPipeline.AllowCaptureByFrameBudget(
-                _useAsyncJpeg,
-                _pendingRequests,
-                Math.Max(1, _maxPendingReadbacks),
-                _jpegPublishPipeline.EncodeQueueDepth,
-                _maxJpegEncodeQueue,
-                _jpegPublishPipeline.CompletedQueueDepth,
-                _maxCompletedJpegQueue,
-                _width,
-                _height,
-                _maxPixelsPerFrame);
-        }
-
-        /// <summary>
-        /// Copies readback bytes on the main thread into an owned buffer before handing
-        /// work to the JPEG worker; the worker never touches Unity objects.
-        /// </summary>
-        private void QueueJpegFrame(
-            AsyncGPUReadbackRequest req,
-            ulong unixNs,
-            int captureWidth,
-            int captureHeight,
-            bool publishWebSocket,
-            bool publishBridge,
-            bool publishNativeFrame,
-            PublisherEffectiveEncoding webSocketEncoding,
-            double readbackLatencyMs)
-        {
-            EnsureJpegPublishPipeline();
-            var copyStart = Stopwatch.GetTimestamp();
-            var frameBytes = req.GetData<byte>().ToArray();
-            _jpegPublishPipeline.TryQueueFrame(
-                frameBytes,
-                unixNs,
-                captureWidth,
-                captureHeight,
-                publishWebSocket,
-                publishBridge,
-                publishNativeFrame,
-                webSocketEncoding,
-                readbackLatencyMs,
-                _jpegQuality,
-                ResolveFrameId(),
-                _publishStandardRos2CompressedImage,
-                _maxEncodedBytes,
-                onReadbackCopy: (latency, _) => _diagnostics.RecordReadbackCopy(latency, ElapsedMs(copyStart)),
-                onEncodeQueueDrop: () => _diagnostics.RecordEncodeQueueDrop());
-        }
-
-        /// <summary>
-        /// Publishes a bounded number of completed worker results per frame to keep
-        /// worker catch-up from monopolizing the main loop.
-        /// </summary>
-        private void DrainCompletedJpegFrames()
-        {
-            EnsureJpegPublishPipeline();
-            var drained = _jpegPublishPipeline.DrainCompleted(
-                _maxCompletedJpegPublishesPerFrame,
-                PublishCompletedJpegFrame,
-                out var droppedCompleted,
-                out var elapsedMs);
-            if (elapsedMs > 0)
-                _diagnostics.RecordPublishDrainMs(elapsedMs);
-            if (droppedCompleted > 0)
-                _diagnostics.RecordCompletedJpegDrops(droppedCompleted);
-
-            EmitCameraDiagnosticsIfNeeded();
-        }
-
-        /// <summary>
-        /// Rejects stale or out-of-order worker results before publishing the freshest
-        /// serialized JPEG payloads.
-        /// </summary>
-        private void PublishCompletedJpegFrame(JpegEncodeResult result)
-        {
-            if (result.Request.Generation != _captureGeneration)
-                return;
-
-            var captureUnixNs = result.Request.CaptureUnixNs;
-            if (!CameraJpegPublishOrderPolicy.ShouldPublish(captureUnixNs, _lastPublishedCaptureUnixNs))
-            {
-                _diagnostics.RecordLateJpegDrop();
-                return;
-            }
-
-            _diagnostics.RecordJpegEncodeResult(result.EncodeMs, result.SerializeMs, result.JpegBytes);
-
-            if (result.DroppedByEncodedBudget)
-            {
-                _diagnostics.RecordEncodedBudgetDrop();
-                EmitBackpressureWarning(
-                    $"[Foxglove] Camera frame dropped: encoded size {result.JpegBytes} exceeds budget {result.Request.MaxEncodedBytes}.");
-                return;
-            }
-
-            if (!result.Success)
-            {
-                LogJpegWorkerFailure(result.Error);
-                return;
-            }
-
-            if (result.Request.PublishNativeFrame && result.SensorFrame != null)
-            {
-                SensorCompressedImageReady?.Invoke(result.SensorFrame);
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-
-            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
-            {
-                PublishProto(result.WebSocketPayload, captureUnixNs);
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-            else if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                PublishRos2(result.WebSocketPayload, captureUnixNs);
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-            else if (result.Request.PublishWebSocket)
-            {
-                Publish(result.JsonMessage, captureUnixNs);
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-
-            if (result.Request.PublishBridge)
-            {
-                PublishRos2Bridge(result.BridgePayload, captureUnixNs);
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-
-            EnsureJpegPublishPipeline().ResetWorkerFailure();
-        }
-
-        /// <summary>
-        /// Synchronous JPEG fallback path; it still uses captured readback dimensions
-        /// instead of mutable Inspector dimensions.
-        /// </summary>
-        private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs, int captureWidth, int captureHeight)
-        {
-            var jpeg = _captureResources.EncodeJpeg(req, captureWidth, captureHeight, _jpegQuality);
-            if (jpeg == null || jpeg.Length == 0) return;
-
-            if (CameraBackpressurePolicy.ExceedsBudget(jpeg, _maxEncodedBytes))
-            {
-                EmitBackpressureWarning(
-                    $"[Foxglove] Camera frame dropped: encoded size {jpeg.Length} exceeds budget {_maxEncodedBytes}.");
-                return;
-            }
-
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            var publishNativeFrame = HasSensorCompressedImageDemand();
-            var frameId = ResolveFrameId();
-            byte[] ros2Payload = null;
-
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
-            {
-                var payload = CameraCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, "jpeg");
-                PublishProto(payload, unixNs);
-                _backpressureGate.ResetSkipLogCount();
-            }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = SerializeRos2CompressedImage(unixNs, frameId, jpeg);
-                PublishRos2(ros2Payload, unixNs);
-                _backpressureGate.ResetSkipLogCount();
-            }
-            else if (publishWebSocket)
-            {
-                var msg = new CompressedImageMessage
-                {
-                    Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
-                    FrameId = frameId,
-                    Data = Convert.ToBase64String(jpeg),
-                    Format = "jpeg"
-                };
-
-                Publish(msg, unixNs);
-                _backpressureGate.ResetSkipLogCount();
-            }
-
-            if (publishBridge)
-            {
-                ros2Payload ??= SerializeRos2CompressedImage(unixNs, frameId, jpeg);
-                PublishRos2Bridge(ros2Payload, unixNs);
-                _backpressureGate.ResetSkipLogCount();
-            }
-
-            if (publishNativeFrame)
-            {
-                SensorCompressedImageReady?.Invoke(new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg"));
-                _lastPublishedCaptureUnixNs = unixNs;
-                _backpressureGate.ResetSkipLogCount();
-            }
-        }
-
         private bool HasSensorCompressedImageDemand()
             => CameraSensorProfileResolver.HasCompressedImageDemand(
                 IsStandardRos2CompressedImageOutput,
                 SensorCompressedImageReady != null);
+
+        private bool HasSensorRawImageDemand()
+            => CameraSensorProfileResolver.HasRawImageDemand(
+                IsStandardRos2RawImageOutput,
+                SensorRawImageReady != null);
 
         private ulong ResolveCameraCaptureUnixNs()
             => _useSharedSensorClock && _manager != null
@@ -554,6 +389,9 @@ namespace Unity.FoxgloveSDK.Components
         private string ResolveSensorCameraImageTopic()
             => CameraSensorProfileResolver.ResolveImageTopic(_sensorUnitProfile, _topic);
 
+        private string ResolveSensorCameraRawImageTopic()
+            => CameraSensorProfileResolver.ResolveRawImageTopic(_sensorUnitProfile, _sensorCameraRawImageTopic);
+
         private ISensorCameraProfile ResolveSensorProfile()
             => CameraSensorProfileResolver.ResolveProfile(_sensorUnitProfile);
 
@@ -562,8 +400,11 @@ namespace Unity.FoxgloveSDK.Components
             CameraSensorProfileResolver.ApplyDefaults(
                 _sensorUnitProfile,
                 _publishStandardRos2CompressedImage,
+                _publishStandardRos2RawImage,
                 ActiveProfile.DefaultTopic,
+                _sensorCameraRawImageTopic,
                 ref _topic,
+                ref _sensorCameraRawImageTopic,
                 ref _frameId);
         }
 
@@ -575,154 +416,10 @@ namespace Unity.FoxgloveSDK.Components
                 jpeg,
                 "jpeg");
 
-        /// <summary>
-        /// Submits a rendered camera frame to the active video sidecar using the
-        /// dimensions captured with the same readback request.
-        /// </summary>
-        private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)
-        {
-            var readbackData = req.GetData<byte>();
-            EnsureVideoPublishPipeline();
-            var result = _videoPublishPipeline.SubmitVideoFrame(
-                () => readbackData.ToArray(),
-                readbackData.Length,
-                renderUnixNs,
-                captureWidth,
-                captureHeight);
-
-            if (result.Submitted)
-            {
-                DrainEncodedAccessUnits();
-                return;
-            }
-
-            switch (result.Outcome)
-            {
-                case CameraVideoSubmitOutcome.DimensionMismatch:
-                    RecordVideoDimensionMismatchDrop(result.Reason);
-                    break;
-                case CameraVideoSubmitOutcome.FrameDataMissing:
-                    EmitVideoDiagnosticsIfNeeded();
-                    LogVideoEncoderUnavailable(ActiveProfile, result.Reason);
-                    break;
-                default:
-                    EmitVideoDiagnosticsIfNeeded();
-                    LogVideoEncoderUnavailable(ActiveProfile, result.Reason);
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Starts explicit video modes only; video setup failure never falls through into
-        /// extra JPEG work during the same publish tick.
-        /// </summary>
-        private bool EnsureVideoSidecarStarted(CameraVideoOutputProfile profile)
-        {
-            if (!profile.IsVideo)
-                return false;
-
-            EnsureVideoPublishPipeline();
-            if (_videoPublishPipeline.EnsureVideoSidecarStarted(
-                profile,
-                CameraVideoSidecarConfigFactory.Create(
-                    _ffmpegPath,
-                    _openH264HelperPath,
-                    _openH264DllPath,
-                    _width,
-                    _height,
-                    EffectivePublishRateHz,
-                    _videoBitrateKbps,
-                    _videoKeyframeInterval,
-                    Math.Max(1, _maxPendingReadbacks),
-                    _openH264MaxInputQueue,
-                    _videoMaxOutputQueue),
-                DrainEncodedAccessUnits,
-                out var error))
-            {
-                _diagnostics.ResetVideoDimensionMismatchWarning();
-                return true;
-            }
-
-            LogVideoEncoderUnavailable(profile, error);
-            return false;
-        }
-
         private int DesiredVideoWidth => CameraVideoSidecarConfigFactory.ResolveDimension(_width);
 
         private int DesiredVideoHeight => CameraVideoSidecarConfigFactory.ResolveDimension(_height);
 
-        private void DrainEncodedAccessUnits()
-        {
-            EnsureVideoPublishPipeline();
-            if (!_videoPublishPipeline.TryDrainEncodedAccessUnits(
-                () => CurrentLogTimeNs,
-                PublishVideoAccessUnit,
-                sidecar => LogEncoderStderrIfNeeded(sidecar),
-                out var elapsedMs))
-            {
-                return;
-            }
-
-            _diagnostics.RecordVideoDrainMs(elapsedMs);
-            EmitVideoDiagnosticsIfNeeded();
-        }
-
-        private void PublishVideoAccessUnit(byte[] accessUnit, ulong unixNs, string videoFormat)
-        {
-            if (accessUnit == null || accessUnit.Length == 0)
-                return;
-
-            if (unixNs == 0UL)
-                unixNs = CurrentLogTimeNs;
-            var payload = CameraCompressedVideoBuilder.Serialize(
-                unixNs,
-                ResolveFrameId(),
-                accessUnit,
-                videoFormat);
-            PublishProto(payload, unixNs);
-            _diagnostics.RecordVideoAccessUnitPublished(accessUnit.Length);
-        }
-
-        private void StopVideoSidecar()
-        {
-            EnsureVideoPublishPipeline();
-            _videoPublishPipeline.StopVideoSidecar(DrainEncodedAccessUnits);
-        }
-
-        /// <summary>
-        /// Keeps the running sidecar aligned with the locked mode and requested
-        /// dimensions, debouncing restarts while Inspector edits settle.
-        /// </summary>
-        private bool EnsureSidecarMatchesMode(CameraVideoOutputProfile profile)
-        {
-            EnsureVideoPublishPipeline();
-            var result = _videoPublishPipeline.EnsureSidecarMatchesMode(
-                profile,
-                DesiredVideoWidth,
-                DesiredVideoHeight,
-                Time.unscaledTimeAsDouble,
-                DrainEncodedAccessUnits);
-            if (result.ResetEncoderWarning)
-                _videoPublishPipeline.ResetVideoEncoderWarning();
-
-            if (!string.IsNullOrEmpty(result.Diagnostic))
-                _diagnostics.RecordVideoDiagnostic(result.Diagnostic);
-
-            if (result.DroppedWhilePending)
-            {
-                _diagnostics.RecordVideoDimensionMismatchDrop(result.Diagnostic, warnOnce: false);
-                EmitVideoDiagnosticsIfNeeded();
-                return false;
-            }
-
-            if (result.Restarted)
-            {
-                _diagnostics.RecordVideoSidecarRestart();
-                EmitVideoDiagnosticsIfNeeded();
-            }
-
-            return result.AllowCapture;
-        }
         /// <summary>
         /// Allocates Unity capture resources on the main thread using the current
         /// Inspector-requested dimensions before each readback snapshots the actual RT size.
@@ -741,182 +438,11 @@ namespace Unity.FoxgloveSDK.Components
             _captureResources.Cleanup();
         }
 
-        private void EnsureJpegQueues()
-        {
-            _jpegPublishPipeline?.EnsureQueues(_maxJpegEncodeQueue, _maxCompletedJpegQueue);
-        }
-
-        /// <summary>
-        /// Lazily starts the background JPEG worker after demand and budget gates pass.
-        /// </summary>
-        private bool EnsureJpegWorkerStarted()
-        {
-            EnsureJpegPublishPipeline();
-            return _jpegPublishPipeline.EnsureWorkerStarted(reason =>
-                {
-                    if (!string.IsNullOrEmpty(reason))
-                        LogJpegWorkerFailure(reason);
-                });
-        }
-
-        /// <summary>
-        /// Requests worker shutdown without blocking Play Mode indefinitely; late output is
-        /// discarded by queue clearing and generation checks.
-        /// </summary>
-        private void StopJpegWorker(bool clearQueues)
-        {
-            _jpegPublishPipeline?.StopWorker(
-                clearQueues,
-                reason => Debug.LogWarning(reason));
-        }
-
-        private void ClearJpegQueues()
-        {
-            _jpegPublishPipeline?.ClearQueues();
-        }
-
-        private void ClearReadbackTiming()
-        {
-            _jpegPublishPipeline?.ClearReadbackTiming();
-        }
-
-        private void ResetJpegPipelineState()
-        {
-            EnsureJpegPublishPipeline().ResetState();
-            _lastPublishedCaptureUnixNs = 0;
-            _diagnostics.ResetCameraState();
-        }
-
-        /// <summary>
-        /// Tracks readback latency for diagnostics without making timing data part of the
-        /// publish contract.
-        /// </summary>
-        private void RememberReadbackStart(ulong unixNs, long ticks)
-        {
-            EnsureJpegPublishPipeline();
-            _jpegPublishPipeline.RememberReadbackStart(unixNs, ticks);
-        }
-
-        private double TakeReadbackLatencyMs(ulong unixNs)
-        {
-            EnsureJpegPublishPipeline();
-            return _jpegPublishPipeline.TakeReadbackLatencyMs(unixNs);
-        }
-
-        private void LogJpegWorkerFailure(string reason)
-        {
-            EnsureJpegPublishPipeline();
-            _jpegPublishPipeline.TryLogWorkerFailure(msg =>
-            {
-                if (!string.IsNullOrWhiteSpace(msg))
-                    Debug.LogWarning(msg);
-            }, reason);
-        }
-
-        /// <summary>
-        /// Reports render, readback, encode, serialization and queue pressure separately
-        /// so camera cost can be attributed before future pipeline changes.
-        /// </summary>
-        private void EmitCameraDiagnosticsIfNeeded()
-        {
-            _diagnostics.LogCameraIfNeeded(
-                _logCameraDiagnostics,
-                Time.unscaledTimeAsDouble,
-                _cameraDiagnosticsIntervalSeconds,
-                _pendingRequests,
-                _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
-                _jpegPublishPipeline?.CompletedQueueDepth ?? 0,
-                out var message);
-            if (message != null)
-                Debug.Log(message);
-        }
-
-        /// <summary>
-        /// Drops one stale or mismatched video frame and records the reason for diagnostics.
-        /// </summary>
-        private void RecordVideoDimensionMismatchDrop(string reason)
-        {
-            if (_diagnostics.RecordVideoDimensionMismatchDrop(reason, warnOnce: true))
-                Debug.LogWarning("[Foxglove] Camera video frame dropped: " + reason);
-
-            EmitVideoDiagnosticsIfNeeded();
-        }
-
-        /// <summary>
-        /// Reports video submission and drain evidence separately from JPEG diagnostics.
-        /// </summary>
-        private void EmitVideoDiagnosticsIfNeeded()
-        {
-            EnsureVideoPublishPipeline();
-            var profile = CameraVideoOutputProfile.ForMode(_videoPublishPipeline.Mode);
-            _diagnostics.LogVideoIfNeeded(
-                _logVideoDiagnostics,
-                Time.unscaledTimeAsDouble,
-                _cameraDiagnosticsIntervalSeconds,
-                profile.DisplayName,
-                _videoPublishPipeline.SidecarWidth,
-                _videoPublishPipeline.SidecarHeight,
-                _pendingRequests,
-                out var message);
-            if (message != null)
-                Debug.Log(message);
-        }
-
-        /// <summary>
-        /// Clears video-specific diagnostics state on enable.
-        /// </summary>
-        private void ResetVideoDiagnosticState()
-        {
-            EnsureVideoPublishPipeline().ResetState();
-        }
-
         private static double ElapsedMs(long startTicks)
             => (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
 
-        /// <summary>
-        /// Optional transport-drop cooldown for legacy behavior; the 138J path relies on
-        /// static resource caps rather than frame-time feedback control.
-        /// </summary>
-        private bool AllowJpegCaptureByBackpressure()
-        {
-            if (!_enableBackpressureAdaptation)
-                return _backpressureGate.AllowCapture(
-                    enabled: false,
-                    statsSupported: false,
-                    totalDroppedDataFrames: 0,
-                    currentTimeSec: 0,
-                    cooldownSeconds: _backpressureCooldownSeconds,
-                    logSkips: _logBackpressureSkips,
-                    warning: out _);
-
-            var stats = _manager.GetTransportStatsSnapshot();
-            var allowCapture = _backpressureGate.AllowCapture(
-                _enableBackpressureAdaptation,
-                stats.Supported,
-                stats.TotalDroppedDataFrames,
-                Time.unscaledTimeAsDouble,
-                _backpressureCooldownSeconds,
-                _logBackpressureSkips,
-                out var warning);
-            if (!string.IsNullOrEmpty(warning))
-                Debug.LogWarning(warning);
-            return allowCapture;
-        }
-
         private void ResetBackpressureState()
             => _backpressureGate.Reset();
-
-        private void EmitBackpressureWarning(string message)
-        {
-            if (_backpressureGate.TryRecordSkipWarning(_logBackpressureSkips, message, out var warning))
-                Debug.LogWarning(warning);
-        }
-
-        private void LogVideoEncoderUnavailable(CameraVideoOutputProfile profile, string reason)
-        {
-            EnsureVideoPublishPipeline();
-            _videoPublishPipeline.TryLogVideoEncoderUnavailable(profile, reason);
-        }
 
         private void LockRuntimeOutputMode()
         {
@@ -927,18 +453,5 @@ namespace Unity.FoxgloveSDK.Components
         {
             _outputModeRuntimeLock.Unlock();
         }
-
-        private void LogEncoderStderrIfNeeded(ICameraVideoEncoderSidecar sidecar)
-        {
-            if (!_logEncoderStderr || sidecar == null)
-                return;
-
-            EnsureVideoPublishPipeline();
-            _videoPublishPipeline.LogEncoderStderrIfNeeded(
-                _logEncoderStderr,
-                sidecar,
-                CameraVideoOutputProfile.ForMode(_videoPublishPipeline.Mode).DisplayName);
-        }
-
     }
 }
