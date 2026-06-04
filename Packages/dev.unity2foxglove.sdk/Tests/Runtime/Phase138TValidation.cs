@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             RawOnlyWiringDoesNotForceJpegOrCompressedDefaults();
             CoreContainsNoRos2References();
             Ros2BridgeDiscoveryAndBinding();
+            TransformNativeDdsBinding();
             RegistryIncludesPhase138t();
 
             Console.WriteLine($"Phase 138T: {_passed} checks passed.");
@@ -207,15 +208,37 @@ namespace Unity.FoxgloveSDK.Tests
                 "138T-6H: R2FU native asmdef references runtime package");
         }
 
+        private static void TransformNativeDdsBinding()
+        {
+            var transformPublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs");
+            var nativeSource = ReadDirectory("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native", includeMd: false);
+
+            Check(transformPublisher.Contains("public event Action<FrameTransformMessage> FrameTransformReady;", StringComparison.Ordinal),
+                "138T-7A: Transform publisher exposes a ROS-free native frame event");
+            Check(transformPublisher.Contains("var nativeHandler = FrameTransformReady;", StringComparison.Ordinal)
+                  && transformPublisher.Contains("var publishNativeFrame = nativeHandler != null;", StringComparison.Ordinal)
+                  && transformPublisher.Contains("nativeHandler?.Invoke(message);", StringComparison.Ordinal),
+                "138T-7B: Transform publisher emits native frames only when there is native demand");
+            Check(nativeSource.Contains("Ros2ForUnityTransformNativeBridge", StringComparison.Ordinal)
+                  && nativeSource.Contains("FindObjectsByType<FoxgloveTransformPublisher>", StringComparison.Ordinal),
+                "138T-7C: R2FU native bridge discovers Transform publishers");
+            Check(nativeSource.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfTopic)", StringComparison.Ordinal)
+                  && nativeSource.Contains("FrameTransformReady += OnFrameTransformReady", StringComparison.Ordinal),
+                "138T-7D: R2FU Transform bridge publishes standard /tf TFMessage frames");
+            Check(!transformPublisher.Contains("tf2_msgs", StringComparison.Ordinal)
+                  && !transformPublisher.Contains("ROS2.", StringComparison.Ordinal),
+                "138T-7E: Transform publisher remains free of generated ROS2 APIs");
+        }
+
         private static void RegistryIncludesPhase138t()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(registry.Contains("Ci(\"--phase138t\"", StringComparison.Ordinal),
-                "138T-7A: phase 138t is registered");
+                "138T-8A: phase 138t is registered");
             Check(registry.Contains("--phase138t") && registry.Contains("includeInDefault: false", StringComparison.Ordinal),
-                "138T-7B: phase 138t is explicit CI-only");
+                "138T-8B: phase 138t is explicit CI-only");
             Check(registry.Contains("Phase138TValidation.Validate", StringComparison.Ordinal),
-                "138T-7C: phase 138t points at the right validation entrypoint");
+                "138T-8C: phase 138t points at the right validation entrypoint");
         }
 
         private static string ReadDirectory(string path, bool includeMd)

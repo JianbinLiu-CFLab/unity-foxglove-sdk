@@ -5,6 +5,7 @@
 // Purpose: Publishes this GameObject's transform as foxglove.FrameTransform
 // messages at a configurable rate. Supports JSON and protobuf encoding.
 
+using System;
 using Google.Protobuf;
 using Foxglove.Schemas;
 using UnityEngine;
@@ -33,6 +34,8 @@ namespace Unity.FoxgloveSDK.Components
         public override bool SupportsRos2Encoding => true;
         protected override string Ros2SchemaName => Ros2PublisherSchemaNames.FrameTransform;
 
+        public event Action<FrameTransformMessage> FrameTransformReady;
+
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/tf";
@@ -52,7 +55,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPrepareAnyPublishPayload()) return;
+            var nativeHandler = FrameTransformReady;
+            var publishNativeFrame = nativeHandler != null;
+            if (!ShouldPrepareAnyPublishPayload() && !publishNativeFrame) return;
 
             var unixNs = CurrentTransformTimeNs();
             var publishWebSocket = ShouldPreparePublishPayload();
@@ -79,6 +84,18 @@ namespace Unity.FoxgloveSDK.Components
             {
                 ros2Payload ??= Ros2CdrFrameTransformBuilder.Serialize(message);
                 PublishRos2Bridge(ros2Payload, unixNs);
+            }
+
+            if (publishNativeFrame)
+            {
+                try
+                {
+                    nativeHandler?.Invoke(message);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[Foxglove] Transform native subscriber failed: " + ex.Message);
+                }
             }
         }
 
