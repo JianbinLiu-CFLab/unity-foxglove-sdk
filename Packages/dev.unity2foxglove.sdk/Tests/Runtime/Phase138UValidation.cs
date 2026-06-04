@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             OptionsAndPublisherSurface();
             PoseHistoryInterpolation();
             MotionCompensatorMath();
+            DeskewFlattensMovingWallUnderMotion();
             NativeFrameAndBridgeTopicRouting();
             CoreContainsNoRos2References();
             RegistryIncludesPhase138u();
@@ -55,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publisher.Contains("_deskewedPointCloud2NativeTopic", StringComparison.Ordinal),
                 "138U-1G: point cloud publisher stores deskewed topic");
             Check(publisher.Contains("PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame", StringComparison.Ordinal),
-                "138U-1H: publisher routes deskew through scan-reference coordinates");
+                "138U-1H: publisher routes VirtualLidar deskew through scan-reference coordinates");
             Check(publisher.Contains("FixedUpdate()", StringComparison.Ordinal)
                   && publisher.Contains("_motionPoseHistory.Add", StringComparison.Ordinal),
                 "138U-1I: pose history is sampled on FixedUpdate/main-thread cadence");
@@ -185,6 +186,101 @@ namespace Unity.FoxgloveSDK.Tests
                   && referenceResult.ReferenceUnixNs == 1_000_000_000UL
                   && referenceResult.Points[1].TimeOffsetSeconds == 0f,
                 "138U-3H: scan-reference deskew branch publishes closed scan-start visualization XYZ without pose history");
+        }
+
+        /// <summary>
+        /// Deterministic motion test (no Unity/RViz/DDS): a flat wall at x=5 scanned while the
+        /// sensor translates toward it at 1 m/s over a 0.1 s scan. Mirrors the build job's two
+        /// coordinate sets and asserts the deskew contract under real motion:
+        /// raw (acquisition-frame) shears, scan-reference XYZ (F0) stays flat, and the
+        /// acquisition-time transform flattens the sheared cloud back to F0.
+        /// </summary>
+        private static void DeskewFlattensMovingWallUnderMotion()
+        {
+            const ulong scanStartNs = 1_000_000_000UL;
+            const float velocity = 1.0f;        // m/s toward the wall (+X)
+            const float scanSeconds = 0.1f;     // one revolution
+            const int count = 11;
+            const float wallX = 5.0f;
+
+            var points = new VirtualLidarPointData[count];
+            for (var i = 0; i < count; i++)
+            {
+                var t = scanSeconds * i / (count - 1);          // 0 .. 0.1 s
+                points[i] = new VirtualLidarPointData
+                {
+                    // F0 / scan-start frame = true world geometry => flat wall (x constant).
+                    X = wallX,
+                    Y = 0.1f * i,
+                    Z = 0f,
+                    // Acquisition frame = inv(P(t))*W with P(t)=translate(v*t,0,0) => x = wallX - v*t (sheared).
+                    AcquisitionX = wallX - velocity * t,
+                    AcquisitionY = 0.1f * i,
+                    AcquisitionZ = 0f,
+                    TimeOffsetSeconds = t,
+                    IsValid = 1,
+                    HasAcquisitionFrame = 1
+                };
+            }
+
+            var rawSpread = SpreadX(points, useAcquisition: true);
+            var f0Spread = SpreadX(points, useAcquisition: false);
+            Check(rawSpread > 0.05f,
+                $"138U-7A: raw acquisition-frame wall shears under motion (spreadX={rawSpread:F4} m, expected ~{velocity * scanSeconds:F2})");
+            Check(f0Spread < 0.001f,
+                $"138U-7B: scan-reference (F0) wall stays flat under motion (spreadX={f0Spread:F4} m)");
+
+            var poses = new[]
+            {
+                new SensorMotionPoseSample(scanStartNs, new Vector3(0f, 0f, 0f), Quaternion.Identity),
+                new SensorMotionPoseSample(
+                    scanStartNs + (ulong)(scanSeconds * 1_000_000_000d),
+                    new Vector3(velocity * scanSeconds, 0f, 0f),
+                    Quaternion.Identity)
+            };
+            var request = new PointCloudMotionCompensationRequest(
+                "/deskewed",
+                PointCloudMotionCompensationReferenceTime.ScanStart,
+                PointCloudMotionCompensationInputConvention.AcquisitionTimeSensorFrame,
+                poses);
+
+            Check(PointCloudMotionCompensator.TryCompensateVirtualLidar(
+                    points, count, scanStartNs, request, out var deskewed, out var error),
+                "138U-7C: acquisition-time deskew succeeds for moving wall " + error);
+            if (deskewed != null)
+            {
+                var deskewedSpread = SpreadX(deskewed.Points, deskewed.PointCount, useAcquisition: false);
+                Check(deskewedSpread < 0.001f,
+                    $"138U-7D: acquisition-time deskew flattens the sheared wall back to F0 (spreadX={deskewedSpread:F4} m)");
+            }
+
+            // Static control: with no motion the two coordinate sets coincide (matches every stationary probe run).
+            for (var i = 0; i < count; i++)
+            {
+                var p = points[i];
+                p.AcquisitionX = wallX;
+                points[i] = p;
+            }
+            Check(SpreadX(points, useAcquisition: true) < 0.001f,
+                "138U-7E: stationary capture makes acquisition-frame == F0 (raw==deskewed is expected when not moving)");
+        }
+
+        private static float SpreadX(VirtualLidarPointData[] points, bool useAcquisition)
+            => SpreadX(points, points.Length, useAcquisition);
+
+        private static float SpreadX(VirtualLidarPointData[] points, int count, bool useAcquisition)
+        {
+            var min = float.MaxValue;
+            var max = float.MinValue;
+            for (var i = 0; i < count; i++)
+            {
+                if (points[i].IsValid == 0)
+                    continue;
+                var x = useAcquisition && points[i].HasAcquisitionFrame != 0 ? points[i].AcquisitionX : points[i].X;
+                if (x < min) min = x;
+                if (x > max) max = x;
+            }
+            return max - min;
         }
 
         private static void NativeFrameAndBridgeTopicRouting()
