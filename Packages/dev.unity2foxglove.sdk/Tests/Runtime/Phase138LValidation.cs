@@ -271,15 +271,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("Data = frame.Data", StringComparison.Ordinal)
                   && !builder.Contains("PointCloudFrame", StringComparison.Ordinal),
                 "138L-5E: product message builder maps PointCloud2NativeFrame data without per-point packing");
-            Check(publisher.Contains("_publishPointCloud2NativeTfAnchor = true", StringComparison.Ordinal)
-                  && publisher.Contains("_pointCloud2NativeTfAnchorInitialized", StringComparison.Ordinal)
-                  && publisher.Contains("EnsurePointCloud2NativeTfAnchorInitialized", StringComparison.Ordinal)
-                  && editor.Contains("Publish TF Anchor", StringComparison.Ordinal)
+            Check(publisher.Contains("private bool _publishPointCloud2NativeTfAnchor;", StringComparison.Ordinal)
+                  && !publisher.Contains("EnsurePointCloud2NativeTfAnchorInitialized", StringComparison.Ordinal)
+                  && editor.Contains("Optional TF Anchor", StringComparison.Ordinal)
+                  && editor.Contains("Publish PointCloud2 TF Anchor", StringComparison.Ordinal)
                   && editor.Contains("TF Parent Frame", StringComparison.Ordinal)
                   && editor.Contains("TF Child Frame", StringComparison.Ordinal),
-                "138L-5Ea: PointCloud2 Native Inspector owns and migrates the default TF anchor product settings");
+                "138L-5Ea: PointCloud2 Native Inspector exposes an opt-in TF anchor without stealing existing TF trees by default");
             Check(readme.Contains("No extra smoke component is required", StringComparison.Ordinal)
-                  && readme.Contains("Publish TF Anchor", StringComparison.Ordinal)
+                  && readme.Contains("Publish PointCloud2 TF Anchor", StringComparison.Ordinal)
+                  && readme.Contains("Enable it only as an RViz fallback", StringComparison.Ordinal)
                   && readme.Contains("/tf", StringComparison.Ordinal)
                   && readme.Contains("ros2 topic info /points", StringComparison.Ordinal)
                   && readme.Contains("ros2 topic hz /points", StringComparison.Ordinal)
@@ -289,7 +290,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sampleReadme.Contains("not required for the product path", StringComparison.Ordinal)
                   && sampleReadme.Contains("FoxgloveManager", StringComparison.Ordinal)
                   && sampleReadme.Contains("PointCloud2 Native", StringComparison.Ordinal)
-                  && sampleReadme.Contains("Publish TF Anchor", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Publish PointCloud2 TF Anchor", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Enable it only as an RViz fallback", StringComparison.Ordinal)
                   && sampleReadme.Contains("/points", StringComparison.Ordinal),
                 "138L-5G: Virtual LiDAR sample README no longer teaches manual smoke mounting as the default path");
             Check(bridge.Contains("OnApplicationQuit", StringComparison.Ordinal)

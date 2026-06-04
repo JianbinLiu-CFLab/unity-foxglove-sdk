@@ -47,9 +47,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _logPerformanceDiagnostics;
         [SerializeField] private bool _includeSyntheticIntensity;
 
-        [Header("PointCloud2 Native TF")]
-        [Tooltip("Publish a lightweight ROS2 TF anchor for PointCloud2 Native output so RViz can resolve the point-cloud frame without an extra helper component.")]
-        [SerializeField] private bool _publishPointCloud2NativeTfAnchor = true;
+        [Tooltip("Publish a lightweight ROS2 TF anchor for PointCloud2 Native output when no scene, robot, or SLAM TF tree owns the point-cloud frame.")]
+        [SerializeField] private bool _publishPointCloud2NativeTfAnchor;
         [Tooltip("Parent frame used when publishing the PointCloud2 Native TF anchor.")]
         [SerializeField] private string _pointCloud2NativeTfParentFrame = "map";
         [Tooltip("Child frame used when publishing the PointCloud2 Native TF anchor. Leave empty to follow Frame Id.")]
@@ -58,7 +57,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private Vector3 _pointCloud2NativeTfTranslation;
         [Tooltip("TF anchor rotation in ROS roll/pitch/yaw degrees.")]
         [SerializeField] private Vector3 _pointCloud2NativeTfRotationEuler;
-        [SerializeField, HideInInspector] private bool _pointCloud2NativeTfAnchorInitialized;
 
         [Header("Motion Compensation")]
         [Tooltip("Emit an optional deskewed PointCloud2 visualization stream. Leave disabled for raw SLAM input.")]
@@ -185,22 +183,7 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual void Awake()
         {
             EnsureEncodePipelines();
-            EnsurePointCloud2NativeTfAnchorInitialized();
             if (string.IsNullOrEmpty(_topic)) _topic = DefaultTopic;
-        }
-
-        private void OnValidate()
-        {
-            EnsurePointCloud2NativeTfAnchorInitialized();
-        }
-
-        private void EnsurePointCloud2NativeTfAnchorInitialized()
-        {
-            if (_pointCloud2NativeTfAnchorInitialized)
-                return;
-
-            _publishPointCloud2NativeTfAnchor = true;
-            _pointCloud2NativeTfAnchorInitialized = true;
         }
 
         private static string SanitizeNonEmptyFrameId(string raw, string fallback)
@@ -212,7 +195,6 @@ namespace Unity.FoxgloveSDK.Components
         protected override void Reset()
         {
             base.Reset();
-            EnsurePointCloud2NativeTfAnchorInitialized();
             _samplingMode = PointCloudSamplingMode.UniformStride;
         }
 

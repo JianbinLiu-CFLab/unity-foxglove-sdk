@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
                 return;
 
             Check(ContainsSignature(source, "public bool IsImuNativeOutput"),
-                "138S-2A: VirtualImu exposes IMU native output gate accessor");
+                "138S-2A: VirtualImu exposes IMU native output eligibility accessor");
             Check(ContainsSignature(source, "public string ImuNativeTopic"),
                 "138S-2B: VirtualImu exposes native topic property");
             Check(ContainsSignature(source, "public IReadOnlyList<double> ImuOrientationCovariance")
@@ -79,6 +79,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(ExtractMethod(source, "private void Start()").Contains("NormalizeSerializedConfiguration();", StringComparison.Ordinal)
                   && ExtractMethod(source, "private void OnValidate()").Contains("NormalizeSerializedConfiguration();", StringComparison.Ordinal),
                 "138S-2F: VirtualImu normalizes native DDS serialized config in runtime and editor validation paths");
+            Check(source.Contains("[SerializeField, HideInInspector] private bool _publishImuNative", StringComparison.Ordinal)
+                  && source.Contains("[SerializeField, HideInInspector] private string _imuNativeTopic", StringComparison.Ordinal),
+                "138S-2G: legacy IMU native override fields are hidden from the default Inspector");
+            Check(ExtractProperty(source, "public bool IsImuNativeOutput").Contains("=> isActiveAndEnabled", StringComparison.Ordinal)
+                  && !ExtractProperty(source, "public bool IsImuNativeOutput").Contains("_publishImuNative", StringComparison.Ordinal),
+                "138S-2H: IMU native output follows component eligibility instead of a second per-IMU toggle");
+            Check(ExtractProperty(source, "public string ImuNativeTopic").Contains("_topic", StringComparison.Ordinal)
+                  && !ExtractProperty(source, "public string ImuNativeTopic").Contains("_imuNativeTopic", StringComparison.Ordinal),
+                "138S-2I: IMU native topic follows the main IMU topic");
         }
 
         private static void UpdatePublishesNativeFrameFromDequeuedSample()
@@ -93,6 +102,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && update.Contains("CreateNativeFrame(", StringComparison.Ordinal)
                   && update.Contains("ImuNativeFrameReady?.Invoke(nativeFrame);", StringComparison.Ordinal),
                 "138S-3C: VirtualImu creates and emits native frame from dequeued sample");
+            Check(!update.Contains("_publishImuNative", StringComparison.Ordinal),
+                "138S-3C2: VirtualImu native frame emission is subscriber-driven, not gated by a second Inspector toggle");
             Check(update.IndexOf("ImuNativeFrame nativeFrame", StringComparison.Ordinal)
                       < update.IndexOf("ImuNativeFrameReady?.Invoke(nativeFrame);", StringComparison.Ordinal),
                 "138S-3D: IMU native frame is created before publish invocation");
@@ -241,6 +252,23 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return "";
+        }
+
+        private static string ExtractProperty(string source, string signature)
+        {
+            var index = source.IndexOf(signature, StringComparison.Ordinal);
+            if (index < 0)
+                return "";
+
+            var nextPublic = source.IndexOf("\n        public ", index + signature.Length, StringComparison.Ordinal);
+            var nextEvent = source.IndexOf("\n        public event ", index + signature.Length, StringComparison.Ordinal);
+            var end = source.Length;
+            if (nextPublic >= 0)
+                end = Math.Min(end, nextPublic);
+            if (nextEvent >= 0)
+                end = Math.Min(end, nextEvent);
+
+            return source.Substring(index, end - index);
         }
 
         private static void Check(bool condition, string label)

@@ -44,11 +44,9 @@ namespace Unity.FoxgloveSDK.Editor
             DrawGeneralSection();
             if (GetMode(outputMode) == PointCloudOutputMode.PointCloud2Native)
             {
-                DrawPointCloud2NativeTfAnchorSection();
                 DrawMotionCompensationSection();
             }
 
-            DrawPointSourcesSection();
             DrawPointCloudQosSection();
 
             if (GetMode(outputMode) == PointCloudOutputMode.Draco)
@@ -59,6 +57,10 @@ namespace Unity.FoxgloveSDK.Editor
             DrawPublishRateSection();
             DrawEncodingPolicySection();
             DrawRos2BridgeSection();
+            if (GetMode(outputMode) == PointCloudOutputMode.PointCloud2Native)
+            {
+                DrawPointCloud2NativeTfAnchorSection();
+            }
 
             serializedObject.ApplyModifiedProperties();
 
@@ -119,24 +121,15 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_frameId", "Frame Id");
         }
 
-        private void DrawPointSourcesSection()
-        {
-            EditorGUILayout.Space();
-            DrawProperty("_pointSources", "Point Sources");
-            DrawProperty("_useChildrenWhenSourcesEmpty", "Use Children When Sources Empty");
-            DrawProperty("_includeInactiveChildren", "Include Inactive Children");
-            DrawProperty("_includeSyntheticIntensity", "Include Synthetic Intensity");
-        }
-
         private void DrawPointCloud2NativeTfAnchorSection()
         {
             var publishAnchor = serializedObject.FindProperty("_publishPointCloud2NativeTfAnchor");
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("PointCloud2 Native TF", EditorStyles.boldLabel);
-            DrawProperty("_publishPointCloud2NativeTfAnchor", "Publish TF Anchor");
+            EditorGUILayout.LabelField("Optional TF Anchor", EditorStyles.boldLabel);
+            DrawProperty("_publishPointCloud2NativeTfAnchor", "Publish PointCloud2 TF Anchor");
 
-            using (new EditorGUI.DisabledScope(publishAnchor != null && !publishAnchor.boolValue))
+            if (publishAnchor != null && publishAnchor.boolValue)
             {
                 DrawProperty("_pointCloud2NativeTfParentFrame", "TF Parent Frame");
                 DrawProperty("_pointCloud2NativeTfChildFrame", "TF Child Frame");
@@ -145,7 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.HelpBox(
-                "The product R2FU path publishes a small /tf anchor by default so RViz can resolve the PointCloud2 frame. Leave TF Child Frame empty to follow Frame Id; disable this when an external SLAM or robot TF tree owns the same frame.",
+                "Off by default. Enable only as an RViz fallback when no other /tf source connects the fixed frame to this PointCloud2 Frame Id.",
                 MessageType.Info);
         }
 
@@ -154,7 +147,6 @@ namespace Unity.FoxgloveSDK.Editor
             var enabled = serializedObject.FindProperty("_enableMotionCompensation");
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Motion Compensation", EditorStyles.boldLabel);
             DrawProperty("_enableMotionCompensation", "Enable Deskew");
 
             using (new EditorGUI.DisabledScope(enabled == null || !enabled.boolValue))
@@ -175,9 +167,9 @@ namespace Unity.FoxgloveSDK.Editor
             var samplingMode = serializedObject.FindProperty("_samplingMode");
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Point Cloud QoS", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Point Budget", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "Max Packed Bytes budgets the PointCloud.data payload before publish. Set it to 0 to disable the byte budget. Draco mode uses the same sampled frame before compression.",
+                "Optional visualization budget for legacy/managed point-cloud frames. Set Max Packed Bytes to 0 to disable the byte budget.",
                 MessageType.Info);
             DrawProperty("_maxPoints", "Max Points");
             DrawProperty("_maxPackedBytes", "Max Packed Bytes");
@@ -191,7 +183,7 @@ namespace Unity.FoxgloveSDK.Editor
                     MessageType.Info);
             }
 
-            DrawProperty("_logQosDrops", "Log QoS Drops");
+            DrawProperty("_logQosDrops", "Log Budget Drops");
             EditorGUILayout.HelpBox(
                 "Heavy point-cloud work is skipped when there is no live subscriber or active MCAP recording demand.",
                 MessageType.Info);

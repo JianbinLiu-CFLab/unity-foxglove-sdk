@@ -171,12 +171,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("native snapshot"),
                 "89E-3: Inspector documents bundled DLL dependency and current worker/main-thread cost split");
             Check(source.Contains("General")
-                  && source.Contains("Point Sources")
-                  && source.Contains("Point Cloud QoS")
+                  && source.Contains("Point Budget")
                   && source.Contains("Publish Rate")
                   && source.Contains("Encoding Policy")
                   && source.Contains("DrawResolvedSummaries"),
-                "89E-4: Inspector preserves existing point-cloud workflow sections");
+                "89E-4: Inspector preserves primary point-cloud workflow sections");
         }
 
         private static void VerifyDracoNativeCheck()

@@ -12,12 +12,6 @@
 # - Optional fixed frame override: --fixed-frame
 # - Optional static TF fallback: --static-tf and --no-static-tf
 
-_DESCRIPTION = (
-    "Launch RViz2 for the PointCloud2 Native product path. "
-    "The script writes a temporary RViz2 config with the selected PointCloud2 topic "
-    "and then launches RViz2 using the pinned Windows ROS2 Jazzy environment."
-)
-
 from __future__ import annotations
 
 import argparse
@@ -28,6 +22,13 @@ import sys
 import time
 
 import _ros2_windows_env as ros2env
+
+
+_DESCRIPTION = (
+    "Launch RViz2 for the PointCloud2 Native product path. "
+    "The script writes a temporary RViz2 config with the selected PointCloud2 topic "
+    "and then launches RViz2 using the pinned Windows ROS2 Jazzy environment."
+)
 
 
 DEFAULT_RVIZ_CONFIG = pathlib.Path(
@@ -78,7 +79,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--static-tf",
         action="store_true",
-        help="Launch an opt-in map -> sensor static TF fallback. Product acceptance should use Unity's Publish TF Anchor instead.",
+        help="Launch an opt-in map -> sensor static TF fallback. Product acceptance should use Unity's optional PointCloud2 TF anchor or a scene TF tree instead.",
     )
     parser.add_argument(
         "--no-static-tf",

@@ -40,8 +40,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Tooltip("Topic for imu data. Default: /imu/data.")] private string _topic = DefaultTopic;
         [SerializeField, Tooltip("Reference frame id for each IMU sample.")] private string _frameId = DefaultFrameId;
         [SerializeField, Tooltip("Enable streaming as soon as this component starts.")] private bool _publishOnStart = true;
-        [SerializeField, Tooltip("Enable publishing sensor_msgs/msg/Imu on native ROS2 DDS.")] private bool _publishImuNative;
-        [SerializeField, Tooltip("Native ROS2 DDS IMU topic. Default: /imu/data.")] private string _imuNativeTopic = DefaultImuNativeTopic;
+        [SerializeField, HideInInspector] private bool _publishImuNative;
+        [SerializeField, HideInInspector] private string _imuNativeTopic = DefaultImuNativeTopic;
         [SerializeField, Tooltip("IMU orientation covariance (9 values, diagonal default).")] private double[] _imuOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         [SerializeField, Tooltip("IMU angular velocity covariance (9 values, diagonal default).")] private double[] _imuAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         [SerializeField, Tooltip("IMU linear acceleration covariance (9 values, diagonal default).")] private double[] _imuLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
@@ -79,13 +79,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool PublishEnabled => _publishOnStart && _publishing;
 
-        public bool IsImuNativeOutput => _publishImuNative && isActiveAndEnabled;
+        public bool IsImuNativeOutput => isActiveAndEnabled;
 
         public string ImuNativeTopic
         {
             get
             {
-                var topic = string.IsNullOrWhiteSpace(_imuNativeTopic) ? DefaultImuNativeTopic : _imuNativeTopic.Trim();
+                var topic = string.IsNullOrWhiteSpace(_topic) ? DefaultImuNativeTopic : _topic.Trim();
                 return topic.StartsWith("/", StringComparison.Ordinal) ? topic : "/" + topic;
             }
         }
@@ -241,7 +241,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var sample = _queue.Dequeue();
                 ImuNativeFrame nativeFrame = null;
-                if (_publishImuNative && ImuNativeFrameReady != null)
+                if (ImuNativeFrameReady != null)
                 {
                     nativeFrame = CreateNativeFrame(
                         sample.TimestampNs,

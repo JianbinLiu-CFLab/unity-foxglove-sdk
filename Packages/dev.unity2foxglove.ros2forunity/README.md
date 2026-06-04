@@ -187,8 +187,10 @@ In Unity:
 2. On `FoxglovePointCloudPublisher`, choose `PointCloud2 Native`.
 3. Set the publisher topic and frame id, for example topic `/points` and frame
    `os_lidar`.
-4. Leave `Publish TF Anchor` enabled unless your own SLAM or robot TF tree
-   already publishes the same frame. By default this publishes `map -> <Frame Id>`.
+4. Leave `Publish PointCloud2 TF Anchor` disabled when your scene, SLAM, or
+   robot TF tree already publishes the frame. Enable it only as an RViz fallback
+   when no other `/tf` source resolves the PointCloud2 frame; the fallback
+   publishes `map -> <Frame Id>`.
 
 The optional R2FU package automatically subscribes to prepared
 `PointCloud2 Native` frames and publishes:

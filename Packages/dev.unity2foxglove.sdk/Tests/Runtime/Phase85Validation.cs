@@ -36,11 +36,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "85A-1: dedicated point-cloud publisher editor exists");
             Check(source.Contains("[CustomEditor(typeof(FoxglovePointCloudPublisher))]"),
                 "85A-2: editor targets FoxglovePointCloudPublisher");
-            Check(source.Contains("General") && source.Contains("Point Sources") && source.Contains("Point Cloud QoS"),
+            Check(source.Contains("General") && source.Contains("Point Budget"),
                 "85A-3: editor groups point-cloud workflow sections");
             Check(!source.Contains("LabelField(\"General\"", StringComparison.Ordinal)
-                  && !source.Contains("LabelField(\"Point Sources\"", StringComparison.Ordinal),
-                "85A-3b: editor avoids duplicate General and Point Sources headings");
+                  && !source.Contains("Transform Fallback Sources", StringComparison.Ordinal)
+                  && !source.Contains("\"Point Sources\"", StringComparison.Ordinal),
+                "85A-3b: editor keeps legacy transform fallback sources out of the main Inspector");
             Check(source.Contains("Publish Rate") && source.Contains("Encoding Policy"),
                 "85A-4: editor preserves shared publisher policy sections");
             Check(source.Contains("_voxelSizeMeters") && source.Contains("PointCloudSamplingMode.VoxelGrid"),
@@ -49,8 +50,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "85A-6: voxel-size label is tied to VoxelGrid branch");
             Check(source.Contains("Effective Publish Rate Hz") && source.Contains("Supported Encodings") && source.Contains("Effective Encoding"),
                 "85A-7: editor preserves resolved rate and encoding summaries");
-            Check(source.Contains("PointCloud.data") && source.Contains("first source point") && source.Contains("no live subscriber"),
-                "85A-8: editor explains byte budget, voxel representative policy, and demand gating");
+            Check(source.Contains("first source point")
+                  && source.Contains("no live subscriber"),
+                "85A-8: editor explains voxel representative policy and demand gating");
         }
 
         private static void VerifySmokeProbe()

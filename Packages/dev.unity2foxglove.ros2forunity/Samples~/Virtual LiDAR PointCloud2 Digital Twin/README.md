@@ -8,12 +8,14 @@ For the product path, configure the scene directly:
 1. On `FoxgloveManager`, enable `ROS2 Native (R2FU)`.
 2. On `FoxglovePointCloudPublisher`, choose `PointCloud2 Native`.
 3. Set topic `/points` and the desired frame id, for example `os_lidar`.
-4. Leave `Publish TF Anchor` enabled for RViz unless another TF tree already
-   owns that frame.
+4. Leave `Publish PointCloud2 TF Anchor` disabled when another TF tree already
+   owns that frame. Enable it only as an RViz fallback when no other `/tf`
+   source resolves the PointCloud2 frame.
 
 With Unity in Play mode, `/points` should then appear as
-`sensor_msgs/msg/PointCloud2`, and `/tf` should carry the matching frame anchor,
-without adding this smoke component.
+`sensor_msgs/msg/PointCloud2`. If the optional fallback anchor is enabled,
+`/tf` should also carry the matching frame anchor, without adding this smoke
+component.
 
 ## Prerequisites
 
