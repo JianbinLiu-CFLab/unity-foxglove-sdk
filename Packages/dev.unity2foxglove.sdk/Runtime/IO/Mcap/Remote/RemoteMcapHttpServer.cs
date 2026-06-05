@@ -15,6 +15,11 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Serves one configured MCAP file on loopback using the Phase139B Remote Data Loader routes.</summary>
     public sealed class RemoteMcapHttpServer : IDisposable
     {
+        private const int MinTcpPort = 1;
+        private const int MaxTcpPort = 65535;
+        private static readonly TimeSpan StartupProbeTimeout = TimeSpan.FromMilliseconds(500);
+        private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromSeconds(2);
+
         private readonly HttpListener _listener;
         private readonly CancellationTokenSource _stop = new CancellationTokenSource();
         private readonly Task _loop;
@@ -24,7 +29,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (options == null)
                 throw new ArgumentNullException(nameof(options));
-            if (options.Port <= 0 || options.Port > 65535)
+            if (options.Port < MinTcpPort || options.Port > MaxTcpPort)
                 throw new ArgumentOutOfRangeException(nameof(options.Port), "Remote MCAP HTTP port must be between 1 and 65535.");
             if (string.IsNullOrEmpty(options.McapPath))
                 throw new ArgumentException("Remote MCAP HTTP server requires one MCAP path.", nameof(options));
@@ -47,17 +52,22 @@ namespace Unity.FoxgloveSDK.IO
             _loop = Task.Run(() => ListenLoopAsync(router, _stop.Token));
         }
 
+        /// <summary>Options used to start this server.</summary>
         public RemoteMcapHttpOptions Options { get; }
 
+        /// <summary>Normalized loopback base URL for manifest and data routes.</summary>
         public string BaseUrl { get; }
 
+        /// <summary>True while the listener has not been disposed and is still accepting connections.</summary>
         public bool IsRunning => !_disposed && _listener.IsListening;
 
+        /// <summary>Starts a disposable loopback Remote Data Loader server.</summary>
         public static RemoteMcapHttpServer Start(RemoteMcapHttpOptions options)
         {
             return new RemoteMcapHttpServer(options);
         }
 
+        /// <summary>Returns whether a TCP listener appears to be accepting connections at the base URL.</summary>
         public static bool IsListening(string baseUrl)
         {
             if (string.IsNullOrEmpty(baseUrl))
@@ -69,7 +79,7 @@ namespace Unity.FoxgloveSDK.IO
                 using (var client = new TcpClient())
                 {
                     var connect = client.ConnectAsync(uri.Host, uri.Port);
-                    return connect.Wait(TimeSpan.FromMilliseconds(500)) && client.Connected;
+                    return connect.Wait(StartupProbeTimeout) && client.Connected;
                 }
             }
             catch
@@ -78,6 +88,7 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        /// <summary>Stops the listener and waits briefly for the request loop to exit.</summary>
         public void Dispose()
         {
             if (_disposed)
@@ -86,7 +97,7 @@ namespace Unity.FoxgloveSDK.IO
             _disposed = true;
             _stop.Cancel();
             try { _listener.Close(); } catch { /* best effort during shutdown */ }
-            try { _loop.Wait(TimeSpan.FromSeconds(2)); } catch { /* listener close wakes the loop with an exception */ }
+            try { _loop.Wait(DisposeWaitTimeout); } catch { /* listener close wakes the loop with an exception */ }
             _stop.Dispose();
         }
 

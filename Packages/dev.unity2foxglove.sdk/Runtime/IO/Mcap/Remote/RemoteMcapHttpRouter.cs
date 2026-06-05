@@ -16,13 +16,18 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Routes the small Phase139B HTTP surface without depending on Unity APIs.</summary>
     internal sealed class RemoteMcapHttpRouter
     {
+        private const int MaxIsoFractionDigits = 9;
+        private const ulong NanosecondsPerSecond = 1_000_000_000UL;
+
         private readonly RemoteMcapDataSourcePrototype _source;
 
+        /// <summary>Creates a router backed by one local MCAP data source.</summary>
         public RemoteMcapHttpRouter(RemoteMcapDataSourcePrototype source)
         {
             _source = source ?? throw new ArgumentNullException(nameof(source));
         }
 
+        /// <summary>Handles one HTTP request and closes its response stream.</summary>
         public Task HandleAsync(HttpListenerContext context)
         {
             if (context == null)
@@ -134,7 +139,7 @@ namespace Unity.FoxgloveSDK.IO
             var dot = withoutZone.IndexOf('.');
             var secondsPart = dot >= 0 ? withoutZone.Substring(0, dot) : withoutZone;
             var fractionPart = dot >= 0 ? withoutZone.Substring(dot + 1) : string.Empty;
-            if (fractionPart.Length > 9)
+            if (fractionPart.Length > MaxIsoFractionDigits)
                 return false;
             for (var i = 0; i < fractionPart.Length; i++)
                 if (!char.IsDigit(fractionPart[i]))
@@ -159,11 +164,11 @@ namespace Unity.FoxgloveSDK.IO
                 var fractionalNanoseconds = 0UL;
                 if (fractionPart.Length > 0)
                 {
-                    var padded = fractionPart.PadRight(9, '0');
+                    var padded = fractionPart.PadRight(MaxIsoFractionDigits, '0');
                     fractionalNanoseconds = ulong.Parse(padded, CultureInfo.InvariantCulture);
                 }
 
-                nanoseconds = checked((ulong)unixSeconds * 1000000000UL + fractionalNanoseconds);
+                nanoseconds = checked((ulong)unixSeconds * NanosecondsPerSecond + fractionalNanoseconds);
                 return true;
             }
             catch (OverflowException)

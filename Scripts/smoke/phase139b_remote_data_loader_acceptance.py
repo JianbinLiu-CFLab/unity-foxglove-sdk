@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Probe the Phase139B Remote Data Loader backend and save evidence."""
+"""Probe the Phase139B Remote Data Loader backend and save evidence.
+
+The helper can either attach to an already-running backend or launch the
+test-runner-hosted loopback server, then verifies the manifest and downloads a
+small MCAP range.  It is intended for manual acceptance evidence, not as a
+replacement for the repository's C# validation suite.
+"""
 
 from __future__ import annotations
 
@@ -105,6 +111,8 @@ def resolve_mcap_path(value: str, root: Path) -> Path:
 
 def launch_backend(args: argparse.Namespace, root: Path) -> tuple[subprocess.Popen, str, list[str]]:
     """Launch the test-runner-hosted 139B backend and return process/base URL/logs."""
+    # Keep dotnet outputs under the ignored repo-level build tree so package
+    # source folders never receive bin/obj artifacts during smoke testing.
     build_root = root / "build" / "phase139b" / "dotnet" / ("run-" + str(os.getpid()) + "-" + str(int(time.time() * 1000)))
     out_dir = build_root / "out"
     obj_dir = build_root / "obj"

@@ -12,6 +12,7 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Maps local DataLoader initialization metadata into a remote-manifest shape.</summary>
     public static class RemoteMcapManifestMapper
     {
+        /// <summary>Builds a single-source manifest from local MCAP initialization metadata.</summary>
         public static RemoteMcapManifest FromInitialization(
             McapDataLoaderInitialization initialization,
             string manifestName,

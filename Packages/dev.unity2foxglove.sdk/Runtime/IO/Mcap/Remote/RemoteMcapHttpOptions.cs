@@ -11,12 +11,25 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Options for serving one local MCAP file through the Remote Data Loader HTTP contract.</summary>
     public sealed class RemoteMcapHttpOptions
     {
+        /// <summary>Loopback host used by the embedded HTTP listener.</summary>
         public string Host = "127.0.0.1";
+
+        /// <summary>TCP port used by the embedded HTTP listener.</summary>
         public int Port;
+
+        /// <summary>Absolute or caller-resolved path to the MCAP file served by this backend.</summary>
         public string McapPath = string.Empty;
+
+        /// <summary>Stable source id advertised in the manifest and accepted as recordingId/sourceId.</summary>
         public string SourceId = "local-mcap";
+
+        /// <summary>Display name advertised in the Remote Data Loader manifest.</summary>
         public string ManifestName = "Unity2Foxglove MCAP";
+
+        /// <summary>Optional bearer token required for manifest and data requests.</summary>
         public string RequiredBearerToken = string.Empty;
+
+        /// <summary>Maximum MCAP response size buffered in memory before the request is rejected.</summary>
         public long MaxInMemoryDataBytes = RemoteMcapDataSourcePrototype.DefaultMaxInMemoryDataBytes;
 
         /// <summary>Returns the normalized loopback base URL used by <see cref="RemoteMcapHttpServer"/>.</summary>
@@ -29,6 +42,7 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        /// <summary>Relative data route advertised by the manifest for this source.</summary>
         internal string DataRoute
         {
             get

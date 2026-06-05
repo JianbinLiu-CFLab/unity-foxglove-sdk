@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Local-file prototype for Remote Data Loader style manifest and data operations.</summary>
     public sealed class RemoteMcapDataSourcePrototype
     {
+        /// <summary>Default cap for data responses buffered fully in memory.</summary>
         public const long DefaultMaxInMemoryDataBytes = 16L * 1024L * 1024L;
 
         private readonly string _mcapPath;
@@ -26,6 +27,7 @@ namespace Unity.FoxgloveSDK.IO
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
 
+        /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
         public RemoteMcapDataSourcePrototype(
             string mcapPath,
             string sourceId,
@@ -44,6 +46,7 @@ namespace Unity.FoxgloveSDK.IO
             _maxInMemoryDataBytes = maxInMemoryDataBytes;
         }
 
+        /// <summary>Returns manifest metadata for the configured MCAP file.</summary>
         public RemoteMcapManifestResponse GetManifest(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();
@@ -68,6 +71,7 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>Returns the complete MCAP file as bytes when it is within the configured memory cap.</summary>
         public RemoteMcapDataResponse GetData(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();
@@ -106,6 +110,7 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        /// <summary>Returns an owned MCAP stream for the requested inclusive log-time range.</summary>
         public RemoteMcapDataStreamResponse GetDataStream(RemoteMcapRequest request)
         {
             request = request ?? new RemoteMcapRequest();

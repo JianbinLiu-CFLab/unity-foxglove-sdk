@@ -15,6 +15,7 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Tests;
 
+/// <summary>Console entry point for runtime validation and manual smoke servers.</summary>
 class Program
 {
     /// <summary>
@@ -485,6 +486,7 @@ class Program
         return 0;
     }
 
+    /// <summary>Runs the manual Phase139B loopback server used by browser and Python acceptance probes.</summary>
     private static int RunPhase139BRemoteDataLoaderServer(List<string> args)
     {
         var mcapPath = ValueAfter(args, "--mcap");
@@ -544,6 +546,7 @@ class Program
         return 0;
     }
 
+    /// <summary>Returns the command-line value immediately following a flag, or null when absent.</summary>
     private static string ValueAfter(List<string> args, string flag)
     {
         var idx = args.IndexOf(flag);

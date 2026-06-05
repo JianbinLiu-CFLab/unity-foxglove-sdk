@@ -13,6 +13,9 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Serializes Remote Data Loader manifests using Foxglove's official JSON field names.</summary>
     public static class RemoteMcapOfficialManifestSerializer
     {
+        private const ulong NanosecondsPerSecond = 1_000_000_000UL;
+        private const string NanosecondFractionFormat = "D9";
+
         /// <summary>Serializes a remote MCAP manifest to the official Foxglove Remote Data Loader JSON shape.</summary>
         public static string Serialize(RemoteMcapManifest manifest)
         {
@@ -114,8 +117,8 @@ namespace Unity.FoxgloveSDK.IO
 
         private static string FormatUnixNanoseconds(ulong unixNanoseconds)
         {
-            var seconds = unixNanoseconds / 1_000_000_000UL;
-            var nanoseconds = unixNanoseconds % 1_000_000_000UL;
+            var seconds = unixNanoseconds / NanosecondsPerSecond;
+            var nanoseconds = unixNanoseconds % NanosecondsPerSecond;
             if (seconds > long.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(unixNanoseconds), "Timestamp seconds exceed Int64 range.");
 
@@ -125,7 +128,7 @@ namespace Unity.FoxgloveSDK.IO
             if (nanoseconds == 0)
                 return value + "Z";
 
-            var fraction = nanoseconds.ToString("D9", System.Globalization.CultureInfo.InvariantCulture)
+            var fraction = nanoseconds.ToString(NanosecondFractionFormat, System.Globalization.CultureInfo.InvariantCulture)
                 .TrimEnd('0');
             return value + "." + fraction + "Z";
         }
