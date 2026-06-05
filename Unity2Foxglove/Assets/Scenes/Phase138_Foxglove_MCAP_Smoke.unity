@@ -5972,7 +5972,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -7581,7 +7581,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
@@ -7630,12 +7630,12 @@ MonoBehaviour:
   _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins:
   - https://app.foxglove.dev
-  _certificatePfxPath: 
+  _certificatePfxPath: UserSettings/Unity2Foxglove/Certificates/unity2foxglove-local-dev.pfx
   _certificatePassword: 
-  _rootCaDistributorEnabled: 0
+  _rootCaDistributorEnabled: 1
   _rootCaDistributorHost: 127.0.0.1
   _rootCaDistributorPort: 8766
-  _rootCaFilePath: 
+  _rootCaFilePath: UserSettings/Unity2Foxglove/Certificates/unity2foxglove-local-dev-root.crt
   _sharedToken: 
 --- !u!4 &474523081
 Transform:
@@ -7760,7 +7760,7 @@ MonoBehaviour:
   _warnIfManagerMissing: 1
   _encodingOverride: 0
   _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
+  _ros2BridgeTopicOverride:
   _outputMode: 1
   _frameId: os_lidar
   _pointSources: []
@@ -7805,7 +7805,7 @@ MonoBehaviour:
   _warnIfManagerMissing: 1
   _encodingOverride: 0
   _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
+  _ros2BridgeTopicOverride:
   _parentFrameId: base_link
   _childFrameId: os_sensor
   _useLocalTransform: 1
