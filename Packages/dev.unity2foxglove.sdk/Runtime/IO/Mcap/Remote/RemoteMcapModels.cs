@@ -58,6 +58,8 @@ namespace Unity.FoxgloveSDK.IO
     {
         public string BearerToken;
         public string SourceId;
+        public ulong StartTimeNs;
+        public ulong EndTimeNs;
         public bool RequestMultipleSources;
         public List<string> RequestedSourceIds;
 
@@ -65,6 +67,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             BearerToken = string.Empty;
             SourceId = string.Empty;
+            EndTimeNs = ulong.MaxValue;
             RequestedSourceIds = new List<string>();
         }
     }

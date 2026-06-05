@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Tests;
@@ -36,6 +37,9 @@ class Program
             var demo3d = argList.Contains("--demo3d");
             return RunServer(port, demo, demo3d);
         }
+
+        if (argList.Contains("--phase139b-remote-data-loader-server"))
+            return RunPhase139BRemoteDataLoaderServer(argList);
 
         if (TryRunRegisteredValidation(argList, out var registeredValidationExitCode))
             return registeredValidationExitCode;
@@ -479,6 +483,73 @@ class Program
 
         Console.WriteLine("\nAll checks passed.");
         return 0;
+    }
+
+    private static int RunPhase139BRemoteDataLoaderServer(List<string> args)
+    {
+        var mcapPath = ValueAfter(args, "--mcap");
+        if (string.IsNullOrEmpty(mcapPath))
+        {
+            Console.Error.WriteLine("--phase139b-remote-data-loader-server requires --mcap PATH.");
+            return 1;
+        }
+
+        var port = 8876;
+        var portValue = ValueAfter(args, "--port");
+        if (!string.IsNullOrEmpty(portValue) && !int.TryParse(portValue, out port))
+        {
+            Console.Error.WriteLine("--port must be an integer.");
+            return 1;
+        }
+
+        var maxDataBytes = RemoteMcapDataSourcePrototype.DefaultMaxInMemoryDataBytes;
+        var maxDataBytesValue = ValueAfter(args, "--max-data-bytes");
+        if (!string.IsNullOrEmpty(maxDataBytesValue) && !long.TryParse(maxDataBytesValue, out maxDataBytes))
+        {
+            Console.Error.WriteLine("--max-data-bytes must be an integer.");
+            return 1;
+        }
+
+        var options = new RemoteMcapHttpOptions
+        {
+            Host = ValueAfter(args, "--host") ?? "127.0.0.1",
+            Port = port,
+            McapPath = mcapPath,
+            SourceId = ValueAfter(args, "--source-id") ?? "local-mcap",
+            ManifestName = ValueAfter(args, "--name") ?? "Unity2Foxglove MCAP",
+            RequiredBearerToken = ValueAfter(args, "--token") ?? string.Empty,
+            MaxInMemoryDataBytes = maxDataBytes
+        };
+
+        using (var server = RemoteMcapHttpServer.Start(options))
+        {
+            var ready = JsonConvert.SerializeObject(new
+            {
+                baseUrl = server.BaseUrl,
+                manifestUrl = server.BaseUrl + "/v1/manifest",
+                dataUrl = server.BaseUrl + options.DataRoute
+            });
+            Console.WriteLine("PHASE139B_SERVER_READY=" + ready);
+            Console.Out.Flush();
+
+            var done = new ManualResetEventSlim(false);
+            Console.CancelKeyPress += (_, e) =>
+            {
+                e.Cancel = true;
+                done.Set();
+            };
+            done.Wait();
+        }
+
+        return 0;
+    }
+
+    private static string ValueAfter(List<string> args, string flag)
+    {
+        var idx = args.IndexOf(flag);
+        return idx >= 0 && idx + 1 < args.Count
+            ? args[idx + 1]
+            : null;
     }
 
     /// <summary>

@@ -31,13 +31,16 @@ namespace Unity.FoxgloveSDK.IO
             string sourceId,
             string manifestName,
             string requiredBearerToken,
-            long maxInMemoryDataBytes = DefaultMaxInMemoryDataBytes)
+            long maxInMemoryDataBytes = DefaultMaxInMemoryDataBytes,
+            string dataRoute = null)
         {
             _mcapPath = mcapPath ?? throw new ArgumentNullException(nameof(mcapPath));
             _sourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
             _manifestName = string.IsNullOrEmpty(manifestName) ? _sourceId : manifestName;
             _requiredBearerToken = requiredBearerToken ?? string.Empty;
-            _dataRoute = "/data?sourceId=" + Uri.EscapeDataString(_sourceId);
+            _dataRoute = string.IsNullOrEmpty(dataRoute)
+                ? "/data?sourceId=" + Uri.EscapeDataString(_sourceId)
+                : dataRoute;
             _maxInMemoryDataBytes = maxInMemoryDataBytes;
         }
 
@@ -128,13 +131,31 @@ namespace Unity.FoxgloveSDK.IO
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceFileNotFound",
                     "Requested MCAP source file is not available on disk.");
 
+            MemoryStream slice;
+            try
+            {
+                slice = RemoteMcapRangeWriter.CreateSlice(_mcapPath, request);
+            }
+            catch (Exception ex)
+            {
+                return DataStreamProblem(RemoteMcapResponseStatus.Error, "RangeSliceFailed",
+                    "Requested MCAP range could not be re-emitted: " + ex.Message);
+            }
+
+            if (_maxInMemoryDataBytes >= 0 && slice.Length > _maxInMemoryDataBytes)
+            {
+                slice.Dispose();
+                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "DataTooLargeForInMemoryResponse",
+                    "Requested MCAP range exceeds the configured in-memory byte response cap.");
+            }
+
             return new RemoteMcapDataStreamResponse
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
                 SourceId = _sourceId,
-                Length = info.Length,
-                DataStream = new FileStream(_mcapPath, FileMode.Open, FileAccess.Read, FileShare.Read)
+                Length = slice.Length,
+                DataStream = slice
             };
         }
 
