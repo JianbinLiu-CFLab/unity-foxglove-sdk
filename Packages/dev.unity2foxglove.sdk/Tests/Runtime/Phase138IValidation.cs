@@ -21,8 +21,14 @@ namespace Unity.FoxgloveSDK.Tests
         private const int FullFidelityPointCount = 128 * 2048;
         private const string VirtualLidarRelativePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs";
+        private const string VirtualLidarScanSchedulerRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs";
+        private const string VirtualLidarScanFramePublisherRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs";
         private const string PointCloudPublisherRelativePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs";
+        private const string PointCloudQoSReducerRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudQoSReducer.cs";
         private const string PointCloudPublisherEditorRelativePath =
             "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs";
         private const string TransformPublisherRelativePath =
@@ -150,26 +156,27 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudQosPassThrough()
         {
-            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var reducer = ReadRepoText(PointCloudQoSReducerRelativePath);
             var passThroughPattern =
                 @"if \(!useVoxelGrid && !forceUniformFallback && frame\.UnixNs != 0 && !string\.IsNullOrEmpty\(frame\.FrameId\) && pointCount <= pointBudget\)\s*\{[^}]*return frame;";
-            Check(Regex.IsMatch(publisher, passThroughPattern, RegexOptions.Singleline),
+            Check(Regex.IsMatch(reducer, passThroughPattern, RegexOptions.Singleline),
                 "138I-10: PointCloud QoS returns the original frame when full fidelity is within budget");
-            Check(publisher.Contains("Math.Max(0, _maxPackedBytes)", StringComparison.Ordinal),
+            Check(reducer.Contains("Math.Max(0, maxPackedBytes)", StringComparison.Ordinal),
                 "138I-11: Max Packed Bytes 0 disables byte-budget truncation");
         }
 
         private static void VerifyOptInDiagnostics()
         {
             var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var lidarScheduler = ReadRepoText(VirtualLidarScanSchedulerRelativePath);
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
             var pointCloudDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
 
             Check(lidar.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal)
-                  && lidar.Contains("[LidarDiag]", StringComparison.Ordinal)
-                  && lidar.Contains("LogOption.NoStacktrace", StringComparison.Ordinal)
-                  && lidar.Contains("completeMs", StringComparison.Ordinal)
-                  && lidar.Contains("overrun", StringComparison.Ordinal),
+                  && lidarScheduler.Contains("[LidarDiag]", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("LogOption.NoStacktrace", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("completeMs", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("overrun", StringComparison.Ordinal),
                 "138I-12: VirtualLidar exposes opt-in no-stacktrace throughput diagnostics");
             Check(publisher.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal)
                   && publisher.Contains("PointCloudPublishDiagnostics _diagnostics", StringComparison.Ordinal)
@@ -185,21 +192,21 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAsyncRaycastStateMachine()
         {
-            var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var lidarScheduler = ReadRepoText(VirtualLidarScanSchedulerRelativePath);
 
-            Check(lidar.Contains("enum PendingScanState", StringComparison.Ordinal)
-                  && lidar.Contains("Scheduled", StringComparison.Ordinal)
-                  && lidar.Contains("Consumed", StringComparison.Ordinal)
-                  && lidar.Contains("Published", StringComparison.Ordinal),
+            Check(lidarScheduler.Contains("enum PendingScanState", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("Scheduled", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("Consumed", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("Published", StringComparison.Ordinal),
                 "138I-15: async raycast is represented as an explicit pending-scan state machine");
-            Check(lidar.Contains("JobHandle", StringComparison.Ordinal)
-                  && lidar.Contains("DrainPendingScan", StringComparison.Ordinal)
-                  && lidar.Contains("SchedulePendingScan", StringComparison.Ordinal)
-                  && lidar.Contains("ConsumePendingScan", StringComparison.Ordinal),
+            Check(lidarScheduler.Contains("JobHandle", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("DrainPendingScan", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("SchedulePendingScan", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("ConsumePendingScan", StringComparison.Ordinal),
                 "138I-16: async raycast schedules one tick and consumes/drains on later lifecycle paths");
-            Check(!lidar.Contains("ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete()", StringComparison.Ordinal),
+            Check(!lidarScheduler.Contains("ScheduleBatch(_commands.GetSubArray(0, batchCount), _results.GetSubArray(0, batchCount), 64).Complete()", StringComparison.Ordinal),
                 "138I-17: VirtualLidar no longer completes the RaycastCommand batch synchronously in FixedUpdate");
-            Check(!lidar.Contains("_pointData.CopyTo(_pointDataManaged)", StringComparison.Ordinal),
+            Check(!lidarScheduler.Contains("_pointData.CopyTo(_pointDataManaged)", StringComparison.Ordinal),
                 "138I-18: hot consume path does not copy the full NativeArray point buffer into managed memory");
         }
 
@@ -237,6 +244,7 @@ namespace Unity.FoxgloveSDK.Tests
             var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarScanDiagnostics.cs");
             var pointCloudDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
             var encoders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            var pointCloudPipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
             Check(!lidar.Contains("using System.Diagnostics;", StringComparison.Ordinal)
@@ -247,26 +255,27 @@ namespace Unity.FoxgloveSDK.Tests
                   && diagnostics.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
                   && !publisher.Contains("Stopwatch", StringComparison.Ordinal)
                   && encoders.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
-                  && publisher.Contains("BackgroundEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && publisher.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
+                  && pointCloudPipeline.Contains("BackgroundEncodePipeline<TRequest, TResult>", StringComparison.Ordinal)
                   && pipeline.Contains("Priority = ThreadPriority.BelowNormal", StringComparison.Ordinal),
                 "138I-23: Stopwatch and Draco thread priority references avoid ambiguous UnityEngine names");
         }
 
         private static void VerifyVirtualLidarMainThreadIsolation()
         {
-            var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var lidarScheduler = ReadRepoText(VirtualLidarScanSchedulerRelativePath);
             var buildJob = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarBuildPointsJob.cs");
 
             Check(buildJob.Contains("[ReadOnly] public NativeArray<RaycastHit> Hits", StringComparison.Ordinal)
                   && buildJob.Contains("hit.distance > 0f", StringComparison.Ordinal)
                   && !buildJob.Contains("VirtualLidarHitData", StringComparison.Ordinal)
-                  && lidar.Contains("var raycastHandle = RaycastCommand.ScheduleBatch", StringComparison.Ordinal)
-                  && lidar.Contains("buildJob.Schedule(batchCount, 64, raycastHandle)", StringComparison.Ordinal)
-                  && lidar.Contains("WorldToLocal = _activeScanWorldToLocal", StringComparison.Ordinal)
-                  && lidar.Contains("_pendingScanHandle.Complete()", StringComparison.Ordinal)
-                  && !lidar.Contains("hit.collider == null", StringComparison.Ordinal)
-                  && !lidar.Contains("_rayHits", StringComparison.Ordinal)
-                  && !lidar.Contains("job.Schedule(_pendingBatchCount, 64).Complete()", StringComparison.Ordinal),
+                  && lidarScheduler.Contains("var raycastHandle = RaycastCommand.ScheduleBatch", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("buildJob.Schedule(batchCount, 64, raycastHandle)", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("WorldToLocal = activeScanWorldToLocal", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("_pendingScanHandle.Complete()", StringComparison.Ordinal)
+                  && !lidarScheduler.Contains("hit.collider == null", StringComparison.Ordinal)
+                  && !lidarScheduler.Contains("_rayHits", StringComparison.Ordinal)
+                  && !lidarScheduler.Contains("job.Schedule(_pendingBatchCount, 64).Complete()", StringComparison.Ordinal),
                 "138I-24: VirtualLidar chains raycast-to-point build work off the main-thread consume path");
         }
 
@@ -304,14 +313,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyVirtualLidarDracoBypassesManagedPointAppend()
         {
             var lidar = ReadRepoText(VirtualLidarRelativePath);
+            var lidarScheduler = ReadRepoText(VirtualLidarScanSchedulerRelativePath);
+            var lidarFramePublisher = ReadRepoText(VirtualLidarScanFramePublisherRelativePath);
             var publisher = ReadRepoText(PointCloudPublisherRelativePath);
             var encoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
             var workerEncoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
 
             Check(lidar.Contains("VirtualLidarPointData[] _activeScanPointSnapshot", StringComparison.Ordinal)
-                  && lidar.Contains("CopyPendingPointDataSegment", StringComparison.Ordinal)
-                  && lidar.Contains("TryPublishActiveNativeDracoScan", StringComparison.Ordinal)
-                  && lidar.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
+                  && lidarScheduler.Contains("CopyPendingPointDataSegment", StringComparison.Ordinal)
+                  && lidarFramePublisher.Contains("TryPublishNativeDracoScan", StringComparison.Ordinal)
+                  && lidarFramePublisher.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
                   && publisher.Contains("TryQueueVirtualLidarDracoFrame", StringComparison.Ordinal)
                   && publisher.Contains("QueueVirtualLidarDracoEncode", StringComparison.Ordinal)
                   && publisher.Contains("VirtualLidarPointData[]", StringComparison.Ordinal)
@@ -382,7 +393,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publisher.Contains("_suppressTransformFallbackAfterSourceFrames", StringComparison.Ordinal)
                   && publisher.Contains("MarkSourceDrivenPointCloud", StringComparison.Ordinal)
                   && publisher.Contains("ShouldSuppressTransformFallback()", StringComparison.Ordinal)
-                  && publisher.Contains("PointCloudTransformFrameBuilder.Build(", StringComparison.Ordinal)
+                  && publisher.Contains("TransformPointCloudSource _transformPointCloudSource", StringComparison.Ordinal)
+                  && publisher.Contains("_transformPointCloudSource.CreateFrameFromTransforms(", StringComparison.Ordinal)
                   && publisher.Contains("PointCloud transform fallback suppressed", StringComparison.Ordinal),
                 "138I-31: source-driven point clouds suppress sparse transform fallback frames that would overwrite LiDAR data");
         }

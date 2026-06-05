@@ -246,22 +246,38 @@ namespace Unity.FoxgloveSDK.Tests
                   && bootstrap.Contains("FoxgloveCameraInfoPublisher", StringComparison.Ordinal)
                   && bootstrap.Contains("\"_imagePublisher\"", StringComparison.Ordinal)
                   && bootstrap.Contains("_useSharedSensorClock", StringComparison.Ordinal)
-                  && bootstrap.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal)
+                  && bootstrap.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
+                  && bootstrap.Contains("/unity/point_cloud_draco", StringComparison.Ordinal)
+                  && bootstrap.Contains("SetPrivateField(sensorCameraPublisher, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
+                  && bootstrap.Contains("SetPrivateField(sensorCameraPublisher, \"_publishStandardRos2RawImage\", false)", StringComparison.Ordinal)
                   && bootstrap.Contains("/unity/sensor/camera/image/compressed", StringComparison.Ordinal)
-                  && bootstrap.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal),
-                "138M-7A: runtime Maze Demo creates a cart-mounted SLAM camera product path");
+                  && bootstrap.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal)
+                  && bootstrap.Contains("sensorCameraInfoPublisher.enabled = false", StringComparison.Ordinal)
+                  && bootstrap.Contains("cartCameraMount.gameObject.SetActive(false)", StringComparison.Ordinal)
+                  && bootstrap.Contains("cameraGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
+                  && bootstrap.Contains("/unity/camera", StringComparison.Ordinal),
+                "138M-7A: runtime Maze Demo defaults to a WebSocket-friendly camera/Draco scene while keeping ROS2 camera assets opt-in");
             Check(builder.Contains("CartCameraMount", StringComparison.Ordinal)
                   && builder.Contains("FoxgloveCameraInfoPublisher", StringComparison.Ordinal)
                   && builder.Contains("\"_imagePublisher\"", StringComparison.Ordinal)
                   && builder.Contains("_useSharedSensorClock", StringComparison.Ordinal)
-                  && builder.Contains("_publishStandardRos2CompressedImage", StringComparison.Ordinal)
+                  && builder.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
+                  && builder.Contains("/unity/point_cloud_draco", StringComparison.Ordinal)
+                  && builder.Contains("SetField(sensorCamPub, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
+                  && builder.Contains("SetField(sensorCamPub, \"_publishStandardRos2RawImage\", false)", StringComparison.Ordinal)
                   && builder.Contains("/unity/sensor/camera/image/compressed", StringComparison.Ordinal)
-                  && builder.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal),
-                "138M-7B: editor Maze Demo builder creates a cart-mounted SLAM camera product path");
-            Check(!bootstrap.Contains("cameraGo.AddComponent<FoxgloveCameraPublisher>", StringComparison.Ordinal)
-                  && !builder.Contains("camGo.AddComponent<FoxgloveCameraPublisher>", StringComparison.Ordinal)
+                  && builder.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal)
+                  && builder.Contains("sensorCamInfoPub.enabled = false", StringComparison.Ordinal)
+                  && builder.Contains("cartCameraMount.SetActive(false)", StringComparison.Ordinal)
+                  && builder.Contains("camGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
+                  && builder.Contains("/unity/camera", StringComparison.Ordinal),
+                "138M-7B: editor Maze Demo builder defaults to the same WebSocket-friendly scene state");
+            Check(bootstrap.Contains("cameraGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
+                  && bootstrap.Contains("SetPrivateField(demoCameraPublisher, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
+                  && builder.Contains("camGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
+                  && builder.Contains("SetField(demoCameraPublisher, \"_publishStandardRos2CompressedImage\", false)", StringComparison.Ordinal)
                   && !builder.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
-                "138M-7C: overview camera and diagnostic smoke component are not the product sensor path");
+                "138M-7C: overview camera is the default non-ROS2 camera path and diagnostic smoke component is absent");
             Check(readme.Contains("/unity/sensor/camera/image/compressed", StringComparison.Ordinal)
                   && readme.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal)
                   && readme.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal)
@@ -271,12 +287,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(importedBootstrap.Contains("CartCameraMount", StringComparison.Ordinal)
                   && importedBootstrap.Contains("FoxgloveCameraInfoPublisher", StringComparison.Ordinal)
                   && importedBootstrap.Contains("\"_imagePublisher\"", StringComparison.Ordinal)
+                  && importedBootstrap.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
+                  && importedBootstrap.Contains("cartCameraMount.gameObject.SetActive(false)", StringComparison.Ordinal)
+                  && importedBootstrap.Contains("cameraGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
                   && importedBuilder.Contains("CartCameraMount", StringComparison.Ordinal)
                   && importedBuilder.Contains("FoxgloveCameraInfoPublisher", StringComparison.Ordinal)
                   && importedBuilder.Contains("\"_imagePublisher\"", StringComparison.Ordinal)
+                  && importedBuilder.Contains("PointCloudOutputMode.Draco", StringComparison.Ordinal)
+                  && importedBuilder.Contains("cartCameraMount.SetActive(false)", StringComparison.Ordinal)
+                  && importedBuilder.Contains("camGo.AddComponent<FoxgloveCameraPublisher>()", StringComparison.Ordinal)
                   && !importedBuilder.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal)
                   && importedReadme.Contains("/unity/sensor/camera/camera_info", StringComparison.Ordinal),
-                "138M-7E: imported Unity sample copy matches the product camera path");
+                "138M-7E: imported Unity sample copy matches the opt-in ROS2 camera path and default demo output");
         }
 
         private static void ValidationRegistryWiresPhase138M()

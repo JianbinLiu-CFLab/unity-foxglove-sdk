@@ -2475,7 +2475,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
@@ -5946,7 +5946,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &390575137
 Transform:
   m_ObjectHideFlags: 0
@@ -6013,7 +6013,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 390575136}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7f166bbd384d4ce486eb636d355fdb02, type: 3}
   m_Name: 
@@ -6026,7 +6026,7 @@ MonoBehaviour:
   _warnIfManagerMissing: 1
   _encodingOverride: 0
   _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
+  _ros2BridgeTopicOverride:
   _sourceCamera: {fileID: 390575141}
   _imagePublisher: {fileID: 390575140}
   _sensorUnitProfile: {fileID: 477461889}
@@ -6052,7 +6052,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
   _manager: {fileID: 474523080}
   _topic: /unity/sensor/camera/image/compressed
@@ -6062,7 +6062,7 @@ MonoBehaviour:
   _warnIfManagerMissing: 1
   _encodingOverride: 0
   _ros2BridgeOutput: 0
-  _ros2BridgeTopicOverride: 
+  _ros2BridgeTopicOverride:
   _outputMode: 0
   _frameId: os_camera
   _width: 640
@@ -6082,8 +6082,8 @@ MonoBehaviour:
   _videoMaxOutputQueue: 4
   _logVideoDiagnostics: 0
   _logEncoderStderr: 0
-  _openH264HelperPath: 
-  _openH264DllPath: 
+  _openH264HelperPath:
+  _openH264DllPath:
   _openH264MaxInputQueue: 2
   _enableBackpressureAdaptation: 0
   _backpressureCooldownSeconds: 0.5
@@ -7588,12 +7588,12 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
-  _transportMode: 2
+  _transportMode: 0
   _transportModeBeforeOutputDisabled: 0
-  _foxgloveOutputEnabled: 0
-  _ros2NativeEnabled: 1
+  _foxgloveOutputEnabled: 1
+  _ros2NativeEnabled: 0
   _defaultPublishRateHz: 10
-  _defaultPublisherEncoding: 2
+  _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
   _ros2BridgeEnabled: 0
   _ros2BridgeHost: 127.0.0.1
@@ -7753,7 +7753,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher
   _manager: {fileID: 474523080}
-  _topic: /unity/point_cloud2
+  _topic: /unity/point_cloud_draco
   _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1
@@ -7761,7 +7761,7 @@ MonoBehaviour:
   _encodingOverride: 0
   _ros2BridgeOutput: 0
   _ros2BridgeTopicOverride: 
-  _outputMode: 2
+  _outputMode: 1
   _frameId: os_lidar
   _pointSources: []
   _includeInactiveChildren: 0
@@ -22703,6 +22703,7 @@ GameObject:
   - component: {fileID: 1904929018}
   - component: {fileID: 1904929017}
   - component: {fileID: 1904929016}
+  - component: {fileID: 1904929019}
   m_Layer: 0
   m_Name: DemoCamera
   m_TagString: Untagged
@@ -22820,6 +22821,58 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1904929019
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1904929015}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
+  _manager: {fileID: 0}
+  _topic: /unity/camera
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride:
+  _outputMode: 0
+  _frameId: unity_camera
+  _width: 640
+  _height: 480
+  _jpegQuality: 70
+  _maxPendingReadbacks: 1
+  _useAsyncJpeg: 1
+  _maxJpegEncodeQueue: 2
+  _maxCompletedJpegQueue: 2
+  _maxCompletedJpegPublishesPerFrame: 1
+  _maxPixelsPerFrame: 0
+  _logCameraDiagnostics: 0
+  _cameraDiagnosticsIntervalSeconds: 2
+  _ffmpegPath: C:/Tools/yt-dlp/ffmpeg.exe
+  _videoBitrateKbps: 4000
+  _videoKeyframeInterval: 30
+  _videoMaxOutputQueue: 4
+  _logVideoDiagnostics: 0
+  _logEncoderStderr: 0
+  _openH264HelperPath:
+  _openH264DllPath:
+  _openH264MaxInputQueue: 2
+  _enableBackpressureAdaptation: 0
+  _backpressureCooldownSeconds: 0.5
+  _maxEncodedBytes: 0
+  _logBackpressureSkips: 0
+  _sensorUnitProfile: {fileID: 0}
+  _useSharedSensorClock: 1
+  _publishStandardRos2CompressedImage: 0
+  _publishStandardRos2RawImage: 0
+  _sensorCameraRawImageTopic: /unity/sensor/camera/image
 --- !u!1 &1906343301
 GameObject:
   m_ObjectHideFlags: 0

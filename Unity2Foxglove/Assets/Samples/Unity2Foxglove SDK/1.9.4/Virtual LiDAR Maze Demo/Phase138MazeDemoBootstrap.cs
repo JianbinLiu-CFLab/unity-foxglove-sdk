@@ -57,10 +57,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(publisher, "_publishRateHz", 10f);
             SetPrivateField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
             SetPrivateField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
-            // Product SLAM path: PointCloud2 Native publishes standard PointCloud2
-            // through R2FU when the Manager's ROS2 Native output is enabled.
-            SetPrivateField(publisher, "_outputMode", PointCloudOutputMode.PointCloud2Native);
-            SetPrivateField(publisher, "_topic", "/unity/point_cloud2");
+            // Default demo path stays WebSocket/Protobuf-friendly. Switch this
+            // publisher to PointCloud2 Native manually when validating ROS2/SLAM.
+            SetPrivateField(publisher, "_outputMode", PointCloudOutputMode.Draco);
+            SetPrivateField(publisher, "_topic", "/unity/point_cloud_draco");
             SetPrivateField(publisher, "_frameId", "os_lidar");
             SetPrivateField(sensorUnit, "_pointCloudPublisher", publisher);
             publisher.enabled = false; // enable after verifying Runtime is ready
@@ -151,7 +151,8 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(sensorCameraPublisher, "_manager", manager);
             SetPrivateField(sensorCameraPublisher, "_sensorUnitProfile", sensorUnit);
             SetPrivateField(sensorCameraPublisher, "_useSharedSensorClock", true);
-            SetPrivateField(sensorCameraPublisher, "_publishStandardRos2CompressedImage", true);
+            SetPrivateField(sensorCameraPublisher, "_publishStandardRos2CompressedImage", false);
+            SetPrivateField(sensorCameraPublisher, "_publishStandardRos2RawImage", false);
             SetPrivateField(sensorCameraPublisher, "_topic", "/unity/sensor/camera/image/compressed");
             SetPrivateField(sensorCameraPublisher, "_frameId", "os_camera");
             SetPrivateField(sensorCameraPublisher, "_width", 640);
@@ -166,6 +167,8 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             SetPrivateField(sensorCameraInfoPublisher, "_publishCameraTfAnchor", true);
             SetPrivateField(sensorCameraInfoPublisher, "_topic", "/unity/sensor/camera/camera_info");
             SetPrivateField(sensorCameraInfoPublisher, "_frameId", "os_camera");
+            sensorCameraInfoPublisher.enabled = false;
+            cartCameraMount.gameObject.SetActive(false);
 
             // 6. Static overview camera framing the whole maze for the Unity Game view.
             var cameraGo = new GameObject("DemoCamera");
@@ -173,6 +176,14 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             cam.clearFlags = CameraClearFlags.Skybox;
             cameraGo.transform.position = new Vector3(0f, 20f, -18f);
             cameraGo.transform.LookAt(Vector3.zero);
+
+            var demoCameraPublisher = cameraGo.AddComponent<FoxgloveCameraPublisher>();
+            SetPrivateField(demoCameraPublisher, "_topic", "/unity/camera");
+            SetPrivateField(demoCameraPublisher, "_frameId", "unity_camera");
+            SetPrivateField(demoCameraPublisher, "_width", 640);
+            SetPrivateField(demoCameraPublisher, "_height", 480);
+            SetPrivateField(demoCameraPublisher, "_publishStandardRos2CompressedImage", false);
+            SetPrivateField(demoCameraPublisher, "_publishStandardRos2RawImage", false);
 
             // 7. Verify FoxgloveManager.Runtime then enable publishing.
             var runtime = manager.Runtime;
