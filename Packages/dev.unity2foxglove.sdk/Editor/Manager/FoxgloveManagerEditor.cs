@@ -147,7 +147,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Server");
             DrawProperty("_serverName");
             using (new EditorGUI.DisabledScope(!GetBool("_foxgloveOutputEnabled")))
-                DrawProperty("_transportMode");
+                DrawTransportModeProperty();
             DrawProperty("_host");
             DrawProperty("_port");
             DrawProperty("_startOnEnable");
@@ -312,6 +312,29 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.PropertyField(prop, new GUIContent(label), true);
+        }
+
+        private void DrawTransportModeProperty()
+        {
+            var prop = serializedObject.FindProperty("_transportMode");
+            if (prop == null)
+            {
+                DrawMissingProperty("_transportMode");
+                return;
+            }
+
+            var current = prop.enumValueIndex == (int)FoxgloveTransportMode.SecureWebSocket
+                ? FoxgloveTransportMode.SecureWebSocket
+                : FoxgloveTransportMode.WebSocket;
+            var labels = new[] { "Web Socket", "Secure Web Socket" };
+            var selected = EditorGUILayout.Popup(
+                "Transport Mode",
+                current == FoxgloveTransportMode.SecureWebSocket ? 1 : 0,
+                labels);
+
+            prop.enumValueIndex = selected == 1
+                ? (int)FoxgloveTransportMode.SecureWebSocket
+                : (int)FoxgloveTransportMode.WebSocket;
         }
 
         private void DrawFloatProperty(string propertyName, string label, string tooltip)

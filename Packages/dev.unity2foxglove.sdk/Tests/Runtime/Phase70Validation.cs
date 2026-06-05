@@ -173,12 +173,17 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var section = Slice(source, "private void DrawConnectionSecuritySection()", "private void DrawSecureWebSocketSection");
-            Check(section.Contains("_transportMode"),
+            Check(section.Contains("DrawTransportModeProperty"),
                 "70C-1: Connection & Security contains transport mode");
             Check(section.Contains("DisabledScope(!GetBool(\"_foxgloveOutputEnabled\"))")
                   && !section.Contains("DisabledScope(true))\r\n                DrawProperty(\"_transportMode\")")
                   && !section.Contains("DisabledScope(true))\n                DrawProperty(\"_transportMode\")"),
                 "70C-1b: transport mode remains editable when Foxglove WebSocket output is enabled");
+            var transportDrawer = Slice(source, "private void DrawTransportModeProperty()", "private void DrawFloatProperty");
+            Check(transportDrawer.Contains("\"Web Socket\"")
+                  && transportDrawer.Contains("\"Secure Web Socket\"")
+                  && !transportDrawer.Contains("\"None\""),
+                "70C-1c: transport mode Inspector hides the internal None sentinel");
             Check(section.Contains("_certificatePfxPath") || section.Contains("DrawSecureWebSocketFields"),
                 "70C-2: Connection & Security contains WSS certificate path");
             Check(section.Contains("_sharedToken") || section.Contains("DrawSecureWebSocketFields"),
