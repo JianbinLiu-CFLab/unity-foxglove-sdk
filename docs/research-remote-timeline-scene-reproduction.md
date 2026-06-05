@@ -231,6 +231,38 @@ for the current Foxglove playhead. Unity scene replay should continue to use the
 live WebSocket playback-control path until a dedicated cursor bridge transport
 has its own feasibility evidence.
 
+## Phase139D Unity Cursor Bridge Boundary
+
+Phase139D starts the separate control channel for Foxglove-file playback to
+Unity replay synchronization. The data path remains Phase139B/139C:
+
+```text
+MCAP -> Phase139B HTTP backend -> Foxglove Remote files
+```
+
+The control path is intentionally separate:
+
+```text
+Foxglove extension currentTime -> bounded loopback cursor message -> Unity replay seek
+```
+
+Do not infer Unity cursor state from `/v1/data`. Those requests are Remote Data
+Loader cache, range, and prefetch traffic. They can appear ahead of, behind, or
+independent from the visible playhead.
+
+The Phase139D extension scaffold follows the Foxglove panel extension contract:
+call `context.watch("currentTime")` and read `renderState.currentTime` from
+`context.onRender`. It also watches `startTime`, `endTime`, and `didSeek` so a
+future Unity endpoint can distinguish timeline bounds and explicit seek events.
+Cursor time is sent as separate `{ sec, nsec }` fields to avoid JavaScript
+integer precision loss.
+
+The bridge remains disabled by default. Its first target is a trusted local
+loopback endpoint, with origin/token restrictions before broader browser access.
+It must send only cursor metadata, never MCAP data, and it must coalesce rapid
+updates so Unity applies scene snapshots on the main runtime tick rather than on
+an endpoint thread.
+
 ## 7 Validation Evidence
 
 The implementation is covered by runtime validation and manual Foxglove acceptance.

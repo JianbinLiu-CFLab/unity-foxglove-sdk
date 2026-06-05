@@ -1,0 +1,20 @@
+{
+  "name": "unity-cursor-bridge",
+  "displayName": "Unity Cursor Bridge",
+  "description": "Optional Foxglove panel that forwards timeline currentTime metadata to a local Unity replay cursor endpoint.",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "foxglove-extension build",
+    "package": "foxglove-extension package",
+    "local-install": "foxglove-extension local-install"
+  },
+  "dependencies": {
+    "@foxglove/extension": "^1.0.0"
+  },
+  "devDependencies": {
+    "@foxglove/extension-cli": "^1.0.0",
+    "typescript": "^5.5.0"
+  }
+}
