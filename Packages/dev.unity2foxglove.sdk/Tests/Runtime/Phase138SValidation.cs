@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             ImuNativeFrameShape();
             VirtualImuApiSurface();
+            VirtualImuInspectorSurface();
             UpdatePublishesNativeFrameFromDequeuedSample();
             CoreContainsNoRos2References();
             Ros2BridgeDiscoveryAndBinding();
@@ -88,6 +89,35 @@ namespace Unity.FoxgloveSDK.Tests
             Check(ExtractProperty(source, "public string ImuNativeTopic").Contains("_topic", StringComparison.Ordinal)
                   && !ExtractProperty(source, "public string ImuNativeTopic").Contains("_imuNativeTopic", StringComparison.Ordinal),
                 "138S-2I: IMU native topic follows the main IMU topic");
+        }
+
+        private static void VirtualImuInspectorSurface()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Sensors/VirtualImuEditor.cs");
+
+            Check(editor.Contains("[CustomEditor(typeof(VirtualImu))]", StringComparison.Ordinal)
+                  && editor.Contains("class VirtualImuEditor", StringComparison.Ordinal),
+                "138S-2J: VirtualImu uses a dedicated Inspector instead of the raw default field dump");
+            Check(source.Contains("private PublisherRateSource _publishRateSource = PublisherRateSource.OverrideLocal", StringComparison.Ordinal)
+                  && source.Contains("private int _targetRateHz = DefaultTargetRateHz", StringComparison.Ordinal),
+                "138S-2K: VirtualImu defaults to local 200Hz sample-rate override");
+            Check(editor.Contains("Publish Rate Source", StringComparison.Ordinal)
+                  && editor.Contains("Use Manager Default", StringComparison.Ordinal)
+                  && editor.Contains("Override Local", StringComparison.Ordinal)
+                  && editor.Contains("Sample Rate Hz", StringComparison.Ordinal),
+                "138S-2L: VirtualImu Inspector matches publisher-style rate source UI");
+            Check(editor.Contains("Advanced IMU Model", StringComparison.Ordinal)
+                  && editor.Contains("Orientation Covariance", StringComparison.Ordinal)
+                  && editor.Contains("Angular Velocity Covariance", StringComparison.Ordinal)
+                  && editor.Contains("Linear Acceleration Covariance", StringComparison.Ordinal)
+                  && editor.Contains("Override Unity Physics Rate Hz", StringComparison.Ordinal),
+                "138S-2M: VirtualImu Inspector keeps covariance and physics-rate override in Advanced IMU Model");
+            Check(editor.Contains("Publish Orientation", StringComparison.Ordinal)
+                  && !editor.Contains("Publish On Start", StringComparison.Ordinal)
+                  && !editor.Contains("Enable Noise", StringComparison.Ordinal)
+                  && !editor.Contains("Noise (future)", StringComparison.Ordinal),
+                "138S-2N: VirtualImu Inspector hides legacy publish-start and unimplemented noise controls");
         }
 
         private static void UpdatePublishesNativeFrameFromDequeuedSample()

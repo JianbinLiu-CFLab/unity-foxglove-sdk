@@ -154,10 +154,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("SensorCompressedImageReady", StringComparison.Ordinal)
                   && source.Contains("SensorCompressedImageFrame", StringComparison.Ordinal),
                 "138M-4C: camera publisher emits standard ROS compressed-image payloads and DDS handoff frames");
-            Check(editor.Contains("Sensor Camera", StringComparison.Ordinal)
+            Check(editor.Contains("ROS2 Outputs", StringComparison.Ordinal)
+                  && editor.Contains("IsRos2CameraUiRelevant", StringComparison.Ordinal)
                   && editor.Contains("Use Shared Sensor Clock", StringComparison.Ordinal)
-                  && editor.Contains("Publish Standard ROS2 CompressedImage", StringComparison.Ordinal),
-                "138M-4D: camera Inspector exposes the 138M sensor camera product controls");
+                  && editor.Contains("Publish CompressedImage DDS", StringComparison.Ordinal)
+                  && editor.Contains("Publish Raw Image DDS", StringComparison.Ordinal),
+                "138M-4D: camera Inspector hides ROS2 camera controls until ROS2 output is relevant");
         }
 
         private static void CameraInfoPublisherUsesSensorClockAndStandardCameraInfo()
@@ -181,11 +183,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("ResolveCameraPoseInParent", StringComparison.Ordinal)
                   && source.Contains("NumericQuaternion.Inverse", StringComparison.Ordinal),
                 "138M-5C: CameraInfo matches image capture dimensions and publishes sensor-to-camera TF pose");
-            Check(editor.Contains("Sensor CameraInfo", StringComparison.Ordinal)
+            Check(editor.Contains("Standalone CameraInfo", StringComparison.Ordinal)
+                  && editor.Contains("Advanced CameraInfo Publisher", StringComparison.Ordinal)
+                  && editor.Contains("Advanced Camera Calibration", StringComparison.Ordinal)
+                  && editor.Contains("Optional TF Anchor", StringComparison.Ordinal)
                   && editor.Contains("Image Publisher", StringComparison.Ordinal)
                   && editor.Contains("Use Shared Sensor Clock", StringComparison.Ordinal)
                   && editor.Contains("Publish Camera TF Anchor", StringComparison.Ordinal),
-                "138M-5D: CameraInfo Inspector exposes image link, sensor clock, and camera TF anchor controls");
+                "138M-5D: CameraInfo Inspector presents the component as an advanced standalone calibration publisher");
             Check(publisherBase.Contains("IsExpectedEncodingFallback", StringComparison.Ordinal)
                   && publisherBase.Contains("resolution.IsSupported && IsExpectedEncodingFallback(resolution)", StringComparison.Ordinal)
                   && source.Contains("IsExpectedEncodingFallback", StringComparison.Ordinal)

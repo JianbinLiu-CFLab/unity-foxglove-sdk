@@ -14,21 +14,29 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(FoxgloveCameraInfoPublisher))]
     public class FoxgloveCameraInfoPublisherEditor : UnityEditor.Editor
     {
+        private static bool _showAdvancedCalibration;
+        private static bool _showOptionalTfAnchor;
+        private static bool _showAdvancedTransport;
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
 
-            EditorGUILayout.LabelField("Sensor CameraInfo", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Standalone CameraInfo", EditorStyles.boldLabel);
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("m_Script"));
             }
 
+            EditorGUILayout.HelpBox(
+                "Advanced CameraInfo Publisher for ROS2 calibration streams and compatibility scenes. Most camera users can keep this component disabled or absent unless a ROS2 tool needs sensor_msgs/msg/CameraInfo.",
+                MessageType.Info);
+
             DrawGeneralSection();
-            DrawSensorCameraInfoSection();
-            DrawPublishRateSection();
-            DrawEncodingSection();
-            DrawRos2BridgeSection();
+            DrawCameraInfoSourceSection();
+            DrawAdvancedCalibrationSection();
+            DrawOptionalTfAnchorSection();
+            DrawAdvancedTransportSection();
 
             serializedObject.ApplyModifiedProperties();
         }
@@ -37,54 +45,165 @@ namespace Unity.FoxgloveSDK.Editor
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("General", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_manager"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_topic"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_publishOnEnable"), new GUIContent("Publish On Enable"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_warnIfManagerMissing"), new GUIContent("Warn If Manager Missing"));
+            DrawObjectField(serializedObject.FindProperty("_manager"), "Manager");
+            DrawStringField(serializedObject.FindProperty("_topic"), "Topic");
+            DrawBoolField(serializedObject.FindProperty("_publishOnEnable"), "Publish On Enable");
+            DrawBoolField(serializedObject.FindProperty("_warnIfManagerMissing"), "Warn If Manager Missing");
         }
 
-        private void DrawSensorCameraInfoSection()
+        private void DrawCameraInfoSourceSection()
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Sensor CameraInfo", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_sourceCamera"), new GUIContent("Source Camera"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_imagePublisher"), new GUIContent("Image Publisher"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_sensorUnitProfile"), new GUIContent("Sensor Unit Profile"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_frameId"), new GUIContent("Frame Id"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_useSharedSensorClock"), new GUIContent("Use Shared Sensor Clock"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_publishCameraTfAnchor"), new GUIContent("Publish Camera TF Anchor"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_cameraTfParentFrame"), new GUIContent("TF Parent Frame"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_autoFromCamera"), new GUIContent("Auto From Camera"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_widthOverride"), new GUIContent("Width Override"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_heightOverride"), new GUIContent("Height Override"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_fxOverride"), new GUIContent("Fx Override"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_fyOverride"), new GUIContent("Fy Override"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_cxOverride"), new GUIContent("Cx Override"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_cyOverride"), new GUIContent("Cy Override"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_distortionModel"), new GUIContent("Distortion Model"));
+            EditorGUILayout.LabelField("CameraInfo Source", EditorStyles.boldLabel);
+            DrawObjectField(serializedObject.FindProperty("_sourceCamera"), "Source Camera");
+            DrawObjectField(serializedObject.FindProperty("_imagePublisher"), "Image Publisher");
+            DrawObjectField(serializedObject.FindProperty("_sensorUnitProfile"), "Sensor Unit Profile");
+            DrawStringField(serializedObject.FindProperty("_frameId"), "Frame Id");
+            DrawBoolField(serializedObject.FindProperty("_useSharedSensorClock"), "Use Shared Sensor Clock");
         }
 
-        private void DrawPublishRateSection()
+        private void DrawAdvancedCalibrationSection()
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_publishRateSource"), new GUIContent("Publish Rate Source"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_publishRateHz"), new GUIContent("Publish Rate Hz"));
+            _showAdvancedCalibration = EditorGUILayout.Foldout(_showAdvancedCalibration, "Advanced Camera Calibration", true);
+            if (!_showAdvancedCalibration)
+                return;
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                DrawBoolField(serializedObject.FindProperty("_autoFromCamera"), "Auto From Camera");
+                DrawIntField(serializedObject.FindProperty("_widthOverride"), "Width Override");
+                DrawIntField(serializedObject.FindProperty("_heightOverride"), "Height Override");
+                DrawDoubleField(serializedObject.FindProperty("_fxOverride"), "Fx Override");
+                DrawDoubleField(serializedObject.FindProperty("_fyOverride"), "Fy Override");
+                DrawDoubleField(serializedObject.FindProperty("_cxOverride"), "Cx Override");
+                DrawDoubleField(serializedObject.FindProperty("_cyOverride"), "Cy Override");
+                DrawStringField(serializedObject.FindProperty("_distortionModel"), "Distortion Model");
+            }
         }
 
-        private void DrawEncodingSection()
+        private void DrawOptionalTfAnchorSection()
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Encoding", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_encodingOverride"), new GUIContent("Encoding Override"));
+            _showOptionalTfAnchor = EditorGUILayout.Foldout(_showOptionalTfAnchor, "Optional TF Anchor", true);
+            if (!_showOptionalTfAnchor)
+                return;
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                var publishCameraTfAnchor = serializedObject.FindProperty("_publishCameraTfAnchor");
+                DrawBoolField(publishCameraTfAnchor, "Publish Camera TF Anchor");
+                using (new EditorGUI.DisabledScope(!publishCameraTfAnchor.boolValue))
+                {
+                    DrawStringField(serializedObject.FindProperty("_cameraTfParentFrame"), "TF Parent Frame");
+                }
+
+                EditorGUILayout.HelpBox(
+                    "Enable only when no scene, robot, or SLAM TF tree already resolves the CameraInfo frame.",
+                    MessageType.None);
+            }
         }
 
-        private void DrawRos2BridgeSection()
+        private void DrawAdvancedTransportSection()
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_ros2BridgeOutput"), new GUIContent("ROS2 Bridge Output"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_ros2BridgeTopicOverride"), new GUIContent("Bridge Topic Override"));
+            _showAdvancedTransport = EditorGUILayout.Foldout(_showAdvancedTransport, "Advanced Transport", true);
+            if (!_showAdvancedTransport)
+                return;
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                DrawEnumField(serializedObject.FindProperty("_publishRateSource"), "Publish Rate Source");
+                DrawFloatField(serializedObject.FindProperty("_publishRateHz"), "Publish Rate Hz");
+                DrawEnumField(serializedObject.FindProperty("_encodingOverride"), "Encoding Override");
+                DrawEnumField(serializedObject.FindProperty("_ros2BridgeOutput"), "ROS2 Bridge Output");
+                DrawStringField(serializedObject.FindProperty("_ros2BridgeTopicOverride"), "Bridge Topic Override");
+            }
+        }
+
+        private static void DrawObjectField(SerializedProperty property, string label)
+        {
+            if (property == null)
+                return;
+
+            property.objectReferenceValue = EditorGUILayout.ObjectField(
+                label,
+                property.objectReferenceValue,
+                GetObjectFieldType(property),
+                allowSceneObjects: true);
+        }
+
+        private static void DrawStringField(SerializedProperty property, string label)
+        {
+            if (property != null)
+                property.stringValue = EditorGUILayout.TextField(label, property.stringValue);
+        }
+
+        private static void DrawBoolField(SerializedProperty property, string label)
+        {
+            if (property != null)
+                property.boolValue = EditorGUILayout.Toggle(label, property.boolValue);
+        }
+
+        private static void DrawIntField(SerializedProperty property, string label)
+        {
+            if (property != null)
+                property.intValue = EditorGUILayout.IntField(label, property.intValue);
+        }
+
+        private static void DrawFloatField(SerializedProperty property, string label)
+        {
+            if (property != null)
+                property.floatValue = EditorGUILayout.FloatField(label, property.floatValue);
+        }
+
+        private static void DrawDoubleField(SerializedProperty property, string label)
+        {
+            if (property != null)
+                property.doubleValue = EditorGUILayout.DoubleField(label, property.doubleValue);
+        }
+
+        private static void DrawEnumField(SerializedProperty property, string label)
+        {
+            if (property == null)
+                return;
+
+            var index = property.enumValueIndex;
+            if (index < 0 || index >= property.enumDisplayNames.Length)
+                index = 0;
+
+            property.enumValueIndex = EditorGUILayout.Popup(label, index, property.enumDisplayNames);
+        }
+
+        private static System.Type GetObjectFieldType(SerializedProperty property)
+        {
+            switch (property.name)
+            {
+                case "_manager":
+                    return typeof(FoxgloveManager);
+                case "_sourceCamera":
+                    return typeof(Camera);
+                case "_imagePublisher":
+                    return typeof(FoxgloveCameraPublisher);
+                case "_sensorUnitProfile":
+                    return typeof(SensorUnitProfile);
+            }
+
+            var typeName = property.type;
+            if (typeName.StartsWith("PPtr<$", System.StringComparison.Ordinal)
+                && typeName.EndsWith(">", System.StringComparison.Ordinal))
+            {
+                typeName = typeName.Substring(6, typeName.Length - 7);
+            }
+
+            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(typeName);
+                if (type != null)
+                    return type;
+            }
+
+            return typeof(UnityEngine.Object);
         }
     }
 }

@@ -144,6 +144,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("LogRawBandwidthWarningIfNeeded();", StringComparison.Ordinal),
                 "138T-3I: FoxgloveCameraPublisher logs raw bandwidth warning when raw output is active");
 
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
+            Check(editor.Contains("Publish Raw Image DDS", StringComparison.Ordinal)
+                  && editor.Contains("if (publishStandardRos2RawImage.boolValue)", StringComparison.Ordinal)
+                  && editor.Contains("Raw Image Topic", StringComparison.Ordinal),
+                "138T-3I2: Camera Inspector keeps raw image DDS opt-in and hides the raw topic until enabled");
+            Check(editor.Contains("DrawRos2OutputsSection", StringComparison.Ordinal)
+                  && editor.Contains("IsRos2CameraUiRelevant", StringComparison.Ordinal)
+                  && editor.Contains("ROS2 Outputs", StringComparison.Ordinal)
+                  && editor.Contains("Publish CameraInfo DDS", StringComparison.Ordinal),
+                "138T-3I3: Camera Inspector hides ROS2 output controls unless ROS2 is relevant and groups CameraInfo with image DDS outputs");
+            Check(!editor.Contains("Sensor / ROS2", StringComparison.Ordinal),
+                "138T-3I4: Camera Inspector no longer exposes ROS2 wording in the default camera setup path");
+
             var resolverSource = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             Check(resolverSource.Contains("public static string ResolveRawImageTopic", StringComparison.Ordinal),
                 "138T-3J: Camera sensor profile resolver handles raw topic derivation");

@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private Rigidbody _rigidbody;
         [SerializeField, Tooltip("Topic for imu data. Default: /imu/data.")] private string _topic = DefaultTopic;
         [SerializeField, Tooltip("Reference frame id for each IMU sample.")] private string _frameId = DefaultFrameId;
-        [SerializeField, Tooltip("Enable streaming as soon as this component starts.")] private bool _publishOnStart = true;
+        [SerializeField, HideInInspector] private bool _publishOnStart = true;
         [SerializeField, HideInInspector] private bool _publishImuNative;
         [SerializeField, HideInInspector] private string _imuNativeTopic = DefaultImuNativeTopic;
         [SerializeField, Tooltip("IMU orientation covariance (9 values, diagonal default).")] private double[] _imuOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
@@ -52,16 +52,16 @@ namespace Unity.FoxgloveSDK.Components
         private int _globalPhysicsRateHzOverride = 0;
 
         [Header("Rate")]
+        [SerializeField] private PublisherRateSource _publishRateSource = PublisherRateSource.OverrideLocal;
         [Tooltip(
             "IMU output rate via sub-step resampling between physics ticks.\n"
             + "0 = one sample per physics tick (138D behavior).\n"
             + "> 0 up-samples/down-samples with interpolation across tick interval.")]
         [SerializeField, Min(0)] private int _targetRateHz = DefaultTargetRateHz;
 
-        [Header("Noise (future)")]
-        [SerializeField] private bool _enableNoise;
-        [SerializeField] private float _accelNoiseStdDev;
-        [SerializeField] private float _gyroNoiseStdDev;
+        [SerializeField, HideInInspector] private bool _enableNoise;
+        [SerializeField, HideInInspector] private float _accelNoiseStdDev;
+        [SerializeField, HideInInspector] private float _gyroNoiseStdDev;
 
         private bool _publishing;
         private int _maxQueuedSamples;
@@ -77,7 +77,7 @@ namespace Unity.FoxgloveSDK.Components
         private double _epochPhysSeconds;
         private long _nextSampleIndex;
 
-        private bool PublishEnabled => _publishOnStart && _publishing;
+        private bool PublishEnabled => _publishing;
 
         public bool IsImuNativeOutput => isActiveAndEnabled;
 
@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.Components
             _hasLastVelocity = false;
             _hasEpoch = false;
             _nextSampleIndex = 0;
-            _publishing = _publishOnStart;
+            _publishing = true;
 
             if (_publishing)
                 EnsureSchemaRegistered();
@@ -169,7 +169,8 @@ namespace Unity.FoxgloveSDK.Components
             var angularBody = toBody * _rigidbody.angularVelocity;
             var bodyRotation = _rigidbody.rotation;
 
-            if (_targetRateHz <= 0)
+            var targetRateHz = ResolveTargetRateHz();
+            if (targetRateHz <= 0)
             {
                 var sampleTimeNs = _manager == null
                     ? FoxgloveTimeUtil.NowUnixTimeNs()
@@ -198,10 +199,10 @@ namespace Unity.FoxgloveSDK.Components
 
                 _nextSampleIndex = ImuSubStep.AlignSampleIndexToTickStart(
                     tickStartRel,
-                    _targetRateHz,
+                    targetRateHz,
                     _nextSampleIndex);
 
-                while (ImuSubStep.TryGetSampleTime(_targetRateHz, _nextSampleIndex, out var sampleRel))
+                while (ImuSubStep.TryGetSampleTime(targetRateHz, _nextSampleIndex, out var sampleRel))
                 {
                     if (sampleRel > tickEndRel + 1e-12)
                         break;
@@ -210,7 +211,7 @@ namespace Unity.FoxgloveSDK.Components
                     // CreateSample applies the Unity->Foxglove coordinate conversion, matching
                     // the targetHz<=0 path. Interpolate in Unity body frame, then convert.
                     _queue.Enqueue(CreateSample(
-                        ImuSubStep.SampleTimestampNs(_epochUnixNs, _nextSampleIndex, _targetRateHz),
+                        ImuSubStep.SampleTimestampNs(_epochUnixNs, _nextSampleIndex, targetRateHz),
                         Vector3.Lerp(_lastBodyAcceleration, linearBody, phase),
                         Vector3.Lerp(_lastBodyAngularVelocity, angularBody, phase),
                         Quaternion.Slerp(_lastBodyRotation, bodyRotation, phase)));
@@ -278,6 +279,14 @@ namespace Unity.FoxgloveSDK.Components
                 _globalPhysicsRateHzOverride = 0;
             if (_targetRateHz < 0)
                 _targetRateHz = 0;
+            if (!_publishOnStart)
+                _publishOnStart = true;
+            if (_enableNoise)
+                _enableNoise = false;
+            if (_accelNoiseStdDev < 0f)
+                _accelNoiseStdDev = 0f;
+            if (_gyroNoiseStdDev < 0f)
+                _gyroNoiseStdDev = 0f;
 
             if (string.IsNullOrWhiteSpace(_topic))
                 _topic = DefaultTopic;
@@ -293,7 +302,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private int ComputeMaxQueuedSamples()
         {
-            return ImuSubStep.ComputeQueueCapacity(_targetRateHz, MinQueueSamples, MaxQueueSamples);
+            return ImuSubStep.ComputeQueueCapacity(ResolveTargetRateHz(), MinQueueSamples, MaxQueueSamples);
+        }
+
+        private int ResolveTargetRateHz()
+        {
+            if (_publishRateSource != PublisherRateSource.UseManagerDefault)
+                return _targetRateHz;
+
+            if (_manager == null)
+                return _targetRateHz;
+
+            return Math.Max(0, (int)Math.Round(_manager.DefaultPublishRateHz));
         }
 
         private void ApplyGlobalPhysicsRateOverride(int targetHz)

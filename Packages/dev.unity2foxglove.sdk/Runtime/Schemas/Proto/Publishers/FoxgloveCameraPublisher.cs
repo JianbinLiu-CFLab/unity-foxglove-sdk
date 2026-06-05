@@ -82,7 +82,6 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Log a warning each time a capture is skipped by backpressure.")]
         [SerializeField] private bool _logBackpressureSkips;
 
-        [Header("Sensor Camera")]
         [Tooltip("Optional shared LiDAR/IMU/camera unit profile that owns SLAM frame IDs and topics.")]
         [SerializeField] private MonoBehaviour _sensorUnitProfile;
         [Tooltip("Use the manager shared sensor clock so camera frames align with IMU/LiDAR timestamps.")]

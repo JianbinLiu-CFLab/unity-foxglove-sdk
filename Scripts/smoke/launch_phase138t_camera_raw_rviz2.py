@@ -10,7 +10,7 @@
 Start Unity Play Mode first with:
 
 - FoxgloveManager: ROS2 Native (R2FU)
-- FoxgloveCameraPublisher: Publish Standard ROS2 Raw Image enabled
+- FoxgloveCameraPublisher: Publish Raw Image DDS enabled
 - Raw image topic: /unity/sensor/camera/image
 - Optional PointCloud2 topic: /unity/point_cloud2
 - TF anchors enabled, or use this helper's visual /tf map -> os_sensor fallback

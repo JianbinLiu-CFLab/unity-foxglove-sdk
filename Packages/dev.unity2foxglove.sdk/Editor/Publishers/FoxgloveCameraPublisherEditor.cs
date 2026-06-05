@@ -9,6 +9,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Ros2Bridge;
 using UnityEditor;
 using UnityEngine;
 
@@ -24,6 +25,9 @@ namespace Unity.FoxgloveSDK.Editor
         private const string FfmpegRecoveryHint =
             "Use ... to browse to an existing executable, leave FFmpeg Path empty for system PATH, or open FFmpeg Help... for manual setup and licensing notes.";
         private const string OpenH264Attribution = "OpenH264 Video Codec provided by Cisco Systems, Inc.";
+        private static bool _showRos2Outputs;
+        private static bool _showAdvancedJpeg;
+        private static bool _showDiagnostics;
 
         private static readonly string[] CameraOutputModeLabels =
         {
@@ -75,6 +79,7 @@ namespace Unity.FoxgloveSDK.Editor
             var publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
             var publishStandardRos2RawImage = serializedObject.FindProperty("_publishStandardRos2RawImage");
             var sensorCameraRawImageTopic = serializedObject.FindProperty("_sensorCameraRawImageTopic");
+            var encodingOverride = serializedObject.FindProperty("_encodingOverride");
             var ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
             var openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
             var openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
@@ -115,12 +120,19 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(width);
             EditorGUILayout.PropertyField(height);
 
-            DrawSensorCameraSection(
-                sensorUnitProfile,
-                useSharedSensorClock,
+            if (IsRos2CameraUiRelevant(
+                manager,
+                encodingOverride,
                 publishStandardRos2CompressedImage,
-                publishStandardRos2RawImage,
-                sensorCameraRawImageTopic);
+                publishStandardRos2RawImage))
+            {
+                DrawRos2OutputsSection(
+                    sensorUnitProfile,
+                    useSharedSensorClock,
+                    publishStandardRos2CompressedImage,
+                    publishStandardRos2RawImage,
+                    sensorCameraRawImageTopic);
+            }
 
             var mode = GetMode(outputMode);
             var profile = CameraVideoOutputProfile.ForMode(mode);
@@ -163,15 +175,18 @@ namespace Unity.FoxgloveSDK.Editor
                     maxCompletedJpegQueue,
                     maxCompletedJpegPublishesPerFrame,
                     maxPixelsPerFrame,
+                    enableBackpressure,
+                    backpressureCooldown,
+                    maxEncodedBytes,
+                    logBackpressureSkips,
                     logCameraDiagnostics,
                     cameraDiagnosticsIntervalSeconds);
             }
 
             DrawPublishRateSection();
             DrawEncodingPolicySection();
-            if (mode == CameraOutputMode.Jpeg)
-                DrawBackpressureSection(enableBackpressure, backpressureCooldown, maxEncodedBytes, logBackpressureSkips);
-            DrawRos2BridgeSection();
+            if (IsRos2BridgeUiRelevant())
+                DrawRos2BridgeSection();
 
             serializedObject.ApplyModifiedProperties();
 
@@ -186,6 +201,10 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty maxCompletedJpegQueue,
             SerializedProperty maxCompletedJpegPublishesPerFrame,
             SerializedProperty maxPixelsPerFrame,
+            SerializedProperty enableBackpressure,
+            SerializedProperty backpressureCooldown,
+            SerializedProperty maxEncodedBytes,
+            SerializedProperty logBackpressureSkips,
             SerializedProperty logCameraDiagnostics,
             SerializedProperty cameraDiagnosticsIntervalSeconds)
         {
@@ -193,23 +212,46 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(jpegQuality, new GUIContent("JPEG Quality"));
             EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
-            EditorGUILayout.PropertyField(useAsyncJpeg, new GUIContent("Use Async JPEG"));
-            using (new EditorGUI.DisabledScope(!useAsyncJpeg.boolValue))
+
+            _showAdvancedJpeg = EditorGUILayout.Foldout(_showAdvancedJpeg, "Advanced JPEG", true);
+            if (_showAdvancedJpeg)
             {
-                EditorGUILayout.PropertyField(maxJpegEncodeQueue, new GUIContent("Max Encode Queue"));
-                EditorGUILayout.PropertyField(maxCompletedJpegQueue, new GUIContent("Max Completed Queue"));
-                EditorGUILayout.PropertyField(maxCompletedJpegPublishesPerFrame, new GUIContent("Max Completed Publishes / Frame"));
+                using (new EditorGUI.IndentLevelScope())
+                {
+                    EditorGUILayout.PropertyField(useAsyncJpeg, new GUIContent("Use Async JPEG"));
+                    using (new EditorGUI.DisabledScope(!useAsyncJpeg.boolValue))
+                    {
+                        EditorGUILayout.PropertyField(maxJpegEncodeQueue, new GUIContent("Max Encode Queue"));
+                        EditorGUILayout.PropertyField(maxCompletedJpegQueue, new GUIContent("Max Completed Queue"));
+                        EditorGUILayout.PropertyField(maxCompletedJpegPublishesPerFrame, new GUIContent("Max Completed Publishes / Frame"));
+                    }
+
+                    EditorGUILayout.PropertyField(maxPixelsPerFrame, new GUIContent("Max Pixels / Frame"));
+                    EditorGUILayout.PropertyField(enableBackpressure, new GUIContent("Enable Backpressure Adaptation"));
+                    using (new EditorGUI.DisabledScope(!enableBackpressure.boolValue))
+                    {
+                        EditorGUILayout.PropertyField(backpressureCooldown, new GUIContent("Backpressure Cooldown"));
+                        EditorGUILayout.PropertyField(maxEncodedBytes, new GUIContent("Max Encoded Bytes"));
+                        EditorGUILayout.PropertyField(logBackpressureSkips, new GUIContent("Log Backpressure Skips"));
+                    }
+                }
             }
 
-            EditorGUILayout.PropertyField(maxPixelsPerFrame, new GUIContent("Max Pixels / Frame"));
-            EditorGUILayout.PropertyField(logCameraDiagnostics, new GUIContent("Log Camera Diagnostics"));
-            using (new EditorGUI.DisabledScope(!logCameraDiagnostics.boolValue))
+            _showDiagnostics = EditorGUILayout.Foldout(_showDiagnostics, "Diagnostics", true);
+            if (_showDiagnostics)
             {
-                EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, new GUIContent("Diagnostics Interval"));
+                using (new EditorGUI.IndentLevelScope())
+                {
+                    EditorGUILayout.PropertyField(logCameraDiagnostics, new GUIContent("Log Camera Diagnostics"));
+                    using (new EditorGUI.DisabledScope(!logCameraDiagnostics.boolValue))
+                    {
+                        EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, new GUIContent("Diagnostics Interval"));
+                    }
+                }
             }
         }
 
-        private static void DrawSensorCameraSection(
+        private static void DrawRos2OutputsSection(
             SerializedProperty sensorUnitProfile,
             SerializedProperty useSharedSensorClock,
             SerializedProperty publishStandardRos2CompressedImage,
@@ -217,31 +259,56 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty sensorCameraRawImageTopic)
         {
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Sensor Camera", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(sensorUnitProfile, new GUIContent("Sensor Unit Profile"));
-            EditorGUILayout.PropertyField(useSharedSensorClock, new GUIContent("Use Shared Sensor Clock"));
-            EditorGUILayout.PropertyField(
-                publishStandardRos2CompressedImage,
-                new GUIContent("Publish Standard ROS2 CompressedImage"));
-            EditorGUILayout.PropertyField(
-                publishStandardRos2RawImage,
-                new GUIContent("Publish Standard ROS2 Raw Image"));
-            EditorGUILayout.PropertyField(
-                sensorCameraRawImageTopic,
-                new GUIContent("Sensor Camera Raw Image Topic"));
+            _showRos2Outputs = EditorGUILayout.Foldout(_showRos2Outputs, "ROS2 Outputs", true);
+            if (!_showRos2Outputs)
+                return;
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                EditorGUILayout.PropertyField(sensorUnitProfile, new GUIContent("Sensor Unit Profile"));
+                EditorGUILayout.PropertyField(useSharedSensorClock, new GUIContent("Use Shared Sensor Clock"));
+                EditorGUILayout.PropertyField(
+                    publishStandardRos2CompressedImage,
+                    new GUIContent("Publish CompressedImage DDS"));
+                EditorGUILayout.PropertyField(
+                    publishStandardRos2RawImage,
+                    new GUIContent("Publish Raw Image DDS"));
+                if (publishStandardRos2RawImage.boolValue)
+                {
+                    EditorGUILayout.PropertyField(
+                        sensorCameraRawImageTopic,
+                        new GUIContent("Raw Image Topic"));
+                }
+
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.Toggle(new GUIContent("Publish CameraInfo DDS"), false);
+                }
+
+                EditorGUILayout.HelpBox(
+                    "CameraInfo DDS is currently provided by the standalone CameraInfo publisher. Keep it paired with this camera when ROS2 tools need intrinsics.",
+                    MessageType.None);
+            }
         }
 
-        private void DrawBackpressureSection(
-            SerializedProperty enableBackpressure,
-            SerializedProperty backpressureCooldown,
-            SerializedProperty maxEncodedBytes,
-            SerializedProperty logBackpressureSkips)
+        private static bool IsRos2CameraUiRelevant(
+            SerializedProperty manager,
+            SerializedProperty encodingOverride,
+            SerializedProperty publishStandardRos2CompressedImage,
+            SerializedProperty publishStandardRos2RawImage)
         {
-            EditorGUILayout.Space();
-            EditorGUILayout.PropertyField(enableBackpressure, new GUIContent("Enable Backpressure Adaptation"));
-            EditorGUILayout.PropertyField(backpressureCooldown, new GUIContent("Backpressure Cooldown"));
-            EditorGUILayout.PropertyField(maxEncodedBytes, new GUIContent("Max Encoded Bytes"));
-            EditorGUILayout.PropertyField(logBackpressureSkips, new GUIContent("Log Backpressure Skips"));
+            if (publishStandardRos2CompressedImage != null && publishStandardRos2CompressedImage.boolValue)
+                return true;
+            if (publishStandardRos2RawImage != null && publishStandardRos2RawImage.boolValue)
+                return true;
+            if (encodingOverride != null
+                && encodingOverride.enumValueIndex == (int)PublisherEncodingOverride.Ros2)
+                return true;
+
+            if (manager?.objectReferenceValue is FoxgloveManager configuredManager)
+                return configuredManager.Ros2NativeEnabled || configuredManager.DefaultPublisherEncoding == GlobalEncoding.Ros2;
+
+            return false;
         }
 
         /// <summary>
@@ -470,6 +537,19 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.HelpBox(
                 "JPEG mode can mirror the same ROS2 CDR image payload to the optional local bridge. Video modes keep using WebSocket output only.",
                 MessageType.Info);
+        }
+
+        private bool IsRos2BridgeUiRelevant()
+        {
+            var publisher = (FoxgloveCameraPublisher)target;
+            if (publisher.BridgeOutputResolution.IsEnabled)
+                return true;
+            if (publisher.ConfiguredManager != null && publisher.ConfiguredManager.Ros2BridgeEnabled)
+                return true;
+
+            var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
+            return bridgeOutput != null
+                   && bridgeOutput.enumValueIndex == (int)Ros2BridgeOutputOverride.Enabled;
         }
 
         private void DrawResolvedSummaries()

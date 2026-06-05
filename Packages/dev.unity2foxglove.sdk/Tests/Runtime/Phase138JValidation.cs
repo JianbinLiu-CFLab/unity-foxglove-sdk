@@ -187,24 +187,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherWiresAsyncJpegWithoutUnityWorkerApis()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var jpegPartial = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs");
             var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
-            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
+            var publishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
+            var workerPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
 
-            Check(source.Contains("CameraFrameBudgetPolicy.Evaluate", StringComparison.Ordinal),
+            Check(publishPipeline.Contains("CameraFrameBudgetPolicy.Evaluate", StringComparison.Ordinal),
                 "138J-5A: camera scheduler uses CameraFrameBudgetPolicy");
             Check(payloads.Contains("ManagedJpegEncoder.EncodeRgb24", StringComparison.Ordinal),
                 "138J-5B: camera JPEG worker uses the Unity-free encoder");
-            Check(source.Contains("lastPublishedCaptureUnixNs", StringComparison.Ordinal),
+            Check(source.Contains("lastPublishedCaptureUnixNs", StringComparison.Ordinal)
+                  && jpegPartial.Contains("CameraJpegPublishOrderPolicy.ShouldPublish", StringComparison.Ordinal),
                 "138J-5C: camera tracks monotonic JPEG publish order");
             Check(payloads.Contains("Convert.ToBase64String", StringComparison.Ordinal)
                   && diagnostics.Contains("serializeMs", StringComparison.Ordinal),
                 "138J-5D: JSON/base64 path remains visible to CameraDiag");
 
-            var workerStart = pipeline.IndexOf("EncodeJpegWorkerLoop", StringComparison.Ordinal);
+            var workerStart = workerPipeline.IndexOf("EncodeJpegWorkerLoop", StringComparison.Ordinal);
             if (workerStart >= 0)
             {
-                var workerBlock = pipeline.Substring(workerStart);
+                var workerBlock = workerPipeline.Substring(workerStart);
                 Check(!workerBlock.Contains("Texture2D", StringComparison.Ordinal)
                       && !workerBlock.Contains("ImageConversion", StringComparison.Ordinal)
                       && !workerBlock.Contains("UnityEngine.", StringComparison.Ordinal),
@@ -240,16 +243,20 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CameraPublisherCarriesCaptureDimensionsAcrossReadback()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var jpegPartial = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs");
+            var publishPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
 
             Check(source.Contains("var captureWidth = captureRenderTexture.width", StringComparison.Ordinal)
                   && source.Contains("var captureHeight = captureRenderTexture.height", StringComparison.Ordinal),
                 "138J-7A: camera snapshots render texture dimensions before readback");
             Check(source.Contains("OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight)", StringComparison.Ordinal),
                 "138J-7B: readback callback carries captured dimensions");
-            Check(source.Contains("QueueJpegFrame(req, renderUnixNs, captureWidth, captureHeight", StringComparison.Ordinal),
+            Check(jpegPartial.Contains("QueueJpegFrame(", StringComparison.Ordinal)
+                  && jpegPartial.Contains("captureWidth", StringComparison.Ordinal)
+                  && jpegPartial.Contains("captureHeight", StringComparison.Ordinal),
                 "138J-7C: async JPEG queue uses captured dimensions");
-            Check(source.Contains("Math.Max(1, captureWidth)", StringComparison.Ordinal)
-                  && source.Contains("Math.Max(1, captureHeight)", StringComparison.Ordinal),
+            Check(publishPipeline.Contains("Math.Max(1, captureWidth)", StringComparison.Ordinal)
+                  && publishPipeline.Contains("Math.Max(1, captureHeight)", StringComparison.Ordinal),
                 "138J-7D: JPEG encode request stores captured dimensions");
         }
 

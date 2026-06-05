@@ -121,13 +121,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestInspectorBackpressurePlacement()
         {
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
-            Check(!editor.Contains("LabelField(\"Backpressure\"", StringComparison.Ordinal),
-                "40B-1: camera inspector relies on the serialized Header for one Backpressure heading");
-            CheckOrdered(editor, "DrawEncodingPolicySection();", "DrawBackpressureSection(",
-                "40B-2: camera inspector draws Backpressure after Encoding Policy");
-            CheckOrdered(editor, "DrawBackpressureSection(", "DrawRos2BridgeSection();",
-                "40B-3: camera inspector draws Backpressure before ROS2 Bridge");
-            Check(editor.Contains("if (mode == CameraOutputMode.Jpeg)", StringComparison.Ordinal)
+            Check(editor.Contains("Foldout(_showAdvancedJpeg, \"Advanced JPEG\"", StringComparison.Ordinal),
+                "40B-1: camera inspector groups backpressure under the collapsed Advanced JPEG foldout");
+            Check(!editor.Contains("DrawBackpressureSection(", StringComparison.Ordinal),
+                "40B-2: camera inspector no longer exposes a standalone Backpressure block");
+            CheckOrdered(editor, "EditorGUILayout.PropertyField(useAsyncJpeg", "EditorGUILayout.PropertyField(enableBackpressure",
+                "40B-3: camera inspector draws backpressure after async JPEG controls");
+            Check(editor.Contains("else", StringComparison.Ordinal)
+                  && editor.Contains("DrawJpegSection(", StringComparison.Ordinal)
                   && editor.Contains("EditorGUILayout.PropertyField(enableBackpressure", StringComparison.Ordinal),
                 "40B-4: Backpressure controls remain scoped to JPEG camera output");
         }
