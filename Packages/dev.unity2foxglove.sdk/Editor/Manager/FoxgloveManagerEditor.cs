@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             FoxgloveManagerInspectorLayout.Subheader("Server");
             DrawProperty("_serverName");
-            using (new EditorGUI.DisabledScope(true))
+            using (new EditorGUI.DisabledScope(!GetBool("_foxgloveOutputEnabled")))
                 DrawProperty("_transportMode");
             DrawProperty("_host");
             DrawProperty("_port");
