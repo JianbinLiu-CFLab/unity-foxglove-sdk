@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
 using Newtonsoft.Json;
@@ -156,6 +157,20 @@ namespace Unity.FoxgloveSDK.Tests
                     "139B-3C: HTTP manifest is serialized with official source shape");
                 Check(((string)json["sources"][0]["url"]).StartsWith("/v1/data?recordingId=phase139b-http", StringComparison.Ordinal),
                     "139B-3D: HTTP manifest points at official data route");
+
+                var directHead = new HttpRequestMessage(HttpMethod.Head, baseUrl + "/v1/files/phase139b-http.mcap");
+                var directHeadResponse = client.SendAsync(directHead).GetAwaiter().GetResult();
+                Check(directHeadResponse.StatusCode == HttpStatusCode.OK
+                      && directHeadResponse.Content.Headers.ContentLength > 0,
+                    "139B-3D2: HTTP backend exposes a direct .mcap file URL for Foxglove Remote files");
+
+                var directRange = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/v1/files/phase139b-http.mcap");
+                directRange.Headers.Range = new RangeHeaderValue(0, 7);
+                var directRangeResponse = client.SendAsync(directRange).GetAwaiter().GetResult();
+                var directRangeBytes = directRangeResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                Check(directRangeResponse.StatusCode == HttpStatusCode.PartialContent
+                      && directRangeBytes.SequenceEqual(new byte[] { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P', (byte)'0', 0x0D, 0x0A }),
+                    "139B-3D3: direct .mcap route supports byte-range reads for Foxglove Remote files");
 
                 var data = client.GetAsync(baseUrl + "/v1/data?recordingId=phase139b-http&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z")
                     .GetAwaiter()

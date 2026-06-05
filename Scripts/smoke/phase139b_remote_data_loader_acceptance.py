@@ -32,11 +32,18 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def read_url(url: str, token: str, timeout: float) -> tuple[int, str, bytes]:
+def read_url(
+    url: str,
+    token: str,
+    timeout: float,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, str, bytes]:
     """Read one HTTP URL and return status, content type, and body."""
     request = urllib.request.Request(url)
     if token:
         request.add_header("Authorization", "Bearer " + token)
+    for key, value in (headers or {}).items():
+        request.add_header(key, value)
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

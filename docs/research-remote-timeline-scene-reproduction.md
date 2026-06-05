@@ -176,6 +176,61 @@ Scene reproduction applies recorded telemetry state to Unity objects. It does no
 
 This is a deliberate semantic boundary. A single point in paused mode is acceptable for scene reproduction. A continuous Plot curve requires a bounded history-window policy and is a separate feature described in Section 9.
 
+## Phase139C Remote Data Loader Workflow
+
+Phase139C validates the file-backed analysis path separately from Unity live
+replay. The Phase139B HTTP backend still exposes the Remote Data Loader contract
+through `/v1/manifest` and `/v1/data`, but Foxglove's stock **Remote files**
+dialog expects a URL that ends with a filename and extension. For manual
+Foxglove acceptance, use the backend's direct `.mcap` file URL. This is the path
+for inspecting continuous Plot curves and 3D/image panels from recorded file
+data.
+
+Start a local backend for a known recording:
+
+```powershell
+dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase139b-remote-data-loader-server --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --port 8891
+```
+
+Then connect Foxglove through **Open connection -> Remote files** using:
+
+```text
+http://127.0.0.1:8891/v1/files/local-mcap.mcap
+```
+
+Do not paste `/v1/manifest` into the stock Remote files dialog. That dialog
+validates that the URL must end with a filename and extension, so the manifest
+URL is intentionally kept as a backend contract and script probe endpoint rather
+than the manual UI entry point.
+
+The expected manual evidence is:
+
+- Foxglove accepts the direct `.mcap` URL and lists topics from the recording,
+  such as `/imu/data`, `/tf`, and
+  point cloud or camera topics that exist in the selected recording.
+- A Plot panel shows a continuous curve from the file-backed history after the
+  recording is loaded.
+- Dragging or scrubbing the Foxglove timeline localizes the Plot cursor within
+  the loaded range.
+- 3D and image panels render from file data without requiring Unity Play Mode.
+
+The helper script verifies the backend endpoints and writes machine-readable
+evidence for the manual Foxglove pass:
+
+```powershell
+python Scripts/smoke/phase139c_dataloader_cursor_acceptance.py --mode curve-only --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --json-out build/phase139c/manual.json
+```
+
+The script checks both the contract endpoints (`/v1/manifest` and `/v1/data`)
+and the direct Remote files compatibility endpoint
+`/v1/files/local-mcap.mcap` with a byte-range MCAP magic read.
+
+The Unity cursor bridge is a separate optional channel. Remote Data Loader
+`/v1/data` range requests are cache and prefetch requests, not a reliable signal
+for the current Foxglove playhead. Unity scene replay should continue to use the
+live WebSocket playback-control path until a dedicated cursor bridge transport
+has its own feasibility evidence.
+
 ## 7 Validation Evidence
 
 The implementation is covered by runtime validation and manual Foxglove acceptance.

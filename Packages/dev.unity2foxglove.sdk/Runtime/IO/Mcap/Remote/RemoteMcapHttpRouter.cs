@@ -33,11 +33,17 @@ namespace Unity.FoxgloveSDK.IO
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
+            ApplyCorsHeaders(context.Response);
+            if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                return WriteBytesAsync(context.Response, HttpStatusCode.NoContent, "text/plain", new byte[0]);
+
             var path = context.Request.Url?.AbsolutePath ?? string.Empty;
             if (string.Equals(path, "/v1/manifest", StringComparison.Ordinal))
                 return HandleManifestAsync(context);
             if (string.Equals(path, "/v1/data", StringComparison.Ordinal))
                 return HandleDataAsync(context);
+            if (string.Equals(path, _source.DirectFileRoute, StringComparison.Ordinal))
+                return HandleDirectFileAsync(context);
 
             return WriteTextAsync(context.Response, HttpStatusCode.NotFound, "Unsupported Remote Data Loader route.");
         }
@@ -90,6 +96,60 @@ namespace Unity.FoxgloveSDK.IO
                     response.ContentLength64 = data.Length;
 
                 await CopyAndCloseAsync(data.DataStream, response).ConfigureAwait(false);
+            }
+        }
+
+        private async Task HandleDirectFileAsync(HttpListenerContext context)
+        {
+            var method = context.Request.HttpMethod;
+            var isHead = string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase);
+            if (!isHead && !string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
+            {
+                await WriteTextAsync(context.Response, HttpStatusCode.MethodNotAllowed, "GET or HEAD is required for direct MCAP files.").ConfigureAwait(false);
+                return;
+            }
+
+            var request = BuildRequest(context);
+            using (var data = _source.GetDirectFileStream(request))
+            {
+                if (data.Status != RemoteMcapResponseStatus.Ok)
+                {
+                    await WriteTextAsync(context.Response, ToHttpStatus(data.Status), FirstProblem(data.Problems)).ConfigureAwait(false);
+                    return;
+                }
+
+                var response = context.Response;
+                response.ContentType = string.IsNullOrEmpty(data.ContentType) ? "application/octet-stream" : data.ContentType;
+                response.AddHeader("Accept-Ranges", "bytes");
+
+                if (!TryParseByteRange(context.Request.Headers["Range"], data.Length, out var start, out var end, out var rangeProblem))
+                {
+                    response.AddHeader("Content-Range", "bytes */" + data.Length.ToString(CultureInfo.InvariantCulture));
+                    await WriteTextAsync(response, HttpStatusCode.RequestedRangeNotSatisfiable, rangeProblem).ConfigureAwait(false);
+                    return;
+                }
+
+                if (start >= 0)
+                {
+                    var length = end - start + 1;
+                    response.StatusCode = (int)HttpStatusCode.PartialContent;
+                    response.ContentLength64 = length;
+                    response.AddHeader(
+                        "Content-Range",
+                        "bytes "
+                        + start.ToString(CultureInfo.InvariantCulture)
+                        + "-"
+                        + end.ToString(CultureInfo.InvariantCulture)
+                        + "/"
+                        + data.Length.ToString(CultureInfo.InvariantCulture));
+                    data.DataStream.Seek(start, SeekOrigin.Begin);
+                    await CopyAndCloseAsync(data.DataStream, response, isHead ? 0 : length).ConfigureAwait(false);
+                    return;
+                }
+
+                response.StatusCode = (int)HttpStatusCode.OK;
+                response.ContentLength64 = data.Length;
+                await CopyAndCloseAsync(data.DataStream, response, isHead ? 0 : data.Length).ConfigureAwait(false);
             }
         }
 
@@ -180,10 +240,35 @@ namespace Unity.FoxgloveSDK.IO
 
         private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response)
         {
+            await CopyAndCloseAsync(source, response, -1).ConfigureAwait(false);
+        }
+
+        private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response, long maxBytes)
+        {
             try
             {
-                if (source != null)
-                    await source.CopyToAsync(response.OutputStream).ConfigureAwait(false);
+                if (source != null && maxBytes != 0)
+                {
+                    if (maxBytes < 0)
+                    {
+                        await source.CopyToAsync(response.OutputStream).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var buffer = new byte[81920];
+                        var remaining = maxBytes;
+                        while (remaining > 0)
+                        {
+                            var readSize = remaining < buffer.Length ? (int)remaining : buffer.Length;
+                            var read = await source.ReadAsync(buffer, 0, readSize).ConfigureAwait(false);
+                            if (read <= 0)
+                                break;
+
+                            await response.OutputStream.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+                            remaining -= read;
+                        }
+                    }
+                }
             }
             finally
             {
@@ -210,6 +295,96 @@ namespace Unity.FoxgloveSDK.IO
             {
                 response.OutputStream.Close();
             }
+        }
+
+        private static void ApplyCorsHeaders(HttpListenerResponse response)
+        {
+            response.AddHeader("Access-Control-Allow-Origin", "*");
+            response.AddHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+            response.AddHeader("Access-Control-Allow-Headers", "Authorization,Range");
+            response.AddHeader("Access-Control-Expose-Headers", "Accept-Ranges,Content-Length,Content-Range");
+        }
+
+        private static bool TryParseByteRange(
+            string header,
+            long totalLength,
+            out long start,
+            out long end,
+            out string problem)
+        {
+            start = -1;
+            end = -1;
+            problem = string.Empty;
+
+            if (string.IsNullOrEmpty(header))
+                return true;
+            if (!header.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
+            {
+                problem = "Only bytes ranges are supported.";
+                return false;
+            }
+
+            var spec = header.Substring("bytes=".Length).Trim();
+            if (spec.IndexOf(',') >= 0)
+            {
+                problem = "Only single byte ranges are supported.";
+                return false;
+            }
+
+            var dash = spec.IndexOf('-');
+            if (dash < 0)
+            {
+                problem = "Invalid Range header.";
+                return false;
+            }
+
+            var startPart = spec.Substring(0, dash).Trim();
+            var endPart = spec.Substring(dash + 1).Trim();
+            if (startPart.Length == 0)
+            {
+                if (!long.TryParse(endPart, NumberStyles.None, CultureInfo.InvariantCulture, out var suffixLength)
+                    || suffixLength <= 0)
+                {
+                    problem = "Invalid suffix byte range.";
+                    return false;
+                }
+
+                if (totalLength <= 0)
+                {
+                    problem = "Requested range is outside the file.";
+                    return false;
+                }
+
+                start = Math.Max(0, totalLength - suffixLength);
+                end = totalLength - 1;
+                return true;
+            }
+
+            if (!long.TryParse(startPart, NumberStyles.None, CultureInfo.InvariantCulture, out start)
+                || start < 0)
+            {
+                problem = "Invalid range start.";
+                return false;
+            }
+
+            if (endPart.Length == 0)
+            {
+                end = totalLength - 1;
+            }
+            else if (!long.TryParse(endPart, NumberStyles.None, CultureInfo.InvariantCulture, out end) || end < start)
+            {
+                problem = "Invalid range end.";
+                return false;
+            }
+
+            if (start >= totalLength || end < start)
+            {
+                problem = "Requested range is outside the file.";
+                return false;
+            }
+
+            end = Math.Min(end, totalLength - 1);
+            return true;
         }
 
         private static HttpStatusCode ToHttpStatus(RemoteMcapResponseStatus status)

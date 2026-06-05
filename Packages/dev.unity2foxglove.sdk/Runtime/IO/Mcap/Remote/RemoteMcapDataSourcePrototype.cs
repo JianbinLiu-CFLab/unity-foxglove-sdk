@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly string _manifestName;
         private readonly string _requiredBearerToken;
         private readonly string _dataRoute;
+        private readonly string _directFileRoute;
         private readonly long _maxInMemoryDataBytes;
         private readonly object _manifestCacheGate = new object();
         private RemoteMcapManifest _cachedManifest;
@@ -34,7 +35,8 @@ namespace Unity.FoxgloveSDK.IO
             string manifestName,
             string requiredBearerToken,
             long maxInMemoryDataBytes = DefaultMaxInMemoryDataBytes,
-            string dataRoute = null)
+            string dataRoute = null,
+            string directFileRoute = null)
         {
             _mcapPath = mcapPath ?? throw new ArgumentNullException(nameof(mcapPath));
             _sourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
@@ -43,8 +45,14 @@ namespace Unity.FoxgloveSDK.IO
             _dataRoute = string.IsNullOrEmpty(dataRoute)
                 ? "/data?sourceId=" + Uri.EscapeDataString(_sourceId)
                 : dataRoute;
+            _directFileRoute = string.IsNullOrEmpty(directFileRoute)
+                ? "/v1/files/" + Uri.EscapeDataString(_sourceId) + ".mcap"
+                : directFileRoute;
             _maxInMemoryDataBytes = maxInMemoryDataBytes;
         }
+
+        /// <summary>Relative direct-file route accepted by Foxglove's stock Remote files dialog.</summary>
+        public string DirectFileRoute => _directFileRoute;
 
         /// <summary>Returns manifest metadata for the configured MCAP file.</summary>
         public RemoteMcapManifestResponse GetManifest(RemoteMcapRequest request)
@@ -161,6 +169,43 @@ namespace Unity.FoxgloveSDK.IO
                 SourceId = _sourceId,
                 Length = slice.Length,
                 DataStream = slice
+            };
+        }
+
+        /// <summary>Opens the configured MCAP file for direct byte-range HTTP reads.</summary>
+        public RemoteMcapDataStreamResponse GetDirectFileStream(RemoteMcapRequest request)
+        {
+            request = request ?? new RemoteMcapRequest();
+            if (IsUnsupportedMultiSource(request))
+                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
+
+            var authorization = Authorize(request);
+            if (!authorization.Allowed)
+            {
+                var denied = DataStreamProblem(RemoteMcapResponseStatus.Unauthorized, "Unauthorized",
+                    "Direct file request is not authorized for this MCAP source.");
+                denied.Authorization = authorization;
+                return denied;
+            }
+
+            var info = new FileInfo(_mcapPath);
+            if (!info.Exists)
+                return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceFileNotFound",
+                    "Requested MCAP source file is not available on disk.");
+
+            return new RemoteMcapDataStreamResponse
+            {
+                Status = RemoteMcapResponseStatus.Ok,
+                Authorization = authorization,
+                SourceId = _sourceId,
+                Length = info.Length,
+                ContentType = "application/octet-stream",
+                DataStream = new FileStream(
+                    _mcapPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete)
             };
         }
 
