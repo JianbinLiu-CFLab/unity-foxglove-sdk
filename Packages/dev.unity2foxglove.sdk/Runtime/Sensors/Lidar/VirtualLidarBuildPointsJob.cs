@@ -21,23 +21,37 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     [BurstCompile]
     internal struct VirtualLidarBuildPointsJob : IJobParallelFor
     {
+        /// <summary>Raycast hits produced by the scheduled batch.</summary>
         [ReadOnly] public NativeArray<RaycastHit> Hits;
+
+        /// <summary>Per-ray acquisition offsets in seconds relative to scan start.</summary>
         [ReadOnly] public NativeArray<float> RayTimeOffsets;
+
+        /// <summary>Per-ray LiDAR ring indices.</summary>
         [ReadOnly] public NativeArray<ushort> RayRings;
 
-        // WorldToLocal is fixed for the scan reference. AcquisitionWorldToLocal
-        // is the current batch pose for raw rolling PointCloud2 Native output.
+        /// <summary>World-to-sensor matrix fixed at the scan reference pose.</summary>
         [ReadOnly] public float4x4 WorldToLocal;
+
+        /// <summary>World-to-sensor matrix captured at the current acquisition batch pose.</summary>
         [ReadOnly] public float4x4 AcquisitionWorldToLocal;
+
+        /// <summary>Minimum accepted hit range in meters.</summary>
         [ReadOnly] public float MinRange;
+
+        /// <summary>Maximum accepted hit range in meters.</summary>
         [ReadOnly] public float MaxRange;
+
+        /// <summary>Synthetic intensity assigned to valid hits.</summary>
         [ReadOnly] public float SyntheticIntensity;
+
+        /// <summary>Synthetic reflectivity assigned to valid hits.</summary>
         [ReadOnly] public float SyntheticReflectivity;
 
-        // The output keeps ray-slot order and marks misses invalid so the Draco worker
-        // can compact valid XYZ points off the main thread.
+        /// <summary>Output point slots that preserve ray order and mark misses invalid.</summary>
         [WriteOnly] public NativeArray<VirtualLidarPointData> Points;
 
+        /// <summary>Convert one raycast result into a VirtualLidar point slot.</summary>
         public void Execute(int index)
         {
             var output = new VirtualLidarPointData { IsValid = 0 };

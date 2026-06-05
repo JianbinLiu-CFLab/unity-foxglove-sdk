@@ -46,6 +46,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _nextPendingScanId;
         private int _pendingScanId;
 
+        /// <summary>Create a scheduler that logs diagnostics against the supplied Unity context.</summary>
         public VirtualLidarScanScheduler(UnityEngine.Object logContext)
         {
             _logContext = logContext;

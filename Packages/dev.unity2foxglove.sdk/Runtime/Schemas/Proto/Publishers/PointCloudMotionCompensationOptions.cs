@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>Resolved PointCloud2 motion-compensation settings.</summary>
     internal readonly struct PointCloudMotionCompensationSettings
     {
+        /// <summary>Create resolved PointCloud2 motion-compensation settings.</summary>
         public PointCloudMotionCompensationSettings(
             bool enabled,
             PointCloudMotionCompensationOutputPolicy outputPolicy,
@@ -54,14 +55,28 @@ namespace Unity.FoxgloveSDK.Components
             MotionSource = motionSource;
         }
 
+        /// <summary>True when motion-compensated visualization output is enabled.</summary>
         public bool Enabled { get; }
+
+        /// <summary>Routing policy for raw and deskewed PointCloud2 Native frames.</summary>
         public PointCloudMotionCompensationOutputPolicy OutputPolicy { get; }
+
+        /// <summary>Normalized topic used for the separate deskewed visualization stream.</summary>
         public string DeskewedTopic { get; }
+
+        /// <summary>Reference timestamp used when deskewed points are expressed in one frame.</summary>
         public PointCloudMotionCompensationReferenceTime ReferenceTime { get; }
+
+        /// <summary>Main-thread motion source used to sample poses for deskew.</summary>
         public PointCloudMotionCompensationSource MotionSource { get; }
+
+        /// <summary>True when the raw PointCloud2 stream should still be emitted.</summary>
         public bool PreserveRawOutput => !Enabled || OutputPolicy != PointCloudMotionCompensationOutputPolicy.ReplaceOutput;
+
+        /// <summary>True when a deskewed PointCloud2 visualization frame should be emitted.</summary>
         public bool EmitDeskewedOutput => Enabled && OutputPolicy != PointCloudMotionCompensationOutputPolicy.RawOnly;
 
+        /// <summary>Resolve the effective deskewed output topic for the current raw topic.</summary>
         public string ResolveDeskewedTopic(string rawTopic)
         {
             if (OutputPolicy == PointCloudMotionCompensationOutputPolicy.ReplaceOutput)
@@ -70,6 +85,7 @@ namespace Unity.FoxgloveSDK.Components
             return DeskewedTopic;
         }
 
+        /// <summary>True when replacing the raw topic would likely overwrite a SLAM input stream.</summary>
         public bool IsLikelySlamReplacementTopic(string rawTopic)
             => Enabled
                && OutputPolicy == PointCloudMotionCompensationOutputPolicy.ReplaceOutput
@@ -82,8 +98,10 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>Validation and default helpers for PointCloud2 motion compensation.</summary>
     internal static class PointCloudMotionCompensationOptions
     {
+        /// <summary>Default topic for the separate deskewed PointCloud2 visualization stream.</summary>
         public const string DefaultDeskewedTopic = "/unity/point_cloud2_deskewed";
 
+        /// <summary>Create default-off settings that preserve raw output when enabled later.</summary>
         public static PointCloudMotionCompensationSettings CreateDefault()
             => new PointCloudMotionCompensationSettings(
                 enabled: false,
@@ -92,6 +110,7 @@ namespace Unity.FoxgloveSDK.Components
                 referenceTime: PointCloudMotionCompensationReferenceTime.ScanStart,
                 motionSource: PointCloudMotionCompensationSource.SensorTransform);
 
+        /// <summary>Normalize a ROS-style topic and fall back when the input is empty.</summary>
         public static string NormalizeTopic(string topic, string fallback)
         {
             var value = string.IsNullOrWhiteSpace(topic) ? fallback : topic.Trim();
@@ -100,6 +119,7 @@ namespace Unity.FoxgloveSDK.Components
             return value[0] == '/' ? value : "/" + value;
         }
 
+        /// <summary>True when a topic name looks like a raw PointCloud2 stream commonly used by SLAM.</summary>
         public static bool IsLikelySlamInputTopic(string topic)
         {
             var value = NormalizeTopic(topic, "");

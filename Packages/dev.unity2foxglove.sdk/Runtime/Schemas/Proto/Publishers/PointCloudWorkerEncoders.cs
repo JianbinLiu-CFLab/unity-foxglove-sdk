@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
+// Purpose: Unity-free worker encoders for point-cloud publish payloads.
 
 using System;
 using Foxglove.Schemas;
@@ -18,6 +19,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal static class PointCloudWorkerEncoders
     {
+        /// <summary>Encode one Draco point-cloud request into publish-ready payloads.</summary>
         public static DracoEncodeResult EncodeDracoRequest(DracoEncodeRequest request)
         {
             var encodeStart = Stopwatch.GetTimestamp();
@@ -78,6 +80,7 @@ namespace Unity.FoxgloveSDK.Components
                 ElapsedMs(encodeStart));
         }
 
+        /// <summary>Pack one PointCloud2 Native request into publish-ready raw and optional deskewed frames.</summary>
         public static PointCloud2NativeResult EncodePointCloud2NativeRequest(PointCloud2NativeRequest request)
         {
             var encodeStart = Stopwatch.GetTimestamp();

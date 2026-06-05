@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>Motion-compensation request data cloned for background workers.</summary>
     internal sealed class PointCloudMotionCompensationRequest
     {
+        /// <summary>Create a worker-safe motion-compensation request.</summary>
         public PointCloudMotionCompensationRequest(
             string topic,
             PointCloudMotionCompensationReferenceTime referenceTime,
@@ -41,15 +42,23 @@ namespace Unity.FoxgloveSDK.Components
             PoseSamples = poseSamples ?? Array.Empty<SensorMotionPoseSample>();
         }
 
+        /// <summary>Output topic for the deskewed visualization frame.</summary>
         public string Topic { get; }
+
+        /// <summary>Reference timestamp policy for the deskewed output.</summary>
         public PointCloudMotionCompensationReferenceTime ReferenceTime { get; }
+
+        /// <summary>Coordinate convention used by the input point snapshot.</summary>
         public PointCloudMotionCompensationInputConvention InputConvention { get; }
+
+        /// <summary>Cloned pose samples used by background workers.</summary>
         public SensorMotionPoseSample[] PoseSamples { get; }
     }
 
     /// <summary>Deskewed point snapshot and reference timestamp.</summary>
     internal sealed class PointCloudMotionCompensationResult
     {
+        /// <summary>Create a completed motion-compensation result.</summary>
         public PointCloudMotionCompensationResult(VirtualLidarPointData[] points, int pointCount, ulong referenceUnixNs)
         {
             Points = points ?? throw new ArgumentNullException(nameof(points));
@@ -57,8 +66,13 @@ namespace Unity.FoxgloveSDK.Components
             ReferenceUnixNs = referenceUnixNs;
         }
 
+        /// <summary>Deskewed or scan-reference point snapshot.</summary>
         public VirtualLidarPointData[] Points { get; }
+
+        /// <summary>Number of valid source slots to read from <see cref="Points"/>.</summary>
         public int PointCount { get; }
+
+        /// <summary>Reference timestamp assigned to the deskewed frame, in Unix nanoseconds.</summary>
         public ulong ReferenceUnixNs { get; }
     }
 
@@ -71,6 +85,9 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const double NanosecondsPerSecond = 1_000_000_000d;
 
+        /// <summary>
+        /// Builds a deskewed VirtualLidar snapshot in one reference sensor frame.
+        /// </summary>
         public static bool TryCompensateVirtualLidar(
             IReadOnlyList<VirtualLidarPointData> source,
             int pointCount,

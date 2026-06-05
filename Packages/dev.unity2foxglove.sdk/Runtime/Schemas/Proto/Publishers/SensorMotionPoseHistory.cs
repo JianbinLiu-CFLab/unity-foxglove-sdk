@@ -12,6 +12,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>One timestamped world-from-sensor pose sample.</summary>
     internal readonly struct SensorMotionPoseSample
     {
+        /// <summary>Create a normalized timestamped world-from-sensor pose sample.</summary>
         public SensorMotionPoseSample(ulong unixNs, Vector3 translation, Quaternion rotation)
         {
             UnixNs = unixNs;
@@ -19,8 +20,13 @@ namespace Unity.FoxgloveSDK.Components
             Rotation = Quaternion.Normalize(rotation);
         }
 
+        /// <summary>Pose timestamp in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
+
+        /// <summary>World-space sensor translation at the sample timestamp.</summary>
         public Vector3 Translation { get; }
+
+        /// <summary>World-space sensor rotation at the sample timestamp.</summary>
         public Quaternion Rotation { get; }
     }
 
@@ -38,6 +44,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _start;
         private int _count;
 
+        /// <summary>Create a bounded pose history ring buffer.</summary>
         public SensorMotionPoseHistory(int capacity = DefaultCapacity, ulong maxAgeNs = DefaultMaxAgeNs)
         {
             if (capacity < 2)
@@ -47,14 +54,17 @@ namespace Unity.FoxgloveSDK.Components
             _maxAgeNs = maxAgeNs;
         }
 
+        /// <summary>Number of pose samples currently retained.</summary>
         public int Count => _count;
 
+        /// <summary>Remove all retained pose samples.</summary>
         public void Clear()
         {
             _start = 0;
             _count = 0;
         }
 
+        /// <summary>Add or replace a pose sample, trimming samples older than the configured horizon.</summary>
         public void Add(ulong unixNs, Vector3 translation, Quaternion rotation)
         {
             var sample = new SensorMotionPoseSample(unixNs, translation, rotation);
@@ -82,6 +92,7 @@ namespace Unity.FoxgloveSDK.Components
             TrimOldSamples(unixNs);
         }
 
+        /// <summary>Clone retained samples in chronological order for background-worker use.</summary>
         public SensorMotionPoseSample[] Snapshot()
         {
             var snapshot = new SensorMotionPoseSample[_count];
@@ -90,6 +101,7 @@ namespace Unity.FoxgloveSDK.Components
             return snapshot;
         }
 
+        /// <summary>True when the retained sample range covers an inclusive scan time interval.</summary>
         public bool Covers(ulong startUnixNs, ulong endUnixNs)
         {
             if (_count < 2 || startUnixNs > endUnixNs)
@@ -119,6 +131,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>Interpolation helpers for cloned pose history snapshots.</summary>
     internal static class SensorMotionPoseHistoryMath
     {
+        /// <summary>Interpolate a pose sample at the requested timestamp.</summary>
         public static bool TryInterpolate(
             SensorMotionPoseSample[] samples,
             ulong unixNs,

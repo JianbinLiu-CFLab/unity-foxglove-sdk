@@ -79,8 +79,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool PublishEnabled => _publishing;
 
+        /// <summary>True when the component can provide IMU native frame handoffs.</summary>
         public bool IsImuNativeOutput => isActiveAndEnabled;
 
+        /// <summary>Resolved topic for IMU native DDS adapters.</summary>
         public string ImuNativeTopic
         {
             get
@@ -90,10 +92,16 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>Orientation covariance written into IMU messages.</summary>
         public IReadOnlyList<double> ImuOrientationCovariance => _imuOrientationCovariance;
+
+        /// <summary>Angular velocity covariance written into IMU messages.</summary>
         public IReadOnlyList<double> ImuAngularVelocityCovariance => _imuAngularVelocityCovariance;
+
+        /// <summary>Linear acceleration covariance written into IMU messages.</summary>
         public IReadOnlyList<double> ImuLinearAccelerationCovariance => _imuLinearAccelerationCovariance;
 
+        /// <summary>Raised when a native IMU frame is ready for optional DDS adapters.</summary>
         public event Action<ImuNativeFrame> ImuNativeFrameReady;
 
         private void Start()
@@ -406,8 +414,10 @@ namespace Unity.FoxgloveSDK.Components
             return normalized;
         }
 
+        /// <summary>One queued IMU sample in Foxglove coordinates.</summary>
         private readonly struct ImuSample
         {
+            /// <summary>Create one queued IMU sample.</summary>
             public ImuSample(ulong timestampNs, Vector3 linearAcceleration, Vector3 angularVelocity, Quaternion orientation)
             {
                 TimestampNs = timestampNs;
@@ -416,9 +426,16 @@ namespace Unity.FoxgloveSDK.Components
                 Orientation = orientation;
             }
 
+            /// <summary>Sample timestamp in Unix nanoseconds.</summary>
             public ulong TimestampNs { get; }
+
+            /// <summary>Linear acceleration in the IMU body frame.</summary>
             public Vector3 LinearAcceleration { get; }
+
+            /// <summary>Angular velocity in the IMU body frame.</summary>
             public Vector3 AngularVelocity { get; }
+
+            /// <summary>Orientation in the IMU body frame.</summary>
             public Quaternion Orientation { get; }
         }
 
@@ -431,8 +448,10 @@ namespace Unity.FoxgloveSDK.Components
             private int _head;
             private int _count;
 
+            /// <summary>Number of samples currently queued.</summary>
             public int Count => _count;
 
+            /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
             public void Resize(int capacity)
             {
                 if (capacity <= 0)
@@ -452,6 +471,7 @@ namespace Unity.FoxgloveSDK.Components
                 _head = 0;
             }
 
+            /// <summary>Add a sample, dropping the oldest sample when the queue is full.</summary>
             public void Enqueue(ImuSample sample)
             {
                 if (_count < _items.Length)
@@ -466,6 +486,7 @@ namespace Unity.FoxgloveSDK.Components
                 _head = (_head + 1) % _items.Length;
             }
 
+            /// <summary>Remove and return the oldest queued sample.</summary>
             public ImuSample Dequeue()
             {
                 if (_count == 0)

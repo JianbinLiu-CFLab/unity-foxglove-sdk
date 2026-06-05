@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Publishers
+// Purpose: Background point-cloud encode request and result payloads.
 
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
@@ -15,6 +16,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class DracoEncodeRequest : IBackgroundEncodeRequest
     {
+        /// <summary>Create a Draco request from a managed PointCloudFrame.</summary>
         public DracoEncodeRequest(
             PointCloudFrame frame,
             ulong unixNs,
@@ -31,6 +33,7 @@ namespace Unity.FoxgloveSDK.Components
             CloneMs = cloneMs;
         }
 
+        /// <summary>Create a Draco request from a native VirtualLidar point snapshot.</summary>
         public DracoEncodeRequest(
             VirtualLidarPointData[] lidarPoints,
             int lidarPointCount,
@@ -53,17 +56,40 @@ namespace Unity.FoxgloveSDK.Components
             CloneMs = cloneMs;
         }
 
+        /// <summary>Managed point-cloud frame used when no native LiDAR snapshot is present.</summary>
         public PointCloudFrame Frame { get; }
+
+        /// <summary>Native LiDAR points cloned for worker-side Draco encoding.</summary>
         public VirtualLidarPointData[] LidarPoints { get; }
+
+        /// <summary>Number of native LiDAR point slots to encode.</summary>
         public int LidarPointCount { get; }
+
+        /// <summary>True when this request carries a native VirtualLidar snapshot.</summary>
         public bool HasVirtualLidarSnapshot => LidarPoints != null;
+
+        /// <summary>Frame id used for metadata generated from native snapshots.</summary>
         public string FrameId { get; }
+
+        /// <summary>True when per-point relative time should also be emitted as absolute nanoseconds.</summary>
         public bool EmitAbsoluteTimeNs { get; }
+
+        /// <summary>Frame timestamp in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
+
+        /// <summary>True when the websocket output path should receive the result.</summary>
         public bool PublishWebSocket { get; }
+
+        /// <summary>True when the local ROS2 bridge output path should receive the result.</summary>
         public bool PublishBridge { get; }
+
+        /// <summary>Effective websocket encoding selected when this request was queued.</summary>
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
+
+        /// <summary>Milliseconds spent cloning source data before enqueue.</summary>
         public double CloneMs { get; }
+
+        /// <summary>Worker lifecycle generation used to orphan stale completed work.</summary>
         public int Generation { get; set; }
     }
 
@@ -73,6 +99,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class PointCloud2NativeRequest : IBackgroundEncodeRequest
     {
+        /// <summary>Create a PointCloud2 Native packing request from a VirtualLidar snapshot.</summary>
         public PointCloud2NativeRequest(
             VirtualLidarPointData[] lidarPoints,
             int lidarPointCount,
@@ -99,18 +126,43 @@ namespace Unity.FoxgloveSDK.Components
             MotionCompensation = motionCompensation;
         }
 
+        /// <summary>Native LiDAR points cloned for worker-side PointCloud2 packing.</summary>
         public VirtualLidarPointData[] LidarPoints { get; }
+
+        /// <summary>Number of native LiDAR point slots to pack.</summary>
         public int LidarPointCount { get; }
+
+        /// <summary>Frame timestamp in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
+
+        /// <summary>Frame id written into PointCloud2 metadata.</summary>
         public string FrameId { get; }
+
+        /// <summary>True when relative point time should also be emitted as absolute nanoseconds.</summary>
         public bool EmitAbsoluteTimeNs { get; }
+
+        /// <summary>True when the websocket output path should receive the result.</summary>
         public bool PublishWebSocket { get; }
+
+        /// <summary>True when the local ROS2 bridge output path should receive the result.</summary>
         public bool PublishBridge { get; }
+
+        /// <summary>True when optional native DDS adapters should receive the frame handoff.</summary>
         public bool PublishNativeFrame { get; }
+
+        /// <summary>Effective websocket encoding selected when this request was queued.</summary>
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
+
+        /// <summary>Optional topic override for the raw native DDS frame.</summary>
         public string NativeTopic { get; }
+
+        /// <summary>Optional request for a second motion-compensated visualization frame.</summary>
         public PointCloudMotionCompensationRequest MotionCompensation { get; }
+
+        /// <summary>True when this request includes motion-compensation work.</summary>
         public bool HasMotionCompensation => MotionCompensation != null;
+
+        /// <summary>Worker lifecycle generation used to orphan stale completed work.</summary>
         public int Generation { get; set; }
     }
 
@@ -120,6 +172,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class DracoEncodeResult
     {
+        /// <summary>Create a completed Draco worker result.</summary>
         public DracoEncodeResult(
             DracoEncodeRequest request,
             PointCloudFrame frame,
@@ -138,12 +191,25 @@ namespace Unity.FoxgloveSDK.Components
             EncodeMs = encodeMs;
         }
 
+        /// <summary>Original worker request.</summary>
         public DracoEncodeRequest Request { get; }
+
+        /// <summary>Metadata frame associated with the encoded Draco payload.</summary>
         public PointCloudFrame Frame { get; }
+
+        /// <summary>True when encoding and payload construction succeeded.</summary>
         public bool Success { get; }
+
+        /// <summary>Prepared websocket payload bytes, when requested.</summary>
         public byte[] WebSocketPayload { get; }
+
+        /// <summary>Prepared ROS2 bridge payload bytes, when requested.</summary>
         public byte[] BridgePayload { get; }
+
+        /// <summary>Failure reason when <see cref="Success"/> is false.</summary>
         public string Error { get; }
+
+        /// <summary>Milliseconds spent on worker-side encoding.</summary>
         public double EncodeMs { get; }
     }
 
@@ -153,6 +219,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class PointCloud2NativeResult
     {
+        /// <summary>Create a completed PointCloud2 Native worker result.</summary>
         public PointCloud2NativeResult(
             PointCloud2NativeRequest request,
             bool success,
@@ -177,15 +244,34 @@ namespace Unity.FoxgloveSDK.Components
             EncodeMs = encodeMs;
         }
 
+        /// <summary>Original worker request.</summary>
         public PointCloud2NativeRequest Request { get; }
+
+        /// <summary>True when packing and optional deskew frame construction succeeded.</summary>
         public bool Success { get; }
+
+        /// <summary>Prepared websocket CDR payload bytes, when requested.</summary>
         public byte[] WebSocketPayload { get; }
+
+        /// <summary>Prepared ROS2 bridge CDR payload bytes, when requested.</summary>
         public byte[] BridgePayload { get; }
+
+        /// <summary>Raw PointCloud2 Native frame handoff for optional DDS adapters.</summary>
         public PointCloud2NativeFrame NativeFrame { get; }
+
+        /// <summary>Deskewed visualization PointCloud2 Native frame handoff, when requested.</summary>
         public PointCloud2NativeFrame MotionCompensatedNativeFrame { get; }
+
+        /// <summary>Failure reason when <see cref="Success"/> is false or deskew construction was skipped.</summary>
         public string Error { get; }
+
+        /// <summary>Number of compacted valid points in the raw native frame.</summary>
         public int ValidCount { get; }
+
+        /// <summary>Prepared payload byte count used for diagnostics.</summary>
         public int PayloadBytes { get; }
+
+        /// <summary>Milliseconds spent on worker-side packing and optional deskew construction.</summary>
         public double EncodeMs { get; }
     }
 }
