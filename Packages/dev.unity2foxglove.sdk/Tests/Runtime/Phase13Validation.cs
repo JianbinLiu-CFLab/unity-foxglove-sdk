@@ -60,6 +60,8 @@ namespace Unity.FoxgloveSDK.Tests
             TestPausedReplaySeekAppliesSceneOnlySnapshot();
             TestActivePausedScrubDoesNotEmitPanelHistoryUntilSettled();
             TestReplayPlayInvalidatesPanelHistoryDeltaWatermark();
+            TestReplaySubscribeRequestsPanelHistoryBackfill();
+            TestReplayLateSubscribeBackfillsMissedPanelHistory();
             TestReplaySuppressesRuntimeLivePublish();
             TestReplaySuppressesRuntimeLiveChannelAdvertise();
             TestReplayUsesDataPriorityForSeekReset();
@@ -855,6 +857,79 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        static void TestReplaySubscribeRequestsPanelHistoryBackfill()
+        {
+            var transport = new Phase13FakeTransport();
+            var runtime = new Phase13ReplayRuntimeContext();
+            var session = new FoxgloveSession("late-replay-subscribe", transport);
+            try
+            {
+                session.SetRuntimeContext(runtime);
+                session.RegisterChannel(new AdvertiseChannel
+                {
+                    Id = 1,
+                    Topic = "/replay",
+                    Encoding = "json",
+                    SchemaName = "",
+                    Schema = ""
+                });
+
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":1}]}");
+
+                Assert(runtime.BackfillRequests == 1,
+                    "Replay subscribe requests panel-history backfill for late subscribers");
+            }
+            finally
+            {
+                session.Dispose();
+            }
+        }
+
+        static void TestReplayLateSubscribeBackfillsMissedPanelHistory()
+        {
+            var second = 1_000_000_000UL;
+            var tmp = CreateTempTimedMcap(1 * second, 2 * second, 3 * second, 4 * second);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("late-replay-panel-subscribe", "127.0.0.1", 9889);
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 3 * second));
+                rt.Tick();
+
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+                transport.ClearBinary(7);
+
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+                Assert(CountMessageFrames(transport.SentBinaryFrames(7)) == 0,
+                    "Late replay subscribe defers panel-history backfill until debounce");
+
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+
+                var logTimes = MessageLogTimes(transport.SentBinaryFrames(7));
+                Assert(logTimes.Count == 3
+                    && logTimes[0] == 1 * second
+                    && logTimes[1] == 2 * second
+                    && logTimes[2] == 3 * second,
+                    "Late replay subscribe backfills missed panel history through the current replay time");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
         static void TestReplaySuppressesRuntimeLivePublish()
         {
             var tmp = CreateTempMcap(1, 1_000_000UL);
@@ -1293,6 +1368,54 @@ namespace Unity.FoxgloveSDK.Tests
         public event Action<uint> OnClientDisconnected;
         public event Action<uint, string> OnTextReceived;
         public event Action<uint, byte[]> OnBinaryReceived;
+    }
+
+    /// <summary>
+    /// Minimal runtime context used to verify replay subscribe backfill requests.
+    /// </summary>
+    class Phase13ReplayRuntimeContext : IRuntimeContext
+    {
+        /// <summary>Number of replay subscriber backfill requests observed by the fake context.</summary>
+        public int BackfillRequests { get; private set; }
+
+        /// <summary>Gets whether playback is enabled for the replay subscribe tests.</summary>
+        public bool PlaybackEnabled => true;
+
+        /// <summary>Gets the asset registry required by the runtime context contract.</summary>
+        public FoxgloveAssetRegistry Assets { get; } = new FoxgloveAssetRegistry();
+
+        /// <summary>Gets the fake playback range start.</summary>
+        public ulong GetPlaybackStartNs() => 0;
+
+        /// <summary>Gets the fake playback range end.</summary>
+        public ulong GetPlaybackEndNs() => 0;
+
+        /// <summary>Accepts playback commands for the fake runtime context.</summary>
+        public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs) { }
+
+        /// <summary>Returns the default playback state for the fake runtime context.</summary>
+        public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
+            => default;
+
+        /// <summary>Applies playback control for the fake runtime context.</summary>
+        public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
+            byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
+            => default;
+
+        /// <summary>Accepts replay seek requests for the fake runtime context.</summary>
+        public void ReplaySeek(ulong timeNs) { }
+
+        /// <summary>Accepts replay play requests for the fake runtime context.</summary>
+        public void ReplayPlay() { }
+
+        /// <summary>Accepts replay pause requests for the fake runtime context.</summary>
+        public void ReplayPause() { }
+
+        /// <summary>Records that a new replay subscriber requested panel-history backfill.</summary>
+        public void RequestReplaySubscriberBackfill()
+        {
+            BackfillRequests++;
+        }
     }
 
     class Phase13FakeClock : IFoxgloveClock

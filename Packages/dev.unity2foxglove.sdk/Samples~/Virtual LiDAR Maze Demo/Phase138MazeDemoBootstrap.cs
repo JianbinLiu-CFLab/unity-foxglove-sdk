@@ -170,6 +170,15 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             sensorCameraInfoPublisher.enabled = false;
             cartCameraMount.gameObject.SetActive(false);
 
+            ConfigureReplayAdapter(
+                mgrGo,
+                manager,
+                vehicleGo.transform,
+                lidarImuUnit,
+                lidarMount,
+                imuMount,
+                cartCameraMount);
+
             // 6. Static overview camera framing the whole maze for the Unity Game view.
             var cameraGo = new GameObject("DemoCamera");
             var cam = cameraGo.AddComponent<Camera>();
@@ -216,6 +225,27 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 -childToParent.TranslationMeters,
                 inverseRotation);
             return new LidarTIlExtrinsic(inverseTranslation, inverseRotation);
+        }
+
+        private static void ConfigureReplayAdapter(
+            GameObject host,
+            FoxgloveManager manager,
+            Transform vehicle,
+            Transform sensorUnit,
+            Transform lidarMount,
+            Transform imuMount,
+            Transform cameraMount)
+        {
+            var adapter = host.AddComponent<FoxgloveReplayObjectAdapter>();
+            SetPrivateField(adapter, "_manager", manager);
+            SetPrivateField(adapter, "_frameOverrides", new[]
+            {
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "base_link", Target = vehicle },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_sensor", Target = sensorUnit },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_lidar", Target = lidarMount },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_imu", Target = imuMount },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_camera", Target = cameraMount }
+            });
         }
 
         private static void SetPrivateField(object target, string fieldName, object value)

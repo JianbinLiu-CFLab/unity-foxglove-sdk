@@ -64,8 +64,19 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Normalize invalid playback speeds to the protocol fallback speed.</summary>
         internal static float NormalizeSpeed(float speed)
         {
-            return speed > 0f && !float.IsNaN(speed) && !float.IsInfinity(speed) ? speed : 1f;
+            return IsValidSpeed(speed) ? speed : 1f;
         }
+
+        /// <summary>True when the requested speed can be used as a playback multiplier.</summary>
+        internal static bool IsValidSpeed(float speed)
+            => speed > 0f && !float.IsNaN(speed) && !float.IsInfinity(speed);
+
+        /// <summary>
+        /// Pause controls from clients can carry speed 0. Treat that as "leave the
+        /// current speed unchanged" instead of an invalid-speed warning.
+        /// </summary>
+        internal static bool ShouldWarnInvalidSpeed(byte command, float speed)
+            => !IsValidSpeed(speed) && command != 1;
 
         /// <summary>
         /// Current time in nanoseconds. This property is a pure read.
@@ -144,7 +155,10 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (!_enabled) return;
 
-            _speed = NormalizeSpeed(speed);
+            if (IsValidSpeed(speed))
+                _speed = speed;
+            else if (command != 1)
+                _speed = 1f;
 
             switch (command)
             {

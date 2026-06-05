@@ -298,6 +298,10 @@ namespace Unity.FoxgloveSDK.Tests
             /// Validation method for ReplayPause.
             /// </summary>
             public void ReplayPause() { }
+            /// <summary>
+            /// Validation method for RequestReplaySubscriberBackfill.
+            /// </summary>
+            public void RequestReplaySubscriberBackfill() { }
 
             /// <summary>
             /// Validation method for GetPlaybackState.

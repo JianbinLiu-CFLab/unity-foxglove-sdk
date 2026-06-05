@@ -44,6 +44,8 @@ namespace Unity.FoxgloveSDK.Tests
             TestPlaybackControlRequestDecode();
             TestPlaybackStateEncode();
             TestPlaybackClockPausePlaySeek();
+            TestPlaybackClockPauseSpeedZeroPreservesSpeed();
+            TestPlaybackControlPauseSpeedZeroDoesNotWarn();
             TestAssetRejectsDirectoryAndOversize();
             TestPlaybackCapabilityOn();
             TestPlaybackMalformedRequest();
@@ -220,6 +222,51 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
+        /// Foxglove playback-control pause messages can carry speed 0. Pause
+        /// must freeze time without clobbering the previous playback speed.
+        /// </summary>
+        private static void TestPlaybackClockPauseSpeedZeroPreservesSpeed()
+        {
+            var clock = new PlaybackClock();
+            clock.EnableRange(0, 10_000_000_000);
+            clock.Apply(0, 2f, false, 0);
+            clock.Apply(1, 0f, false, 0);
+            var state = clock.ToState(false, "pause-zero");
+            Assert(state.Status == 1, "Pause speed 0 sets paused status");
+            Assert(Math.Abs(state.Speed - 2f) < 0.0001f, $"Pause speed 0 preserves previous speed (got {state.Speed})");
+        }
+
+        /// <summary>
+        /// The runtime coordinator must not warn for the same pause-speed-zero
+        /// message shape that Foxglove Web sends while pausing or scrubbing.
+        /// </summary>
+        private static void TestPlaybackControlPauseSpeedZeroDoesNotWarn()
+        {
+            var clock = new PlaybackClock(new Phase9FixedClock(0));
+            clock.EnableRange(0, 10_000_000_000);
+            clock.Apply(0, 2f, false, 0);
+            var logger = new Phase9CaptureLogger();
+            var coordinator = new TickCoordinator(new ReplaySnapshotStateMachine());
+            var replay = new ReplayController(logger, null, clock);
+
+            var state = coordinator.ApplyPlaybackControl(
+                1,
+                0f,
+                false,
+                0,
+                "pause-zero",
+                replay,
+                clock,
+                new Phase9FixedClock(123),
+                logger);
+
+            Assert(state.Status == 1, "Coordinator pause speed 0 sets paused status");
+            Assert(Math.Abs(state.Speed - 2f) < 0.0001f, $"Coordinator pause speed 0 preserves speed (got {state.Speed})");
+            Assert(!logger.WarningText.Contains("Invalid playback speed", StringComparison.Ordinal),
+                "Coordinator pause speed 0 does not warn");
+        }
+
+        /// <summary>
         /// Fake transport for Phase 9 recording per-client SendText
         /// and providing connect/text simulators.
         /// </summary>
@@ -254,6 +301,20 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         // ── Additional test methods ──
+
+        private sealed class Phase9CaptureLogger : IFoxgloveLogger
+        {
+            public string WarningText = string.Empty;
+            public string ErrorText = string.Empty;
+            public void LogWarning(string message) => WarningText += message + "\n";
+            public void LogError(string message) => ErrorText += message + "\n";
+        }
+
+        private sealed class Phase9FixedClock : IFoxgloveClock
+        {
+            public Phase9FixedClock(ulong nowNs) { NowNs = nowNs; }
+            public ulong NowNs { get; }
+        }
 
         /// <summary>
         /// Asset URIs pointing to directories or files exceeding the max

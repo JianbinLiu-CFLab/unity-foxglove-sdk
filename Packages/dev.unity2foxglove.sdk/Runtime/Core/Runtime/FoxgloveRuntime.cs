@@ -457,6 +457,10 @@ namespace Unity.FoxgloveSDK.Core
         public void ReplayPause()
             => _tickCoordinator.ReplayPause(_replay, _playbackClock);
 
+        /// <summary>Request a replay panel-history backfill for newly subscribed clients.</summary>
+        public void RequestReplaySubscriberBackfill()
+            => _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock);
+
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
 

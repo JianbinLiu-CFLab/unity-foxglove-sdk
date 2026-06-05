@@ -89,13 +89,12 @@ namespace Unity.FoxgloveSDK.Core
             ReplayController replay, PlaybackClock playbackClock, IFoxgloveClock wallClock,
             IFoxgloveLogger logger)
         {
-            var normalizedSpeed = PlaybackClock.NormalizeSpeed(speed);
-            if (normalizedSpeed != speed)
+            if (PlaybackClock.ShouldWarnInvalidSpeed(cmd, speed))
                 logger.LogWarning($"Invalid playback speed {speed}; using 1.0.");
 
             lock (_playbackControlLock)
             {
-                playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
+                playbackClock.Apply(cmd, speed, hasSeek, seekNs);
 
                 if (hasSeek)
                 {
@@ -129,11 +128,10 @@ namespace Unity.FoxgloveSDK.Core
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs,
             PlaybackClock playbackClock, IFoxgloveLogger logger)
         {
-            var normalizedSpeed = PlaybackClock.NormalizeSpeed(speed);
-            if (normalizedSpeed != speed)
+            if (PlaybackClock.ShouldWarnInvalidSpeed(cmd, speed))
                 logger.LogWarning($"Invalid playback speed {speed}; using 1.0.");
             lock (_playbackControlLock)
-                playbackClock.Apply(cmd, normalizedSpeed, hasSeek, seekNs);
+                playbackClock.Apply(cmd, speed, hasSeek, seekNs);
         }
 
         /// <summary>
@@ -188,6 +186,24 @@ namespace Unity.FoxgloveSDK.Core
                 playbackClock.Pause();
                 replay.Pause();
                 ClearPendingReplaySnapshot();
+            }
+        }
+
+        /// <summary>
+        /// Queue a panel-history refresh at the current replay time when a
+        /// client subscribes after autoplay has already begun. The replay
+        /// cursor is left untouched so Unity scene playback continues.
+        /// </summary>
+        public void RequestReplaySubscriberBackfill(
+            ReplayController replay, PlaybackClock playbackClock, IFoxgloveClock wallClock)
+        {
+            lock (_playbackControlLock)
+            {
+                if (!replay.IsEnabled || !playbackClock.PlaybackEnabled)
+                    return;
+
+                replay.ResetPanelHistoryProgress();
+                QueueReplaySnapshot(playbackClock.NowNs, replay, wallClock);
             }
         }
 

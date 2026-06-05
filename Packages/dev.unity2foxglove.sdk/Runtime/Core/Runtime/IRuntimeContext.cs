@@ -46,6 +46,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Pause replay playback.</summary>
         void ReplayPause();
 
+        /// <summary>Request a panel-history backfill at the current replay time for newly subscribed clients.</summary>
+        void RequestReplaySubscriberBackfill();
+
         /// <summary>The asset registry for fetchAsset requests.</summary>
         FoxgloveAssetRegistry Assets { get; }
     }

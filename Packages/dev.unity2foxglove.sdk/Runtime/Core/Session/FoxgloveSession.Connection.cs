@@ -54,6 +54,9 @@ namespace Unity.FoxgloveSDK.Core
                         if (ch != null)
                             _graph.AddSubscribedTopic(clientId, change.SubscriptionId, ch.Topic);
                     }
+
+                    if (changes.Count > 0)
+                        _runtime?.RequestReplaySubscriberBackfill();
                 }
                 _graph.BroadcastUpdate();
             }

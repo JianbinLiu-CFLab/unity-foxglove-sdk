@@ -362,6 +362,8 @@ namespace Unity.FoxgloveSDK.Tests
             public void ReplaySeek(ulong timeNs) { }
             public void ReplayPlay() { }
             public void ReplayPause() { }
+            /// <summary>Accepts replay subscriber backfill requests for this validation fake.</summary>
+            public void RequestReplaySubscriberBackfill() { }
         }
 
         private sealed class Phase54FixedClock : IFoxgloveClock

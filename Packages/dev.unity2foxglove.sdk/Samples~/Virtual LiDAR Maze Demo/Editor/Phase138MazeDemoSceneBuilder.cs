@@ -195,6 +195,15 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             sensorCamInfoPub.enabled = false;
             cartCameraMount.SetActive(false);
 
+            var replayAdapter = ConfigureReplayAdapter(
+                mgrGo,
+                manager,
+                vehicleGo.transform,
+                lidarImuUnit,
+                lidarMount,
+                imuMount.transform,
+                cartCameraMount.transform);
+
             // 6. Static overview camera framing the whole maze for the Unity Game view.
             var camGo = new GameObject("DemoCamera");
             Undo.RegisterCreatedObjectUndo(camGo, "Build Maze Demo");
@@ -211,7 +220,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(demoCameraPublisher, "_publishStandardRos2CompressedImage", false);
             SetField(demoCameraPublisher, "_publishStandardRos2RawImage", false);
 
-            foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, unitPub, imu, imuPub, lidarPub, sensorCamPub, sensorCamInfoPub, demoCameraPublisher })
+            foreach (var dirty in new Object[] { manager, publisher, controller, basePub, lidar, unitPub, imu, imuPub, lidarPub, sensorCamPub, sensorCamInfoPub, replayAdapter, demoCameraPublisher })
                 EditorUtility.SetDirty(dirty);
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
 
@@ -237,6 +246,28 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
                 -childToParent.TranslationMeters,
                 inverseRotation);
             return new LidarTIlExtrinsic(inverseTranslation, inverseRotation);
+        }
+
+        private static FoxgloveReplayObjectAdapter ConfigureReplayAdapter(
+            GameObject host,
+            FoxgloveManager manager,
+            Transform vehicle,
+            Transform sensorUnit,
+            Transform lidarMount,
+            Transform imuMount,
+            Transform cameraMount)
+        {
+            var adapter = host.AddComponent<FoxgloveReplayObjectAdapter>();
+            SetField(adapter, "_manager", manager);
+            SetField(adapter, "_frameOverrides", new[]
+            {
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "base_link", Target = vehicle },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_sensor", Target = sensorUnit },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_lidar", Target = lidarMount },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_imu", Target = imuMount },
+                new FoxgloveReplayObjectAdapter.FrameMapping { ChildFrameId = "os_camera", Target = cameraMount }
+            });
+            return adapter;
         }
 
         private static void SetField(object target, string fieldName, object value)
