@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("--base-url", StringComparison.Ordinal)
                   && script.Contains("--json-out", StringComparison.Ordinal),
                 "139C-1B: smoke script can launch or probe a Remote Data Loader backend");
-            Check(script.Contains("/v1/files/", StringComparison.Ordinal)
+            Check(script.Contains("build_remote_file_url", StringComparison.Ordinal)
                   && script.Contains(".mcap", StringComparison.Ordinal)
                   && script.Contains("\"Range\": \"bytes=0-7\"", StringComparison.Ordinal),
                 "139C-1B2: smoke script verifies Foxglove Remote files direct MCAP URL compatibility");

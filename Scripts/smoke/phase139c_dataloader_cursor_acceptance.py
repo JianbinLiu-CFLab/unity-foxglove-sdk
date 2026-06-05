@@ -13,7 +13,6 @@ import argparse
 import json
 import subprocess
 import sys
-import urllib.parse
 from pathlib import Path
 
 import phase139b_remote_data_loader_acceptance as phase139b
@@ -72,12 +71,7 @@ def probe_remote_data_loader(args: argparse.Namespace, root: Path) -> dict:
         if not (data_body.startswith(phase139b.MCAP_MAGIC) and data_body.endswith(phase139b.MCAP_MAGIC)):
             raise RuntimeError("Downloaded data response is not a finalized MCAP stream.")
 
-        remote_file_url = (
-            base_url
-            + "/v1/files/"
-            + urllib.parse.quote(str(sources[0].get("id") or args.source_id), safe="")
-            + ".mcap"
-        )
+        remote_file_url = phase139b.build_remote_file_url(base_url, sources[0], args.source_id)
         file_status, file_content_type, file_body = phase139b.read_url(
             remote_file_url,
             args.token,

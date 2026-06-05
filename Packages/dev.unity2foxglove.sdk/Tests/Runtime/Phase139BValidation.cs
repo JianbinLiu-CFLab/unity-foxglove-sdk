@@ -158,6 +158,9 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(((string)json["sources"][0]["url"]).StartsWith("/v1/data?recordingId=phase139b-http", StringComparison.Ordinal),
                     "139B-3D: HTTP manifest points at official data route");
 
+                // Foxglove's stock Remote files dialog requires a URL ending
+                // in a filename; /v1/manifest is still the backend contract,
+                // while this direct file route is the browser-facing entry.
                 var directHead = new HttpRequestMessage(HttpMethod.Head, baseUrl + "/v1/files/phase139b-http.mcap");
                 var directHeadResponse = client.SendAsync(directHead).GetAwaiter().GetResult();
                 Check(directHeadResponse.StatusCode == HttpStatusCode.OK
