@@ -61,6 +61,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ReplayController _replay;
         private readonly ReplayOrchestrator _replayOrchestrator;
         private readonly TickCoordinator _tickCoordinator;
+        private readonly ExternalReplayCursorController _externalReplayCursorController = new();
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
@@ -457,6 +458,29 @@ namespace Unity.FoxgloveSDK.Core
         public void ReplayPause()
             => _tickCoordinator.ReplayPause(_replay, _playbackClock);
 
+        /// <summary>Enable or disable the optional external replay cursor queue.</summary>
+        public void SetExternalReplayCursorEnabled(bool enabled)
+        {
+            _externalReplayCursorController.Enabled = enabled;
+            if (!enabled)
+                _externalReplayCursorController.Clear();
+        }
+
+        /// <summary>
+        /// Queue one external replay cursor request for main-thread drain on the next runtime tick.
+        /// </summary>
+        public ExternalReplayCursorEnqueueResult TryEnqueueExternalReplayCursor(
+            ReplayCursorRequest request,
+            out string message)
+        {
+            return _externalReplayCursorController.TryEnqueue(
+                request,
+                ReplayEnabled,
+                GetPlaybackStartNs(),
+                GetPlaybackEndNs(),
+                out message);
+        }
+
         /// <summary>Request a replay panel-history backfill for newly subscribed clients.</summary>
         public void RequestReplaySubscriberBackfill()
             => _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock);
@@ -474,7 +498,7 @@ namespace Unity.FoxgloveSDK.Core
         /// replay engine when active, or broadcasts wall-clock time.
         /// </summary>
         public void Tick()
-            => _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock);
+            => _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock, _externalReplayCursorController);
 
         // ── Transport Health ──
 

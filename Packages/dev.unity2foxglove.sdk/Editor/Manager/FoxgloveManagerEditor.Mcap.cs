@@ -67,6 +67,34 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
             }
+
+            DrawCursorBridgeSection();
+        }
+
+        private void DrawCursorBridgeSection()
+        {
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Cursor Bridge (Advanced)", ref _cursorBridgeAdvancedExpanded))
+                return;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox(
+                "Optional loopback endpoint for a Foxglove extension that forwards timeline cursor metadata to Unity replay. It is disabled by default and is separate from Remote Data Loader /v1/data requests.",
+                MessageType.Info);
+            DrawProperty("_enableReplayCursorBridge", "Enable Cursor Bridge");
+            using (new EditorGUI.DisabledScope(!GetBool("_enableReplayCursorBridge")))
+            {
+                DrawProperty("_replayCursorBridgeHost", "Host");
+                DrawProperty("_replayCursorBridgePort", "Port");
+                DrawPasswordProperty("_replayCursorBridgeToken", "Bearer Token");
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.TextField(
+                        "Endpoint",
+                        $"http://{GetString("_replayCursorBridgeHost", "127.0.0.1")}:{GetInt("_replayCursorBridgePort", 8892)}/v1/replay-cursor");
+                }
+            }
+
+            EditorGUI.indentLevel--;
         }
 
         private void DrawSchemaEvidenceSection()

@@ -29,7 +29,12 @@ namespace Unity.FoxgloveSDK.Core
         /// the clock, and dispatches replay work (scene snapshot, panel snapshot,
         /// drain callbacks) when replay is active.
         /// </summary>
-        public void Tick(FoxgloveSession session, PlaybackClock playbackClock, ReplayController replay, IFoxgloveClock wallClock)
+        public void Tick(
+            FoxgloveSession session,
+            PlaybackClock playbackClock,
+            ReplayController replay,
+            IFoxgloveClock wallClock,
+            ExternalReplayCursorController externalCursor = null)
         {
             if (session == null) return;
             session.DrainPlaybackControls();
@@ -45,6 +50,12 @@ namespace Unity.FoxgloveSDK.Core
                     // Seek/play/pause mutate the same snapshot scheduler, and
                     // releasing the lock here could publish a stale pre-seek
                     // snapshot after a newer playback control request.
+                    if (externalCursor != null && externalCursor.TryDrainLatest(out var cursor))
+                    {
+                        replay.Seek(cursor.TimeNs);
+                        QueueReplaySceneSnapshot(cursor.TimeNs);
+                    }
+
                     if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs, wallClock))
                         replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);
                     if (TryConsumeReplaySnapshot(out var snapshotTimeNs, wallClock))

@@ -5,6 +5,7 @@
 // Purpose: Owns FoxgloveManager server lifecycle and transport selection.
 
 using System.IO;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 
@@ -59,6 +60,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 StartCertificateDistributorIfNeeded();
                 _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
+                StartReplayCursorEndpointIfNeeded();
                 if (!PublishPendingRecordingSidecar())
                 {
                     StopServer();
@@ -68,6 +70,7 @@ namespace Unity.FoxgloveSDK.Components
             catch
             {
                 CleanupPendingRecordingSidecar();
+                StopReplayCursorEndpoint();
                 StopCertificateDistributor();
                 throw;
             }
@@ -199,6 +202,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!IsRunning)
             {
+                StopReplayCursorEndpoint();
                 StopCertificateDistributor();
                 if (_runtime?.Session == null)
                 {
@@ -238,6 +242,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _runtime.Stop();
+            StopReplayCursorEndpoint();
             StopCertificateDistributor();
             _channelCache.Clear();
             ClearClientEvents();
@@ -252,6 +257,60 @@ namespace Unity.FoxgloveSDK.Components
         {
             _clientLifecycleEvents.Clear();
             _clientMessageEvents.Clear();
+        }
+
+        private void StartReplayCursorEndpointIfNeeded()
+        {
+            if (_runtime == null)
+            {
+                return;
+            }
+
+            _runtime.SetExternalReplayCursorEnabled(_enableReplayCursorBridge);
+            if (!_enableReplayCursorBridge)
+            {
+                StopReplayCursorEndpoint();
+                return;
+            }
+
+            _replayCursorEndpoint ??= new UnityReplayCursorEndpoint(new UnityLogger());
+            var options = new UnityReplayCursorEndpointOptions(
+                enabled: true,
+                host: _replayCursorBridgeHost,
+                port: _replayCursorBridgePort,
+                path: "/v1/replay-cursor",
+                bearerToken: _replayCursorBridgeToken,
+                maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes);
+            try
+            {
+                _replayCursorEndpoint.Start(options, QueueExternalReplayCursor);
+            }
+            catch (System.Exception ex)
+            {
+                _runtime.SetExternalReplayCursorEnabled(false);
+                _replayCursorEndpoint.Stop();
+                Debug.LogWarning("[Foxglove] Replay cursor bridge disabled: " + ex.Message);
+            }
+        }
+
+        private UnityReplayCursorEndpointQueueResult QueueExternalReplayCursor(ReplayCursorRequest request)
+        {
+            if (_runtime == null)
+            {
+                return new UnityReplayCursorEndpointQueueResult(false, "Runtime is not available.");
+            }
+
+            var result = _runtime.TryEnqueueExternalReplayCursor(request, out var message);
+            return new UnityReplayCursorEndpointQueueResult(
+                result == ExternalReplayCursorEnqueueResult.Accepted
+                || result == ExternalReplayCursorEnqueueResult.Duplicate,
+                message);
+        }
+
+        private void StopReplayCursorEndpoint()
+        {
+            _runtime?.SetExternalReplayCursorEnabled(false);
+            _replayCursorEndpoint?.Stop();
         }
     }
 }

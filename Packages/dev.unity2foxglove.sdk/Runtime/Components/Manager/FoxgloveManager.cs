@@ -121,6 +121,11 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _replayAutoPlay;
         [SerializeField] private bool _disableLivePublishers = true;
         private bool _livePublishersDisabled;
+        [Tooltip("Optional loopback endpoint that accepts Foxglove extension timeline cursor updates and applies them to Unity replay on the next runtime tick.")]
+        [SerializeField] private bool _enableReplayCursorBridge = false;
+        [SerializeField] private string _replayCursorBridgeHost = "127.0.0.1";
+        [SerializeField, Min(1)] private int _replayCursorBridgePort = 8892;
+        [SerializeField] private string _replayCursorBridgeToken = "";
 
         [SerializeField] private SchemaIdentityModeSource _identityModeSource = SchemaIdentityModeSource.ProjectSettings;
         [SerializeField] private SchemaIdentityMode _identityModeOverride = SchemaIdentityMode.Off;
@@ -144,6 +149,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private Core.FoxgloveRuntime _runtime;
         private Ros2BridgeRuntime _ros2BridgeRuntime;
+        private UnityReplayCursorEndpoint _replayCursorEndpoint;
         private string _ros2BridgeSetupError = "";
         private ulong _ros2BridgeSequence;
         private bool _lastFoxgloveOutputEnabled;
@@ -452,6 +458,7 @@ namespace Unity.FoxgloveSDK.Components
             _rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);
             _recordingChunkSizeKB = Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB);
             _ros2BridgePort = Mathf.Clamp(_ros2BridgePort, 1, 65535);
+            _replayCursorBridgePort = Mathf.Clamp(_replayCursorBridgePort, 1, 65535);
             _ros2BridgeCustomDepth = Mathf.Max(1, _ros2BridgeCustomDepth);
             _ros2BridgeQueueCapacity = Mathf.Max(1, _ros2BridgeQueueCapacity);
             _ros2BridgeReconnectIntervalMs = Mathf.Max(1, _ros2BridgeReconnectIntervalMs);
@@ -539,6 +546,8 @@ namespace Unity.FoxgloveSDK.Components
             StopServer(restoreLivePublishers: false);
             _ros2BridgeRuntime?.Dispose();
             _ros2BridgeRuntime = null;
+            _replayCursorEndpoint?.Dispose();
+            _replayCursorEndpoint = null;
             _certificateDistributor?.Dispose();
             _certificateDistributor = null;
             _runtime?.Dispose();

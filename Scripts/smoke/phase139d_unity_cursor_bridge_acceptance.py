@@ -56,6 +56,7 @@ def validate_extension_metadata(root: Path) -> dict:
             for token in ['context.watch("startTime")', 'context.watch("endTime")', 'context.watch("didSeek")']
         ),
         "keeps_sec_nsec_split": "sec: currentTime.sec" in source and "nsec: currentTime.nsec" in source,
+        "surfaces_forwarding_status": "Status:" in source and "Unity rejected sequence" in source,
         "does_not_use_v1_data_as_cursor": "/v1/data" not in source,
         "documents_remote_data_loader_boundary": "/v1/data" in readme and "playhead signal" in readme,
     }

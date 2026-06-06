@@ -30,6 +30,11 @@ type PanelState = {
   enabled: boolean;
 };
 
+type SendStatus = {
+  message: string;
+  ok: boolean;
+};
+
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
   if (time == undefined) {
     return undefined;
@@ -42,17 +47,24 @@ function cursorKey(time: Time): string {
   return `${time.sec}.${time.nsec}`;
 }
 
-async function sendCursor(endpoint: string, token: string, payload: CursorPayload): Promise<void> {
+async function sendCursor(endpoint: string, token: string, payload: CursorPayload): Promise<SendStatus> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token.length > 0) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  await fetch(endpoint, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
   });
+  const responseText = await response.text();
+  return {
+    ok: response.ok,
+    message: response.ok
+      ? `Sent sequence ${payload.sequence} to Unity (${response.status})`
+      : `Unity rejected sequence ${payload.sequence} (${response.status}): ${responseText}`,
+  };
 }
 
 function buildPayload(renderState: RenderState, sequence: number): CursorPayload | undefined {
@@ -81,6 +93,10 @@ function initPanel(context: PanelExtensionContext): void {
   let sequence = 0;
   let lastCursorKey = "";
   let lastSentAtMs = 0;
+  let status: SendStatus = {
+    ok: true,
+    message: "Disabled by default. Enable only while Unity replay is loaded.",
+  };
 
   context.watch("currentTime");
   context.watch("startTime");
@@ -104,6 +120,7 @@ function initPanel(context: PanelExtensionContext): void {
         <p>Bearer token (optional)</p>
         <input id="token" style="width: 100%" type="password" value="${state.token}" />
         <p>Current time: ${currentTime ? `${currentTime.sec}.${currentTime.nsec}` : "none"}</p>
+        <p>Status: <span style="color: ${status.ok ? "#2b8a3e" : "#c92a2a"}">${status.message}</span></p>
       `;
 
       const enabled = root.querySelector<HTMLInputElement>("#enabled");
@@ -134,7 +151,17 @@ function initPanel(context: PanelExtensionContext): void {
 
           const payload = buildPayload(renderState, sequence);
           if (payload != undefined) {
-            void sendCursor(state.endpoint, state.token, payload);
+            void sendCursor(state.endpoint, state.token, payload).then(
+              (result) => {
+                status = result;
+              },
+              (error: unknown) => {
+                status = {
+                  ok: false,
+                  message: `Failed to send cursor: ${String(error)}`,
+                };
+              },
+            );
           }
         }
       }
