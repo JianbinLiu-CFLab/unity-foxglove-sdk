@@ -11,8 +11,8 @@ namespace Unity.FoxgloveSDK.Tests
 {
     /// <summary>
     /// CI-safe checks for the Phase 139C Remote Data Loader workflow surface.
-    /// Unity cursor bridge behavior is intentionally documented as optional
-    /// until a Foxglove extension channel is proven by manual evidence.
+    /// Remote file access is intentionally validated as file serving only; it
+    /// must not imply that Unity and Foxglove playback cursors are synchronized.
     /// </summary>
     public static class Phase139CValidation
     {
@@ -74,9 +74,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(docs.Contains("continuous", StringComparison.OrdinalIgnoreCase)
                   && docs.Contains("Plot", StringComparison.Ordinal),
                 "139C-2C: documentation describes continuous curve inspection");
-            Check(docs.Contains("cursor bridge", StringComparison.OrdinalIgnoreCase)
-                  && docs.Contains("separate optional", StringComparison.OrdinalIgnoreCase),
-                "139C-2D: documentation separates DataLoader analysis from Unity cursor sync");
+            Check(docs.Contains("does not synchronize Unity and Foxglove playback time", StringComparison.OrdinalIgnoreCase)
+                  && docs.Contains("separate playback-sync feature", StringComparison.OrdinalIgnoreCase),
+                "139C-2D: documentation separates Remote files access from Unity cursor sync");
         }
 
         private static void VerifyManagerInspectorRemoteFileAccess()
@@ -97,6 +97,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("Open in Foxglove", StringComparison.Ordinal)
                   && editor.Contains("/v1/files/", StringComparison.Ordinal),
                 "139C-3C: manager Inspector exposes copy/open controls for the direct MCAP URL");
+            Check(editor.Contains("does not synchronize Unity and Foxglove playback time", StringComparison.OrdinalIgnoreCase),
+                "139C-3C2: manager Inspector states Remote File Access is not playback sync");
             Check(editor.Contains("Foxglove.exe", StringComparison.Ordinal)
                   || editor.Contains("foxglove", StringComparison.Ordinal),
                 "139C-3D: manager Inspector can open Foxglove without requiring a separate Tools workflow");

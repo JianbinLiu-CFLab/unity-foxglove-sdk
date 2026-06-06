@@ -200,6 +200,8 @@ The copied/opened URL is the direct file route:
 http://127.0.0.1:8891/v1/files/local-mcap.mcap
 ```
 
+Remote File Access only opens recorded data in Foxglove. It does not synchronize Unity and Foxglove playback time, and it should not be described as a bidirectional replay-control feature. Treat playback synchronization as a separate playback-sync feature.
+
 The Inspector first tries a `foxglove` executable on `PATH`, then the installed
 Foxglove Desktop executable, and finally falls back to copying/opening the URL.
 The separate command-line server remains useful for script debugging or when
@@ -239,16 +241,15 @@ The script checks both the contract endpoints (`/v1/manifest` and `/v1/data`)
 and the direct Remote files compatibility endpoint
 `/v1/files/local-mcap.mcap` with a byte-range MCAP magic read.
 
-The Unity cursor bridge is a separate optional channel. Remote Data Loader
-`/v1/data` range requests are cache and prefetch requests, not a reliable signal
-for the current Foxglove playhead. Unity scene replay should continue to use the
-live WebSocket playback-control path until a dedicated cursor bridge transport
-has its own feasibility evidence.
+Remote Data Loader `/v1/data` range requests are cache and prefetch requests,
+not a reliable signal for the current Foxglove playhead. Unity scene replay
+should continue to use the local replay controls and the live WebSocket
+playback-control path. A future playback-sync feature must provide a dedicated
+control transport rather than inferring cursor state from Remote files traffic.
 
 ## Phase139D Unity Cursor Bridge Boundary
 
-Phase139D starts the separate control channel for Foxglove-file playback to
-Unity replay synchronization. The data path remains Phase139B/139C:
+Phase139D records an internal feasibility scaffold for a separate control channel. It is not a product-ready bidirectional sync feature, and the Manager Inspector intentionally does not expose the cursor bridge controls. Remote File Access only opens the MCAP data source. The data path remains Phase139B/139C:
 
 ```text
 MCAP -> Phase139B HTTP backend -> Foxglove Remote files
@@ -272,13 +273,13 @@ future Unity endpoint can distinguish timeline bounds and explicit seek events.
 Cursor time is sent as separate `{ sec, nsec }` fields to avoid JavaScript
 integer precision loss.
 
-The bridge is bidirectional when both panel directions are enabled. The
-Foxglove -> Unity direction posts the visible Foxglove cursor to Unity. The
-Unity -> Foxglove direction polls Unity's replay cursor state with a read-only
-GET and calls the Foxglove extension `seekPlayback` API so the Foxglove timeline
-follows Unity replay while Unity is the active playback source. The extension
-suppresses immediate echo traffic after Unity-driven seeks so one direction does
-not bounce the same cursor back through the other direction.
+The prototype bridge explored both directions. The Foxglove -> Unity direction
+posts the visible Foxglove cursor to Unity. The Unity -> Foxglove direction
+polls Unity's replay cursor state with a read-only GET and would need a
+Foxglove-side `seekPlayback` integration so the Foxglove timeline follows Unity
+replay while Unity is the active playback source. Until that Foxglove-side
+control path is installed and validated as a normal product workflow, this
+remains internal feasibility work rather than a user-facing Inspector feature.
 
 The bridge remains disabled by default. Its first target is a trusted local
 loopback endpoint, with origin/token restrictions before broader browser access.

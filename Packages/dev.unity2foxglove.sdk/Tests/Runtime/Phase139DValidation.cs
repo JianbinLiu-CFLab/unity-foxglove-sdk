@@ -16,8 +16,8 @@ namespace Unity.FoxgloveSDK.Tests
 {
     /// <summary>
     /// CI-safe checks for the Phase 139D cursor-bridge scaffold. These checks
-    /// validate the extension signal contract and deliberately avoid any claim
-    /// that Remote Data Loader range requests are Unity playhead controls.
+    /// validate the internal signal contract and deliberately avoid exposing it
+    /// as a product workflow until a Foxglove-side control path exists.
     /// </summary>
     public static class Phase139DValidation
     {
@@ -245,9 +245,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(docs.Contains("disabled by default", StringComparison.OrdinalIgnoreCase)
                   && docs.Contains("loopback", StringComparison.OrdinalIgnoreCase),
                 "139D-6D: documentation keeps the bridge optional and loopback-bounded");
-            Check(docs.Contains("Unity -> Foxglove", StringComparison.Ordinal)
-                  && docs.Contains("seekPlayback", StringComparison.Ordinal),
-                "139D-6E: documentation records the bidirectional follow-mode contract");
+            Check(docs.Contains("not a product-ready bidirectional sync feature", StringComparison.OrdinalIgnoreCase)
+                  && docs.Contains("Remote File Access only opens the MCAP data source", StringComparison.Ordinal),
+                "139D-6E: documentation records the current product boundary");
         }
 
         private static void VerifyRuntimeWiring()
@@ -276,9 +276,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(server.Contains("RefreshReplayCursorEndpointIfNeeded", StringComparison.Ordinal)
                   && manager.Contains("RefreshReplayCursorEndpointIfNeeded", StringComparison.Ordinal),
                 "139D-7F: manager refreshes the cursor endpoint when Inspector settings change during Play Mode");
-            Check(editor.Contains("Cursor Bridge (Advanced)", StringComparison.Ordinal)
-                  && editor.Contains("_enableReplayCursorBridge", StringComparison.Ordinal),
-                "139D-7G: manager Inspector hides cursor bridge controls behind an advanced foldout");
+            Check(!editor.Contains("Cursor Bridge (Advanced)", StringComparison.Ordinal)
+                  && !editor.Contains("_enableReplayCursorBridge", StringComparison.Ordinal),
+                "139D-7G: manager Inspector does not expose unfinished cursor bridge controls");
         }
 
         private static void VerifyValidationWiring()

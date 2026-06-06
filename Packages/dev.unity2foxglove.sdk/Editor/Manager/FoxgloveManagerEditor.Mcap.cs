@@ -69,7 +69,6 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             DrawRemoteFileAccessSection(replayPath);
-            DrawCursorBridgeSection();
         }
 
         private void DrawRemoteFileAccessSection(SerializedProperty replayPath)
@@ -79,7 +78,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUI.indentLevel++;
             EditorGUILayout.HelpBox(
-                "Serves the selected Replay File Path as a Foxglove Remote files URL. Use the direct .mcap URL below; /v1/manifest is only a backend diagnostic endpoint.",
+                "Serves the selected Replay File Path as a Foxglove Remote files URL. This only opens recorded data in Foxglove; it does not synchronize Unity and Foxglove playback time.",
                 MessageType.Info);
 
             DrawProperty("_enableRemoteMcapFileServer", "Enable Remote File URL");
@@ -112,32 +111,6 @@ namespace Unity.FoxgloveSDK.Editor
 
                     if (GUILayout.Button("Copy Manifest URL"))
                         EditorGUIUtility.systemCopyBuffer = BuildRemoteMcapBaseUrl() + "/v1/manifest";
-                }
-            }
-
-            EditorGUI.indentLevel--;
-        }
-
-        private void DrawCursorBridgeSection()
-        {
-            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Cursor Bridge (Advanced)", ref _cursorBridgeAdvancedExpanded))
-                return;
-
-            EditorGUI.indentLevel++;
-            EditorGUILayout.HelpBox(
-                "Optional loopback endpoint for a Foxglove extension that forwards timeline cursor metadata to Unity replay. It is disabled by default and is separate from Remote Data Loader /v1/data requests.",
-                MessageType.Info);
-            DrawProperty("_enableReplayCursorBridge", "Enable Cursor Bridge");
-            using (new EditorGUI.DisabledScope(!GetBool("_enableReplayCursorBridge")))
-            {
-                DrawProperty("_replayCursorBridgeHost", "Host");
-                DrawProperty("_replayCursorBridgePort", "Port");
-                DrawPasswordProperty("_replayCursorBridgeToken", "Bearer Token");
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    EditorGUILayout.TextField(
-                        "Endpoint",
-                        $"http://{GetString("_replayCursorBridgeHost", "127.0.0.1")}:{GetInt("_replayCursorBridgePort", 8892)}/v1/replay-cursor");
                 }
             }
 
