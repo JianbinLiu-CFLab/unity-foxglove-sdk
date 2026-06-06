@@ -186,17 +186,31 @@ Foxglove acceptance, use the backend's direct `.mcap` file URL. This is the path
 for inspecting continuous Plot curves and 3D/image panels from recorded file
 data.
 
-Start a local backend for a known recording:
+In Unity, the product entry point is the Manager Inspector:
+
+1. Select `FoxgloveManager`.
+2. Expand `MCAP Record & Replay`.
+3. Set `Replay File Path` to the recording.
+4. Expand `Remote File Access`.
+5. Enable `Remote File URL` and use `Copy Remote URL` or `Open in Foxglove`.
+
+The copied/opened URL is the direct file route:
+
+```text
+http://127.0.0.1:8891/v1/files/local-mcap.mcap
+```
+
+The Inspector first tries a `foxglove` executable on `PATH`, then the installed
+Foxglove Desktop executable, and finally falls back to copying/opening the URL.
+The separate command-line server remains useful for script debugging or when
+Unity is not running:
 
 ```powershell
 dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase139b-remote-data-loader-server --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --port 8891
 ```
 
-Then connect Foxglove through **Open connection -> Remote files** using:
-
-```text
-http://127.0.0.1:8891/v1/files/local-mcap.mcap
-```
+When connecting manually, use **Open connection -> Remote files** and paste the
+same direct `.mcap` URL.
 
 Do not paste `/v1/manifest` into the stock Remote files dialog. That dialog
 validates that the URL must end with a filename and extension, so the manifest

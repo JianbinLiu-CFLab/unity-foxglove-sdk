@@ -6,6 +6,7 @@
 
 using System.IO;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 
@@ -18,6 +19,13 @@ namespace Unity.FoxgloveSDK.Components
         private string _replayCursorEndpointKnownHost;
         private int _replayCursorEndpointKnownPort;
         private string _replayCursorEndpointKnownToken;
+        private RemoteMcapHttpServer _remoteMcapFileServer;
+        private bool _remoteMcapFileServerConfigKnown;
+        private bool _remoteMcapFileServerKnownEnabled;
+        private string _remoteMcapFileServerKnownHost;
+        private int _remoteMcapFileServerKnownPort;
+        private string _remoteMcapFileServerKnownPath;
+        private string _remoteMcapFileServerKnownSourceId;
 
         /// <summary>
         /// Transport mode used for listener operations when output is enabled.
@@ -66,6 +74,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 StartCertificateDistributorIfNeeded();
                 _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
+                StartRemoteMcapFileServerIfNeeded();
                 StartReplayCursorEndpointIfNeeded();
                 if (!PublishPendingRecordingSidecar())
                 {
@@ -76,6 +85,7 @@ namespace Unity.FoxgloveSDK.Components
             catch
             {
                 CleanupPendingRecordingSidecar();
+                StopRemoteMcapFileServer();
                 StopReplayCursorEndpoint();
                 StopCertificateDistributor();
                 throw;
@@ -208,6 +218,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!IsRunning)
             {
+                StopRemoteMcapFileServer();
                 StopReplayCursorEndpoint();
                 StopCertificateDistributor();
                 if (_runtime?.Session == null)
@@ -248,6 +259,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _runtime.Stop();
+            StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();
             StopCertificateDistributor();
             _channelCache.Clear();
@@ -263,6 +275,109 @@ namespace Unity.FoxgloveSDK.Components
         {
             _clientLifecycleEvents.Clear();
             _clientMessageEvents.Clear();
+        }
+
+        private void StartRemoteMcapFileServerIfNeeded()
+        {
+            if (!_enableRemoteMcapFileServer || !_enableReplay || string.IsNullOrWhiteSpace(_replayFilePath))
+            {
+                StopRemoteMcapFileServer();
+                RememberRemoteMcapFileServerConfig(null);
+                return;
+            }
+
+            var path = ResolveProjectPath(_replayFilePath);
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                StopRemoteMcapFileServer();
+                RememberRemoteMcapFileServerConfig(path);
+                return;
+            }
+
+            var options = BuildRemoteMcapFileServerOptions(path);
+            try
+            {
+                _remoteMcapFileServer?.Dispose();
+                _remoteMcapFileServer = RemoteMcapHttpServer.Start(options);
+                Debug.Log("[Foxglove] Remote MCAP file URL ready: " + BuildRemoteMcapFileUrl(options));
+            }
+            catch (System.Exception ex)
+            {
+                StopRemoteMcapFileServer();
+                Debug.LogWarning("[Foxglove] Remote MCAP file URL disabled: " + ex.Message);
+            }
+
+            RememberRemoteMcapFileServerConfig(path);
+        }
+
+        private void RefreshRemoteMcapFileServerIfNeeded()
+        {
+            if (!IsRunning)
+            {
+                if (_remoteMcapFileServerConfigKnown)
+                {
+                    StopRemoteMcapFileServer();
+                    ClearRemoteMcapFileServerConfig();
+                }
+
+                return;
+            }
+
+            var path = _enableReplay && !string.IsNullOrWhiteSpace(_replayFilePath)
+                ? ResolveProjectPath(_replayFilePath)
+                : null;
+            if (_remoteMcapFileServerConfigKnown
+                && _remoteMcapFileServerKnownEnabled == _enableRemoteMcapFileServer
+                && string.Equals(_remoteMcapFileServerKnownHost, _remoteMcapFileServerHost, System.StringComparison.Ordinal)
+                && _remoteMcapFileServerKnownPort == _remoteMcapFileServerPort
+                && string.Equals(_remoteMcapFileServerKnownPath, path, System.StringComparison.Ordinal)
+                && string.Equals(_remoteMcapFileServerKnownSourceId, _remoteMcapFileServerSourceId, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            StartRemoteMcapFileServerIfNeeded();
+        }
+
+        private RemoteMcapHttpOptions BuildRemoteMcapFileServerOptions(string resolvedPath)
+        {
+            return new RemoteMcapHttpOptions
+            {
+                Host = string.IsNullOrWhiteSpace(_remoteMcapFileServerHost) ? "127.0.0.1" : _remoteMcapFileServerHost.Trim(),
+                Port = _remoteMcapFileServerPort,
+                McapPath = resolvedPath,
+                SourceId = string.IsNullOrWhiteSpace(_remoteMcapFileServerSourceId) ? "local-mcap" : _remoteMcapFileServerSourceId.Trim(),
+                ManifestName = Path.GetFileName(resolvedPath)
+            };
+        }
+
+        private static string BuildRemoteMcapFileUrl(RemoteMcapHttpOptions options)
+            => options.BaseUrl + options.DirectFileRoute;
+
+        private void RememberRemoteMcapFileServerConfig(string resolvedPath)
+        {
+            _remoteMcapFileServerConfigKnown = true;
+            _remoteMcapFileServerKnownEnabled = _enableRemoteMcapFileServer;
+            _remoteMcapFileServerKnownHost = _remoteMcapFileServerHost;
+            _remoteMcapFileServerKnownPort = _remoteMcapFileServerPort;
+            _remoteMcapFileServerKnownPath = resolvedPath;
+            _remoteMcapFileServerKnownSourceId = _remoteMcapFileServerSourceId;
+        }
+
+        private void ClearRemoteMcapFileServerConfig()
+        {
+            _remoteMcapFileServerConfigKnown = false;
+            _remoteMcapFileServerKnownEnabled = false;
+            _remoteMcapFileServerKnownHost = null;
+            _remoteMcapFileServerKnownPort = 0;
+            _remoteMcapFileServerKnownPath = null;
+            _remoteMcapFileServerKnownSourceId = null;
+        }
+
+        private void StopRemoteMcapFileServer()
+        {
+            _remoteMcapFileServer?.Dispose();
+            _remoteMcapFileServer = null;
         }
 
         private void StartReplayCursorEndpointIfNeeded()

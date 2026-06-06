@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifySmokeScriptContract();
             VerifyWorkflowDocumentation();
+            VerifyManagerInspectorRemoteFileAccess();
             VerifyValidationWiring();
 
             Console.WriteLine($"Phase 139C: {_passed} checks passed.");
@@ -78,17 +79,40 @@ namespace Unity.FoxgloveSDK.Tests
                 "139C-2D: documentation separates DataLoader analysis from Unity cursor sync");
         }
 
+        private static void VerifyManagerInspectorRemoteFileAccess()
+        {
+            var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var server = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
+
+            Check(manager.Contains("_enableRemoteMcapFileServer", StringComparison.Ordinal)
+                  && manager.Contains("_remoteMcapFileServerPort = 8891", StringComparison.Ordinal),
+                "139C-3A: manager owns built-in Remote files server settings");
+            Check(server.Contains("RemoteMcapHttpServer.Start", StringComparison.Ordinal)
+                  && server.Contains("StopRemoteMcapFileServer", StringComparison.Ordinal)
+                  && server.Contains("BuildRemoteMcapFileUrl", StringComparison.Ordinal),
+                "139C-3B: manager lifecycle starts and stops the Remote files server");
+            Check(editor.Contains("Remote File Access", StringComparison.Ordinal)
+                  && editor.Contains("Copy Remote URL", StringComparison.Ordinal)
+                  && editor.Contains("Open in Foxglove", StringComparison.Ordinal)
+                  && editor.Contains("/v1/files/", StringComparison.Ordinal),
+                "139C-3C: manager Inspector exposes copy/open controls for the direct MCAP URL");
+            Check(editor.Contains("Foxglove.exe", StringComparison.Ordinal)
+                  || editor.Contains("foxglove", StringComparison.Ordinal),
+                "139C-3D: manager Inspector can open Foxglove without requiring a separate Tools workflow");
+        }
+
         private static void VerifyValidationWiring()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
             Check(registry.Contains("Ci(\"--phase139c\"", StringComparison.Ordinal),
-                "139C-3A: registry wires --phase139c");
+                "139C-4A: registry wires --phase139c");
             Check(registry.Contains("Phase139CValidation.Validate", StringComparison.Ordinal),
-                "139C-3B: registry points Phase139C at the validation entrypoint");
+                "139C-4B: registry points Phase139C at the validation entrypoint");
             Check(project.Contains("Phase139CValidation.cs", StringComparison.Ordinal),
-                "139C-3C: test project compiles Phase139CValidation");
+                "139C-4C: test project compiles Phase139CValidation");
         }
 
         private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));

@@ -68,7 +68,54 @@ namespace Unity.FoxgloveSDK.Editor
                 _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
             }
 
+            DrawRemoteFileAccessSection(replayPath);
             DrawCursorBridgeSection();
+        }
+
+        private void DrawRemoteFileAccessSection(SerializedProperty replayPath)
+        {
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Remote File Access", ref _remoteFileAccessExpanded))
+                return;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox(
+                "Serves the selected Replay File Path as a Foxglove Remote files URL. Use the direct .mcap URL below; /v1/manifest is only a backend diagnostic endpoint.",
+                MessageType.Info);
+
+            DrawProperty("_enableRemoteMcapFileServer", "Enable Remote File URL");
+            using (new EditorGUI.DisabledScope(!GetBool("_enableRemoteMcapFileServer")))
+            {
+                DrawProperty("_remoteMcapFileServerHost", "Host");
+                DrawProperty("_remoteMcapFileServerPort", "Port");
+
+                var remoteUrl = BuildRemoteMcapDirectFileUrl();
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.TextField("Remote MCAP URL", remoteUrl);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Copy Remote URL"))
+                        EditorGUIUtility.systemCopyBuffer = remoteUrl;
+
+                    if (GUILayout.Button("Open in Foxglove"))
+                        OpenFoxgloveTarget(remoteUrl);
+                }
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var localPath = replayPath == null ? string.Empty : ResolveProjectPath(replayPath.stringValue);
+                    using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath)))
+                    {
+                        if (GUILayout.Button("Open Local MCAP"))
+                            OpenFoxgloveTarget(localPath);
+                    }
+
+                    if (GUILayout.Button("Copy Manifest URL"))
+                        EditorGUIUtility.systemCopyBuffer = BuildRemoteMcapBaseUrl() + "/v1/manifest";
+                }
+            }
+
+            EditorGUI.indentLevel--;
         }
 
         private void DrawCursorBridgeSection()
@@ -96,6 +143,105 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUI.indentLevel--;
         }
+
+        private string BuildRemoteMcapBaseUrl()
+        {
+            var host = GetString("_remoteMcapFileServerHost", "127.0.0.1");
+            if (string.IsNullOrWhiteSpace(host))
+                host = "127.0.0.1";
+
+            return "http://" + host.Trim() + ":" + GetInt("_remoteMcapFileServerPort", 8891).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private string BuildRemoteMcapDirectFileUrl()
+        {
+            var sourceId = GetString("_remoteMcapFileServerSourceId", "local-mcap");
+            if (string.IsNullOrWhiteSpace(sourceId))
+                sourceId = "local-mcap";
+
+            return BuildRemoteMcapBaseUrl() + "/v1/files/" + System.Uri.EscapeDataString(sourceId.Trim()) + ".mcap";
+        }
+
+        private static void OpenFoxgloveTarget(string targetArg)
+        {
+            if (string.IsNullOrWhiteSpace(targetArg))
+                return;
+
+            var cli = FindExecutableOnPath("foxglove");
+            if (!string.IsNullOrEmpty(cli) && StartProcess(cli, targetArg))
+                return;
+
+            var desktop = FindFoxgloveDesktopExecutable();
+            if (!string.IsNullOrEmpty(desktop) && StartProcess(desktop, targetArg))
+                return;
+
+            EditorGUIUtility.systemCopyBuffer = targetArg;
+            Application.OpenURL(targetArg);
+        }
+
+        private static bool StartProcess(string executable, string argument)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = executable,
+                    Arguments = QuoteProcessArgument(argument),
+                    UseShellExecute = false
+                });
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("[Foxglove] Failed to open Foxglove target with " + executable + ": " + ex.Message);
+                return false;
+            }
+        }
+
+        private static string FindFoxgloveDesktopExecutable()
+        {
+            if (Application.platform != RuntimePlatform.WindowsEditor)
+                return string.Empty;
+
+            var localAppData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
+            var programFiles = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles);
+            var candidates = new[]
+            {
+                Path.Combine(localAppData, "Programs", "foxglove", "Foxglove.exe"),
+                Path.Combine(programFiles, "Foxglove", "Foxglove.exe")
+            };
+            foreach (var candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+
+            return string.Empty;
+        }
+
+        private static string FindExecutableOnPath(string executableName)
+        {
+            var path = System.Environment.GetEnvironmentVariable("PATH");
+            if (string.IsNullOrEmpty(path))
+                return string.Empty;
+
+            foreach (var directory in path.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrWhiteSpace(directory))
+                    continue;
+
+                var candidate = Path.Combine(directory.Trim(), executableName);
+                if (File.Exists(candidate))
+                    return candidate;
+                if (Application.platform == RuntimePlatform.WindowsEditor && File.Exists(candidate + ".exe"))
+                    return candidate + ".exe";
+            }
+
+            return string.Empty;
+        }
+
+        private static string QuoteProcessArgument(string value)
+            => "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
 
         private void DrawSchemaEvidenceSection()
         {
