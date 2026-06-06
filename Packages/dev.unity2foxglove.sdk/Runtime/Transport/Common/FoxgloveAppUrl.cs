@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Transport
     public static class FoxgloveAppUrl
     {
         public const string HostedWebBaseUrl = "https://app.foxglove.dev";
+        public const string DesktopOpenScheme = "foxglove://open";
 
         public static string BuildHostedWebSocketUrl(
             string host,
@@ -37,6 +38,15 @@ namespace Unity.FoxgloveSDK.Transport
             if (openInDesktop)
                 sb.Append("&openIn=desktop");
 
+            return sb.ToString();
+        }
+
+        public static string BuildRemoteFileDesktopUrl(string fileUrl)
+        {
+            var normalized = string.IsNullOrWhiteSpace(fileUrl) ? string.Empty : fileUrl.Trim();
+            var sb = new StringBuilder(DesktopOpenScheme);
+            sb.Append("?ds=remote-file");
+            sb.Append("&ds.url=").Append(Uri.EscapeDataString(normalized));
             return sb.ToString();
         }
 

@@ -59,6 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestClientConnectedExceptionDisconnectsRegisteredClient();
             TestManagedBackendStopDisposesCancellationSource();
             TestHostedFoxgloveWebUrlMatchesOfficialSdk();
+            TestRemoteFileDesktopUrlMatchesFoxgloveShareableLinks();
             TestManagerDefaultsAllowFoxgloveWebOrigin();
             TestCertificateDistributorServesRootAndFingerprint();
             TestCertificateDistributorIgnoresIdleClientTimeout();
@@ -494,6 +495,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(secureDocs.Contains("official Foxglove SDK")
                   && secureDocs.Contains("WSS is not required for hosted Foxglove Web on local loopback"),
                 "52A-5e: WSS docs explain official SDK plain loopback Web behavior");
+        }
+
+        private static void TestRemoteFileDesktopUrlMatchesFoxgloveShareableLinks()
+        {
+            var remoteFile = FoxgloveAppUrl.BuildRemoteFileDesktopUrl("http://127.0.0.1:8891/v1/files/local-mcap.mcap");
+            Check(remoteFile == "foxglove://open?ds=remote-file&ds.url=http%3A%2F%2F127.0.0.1%3A8891%2Fv1%2Ffiles%2Flocal-mcap.mcap",
+                "52A-5f: remote file desktop URL uses Foxglove shareable link remote-file datasource");
+
+            var withSpace = FoxgloveAppUrl.BuildRemoteFileDesktopUrl("http://127.0.0.1:8891/v1/files/my run.mcap");
+            Check(withSpace.Contains("my%20run.mcap"),
+                "52A-5g: remote file desktop URL escapes the MCAP URL for ds.url");
         }
 
         private static void TestCertificateDistributorServesRootAndFingerprint()

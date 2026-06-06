@@ -147,108 +147,16 @@ namespace Unity.FoxgloveSDK.Editor
             return BuildRemoteMcapBaseUrl() + "/v1/files/" + System.Uri.EscapeDataString(sourceId.Trim()) + ".mcap";
         }
 
-        private static void OpenFoxgloveTarget(string targetArg)
+        private static void OpenFoxgloveTarget(string remoteUrl)
         {
-            if (string.IsNullOrWhiteSpace(targetArg))
+            if (string.IsNullOrWhiteSpace(remoteUrl))
                 return;
 
-            var cli = FindFoxgloveCliExecutable();
-            if (!string.IsNullOrEmpty(cli) && StartProcess(cli, targetArg))
-                return;
-
-            var desktop = FindFoxgloveDesktopExecutable();
-            if (!string.IsNullOrEmpty(desktop) && StartProcess(desktop, targetArg))
-                return;
-
-            EditorGUIUtility.systemCopyBuffer = targetArg;
-            Application.OpenURL(targetArg);
+            EditorGUIUtility.systemCopyBuffer = remoteUrl;
+            var foxgloveUrl = FoxgloveAppUrl.BuildRemoteFileDesktopUrl(remoteUrl);
+            Application.OpenURL(foxgloveUrl);
+            Debug.Log("[Foxglove] Opening Remote files URL in Foxglove Desktop: " + remoteUrl);
         }
-
-        private static bool StartProcess(string executable, string argument)
-        {
-            try
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = executable,
-                    Arguments = QuoteProcessArgument(argument),
-                    UseShellExecute = false
-                });
-                return true;
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogWarning("[Foxglove] Failed to open Foxglove target with " + executable + ": " + ex.Message);
-                return false;
-            }
-        }
-
-        private static string FindFoxgloveDesktopExecutable()
-        {
-            if (Application.platform != RuntimePlatform.WindowsEditor)
-                return string.Empty;
-
-            var localAppData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-            var programFiles = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles);
-            var candidates = new[]
-            {
-                Path.Combine(localAppData, "Programs", "foxglove", "Foxglove.exe"),
-                Path.Combine(programFiles, "Foxglove", "Foxglove.exe")
-            };
-            foreach (var candidate in candidates)
-            {
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-
-            return string.Empty;
-        }
-
-        private static string FindFoxgloveCliExecutable()
-        {
-            var pathCandidate = FindExecutableOnPath("foxglove");
-            if (!string.IsNullOrEmpty(pathCandidate))
-                return pathCandidate;
-
-            if (Application.platform != RuntimePlatform.WindowsEditor)
-                return string.Empty;
-
-            var goPath = System.Environment.GetEnvironmentVariable("GOPATH");
-            if (!string.IsNullOrWhiteSpace(goPath))
-            {
-                var goPathCandidate = Path.Combine(goPath.Trim(), "bin", "foxglove.exe");
-                if (File.Exists(goPathCandidate))
-                    return goPathCandidate;
-            }
-
-            var userProfile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
-            var goBinCandidate = Path.Combine(userProfile, "go", "bin", "foxglove.exe");
-            return File.Exists(goBinCandidate) ? goBinCandidate : string.Empty;
-        }
-
-        private static string FindExecutableOnPath(string executableName)
-        {
-            var path = System.Environment.GetEnvironmentVariable("PATH");
-            if (string.IsNullOrEmpty(path))
-                return string.Empty;
-
-            foreach (var directory in path.Split(Path.PathSeparator))
-            {
-                if (string.IsNullOrWhiteSpace(directory))
-                    continue;
-
-                var candidate = Path.Combine(directory.Trim(), executableName);
-                if (File.Exists(candidate))
-                    return candidate;
-                if (Application.platform == RuntimePlatform.WindowsEditor && File.Exists(candidate + ".exe"))
-                    return candidate + ".exe";
-            }
-
-            return string.Empty;
-        }
-
-        private static string QuoteProcessArgument(string value)
-            => "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
 
         private void DrawSchemaEvidenceSection()
         {

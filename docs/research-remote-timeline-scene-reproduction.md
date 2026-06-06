@@ -195,11 +195,15 @@ In Unity, the product entry point is the Manager Inspector:
 5. Enable `Foxglove as Replay Timeline` and use `Copy Foxglove URL` or
    `Open in Foxglove`.
 
-The copied/opened URL is the direct file route:
+The copied URL is the direct file route:
 
 ```text
 http://127.0.0.1:8891/v1/files/local-mcap.mcap
 ```
+
+`Open in Foxglove` opens a Foxglove Desktop shareable link with
+`ds=remote-file` and `ds.url=<direct-mcap-url>`, so the Remote files data
+source is selected without manually pasting the URL.
 
 Foxglove Timeline Replay opens recorded data in Foxglove and makes Foxglove the
 owner of replay time for this workflow. Unity remains a scene reproduction

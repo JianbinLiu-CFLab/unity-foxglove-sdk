@@ -114,11 +114,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("Foxglove.exe", StringComparison.Ordinal)
                   || editor.Contains("foxglove", StringComparison.Ordinal),
                 "139C-3D: manager Inspector can open Foxglove without requiring a separate Tools workflow");
-            Check(editor.Contains("SpecialFolder.UserProfile", StringComparison.Ordinal)
-                  && editor.Contains("go", StringComparison.Ordinal)
-                  && editor.Contains("bin", StringComparison.Ordinal)
-                  && editor.Contains("foxglove.exe", StringComparison.Ordinal),
-                "139C-3E: manager Inspector discovers Go-installed foxglove-cli without requiring PATH changes");
+            Check(editor.Contains("BuildRemoteFileDesktopUrl(remoteUrl)", StringComparison.Ordinal)
+                  && editor.Contains("Application.OpenURL(foxgloveUrl)", StringComparison.Ordinal)
+                  && !editor.Contains("FindFoxgloveCliExecutable", StringComparison.Ordinal),
+                "139C-3D2: Open in Foxglove uses a remote-file deeplink instead of the data-platform CLI");
 
             var setup = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
             Check(setup.Contains("_replayAutoPlay && !_enableRemoteMcapFileServer", StringComparison.Ordinal)
