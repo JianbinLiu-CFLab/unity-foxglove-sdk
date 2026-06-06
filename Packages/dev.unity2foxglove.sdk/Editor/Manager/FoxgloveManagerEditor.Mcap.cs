@@ -167,7 +167,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(targetArg))
                 return;
 
-            var cli = FindExecutableOnPath("foxglove");
+            var cli = FindFoxgloveCliExecutable();
             if (!string.IsNullOrEmpty(cli) && StartProcess(cli, targetArg))
                 return;
 
@@ -217,6 +217,28 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return string.Empty;
+        }
+
+        private static string FindFoxgloveCliExecutable()
+        {
+            var pathCandidate = FindExecutableOnPath("foxglove");
+            if (!string.IsNullOrEmpty(pathCandidate))
+                return pathCandidate;
+
+            if (Application.platform != RuntimePlatform.WindowsEditor)
+                return string.Empty;
+
+            var goPath = System.Environment.GetEnvironmentVariable("GOPATH");
+            if (!string.IsNullOrWhiteSpace(goPath))
+            {
+                var goPathCandidate = Path.Combine(goPath.Trim(), "bin", "foxglove.exe");
+                if (File.Exists(goPathCandidate))
+                    return goPathCandidate;
+            }
+
+            var userProfile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+            var goBinCandidate = Path.Combine(userProfile, "go", "bin", "foxglove.exe");
+            return File.Exists(goBinCandidate) ? goBinCandidate : string.Empty;
         }
 
         private static string FindExecutableOnPath(string executableName)

@@ -100,6 +100,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("Foxglove.exe", StringComparison.Ordinal)
                   || editor.Contains("foxglove", StringComparison.Ordinal),
                 "139C-3D: manager Inspector can open Foxglove without requiring a separate Tools workflow");
+            Check(editor.Contains("SpecialFolder.UserProfile", StringComparison.Ordinal)
+                  && editor.Contains("go", StringComparison.Ordinal)
+                  && editor.Contains("bin", StringComparison.Ordinal)
+                  && editor.Contains("foxglove.exe", StringComparison.Ordinal),
+                "139C-3E: manager Inspector discovers Go-installed foxglove-cli without requiring PATH changes");
         }
 
         private static void VerifyValidationWiring()
