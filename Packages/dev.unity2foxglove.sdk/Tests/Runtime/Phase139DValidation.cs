@@ -46,12 +46,22 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCursorRequestContract()
         {
-            var json = "{\"source\":\"foxglove-unity-cursor-bridge\",\"sequence\":7,\"mode\":\"seek\",\"time\":{\"sec\":12,\"nsec\":345}}";
+            var json = "{\"source\":\"foxglove-unity-cursor-bridge\",\"sequence\":7,\"mode\":\"seek\",\"didSeek\":true,\"time\":{\"sec\":12,\"nsec\":345}}";
             Check(ReplayCursorRequest.TryParseJson(json, out var request, out _)
                   && request.TimeNs == 12_000_000_345UL
                   && request.Sequence == 7
+                  && request.DidSeek
                   && request.Source == "foxglove-unity-cursor-bridge",
-                "139D-2A: cursor request parses explicit split sec/nsec payload");
+                "139D-2A: cursor request parses explicit split sec/nsec payload and seek flag");
+
+            Check(ReplayCursorRequest.TryParseJson(
+                      "{\"source\":\"foxglove-unity-cursor-bridge\",\"sequence\":8,\"mode\":\"advance\",\"didSeek\":false,\"time\":{\"sec\":13,\"nsec\":0}}",
+                      out var advanceRequest,
+                      out _)
+                  && advanceRequest.TimeNs == 13_000_000_000UL
+                  && !advanceRequest.DidSeek
+                  && advanceRequest.Mode == "advance",
+                "139D-2A2: cursor request distinguishes smooth playback advance from seek");
 
             Check(!ReplayCursorRequest.TryParseJson("{\"time\":{\"sec\":1,\"nsec\":1000000000}}", out _, out _),
                 "139D-2B: cursor request rejects out-of-range nanoseconds");
@@ -194,8 +204,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "139D-1C: extension watches timeline bounds and seek state");
             Check(source.Contains("sec: currentTime.sec", StringComparison.Ordinal)
                   && source.Contains("nsec: currentTime.nsec", StringComparison.Ordinal)
+                  && source.Contains("renderState.didSeek === true ? \"seek\" : \"advance\"", StringComparison.Ordinal)
                   && source.Contains("fetch(endpoint", StringComparison.Ordinal),
-                "139D-1D: extension sends split sec/nsec cursor metadata to loopback");
+                "139D-1D: extension sends split sec/nsec cursor metadata and seek/advance mode to loopback");
             Check(!source.Contains("/v1/data", StringComparison.Ordinal),
                 "139D-1E: extension does not infer cursor state from Remote Data Loader ranges");
             Check(readme.Contains("sync switch is enabled by default", StringComparison.OrdinalIgnoreCase)
@@ -278,8 +289,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtime.Contains("GetPlaybackState", StringComparison.Ordinal),
                 "139D-7B: runtime exposes replay cursor state for the endpoint");
             Check(coordinator.Contains("TryDrainLatest", StringComparison.Ordinal)
-                  && coordinator.Contains("QueueReplaySceneSnapshot", StringComparison.Ordinal),
-                "139D-7C: runtime tick drains external cursors into replay scene snapshots");
+                  && coordinator.Contains("ReplayAdvanceToExternalCursor", StringComparison.Ordinal)
+                  && coordinator.Contains("ShouldTreatExternalCursorAsSeek", StringComparison.Ordinal)
+                  && coordinator.Contains("cursor.DidSeek", StringComparison.Ordinal)
+                  && coordinator.Contains("ApplyTickToScene", StringComparison.Ordinal)
+                  && !coordinator.Contains("replay.Tick(session, timeNs", StringComparison.Ordinal)
+                  && !coordinator.Contains("replay.Seek(cursor.TimeNs);\r\n                        QueueReplaySceneSnapshot(cursor.TimeNs);", StringComparison.Ordinal)
+                  && !coordinator.Contains("replay.Seek(cursor.TimeNs);\n                        QueueReplaySceneSnapshot(cursor.TimeNs);", StringComparison.Ordinal),
+                "139D-7C: runtime tick treats normal external cursors as scene-only smooth replay advances, not WebSocket snapshots");
+
+            var replayController = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var sceneOnlyAdvance = ExtractMethodBody(replayController, "public void ApplyTickToScene(ulong timeNs, bool deferCallbacks)");
+            Check(sceneOnlyAdvance.Contains("_replayEngine.Tick(timeNs, _replayTickBuffer)", StringComparison.Ordinal)
+                  && sceneOnlyAdvance.Contains("ForwardReplayMessageToScene", StringComparison.Ordinal)
+                  && sceneOnlyAdvance.Contains("FireReplayBatchCompleted", StringComparison.Ordinal)
+                  && !sceneOnlyAdvance.Contains("PublishMessages", StringComparison.Ordinal)
+                  && !sceneOnlyAdvance.Contains("PublishReplay", StringComparison.Ordinal),
+                "139D-7C2: scene-only cursor advance avoids replay MessageData publication back to Foxglove");
             Check(manager.Contains("_enableReplayCursorBridge", StringComparison.Ordinal)
                   && manager.Contains("false", StringComparison.Ordinal),
                 "139D-7D: manager exposes a disabled-by-default cursor bridge setting");
@@ -312,6 +338,31 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+
+        private static string ExtractMethodBody(string source, string signature)
+        {
+            var start = source.IndexOf(signature, StringComparison.Ordinal);
+            if (start < 0)
+                return string.Empty;
+            var brace = source.IndexOf('{', start);
+            if (brace < 0)
+                return string.Empty;
+
+            var depth = 0;
+            for (var i = brace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(brace, i - brace + 1);
+                }
+            }
+
+            return string.Empty;
+        }
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));

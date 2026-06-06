@@ -166,7 +166,10 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Cursor operation mode. Phase139D accepts seek metadata.</summary>
         public string Mode { get; }
 
-        private ReplayCursorRequest(string source, long sequence, long sec, int nsec, ulong timeNs, string mode)
+        /// <summary>Whether the cursor represents an explicit Foxglove seek/scrub operation.</summary>
+        public bool DidSeek { get; }
+
+        private ReplayCursorRequest(string source, long sequence, long sec, int nsec, ulong timeNs, string mode, bool didSeek)
         {
             Source = source ?? string.Empty;
             Sequence = sequence;
@@ -174,14 +177,15 @@ namespace Unity.FoxgloveSDK.Core
             Nsec = nsec;
             TimeNs = timeNs;
             Mode = string.IsNullOrWhiteSpace(mode) ? "seek" : mode;
+            DidSeek = didSeek;
         }
 
         /// <summary>Create a request for runtime tests without JSON parsing.</summary>
-        public static ReplayCursorRequest CreateForTests(ulong timeNs, string source, long sequence)
+        public static ReplayCursorRequest CreateForTests(ulong timeNs, string source, long sequence, bool didSeek = true)
         {
             var sec = (long)(timeNs / NanosecondsPerSecond);
             var nsec = (int)(timeNs % NanosecondsPerSecond);
-            return new ReplayCursorRequest(source, sequence, sec, nsec, timeNs, "seek");
+            return new ReplayCursorRequest(source, sequence, sec, nsec, timeNs, didSeek ? "seek" : "advance", didSeek);
         }
 
         /// <summary>
@@ -240,6 +244,9 @@ namespace Unity.FoxgloveSDK.Core
 
                 var source = (string)root["source"] ?? string.Empty;
                 var mode = (string)root["mode"] ?? "seek";
+                var didSeek = TryReadBool(root["didSeek"], out var parsedDidSeek)
+                    ? parsedDidSeek
+                    : !string.Equals(mode, "advance", StringComparison.OrdinalIgnoreCase);
                 TryReadInt64(root["sequence"], out var sequence);
                 request = new ReplayCursorRequest(
                     source,
@@ -247,7 +254,8 @@ namespace Unity.FoxgloveSDK.Core
                     sec,
                     nsec,
                     secAsUlong * NanosecondsPerSecond + (ulong)nsec,
-                    mode);
+                    mode,
+                    didSeek);
                 return true;
             }
             catch (Exception ex)
@@ -276,12 +284,31 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        private static bool TryReadBool(JToken token, out bool value)
+        {
+            value = false;
+            if (token == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = token.Value<bool>();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         /// <summary>Return a copy with a clamped nanosecond timestamp.</summary>
         internal ReplayCursorRequest WithTimeNs(ulong timeNs)
         {
             var sec = (long)(timeNs / NanosecondsPerSecond);
             var nsec = (int)(timeNs % NanosecondsPerSecond);
-            return new ReplayCursorRequest(Source, Sequence, sec, nsec, timeNs, Mode);
+            return new ReplayCursorRequest(Source, Sequence, sec, nsec, timeNs, Mode, DidSeek);
         }
     }
 }

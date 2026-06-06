@@ -11,13 +11,19 @@ import {
 } from "@foxglove/extension";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8892/v1/replay-cursor";
-const DEFAULT_MAX_HZ = 20;
+// Forward cursor sync rate. Matched to the typical render rate so Unity receives a
+// fresh playback cursor (and advances its scene) roughly every frame instead of
+// every 50 ms. 20 Hz made Unity look choppy while Foxglove played smoothly; the
+// per-cursor work is cheap scene-only advance, so render-rate sync is affordable.
+// This is a clock-sync cadence, not a data-sampling rate: Unity still processes
+// every replay message in (lastCursor, currentCursor], so 100 Hz+ topics stay intact.
+const DEFAULT_MAX_HZ = 60;
 
 type CursorPayload = {
   source: "foxglove-unity-cursor-bridge";
   sequence: number;
   time: { sec: number; nsec: number };
-  mode: "seek";
+  mode: "seek" | "advance";
   didSeek: boolean;
   startTime?: { sec: number; nsec: number };
   endTime?: { sec: number; nsec: number };
@@ -100,7 +106,7 @@ function buildPayload(renderState: CursorRenderState, sequence: number): CursorP
     source: "foxglove-unity-cursor-bridge",
     sequence,
     time: { sec: currentTime.sec, nsec: currentTime.nsec },
-    mode: "seek",
+    mode: renderState.didSeek === true ? "seek" : "advance",
     didSeek: renderState.didSeek === true,
     startTime: cloneTime(renderState.startTime),
     endTime: cloneTime(renderState.endTime),

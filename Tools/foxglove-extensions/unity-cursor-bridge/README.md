@@ -91,7 +91,9 @@ Expected Unity evidence:
 [Foxglove] Replay cursor bridge received cursor from foxglove-unity-cursor-bridge ...
 ```
 
-Unity should seek its replay scene toward the Foxglove playhead.
+Unity should follow the Foxglove playhead. Normal playback advances replay
+incrementally; explicit seeks or scrubs refresh the scene from a latest-at
+snapshot.
 
 ## Endpoint And Security
 
@@ -110,7 +112,8 @@ only:
   "source": "foxglove-unity-cursor-bridge",
   "sequence": 1,
   "time": { "sec": 1780671016, "nsec": 434472071 },
-  "mode": "seek"
+  "mode": "advance",
+  "didSeek": false
 }
 ```
 

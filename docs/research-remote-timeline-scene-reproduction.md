@@ -269,7 +269,7 @@ MCAP -> Phase139B HTTP backend -> Foxglove Remote files
 The control path is intentionally separate:
 
 ```text
-Foxglove extension currentTime -> bounded loopback cursor message -> Unity replay seek
+Foxglove extension currentTime -> bounded loopback cursor message -> Unity replay advance or seek
 ```
 
 Do not infer Unity cursor state from `/v1/data`. Those requests are Remote Data
@@ -279,9 +279,9 @@ independent from the visible playhead.
 The Phase139D extension scaffold follows the Foxglove panel extension contract:
 call `context.watch("currentTime")` and read `renderState.currentTime` from
 `context.onRender`. It also watches `startTime`, `endTime`, and `didSeek` so a
-future Unity endpoint can distinguish timeline bounds and explicit seek events.
-Cursor time is sent as separate `{ sec, nsec }` fields to avoid JavaScript
-integer precision loss.
+Unity endpoint can distinguish timeline bounds, smooth playback advances, and
+explicit seek events. Cursor time is sent as separate `{ sec, nsec }` fields to
+avoid JavaScript integer precision loss.
 
 The prototype bridge originally explored both directions. The product path now
 keeps only the Foxglove -> Unity direction because it gives users one visible
@@ -293,8 +293,10 @@ The Foxglove panel sync switch is enabled by default because the panel has a
 single product direction: Foxglove timeline -> Unity replay. Its first target is
 a trusted local loopback endpoint, with origin/token restrictions before broader
 browser access. It must send only cursor metadata, never MCAP data, and it must
-coalesce rapid updates so Unity applies scene snapshots on the main runtime tick
-rather than on an endpoint thread.
+coalesce rapid updates so Unity handles cursor work on the main runtime tick
+rather than on an endpoint thread. During smooth playback, Unity advances replay
+incrementally through due MCAP messages; only explicit seeks, backwards motion,
+or large timeline jumps use the latest-at scene snapshot path.
 
 ## 7 Validation Evidence
 
