@@ -507,6 +507,7 @@ namespace Unity.FoxgloveSDK.Components
             DrainClientEventQueue(_clientLifecycleEvents);
             DrainClientEventQueue(_clientMessageEvents);
             ApplyLiveOutputModeWatchers();
+            RefreshReplayCursorEndpointIfNeeded();
         }
 
         private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)

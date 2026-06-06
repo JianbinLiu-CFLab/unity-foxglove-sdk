@@ -5,10 +5,139 @@
 // Purpose: Unity-free value object for external replay cursor requests.
 
 using System;
+using System.Text;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
+    /// <summary>
+    /// Read-only replay cursor state exposed to the optional Foxglove extension.
+    /// It mirrors Unity's replay clock without granting the HTTP endpoint direct
+    /// access to Unity objects or replay mutation.
+    /// </summary>
+    public readonly struct ReplayCursorState
+    {
+        private const ulong NanosecondsPerSecond = 1_000_000_000UL;
+
+        /// <summary>State returned when replay state is not available.</summary>
+        public static ReplayCursorState Unavailable(string message)
+            => new ReplayCursorState(false, false, false, false, false, 0UL, 0UL, 0UL, 1f, message);
+
+        /// <summary>Whether Unity can provide a replay cursor right now.</summary>
+        public bool Available { get; }
+
+        /// <summary>Whether MCAP replay is enabled.</summary>
+        public bool ReplayEnabled { get; }
+
+        /// <summary>Whether playback-control range mode is enabled.</summary>
+        public bool PlaybackEnabled { get; }
+
+        /// <summary>Whether Unity's replay clock is currently advancing.</summary>
+        public bool Playing { get; }
+
+        /// <summary>Whether Unity's replay clock reached the end of the range.</summary>
+        public bool Ended { get; }
+
+        /// <summary>Current replay cursor in Unix nanoseconds.</summary>
+        public ulong TimeNs { get; }
+
+        /// <summary>Start of the replay range in Unix nanoseconds.</summary>
+        public ulong StartNs { get; }
+
+        /// <summary>End of the replay range in Unix nanoseconds.</summary>
+        public ulong EndNs { get; }
+
+        /// <summary>Current replay speed multiplier.</summary>
+        public float Speed { get; }
+
+        /// <summary>Human-readable status for diagnostics.</summary>
+        public string Message { get; }
+
+        private ReplayCursorState(
+            bool available,
+            bool replayEnabled,
+            bool playbackEnabled,
+            bool playing,
+            bool ended,
+            ulong timeNs,
+            ulong startNs,
+            ulong endNs,
+            float speed,
+            string message)
+        {
+            Available = available;
+            ReplayEnabled = replayEnabled;
+            PlaybackEnabled = playbackEnabled;
+            Playing = playing;
+            Ended = ended;
+            TimeNs = timeNs;
+            StartNs = startNs;
+            EndNs = endNs;
+            Speed = speed;
+            Message = message ?? string.Empty;
+        }
+
+        /// <summary>Create a cursor state from the runtime playback clock snapshot.</summary>
+        public static ReplayCursorState FromPlayback(
+            bool replayEnabled,
+            bool playbackEnabled,
+            PlaybackClock.PlaybackStateSnapshot snapshot,
+            ulong startNs,
+            ulong endNs)
+        {
+            var available = replayEnabled && playbackEnabled;
+            return new ReplayCursorState(
+                available,
+                replayEnabled,
+                playbackEnabled,
+                snapshot.Status == 0,
+                snapshot.Status == 3,
+                snapshot.CurrentTimeNs,
+                startNs,
+                endNs,
+                snapshot.Speed,
+                available ? "Replay cursor state available." : "Replay cursor state is unavailable.");
+        }
+
+        /// <summary>Serialize this state as the loopback endpoint JSON contract.</summary>
+        public string ToJson()
+        {
+            var builder = new StringBuilder(256);
+            builder.Append('{');
+            AppendBool(builder, "available", Available).Append(',');
+            AppendBool(builder, "replayEnabled", ReplayEnabled).Append(',');
+            AppendBool(builder, "playbackEnabled", PlaybackEnabled).Append(',');
+            AppendBool(builder, "playing", Playing).Append(',');
+            AppendBool(builder, "ended", Ended).Append(',');
+            builder.Append("\"speed\":").Append(Speed.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(',');
+            AppendTime(builder, "time", TimeNs).Append(',');
+            AppendTime(builder, "startTime", StartNs).Append(',');
+            AppendTime(builder, "endTime", EndNs).Append(',');
+            builder.Append("\"message\":\"").Append(Escape(Message)).Append("\"");
+            builder.Append('}');
+            return builder.ToString();
+        }
+
+        private static StringBuilder AppendBool(StringBuilder builder, string name, bool value)
+            => builder.Append('"').Append(name).Append("\":").Append(value ? "true" : "false");
+
+        private static StringBuilder AppendTime(StringBuilder builder, string name, ulong timeNs)
+        {
+            var sec = timeNs / NanosecondsPerSecond;
+            var nsec = timeNs % NanosecondsPerSecond;
+            return builder
+                .Append('"').Append(name).Append("\":{\"sec\":")
+                .Append(sec)
+                .Append(",\"nsec\":")
+                .Append(nsec)
+                .Append('}');
+        }
+
+        private static string Escape(string value)
+            => (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
     /// <summary>
     /// External replay cursor metadata received from an optional Foxglove
     /// extension. The timestamp is intentionally transported as split

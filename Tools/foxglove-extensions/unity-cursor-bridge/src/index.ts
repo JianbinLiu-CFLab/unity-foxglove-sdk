@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tools/foxglove-extensions/unity-cursor-bridge
-// Purpose: Minimal Foxglove panel for forwarding timeline cursor metadata to Unity.
+// Purpose: Minimal Foxglove panel for bidirectional Unity replay cursor synchronization.
 
 import {
   ExtensionContext,
@@ -13,6 +13,8 @@ import {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8892/v1/replay-cursor";
 const DEFAULT_MAX_HZ = 20;
+const FOLLOW_POLL_INTERVAL_MS = 1000 / DEFAULT_MAX_HZ;
+const ECHO_SUPPRESS_MS = 250;
 
 type CursorPayload = {
   source: "foxglove-unity-cursor-bridge";
@@ -28,11 +30,29 @@ type PanelState = {
   endpoint: string;
   token: string;
   enabled: boolean;
+  followUnity: boolean;
 };
 
 type SendStatus = {
   message: string;
   ok: boolean;
+};
+
+type UnityReplayState = {
+  available: boolean;
+  replayEnabled: boolean;
+  playbackEnabled: boolean;
+  playing: boolean;
+  ended: boolean;
+  speed: number;
+  time: { sec: number; nsec: number };
+  startTime?: { sec: number; nsec: number };
+  endTime?: { sec: number; nsec: number };
+  message?: string;
+};
+
+type SeekPlaybackContext = PanelExtensionContext & {
+  seekPlayback?: (time: Time) => void | Promise<void>;
 };
 
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
@@ -67,6 +87,24 @@ async function sendCursor(endpoint: string, token: string, payload: CursorPayloa
   };
 }
 
+async function fetchUnityState(endpoint: string, token: string): Promise<UnityReplayState> {
+  const headers: Record<string, string> = {};
+  if (token.length > 0) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers,
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Unity state rejected (${response.status}): ${responseText}`);
+  }
+
+  return JSON.parse(responseText) as UnityReplayState;
+}
+
 function buildPayload(renderState: RenderState, sequence: number): CursorPayload | undefined {
   const currentTime = renderState.currentTime;
   if (currentTime == undefined) {
@@ -89,13 +127,17 @@ function initPanel(context: PanelExtensionContext): void {
     endpoint: DEFAULT_ENDPOINT,
     token: "",
     enabled: false,
+    followUnity: false,
   };
   let sequence = 0;
   let lastCursorKey = "";
+  let lastFollowedKey = "";
   let lastSentAtMs = 0;
+  let lastPollAtMs = 0;
+  let suppressForwardUntilMs = 0;
   let status: SendStatus = {
     ok: true,
-    message: "Disabled by default. Enable only while Unity replay is loaded.",
+    message: "Disabled by default. Enable a direction only while Unity replay is loaded.",
   };
 
   context.watch("currentTime");
@@ -115,6 +157,11 @@ function initPanel(context: PanelExtensionContext): void {
           <input id="enabled" type="checkbox" ${state.enabled ? "checked" : ""} />
           Forward Foxglove currentTime to Unity
         </label>
+        <br />
+        <label>
+          <input id="followUnity" type="checkbox" ${state.followUnity ? "checked" : ""} />
+          Follow Unity replay in Foxglove
+        </label>
         <p>Endpoint</p>
         <input id="endpoint" style="width: 100%" value="${state.endpoint}" />
         <p>Bearer token (optional)</p>
@@ -126,6 +173,11 @@ function initPanel(context: PanelExtensionContext): void {
       const enabled = root.querySelector<HTMLInputElement>("#enabled");
       enabled?.addEventListener("change", () => {
         state = { ...state, enabled: enabled.checked };
+      });
+
+      const followUnity = root.querySelector<HTMLInputElement>("#followUnity");
+      followUnity?.addEventListener("change", () => {
+        state = { ...state, followUnity: followUnity.checked };
       });
 
       const endpoint = root.querySelector<HTMLInputElement>("#endpoint");
@@ -140,11 +192,66 @@ function initPanel(context: PanelExtensionContext): void {
 
       context.panelElement.replaceChildren(root);
 
+      if (state.followUnity) {
+        const nowMs = Date.now();
+        if (nowMs - lastPollAtMs >= FOLLOW_POLL_INTERVAL_MS) {
+          lastPollAtMs = nowMs;
+          void fetchUnityState(state.endpoint, state.token).then(
+            async (unityState) => {
+              if (!unityState.available) {
+                status = {
+                  ok: false,
+                  message: unityState.message ?? "Unity replay cursor state is not available.",
+                };
+                return;
+              }
+
+              const key = cursorKey(unityState.time);
+              if (key === lastFollowedKey) {
+                status = {
+                  ok: true,
+                  message: `Following Unity at ${key}`,
+                };
+                return;
+              }
+
+              const seekPlayback = (context as SeekPlaybackContext).seekPlayback;
+              if (seekPlayback == undefined) {
+                status = {
+                  ok: false,
+                  message: "Foxglove extension API does not expose seekPlayback in this build.",
+                };
+                return;
+              }
+
+              lastFollowedKey = key;
+              suppressForwardUntilMs = Date.now() + ECHO_SUPPRESS_MS;
+              await seekPlayback(unityState.time);
+              status = {
+                ok: true,
+                message: `Moved Foxglove to Unity replay time ${key}`,
+              };
+            },
+            (error: unknown) => {
+              status = {
+                ok: false,
+                message: `Failed to fetch Unity state: ${String(error)}`,
+              };
+            },
+          );
+        }
+      }
+
       if (state.enabled && currentTime != undefined) {
         const key = cursorKey(currentTime);
         const nowMs = Date.now();
         const minIntervalMs = 1000 / DEFAULT_MAX_HZ;
-        if (key !== lastCursorKey && nowMs - lastSentAtMs >= minIntervalMs) {
+        if (nowMs < suppressForwardUntilMs) {
+          status = {
+            ok: true,
+            message: "Suppressing echo after Unity -> Foxglove seek.",
+          };
+        } else if (key !== lastCursorKey && nowMs - lastSentAtMs >= minIntervalMs) {
           lastCursorKey = key;
           lastSentAtMs = nowMs;
           sequence++;

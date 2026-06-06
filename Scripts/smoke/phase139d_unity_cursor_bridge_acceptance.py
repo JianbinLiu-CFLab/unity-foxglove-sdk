@@ -3,8 +3,10 @@
 
 This helper does not drive the Foxglove UI.  It provides CI-safe checks for the
 extension package and an optional loopback POST probe for a manually enabled
-Unity cursor endpoint.  Remote Data Loader `/v1/data` requests are deliberately
-excluded because they are cache/range traffic, not playhead-control evidence.
+Unity cursor endpoint.  Endpoint mode also reads Unity replay state with GET so
+the bidirectional follow mode has a direct state contract.  Remote Data Loader
+`/v1/data` requests are deliberately excluded because they are cache/range
+traffic, not playhead-control evidence.
 """
 
 from __future__ import annotations
@@ -57,6 +59,8 @@ def validate_extension_metadata(root: Path) -> dict:
         ),
         "keeps_sec_nsec_split": "sec: currentTime.sec" in source and "nsec: currentTime.nsec" in source,
         "surfaces_forwarding_status": "Status:" in source and "Unity rejected sequence" in source,
+        "supports_unity_to_foxglove_follow": "seekPlayback" in source and "Follow Unity replay" in source,
+        "polls_unity_state_without_echo": "fetchUnityState" in source and "suppressForwardUntilMs" in source,
         "does_not_use_v1_data_as_cursor": "/v1/data" not in source,
         "documents_remote_data_loader_boundary": "/v1/data" in readme and "playhead signal" in readme,
     }
@@ -104,10 +108,41 @@ def post_cursor(url: str, token: str, payload: dict, timeout: float) -> dict:
         }
 
 
+def get_unity_state(url: str, token: str, timeout: float) -> dict:
+    """GET the current Unity replay cursor state from the loopback endpoint."""
+    request = urllib.request.Request(url, method="GET")
+    if token:
+        request.add_header("Authorization", "Bearer " + token)
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8", "replace")
+            parsed = json.loads(body)
+            return {
+                "status": response.status,
+                "body": parsed,
+            }
+    except urllib.error.HTTPError as exc:
+        return {
+            "status": exc.code,
+            "body": exc.read().decode("utf-8", "replace"),
+        }
+
+
 def validate_endpoint_loopback(args: argparse.Namespace) -> dict:
-    """Send synthetic cursor updates to a running Unity endpoint."""
+    """Send synthetic cursor updates and read replay state from a running Unity endpoint."""
     if not args.url:
         raise RuntimeError("--url is required for endpoint-loopback mode.")
+
+    unity_state = get_unity_state(args.url, args.token, args.timeout)
+    if unity_state["status"] < 200 or unity_state["status"] >= 300:
+        raise RuntimeError(f"Cursor GET returned {unity_state['status']}: {unity_state['body']}")
+    state_body = unity_state["body"]
+    if not isinstance(state_body, dict) or "time" not in state_body:
+        raise RuntimeError("Cursor GET did not return a JSON object with split time state.")
+    time_body = state_body["time"]
+    if not isinstance(time_body, dict) or "sec" not in time_body or "nsec" not in time_body:
+        raise RuntimeError("Cursor GET time state must contain sec and nsec.")
 
     sent = []
     base_sec = args.sec
@@ -121,6 +156,7 @@ def validate_endpoint_loopback(args: argparse.Namespace) -> dict:
 
     return {
         "url": args.url,
+        "unity_state": unity_state,
         "sent": sent,
     }
 

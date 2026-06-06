@@ -421,6 +421,15 @@ namespace Unity.FoxgloveSDK.Core
         public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
             => _tickCoordinator.GetPlaybackState(didSeek, requestId, _playbackClock);
 
+        /// <summary>Get the current replay cursor state for the optional loopback cursor endpoint.</summary>
+        public ReplayCursorState GetExternalReplayCursorState()
+            => ReplayCursorState.FromPlayback(
+                ReplayEnabled,
+                PlaybackEnabled,
+                GetPlaybackState(false, "unity-cursor-state"),
+                GetPlaybackStartNs(),
+                GetPlaybackEndNs());
+
         /// <summary>Apply a decoded playback control request on the runtime owner thread.</summary>
         public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
             byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)

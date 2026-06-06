@@ -244,6 +244,7 @@ The control path is intentionally separate:
 
 ```text
 Foxglove extension currentTime -> bounded loopback cursor message -> Unity replay seek
+Unity replay state -> loopback state GET -> Foxglove extension seekPlayback
 ```
 
 Do not infer Unity cursor state from `/v1/data`. Those requests are Remote Data
@@ -256,6 +257,14 @@ call `context.watch("currentTime")` and read `renderState.currentTime` from
 future Unity endpoint can distinguish timeline bounds and explicit seek events.
 Cursor time is sent as separate `{ sec, nsec }` fields to avoid JavaScript
 integer precision loss.
+
+The bridge is bidirectional when both panel directions are enabled. The
+Foxglove -> Unity direction posts the visible Foxglove cursor to Unity. The
+Unity -> Foxglove direction polls Unity's replay cursor state with a read-only
+GET and calls the Foxglove extension `seekPlayback` API so the Foxglove timeline
+follows Unity replay while Unity is the active playback source. The extension
+suppresses immediate echo traffic after Unity-driven seeks so one direction does
+not bounce the same cursor back through the other direction.
 
 The bridge remains disabled by default. Its first target is a trusted local
 loopback endpoint, with origin/token restrictions before broader browser access.

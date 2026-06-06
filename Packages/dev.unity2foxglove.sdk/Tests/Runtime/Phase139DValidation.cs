@@ -117,11 +117,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(endpointSource.Contains("Authorization", StringComparison.Ordinal)
                   && endpointSource.Contains("Bearer ", StringComparison.Ordinal),
                 "139D-4D: cursor endpoint supports an optional bearer token");
+            Check(endpointSource.Contains("Access-Control-Allow-Origin", StringComparison.Ordinal)
+                  && endpointSource.Contains("OPTIONS", StringComparison.Ordinal),
+                "139D-4E: cursor endpoint supports browser CORS preflight");
+            Check(endpointSource.Contains("ReplayCursorState", StringComparison.Ordinal)
+                  && endpointSource.Contains("GET", StringComparison.Ordinal),
+                "139D-4F: cursor endpoint exposes Unity replay state for Foxglove follow mode");
 
             var managerSource = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             Check(managerSource.Contains("Replay cursor bridge disabled", StringComparison.Ordinal)
                   && managerSource.Contains("SetExternalReplayCursorEnabled(false)", StringComparison.Ordinal),
-                "139D-4E: cursor endpoint startup failure does not fail the main server");
+                "139D-4G: cursor endpoint startup failure does not fail the main server");
         }
 
         private static void VerifyEndpointLoopbackBehavior()
@@ -151,7 +157,14 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Check(response.Contains("\"accepted\":true", StringComparison.Ordinal)
                       && received.TimeNs == 22_000_000_033UL,
-                    "139D-4F: cursor endpoint accepts loopback POSTs into the runtime queue");
+                    "139D-4H: cursor endpoint accepts loopback POSTs into the runtime queue");
+
+                var state = GetText($"http://127.0.0.1:{port}/v1/replay-cursor");
+                Check(state.Contains("\"available\":", StringComparison.Ordinal)
+                      && state.Contains("\"time\":", StringComparison.Ordinal)
+                      && state.Contains("\"sec\":", StringComparison.Ordinal)
+                      && state.Contains("\"nsec\":", StringComparison.Ordinal),
+                    "139D-4I: cursor endpoint returns split-time Unity replay state");
             }
             finally
             {
@@ -188,6 +201,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("Status:", StringComparison.Ordinal)
                   && source.Contains("Unity rejected sequence", StringComparison.Ordinal),
                 "139D-1G: extension surfaces cursor forwarding status to the operator");
+            Check(source.Contains("seekPlayback", StringComparison.Ordinal)
+                  && source.Contains("Follow Unity replay", StringComparison.Ordinal),
+                "139D-1H: extension can drive Foxglove from Unity replay state");
+            Check(source.Contains("fetchUnityState", StringComparison.Ordinal)
+                  && source.Contains("suppressForwardUntilMs", StringComparison.Ordinal),
+                "139D-1I: extension polls Unity state without echoing follow-up seeks back to Unity");
         }
 
         private static void VerifySmokeScript()
@@ -207,6 +226,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(script.Contains("not playhead-control evidence", StringComparison.Ordinal)
                   && script.Contains("/v1/data", StringComparison.Ordinal),
                 "139D-5D: smoke helper documents that /v1/data is not a cursor source");
+            Check(script.Contains("GET", StringComparison.Ordinal)
+                  && script.Contains("unity_state", StringComparison.Ordinal),
+                "139D-5E: smoke helper probes Unity cursor state for follow mode");
         }
 
         private static void VerifyWorkflowDocumentation()
@@ -223,6 +245,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(docs.Contains("disabled by default", StringComparison.OrdinalIgnoreCase)
                   && docs.Contains("loopback", StringComparison.OrdinalIgnoreCase),
                 "139D-6D: documentation keeps the bridge optional and loopback-bounded");
+            Check(docs.Contains("Unity -> Foxglove", StringComparison.Ordinal)
+                  && docs.Contains("seekPlayback", StringComparison.Ordinal),
+                "139D-6E: documentation records the bidirectional follow-mode contract");
         }
 
         private static void VerifyRuntimeWiring()
@@ -236,18 +261,24 @@ namespace Unity.FoxgloveSDK.Tests
             Check(runtime.Contains("ExternalReplayCursorController", StringComparison.Ordinal)
                   && runtime.Contains("TryEnqueueExternalReplayCursor", StringComparison.Ordinal),
                 "139D-7A: runtime owns an external cursor controller");
+            Check(runtime.Contains("GetExternalReplayCursorState", StringComparison.Ordinal)
+                  && runtime.Contains("GetPlaybackState", StringComparison.Ordinal),
+                "139D-7B: runtime exposes replay cursor state for the endpoint");
             Check(coordinator.Contains("TryDrainLatest", StringComparison.Ordinal)
                   && coordinator.Contains("QueueReplaySceneSnapshot", StringComparison.Ordinal),
-                "139D-7B: runtime tick drains external cursors into replay scene snapshots");
+                "139D-7C: runtime tick drains external cursors into replay scene snapshots");
             Check(manager.Contains("_enableReplayCursorBridge", StringComparison.Ordinal)
                   && manager.Contains("false", StringComparison.Ordinal),
-                "139D-7C: manager exposes a disabled-by-default cursor bridge setting");
+                "139D-7D: manager exposes a disabled-by-default cursor bridge setting");
             Check(server.Contains("StartReplayCursorEndpointIfNeeded", StringComparison.Ordinal)
                   && server.Contains("StopReplayCursorEndpoint", StringComparison.Ordinal),
-                "139D-7D: manager starts and stops the cursor endpoint with server lifecycle");
+                "139D-7E: manager starts and stops the cursor endpoint with server lifecycle");
+            Check(server.Contains("RefreshReplayCursorEndpointIfNeeded", StringComparison.Ordinal)
+                  && manager.Contains("RefreshReplayCursorEndpointIfNeeded", StringComparison.Ordinal),
+                "139D-7F: manager refreshes the cursor endpoint when Inspector settings change during Play Mode");
             Check(editor.Contains("Cursor Bridge (Advanced)", StringComparison.Ordinal)
                   && editor.Contains("_enableReplayCursorBridge", StringComparison.Ordinal),
-                "139D-7E: manager Inspector hides cursor bridge controls behind an advanced foldout");
+                "139D-7G: manager Inspector hides cursor bridge controls behind an advanced foldout");
         }
 
         private static void VerifyValidationWiring()
@@ -295,6 +326,13 @@ namespace Unity.FoxgloveSDK.Tests
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = client.PostAsync(url, content).GetAwaiter().GetResult();
+            return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+        }
+
+        private static string GetText(string url)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var response = client.GetAsync(url).GetAwaiter().GetResult();
             return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
         }
 

@@ -13,6 +13,12 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
+        private bool _replayCursorEndpointConfigKnown;
+        private bool _replayCursorEndpointKnownEnabled;
+        private string _replayCursorEndpointKnownHost;
+        private int _replayCursorEndpointKnownPort;
+        private string _replayCursorEndpointKnownToken;
+
         /// <summary>
         /// Transport mode used for listener operations when output is enabled.
         /// </summary>
@@ -270,6 +276,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!_enableReplayCursorBridge)
             {
                 StopReplayCursorEndpoint();
+                RememberReplayCursorEndpointConfig();
                 return;
             }
 
@@ -283,7 +290,7 @@ namespace Unity.FoxgloveSDK.Components
                 maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes);
             try
             {
-                _replayCursorEndpoint.Start(options, QueueExternalReplayCursor);
+                _replayCursorEndpoint.Start(options, QueueExternalReplayCursor, GetExternalReplayCursorState);
             }
             catch (System.Exception ex)
             {
@@ -291,6 +298,54 @@ namespace Unity.FoxgloveSDK.Components
                 _replayCursorEndpoint.Stop();
                 Debug.LogWarning("[Foxglove] Replay cursor bridge disabled: " + ex.Message);
             }
+
+            RememberReplayCursorEndpointConfig();
+        }
+
+        /// <summary>
+        /// Applies Inspector changes to the optional replay cursor endpoint while Play Mode is running.
+        /// </summary>
+        private void RefreshReplayCursorEndpointIfNeeded()
+        {
+            if (!IsRunning)
+            {
+                if (_replayCursorEndpointConfigKnown)
+                {
+                    StopReplayCursorEndpoint();
+                    ClearReplayCursorEndpointConfig();
+                }
+
+                return;
+            }
+
+            if (_replayCursorEndpointConfigKnown
+                && _replayCursorEndpointKnownEnabled == _enableReplayCursorBridge
+                && string.Equals(_replayCursorEndpointKnownHost, _replayCursorBridgeHost, System.StringComparison.Ordinal)
+                && _replayCursorEndpointKnownPort == _replayCursorBridgePort
+                && string.Equals(_replayCursorEndpointKnownToken, _replayCursorBridgeToken, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            StartReplayCursorEndpointIfNeeded();
+        }
+
+        private void RememberReplayCursorEndpointConfig()
+        {
+            _replayCursorEndpointConfigKnown = true;
+            _replayCursorEndpointKnownEnabled = _enableReplayCursorBridge;
+            _replayCursorEndpointKnownHost = _replayCursorBridgeHost;
+            _replayCursorEndpointKnownPort = _replayCursorBridgePort;
+            _replayCursorEndpointKnownToken = _replayCursorBridgeToken;
+        }
+
+        private void ClearReplayCursorEndpointConfig()
+        {
+            _replayCursorEndpointConfigKnown = false;
+            _replayCursorEndpointKnownEnabled = false;
+            _replayCursorEndpointKnownHost = null;
+            _replayCursorEndpointKnownPort = 0;
+            _replayCursorEndpointKnownToken = null;
         }
 
         private UnityReplayCursorEndpointQueueResult QueueExternalReplayCursor(ReplayCursorRequest request)
@@ -306,6 +361,10 @@ namespace Unity.FoxgloveSDK.Components
                 || result == ExternalReplayCursorEnqueueResult.Duplicate,
                 message);
         }
+
+        private ReplayCursorState GetExternalReplayCursorState()
+            => _runtime?.GetExternalReplayCursorState()
+               ?? ReplayCursorState.Unavailable("Runtime is not available.");
 
         private void StopReplayCursorEndpoint()
         {

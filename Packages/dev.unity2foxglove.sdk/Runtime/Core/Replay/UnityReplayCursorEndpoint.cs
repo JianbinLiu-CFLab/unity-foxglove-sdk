@@ -103,6 +103,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private HttpListener _listener;
         private Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> _queue;
+        private Func<ReplayCursorState> _stateProvider;
         private volatile bool _running;
         private UnityReplayCursorEndpointOptions _options;
 
@@ -118,7 +119,8 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Start listening if options are enabled.</summary>
         public void Start(
             UnityReplayCursorEndpointOptions options,
-            Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> queue)
+            Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> queue,
+            Func<ReplayCursorState> stateProvider = null)
         {
             Stop();
             if (!options.Enabled)
@@ -138,6 +140,7 @@ namespace Unity.FoxgloveSDK.Core
 
             _options = options;
             _queue = queue;
+            _stateProvider = stateProvider;
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://{options.Host}:{options.Port}/");
             _listener.Start();
@@ -152,6 +155,7 @@ namespace Unity.FoxgloveSDK.Core
             var listener = _listener;
             _listener = null;
             _queue = null;
+            _stateProvider = null;
             if (listener == null)
             {
                 return;
@@ -209,16 +213,34 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(context.Request.Url.AbsolutePath, _options.Path, StringComparison.Ordinal))
+            if (!string.Equals(context.Request.Url.AbsolutePath, _options.Path, StringComparison.Ordinal))
             {
                 TryWrite(context, 404, "{\"error\":\"not found\"}");
+                return;
+            }
+
+            if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+            {
+                TryWrite(context, 204, string.Empty);
                 return;
             }
 
             if (!IsAuthorized(context.Request))
             {
                 TryWrite(context, 401, "{\"error\":\"unauthorized\"}");
+                return;
+            }
+
+            if (string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
+            {
+                var state = _stateProvider?.Invoke() ?? ReplayCursorState.Unavailable("Replay cursor state provider is unavailable.");
+                TryWrite(context, 200, state.ToJson());
+                return;
+            }
+
+            if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                TryWrite(context, 405, "{\"error\":\"method not allowed\"}");
                 return;
             }
 
@@ -276,14 +298,22 @@ namespace Unity.FoxgloveSDK.Core
 
         private static void TryWrite(HttpListenerContext context, int statusCode, string body)
         {
+            body ??= string.Empty;
             var bytes = Encoding.UTF8.GetBytes(body);
             try
             {
                 context.Response.StatusCode = statusCode;
                 context.Response.ContentType = "application/json";
                 context.Response.ContentEncoding = Encoding.UTF8;
+                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+                context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+                context.Response.Headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+                context.Response.Headers["Cache-Control"] = "no-store";
                 context.Response.ContentLength64 = bytes.Length;
-                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                if (bytes.Length > 0)
+                {
+                    context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                }
             }
             finally
             {
