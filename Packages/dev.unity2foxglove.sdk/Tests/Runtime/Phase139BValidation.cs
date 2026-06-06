@@ -175,6 +175,25 @@ namespace Unity.FoxgloveSDK.Tests
                       && directRangeBytes.SequenceEqual(new byte[] { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P', (byte)'0', 0x0D, 0x0A }),
                     "139B-3D3: direct .mcap route supports byte-range reads for Foxglove Remote files");
 
+                var directPreflight = new HttpRequestMessage(HttpMethod.Options, baseUrl + "/v1/files/phase139b-http.mcap");
+                directPreflight.Headers.TryAddWithoutValidation("Origin", "https://app.foxglove.dev");
+                directPreflight.Headers.TryAddWithoutValidation("Access-Control-Request-Method", "GET");
+                directPreflight.Headers.TryAddWithoutValidation("Access-Control-Request-Headers", "range, content-type, accept");
+                directPreflight.Headers.TryAddWithoutValidation("Access-Control-Request-Private-Network", "true");
+                var directPreflightResponse = client.SendAsync(directPreflight).GetAwaiter().GetResult();
+                var allowHeaders = string.Join(",", directPreflightResponse.Headers.GetValues("Access-Control-Allow-Headers"));
+                var allowPrivateNetwork = directPreflightResponse.Headers.TryGetValues(
+                    "Access-Control-Allow-Private-Network",
+                    out var privateNetworkValues)
+                    ? string.Join(",", privateNetworkValues)
+                    : string.Empty;
+                Check(directPreflightResponse.StatusCode == HttpStatusCode.NoContent
+                      && allowHeaders.IndexOf("Range", StringComparison.OrdinalIgnoreCase) >= 0
+                      && allowHeaders.IndexOf("Content-Type", StringComparison.OrdinalIgnoreCase) >= 0
+                      && allowHeaders.IndexOf("Accept", StringComparison.OrdinalIgnoreCase) >= 0
+                      && string.Equals(allowPrivateNetwork, "true", StringComparison.OrdinalIgnoreCase),
+                    "139B-3D4: direct .mcap route accepts Foxglove browser CORS preflight");
+
                 var data = client.GetAsync(baseUrl + "/v1/data?recordingId=phase139b-http&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z")
                     .GetAwaiter()
                     .GetResult();

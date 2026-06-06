@@ -16,6 +16,10 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Routes the small Phase139B HTTP surface without depending on Unity APIs.</summary>
     internal sealed class RemoteMcapHttpRouter
     {
+        private const string CorsAllowHeaders = "Authorization,Range,Content-Type,Accept";
+        private const string CorsAllowMethods = "GET,HEAD,OPTIONS";
+        private const string CorsExposeHeaders = "Accept-Ranges,Content-Length,Content-Range";
+        private const string CorsMaxAgeSeconds = "86400";
         private const int MaxIsoFractionDigits = 9;
         private const ulong NanosecondsPerSecond = 1_000_000_000UL;
 
@@ -35,7 +39,7 @@ namespace Unity.FoxgloveSDK.IO
 
             ApplyCorsHeaders(context.Response);
             if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
-                return WriteBytesAsync(context.Response, HttpStatusCode.NoContent, "text/plain", new byte[0]);
+                return WritePreflightAsync(context.Response);
 
             var path = context.Request.Url?.AbsolutePath ?? string.Empty;
             if (string.Equals(path, "/v1/manifest", StringComparison.Ordinal))
@@ -300,9 +304,19 @@ namespace Unity.FoxgloveSDK.IO
         private static void ApplyCorsHeaders(HttpListenerResponse response)
         {
             response.AddHeader("Access-Control-Allow-Origin", "*");
-            response.AddHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
-            response.AddHeader("Access-Control-Allow-Headers", "Authorization,Range");
-            response.AddHeader("Access-Control-Expose-Headers", "Accept-Ranges,Content-Length,Content-Range");
+            response.AddHeader("Access-Control-Allow-Methods", CorsAllowMethods);
+            response.AddHeader("Access-Control-Allow-Headers", CorsAllowHeaders);
+            response.AddHeader("Access-Control-Expose-Headers", CorsExposeHeaders);
+            response.AddHeader("Access-Control-Allow-Private-Network", "true");
+            response.AddHeader("Access-Control-Max-Age", CorsMaxAgeSeconds);
+        }
+
+        private static Task WritePreflightAsync(HttpListenerResponse response)
+        {
+            response.StatusCode = (int)HttpStatusCode.NoContent;
+            response.ContentLength64 = 0;
+            response.OutputStream.Close();
+            return Task.CompletedTask;
         }
 
         private static bool TryParseByteRange(
