@@ -155,6 +155,7 @@ namespace Unity.FoxgloveSDK.Components
         private Core.FoxgloveRuntime _runtime;
         private Ros2BridgeRuntime _ros2BridgeRuntime;
         private UnityReplayCursorEndpoint _replayCursorEndpoint;
+        private bool _replayCursorEndpointLoggedFirstCursor;
         private string _ros2BridgeSetupError = "";
         private ulong _ros2BridgeSequence;
         private bool _lastFoxgloveOutputEnabled;

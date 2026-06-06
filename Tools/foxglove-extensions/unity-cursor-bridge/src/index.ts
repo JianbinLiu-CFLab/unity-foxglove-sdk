@@ -7,7 +7,6 @@
 import {
   ExtensionContext,
   PanelExtensionContext,
-  RenderState,
   Time,
 } from "@foxglove/extension";
 
@@ -49,6 +48,13 @@ type UnityReplayState = {
   startTime?: { sec: number; nsec: number };
   endTime?: { sec: number; nsec: number };
   message?: string;
+};
+
+type CursorRenderState = {
+  readonly currentTime?: Time;
+  readonly didSeek?: boolean;
+  readonly startTime?: Time;
+  readonly endTime?: Time;
 };
 
 type SeekPlaybackContext = PanelExtensionContext & {
@@ -105,7 +111,7 @@ async function fetchUnityState(endpoint: string, token: string): Promise<UnityRe
   return JSON.parse(responseText) as UnityReplayState;
 }
 
-function buildPayload(renderState: RenderState, sequence: number): CursorPayload | undefined {
+function buildPayload(renderState: CursorRenderState, sequence: number): CursorPayload | undefined {
   const currentTime = renderState.currentTime;
   if (currentTime == undefined) {
     return undefined;

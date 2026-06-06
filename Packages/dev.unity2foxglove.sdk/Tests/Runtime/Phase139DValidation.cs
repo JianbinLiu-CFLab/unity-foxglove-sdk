@@ -128,6 +128,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerSource.Contains("Replay cursor bridge disabled", StringComparison.Ordinal)
                   && managerSource.Contains("SetExternalReplayCursorEnabled(false)", StringComparison.Ordinal),
                 "139D-4G: cursor endpoint startup failure does not fail the main server");
+            Check(managerSource.Contains("Replay cursor bridge received cursor from", StringComparison.Ordinal)
+                  && managerSource.Contains("request.Source", StringComparison.Ordinal),
+                "139D-4H: cursor endpoint logs first accepted extension cursor for live gate evidence");
         }
 
         private static void VerifyEndpointLoopbackBehavior()
@@ -157,14 +160,14 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Check(response.Contains("\"accepted\":true", StringComparison.Ordinal)
                       && received.TimeNs == 22_000_000_033UL,
-                    "139D-4H: cursor endpoint accepts loopback POSTs into the runtime queue");
+                    "139D-4I: cursor endpoint accepts loopback POSTs into the runtime queue");
 
                 var state = GetText($"http://127.0.0.1:{port}/v1/replay-cursor");
                 Check(state.Contains("\"available\":", StringComparison.Ordinal)
                       && state.Contains("\"time\":", StringComparison.Ordinal)
                       && state.Contains("\"sec\":", StringComparison.Ordinal)
                       && state.Contains("\"nsec\":", StringComparison.Ordinal),
-                    "139D-4I: cursor endpoint returns split-time Unity replay state");
+                    "139D-4J: cursor endpoint returns split-time Unity replay state");
             }
             finally
             {
@@ -276,9 +279,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(server.Contains("RefreshReplayCursorEndpointIfNeeded", StringComparison.Ordinal)
                   && manager.Contains("RefreshReplayCursorEndpointIfNeeded", StringComparison.Ordinal),
                 "139D-7F: manager refreshes the cursor endpoint when Inspector settings change during Play Mode");
+            Check(server.Contains("ShouldRunReplayCursorEndpoint", StringComparison.Ordinal)
+                  && server.Contains("_remoteMcapFileServer != null", StringComparison.Ordinal)
+                  && server.Contains("Replay cursor endpoint ready", StringComparison.Ordinal),
+                "139D-7G: remote MCAP file access automatically enables the cursor endpoint");
             Check(!editor.Contains("Cursor Bridge (Advanced)", StringComparison.Ordinal)
                   && !editor.Contains("_enableReplayCursorBridge", StringComparison.Ordinal),
-                "139D-7G: manager Inspector does not expose unfinished cursor bridge controls");
+                "139D-7H: manager Inspector does not expose unfinished cursor bridge controls");
         }
 
         private static void VerifyValidationWiring()
