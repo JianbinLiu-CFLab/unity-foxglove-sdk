@@ -43,7 +43,8 @@ namespace Unity.FoxgloveSDK.IO
                 options.ManifestName,
                 options.RequiredBearerToken,
                 options.MaxInMemoryDataBytes,
-                options.DataRoute);
+                options.DataRoute,
+                options.DirectFileRoute);
             var router = new RemoteMcapHttpRouter(source);
 
             _listener = new HttpListener();

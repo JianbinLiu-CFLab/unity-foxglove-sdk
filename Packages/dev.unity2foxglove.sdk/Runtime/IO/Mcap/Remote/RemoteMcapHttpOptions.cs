@@ -51,5 +51,15 @@ namespace Unity.FoxgloveSDK.IO
                     string.IsNullOrEmpty(SourceId) ? "local-mcap" : SourceId);
             }
         }
+
+        /// <summary>Relative direct-file route accepted by Foxglove's stock Remote files dialog.</summary>
+        internal string DirectFileRoute
+        {
+            get
+            {
+                return "/v1/files/" + Uri.EscapeDataString(
+                    string.IsNullOrEmpty(SourceId) ? "local-mcap" : SourceId) + ".mcap";
+            }
+        }
     }
 }

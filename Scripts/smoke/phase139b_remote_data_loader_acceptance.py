@@ -5,6 +5,11 @@ The helper can either attach to an already-running backend or launch the
 test-runner-hosted loopback server, then verifies the manifest and downloads a
 small MCAP range.  It is intended for manual acceptance evidence, not as a
 replacement for the repository's C# validation suite.
+
+Foxglove's stock Remote files dialog expects a URL that ends in a file name,
+so this probe also checks the direct ``/v1/files/<source>.mcap`` byte-range
+route.  The ``/v1/manifest`` endpoint remains the backend contract used by
+scripts and future DataLoader-aware clients.
 """
 
 from __future__ import annotations
@@ -32,11 +37,18 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def read_url(url: str, token: str, timeout: float) -> tuple[int, str, bytes]:
+def read_url(
+    url: str,
+    token: str,
+    timeout: float,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, str, bytes]:
     """Read one HTTP URL and return status, content type, and body."""
     request = urllib.request.Request(url)
     if token:
         request.add_header("Authorization", "Bearer " + token)
+    for key, value in (headers or {}).items():
+        request.add_header(key, value)
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -90,6 +102,17 @@ def build_data_url(base_url: str, source: dict, range_seconds: float | None) -> 
 
     encoded = urllib.parse.urlencode(query)
     return urllib.parse.urlunparse(parsed._replace(query=encoded))
+
+
+def build_remote_file_url(base_url: str, source: dict, fallback_source_id: str) -> str:
+    """Build the direct .mcap URL accepted by Foxglove's Remote files dialog."""
+    source_id = str(source.get("id") or fallback_source_id)
+    return (
+        base_url.rstrip("/")
+        + "/v1/files/"
+        + urllib.parse.quote(source_id, safe="")
+        + ".mcap"
+    )
 
 
 def resolve_mcap_path(value: str, root: Path) -> Path:
@@ -258,6 +281,21 @@ def main(argv: list[str]) -> int:
         if not (data_body.startswith(MCAP_MAGIC) and data_body.endswith(MCAP_MAGIC)):
             raise RuntimeError("Downloaded data response is not a finalized MCAP stream.")
 
+        remote_file_url = build_remote_file_url(base_url, sources[0], args.source_id)
+        # Foxglove uses ordinary byte-range reads when opening the direct MCAP
+        # URL.  A tiny magic-byte request proves the route without downloading
+        # a large recording during smoke acceptance.
+        file_status, file_content_type, file_body = read_url(
+            remote_file_url,
+            args.token,
+            args.timeout,
+            headers={"Range": "bytes=0-7"},
+        )
+        if file_status != 206:
+            raise RuntimeError(f"GET direct .mcap range returned {file_status}: {file_body.decode('utf-8', 'replace')}")
+        if file_body != MCAP_MAGIC:
+            raise RuntimeError("Direct .mcap endpoint did not return MCAP magic for bytes=0-7.")
+
         json_out = (root / args.json_out).resolve()
         range_out = (root / args.range_out).resolve()
         json_out.parent.mkdir(parents=True, exist_ok=True)
@@ -291,6 +329,13 @@ def main(argv: list[str]) -> int:
                 "range_out": str(range_out),
                 "requested_range_seconds": range_seconds,
                 "mcap_magic_ok": True,
+            },
+            "remote_file": {
+                "url": remote_file_url,
+                "content_type": file_content_type,
+                "range_status": file_status,
+                "range_mcap_magic_ok": True,
+                "foxglove_source": "Remote files",
             },
             "backend_logs_tail": relevant_backend_logs[-20:],
         }

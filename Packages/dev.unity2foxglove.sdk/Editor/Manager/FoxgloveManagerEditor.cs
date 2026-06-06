@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _ros2BridgeExpanded;
         private static bool _mcapExpanded;
         private static bool _schemaEvidenceAdvancedExpanded;
+        private static bool _remoteFileAccessExpanded = true;
         private static bool _diagnosticsExpanded;
         private const string LocalRootCaDistributorHost = "127.0.0.1";
         private const int LocalRootCaDistributorPort = 8766;

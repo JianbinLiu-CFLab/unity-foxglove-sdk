@@ -529,7 +529,8 @@ class Program
             {
                 baseUrl = server.BaseUrl,
                 manifestUrl = server.BaseUrl + "/v1/manifest",
-                dataUrl = server.BaseUrl + options.DataRoute
+                dataUrl = server.BaseUrl + options.DataRoute,
+                remoteFileUrl = server.BaseUrl + options.DirectFileRoute
             });
             Console.WriteLine("PHASE139B_SERVER_READY=" + ready);
             Console.Out.Flush();

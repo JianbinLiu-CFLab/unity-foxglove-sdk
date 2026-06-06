@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_recordingCompression");
 
             DrawProperty("_enableReplay");
-            DrawProperty("_replayAutoPlay");
+            DrawReplayAutoPlayControl();
             DrawProperty("_disableLivePublishers");
             var replayPath = serializedObject.FindProperty("_replayFilePath");
             if (replayPath != null)
@@ -67,6 +67,95 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 _mcapReplayPreflight.Draw(serializedObject, target, replayPath);
             }
+
+            DrawRemoteFileAccessSection(replayPath);
+        }
+
+        private void DrawReplayAutoPlayControl()
+        {
+            var replayAutoPlay = serializedObject.FindProperty("_replayAutoPlay");
+            if (replayAutoPlay == null)
+            {
+                DrawMissingProperty("_replayAutoPlay");
+                return;
+            }
+
+            if (GetBool("_enableRemoteMcapFileServer") && replayAutoPlay.boolValue)
+                replayAutoPlay.boolValue = false;
+
+            using (new EditorGUI.DisabledScope(GetBool("_enableRemoteMcapFileServer")))
+            {
+                EditorGUILayout.PropertyField(replayAutoPlay, true);
+            }
+
+            if (GetBool("_enableRemoteMcapFileServer"))
+            {
+                EditorGUILayout.HelpBox(
+                    "Foxglove as Replay Timeline is on. Replay Auto Play is unavailable because Foxglove owns replay time.",
+                    MessageType.Warning);
+            }
+        }
+
+        private void DrawRemoteFileAccessSection(SerializedProperty replayPath)
+        {
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Foxglove Timeline Replay", ref _remoteFileAccessExpanded))
+                return;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox(
+                "Serves the selected Replay File Path as a local MCAP URL so Foxglove can load it and control replay time. When enabled, Unity follows the Foxglove timeline; Replay Auto Play is disabled.",
+                MessageType.Info);
+
+            DrawProperty("_enableRemoteMcapFileServer", "Foxglove as Replay Timeline");
+            using (new EditorGUI.DisabledScope(!GetBool("_enableRemoteMcapFileServer")))
+            {
+                DrawProperty("_remoteMcapFileServerHost", "Host");
+                DrawProperty("_remoteMcapFileServerPort", "Port");
+
+                var remoteUrl = BuildRemoteMcapDirectFileUrl();
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.TextField("Foxglove MCAP URL", remoteUrl);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Copy Foxglove URL"))
+                        EditorGUIUtility.systemCopyBuffer = remoteUrl;
+
+                    if (GUILayout.Button("Open in Foxglove"))
+                        OpenFoxgloveTarget(remoteUrl);
+                }
+            }
+
+            EditorGUI.indentLevel--;
+        }
+
+        private string BuildRemoteMcapBaseUrl()
+        {
+            var host = GetString("_remoteMcapFileServerHost", "127.0.0.1");
+            if (string.IsNullOrWhiteSpace(host))
+                host = "127.0.0.1";
+
+            return "http://" + host.Trim() + ":" + GetInt("_remoteMcapFileServerPort", 8891).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private string BuildRemoteMcapDirectFileUrl()
+        {
+            var sourceId = GetString("_remoteMcapFileServerSourceId", "local-mcap");
+            if (string.IsNullOrWhiteSpace(sourceId))
+                sourceId = "local-mcap";
+
+            return BuildRemoteMcapBaseUrl() + "/v1/files/" + System.Uri.EscapeDataString(sourceId.Trim()) + ".mcap";
+        }
+
+        private static void OpenFoxgloveTarget(string remoteUrl)
+        {
+            if (string.IsNullOrWhiteSpace(remoteUrl))
+                return;
+
+            EditorGUIUtility.systemCopyBuffer = remoteUrl;
+            var foxgloveUrl = FoxgloveAppUrl.BuildRemoteFileDesktopUrl(remoteUrl);
+            Application.OpenURL(foxgloveUrl);
+            Debug.Log("[Foxglove] Opening Remote files URL in Foxglove Desktop: " + remoteUrl);
         }
 
         private void DrawSchemaEvidenceSection()

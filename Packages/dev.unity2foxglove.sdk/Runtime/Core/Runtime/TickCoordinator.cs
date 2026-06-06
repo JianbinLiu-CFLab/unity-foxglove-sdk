@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Core/Runtime
+// Purpose: Coordinates runtime tick ordering for services, clocks, replay, and
+// external replay cursor ownership.
 
 using System;
 using Unity.FoxgloveSDK.Transport;
@@ -15,8 +17,11 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     internal class TickCoordinator
     {
+        private const ulong ExternalCursorSeekJumpThresholdNs = 500_000_000UL;
         private readonly object _playbackControlLock = new();
         private readonly ReplaySnapshotStateMachine _replaySnapshots;
+        private bool _hasExternalCursorTime;
+        private ulong _lastExternalCursorTimeNs;
 
         /// <summary>
         /// Creates a <see cref="TickCoordinator"/> backed by the given snapshot
@@ -29,7 +34,12 @@ namespace Unity.FoxgloveSDK.Core
         /// the clock, and dispatches replay work (scene snapshot, panel snapshot,
         /// drain callbacks) when replay is active.
         /// </summary>
-        public void Tick(FoxgloveSession session, PlaybackClock playbackClock, ReplayController replay, IFoxgloveClock wallClock)
+        public void Tick(
+            FoxgloveSession session,
+            PlaybackClock playbackClock,
+            ReplayController replay,
+            IFoxgloveClock wallClock,
+            ExternalReplayCursorController externalCursor = null)
         {
             if (session == null) return;
             session.DrainPlaybackControls();
@@ -45,6 +55,16 @@ namespace Unity.FoxgloveSDK.Core
                     // Seek/play/pause mutate the same snapshot scheduler, and
                     // releasing the lock here could publish a stale pre-seek
                     // snapshot after a newer playback control request.
+                    if (externalCursor != null && externalCursor.TryDrainLatest(out var cursor))
+                    {
+                        if (ShouldTreatExternalCursorAsSeek(cursor))
+                            ReplaySeekExternalCursor(cursor.TimeNs, replay, playbackClock);
+                        else
+                            ReplayAdvanceToExternalCursor(cursor.TimeNs, replay, playbackClock);
+
+                        RememberExternalCursor(cursor.TimeNs);
+                    }
+
                     if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs, wallClock))
                         replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);
                     if (TryConsumeReplaySnapshot(out var snapshotTimeNs, wallClock))
@@ -78,6 +98,45 @@ namespace Unity.FoxgloveSDK.Core
 
         private bool TryConsumeReplaySceneSnapshot(out ulong timeNs, IFoxgloveClock wallClock)
             => _replaySnapshots.TryConsumeSceneSnapshot(out timeNs);
+
+        private bool ShouldTreatExternalCursorAsSeek(ReplayCursorRequest cursor)
+        {
+            if (!_hasExternalCursorTime || cursor.DidSeek || cursor.TimeNs < _lastExternalCursorTimeNs)
+                return true;
+
+            return cursor.TimeNs - _lastExternalCursorTimeNs > ExternalCursorSeekJumpThresholdNs;
+        }
+
+        private void ReplaySeekExternalCursor(ulong timeNs, ReplayController replay, PlaybackClock playbackClock)
+        {
+            playbackClock.Apply(1, 1f, true, timeNs);
+            replay.Seek(timeNs);
+            replay.Pause();
+            QueueReplaySceneSnapshot(timeNs);
+        }
+
+        private static void ReplayAdvanceToExternalCursor(
+            ulong timeNs,
+            ReplayController replay,
+            PlaybackClock playbackClock)
+        {
+            playbackClock.Apply(1, 1f, true, timeNs);
+            replay.Play();
+            replay.ApplyTickToScene(timeNs, deferCallbacks: true);
+            replay.Pause();
+        }
+
+        private void RememberExternalCursor(ulong timeNs)
+        {
+            _lastExternalCursorTimeNs = timeNs;
+            _hasExternalCursorTime = true;
+        }
+
+        private void ClearExternalCursorState()
+        {
+            _hasExternalCursorTime = false;
+            _lastExternalCursorTimeNs = 0;
+        }
 
         /// <summary>
         /// Applies a decoded playback-control request (play/pause + optional seek)
@@ -153,6 +212,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_playbackControlLock)
             {
+                ClearExternalCursorState();
                 replay.Seek(timeNs);
                 QueueReplaySceneSnapshot(timeNs);
                 QueueReplaySnapshot(timeNs, replay, wallClock);
@@ -167,6 +227,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_playbackControlLock)
             {
+                ClearExternalCursorState();
                 ClearPendingReplaySnapshot();
                 ClearPendingReplaySceneSnapshot();
                 replay.ResetPanelHistoryProgress();
@@ -183,6 +244,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_playbackControlLock)
             {
+                ClearExternalCursorState();
                 playbackClock.Pause();
                 replay.Pause();
                 ClearPendingReplaySnapshot();
@@ -212,6 +274,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DisableReplay(ReplayController replay)
         {
+            ClearExternalCursorState();
             ClearPendingReplaySnapshot();
             ClearPendingReplaySceneSnapshot();
             replay.Disable();

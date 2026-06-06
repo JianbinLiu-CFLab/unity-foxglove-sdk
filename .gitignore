@@ -61,3 +61,9 @@ Developer/
 
 # temporary test/verification projects
 Unitytest/
+
+# Foxglove extension local build/dependency outputs
+Tools/foxglove-extensions/*/node_modules/
+Tools/foxglove-extensions/*/dist/
+Tools/foxglove-extensions/*/*.foxe
+Tools/foxglove-extensions/unity-cursor-bridge/src/index.d.ts

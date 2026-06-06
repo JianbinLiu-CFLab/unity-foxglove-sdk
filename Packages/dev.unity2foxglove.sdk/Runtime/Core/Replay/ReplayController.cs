@@ -444,6 +444,51 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>
+        /// Advance replay messages through <paramref name="timeNs"/> for Unity
+        /// scene listeners only. This is used when Foxglove Remote files owns
+        /// the data timeline; Foxglove already reads MCAP bytes directly, so
+        /// Unity should not publish replay MessageData back over WebSocket.
+        /// </summary>
+        public void ApplyTickToScene(ulong timeNs)
+            => ApplyTickToScene(timeNs, deferCallbacks: false);
+
+        /// <summary>
+        /// Advance replay messages for scene listeners with optional deferred
+        /// callback draining.
+        /// </summary>
+        public void ApplyTickToScene(ulong timeNs, bool deferCallbacks)
+        {
+            lock (_replayEngineLock)
+            {
+                if (!_replayEnabled || _replayEngine == null) return;
+                // External-clock following: the scene MUST reach the Foxglove cursor
+                // time every frame, or it lags further behind on every tick. The
+                // engine's per-tick cap protects the *live* main-thread playback path
+                // from bursts; it must not throttle external-cursor advance, or dense
+                // (100Hz+ multi-topic) recordings accumulate unbounded delay. Per-frame
+                // render-rate intervals are small; large jumps use the seek path, so an
+                // uncapped drain here stays cheap.
+                var savedCap = _replayEngine.MaxMessagesPerTick;
+                _replayEngine.MaxMessagesPerTick = 0;
+                try
+                {
+                    var messages = _replayEngine.Tick(timeNs, _replayTickBuffer);
+                    if (messages == null || messages.Count == 0) return;
+                    foreach (var msg in messages)
+                        ForwardReplayMessageToScene(msg);
+                    FireReplayBatchCompleted(messages, messages[messages.Count - 1].LogTime, "ExternalCursor");
+                }
+                finally
+                {
+                    _replayEngine.MaxMessagesPerTick = savedCap;
+                }
+            }
+
+            if (!deferCallbacks)
+                DrainReplayCallbacks();
+        }
+
+        /// <summary>
         /// Publish historical messages through <paramref name="timeNs"/> so
         /// Foxglove panels can rebuild time-series views after a paused seek.
         /// The scene uses a separate latest-state snapshot path.

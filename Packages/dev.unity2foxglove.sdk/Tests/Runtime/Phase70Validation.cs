@@ -222,8 +222,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "70D-5: MCAP workflow order is Playback Control -> Recording -> Replay -> Preflight");
             Check(source.Contains("_mcapExpanded"),
                 "70D-6: MCAP Record & Replay has a dedicated foldout state");
-            Check(IndexOf(section, "_enableReplay") < IndexOf(section, "_replayAutoPlay")
-                  && IndexOf(section, "_replayAutoPlay") < IndexOf(section, "_disableLivePublishers")
+            Check(IndexOf(section, "_enableReplay") < IndexOf(section, "DrawReplayAutoPlayControl()")
+                  && IndexOf(section, "DrawReplayAutoPlayControl()") < IndexOf(section, "_disableLivePublishers")
                   && IndexOf(section, "_disableLivePublishers") < IndexOf(section, "_replayFilePath")
                   && IndexOf(section, "_replayFilePath") < IndexOf(section, "_mcapReplayPreflight.Draw"),
                 "70D-7: replay workflow order is Enable -> Auto Play -> Disable Live Publishers -> File Path -> Preflight");

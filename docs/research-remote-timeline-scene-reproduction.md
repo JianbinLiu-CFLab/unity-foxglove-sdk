@@ -176,6 +176,128 @@ Scene reproduction applies recorded telemetry state to Unity objects. It does no
 
 This is a deliberate semantic boundary. A single point in paused mode is acceptable for scene reproduction. A continuous Plot curve requires a bounded history-window policy and is a separate feature described in Section 9.
 
+## Phase139C Remote Data Loader Workflow
+
+Phase139C validates the file-backed analysis path separately from Unity live
+replay. The Phase139B HTTP backend still exposes the Remote Data Loader contract
+through `/v1/manifest` and `/v1/data`, but Foxglove's stock **Remote files**
+dialog expects a URL that ends with a filename and extension. For manual
+Foxglove acceptance, use the backend's direct `.mcap` file URL. This is the path
+for inspecting continuous Plot curves and 3D/image panels from recorded file
+data.
+
+In Unity, the product entry point is the Manager Inspector:
+
+1. Select `FoxgloveManager`.
+2. Expand `MCAP Record & Replay`.
+3. Set `Replay File Path` to the recording.
+4. Expand `Foxglove Timeline Replay`.
+5. Enable `Foxglove as Replay Timeline` and use `Copy Foxglove URL` or
+   `Open in Foxglove`.
+
+The copied URL is the direct file route:
+
+```text
+http://127.0.0.1:8891/v1/files/local-mcap.mcap
+```
+
+`Open in Foxglove` opens a Foxglove Desktop shareable link with
+`ds=remote-file` and `ds.url=<direct-mcap-url>`, so the Remote files data
+source is selected without manually pasting the URL.
+
+Foxglove Timeline Replay opens recorded data in Foxglove and makes Foxglove the
+owner of replay time for this workflow. Unity remains a scene reproduction
+follower: it serves the selected MCAP file through a local URL, starts the
+cursor endpoint, and applies Foxglove cursor updates to Unity replay.
+
+The Inspector first tries a `foxglove` executable on `PATH`, then the installed
+Foxglove Desktop executable, and finally falls back to copying/opening the URL.
+The separate command-line server remains useful for script debugging or when
+Unity is not running:
+
+```powershell
+dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase139b-remote-data-loader-server --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --port 8891
+```
+
+When connecting manually, use **Open connection -> Remote files** and paste the
+same direct `.mcap` URL.
+
+Do not paste `/v1/manifest` into the stock Remote files dialog. That dialog
+validates that the URL must end with a filename and extension, so the manifest
+URL is intentionally kept as a backend contract and script probe endpoint rather
+than the manual UI entry point.
+
+The expected manual evidence is:
+
+- Foxglove accepts the direct `.mcap` URL and lists topics from the recording,
+  such as `/imu/data`, `/tf`, and
+  point cloud or camera topics that exist in the selected recording.
+- A Plot panel shows a continuous curve from the file-backed history after the
+  recording is loaded.
+- Dragging or scrubbing the Foxglove timeline localizes the Plot cursor within
+  the loaded range.
+- 3D and image panels render from file data without requiring Unity Play Mode.
+
+The helper script verifies the backend endpoints and writes machine-readable
+evidence for the manual Foxglove pass:
+
+```powershell
+python Scripts/smoke/phase139c_dataloader_cursor_acceptance.py --mode curve-only --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --json-out build/phase139c/manual.json
+```
+
+The script checks both the contract endpoints (`/v1/manifest` and `/v1/data`)
+and the direct Remote files compatibility endpoint
+`/v1/files/local-mcap.mcap` with a byte-range MCAP magic read.
+
+Remote Data Loader `/v1/data` range requests are cache and prefetch requests,
+not a reliable signal for the current Foxglove playhead. Unity scene replay
+should continue to use the local replay controls and the live WebSocket
+playback-control path. A future playback-sync feature must provide a dedicated
+control transport rather than inferring cursor state from Remote files traffic.
+
+## Phase139D Unity Replay Sync Boundary
+
+Phase139D records a separate control channel for Foxglove-owned replay. The
+product workflow is named **Foxglove Timeline Replay**: Foxglove controls replay
+time from a Remote File source, and Unity follows the Foxglove timeline by
+applying cursor updates to scene replay. The data path remains Phase139B/139C:
+
+```text
+MCAP -> Phase139B HTTP backend -> Foxglove Remote files
+```
+
+The control path is intentionally separate:
+
+```text
+Foxglove extension currentTime -> bounded loopback cursor message -> Unity replay advance or seek
+```
+
+Do not infer Unity cursor state from `/v1/data`. Those requests are Remote Data
+Loader cache, range, and prefetch traffic. They can appear ahead of, behind, or
+independent from the visible playhead.
+
+The Phase139D extension scaffold follows the Foxglove panel extension contract:
+call `context.watch("currentTime")` and read `renderState.currentTime` from
+`context.onRender`. It also watches `startTime`, `endTime`, and `didSeek` so a
+Unity endpoint can distinguish timeline bounds, smooth playback advances, and
+explicit seek events. Cursor time is sent as separate `{ sec, nsec }` fields to
+avoid JavaScript integer precision loss.
+
+The prototype bridge originally explored both directions. The product path now
+keeps only the Foxglove -> Unity direction because it gives users one visible
+timeline owner. The reverse Unity -> Foxglove follow path is not retained as a
+product feature; it makes Unity and Foxglove compete to explain playback state.
+
+Unity exposes the cursor endpoint only when Foxglove Timeline Replay is enabled.
+The Foxglove panel sync switch is enabled by default because the panel has a
+single product direction: Foxglove timeline -> Unity replay. Its first target is
+a trusted local loopback endpoint, with origin/token restrictions before broader
+browser access. It must send only cursor metadata, never MCAP data, and it must
+coalesce rapid updates so Unity handles cursor work on the main runtime tick
+rather than on an endpoint thread. During smooth playback, Unity advances replay
+incrementally through due MCAP messages; only explicit seeks, backwards motion,
+or large timeline jumps use the latest-at scene snapshot path.
+
 ## 7 Validation Evidence
 
 The implementation is covered by runtime validation and manual Foxglove acceptance.
