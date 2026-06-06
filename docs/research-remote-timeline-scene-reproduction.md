@@ -191,8 +191,9 @@ In Unity, the product entry point is the Manager Inspector:
 1. Select `FoxgloveManager`.
 2. Expand `MCAP Record & Replay`.
 3. Set `Replay File Path` to the recording.
-4. Expand `Remote File Access`.
-5. Enable `Remote File URL` and use `Copy Remote URL` or `Open in Foxglove`.
+4. Expand `Foxglove Timeline Replay`.
+5. Enable `Foxglove as Replay Timeline` and use `Copy Foxglove URL` or
+   `Open in Foxglove`.
 
 The copied/opened URL is the direct file route:
 
@@ -200,7 +201,10 @@ The copied/opened URL is the direct file route:
 http://127.0.0.1:8891/v1/files/local-mcap.mcap
 ```
 
-Remote File Access only opens recorded data in Foxglove. It does not synchronize Unity and Foxglove playback time, and it should not be described as a bidirectional replay-control feature. Treat playback synchronization as a separate playback-sync feature.
+Foxglove Timeline Replay opens recorded data in Foxglove and makes Foxglove the
+owner of replay time for this workflow. Unity remains a scene reproduction
+follower: it serves the selected MCAP file through a local URL, starts the
+cursor endpoint, and applies Foxglove cursor updates to Unity replay.
 
 The Inspector first tries a `foxglove` executable on `PATH`, then the installed
 Foxglove Desktop executable, and finally falls back to copying/opening the URL.
@@ -247,9 +251,12 @@ should continue to use the local replay controls and the live WebSocket
 playback-control path. A future playback-sync feature must provide a dedicated
 control transport rather than inferring cursor state from Remote files traffic.
 
-## Phase139D Unity Cursor Bridge Boundary
+## Phase139D Unity Replay Sync Boundary
 
-Phase139D records an internal feasibility scaffold for a separate control channel. It is not a product-ready bidirectional sync feature, and the Manager Inspector intentionally does not expose the cursor bridge controls. Remote File Access only opens the MCAP data source. The data path remains Phase139B/139C:
+Phase139D records a separate control channel for Foxglove-owned replay. The
+product workflow is named **Foxglove Timeline Replay**: Foxglove controls replay
+time from a Remote File source, and Unity follows the Foxglove timeline by
+applying cursor updates to scene replay. The data path remains Phase139B/139C:
 
 ```text
 MCAP -> Phase139B HTTP backend -> Foxglove Remote files
@@ -259,7 +266,6 @@ The control path is intentionally separate:
 
 ```text
 Foxglove extension currentTime -> bounded loopback cursor message -> Unity replay seek
-Unity replay state -> loopback state GET -> Foxglove extension seekPlayback
 ```
 
 Do not infer Unity cursor state from `/v1/data`. Those requests are Remote Data
@@ -273,19 +279,18 @@ future Unity endpoint can distinguish timeline bounds and explicit seek events.
 Cursor time is sent as separate `{ sec, nsec }` fields to avoid JavaScript
 integer precision loss.
 
-The prototype bridge explored both directions. The Foxglove -> Unity direction
-posts the visible Foxglove cursor to Unity. The Unity -> Foxglove direction
-polls Unity's replay cursor state with a read-only GET and would need a
-Foxglove-side `seekPlayback` integration so the Foxglove timeline follows Unity
-replay while Unity is the active playback source. Until that Foxglove-side
-control path is installed and validated as a normal product workflow, this
-remains internal feasibility work rather than a user-facing Inspector feature.
+The prototype bridge originally explored both directions. The product path now
+keeps only the Foxglove -> Unity direction because it gives users one visible
+timeline owner. The reverse Unity -> Foxglove follow path is not retained as a
+product feature; it makes Unity and Foxglove compete to explain playback state.
 
-The bridge remains disabled by default. Its first target is a trusted local
-loopback endpoint, with origin/token restrictions before broader browser access.
-It must send only cursor metadata, never MCAP data, and it must coalesce rapid
-updates so Unity applies scene snapshots on the main runtime tick rather than on
-an endpoint thread.
+Unity exposes the cursor endpoint only when Foxglove Timeline Replay is enabled.
+The Foxglove panel sync switch is enabled by default because the panel has a
+single product direction: Foxglove timeline -> Unity replay. Its first target is
+a trusted local loopback endpoint, with origin/token restrictions before broader
+browser access. It must send only cursor metadata, never MCAP data, and it must
+coalesce rapid updates so Unity applies scene snapshots on the main runtime tick
+rather than on an endpoint thread.
 
 ## 7 Validation Evidence
 

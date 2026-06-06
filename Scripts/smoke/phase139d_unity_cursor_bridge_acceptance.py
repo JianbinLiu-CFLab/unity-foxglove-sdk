@@ -4,7 +4,7 @@
 This helper does not drive the Foxglove UI.  It provides CI-safe checks for the
 extension package and an optional loopback POST probe for a manually enabled
 Unity cursor endpoint.  Endpoint mode also reads Unity replay state with GET so
-the bidirectional follow mode has a direct state contract.  Remote Data Loader
+the split-time endpoint state contract stays visible.  Remote Data Loader
 `/v1/data` requests are deliberately excluded because they are cache/range
 traffic, not playhead-control evidence.
 """
@@ -50,6 +50,7 @@ def validate_extension_metadata(root: Path) -> dict:
 
     checks = {
         "package_named": package_json.get("name") == "unity-cursor-bridge",
+        "package_display_name_user_facing": package_json.get("displayName") == "Unity Replay Sync",
         "package_has_build_script": "build" in package_json.get("scripts", {}),
         "watches_current_time": 'context.watch("currentTime")' in source,
         "reads_render_state_current_time": "renderState.currentTime" in source,
@@ -58,9 +59,24 @@ def validate_extension_metadata(root: Path) -> dict:
             for token in ['context.watch("startTime")', 'context.watch("endTime")', 'context.watch("didSeek")']
         ),
         "keeps_sec_nsec_split": "sec: currentTime.sec" in source and "nsec: currentTime.nsec" in source,
-        "surfaces_forwarding_status": "Status:" in source and "Unity rejected sequence" in source,
-        "supports_unity_to_foxglove_follow": "seekPlayback" in source and "Follow Unity replay" in source,
-        "polls_unity_state_without_echo": "fetchUnityState" in source and "suppressForwardUntilMs" in source,
+        "surfaces_forwarding_status": (
+            "Replay time (UTC)" in source
+            and "Unity is following Foxglove" in source
+            and "Unity rejected replay time" in source
+            and "Current time" not in source
+            and "Sent sequence" not in source
+        ),
+        "exposes_only_forward_product_direction": (
+            "Sync Foxglove timeline to Unity" in source
+            and "enabled: true" in source
+            and 'name: "Unity Replay Sync"' in source
+            and "Follow Unity replay" not in source
+            and "seekPlayback" not in source
+        ),
+        "does_not_poll_unity_state_for_reverse_follow": (
+            "fetchUnityState" not in source
+            and "suppressForwardUntilMs" not in source
+        ),
         "does_not_use_v1_data_as_cursor": "/v1/data" not in source,
         "documents_remote_data_loader_boundary": "/v1/data" in readme and "playhead signal" in readme,
     }

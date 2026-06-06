@@ -119,10 +119,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableReplay;
         [SerializeField] private string _replayFilePath = "";
         [SerializeField] private bool _replayAutoPlay;
-        [SerializeField] private bool _disableLivePublishers = true;
+        [SerializeField] private bool _disableLivePublishers;
         private bool _livePublishersDisabled;
-        [Tooltip("Serve the selected replay MCAP as a loopback Remote files URL for Foxglove Desktop.")]
-        [SerializeField] private bool _enableRemoteMcapFileServer = true;
+        [Tooltip("Serve the selected replay MCAP as a loopback URL so Foxglove Desktop owns the replay timeline.")]
+        [SerializeField] private bool _enableRemoteMcapFileServer;
         [SerializeField] private string _remoteMcapFileServerHost = "127.0.0.1";
         [SerializeField, Min(1)] private int _remoteMcapFileServerPort = 8891;
         [SerializeField] private string _remoteMcapFileServerSourceId = "local-mcap";
@@ -466,6 +466,11 @@ namespace Unity.FoxgloveSDK.Components
             _ros2BridgePort = Mathf.Clamp(_ros2BridgePort, 1, 65535);
             _remoteMcapFileServerPort = Mathf.Clamp(_remoteMcapFileServerPort, 1, 65535);
             _replayCursorBridgePort = Mathf.Clamp(_replayCursorBridgePort, 1, 65535);
+            if (_enableRemoteMcapFileServer)
+            {
+                _replayAutoPlay = false;
+            }
+
             _ros2BridgeCustomDepth = Mathf.Max(1, _ros2BridgeCustomDepth);
             _ros2BridgeQueueCapacity = Mathf.Max(1, _ros2BridgeQueueCapacity);
             _ros2BridgeReconnectIntervalMs = Mathf.Max(1, _ros2BridgeReconnectIntervalMs);

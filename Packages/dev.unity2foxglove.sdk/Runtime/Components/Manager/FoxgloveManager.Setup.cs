@@ -251,12 +251,17 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.LogWarning("[Foxglove] FoxRun schema mismatch detected in Warn mode while live publishers are enabled; Foxglove may show mixed replay/live data.");
             }
 
-            if (_replayAutoPlay)
+            if (_replayAutoPlay && !_enableRemoteMcapFileServer)
             {
                 _runtime.ReplayPlay();
             }
             else
             {
+                if (_replayAutoPlay && _enableRemoteMcapFileServer)
+                {
+                    Debug.Log("[Foxglove] Replay Auto Play ignored because Foxglove Timeline Replay is enabled.");
+                }
+
                 _runtime.ReplayPause();
             }
 

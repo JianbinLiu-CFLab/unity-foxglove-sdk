@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_recordingCompression");
 
             DrawProperty("_enableReplay");
-            DrawProperty("_replayAutoPlay");
+            DrawReplayAutoPlayControl();
             DrawProperty("_disableLivePublishers");
             var replayPath = serializedObject.FindProperty("_replayFilePath");
             if (replayPath != null)
@@ -71,17 +71,42 @@ namespace Unity.FoxgloveSDK.Editor
             DrawRemoteFileAccessSection(replayPath);
         }
 
+        private void DrawReplayAutoPlayControl()
+        {
+            var replayAutoPlay = serializedObject.FindProperty("_replayAutoPlay");
+            if (replayAutoPlay == null)
+            {
+                DrawMissingProperty("_replayAutoPlay");
+                return;
+            }
+
+            if (GetBool("_enableRemoteMcapFileServer") && replayAutoPlay.boolValue)
+                replayAutoPlay.boolValue = false;
+
+            using (new EditorGUI.DisabledScope(GetBool("_enableRemoteMcapFileServer")))
+            {
+                EditorGUILayout.PropertyField(replayAutoPlay, true);
+            }
+
+            if (GetBool("_enableRemoteMcapFileServer"))
+            {
+                EditorGUILayout.HelpBox(
+                    "Foxglove as Replay Timeline is on. Replay Auto Play is unavailable because Foxglove owns replay time.",
+                    MessageType.Warning);
+            }
+        }
+
         private void DrawRemoteFileAccessSection(SerializedProperty replayPath)
         {
-            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Remote File Access", ref _remoteFileAccessExpanded))
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Foxglove Timeline Replay", ref _remoteFileAccessExpanded))
                 return;
 
             EditorGUI.indentLevel++;
             EditorGUILayout.HelpBox(
-                "Serves the selected Replay File Path as a Foxglove Remote files URL. This only opens recorded data in Foxglove; it does not synchronize Unity and Foxglove playback time.",
+                "Serves the selected Replay File Path as a local MCAP URL so Foxglove can load it and control replay time. When enabled, Unity follows the Foxglove timeline; Replay Auto Play is disabled.",
                 MessageType.Info);
 
-            DrawProperty("_enableRemoteMcapFileServer", "Enable Remote File URL");
+            DrawProperty("_enableRemoteMcapFileServer", "Foxglove as Replay Timeline");
             using (new EditorGUI.DisabledScope(!GetBool("_enableRemoteMcapFileServer")))
             {
                 DrawProperty("_remoteMcapFileServerHost", "Host");
@@ -89,28 +114,15 @@ namespace Unity.FoxgloveSDK.Editor
 
                 var remoteUrl = BuildRemoteMcapDirectFileUrl();
                 using (new EditorGUI.DisabledScope(true))
-                    EditorGUILayout.TextField("Remote MCAP URL", remoteUrl);
+                    EditorGUILayout.TextField("Foxglove MCAP URL", remoteUrl);
 
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Copy Remote URL"))
+                    if (GUILayout.Button("Copy Foxglove URL"))
                         EditorGUIUtility.systemCopyBuffer = remoteUrl;
 
                     if (GUILayout.Button("Open in Foxglove"))
                         OpenFoxgloveTarget(remoteUrl);
-                }
-
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    var localPath = replayPath == null ? string.Empty : ResolveProjectPath(replayPath.stringValue);
-                    using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath)))
-                    {
-                        if (GUILayout.Button("Open Local MCAP"))
-                            OpenFoxgloveTarget(localPath);
-                    }
-
-                    if (GUILayout.Button("Copy Manifest URL"))
-                        EditorGUIUtility.systemCopyBuffer = BuildRemoteMcapBaseUrl() + "/v1/manifest";
                 }
             }
 

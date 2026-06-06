@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tools/foxglove-extensions/unity-cursor-bridge
-// Purpose: Minimal Foxglove panel for bidirectional Unity replay cursor synchronization.
+// Purpose: Minimal Foxglove panel for Foxglove-owned Unity replay cursor synchronization.
 
 import {
   ExtensionContext,
@@ -12,8 +12,6 @@ import {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8892/v1/replay-cursor";
 const DEFAULT_MAX_HZ = 20;
-const FOLLOW_POLL_INTERVAL_MS = 1000 / DEFAULT_MAX_HZ;
-const ECHO_SUPPRESS_MS = 250;
 
 type CursorPayload = {
   source: "foxglove-unity-cursor-bridge";
@@ -29,7 +27,6 @@ type PanelState = {
   endpoint: string;
   token: string;
   enabled: boolean;
-  followUnity: boolean;
 };
 
 type SendStatus = {
@@ -37,28 +34,11 @@ type SendStatus = {
   ok: boolean;
 };
 
-type UnityReplayState = {
-  available: boolean;
-  replayEnabled: boolean;
-  playbackEnabled: boolean;
-  playing: boolean;
-  ended: boolean;
-  speed: number;
-  time: { sec: number; nsec: number };
-  startTime?: { sec: number; nsec: number };
-  endTime?: { sec: number; nsec: number };
-  message?: string;
-};
-
 type CursorRenderState = {
   readonly currentTime?: Time;
   readonly didSeek?: boolean;
   readonly startTime?: Time;
   readonly endTime?: Time;
-};
-
-type SeekPlaybackContext = PanelExtensionContext & {
-  seekPlayback?: (time: Time) => void | Promise<void>;
 };
 
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
@@ -71,6 +51,23 @@ function cloneTime(time: Time | undefined): { sec: number; nsec: number } | unde
 
 function cursorKey(time: Time): string {
   return `${time.sec}.${time.nsec}`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatReplayTimeUtc(time: Time | undefined): string {
+  if (time == undefined) {
+    return "Waiting for Foxglove playback";
+  }
+
+  const milliseconds = (time.sec * 1000) + Math.floor(time.nsec / 1_000_000);
+  return new Date(milliseconds).toISOString().replace("T", " ").replace("Z", " UTC");
 }
 
 async function sendCursor(endpoint: string, token: string, payload: CursorPayload): Promise<SendStatus> {
@@ -88,27 +85,9 @@ async function sendCursor(endpoint: string, token: string, payload: CursorPayloa
   return {
     ok: response.ok,
     message: response.ok
-      ? `Sent sequence ${payload.sequence} to Unity (${response.status})`
-      : `Unity rejected sequence ${payload.sequence} (${response.status}): ${responseText}`,
+      ? "Unity is following Foxglove"
+      : `Unity rejected replay time (HTTP ${response.status}): ${responseText}`,
   };
-}
-
-async function fetchUnityState(endpoint: string, token: string): Promise<UnityReplayState> {
-  const headers: Record<string, string> = {};
-  if (token.length > 0) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(endpoint, {
-    method: "GET",
-    headers,
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`Unity state rejected (${response.status}): ${responseText}`);
-  }
-
-  return JSON.parse(responseText) as UnityReplayState;
 }
 
 function buildPayload(renderState: CursorRenderState, sequence: number): CursorPayload | undefined {
@@ -132,18 +111,14 @@ function initPanel(context: PanelExtensionContext): void {
   let state: PanelState = {
     endpoint: DEFAULT_ENDPOINT,
     token: "",
-    enabled: false,
-    followUnity: false,
+    enabled: true,
   };
   let sequence = 0;
   let lastCursorKey = "";
-  let lastFollowedKey = "";
   let lastSentAtMs = 0;
-  let lastPollAtMs = 0;
-  let suppressForwardUntilMs = 0;
   let status: SendStatus = {
     ok: true,
-    message: "Disabled by default. Enable a direction only while Unity replay is loaded.",
+    message: "Waiting for Foxglove replay time. Keep Unity in Play Mode.",
   };
 
   context.watch("currentTime");
@@ -155,35 +130,132 @@ function initPanel(context: PanelExtensionContext): void {
     try {
       const currentTime = renderState.currentTime;
       const root = document.createElement("div");
-      root.style.fontFamily = "sans-serif";
-      root.style.padding = "12px";
+      const statusClass = status.ok ? "ok" : "error";
       root.innerHTML = `
-        <h3>Unity Cursor Bridge</h3>
-        <label>
-          <input id="enabled" type="checkbox" ${state.enabled ? "checked" : ""} />
-          Forward Foxglove currentTime to Unity
-        </label>
-        <br />
-        <label>
-          <input id="followUnity" type="checkbox" ${state.followUnity ? "checked" : ""} />
-          Follow Unity replay in Foxglove
-        </label>
-        <p>Endpoint</p>
-        <input id="endpoint" style="width: 100%" value="${state.endpoint}" />
-        <p>Bearer token (optional)</p>
-        <input id="token" style="width: 100%" type="password" value="${state.token}" />
-        <p>Current time: ${currentTime ? `${currentTime.sec}.${currentTime.nsec}` : "none"}</p>
-        <p>Status: <span style="color: ${status.ok ? "#2b8a3e" : "#c92a2a"}">${status.message}</span></p>
+        <style>
+          .bridge-panel {
+            box-sizing: border-box;
+            color: #f3f4f6;
+            display: grid;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            gap: 14px;
+            line-height: 1.35;
+            padding: 14px;
+          }
+
+          .bridge-sync {
+            align-items: center;
+            border: 1px solid #343942;
+            border-radius: 6px;
+            display: grid;
+            gap: 10px;
+            grid-template-columns: auto 1fr;
+            padding: 10px;
+          }
+
+          .bridge-sync input {
+            height: 16px;
+            margin: 0;
+            width: 16px;
+          }
+
+          .bridge-sync span {
+            font-size: 14px;
+            font-weight: 600;
+          }
+
+          .bridge-field {
+            display: grid;
+            gap: 6px;
+          }
+
+          .bridge-field label {
+            color: #d1d5db;
+            font-size: 12px;
+            font-weight: 600;
+          }
+
+          .bridge-field input {
+            background: #111318;
+            border: 1px solid #3a404a;
+            border-radius: 4px;
+            box-sizing: border-box;
+            color: #f9fafb;
+            font: 13px ui-monospace, "SFMono-Regular", Consolas, monospace;
+            min-width: 0;
+            padding: 7px 8px;
+            width: 100%;
+          }
+
+          .bridge-readout {
+            display: grid;
+            gap: 8px;
+          }
+
+          .bridge-row {
+            align-items: start;
+            display: grid;
+            gap: 8px;
+            grid-template-columns: 88px 1fr;
+          }
+
+          .bridge-label {
+            color: #aeb4bd;
+            font-size: 12px;
+            font-weight: 600;
+          }
+
+          .bridge-value {
+            color: #f3f4f6;
+            font: 12px ui-monospace, "SFMono-Regular", Consolas, monospace;
+            min-width: 0;
+            overflow-wrap: anywhere;
+          }
+
+          .bridge-status {
+            border-radius: 4px;
+            display: inline;
+            font: 12px ui-monospace, "SFMono-Regular", Consolas, monospace;
+            overflow-wrap: anywhere;
+          }
+
+          .bridge-status.ok {
+            color: #22c55e;
+          }
+
+          .bridge-status.error {
+            color: #f87171;
+          }
+        </style>
+        <div class="bridge-panel">
+          <label class="bridge-sync">
+            <input id="enabled" type="checkbox" ${state.enabled ? "checked" : ""} />
+            <span>Sync Foxglove timeline to Unity</span>
+          </label>
+          <div class="bridge-field">
+            <label for="endpoint">Unity endpoint</label>
+            <input id="endpoint" value="${escapeHtml(state.endpoint)}" />
+          </div>
+          <div class="bridge-field">
+            <label for="token">Access token (optional)</label>
+            <input id="token" type="password" value="${escapeHtml(state.token)}" />
+          </div>
+          <div class="bridge-readout">
+            <div class="bridge-row">
+              <span class="bridge-label">Replay time (UTC)</span>
+              <span class="bridge-value">${formatReplayTimeUtc(currentTime)}</span>
+            </div>
+            <div class="bridge-row">
+              <span class="bridge-label">Unity status</span>
+              <span class="bridge-status ${statusClass}">${escapeHtml(status.message)}</span>
+            </div>
+          </div>
+        </div>
       `;
 
       const enabled = root.querySelector<HTMLInputElement>("#enabled");
       enabled?.addEventListener("change", () => {
         state = { ...state, enabled: enabled.checked };
-      });
-
-      const followUnity = root.querySelector<HTMLInputElement>("#followUnity");
-      followUnity?.addEventListener("change", () => {
-        state = { ...state, followUnity: followUnity.checked };
       });
 
       const endpoint = root.querySelector<HTMLInputElement>("#endpoint");
@@ -198,66 +270,11 @@ function initPanel(context: PanelExtensionContext): void {
 
       context.panelElement.replaceChildren(root);
 
-      if (state.followUnity) {
-        const nowMs = Date.now();
-        if (nowMs - lastPollAtMs >= FOLLOW_POLL_INTERVAL_MS) {
-          lastPollAtMs = nowMs;
-          void fetchUnityState(state.endpoint, state.token).then(
-            async (unityState) => {
-              if (!unityState.available) {
-                status = {
-                  ok: false,
-                  message: unityState.message ?? "Unity replay cursor state is not available.",
-                };
-                return;
-              }
-
-              const key = cursorKey(unityState.time);
-              if (key === lastFollowedKey) {
-                status = {
-                  ok: true,
-                  message: `Following Unity at ${key}`,
-                };
-                return;
-              }
-
-              const seekPlayback = (context as SeekPlaybackContext).seekPlayback;
-              if (seekPlayback == undefined) {
-                status = {
-                  ok: false,
-                  message: "Foxglove extension API does not expose seekPlayback in this build.",
-                };
-                return;
-              }
-
-              lastFollowedKey = key;
-              suppressForwardUntilMs = Date.now() + ECHO_SUPPRESS_MS;
-              await seekPlayback(unityState.time);
-              status = {
-                ok: true,
-                message: `Moved Foxglove to Unity replay time ${key}`,
-              };
-            },
-            (error: unknown) => {
-              status = {
-                ok: false,
-                message: `Failed to fetch Unity state: ${String(error)}`,
-              };
-            },
-          );
-        }
-      }
-
       if (state.enabled && currentTime != undefined) {
         const key = cursorKey(currentTime);
         const nowMs = Date.now();
         const minIntervalMs = 1000 / DEFAULT_MAX_HZ;
-        if (nowMs < suppressForwardUntilMs) {
-          status = {
-            ok: true,
-            message: "Suppressing echo after Unity -> Foxglove seek.",
-          };
-        } else if (key !== lastCursorKey && nowMs - lastSentAtMs >= minIntervalMs) {
+        if (key !== lastCursorKey && nowMs - lastSentAtMs >= minIntervalMs) {
           lastCursorKey = key;
           lastSentAtMs = nowMs;
           sequence++;
@@ -271,7 +288,7 @@ function initPanel(context: PanelExtensionContext): void {
               (error: unknown) => {
                 status = {
                   ok: false,
-                  message: `Failed to send cursor: ${String(error)}`,
+                  message: `Cannot reach Unity. Check Play Mode and endpoint. ${String(error)}`,
                 };
               },
             );
@@ -286,7 +303,7 @@ function initPanel(context: PanelExtensionContext): void {
 
 export function activate(extensionContext: ExtensionContext): void {
   extensionContext.registerPanel({
-    name: "Unity Cursor Bridge",
+    name: "Unity Replay Sync",
     initPanel,
   });
 }

@@ -51,7 +51,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Enable Replay | Disabled | Loads and replays an MCAP file. | Enable for Unity-side replay tests. | Enabling recording and replay at the same time. |
 | Replay File Path | Empty | Path to the `.mcap` file. | Set before Play Mode for replay. | Leaving a personal absolute path in shared scenes. |
 | Replay Auto Play | Disabled | Starts replay automatically. | Enable for quick acceptance tests. | Expecting replay to advance while paused. |
-| Disable Live Publishers | Enabled | Disables live publishers during replay. | Keep enabled for clean replay verification. | Disabling it and mixing live and replayed messages. |
+| Disable Live Publishers | Disabled | Disables live publishers during replay. | Enable when you need clean replay-only verification. | Expecting live publishers to stay active while this is enabled. |
 
 The **Replay Preflight** tools help prepare this path before Play Mode. **Use Latest Recording** selects the newest `.mcap` from the recording directory and writes the project-relative path into **Replay File Path**. **Compare With Current** reads the recording sidecar, compares the recorded FoxRun hash with the current generated FoxRun hash, and reports `Match`, `Mismatch`, or `Missing Evidence`. **Open Recording Evidence** reveals the paired `.schema` folder, and **Copy Identity Summary** copies the comparison for review notes.
 

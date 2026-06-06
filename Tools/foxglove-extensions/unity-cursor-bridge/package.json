@@ -1,7 +1,7 @@
 {
   "name": "unity-cursor-bridge",
-  "displayName": "Unity Cursor Bridge",
-  "description": "Optional Foxglove panel that forwards timeline currentTime metadata to a local Unity replay cursor endpoint.",
+  "displayName": "Unity Replay Sync",
+  "description": "Foxglove panel that keeps Unity replay time aligned to the Foxglove timeline.",
   "publisher": "unity2foxglove",
   "version": "0.1.0",
   "license": "Apache-2.0",

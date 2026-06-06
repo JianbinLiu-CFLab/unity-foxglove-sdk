@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine();
-            Console.WriteLine("=== Phase 139D: Unity Cursor Bridge Feasibility Scaffold ===");
+            Console.WriteLine("=== Phase 139D: Unity Replay Sync Feasibility Scaffold ===");
             _passed = 0;
 
             VerifyExtensionScaffold();
@@ -182,8 +182,9 @@ namespace Unity.FoxgloveSDK.Tests
             var readme = Read("Tools/foxglove-extensions/unity-cursor-bridge/README.md");
 
             Check(packageJson.Contains("\"name\": \"unity-cursor-bridge\"", StringComparison.Ordinal)
+                  && packageJson.Contains("\"displayName\": \"Unity Replay Sync\"", StringComparison.Ordinal)
                   && packageJson.Contains("foxglove-extension build", StringComparison.Ordinal),
-                "139D-1A: extension package declares the Unity cursor bridge panel");
+                "139D-1A: extension package declares the Unity replay sync panel");
             Check(source.Contains("context.watch(\"currentTime\")", StringComparison.Ordinal)
                   && source.Contains("renderState.currentTime", StringComparison.Ordinal),
                 "139D-1B: extension watches and reads Foxglove currentTime");
@@ -197,19 +198,26 @@ namespace Unity.FoxgloveSDK.Tests
                 "139D-1D: extension sends split sec/nsec cursor metadata to loopback");
             Check(!source.Contains("/v1/data", StringComparison.Ordinal),
                 "139D-1E: extension does not infer cursor state from Remote Data Loader ranges");
-            Check(readme.Contains("disabled by default", StringComparison.OrdinalIgnoreCase)
+            Check(readme.Contains("sync switch is enabled by default", StringComparison.OrdinalIgnoreCase)
                   && readme.Contains("/v1/data", StringComparison.Ordinal)
                   && readme.Contains("playhead signal", StringComparison.OrdinalIgnoreCase),
-                "139D-1F: extension README documents the disabled default and DataLoader boundary");
-            Check(source.Contains("Status:", StringComparison.Ordinal)
-                  && source.Contains("Unity rejected sequence", StringComparison.Ordinal),
-                "139D-1G: extension surfaces cursor forwarding status to the operator");
-            Check(source.Contains("seekPlayback", StringComparison.Ordinal)
-                  && source.Contains("Follow Unity replay", StringComparison.Ordinal),
-                "139D-1H: extension can drive Foxglove from Unity replay state");
-            Check(source.Contains("fetchUnityState", StringComparison.Ordinal)
-                  && source.Contains("suppressForwardUntilMs", StringComparison.Ordinal),
-                "139D-1I: extension polls Unity state without echoing follow-up seeks back to Unity");
+                "139D-1F: extension README documents the enabled panel default and DataLoader boundary");
+            Check(source.Contains("Replay time (UTC)", StringComparison.Ordinal)
+                  && source.Contains("Unity is following Foxglove", StringComparison.Ordinal)
+                  && source.Contains("Unity rejected replay time", StringComparison.Ordinal)
+                  && !source.Contains("Current time", StringComparison.Ordinal)
+                  && !source.Contains("Sent sequence", StringComparison.Ordinal)
+                  && !source.Contains("Unity rejected sequence", StringComparison.Ordinal),
+                "139D-1G: extension surfaces user-readable UTC replay time and sync status");
+            Check(source.Contains("Sync Foxglove timeline to Unity", StringComparison.Ordinal)
+                  && source.Contains("enabled: true", StringComparison.Ordinal)
+                  && source.Contains("name: \"Unity Replay Sync\"", StringComparison.Ordinal)
+                  && !source.Contains("Follow Unity replay", StringComparison.Ordinal)
+                  && !source.Contains("seekPlayback", StringComparison.Ordinal),
+                "139D-1H: extension exposes only the Foxglove-to-Unity product direction and names it for replay sync");
+            Check(!source.Contains("fetchUnityState", StringComparison.Ordinal)
+                  && !source.Contains("suppressForwardUntilMs", StringComparison.Ordinal),
+                "139D-1I: extension does not poll Unity state for reverse follow mode");
         }
 
         private static void VerifySmokeScript()
@@ -229,28 +237,30 @@ namespace Unity.FoxgloveSDK.Tests
             Check(script.Contains("not playhead-control evidence", StringComparison.Ordinal)
                   && script.Contains("/v1/data", StringComparison.Ordinal),
                 "139D-5D: smoke helper documents that /v1/data is not a cursor source");
-            Check(script.Contains("GET", StringComparison.Ordinal)
-                  && script.Contains("unity_state", StringComparison.Ordinal),
-                "139D-5E: smoke helper probes Unity cursor state for follow mode");
+            Check(!script.Contains("supports_unity_to_foxglove_follow", StringComparison.Ordinal)
+                  && !script.Contains("polls_unity_state_without_echo", StringComparison.Ordinal),
+                "139D-5E: smoke helper does not validate reverse follow as a product feature");
         }
 
         private static void VerifyWorkflowDocumentation()
         {
             var docs = Read("docs/research-remote-timeline-scene-reproduction.md");
 
-            Check(docs.Contains("Phase139D Unity Cursor Bridge Boundary", StringComparison.Ordinal),
-                "139D-6A: research document contains a Phase139D cursor bridge section");
+            Check(docs.Contains("Phase139D Unity Replay Sync Boundary", StringComparison.Ordinal),
+                "139D-6A: research document contains a Phase139D replay sync section");
             Check(docs.Contains("context.watch(\"currentTime\")", StringComparison.Ordinal)
                   && docs.Contains("renderState.currentTime", StringComparison.Ordinal),
                 "139D-6B: documentation records the Foxglove extension currentTime contract");
             Check(docs.Contains("Do not infer Unity cursor state from `/v1/data`", StringComparison.Ordinal),
                 "139D-6C: documentation forbids using Remote Data Loader data ranges as cursor signals");
-            Check(docs.Contains("disabled by default", StringComparison.OrdinalIgnoreCase)
+            Check(docs.Contains("sync switch is enabled by default", StringComparison.OrdinalIgnoreCase)
                   && docs.Contains("loopback", StringComparison.OrdinalIgnoreCase),
-                "139D-6D: documentation keeps the bridge optional and loopback-bounded");
-            Check(docs.Contains("not a product-ready bidirectional sync feature", StringComparison.OrdinalIgnoreCase)
-                  && docs.Contains("Remote File Access only opens the MCAP data source", StringComparison.Ordinal),
-                "139D-6E: documentation records the current product boundary");
+                "139D-6D: documentation records the enabled panel default and loopback boundary");
+            Check(docs.Contains("Foxglove Timeline Replay", StringComparison.Ordinal)
+                  && docs.Contains("Foxglove controls replay", StringComparison.Ordinal)
+                  && docs.Contains("Unity follows the", StringComparison.Ordinal)
+                  && docs.Contains("Foxglove timeline", StringComparison.Ordinal),
+                "139D-6E: documentation records the Foxglove-owned product boundary");
         }
 
         private static void VerifyRuntimeWiring()

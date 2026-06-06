@@ -72,7 +72,7 @@ manager.Runtime.EnableRecording(
 | `Enable Replay` | `bool` | `false` | 勾选后启用回放 |
 | `Replay File Path` | `string` | `""` | .mcap 文件的完整路径 |
 | `Replay Auto Play` | `bool` | `false` | 启动后自动开始播放 |
-| `Disable Live Publishers` | `bool` | `true` | 启动回放时禁用场景中的实时 Publisher |
+| `Disable Live Publishers` | `bool` | `false` | 启动回放时禁用场景中的实时 Publisher |
 
 ### 录制与回放互斥
 
