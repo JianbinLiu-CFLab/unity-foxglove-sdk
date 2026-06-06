@@ -337,8 +337,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "139D-8C: test project compiles Phase139DValidation");
         }
 
+        /// <summary>Read a repository-relative text file for structural validation checks.</summary>
         private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
 
+        /// <summary>Extract a method body so validation can inspect one implementation boundary.</summary>
         private static string ExtractMethodBody(string source, string signature)
         {
             var start = source.IndexOf(signature, StringComparison.Ordinal);

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Core/Runtime
+// Purpose: Coordinates runtime tick ordering for services, clocks, replay, and
+// external replay cursor ownership.
 
 using System;
 using Unity.FoxgloveSDK.Transport;

@@ -265,6 +265,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Read a JSON integer token without throwing parser exceptions to callers.</summary>
         private static bool TryReadInt64(JToken token, out long value)
         {
             value = 0;
@@ -284,6 +285,7 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Read a JSON boolean token without throwing parser exceptions to callers.</summary>
         private static bool TryReadBool(JToken token, out bool value)
         {
             value = false;
