@@ -150,8 +150,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
             Check(source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
                   && source.IndexOf("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
-                  > source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
-                "134-16H-2: sidecar publisher maps are scoped per client connection");
+                  < source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
+                "134-16H-2: sidecar publisher maps survive client reconnects");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
                   && source.Contains("reject frame: missing or invalid op", StringComparison.Ordinal)
                   && source.Contains("topic must not contain newline", StringComparison.Ordinal),
