@@ -6,6 +6,7 @@
 // as foxglove.CompressedImage JPEG frames or FFmpeg-backed foxglove.CompressedVideo frames.
 
 using System;
+using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Schemas;
@@ -101,10 +102,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                var mode = _outputModeRuntimeLock.Resolve(_outputMode, Application.isPlaying, out var warning);
-                if (!string.IsNullOrEmpty(warning))
-                    Debug.LogWarning(warning);
-                return mode;
+                return _outputModeRuntimeLock.Resolve(_outputMode, Application.isPlaying);
             }
         }
 
@@ -186,7 +184,7 @@ namespace Unity.FoxgloveSDK.Components
             base.OnEnable();
             _destroyed = false;
             _cleanupWhenReadbacksDrain = false;
-            _captureGeneration++;
+            Interlocked.Increment(ref _captureGeneration);
             ResetBackpressureState();
             ResetJpegPipelineState();
             ResetVideoDiagnosticState();
@@ -202,6 +200,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void LateUpdate()
         {
+            WarnIfRuntimeOutputModeSwitchIgnored();
             var profile = ActiveProfile;
             DrainCompletedJpegFrames();
             DrainEncodedAccessUnits();
@@ -254,7 +253,8 @@ namespace Unity.FoxgloveSDK.Components
             var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
             try
             {
-                if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration) return;
+                // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.
+                if (_destroyed || !isActiveAndEnabled || generation != Volatile.Read(ref _captureGeneration)) return;
                 if (req.hasError)
                 {
                     Debug.LogWarning("[Foxglove] Camera AsyncGPUReadback failed.");
@@ -332,7 +332,7 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnDisable()
         {
             base.OnDisable();
-            _captureGeneration++;
+            Interlocked.Increment(ref _captureGeneration);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
             StopJpegWorker(clearQueues: true);
@@ -348,7 +348,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnDestroy()
         {
             _destroyed = true;
-            _captureGeneration++;
+            Interlocked.Increment(ref _captureGeneration);
             StopVideoSidecar();
             StopJpegWorker(clearQueues: true);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
@@ -381,6 +381,13 @@ namespace Unity.FoxgloveSDK.Components
             => _useSharedSensorClock && _manager != null
                 ? _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble)
                 : CurrentLogTimeNs;
+
+        private void WarnIfRuntimeOutputModeSwitchIgnored()
+        {
+            _outputModeRuntimeLock.ResolveWarning(_outputMode, Application.isPlaying, out var warning);
+            if (!string.IsNullOrEmpty(warning))
+                Debug.LogWarning(warning);
+        }
 
         private string ResolveFrameId()
             => CameraSensorProfileResolver.ResolveFrameId(_sensorUnitProfile, _frameId);

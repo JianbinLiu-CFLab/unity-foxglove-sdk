@@ -46,6 +46,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_captureCamera == null)
             {
                 var go = new GameObject("_FoxgloveCaptureCam");
+                go.hideFlags = HideFlags.HideAndDontSave;
                 go.transform.SetParent(parent, false);
                 _captureCamera = go.AddComponent<Camera>();
                 _captureCamera.enabled = false;

@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Components
         private DropOldestBoundedQueue<JpegEncodeResult> _completedQueue;
         private AutoResetEvent _workerSignal;
         private Thread _worker;
+        private Thread _orphanedWorker;
         private volatile bool _workerStopping;
         private int _workerGeneration;
         private int _encodeCapacity = 1;
@@ -41,8 +42,8 @@ namespace Unity.FoxgloveSDK.Components
 
         public string LastStartError { get; private set; }
         public int WorkerGeneration => Volatile.Read(ref _workerGeneration);
-        public int EncodeQueueDepth => _encodeQueue?.Count ?? 0;
-        public int CompletedQueueDepth => _completedQueue?.Count ?? 0;
+        public int EncodeQueueDepth => Volatile.Read(ref _encodeQueue)?.Count ?? 0;
+        public int CompletedQueueDepth => Volatile.Read(ref _completedQueue)?.Count ?? 0;
 
         public void Configure(int maxEncodeQueue, int maxCompletedQueue)
         {
@@ -53,6 +54,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool Start()
         {
+            TryJoinOrphanedWorker();
             EnsureQueues();
             if (_worker != null && _worker.IsAlive && !_workerStopping)
                 return true;
@@ -92,7 +94,8 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(request));
 
             EnsureQueues();
-            var dropped = _encodeQueue.Enqueue(request);
+            var queue = Volatile.Read(ref _encodeQueue);
+            var dropped = queue != null && queue.Enqueue(request);
             try
             {
                 _workerSignal?.Set();
@@ -110,7 +113,7 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(publish));
 
             droppedCompleted = Interlocked.Exchange(ref _droppedCompletedCount, 0);
-            var queue = _completedQueue;
+            var queue = Volatile.Read(ref _completedQueue);
             if (queue == null)
                 return 0;
 
@@ -143,6 +146,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (clearQueues)
                     Clear();
+                _orphanedWorker = worker;
                 _worker = null;
                 if (ReferenceEquals(_workerSignal, signal))
                     _workerSignal = null;
@@ -163,18 +167,30 @@ namespace Unity.FoxgloveSDK.Components
 
         public void Clear()
         {
-            _encodeQueue?.Clear();
-            _completedQueue?.Clear();
+            Volatile.Read(ref _encodeQueue)?.Clear();
+            Volatile.Read(ref _completedQueue)?.Clear();
             Interlocked.Exchange(ref _droppedCompletedCount, 0);
         }
 
         private void EnsureQueues()
         {
-            if (_encodeQueue == null || _encodeQueue.Capacity != _encodeCapacity)
-                _encodeQueue = new DropOldestBoundedQueue<JpegEncodeRequest>(_encodeCapacity);
+            var encodeQueue = Volatile.Read(ref _encodeQueue);
+            if (encodeQueue == null || encodeQueue.Capacity != _encodeCapacity)
+                Volatile.Write(ref _encodeQueue, new DropOldestBoundedQueue<JpegEncodeRequest>(_encodeCapacity));
 
-            if (_completedQueue == null || _completedQueue.Capacity != _completedCapacity)
-                _completedQueue = new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity);
+            var completedQueue = Volatile.Read(ref _completedQueue);
+            if (completedQueue == null || completedQueue.Capacity != _completedCapacity)
+                Volatile.Write(ref _completedQueue, new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity));
+        }
+
+        private void TryJoinOrphanedWorker()
+        {
+            var orphaned = _orphanedWorker;
+            if (orphaned == null)
+                return;
+
+            if (!orphaned.IsAlive || orphaned.Join(_workerStopWaitMs))
+                _orphanedWorker = null;
         }
 
         private void EncodeJpegWorkerLoop(int workerGeneration, AutoResetEvent workerSignal)
@@ -183,7 +199,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 while (!_workerStopping && workerGeneration == WorkerGeneration)
                 {
-                    var queue = _encodeQueue;
+                    var queue = Volatile.Read(ref _encodeQueue);
                     if (queue != null && queue.TryDequeue(out var request))
                     {
                         if (request.Generation != _currentCaptureGeneration())
@@ -196,7 +212,7 @@ namespace Unity.FoxgloveSDK.Components
                             && workerGeneration == WorkerGeneration
                             && result.Request.JpegWorkerGeneration == workerGeneration)
                         {
-                            var completed = _completedQueue;
+                            var completed = Volatile.Read(ref _completedQueue);
                             if (completed != null && completed.Enqueue(result))
                                 Interlocked.Increment(ref _droppedCompletedCount);
                         }

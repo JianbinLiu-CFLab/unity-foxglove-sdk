@@ -98,6 +98,8 @@ namespace Unity.FoxgloveSDK.Components
             int captureHeight)
         {
             var submitStart = Stopwatch.GetTimestamp();
+            if (frameBytesFactory == null)
+                throw new ArgumentNullException(nameof(frameBytesFactory));
             if (frameByteLength <= 0)
                 return new CameraVideoSubmitResult(CameraVideoSubmitOutcome.FrameDataMissing, "Video frame data is empty.", 0d);
 
@@ -141,9 +143,6 @@ namespace Unity.FoxgloveSDK.Components
                 _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
                 return result;
             }
-
-            if (frameBytesFactory == null)
-                throw new ArgumentNullException(nameof(frameBytesFactory));
 
             var frameBytes = frameBytesFactory();
             if (frameBytes == null || frameBytes.Length == 0)

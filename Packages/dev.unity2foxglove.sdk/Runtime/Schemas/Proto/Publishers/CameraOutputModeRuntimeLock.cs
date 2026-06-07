@@ -27,14 +27,23 @@ namespace Unity.FoxgloveSDK.Components
             _warnedRuntimeOutputModeSwitch = false;
         }
 
-        public CameraOutputMode Resolve(
+        public CameraOutputMode Resolve(CameraOutputMode configuredMode, bool isPlaying)
+        {
+            if (!isPlaying || !_isLocked)
+                return configuredMode;
+
+            return _lockedMode;
+        }
+
+        public CameraOutputMode ResolveWarning(
             CameraOutputMode configuredMode,
             bool isPlaying,
             out string warning)
         {
             warning = null;
+            var mode = Resolve(configuredMode, isPlaying);
             if (!isPlaying || !_isLocked)
-                return configuredMode;
+                return mode;
 
             if (configuredMode != _lockedMode && !_warnedRuntimeOutputModeSwitch)
             {
@@ -46,7 +55,7 @@ namespace Unity.FoxgloveSDK.Components
                     $"Restart Play Mode to switch from {active} to {requested}.";
             }
 
-            return _lockedMode;
+            return mode;
         }
     }
 }

@@ -12,6 +12,7 @@ using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
+using System.Threading;
 using Stopwatch = System.Diagnostics.Stopwatch;
 namespace Unity.FoxgloveSDK.Components
 {
@@ -21,7 +22,7 @@ namespace Unity.FoxgloveSDK.Components
         private CameraJpegPublishPipeline EnsureJpegPublishPipeline()
         {
             if (_jpegPublishPipeline == null)
-                _jpegPublishPipeline = new CameraJpegPublishPipeline(() => _captureGeneration, _diagnostics);
+                _jpegPublishPipeline = new CameraJpegPublishPipeline(() => Volatile.Read(ref _captureGeneration), _diagnostics);
             return _jpegPublishPipeline;
         }
 
@@ -109,7 +110,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void PublishCompletedJpegFrame(JpegEncodeResult result)
         {
-            if (result.Request.Generation != _captureGeneration)
+            if (result.Request.Generation != Volatile.Read(ref _captureGeneration))
                 return;
 
             var captureUnixNs = result.Request.CaptureUnixNs;
@@ -189,6 +190,12 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            if (!CameraJpegPublishOrderPolicy.ShouldPublish(unixNs, _lastPublishedCaptureUnixNs))
+            {
+                _diagnostics.RecordLateJpegDrop();
+                return;
+            }
+
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             var publishNativeFrame = HasSensorCompressedImageDemand();
@@ -199,12 +206,14 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var payload = CameraCompressedImageBuilder.Serialize(unixNs, frameId, jpeg, "jpeg");
                 PublishProto(payload, unixNs);
+                _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
                 ros2Payload = SerializeRos2CompressedImage(unixNs, frameId, jpeg);
                 PublishRos2(ros2Payload, unixNs);
+                _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
             else if (publishWebSocket)
@@ -218,6 +227,7 @@ namespace Unity.FoxgloveSDK.Components
                 };
 
                 Publish(msg, unixNs);
+                _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
 
@@ -225,6 +235,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 ros2Payload ??= SerializeRos2CompressedImage(unixNs, frameId, jpeg);
                 PublishRos2Bridge(ros2Payload, unixNs);
+                _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
 

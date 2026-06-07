@@ -45,6 +45,8 @@ namespace Unity.FoxgloveSDK.Components
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width) + " / " + nameof(height));
 
+            // AsyncGPUReadback RGB24 buffers are expected to be tightly packed;
+            // use a platform-specific stride path if Unity exposes padded rows.
             var expectedLength = width * height * 3;
             if (source.Length != expectedLength || destination.Length != expectedLength)
                 throw new ArgumentException("RGB24 row buffers must match width * height * 3 bytes.");
