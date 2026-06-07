@@ -140,7 +140,7 @@ namespace Unity.FoxgloveSDK.Editor
                 memberName,
                 memberKind,
                 rawTypeName,
-                FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawTypeName),
+                rawTypeName,
                 isValueType,
                 isArray,
                 elementTypeName,
@@ -297,9 +297,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string NormalizeMemberKind(string memberKind)
         {
-            return string.Equals(memberKind, "property", StringComparison.OrdinalIgnoreCase)
-                ? "property"
-                : "field";
+            var kind = (memberKind ?? string.Empty).Trim();
+            if (string.Equals(kind, "field", StringComparison.OrdinalIgnoreCase))
+                return "field";
+            if (string.Equals(kind, "property", StringComparison.OrdinalIgnoreCase))
+                return "property";
+            return kind;
         }
     }
 }

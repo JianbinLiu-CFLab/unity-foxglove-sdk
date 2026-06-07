@@ -83,6 +83,24 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sourceGenerator.Contains("\"FOXRUN008\", \"FoxRun topic must be absolute\"", StringComparison.Ordinal)
                   && sourceGenerator.Contains("DiagnosticSeverity.Error", StringComparison.Ordinal),
                 "134-17-D2: Roslyn FOXRUN008 descriptor uses error severity");
+
+            Check(sourceGenerator.Contains("\"FOXRUN014\", \"FoxRun member kind invalid\"", StringComparison.Ordinal)
+                  && sourceGenerator.Contains("case \"FOXRUN014\": return InvalidMemberKind;", StringComparison.Ordinal),
+                "134-17-D3: Roslyn maps FOXRUN014 shared member-kind diagnostics");
+
+            Check(!validator.Contains("foreach (var prefix in new[]", StringComparison.Ordinal),
+                "134-17-D4: native container validation reuses a static prefix table");
+
+            var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorJsonWriter.cs");
+            Check(!writer.Contains("throw new ArgumentOutOfRangeException(", StringComparison.Ordinal)
+                  && writer.Contains("throw new InvalidOperationException(", StringComparison.Ordinal),
+                "134-17-D5: descriptor writer reports invalid model floats as invalid state");
+
+            var constants = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs");
+            Check(constants.Contains("format version", StringComparison.OrdinalIgnoreCase)
+                  && constants.Contains("not the package", StringComparison.OrdinalIgnoreCase)
+                  && constants.Contains("backward-incompatible", StringComparison.OrdinalIgnoreCase),
+                "134-17-D6: generator version constant documents descriptor-format policy");
         }
 
         private static void VerifyTypeNormalizationHardening()
@@ -98,6 +116,38 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(FoxRunCanonicalTypeNormalizer.NormalizeTypeName("Nullable<int>") == "int32",
                 "134-17-E3: short Nullable<T> syntax unwraps to canonical type");
+
+            var modelSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
+            Check(!modelSource.Contains("FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawTypeName),", StringComparison.Ordinal),
+                "134-17-E4: generation member constructor chain normalizes emission type once");
+
+            var emptyDiagnostics = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType("Demo", "EmptyTypeProbe", new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo",
+                        "EmptyTypeProbe",
+                        "value",
+                        "field",
+                        string.Empty,
+                        true,
+                        false,
+                        string.Empty,
+                        "/demo/empty",
+                        1f,
+                        string.Empty,
+                        0,
+                        0f,
+                        0f,
+                        "Test",
+                        0,
+                        string.Empty)
+                })
+            }));
+            Check(emptyDiagnostics.Any(d => d.Id == "FOXRUN006"
+                                            && d.Message.Contains("empty type", StringComparison.OrdinalIgnoreCase)),
+                "134-17-E5: empty observed type reports an explicit empty-type diagnostic");
         }
 
         private static void VerifyDescriptorRoundTripAndComparisonHardening()
@@ -157,6 +207,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-17-F4: descriptor comparer reports duplicate flattened keys");
             Check(comparison.IsProvenanceEqual,
                 "134-17-F5: descriptor comparison exposes provenance equality");
+
+            var versionLeft = new FoxRunGenerationModel(Array.Empty<FoxRunGenerationType>(), descriptorVersion: 1, generatorVersion: "1.0.0");
+            var versionRight = new FoxRunGenerationModel(Array.Empty<FoxRunGenerationType>(), descriptorVersion: 2, generatorVersion: "1.0.0");
+            var versionComparison = FoxRunGenerationDescriptorComparer.Compare(versionLeft, versionRight);
+            Check(!versionComparison.IsProvenanceEqual
+                  && versionComparison.ProvenanceDifferences.Any(diff => diff.Contains("descriptorVersion", StringComparison.Ordinal)),
+                "134-17-F6: descriptor comparer reports descriptor version drift as provenance");
         }
 
         private static void VerifyModelAndManifestValidationHardening()
@@ -213,6 +270,47 @@ namespace Unity.FoxgloveSDK.Tests
                   && invalidDiagnostics.Any(d => d.Id == "FOXRUN013" && d.Severity == "Error"),
                 "134-17-G2: validator rejects missing identifiers and out-of-range publish modes");
 
+            var binaryDiagnostics = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType("Demo", "BinaryProbe", new[]
+                {
+                    Member("Demo", "BinaryProbe", "memory", "/demo/memory", "Memory<byte>"),
+                    Member("Demo", "BinaryProbe", "readOnlyMemory", "/demo/readonlymemory", "ReadOnlyMemory<byte>"),
+                    Member("Demo", "BinaryProbe", "span", "/demo/span", "Span<byte>"),
+                    Member("Demo", "BinaryProbe", "readOnlySpan", "/demo/readonlyspan", "ReadOnlySpan<byte>")
+                })
+            }));
+            Check(new[] { "memory", "readOnlyMemory", "span", "readOnlySpan" }
+                    .All(memberName => binaryDiagnostics.Any(d => d.Id == "FOXRUN010" && d.MemberName == memberName)),
+                "134-17-G3: validator reports FOXRUN010 for C# alias binary buffer types");
+
+            var invalidKindDiagnostics = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType("Demo", "MemberKindProbe", new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo",
+                        "MemberKindProbe",
+                        "value",
+                        "event",
+                        "float",
+                        true,
+                        false,
+                        string.Empty,
+                        "/demo/value",
+                        1f,
+                        string.Empty,
+                        0,
+                        0f,
+                        0f,
+                        "Test",
+                        0,
+                        string.Empty)
+                })
+            }));
+            Check(invalidKindDiagnostics.Any(d => d.Id == "FOXRUN014" && d.Severity == "Error"),
+                "134-17-G4: validator rejects unrecognized member kinds");
+
             var arrayManifest = FoxRunManifestBuilder.Build(new[]
             {
                 new FoxRunManifestMember(
@@ -233,26 +331,26 @@ namespace Unity.FoxgloveSDK.Tests
             });
             var arrayField = arrayManifest.Sections.FoxRun.Types[0].Contracts[0].Fields[0];
             Check(arrayField.Type == "float32" && arrayField.Array,
-                "134-17-G3: manifest array fallback strips array suffix before canonical normalization");
+                "134-17-G5: manifest array fallback strips array suffix before canonical normalization");
 
             var metadataHashA = FoxRunManifestBuilder.Build(Array.Empty<FoxRunManifestMember>(), manifestVersion: 1);
             var metadataHashB = FoxRunManifestBuilder.Build(Array.Empty<FoxRunManifestMember>(), manifestVersion: 2);
             Check(metadataHashA.Sections.FoxRun.ManifestHash == metadataHashB.Sections.FoxRun.ManifestHash
                   && metadataHashA.GlobalManifestHash != metadataHashB.GlobalManifestHash,
-                "134-17-G4: FoxRun global hash includes manifest metadata while section hash stays contract-scoped");
+                "134-17-G6: FoxRun global hash includes manifest metadata while section hash stays contract-scoped");
 
             CheckThrows<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[]
                 {
                     new FoxRunManifestMember("Demo", "CollisionProbe", "_", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, 0, 0f, 0f)
                 }),
-                "134-17-G5: manifest builder rejects empty JSON field names");
+                "134-17-G7: manifest builder rejects empty JSON field names");
 
             CheckThrows<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[]
                 {
                     new FoxRunManifestMember("Demo", "CollisionProbe", "__value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, 0, 0f, 0f),
                     new FoxRunManifestMember("Demo", "CollisionProbe", "value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, 0, 0f, 0f)
                 }),
-                "134-17-G6: manifest builder rejects colliding JSON field names");
+                "134-17-G8: manifest builder rejects colliding JSON field names");
         }
 
         private static void VerifySchemaManifestHardening()

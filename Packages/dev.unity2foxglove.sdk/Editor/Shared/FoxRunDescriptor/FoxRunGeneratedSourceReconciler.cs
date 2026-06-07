@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Editor
                 if (current.Contains(fileName) || !IsOwnedGeneratedSourceFile(path))
                     continue;
 
-                File.Delete(path);
+                DeleteGeneratedSourceFile(path);
                 DeleteSidecarMeta(path);
                 deleted.Add(fileName);
             }
@@ -61,6 +61,30 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 return false;
             }
+        }
+
+        private static void DeleteGeneratedSourceFile(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException ex)
+            {
+                throw CreateDeleteFailure(path, ex);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw CreateDeleteFailure(path, ex);
+            }
+        }
+
+        private static InvalidOperationException CreateDeleteFailure(string path, Exception inner)
+        {
+            return new InvalidOperationException(
+                "Failed to remove stale FoxRun generated source file '" + Path.GetFileName(path) + "' at '" + path + "'. " +
+                "Close the file in the editor or clear read-only permissions, then retry the build.",
+                inner);
         }
 
         private static void DeleteSidecarMeta(string sourcePath)

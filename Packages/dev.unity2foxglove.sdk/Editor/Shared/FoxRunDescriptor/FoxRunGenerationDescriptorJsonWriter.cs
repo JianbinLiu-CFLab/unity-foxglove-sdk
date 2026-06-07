@@ -120,9 +120,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (float.IsNaN(value) || float.IsInfinity(value))
             {
-                throw new ArgumentOutOfRangeException(
-                    nameof(value),
-                    "FoxRun descriptor float value is NaN or Infinity. RateHz and epsilon values must be finite. " +
+                throw new InvalidOperationException(
+                    "FoxRun descriptor model contains NaN or Infinity. RateHz and epsilon values must be finite. " +
                     "Check the published FoxRun members for misconfigured values.");
             }
 

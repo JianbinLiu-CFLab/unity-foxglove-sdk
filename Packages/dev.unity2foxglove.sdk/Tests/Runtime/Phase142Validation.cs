@@ -222,11 +222,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNoNewDiagnosticIds()
         {
             var generatorSource = File.ReadAllText(SourceGeneratorPath);
-            // Match string-literal "FOXRUN014" / "FOXRUN015" —avoids false-positive on comments
-            Check(!generatorSource.Contains("\"FOXRUN014\"", StringComparison.Ordinal),
-                "142-37: source generator contains no FOXRUN014 diagnostic descriptor");
+            // Match string-literal future IDs to avoid false-positive on comments.
             Check(!generatorSource.Contains("\"FOXRUN015\"", StringComparison.Ordinal),
-                "142-38: source generator contains no FOXRUN015 diagnostic descriptor");
+                "142-37: source generator contains no FOXRUN015 diagnostic descriptor");
+            Check(!generatorSource.Contains("\"FOXRUN016\"", StringComparison.Ordinal),
+                "142-38: source generator contains no FOXRUN016 diagnostic descriptor");
         }
 
         private static void VerifyInventoryBackwardCompatible()
@@ -248,6 +248,7 @@ namespace Unity.FoxgloveSDK.Tests
                 { "FOXRUN011", ("FoxRun declaring class name required", "Error") },
                 { "FOXRUN012", ("FoxRun member name required", "Error") },
                 { "FOXRUN013", ("FoxRun publish mode out of range", "Error") },
+                { "FOXRUN014", ("FoxRun member kind invalid", "Error") },
             };
 
             foreach (var kv in expected)

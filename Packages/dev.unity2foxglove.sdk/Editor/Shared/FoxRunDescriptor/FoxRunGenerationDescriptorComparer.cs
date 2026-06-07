@@ -16,6 +16,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var semantic = new List<string>();
             var provenance = new List<string>();
+            CompareModelProvenance("descriptorVersion", left?.DescriptorVersion.ToString(), right?.DescriptorVersion.ToString(), provenance);
+            CompareModelProvenance("generatorVersion", left?.GeneratorVersion, right?.GeneratorVersion, provenance);
             var leftMembers = Flatten(left, "left", semantic);
             var rightMembers = Flatten(right, "right", semantic);
             var leftKeys = leftMembers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
@@ -95,6 +97,12 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (!string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.Ordinal))
                 diffs.Add(key + " provenance " + field + ": '" + left + "' != '" + right + "'");
+        }
+
+        private static void CompareModelProvenance(string field, string left, string right, List<string> diffs)
+        {
+            if (!string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.Ordinal))
+                diffs.Add("model provenance " + field + ": '" + left + "' != '" + right + "'");
         }
     }
 

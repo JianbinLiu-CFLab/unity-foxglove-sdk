@@ -540,6 +540,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "{0}: FoxRun publish mode must be between 0 and 3",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(
+                "FOXRUN014", "FoxRun member kind invalid",
+                "{0}: FoxRun member kind must be field or property",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
             public static DiagnosticDescriptor Shared(string id)
             {
                 switch (id)
@@ -552,6 +557,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN011": return MissingClassName;
                     case "FOXRUN012": return MissingMemberName;
                     case "FOXRUN013": return InvalidPublishMode;
+                    case "FOXRUN014": return InvalidMemberKind;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
                 }

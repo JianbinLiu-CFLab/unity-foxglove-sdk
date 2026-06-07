@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyStaleGeneratedFileCleanup();
             VerifyAllOwnedFilesCanBeRemovedWhenNoTypesRemain();
+            VerifyReadOnlyGeneratedFileReportsActionableFailure();
             VerifyCodeGeneratorCallsReconciler();
             VerifyAnalyzerReleaseSeverity();
             VerifyEmitSourceFileRejectsEmptyMembers();
@@ -84,6 +85,50 @@ namespace Unity.FoxgloveSDK.Tests
             }
             finally
             {
+                TryDeleteDirectory(directory);
+            }
+        }
+
+        private static void VerifyReadOnlyGeneratedFileReportsActionableFailure()
+        {
+            var directory = CreateTempDirectory();
+            try
+            {
+                var stale = Path.Combine(directory, "ReadOnly_FoxRun.g.cs");
+                File.WriteAllText(stale, OwnedSource("ReadOnly"));
+                File.SetAttributes(stale, File.GetAttributes(stale) | FileAttributes.ReadOnly);
+
+                try
+                {
+                    FoxRunGeneratedSourceReconciler.ReconcileGeneratedSourceFiles(
+                        directory,
+                        Array.Empty<string>());
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Check(ex.Message.Contains("ReadOnly_FoxRun.g.cs", StringComparison.Ordinal)
+                          && ex.Message.Contains("Close", StringComparison.OrdinalIgnoreCase),
+                        "134-18-B2: read-only stale fallback file reports actionable cleanup failure");
+                    return;
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    throw new InvalidOperationException(
+                        "134-18-B2: read-only stale fallback file should not leak raw UnauthorizedAccessException: " + ex.Message,
+                        ex);
+                }
+                catch (IOException ex)
+                {
+                    throw new InvalidOperationException(
+                        "134-18-B2: read-only stale fallback file should not leak raw IOException: " + ex.Message,
+                        ex);
+                }
+
+                throw new InvalidOperationException("134-18-B2: read-only stale fallback file should fail reconciliation");
+            }
+            finally
+            {
+                ClearReadOnlyFiles(directory);
                 TryDeleteDirectory(directory);
             }
         }

@@ -12,6 +12,30 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public static class FoxRunGenerationModelValidator
     {
+        private static readonly string[] UnityNativeContainerPrefixes =
+        {
+            "NativeArray<",
+            "NativeList<",
+            "NativeHashMap<",
+            "NativeMultiHashMap<",
+            "NativeParallelHashMap<",
+            "NativeParallelMultiHashMap<",
+            "NativeSlice<",
+            "NativeQueue<",
+            "NativeReference<",
+            "NativeText<",
+            "Unity.Collections.NativeArray<",
+            "Unity.Collections.NativeList<",
+            "Unity.Collections.NativeHashMap<",
+            "Unity.Collections.NativeMultiHashMap<",
+            "Unity.Collections.NativeParallelHashMap<",
+            "Unity.Collections.NativeParallelMultiHashMap<",
+            "Unity.Collections.NativeSlice<",
+            "Unity.Collections.NativeQueue<",
+            "Unity.Collections.NativeReference<",
+            "Unity.Collections.NativeText<"
+        };
+
         public static IReadOnlyList<FoxRunGenerationDiagnostic> Validate(FoxRunGenerationModel model)
         {
             var diagnostics = new List<FoxRunGenerationDiagnostic>();
@@ -39,10 +63,15 @@ namespace Unity.FoxgloveSDK.Editor
             if (member.PublishMode < 0 || member.PublishMode > 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun publish mode must be between 0 and 3."));
 
+            if (!IsKnownMemberKind(member.MemberKind))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
+
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
             {
                 var raw = member.RawObservedTypeName ?? string.Empty;
-                var message = IsUnityNativeContainerTypeName(raw)
+                var message = string.IsNullOrWhiteSpace(raw)
+                    ? "FoxRun member has an empty type; the generator host produced no observed type name."
+                    : IsUnityNativeContainerTypeName(raw)
                     ? "FoxRun member type '" + raw + "' is a Unity native container and is not supported "
                       + "as a FoxRun field; use a managed type instead."
                     : "FoxRun member type '" + raw + "' is not a canonical built-in contract type.";
@@ -87,13 +116,21 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool IsBinaryLike(string typeName)
         {
-            var name = typeName ?? string.Empty;
+            var name = FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(typeName);
             return name == "byte[]"
                    || name == "System.Byte[]"
                    || name == "uint8[]"
                    || name.IndexOf("System.IO.Stream", StringComparison.Ordinal) >= 0
-                   || name.IndexOf("Memory<System.Byte>", StringComparison.Ordinal) >= 0
-                   || name.IndexOf("ReadOnlyMemory<System.Byte>", StringComparison.Ordinal) >= 0;
+                   || name.IndexOf("Memory<byte>", StringComparison.Ordinal) >= 0
+                   || name.IndexOf("ReadOnlyMemory<byte>", StringComparison.Ordinal) >= 0
+                   || name.IndexOf("Span<byte>", StringComparison.Ordinal) >= 0
+                   || name.IndexOf("ReadOnlySpan<byte>", StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool IsKnownMemberKind(string memberKind)
+        {
+            return string.Equals(memberKind, "field", StringComparison.Ordinal)
+                   || string.Equals(memberKind, "property", StringComparison.Ordinal);
         }
 
         private static bool IsUnityNativeContainerTypeName(string rawTypeName)
@@ -101,29 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrEmpty(rawTypeName))
                 return false;
 
-            foreach (var prefix in new[]
-            {
-                "NativeArray<",
-                "NativeList<",
-                "NativeHashMap<",
-                "NativeMultiHashMap<",
-                "NativeParallelHashMap<",
-                "NativeParallelMultiHashMap<",
-                "NativeSlice<",
-                "NativeQueue<",
-                "NativeReference<",
-                "NativeText<",
-                "Unity.Collections.NativeArray<",
-                "Unity.Collections.NativeList<",
-                "Unity.Collections.NativeHashMap<",
-                "Unity.Collections.NativeMultiHashMap<",
-                "Unity.Collections.NativeParallelHashMap<",
-                "Unity.Collections.NativeParallelMultiHashMap<",
-                "Unity.Collections.NativeSlice<",
-                "Unity.Collections.NativeQueue<",
-                "Unity.Collections.NativeReference<",
-                "Unity.Collections.NativeText<"
-            })
+            foreach (var prefix in UnityNativeContainerPrefixes)
             {
                 if (rawTypeName.StartsWith(prefix, StringComparison.Ordinal))
                     return true;
