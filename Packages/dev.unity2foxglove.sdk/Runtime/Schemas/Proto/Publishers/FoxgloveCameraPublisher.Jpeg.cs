@@ -236,12 +236,6 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-
-        private void EnsureJpegQueues()
-        {
-            _jpegPublishPipeline?.EnsureQueues(_maxJpegEncodeQueue, _maxCompletedJpegQueue);
-        }
-
         /// <summary>
         /// Lazily starts the background JPEG worker after demand and budget gates pass.
         /// </summary>

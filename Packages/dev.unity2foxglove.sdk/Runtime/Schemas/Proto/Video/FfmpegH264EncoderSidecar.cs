@@ -438,6 +438,8 @@ namespace Foxglove.Schemas.Video
                     Interlocked.Increment(ref _accessUnitsDropped);
                 }
 
+                // FFmpeg is configured for one access unit per submitted raw frame; this
+                // timestamp pairing is approximate if an encoder buffers or flushes unevenly.
                 var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 Interlocked.Increment(ref _outputCount);

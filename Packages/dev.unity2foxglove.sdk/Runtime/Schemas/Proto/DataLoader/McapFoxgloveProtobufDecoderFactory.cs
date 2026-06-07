@@ -5,6 +5,7 @@
 // Purpose: Packaged Foxglove protobuf decoder factory for MCAP DataLoader.
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Reflection;
 using Foxglove.Schemas;
@@ -19,6 +20,9 @@ namespace Unity.FoxgloveSDK.IO
     /// </summary>
     public sealed class McapFoxgloveProtobufDecoderFactory : IMcapMessageDecoderFactory
     {
+        private static readonly ConcurrentDictionary<Type, Lazy<MessageParser>> s_parserCache =
+            new ConcurrentDictionary<Type, Lazy<MessageParser>>();
+
         /// <inheritdoc />
         public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
         {
@@ -30,11 +34,26 @@ namespace Unity.FoxgloveSDK.IO
             if (!FoxgloveProtoSchemaCatalog.TryGet(schema?.Name ?? string.Empty, out var entry))
                 return new FailingDecoder("Packaged Foxglove protobuf schema is unknown: " + (schema?.Name ?? string.Empty) + ".");
 
-            var parser = entry.ClrType.GetProperty("Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) as MessageParser;
+            var parser = ResolveParser(entry.ClrType);
             if (parser == null)
                 return new FailingDecoder("Packaged Foxglove protobuf schema does not expose a Parser: " + entry.SchemaName + ".");
 
             return new Decoder(parser);
+        }
+
+        private static MessageParser ResolveParser(Type clrType)
+        {
+            if (clrType == null)
+                return null;
+
+            return s_parserCache.GetOrAdd(
+                clrType,
+                type => new Lazy<MessageParser>(() => ResolveParserUncached(type))).Value;
+        }
+
+        private static MessageParser ResolveParserUncached(Type clrType)
+        {
+            return clrType.GetProperty("Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) as MessageParser;
         }
 
         private sealed class Decoder : IMcapMessageDecoder

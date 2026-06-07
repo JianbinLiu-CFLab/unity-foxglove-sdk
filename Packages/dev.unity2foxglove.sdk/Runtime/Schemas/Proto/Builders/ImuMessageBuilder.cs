@@ -92,7 +92,7 @@ namespace Foxglove.Schemas
         private static void WriteVec3Field(CodedOutputStream output, int fieldNumber, UnityEngine.Vector3 value)
         {
             output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
-            output.WriteLength(27); // Three fixed64 fields with tags.
+            output.WriteLength(ComputeDoubleMessagePayloadSize(3));
             output.WriteTag(1, WireFormat.WireType.Fixed64);
             output.WriteDouble(value.x);
             output.WriteTag(2, WireFormat.WireType.Fixed64);
@@ -104,7 +104,7 @@ namespace Foxglove.Schemas
         private static void WriteQuatField(CodedOutputStream output, int fieldNumber, UnityEngine.Quaternion value)
         {
             output.WriteTag(fieldNumber, WireFormat.WireType.LengthDelimited);
-            output.WriteLength(36); // Four fixed64 fields with tags.
+            output.WriteLength(ComputeDoubleMessagePayloadSize(4));
             output.WriteTag(1, WireFormat.WireType.Fixed64);
             output.WriteDouble(value.x);
             output.WriteTag(2, WireFormat.WireType.Fixed64);
@@ -113,6 +113,14 @@ namespace Foxglove.Schemas
             output.WriteDouble(value.z);
             output.WriteTag(4, WireFormat.WireType.Fixed64);
             output.WriteDouble(value.w);
+        }
+
+        private static int ComputeDoubleMessagePayloadSize(int fieldCount)
+        {
+            var size = 0;
+            for (var fieldNumber = 1; fieldNumber <= fieldCount; fieldNumber++)
+                size += CodedOutputStream.ComputeTagSize(fieldNumber) + CodedOutputStream.ComputeDoubleSize(0d);
+            return size;
         }
 
         private static void WriteStringField(CodedOutputStream output, int fieldNumber, string value)

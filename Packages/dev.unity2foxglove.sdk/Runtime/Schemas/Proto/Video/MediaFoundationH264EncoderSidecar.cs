@@ -43,6 +43,7 @@ namespace Foxglove.Schemas.Video
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly Dictionary<long, ulong> _sampleTimestampNsByTime = new Dictionary<long, ulong>();
+        private readonly Queue<long> _sampleTimestampOrder = new Queue<long>();
         private readonly object _outputLock = new object();
         private readonly H264AccessUnitNormalizer _normalizer = new H264AccessUnitNormalizer();
         private MediaFoundationH264EncoderOptions _options;
@@ -581,9 +582,10 @@ namespace Foxglove.Schemas.Video
             lock (_outputLock)
             {
                 if (_sampleTimestampNsByTime.Count >= MaxTrackedSampleTimestamps)
-                    _sampleTimestampNsByTime.Clear();
+                    EvictOldestSampleTimestamp();
 
                 _sampleTimestampNsByTime[sampleTime] = timestampNs;
+                _sampleTimestampOrder.Enqueue(sampleTime);
             }
         }
 
@@ -603,11 +605,22 @@ namespace Foxglove.Schemas.Video
             }
         }
 
+        private void EvictOldestSampleTimestamp()
+        {
+            while (_sampleTimestampOrder.Count > 0)
+            {
+                var oldestSampleTime = _sampleTimestampOrder.Dequeue();
+                if (_sampleTimestampNsByTime.Remove(oldestSampleTime))
+                    return;
+            }
+        }
+
         private void ClearSampleTimestampMap()
         {
             lock (_outputLock)
             {
                 _sampleTimestampNsByTime.Clear();
+                _sampleTimestampOrder.Clear();
             }
         }
 

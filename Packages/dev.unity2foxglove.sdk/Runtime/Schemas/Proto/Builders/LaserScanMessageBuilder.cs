@@ -121,6 +121,8 @@ namespace Foxglove.Schemas
 
         private static void ValidateAngles(double startAngle, double endAngle)
         {
+            // Reverse or wrapped angle ranges are valid for scan sources that sweep across
+            // their angular discontinuity; callers own the sweep convention.
             if (double.IsNaN(startAngle) || double.IsInfinity(startAngle))
                 throw new ArgumentOutOfRangeException(nameof(startAngle), "LaserScan startAngle must be finite.");
             if (double.IsNaN(endAngle) || double.IsInfinity(endAngle))

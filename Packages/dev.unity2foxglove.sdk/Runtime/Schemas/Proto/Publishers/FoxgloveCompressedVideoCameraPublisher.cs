@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Components
     /// Camera Output Mode set to H.264 (FFmpeg) for normal scenes.
     /// </summary>
     [AddComponentMenu("")]
+    [Obsolete("Use FoxgloveCameraPublisher with CameraOutputMode.H264Ffmpeg.", false)]
     [RequireComponent(typeof(Camera))]
     public class FoxgloveCompressedVideoCameraPublisher : FoxglovePublisherBase
     {
@@ -150,7 +151,10 @@ namespace Unity.FoxgloveSDK.Components
             if (_captureRT == null || _captureRT.width != width || _captureRT.height != height)
             {
                 if (_captureRT != null)
+                {
                     _captureRT.Release();
+                    Destroy(_captureRT);
+                }
 
                 _captureRT = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
                 _captureRT.Create();
@@ -238,6 +242,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_captureRT != null)
             {
                 _captureRT.Release();
+                Destroy(_captureRT);
                 _captureRT = null;
             }
 
