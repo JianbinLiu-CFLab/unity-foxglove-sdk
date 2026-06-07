@@ -95,14 +95,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             var headerJson = Encoding.UTF8.GetString(bytes, 16, checked((int)headerLength));
             var header = JObject.Parse(headerJson);
-            Check(header["topic"]?.ToString() == "/unity/tf", "94A-7: JSON header contains topic");
+            Check(header["op"]?.ToString() == "publish", "94A-7: JSON header declares publish op");
+            Check(header["topic"]?.ToString() == "/unity/tf", "94A-8: JSON header contains topic");
             Check(header["schemaName"]?.ToString() == "foxglove_msgs/msg/FrameTransform",
-                "94A-8: JSON header contains schemaName");
-            Check(header["encoding"]?.ToString() == "cdr", "94A-9: JSON header contains cdr encoding");
-            Check(header["logTimeNs"]?.Value<ulong>() == SampleTimeNs, "94A-10: JSON header contains logTimeNs");
-            Check(header["sequence"]?.Value<ulong>() == 7UL, "94A-11: JSON header contains sequence");
+                "94A-9: JSON header contains schemaName");
+            Check(header["encoding"]?.ToString() == "cdr", "94A-10: JSON header contains cdr encoding");
+            Check(header["logTimeNs"]?.Value<ulong>() == SampleTimeNs, "94A-11: JSON header contains logTimeNs");
+            Check(header["sequence"]?.Value<ulong>() == 7UL, "94A-12: JSON header contains sequence");
             Check(frame.Payload.SequenceEqual(bytes.Skip(16 + checked((int)headerLength))),
-                "94A-12: payload bytes are appended unchanged");
+                "94A-13: payload bytes are appended unchanged");
         }
 
         private static void VerifyFrameValidation()

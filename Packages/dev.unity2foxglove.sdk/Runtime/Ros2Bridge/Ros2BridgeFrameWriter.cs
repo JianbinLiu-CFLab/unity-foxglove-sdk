@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             var header = new FrameHeader
             {
+                Op = "publish",
                 Topic = frame.Topic,
                 SchemaName = frame.SchemaName,
                 Encoding = frame.Encoding,
@@ -89,6 +90,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private sealed class FrameHeader
         {
+            [JsonProperty("op", Order = 0)]
+            public string Op { get; set; }
+
             [JsonProperty("topic", Order = 1)]
             public string Topic { get; set; }
 
