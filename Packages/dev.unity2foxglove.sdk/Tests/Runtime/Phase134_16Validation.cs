@@ -143,6 +143,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SidecarResetsPerClientStateAndRejectsMalformedFrames()
         {
             var source = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
+            var cmake = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
+            var packageXml = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/package.xml");
 
             Check(source.Contains("class ScopedFd", StringComparison.Ordinal)
                   && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
@@ -168,6 +170,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("read_raw_frame(client_fd, node)", StringComparison.Ordinal)
                   && !source.Contains("socket read timed out", StringComparison.Ordinal),
                 "134-16H-5: sidecar spins ROS executor while waiting for idle client data");
+            Check(cmake.Contains("if(BUILD_TESTING)", StringComparison.Ordinal)
+                  && cmake.Contains("ament_add_gtest(test_bridge_smoke", StringComparison.Ordinal)
+                  && packageXml.Contains("<test_depend>ament_cmake_gtest</test_depend>", StringComparison.Ordinal),
+                "134-16H-6: sidecar package exposes a BUILD_TESTING gtest target");
         }
 
         private static void PowerShellPreflightChecksNativeExitCodes()
