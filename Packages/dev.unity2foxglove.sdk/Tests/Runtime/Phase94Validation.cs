@@ -165,23 +165,25 @@ namespace Unity.FoxgloveSDK.Tests
                     1,
                     new byte[] { 0, 1, 0, 0, 1, 2, 3 });
                 sink.Send(frame, timeoutMs: LoopbackTimeoutMs);
+                Check(done.Wait(LoopbackTimeoutMs), "94C-2: loopback server receives one frame");
+                if (serverError != null)
+                    throw new Exception("94C server failed: " + serverError.Message, serverError);
+                Check(WaitUntil(() => !sink.IsConnected, LoopbackTimeoutMs),
+                    "94C-3: TCP client observes remote close");
                 sink.Disconnect();
-                Check(!sink.IsConnected, "94C-2: TCP client disconnect closes socket state");
+                Check(!sink.IsConnected, "94C-4: TCP client disconnect closes socket state");
             }
 
-            Check(done.Wait(LoopbackTimeoutMs), "94C-3: loopback server receives one frame");
-            if (serverError != null)
-                throw new Exception("94C server failed: " + serverError.Message, serverError);
             Check(received.Count == 1 && received[0].Topic == "/unity/tf",
-                "94C-4: loopback server decodes sent frame topic");
+                "94C-5: loopback server decodes sent frame topic");
             Check(received[0].SchemaName == "foxglove_msgs/msg/FrameTransform" && received[0].Payload.SequenceEqual(new byte[] { 0, 1, 0, 0, 1, 2, 3 }),
-                "94C-5: loopback server decodes schema and payload");
+                "94C-6: loopback server decodes schema and payload");
 
             using var disconnected = new Ros2BridgeTcpClient();
             Check(Throws<InvalidOperationException>(() => disconnected.Send(
                 new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[] { 1 }),
                 timeoutMs: 1)),
-                "94C-6: send while disconnected throws");
+                "94C-7: send while disconnected throws");
         }
 
         private static void VerifyPublisherWrapper()
@@ -371,6 +373,19 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 return true;
             }
+        }
+
+        private static bool WaitUntil(Func<bool> condition, int timeoutMs)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                    return true;
+                Thread.Sleep(10);
+            }
+
+            return condition();
         }
 
         private static void Check(bool condition, string name)
