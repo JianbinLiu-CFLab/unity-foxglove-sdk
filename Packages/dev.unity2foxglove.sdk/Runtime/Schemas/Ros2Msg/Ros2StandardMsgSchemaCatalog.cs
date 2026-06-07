@@ -144,11 +144,11 @@ bool do_rectify
         /// <summary>
         /// Registers all bundled standard ROS 2 schemas with the provided registry.
         /// </summary>
-        /// <param name="registry">Target schema registry. Null inputs are ignored.</param>
+        /// <param name="registry">Target schema registry.</param>
         public static void RegisterSchemas(ISchemaRegistry registry)
         {
             if (registry == null)
-                return;
+                throw new ArgumentNullException(nameof(registry));
 
             foreach (var entry in EntriesArray)
             {

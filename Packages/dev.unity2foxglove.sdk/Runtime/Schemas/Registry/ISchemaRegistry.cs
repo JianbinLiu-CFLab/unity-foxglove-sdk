@@ -48,12 +48,13 @@ namespace Unity.FoxgloveSDK.Schemas
         public byte[] RawContent;
     }
 
-    /// <summary>Minimal in-memory schema registry. Not thread-safe; use from main thread.</summary>
+    /// <summary>Minimal in-memory schema registry.</summary>
     public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry
     {
         /// <summary>Foxglove schemaEncoding value for JSON Schema definitions.</summary>
         private const string JsonSchemaEncoding = "jsonschema";
 
+        private readonly object _gate = new object();
         private readonly Dictionary<string, SchemaEntry> _schemas
             = new Dictionary<string, SchemaEntry>();
         private readonly Dictionary<string, SchemaEntry> _schemasByEncoding
@@ -62,10 +63,13 @@ namespace Unity.FoxgloveSDK.Schemas
         /// <summary>Try to get a schema by name.</summary>
         public bool TryGetSchema(string name, out SchemaEntry entry)
         {
-            if (_schemas.TryGetValue(name, out entry))
+            lock (_gate)
             {
-                entry = CloneEntryWithRawContentSnapshot(entry);
-                return true;
+                if (_schemas.TryGetValue(name, out entry))
+                {
+                    entry = CloneEntryWithRawContentSnapshot(entry);
+                    return true;
+                }
             }
 
             return false;
@@ -74,10 +78,13 @@ namespace Unity.FoxgloveSDK.Schemas
         /// <summary>Try to get a schema by name and schema encoding.</summary>
         public bool TryGetSchema(string name, string encoding, out SchemaEntry entry)
         {
-            if (_schemasByEncoding.TryGetValue(MakeKey(name, NormalizeEncoding(encoding)), out entry))
+            lock (_gate)
             {
-                entry = CloneEntryWithRawContentSnapshot(entry);
-                return true;
+                if (_schemasByEncoding.TryGetValue(MakeKey(name, NormalizeEncoding(encoding)), out entry))
+                {
+                    entry = CloneEntryWithRawContentSnapshot(entry);
+                    return true;
+                }
             }
 
             return false;
@@ -94,12 +101,15 @@ namespace Unity.FoxgloveSDK.Schemas
 
             entry = CloneEntryWithRawContentSnapshot(entry);
             entry.Encoding = NormalizeEncoding(entry.Encoding);
-            _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
-
-            if (!_schemas.TryGetValue(entry.Name, out var existing)
-                || ShouldReplaceNameDefault(existing.Encoding, entry.Encoding))
+            lock (_gate)
             {
-                _schemas[entry.Name] = entry;
+                _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
+
+                if (!_schemas.TryGetValue(entry.Name, out var existing)
+                    || ShouldReplaceNameDefault(existing.Encoding, entry.Encoding))
+                {
+                    _schemas[entry.Name] = entry;
+                }
             }
         }
 

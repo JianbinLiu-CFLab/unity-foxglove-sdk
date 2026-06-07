@@ -22,7 +22,7 @@ namespace Foxglove.Schemas
         /// Raw FileDescriptorSet bytes for <c>unity2foxglove.Imu</c> generated with:
         /// <c>protoc --proto_path=... --include_imports --descriptor_set_out</c>.
         /// </summary>
-        public static byte[] FileDescriptorSetData => Convert.FromBase64String(
+        public static readonly byte[] FileDescriptorSetData = Convert.FromBase64String(
             "Cv8BCh9nb29nbGUvcHJvdG9idWYvdGltZXN0YW1wLnByb3RvEg9nb29nbGUucHJvdG9idWYiOwoJVGltZXN0YW1wEhgKB3NlY29uZHMYASABKANSB3NlY29u"
             + "ZHMSFAoFbmFub3MYAiABKAVSBW5hbm9zQoUBChNjb20uZ29vZ2xlLnByb3RvYnVmQg5UaW1lc3RhbXBQcm90b1ABWjJnb29nbGUuZ29sYW5nLm9yZy9wcm90"
             + "b2J1Zi90eXBlcy9rbm93bi90aW1lc3RhbXBwYvgBAaICA0dQQqoCHkdvb2dsZS5Qcm90b2J1Zi5XZWxsS25vd25UeXBlc2IGcHJvdG8zCp8FChh1bml0eTJm"

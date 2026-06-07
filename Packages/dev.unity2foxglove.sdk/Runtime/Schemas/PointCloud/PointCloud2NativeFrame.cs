@@ -34,6 +34,13 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 throw new ArgumentOutOfRangeException(nameof(pointStep));
 
             data ??= Array.Empty<byte>();
+            if (width != 0U && pointStep > uint.MaxValue / width)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(width),
+                    "PointCloud2 row step must fit in a uint.");
+            }
+
             var rowStep = checked(pointStep * width);
             var expectedBytes = checked((ulong)rowStep * height);
             if ((ulong)data.Length != expectedBytes)

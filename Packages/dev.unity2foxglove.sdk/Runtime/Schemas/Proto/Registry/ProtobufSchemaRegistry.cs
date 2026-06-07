@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.Schemas;
@@ -124,7 +125,7 @@ namespace Foxglove.Schemas
 
                 // Build a minimal FileDescriptorSet.
                 var subset = new FileDescriptorSet();
-                foreach (var depName in neededFiles)
+                foreach (var depName in neededFiles.OrderBy(name => name, StringComparer.Ordinal))
                 {
                     if (fileMap.TryGetValue(depName, out var depFile))
                         subset.File.Add(depFile);

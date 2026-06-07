@@ -1595,7 +1595,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         public static void RegisterSchemas(ISchemaRegistry registry)
         {
             if (registry == null)
-                return;
+                throw new ArgumentNullException(nameof(registry));
 
             foreach (var entry in EntriesArray)
             {

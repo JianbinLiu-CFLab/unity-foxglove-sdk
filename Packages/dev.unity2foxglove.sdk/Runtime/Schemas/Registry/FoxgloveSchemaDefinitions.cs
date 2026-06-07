@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Schemas
         public const string LaserScanSchemaName = "foxglove.LaserScan";
         /// <summary>Schema name for CameraCalibration.</summary>
         public const string CameraCalibrationSchemaName = "foxglove.CameraCalibration";
+        // RawImage is intentionally omitted from the JSON schema registry because
+        // the SDK currently exposes it through the protobuf-only camera path.
         /// <summary>Encoding identifier for JSON Schema.</summary>
         public const string JsonSchemaEncoding = "jsonschema";
 

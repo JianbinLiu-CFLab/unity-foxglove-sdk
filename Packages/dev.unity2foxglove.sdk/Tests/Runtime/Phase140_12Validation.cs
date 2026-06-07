@@ -1,0 +1,169 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Validates Phase 140-12 schema registry and message definition review fixes.
+
+using System;
+using System.IO;
+using Foxglove.Schemas;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+
+namespace Unity.FoxgloveSDK.Tests
+{
+    /// <summary>
+    /// Review-driven validation for schema registry and message definition
+    /// hardening found in Phase 140-12.
+    /// </summary>
+    public static class Phase140_12Validation
+    {
+        private static int _passed;
+
+        /// <summary>Runs all Phase 140-12 schema registry review checks.</summary>
+        public static void Validate()
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== Phase 140-12: schema registry and message definition review fixes ===");
+            _passed = 0;
+
+            Ros2CatalogNullRegistryThrows();
+            ProtobufDescriptorSubsetsAreBuiltInDeterministicOrder();
+            ImuDescriptorBytesAreCached();
+            DefaultSchemaRegistrySerializesDictionaryAccess();
+            PointCloud2RowStepOverflowHasClearArgumentError();
+            RawImageJsonOmissionIsDocumented();
+            PhaseWiringIsPresent();
+
+            Console.WriteLine($"Phase 140-12: {_passed} checks passed.");
+        }
+
+        private static void Ros2CatalogNullRegistryThrows()
+        {
+            CheckThrowsArgumentNull(
+                () => FoxgloveRos2MsgSchemaCatalog.RegisterSchemas(null),
+                "registry",
+                "140-12A-1: Foxglove ROS2 catalog rejects null registry");
+            CheckThrowsArgumentNull(
+                () => Ros2StandardMsgSchemaCatalog.RegisterSchemas(null),
+                "registry",
+                "140-12A-2: standard ROS2 catalog rejects null registry");
+        }
+
+        private static void ProtobufDescriptorSubsetsAreBuiltInDeterministicOrder()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs");
+
+            Check(source.Contains("using System.Linq;", StringComparison.Ordinal)
+                  && source.Contains("neededFiles.OrderBy", StringComparison.Ordinal),
+                "140-12B-1: protobuf descriptor subset dependencies are emitted in deterministic order");
+        }
+
+        private static void ImuDescriptorBytesAreCached()
+        {
+            Check(ReferenceEquals(ImuSchema.FileDescriptorSetData, ImuSchema.FileDescriptorSetData),
+                "140-12C-1: handwritten IMU descriptor bytes are decoded once and reused");
+        }
+
+        private static void DefaultSchemaRegistrySerializesDictionaryAccess()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Registry/ISchemaRegistry.cs");
+
+            Check(source.Contains("private readonly object _gate", StringComparison.Ordinal)
+                  && source.Contains("lock (_gate)", StringComparison.Ordinal),
+                "140-12D-1: DefaultSchemaRegistry serializes dictionary access");
+        }
+
+        private static void PointCloud2RowStepOverflowHasClearArgumentError()
+        {
+            try
+            {
+                _ = new PointCloud2NativeFrame(
+                    0UL,
+                    "map",
+                    1U,
+                    uint.MaxValue,
+                    Array.Empty<PointCloudPackedField>(),
+                    2U,
+                    Array.Empty<byte>(),
+                    true);
+            }
+            catch (ArgumentOutOfRangeException ex) when (ex.ParamName == "width")
+            {
+                Pass("140-12E-1: PointCloud2 row-step overflow reports width as the invalid argument");
+                return;
+            }
+
+            throw new Exception("[FAIL] 140-12E-1: PointCloud2 row-step overflow reports width as the invalid argument");
+        }
+
+        private static void RawImageJsonOmissionIsDocumented()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Registry/FoxgloveSchemaDefinitions.cs");
+
+            Check(source.Contains("RawImage is intentionally omitted", StringComparison.Ordinal)
+                  && source.Contains("protobuf-only", StringComparison.Ordinal),
+                "140-12F-1: RawImage JSON schema omission is documented beside core JSON schema registration");
+        }
+
+        private static void PhaseWiringIsPresent()
+        {
+            var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+
+            Check(project.Contains("Phase140_12Validation.cs", StringComparison.Ordinal),
+                "140-12G-1: test project compiles Phase140_12Validation");
+            Check(registry.Contains("--phase140-12", StringComparison.Ordinal)
+                  && registry.Contains("Phase140_12Validation.Validate", StringComparison.Ordinal),
+                "140-12G-2: validation registry exposes --phase140-12");
+        }
+
+        private static void CheckThrowsArgumentNull(Action action, string parameterName, string description)
+        {
+            try
+            {
+                action();
+            }
+            catch (ArgumentNullException ex) when (ex.ParamName == parameterName)
+            {
+                Pass(description);
+                return;
+            }
+
+            throw new Exception("[FAIL] " + description);
+        }
+
+        private static void Check(bool condition, string description)
+        {
+            if (!condition)
+                throw new Exception("[FAIL] " + description);
+            Pass(description);
+        }
+
+        private static void Pass(string description)
+        {
+            _passed++;
+            Console.WriteLine("[PASS] " + description);
+        }
+
+        private static string ReadRepoText(string relativePath)
+        {
+            var root = FindRepoRoot();
+            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private static string FindRepoRoot()
+        {
+            var dir = AppContext.BaseDirectory;
+            while (!string.IsNullOrEmpty(dir))
+            {
+                if (Directory.Exists(Path.Combine(dir, ".git")))
+                    return dir;
+                dir = Directory.GetParent(dir)?.FullName;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
+        }
+    }
+}
