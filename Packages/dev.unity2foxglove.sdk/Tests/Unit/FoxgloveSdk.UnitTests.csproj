@@ -20,4 +20,9 @@
   <ItemGroup>
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared test helpers (also compiled by the console runner). -->
+    <Compile Include="../Runtime/McapRecordReader.cs" Link="TestHelpers/McapRecordReader.cs" />
+  </ItemGroup>
 </Project>
