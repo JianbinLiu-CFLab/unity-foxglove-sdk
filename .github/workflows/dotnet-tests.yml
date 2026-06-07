@@ -28,6 +28,9 @@ jobs:
       - name: Run validation suite
         run: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
+      - name: Run xUnit unit tests
+        run: dotnet test Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx"
+
   analyzer-freshness:
     runs-on: windows-latest
     steps:
