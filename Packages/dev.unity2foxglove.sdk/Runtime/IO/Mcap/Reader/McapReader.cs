@@ -51,6 +51,9 @@ namespace Unity.FoxgloveSDK.IO
             bool validateCrcs = true,
             ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
         {
+            if (!_stream.CanSeek)
+                throw new NotSupportedException("McapReader.ReadSummary requires a seekable stream; use McapStreamingReader for non-seekable streams.");
+
             const int minFileBytes =
                 McapWriter.MagicLength + McapWriter.RecordHeaderLength +
                 McapWriter.FooterContentLength + McapWriter.MagicLength;
@@ -107,7 +110,7 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
 
             // Read summary section
-            _stream.Seek((long)footer.SummaryStart, SeekOrigin.Begin);
+            _stream.Seek(ToSeekOffset(footer.SummaryStart, "summary_start"), SeekOrigin.Begin);
             var schemas = new List<McapSchema>();
             var channels = new List<McapChannel>();
             McapStatistics stats = null;
@@ -158,7 +161,7 @@ namespace Unity.FoxgloveSDK.IO
             if (footer.SummaryCrc != 0)
             {
                 // Summary section runs from summaryStart to the start of the Footer.
-                _stream.Seek((long)footer.SummaryStart, SeekOrigin.Begin);
+                _stream.Seek(ToSeekOffset(footer.SummaryStart, "summary_start"), SeekOrigin.Begin);
                 var summaryBytes = new byte[(int)summaryLen];
                 ReadExact(summaryBytes, 0, (int)summaryLen);
 
@@ -234,7 +237,7 @@ namespace Unity.FoxgloveSDK.IO
             out bool crcValid,
             ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
         {
-            _stream.Seek((long)chunkStartOffset, SeekOrigin.Begin);
+            _stream.Seek(ToSeekOffset(chunkStartOffset, "chunk"), SeekOrigin.Begin);
             var recordStart = _stream.Position;
             var (opcode, content) = ReadOneRecord();
             var recordEnd = _stream.Position;
@@ -454,12 +457,11 @@ namespace Unity.FoxgloveSDK.IO
         // Internal
 
         /// <summary>
-        /// <summary>
         /// Seeks to the given offset and reads a single attachment record.
         /// </summary>
         public McapAttachment ReadAttachmentAt(ulong offset)
         {
-            _stream.Seek((long)offset, SeekOrigin.Begin);
+            _stream.Seek(ToSeekOffset(offset, "attachment"), SeekOrigin.Begin);
             var (opcode, content) = ReadOneRecord();
             if (opcode != McapWriter.OpcodeAttachment)
                 throw new InvalidDataException($"Expected Attachment (0x09) at offset {offset}, got 0x{opcode:X2}");
@@ -471,11 +473,19 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public McapMetadata ReadMetadataAt(ulong offset)
         {
-            _stream.Seek((long)offset, SeekOrigin.Begin);
+            _stream.Seek(ToSeekOffset(offset, "metadata"), SeekOrigin.Begin);
             var (opcode, content) = ReadOneRecord();
             if (opcode != McapWriter.OpcodeMetadata)
                 throw new InvalidDataException($"Expected Metadata (0x0C) at offset {offset}, got 0x{opcode:X2}");
             return McapRecordDecoder.DecodeMetadata(content);
+        }
+
+        private static long ToSeekOffset(ulong offset, string context)
+        {
+            if (offset > long.MaxValue)
+                throw new InvalidDataException($"MCAP {context} offset {offset} exceeds seekable range.");
+
+            return (long)offset;
         }
 
         /// <summary>
