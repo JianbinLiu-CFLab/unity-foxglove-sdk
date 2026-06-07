@@ -333,7 +333,15 @@ namespace Unity.FoxgloveSDK.IO
 
             try
             {
-                _stream.Flush();
+                try
+                {
+                    _stream.Flush();
+                }
+                catch
+                {
+                    // Dispose is best-effort. Call Flush() explicitly when
+                    // callers need durable error reporting.
+                }
             }
             finally
             {
