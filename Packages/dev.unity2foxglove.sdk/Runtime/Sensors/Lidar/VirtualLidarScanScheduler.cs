@@ -144,6 +144,8 @@ namespace Unity.FoxgloveSDK.Components
             var requiredCrossingCount = _scanCrossings.Count;
             if (_pendingScanCrossings.Length < requiredCrossingCount)
             {
+                // grow-only: retain the peak crossing buffer to avoid per-tick churn;
+                // this is bounded by the maximum revolution crossings in one scheduled batch.
                 _pendingScanCrossings = new int[Math.Max(1, requiredCrossingCount)];
             }
             _pendingScanCrossingCount = Math.Min(requiredCrossingCount, _pendingScanCrossings.Length);

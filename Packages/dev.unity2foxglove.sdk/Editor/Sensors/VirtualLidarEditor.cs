@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private SerializedProperty _sensorUnitProfile;
         private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters,
-            _scanSubSteps, _scanRateSource, _scanRateHzOverride,
+            _scanRateSource, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
         private SerializedProperty _syntheticReflectivity, _syntheticIntensity;
 
@@ -26,7 +26,6 @@ namespace Unity.FoxgloveSDK.Editor
             _columnStep = serializedObject.FindProperty("_columnStep");
             _maxRaysPerScan = serializedObject.FindProperty("_maxRaysPerScan");
             _maxRangeMeters = serializedObject.FindProperty("_maxRangeMeters");
-            _scanSubSteps = serializedObject.FindProperty("_scanSubSteps");
             _scanRateSource = serializedObject.FindProperty("_scanRateSource");
             _scanRateHzOverride = serializedObject.FindProperty("_scanRateHzOverride");
             _layerMask = serializedObject.FindProperty("_layerMask");
@@ -46,7 +45,6 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.LabelField("Scan", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(_frameId);
             EditorGUILayout.PropertyField(_columnStep);
-            EditorGUILayout.PropertyField(_scanSubSteps);
             EditorGUILayout.PropertyField(_maxRaysPerScan);
             EditorGUILayout.PropertyField(_maxRangeMeters);
             EditorGUILayout.PropertyField(_scanRateSource, new GUIContent("Scan Rate Source"));

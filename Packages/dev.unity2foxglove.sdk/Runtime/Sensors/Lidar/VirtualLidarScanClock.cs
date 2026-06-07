@@ -36,6 +36,14 @@ namespace Unity.FoxgloveSDK.Components
             return true;
         }
 
+        /// <summary>Clear the epoch so it can be re-established after manager resolution.</summary>
+        public void Reset()
+        {
+            _initialized = false;
+            _epochUnixNs = 0UL;
+            _epochPhysSeconds = 0d;
+        }
+
         /// <summary>
         /// Convert a physics-time scan start into the clock's Unix nanosecond epoch.
         /// </summary>

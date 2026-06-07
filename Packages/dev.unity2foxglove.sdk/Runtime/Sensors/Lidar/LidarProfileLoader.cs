@@ -215,6 +215,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             var originMm = FromBeam("lidar_origin_to_beam_origin_mm")?.Value<double?>();
             var originOffset = originMm.HasValue ? originMm.Value / 1000.0 : 0.03618;
             var prodLine = (info?["prod_line"] ?? root["prod_line"])?.Value<string>() ?? "OS-1";
+            var minRangeMeters = ResolveMinRangeMeters(
+                cfg?["min_range_m"] ?? info?["min_range_m"] ?? root["min_range_m"],
+                prodLine);
 
             profile = new LidarProfile
             {
@@ -224,13 +227,35 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 ColumnsPerFrame = columnsPerFrame,
                 ColumnsPerPacket = columnsPerPacket,
                 ScanRateHz = scanRateHz,
-                MinRangeMeters = 0.7, // metadata rarely carries min_range; sensible default
+                MinRangeMeters = minRangeMeters,
                 LidarOriginToBeamOriginMeters = originOffset,
                 BeamAltitudeAngles = altitude,
                 BeamAzimuthAngles = azimuth
             };
 
             return true;
+        }
+
+        private static double ResolveMinRangeMeters(JToken minRangeToken, string productLine)
+        {
+            if (minRangeToken != null)
+            {
+                var explicitMinRange = minRangeToken.Value<double>();
+                if (!double.IsNaN(explicitMinRange)
+                    && !double.IsInfinity(explicitMinRange)
+                    && explicitMinRange >= 0.0)
+                {
+                    return explicitMinRange;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(productLine)
+                && LidarModelRegistry.TryGet(LidarVendor.Ouster, productLine, out var spec))
+            {
+                return spec.MinRangeMeters;
+            }
+
+            return 0.7;
         }
     }
 }

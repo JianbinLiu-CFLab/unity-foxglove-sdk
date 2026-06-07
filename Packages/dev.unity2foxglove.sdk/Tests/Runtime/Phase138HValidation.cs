@@ -87,7 +87,8 @@ namespace Unity.FoxgloveSDK.Tests
             var schedulerSource = ReadText(repoRoot, VirtualLidarScanSchedulerRelativePath);
             var framePublisherSource = ReadText(repoRoot, VirtualLidarScanFramePublisherRelativePath);
 
-            Check(source.Contains("_scanSubSteps"), "138H-3: VirtualLidar exposes configurable _scanSubSteps");
+            Check(source.Contains("_maxRaycastCommandsPerFixedUpdate"),
+                "138H-3: VirtualLidar exposes the per-FixedUpdate raycast budget that replaced inert scan substeps");
             Check(source.Contains("_activeScanStartPhysSeconds"),
                 "138H-4: VirtualLidar tracks each scan's physical-start epoch for shared timing");
             Check(source.Contains("_scanColumnProgress") && source.Contains("columnsToEmit"),

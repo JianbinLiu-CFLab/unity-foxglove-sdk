@@ -62,7 +62,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 
             direction = new Vector3(
                 (float)(Math.Cos(elRad) * Math.Sin(-azRad)),
-                (float)(-Math.Sin(elRad)),
+                (float)(Math.Sin(elRad)),
                 (float)(Math.Cos(elRad) * Math.Cos(azRad)));
 
             timeOffset = (float)index / _beamsPerFrame;
@@ -70,4 +70,3 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
-

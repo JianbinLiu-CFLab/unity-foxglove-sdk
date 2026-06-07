@@ -4,6 +4,7 @@
 // Module: Runtime/Sensors/Lidar
 
 using System;
+using System.ComponentModel;
 using System.Numerics;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
@@ -13,6 +14,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Uses System.Numerics.Vector3 to keep the type Unity-free; consumers
     /// convert at the Unity boundary.
     /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public class LidarRayGenerator
     {
         private readonly LidarProfile _profile;

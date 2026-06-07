@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Components
         private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
+        private static int _fixedDeltaOverrideUsers;
+        private static float _fixedDeltaOverrideOriginal;
 
         private readonly ImuSampleQueue _queue = new ImuSampleQueue();
 
@@ -39,7 +41,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private Rigidbody _rigidbody;
         [SerializeField, Tooltip("Topic for imu data. Default: /imu/data.")] private string _topic = DefaultTopic;
         [SerializeField, Tooltip("Reference frame id for each IMU sample.")] private string _frameId = DefaultFrameId;
-        [SerializeField, HideInInspector] private bool _publishOnStart = true;
         [SerializeField, HideInInspector] private bool _publishImuNative;
         [SerializeField, HideInInspector] private string _imuNativeTopic = DefaultImuNativeTopic;
         [SerializeField, Tooltip("IMU orientation covariance (9 values, diagonal default).")] private double[] _imuOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
@@ -59,10 +60,6 @@ namespace Unity.FoxgloveSDK.Components
             + "> 0 up-samples/down-samples with interpolation across tick interval.")]
         [SerializeField, Min(0)] private int _targetRateHz = DefaultTargetRateHz;
 
-        [SerializeField, HideInInspector] private bool _enableNoise;
-        [SerializeField, HideInInspector] private float _accelNoiseStdDev;
-        [SerializeField, HideInInspector] private float _gyroNoiseStdDev;
-
         private bool _publishing;
         private int _maxQueuedSamples;
         private Vector3 _lastWorldVelocity;
@@ -70,7 +67,6 @@ namespace Unity.FoxgloveSDK.Components
         private Vector3 _lastBodyAcceleration;
         private Vector3 _lastBodyAngularVelocity;
         private Quaternion _lastBodyRotation;
-        private float _originalFixedDeltaTime;
         private bool _didSetFixedDelta;
         private bool _hasEpoch;
         private ulong _epochUnixNs;
@@ -144,6 +140,13 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_publishing)
                 EnsureSchemaRegistered();
+        }
+
+        private void OnEnable()
+        {
+            _hasLastVelocity = false;
+            _hasEpoch = false;
+            _nextSampleIndex = 0;
         }
 
         private void OnDisable()
@@ -287,15 +290,6 @@ namespace Unity.FoxgloveSDK.Components
                 _globalPhysicsRateHzOverride = 0;
             if (_targetRateHz < 0)
                 _targetRateHz = 0;
-            if (!_publishOnStart)
-                _publishOnStart = true;
-            if (_enableNoise)
-                _enableNoise = false;
-            if (_accelNoiseStdDev < 0f)
-                _accelNoiseStdDev = 0f;
-            if (_gyroNoiseStdDev < 0f)
-                _gyroNoiseStdDev = 0f;
-
             if (string.IsNullOrWhiteSpace(_topic))
                 _topic = DefaultTopic;
             if (string.IsNullOrWhiteSpace(_frameId))
@@ -330,8 +324,13 @@ namespace Unity.FoxgloveSDK.Components
             if (target <= 0f)
                 return;
 
-            _originalFixedDeltaTime = Time.fixedDeltaTime;
-            Time.fixedDeltaTime = target;
+            if (_fixedDeltaOverrideUsers == 0)
+            {
+                _fixedDeltaOverrideOriginal = Time.fixedDeltaTime;
+                Time.fixedDeltaTime = target;
+            }
+
+            _fixedDeltaOverrideUsers++;
             _didSetFixedDelta = true;
         }
 
@@ -340,8 +339,14 @@ namespace Unity.FoxgloveSDK.Components
             if (!_didSetFixedDelta)
                 return;
 
-            if (Math.Abs(Time.fixedDeltaTime - _originalFixedDeltaTime) > float.Epsilon)
-                Time.fixedDeltaTime = _originalFixedDeltaTime;
+            if (_fixedDeltaOverrideUsers > 0)
+                _fixedDeltaOverrideUsers--;
+
+            if (_fixedDeltaOverrideUsers == 0
+                && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideOriginal) > float.Epsilon)
+            {
+                Time.fixedDeltaTime = _fixedDeltaOverrideOriginal;
+            }
 
             _didSetFixedDelta = false;
         }

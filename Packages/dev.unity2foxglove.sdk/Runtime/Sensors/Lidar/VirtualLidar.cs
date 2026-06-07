@@ -99,7 +99,6 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private LayerMask _layerMask = Physics.DefaultRaycastLayers;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
-        [SerializeField, Min(1)] private int _scanSubSteps = 1;
         [SerializeField] private bool _logPerformanceDiagnostics;
         [Tooltip("Maximum RaycastCommands scheduled per FixedUpdate. This is the real main-thread protection: it caps how much PhysX raycast work one physics tick can block on (the Complete() call). The scan rate falls out of it automatically (rate ~= budget * physicsHz / raysPerScan), so a full-fidelity scan simply publishes slower instead of stalling TF/camera/IMU. Lower it if the main loop still drops; raise it for a faster point cloud.")]
         [SerializeField, Min(256)] private int _maxRaycastCommandsPerFixedUpdate = 6144;
@@ -231,6 +230,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
                     _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
+                else
+                    Debug.LogWarning($"[VirtualLidar] Unknown built-in LiDAR model '{_model}', using OS-1-32 fallback.");
             }
 
             if (_scanPattern == null)
@@ -264,6 +265,7 @@ namespace Unity.FoxgloveSDK.Components
             _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
 
             AllocateScanBuffers();
+            _scanClock.Reset();
             ResetScanState(Time.fixedTimeAsDouble);
         }
 
@@ -515,8 +517,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             _columnStep = Math.Max(1, _columnStep);
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
-            if (_scanSubSteps < 1)
-                _scanSubSteps = 1;
             if (_maxRaycastCommandsPerFixedUpdate < 256)
                 _maxRaycastCommandsPerFixedUpdate = 256;
         }

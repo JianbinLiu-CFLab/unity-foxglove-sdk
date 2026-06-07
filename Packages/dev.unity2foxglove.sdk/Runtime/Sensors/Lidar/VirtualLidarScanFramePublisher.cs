@@ -4,7 +4,6 @@
 // Module: Runtime/Sensors/Lidar
 // Purpose: Publishes completed VirtualLidar scans via the point cloud publisher.
 
-using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
