@@ -188,7 +188,11 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void OnEnable()
         {
+            _publishRateState = default;
             _warnedManagerMissing = false;
+            _lastEncodingWarningKey = null;
+            _lastBridgeWarningKey = null;
+            _lastTopicWarningKey = null;
             ResolveManager();
         }
 
