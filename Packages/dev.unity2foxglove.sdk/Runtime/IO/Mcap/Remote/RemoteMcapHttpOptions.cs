@@ -11,7 +11,10 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Options for serving one local MCAP file through the Remote Data Loader HTTP contract.</summary>
     public sealed class RemoteMcapHttpOptions
     {
-        /// <summary>Loopback host used by the embedded HTTP listener.</summary>
+        /// <summary>
+        /// Host used by the embedded HTTP listener. The default loopback host needs no
+        /// extra setup; a non-loopback host may require a Windows http.sys URL ACL.
+        /// </summary>
         public string Host = "127.0.0.1";
 
         /// <summary>TCP port used by the embedded HTTP listener.</summary>
@@ -26,7 +29,11 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Display name advertised in the Remote Data Loader manifest.</summary>
         public string ManifestName = "Unity2Foxglove MCAP";
 
-        /// <summary>Optional bearer token required for manifest and data requests.</summary>
+        /// <summary>
+        /// Optional bearer token required for manifest and data requests. Leave empty
+        /// only for trusted local workflows because wildcard CORS lets browser origins
+        /// read the served loopback MCAP while the endpoint is enabled.
+        /// </summary>
         public string RequiredBearerToken = string.Empty;
 
         /// <summary>Maximum MCAP response size buffered in memory before the request is rejected.</summary>

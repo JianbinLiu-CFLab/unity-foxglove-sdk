@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _remoteMcapFileServerKnownPort;
         private string _remoteMcapFileServerKnownPath;
         private string _remoteMcapFileServerKnownSourceId;
+        private bool _warnedRemoteMcapFileServerWithoutToken;
 
         /// <summary>
         /// Transport mode used for listener operations when output is enabled.
@@ -323,6 +324,7 @@ namespace Unity.FoxgloveSDK.Components
                 _remoteMcapFileServer?.Dispose();
                 _remoteMcapFileServer = RemoteMcapHttpServer.Start(options);
                 Debug.Log("[Foxglove] Remote MCAP file URL ready: " + BuildRemoteMcapFileUrl(options));
+                WarnIfRemoteMcapFileServerHasNoToken(options);
             }
             catch (System.Exception ex)
             {
@@ -377,6 +379,23 @@ namespace Unity.FoxgloveSDK.Components
         private static string BuildRemoteMcapFileUrl(RemoteMcapHttpOptions options)
             => options.BaseUrl + options.DirectFileRoute;
 
+        private void WarnIfRemoteMcapFileServerHasNoToken(RemoteMcapHttpOptions options)
+        {
+            if (options == null || !string.IsNullOrEmpty(options.RequiredBearerToken))
+            {
+                _warnedRemoteMcapFileServerWithoutToken = false;
+                return;
+            }
+
+            if (_warnedRemoteMcapFileServerWithoutToken)
+                return;
+
+            _warnedRemoteMcapFileServerWithoutToken = true;
+            Debug.LogWarning("[Foxglove] Remote MCAP file URL is running without a bearer token. "
+                             + "Because the endpoint uses wildcard CORS for Foxglove Remote files, "
+                             + "any browser origin on this machine can read the served loopback MCAP while it is enabled.");
+        }
+
         private void RememberRemoteMcapFileServerConfig(string resolvedPath)
         {
             _remoteMcapFileServerConfigKnown = true;
@@ -401,6 +420,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _remoteMcapFileServer?.Dispose();
             _remoteMcapFileServer = null;
+            _warnedRemoteMcapFileServerWithoutToken = false;
         }
 
         private void StartReplayCursorEndpointIfNeeded()

@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.IO
 {
     internal sealed class McapDecodeRegistry
     {
+        // BuiltInFactories intentionally initializes once per AppDomain; diagnostics are reset on Unity runtime reload.
         private static readonly Lazy<List<IMcapMessageDecoderFactory>> BuiltInFactories =
             new Lazy<List<IMcapMessageDecoderFactory>>(BuildBuiltInFactories);
         private static readonly object FactoryDiagnosticsGate = new object();
@@ -35,6 +36,15 @@ namespace Unity.FoxgloveSDK.IO
                     return new List<string>(FactoryDiagnostics);
             }
         }
+
+#if UNITY_5_3_OR_NEWER
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetFactoryDiagnosticsForRuntimeLoad()
+        {
+            lock (FactoryDiagnosticsGate)
+                FactoryDiagnostics.Clear();
+        }
+#endif
 
         public McapDecodeRegistry(
             McapDecodeOptions options,

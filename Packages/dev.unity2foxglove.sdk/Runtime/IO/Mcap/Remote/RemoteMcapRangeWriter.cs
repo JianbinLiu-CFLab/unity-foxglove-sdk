@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.IO
@@ -17,7 +16,7 @@ namespace Unity.FoxgloveSDK.IO
     public static class RemoteMcapRangeWriter
     {
         /// <summary>Builds a self-contained MCAP stream for the requested inclusive log-time range.</summary>
-        public static MemoryStream CreateSlice(string mcapPath, RemoteMcapRequest request)
+        public static MemoryStream CreateSlice(string mcapPath, RemoteMcapRequest request, long maxInMemoryDataBytes)
         {
             if (mcapPath == null)
                 throw new ArgumentNullException(nameof(mcapPath));
@@ -30,23 +29,33 @@ namespace Unity.FoxgloveSDK.IO
                 StartTimeNs = request.StartTimeNs,
                 EndTimeNs = request.EndTimeNs,
                 MaxMessages = 0
-            }).OrderBy(m => m.LogTime).ThenBy(m => m.ChannelId).ToList();
+            });
 
             var output = new MemoryStream();
-            using (var recorder = new McapRecorder(
-                output,
-                null,
-                new McapWriterOptions { UseChunking = false },
-                leaveOpen: true))
+            try
             {
-                RegisterChannels(recorder, initialization);
-                for (var i = 0; i < messages.Count; i++)
+                using (var recorder = new McapRecorder(
+                    output,
+                    null,
+                    new McapWriterOptions { UseChunking = false },
+                    leaveOpen: true))
                 {
-                    var message = messages[i];
-                    recorder.WriteMessage(message.ChannelId, message.LogTime, message.Data);
-                }
+                    RegisterChannels(recorder, initialization);
+                    ThrowIfOverCap(output, maxInMemoryDataBytes);
+                    foreach (var message in messages)
+                    {
+                        recorder.WriteMessage(message.ChannelId, message.LogTime, message.Data);
+                        ThrowIfOverCap(output, maxInMemoryDataBytes);
+                    }
 
-                recorder.Close();
+                    recorder.Close();
+                    ThrowIfOverCap(output, maxInMemoryDataBytes);
+                }
+            }
+            catch
+            {
+                output.Dispose();
+                throw;
             }
 
             output.Position = 0;
@@ -102,6 +111,21 @@ namespace Unity.FoxgloveSDK.IO
             return string.Equals(schema.Encoding, "protobuf", StringComparison.OrdinalIgnoreCase)
                 ? Convert.ToBase64String(schema.Data)
                 : Encoding.UTF8.GetString(schema.Data);
+        }
+
+        private static void ThrowIfOverCap(MemoryStream output, long maxInMemoryDataBytes)
+        {
+            if (maxInMemoryDataBytes >= 0 && output.Length > maxInMemoryDataBytes)
+                throw new RemoteMcapRangeTooLargeException(
+                    "Requested MCAP range exceeds the configured in-memory byte response cap.");
+        }
+    }
+
+    internal sealed class RemoteMcapRangeTooLargeException : InvalidOperationException
+    {
+        public RemoteMcapRangeTooLargeException(string message)
+            : base(message)
+        {
         }
     }
 }

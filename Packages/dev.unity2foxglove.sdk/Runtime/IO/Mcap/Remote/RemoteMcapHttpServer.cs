@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.IO
         private const int MinTcpPort = 1;
         private const int MaxTcpPort = 65535;
         private static readonly TimeSpan StartupProbeTimeout = TimeSpan.FromMilliseconds(500);
-        private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromMilliseconds(50);
 
         private readonly HttpListener _listener;
         private readonly CancellationTokenSource _stop = new CancellationTokenSource();

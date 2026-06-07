@@ -147,7 +147,12 @@ namespace Unity.FoxgloveSDK.IO
             MemoryStream slice;
             try
             {
-                slice = RemoteMcapRangeWriter.CreateSlice(_mcapPath, request);
+                slice = RemoteMcapRangeWriter.CreateSlice(_mcapPath, request, _maxInMemoryDataBytes);
+            }
+            catch (RemoteMcapRangeTooLargeException ex)
+            {
+                return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "DataTooLargeForInMemoryResponse",
+                    ex.Message);
             }
             catch (Exception ex)
             {
@@ -228,21 +233,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             var info = new FileInfo(_mcapPath);
             if (!info.Exists)
-            {
-                var missing = new RemoteMcapManifest { Name = _manifestName };
-                var source = new RemoteMcapSource
-                {
-                    Id = _sourceId,
-                    Name = _manifestName,
-                    DataUrl = _dataRoute
-                };
-                source.Problems.Add(new RemoteMcapProblem(
-                    RemoteMcapProblemSeverity.Error,
-                    "SourceFileNotFound",
-                    "Requested MCAP source file is not available on disk."));
-                missing.Sources.Add(source);
-                return missing;
-            }
+                return CreateMissingManifest();
 
             lock (_manifestCacheGate)
             {
@@ -254,12 +245,20 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
-            using var loader = new McapDataLoader(_mcapPath);
-            var manifest = RemoteMcapManifestMapper.FromInitialization(
-                loader.Initialize(),
-                _manifestName,
-                _sourceId,
-                _dataRoute);
+            RemoteMcapManifest manifest;
+            try
+            {
+                using var loader = new McapDataLoader(_mcapPath);
+                manifest = RemoteMcapManifestMapper.FromInitialization(
+                    loader.Initialize(),
+                    _manifestName,
+                    _sourceId,
+                    _dataRoute);
+            }
+            catch (IOException)
+            {
+                return CreateMissingManifest();
+            }
 
             info.Refresh();
             var cacheLength = info.Exists ? info.Length : 0L;
@@ -279,6 +278,23 @@ namespace Unity.FoxgloveSDK.IO
                 _cachedManifestLastWriteUtc = cacheLastWriteUtc;
                 return CloneManifest(manifest);
             }
+        }
+
+        private RemoteMcapManifest CreateMissingManifest()
+        {
+            var missing = new RemoteMcapManifest { Name = _manifestName };
+            var source = new RemoteMcapSource
+            {
+                Id = _sourceId,
+                Name = _manifestName,
+                DataUrl = _dataRoute
+            };
+            source.Problems.Add(new RemoteMcapProblem(
+                RemoteMcapProblemSeverity.Error,
+                "SourceFileNotFound",
+                "Requested MCAP source file is not available on disk."));
+            missing.Sources.Add(source);
+            return missing;
         }
 
         private static bool IsUnsupportedMultiSource(RemoteMcapRequest request)

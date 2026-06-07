@@ -70,7 +70,10 @@ namespace Unity.FoxgloveSDK.IO
             bool leaveOpen,
             McapSequentialReadLimits sequentialReadLimits)
         {
-            _sourceLengthBytes = stream != null && stream.CanSeek ? stream.Length : -1L;
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+
+            _sourceLengthBytes = stream.CanSeek ? stream.Length : -1L;
             _sequentialReadLimits = sequentialReadLimits ?? McapSequentialReadLimits.Default;
             _reader = new McapIndexedReader(stream, leaveOpen, _sequentialReadLimits);
         }
