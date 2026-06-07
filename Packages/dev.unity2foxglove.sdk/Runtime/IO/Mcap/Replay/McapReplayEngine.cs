@@ -65,6 +65,7 @@ namespace Unity.FoxgloveSDK.IO
         /// Current replay time in nanoseconds.
         /// </summary>
         private ulong _currentTimeNs;
+        private bool _disposed;
 
         /// <summary>
         /// Base value for replay-generated channel IDs to avoid collisions with original IDs.
@@ -120,6 +121,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public McapMetadata FindMetadata(string name)
         {
+            ThrowIfDisposed();
             if (!IsLoaded || _reader == null || _summary?.MetadataIndexes == null || string.IsNullOrEmpty(name))
                 return null;
 
@@ -179,6 +181,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Load(string filePath)
         {
+            ThrowIfDisposed();
             ResetLoadedState(disposeStream: true);
 
             _stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
@@ -186,8 +189,10 @@ namespace Unity.FoxgloveSDK.IO
             {
                 _reader = new McapReader(_stream);
                 _summary = _reader.ReadSummary();
-                SortChunkIndexes(_summary?.ChunkIndexes);
-                CanSeek = _summary.Statistics != null && _summary.ChunkIndexes.Count > 0;
+                var chunkIndexes = _summary?.ChunkIndexes;
+                SortChunkIndexes(chunkIndexes);
+                var chunkCount = chunkIndexes?.Count ?? 0;
+                CanSeek = _summary?.Statistics != null && chunkCount > 0;
                 StartTimeNs = _summary.Statistics?.MessageStartTime ?? 0;
                 EndTimeNs = _summary.Statistics?.MessageEndTime ?? 0;
                 _currentTimeNs = StartTimeNs;
@@ -219,6 +224,7 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
+            ThrowIfDisposed();
             result.Clear();
 
             if (!IsLoaded || CurrentStatus == Status.Paused || CurrentStatus == Status.Ended)
@@ -240,21 +246,19 @@ namespace Unity.FoxgloveSDK.IO
                 result.Add(PopPending());
             }
 
-            if (PendingCount > 0 && PeekPending().LogTime <= clampedNow)
-            {
-                CurrentStatus = Status.Buffering;
-                return FinishTickResult(result);
-            }
-
             if (!CanSeek)
-                return FinishTickResult(result);
+                return FinishTickResultAndUpdateStatus(result);
 
             // Advance through chunks
-            while (_currentChunkIdx < _summary.ChunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0))
+            var chunkIndexes = _summary.ChunkIndexes;
+            while (_currentChunkIdx < chunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0))
             {
                 // Need next chunk?
                 if (_currentChunkIdx < 0 || _readOffset >= (_currentUncompressed?.Length ?? 0))
                 {
+                    var nextChunkIdx = _currentChunkIdx + 1;
+                    if (nextChunkIdx < chunkIndexes.Count && chunkIndexes[nextChunkIdx].MessageStartTime > clampedNow)
+                        break;
                     if (!LoadNextChunk()) break;
                 }
 
@@ -302,18 +306,8 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
-            if (result.Count == 0 && PendingCount == 0 && _currentChunkIdx >= _summary.ChunkIndexes.Count - 1
-                && _readOffset >= (_currentUncompressed?.Length ?? 0))
-            {
-                CurrentStatus = Status.Ended;
-            }
-            else if (PendingCount > 0)
-            {
-                CurrentStatus = Status.Buffering;
-            }
-
             SortPending();
-            return FinishTickResult(result);
+            return FinishTickResultAndUpdateStatus(result);
         }
 
         /// <summary>
@@ -324,6 +318,7 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapMessage> Snapshot(ulong timeNs, List<McapMessage> result)
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
+            ThrowIfDisposed();
             result.Clear();
 
             if (!IsLoaded || !CanSeek)
@@ -406,6 +401,7 @@ namespace Unity.FoxgloveSDK.IO
         public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
+            ThrowIfDisposed();
             result.Clear();
 
             if (!IsLoaded || !CanSeek)
@@ -470,7 +466,7 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
-            if (result.Count > 1)
+            if (maxMessages <= 0 && result.Count > 1)
                 result.Sort(CompareMessages);
             return result;
         }
@@ -480,6 +476,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Play()
         {
+            ThrowIfDisposed();
             if (!IsLoaded) return;
             if (CurrentStatus == Status.Ended)
             {
@@ -493,6 +490,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Pause()
         {
+            ThrowIfDisposed();
             if (!IsLoaded) return;
             CurrentStatus = Status.Paused;
         }
@@ -502,19 +500,21 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Seek(ulong timeNs)
         {
+            ThrowIfDisposed();
             if (!IsLoaded || !CanSeek) return;
 
+            var clampedTimeNs = ClampReplayTime(timeNs);
             _pending.Clear();
             _pendingHeadIndex = 0;
-            _lastEmitTime = timeNs;
-            _currentTimeNs = timeNs;
+            _lastEmitTime = clampedTimeNs;
+            _currentTimeNs = clampedTimeNs;
 
-            // Find first chunk that contains or is after timeNs
+            // Find first chunk that contains or is after clampedTimeNs
             _currentChunkIdx = -1;
             var foundChunk = false;
             for (var i = 0; i < _summary.ChunkIndexes.Count; i++)
             {
-                if (timeNs <= _summary.ChunkIndexes[i].MessageEndTime)
+                if (clampedTimeNs <= _summary.ChunkIndexes[i].MessageEndTime)
                 {
                     _currentChunkIdx = i - 1; // LoadNextChunk will advance to i
                     foundChunk = true;
@@ -536,7 +536,10 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Dispose()
         {
+            if (_disposed)
+                return;
             ResetLoadedState(disposeStream: true);
+            _disposed = true;
         }
 
         // Internal
@@ -588,7 +591,7 @@ namespace Unity.FoxgloveSDK.IO
         private McapMessage PeekPending() => _pending[_pendingHeadIndex];
 
         /// <summary>
-        /// Dequeues the oldest pending message and updates the last emitted time.
+        /// Dequeues the oldest pending message.
         /// </summary>
         private McapMessage PopPending()
         {
@@ -705,6 +708,46 @@ namespace Unity.FoxgloveSDK.IO
 
             _lastEmitTime = result[result.Count - 1].LogTime;
             return result;
+        }
+
+        private List<McapMessage> FinishTickResultAndUpdateStatus(List<McapMessage> result)
+        {
+            var finished = FinishTickResult(result);
+            UpdatePostTickStatus(finished);
+            return finished;
+        }
+
+        private void UpdatePostTickStatus(List<McapMessage> result)
+        {
+            if (PendingCount > 0)
+            {
+                CurrentStatus = Status.Buffering;
+                return;
+            }
+
+            if (CanSeek &&
+                result.Count == 0 &&
+                _summary?.ChunkIndexes != null &&
+                _currentChunkIdx >= _summary.ChunkIndexes.Count - 1 &&
+                _readOffset >= (_currentUncompressed?.Length ?? 0))
+            {
+                CurrentStatus = Status.Ended;
+                return;
+            }
+
+            if (CurrentStatus == Status.Buffering)
+                CurrentStatus = Status.Playing;
+        }
+
+        private ulong ClampReplayTime(ulong timeNs)
+        {
+            return timeNs > EndTimeNs ? EndTimeNs : timeNs;
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(McapReplayEngine));
         }
 
         internal static int CountTickResultPrefixPreservingLogTimeGroup(IReadOnlyList<McapMessage> result, int maxMessagesPerTick)
