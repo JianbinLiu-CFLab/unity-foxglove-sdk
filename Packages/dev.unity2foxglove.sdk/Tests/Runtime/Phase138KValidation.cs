@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherCarriesCaptureDimensionsIntoVideoSubmission()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var source = ReadCameraPublisherPartials();
 
             Check(source.Contains("SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight)", StringComparison.Ordinal),
                 "138K-1A: video readback path carries captured dimensions into submission");
@@ -46,7 +46,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherUsesCapturedDimensionsForOpenH264Conversion()
         {
-            var method = ExtractMethod("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs", "private void SubmitVideoFrame");
+            var method = ExtractMethod(
+                Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs"),
+                "public CameraVideoSubmitResult SubmitVideoFrame");
 
             Check(method.Contains("Math.Max(1, captureWidth)", StringComparison.Ordinal)
                   && method.Contains("Math.Max(1, captureHeight)", StringComparison.Ordinal),
@@ -58,9 +60,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherKeepsVideoFailureOutOfJpegFallback()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
-            var videoBranchStart = source.IndexOf("if (profile.IsVideo)", StringComparison.Ordinal);
-            var videoBranchEnd = source.IndexOf("var publishWebSocket = ShouldPreparePublishPayload", videoBranchStart, StringComparison.Ordinal);
+            var source = ExtractMethod(ReadCameraPublisherPartials(), "private void OnReadbackComplete");
+            var videoBranchStart = source.IndexOf("if (publishVideo)", StringComparison.Ordinal);
+            var videoBranchEnd = source.IndexOf("if (!publishJpegFrame", videoBranchStart, StringComparison.Ordinal);
             var videoBranch = videoBranchStart >= 0 && videoBranchEnd > videoBranchStart
                 ? source.Substring(videoBranchStart, videoBranchEnd - videoBranchStart)
                 : "";
@@ -74,7 +76,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CameraPublisherSurfacesVideoDiagnostics()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var source = ReadCameraPublisherPartials();
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
 
             Check(source.Contains("CameraPublishDiagnostics _diagnostics", StringComparison.Ordinal)
@@ -103,9 +105,8 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        private static string ExtractMethod(string path, string signatureStart)
+        private static string ExtractMethod(string source, string signatureStart)
         {
-            var source = Read(path);
             var start = source.IndexOf(signatureStart, StringComparison.Ordinal);
             if (start < 0)
                 return "";
@@ -131,6 +132,11 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string path) => File.ReadAllText(path);
+
+        private static string ReadCameraPublisherPartials()
+            => Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs")
+               + "\n"
+               + Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs");
 
         private static void Check(bool condition, string label)
         {

@@ -14,7 +14,9 @@ namespace Foxglove.Schemas.Video
 {
     /// <summary>
     /// Experimental Media Foundation H.264 encoder sidecar. Phase 78 keeps the
-    /// boundary explicit so unsupported Windows encoder states fail clearly.
+    /// boundary explicit so unsupported Windows encoder states fail clearly. The
+    /// path still converts and submits samples synchronously and should remain
+    /// marked experimental until that work is moved off the caller thread.
     /// </summary>
     public sealed class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
@@ -40,6 +42,7 @@ namespace Foxglove.Schemas.Video
         private const int MfVideoInterlaceProgressive = 2;
         private const int H264BaselineProfile = 66;
         private const int MaxTrackedSampleTimestamps = 256;
+        private const int MaxConsecutiveOutputStreamChanges = 3;
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly Dictionary<long, ulong> _sampleTimestampNsByTime = new Dictionary<long, ulong>();
@@ -403,6 +406,7 @@ namespace Foxglove.Schemas.Video
         {
             IMFMediaBuffer buffer = null;
             IMFSample sample = null;
+            var sampleReturned = false;
             try
             {
                 var hr = NativeMethods.MFCreateMemoryBuffer(data.Length, out buffer);
@@ -417,16 +421,20 @@ namespace Foxglove.Schemas.Video
                 ThrowForHr(hr, "IMFSample.SetSampleTime failed.");
                 hr = sample.SetSampleDuration(duration);
                 ThrowForHr(hr, "IMFSample.SetSampleDuration failed.");
+                sampleReturned = true;
                 return sample;
             }
             finally
             {
                 ReleaseComObject(buffer);
+                if (!sampleReturned)
+                    ReleaseComObject(sample);
             }
         }
 
         private void DrainEncoderOutput()
         {
+            var consecutiveStreamChanges = 0;
             while (true)
             {
                 var hr = _transform.GetOutputStreamInfo(0, out var info);
@@ -464,10 +472,12 @@ namespace Foxglove.Schemas.Video
 
                     if (hr == MfETransformStreamChange)
                     {
-                        CacheOutputSequenceHeader();
+                        consecutiveStreamChanges++;
+                        HandleOutputStreamChange(consecutiveStreamChanges);
                         continue;
                     }
 
+                    consecutiveStreamChanges = 0;
                     ThrowForHr(hr, "Media Foundation H.264 ProcessOutput failed.");
                     if (output.pSample != IntPtr.Zero)
                     {
@@ -500,6 +510,31 @@ namespace Foxglove.Schemas.Video
                     ReleaseComObject(sample);
                     ReleaseComObject(buffer);
                 }
+            }
+        }
+
+        private void HandleOutputStreamChange(int consecutiveStreamChanges)
+        {
+            if (consecutiveStreamChanges > MaxConsecutiveOutputStreamChanges)
+                throw new InvalidOperationException("Media Foundation H.264 output stream change did not settle.");
+
+            IMFMediaType outputType = null;
+            try
+            {
+                var hr = _transform.GetOutputAvailableType(0, 0, out outputType);
+                if (hr < 0 || outputType == null)
+                {
+                    ReleaseComObject(outputType);
+                    outputType = CreateH264OutputType(_options);
+                }
+
+                hr = _transform.SetOutputType(0, outputType, 0);
+                ThrowForHr(hr, "Media Foundation H.264 SetOutputType after stream change failed.");
+                CacheOutputSequenceHeader();
+            }
+            finally
+            {
+                ReleaseComObject(outputType);
             }
         }
 

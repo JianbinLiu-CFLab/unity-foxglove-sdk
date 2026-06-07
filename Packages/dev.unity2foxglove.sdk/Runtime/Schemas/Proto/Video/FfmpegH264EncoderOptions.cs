@@ -15,6 +15,20 @@ namespace Foxglove.Schemas.Video
     /// </summary>
     public sealed class FfmpegH264EncoderOptions
     {
+        private static readonly string[] ValidPresets =
+        {
+            "ultrafast",
+            "superfast",
+            "veryfast",
+            "faster",
+            "fast",
+            "medium",
+            "slow",
+            "slower",
+            "veryslow",
+            "placebo"
+        };
+
         public string FfmpegPath = "ffmpeg";
         public int Width = 640;
         public int Height = 480;
@@ -113,8 +127,23 @@ namespace Foxglove.Schemas.Video
                 }
             }
 
+            if (!IsKnownPreset(preset))
+            {
+                error = "FFmpeg H.264 preset must be one of the known x264 preset names.";
+                return false;
+            }
+
             error = "";
             return true;
+        }
+
+        private static bool IsKnownPreset(string preset)
+        {
+            foreach (var valid in ValidPresets)
+                if (string.Equals(valid, preset, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+            return false;
         }
     }
 }

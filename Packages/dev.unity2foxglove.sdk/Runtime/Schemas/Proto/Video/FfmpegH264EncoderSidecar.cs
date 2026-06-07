@@ -219,7 +219,7 @@ namespace Foxglove.Schemas.Video
                 if (!_outputAccessUnits.TryDequeue(out accessUnit))
                     return false;
 
-                Interlocked.Decrement(ref _outputCount);
+                _outputCount--;
                 return true;
             }
         }
@@ -338,7 +338,10 @@ namespace Foxglove.Schemas.Video
                 }
 
                 if (_packetizer != null && _packetizer.Flush(out var finalUnit))
+                {
                     EnqueueAccessUnit(finalUnit);
+                    DrainPacketizer();
+                }
             }
             catch (OperationCanceledException)
             {
@@ -432,17 +435,19 @@ namespace Foxglove.Schemas.Video
             lock (_outputLock)
             {
                 var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
-                while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
+                while (_outputCount >= capacity && _outputAccessUnits.TryDequeue(out _))
                 {
-                    Interlocked.Decrement(ref _outputCount);
+                    _outputCount--;
                     Interlocked.Increment(ref _accessUnitsDropped);
                 }
 
-                // FFmpeg is configured for one access unit per submitted raw frame; this
-                // timestamp pairing is approximate if an encoder buffers or flushes unevenly.
+                // FFmpeg's rawvideo pipe carries no per-frame PTS. With zerolatency
+                // and B-frames disabled, output order is expected to match input order;
+                // this queue remains an accepted approximation until a PTS-bearing
+                // sidecar protocol replaces the rawvideo stdin/stdout contract.
                 var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
-                Interlocked.Increment(ref _outputCount);
+                _outputCount++;
                 Interlocked.Increment(ref _accessUnitsProduced);
             }
         }
@@ -484,7 +489,7 @@ namespace Foxglove.Schemas.Video
                 {
                 }
 
-                Volatile.Write(ref _outputCount, 0);
+                _outputCount = 0;
             }
         }
 
