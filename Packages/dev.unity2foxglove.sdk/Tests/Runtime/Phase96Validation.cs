@@ -60,6 +60,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "96A-9: root publisher topic is rejected");
             Check(!Ros2BridgeTopicProfile.TryNormalizeRos2BridgeTopic("/", out _, out _),
                 "96A-10: root override topic is rejected");
+            Check(!Ros2BridgeTopicProfile.TryNormalizeRos2BridgeNamespace("/robot one", out _, out _),
+                "96A-11: namespace with invalid ROS 2 characters is rejected");
+            Check(!Ros2BridgeTopicProfile.TryNormalizeRos2BridgeTopic("/lidar/front$", out _, out _),
+                "96A-12: override with invalid ROS 2 characters is rejected");
+            Check(!Ros2BridgeTopicProfile.TryResolveRos2BridgeTopic("", "/unity/bad topic", "", out _, out _),
+                "96A-13: publisher topic with invalid ROS 2 characters is rejected");
         }
 
         private static void VerifyQosHelpers()

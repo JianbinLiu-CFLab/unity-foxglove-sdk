@@ -110,18 +110,20 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[] { 1 })),
                 "94B-1: frame rejects topics without leading slash");
+            Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/bad topic", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[] { 1 })),
+                "94B-2: frame rejects topics with invalid ROS 2 characters");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/Missing", "cdr", 1, 1, new byte[] { 1 })),
-                "94B-2: frame rejects unknown ROS2 schema names");
+                "94B-3: frame rejects unknown ROS2 schema names");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "json", 1, 1, new byte[] { 1 })),
-                "94B-3: frame rejects non-cdr encoding");
+                "94B-4: frame rejects non-cdr encoding");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, Array.Empty<byte>())),
-                "94B-4: frame rejects empty payload");
+                "94B-5: frame rejects empty payload");
             Check(Throws<ArgumentException>(() => Ros2BridgeFrameWriter.Write(new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[Ros2BridgeFrameWriter.MaxPayloadBytes + 1]))),
-                "94B-5: frame writer rejects oversized payloads");
+                "94B-6: frame writer rejects oversized payloads");
             Check(Throws<ArgumentException>(() => Ros2BridgeTcpClient.ValidateLoopbackHost("0.0.0.0")),
-                "94B-6: bridge rejects wildcard host");
+                "94B-7: bridge rejects wildcard host");
             Check(Throws<ArgumentException>(() => Ros2BridgeTcpClient.ValidateLoopbackHost("192.168.1.10")),
-                "94B-7: bridge rejects LAN host");
+                "94B-8: bridge rejects LAN host");
         }
 
         private static void VerifyTcpClient()

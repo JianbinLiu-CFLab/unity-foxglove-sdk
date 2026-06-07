@@ -154,8 +154,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-16H-2: sidecar publisher maps survive client reconnects");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
                   && source.Contains("reject frame: missing or invalid op", StringComparison.Ordinal)
-                  && source.Contains("topic must not contain newline", StringComparison.Ordinal),
-                "134-16H-3: sidecar rejects missing op fields and newline-bearing topics");
+                  && source.Contains("topic must not contain newline", StringComparison.Ordinal)
+                  && source.Contains("topic contains invalid ROS 2 characters", StringComparison.Ordinal),
+                "134-16H-3: sidecar rejects missing op fields and malformed topics");
             Check(!source.Contains("Phase 94 accepts only IPv4 loopback hosts", StringComparison.Ordinal)
                   && source.Contains("--port must be an integer in 1..65535", StringComparison.Ordinal),
                 "134-16H-4: sidecar argument errors are explicit and avoid stale phase wording");

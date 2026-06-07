@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <memory>
@@ -142,6 +143,32 @@ bool has_prefix(const std::string & value, const std::string & prefix)
 bool contains_newline(const std::string & value)
 {
   return value.find('\n') != std::string::npos || value.find('\r') != std::string::npos;
+}
+
+bool is_valid_ros2_topic_name(const std::string & value)
+{
+  if (value.empty() || value.front() != '/') {
+    return false;
+  }
+
+  bool token_has_characters = false;
+  for (size_t i = 1; i < value.size(); ++i) {
+    const unsigned char ch = static_cast<unsigned char>(value[i]);
+    if (ch == '/') {
+      if (!token_has_characters) {
+        return false;
+      }
+      token_has_characters = false;
+      continue;
+    }
+
+    if (ch != '_' && std::isalnum(ch) == 0) {
+      return false;
+    }
+    token_has_characters = true;
+  }
+
+  return token_has_characters;
 }
 
 std::string qos_signature(const BridgeFrame & frame)
@@ -452,6 +479,9 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
   }
   if (contains_newline(frame.topic)) {
     throw std::runtime_error("reject frame: topic must not contain newline");
+  }
+  if (!is_valid_ros2_topic_name(frame.topic)) {
+    throw std::runtime_error("reject frame: topic contains invalid ROS 2 characters");
   }
   if (!has_prefix(frame.schema_name, "foxglove_msgs/msg/")) {
     throw std::runtime_error("reject frame: schemaName must start with foxglove_msgs/msg/");
