@@ -80,8 +80,14 @@ namespace Foxglove.Schemas.PointCloud
             dracoPayload = null;
             error = "";
 
+            if (frame == null)
+            {
+                error = "Draco point-cloud frame is empty.";
+                return false;
+            }
+
             var pointCount = frame.GetPointCount();
-            if (frame == null || pointCount == 0)
+            if (pointCount == 0)
             {
                 error = "Draco point-cloud frame is empty.";
                 return false;

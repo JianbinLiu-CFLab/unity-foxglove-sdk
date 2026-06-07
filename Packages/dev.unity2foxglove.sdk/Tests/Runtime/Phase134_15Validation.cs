@@ -142,8 +142,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
             Check(sceneSource.Contains("checked((byte)deletion.Type)"),
                 "134-15G-1: SceneUpdate deletion enum conversion is checked");
-            Check(pointCloudSource.Contains("checked((byte)field.Type)"),
-                "134-15G-2: PointCloud field type enum conversion is checked");
+            Check(pointCloudSource.Contains("writer.WriteUInt8(MapDatatype(field.Type));")
+                  && pointCloudSource.Contains("checked((byte)type)")
+                  && pointCloudSource.Contains("Unsupported PointCloud packed numeric type"),
+                "134-15G-2: PointCloud field type enum conversion is checked through a rejecting helper");
             Check(!sceneSource.Contains("Phase 91 CDR smoke builder")
                   && sceneSource.Contains("serialization is not supported by this CDR builder"),
                 "134-15G-3: SceneUpdate unsupported-field error is product-facing");

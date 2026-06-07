@@ -33,10 +33,28 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 var field = packed.Fields[i];
                 writer.WriteString(field.Name);
                 writer.WriteUInt32(field.Offset);
-                writer.WriteUInt8(checked((byte)field.Type));
+                writer.WriteUInt8(MapDatatype(field.Type));
             }
             writer.WriteByteArray(packed.Data);
             return writer.ToArray();
+        }
+
+        private static byte MapDatatype(PointCloudPackedNumericType type)
+        {
+            switch (type)
+            {
+                case PointCloudPackedNumericType.Int8:
+                case PointCloudPackedNumericType.Uint8:
+                case PointCloudPackedNumericType.Int16:
+                case PointCloudPackedNumericType.Uint16:
+                case PointCloudPackedNumericType.Int32:
+                case PointCloudPackedNumericType.Uint32:
+                case PointCloudPackedNumericType.Float32:
+                case PointCloudPackedNumericType.Float64:
+                    return checked((byte)type);
+                default:
+                    throw new NotSupportedException("Unsupported PointCloud packed numeric type: " + type);
+            }
         }
     }
 }

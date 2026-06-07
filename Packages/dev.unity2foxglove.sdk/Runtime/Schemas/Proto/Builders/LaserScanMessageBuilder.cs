@@ -110,7 +110,7 @@ namespace Foxglove.Schemas
 
         private static List<double> ToMutableList(IReadOnlyList<double> values)
         {
-            return values as List<double> ?? values.ToList();
+            return values.ToList();
         }
 
         private static void ValidateIntensities(IReadOnlyList<double> ranges, IReadOnlyList<double> intensities)

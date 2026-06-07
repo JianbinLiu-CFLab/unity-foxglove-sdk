@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
@@ -81,6 +82,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private readonly SensorMotionPoseHistory _motionPoseHistory = new SensorMotionPoseHistory();
         private ulong _lastNativeDracoPublishUnixNs;
+        private int _unityThreadId;
         private int _motionCompensationWarningCount;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
@@ -184,6 +186,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             EnsureEncodePipelines();
             if (string.IsNullOrEmpty(_topic)) _topic = DefaultTopic;
+            _unityThreadId = Thread.CurrentThread.ManagedThreadId;
+        }
+
+        protected override void OnEnable()
+        {
+            base.OnEnable();
+            _unityThreadId = Thread.CurrentThread.ManagedThreadId;
         }
 
         private static string SanitizeNonEmptyFrameId(string raw, string fallback)
@@ -257,9 +266,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         /// <remarks>
         /// Use the supplied timestamp to keep LiDAR timing aligned with IMU/TF inputs.
+        /// This immediate publish path must run on the Unity main thread. Use
+        /// <see cref="SetFrame(PointCloudFrame)"/> when handing off frames from workers.
         /// </remarks>
         public void PublishFrame(PointCloudFrame frame, ulong logTimeNs)
         {
+            if (!IsUnityMainThread())
+                throw new InvalidOperationException("PointCloud PublishFrame must run on the Unity main thread. Use SetFrame for worker-thread handoff.");
+
             if (frame != null)
                 MarkSourceDrivenPointCloud();
 
@@ -396,6 +410,8 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            // A backward clock jump, usually from replay seek or sensor clock reset,
+            // intentionally resets the native Draco rate baseline and lets one frame through.
             _lastNativeDracoPublishUnixNs = timestampNs;
             return true;
         }
@@ -705,11 +721,17 @@ namespace Unity.FoxgloveSDK.Components
 
         private void WarnMotionCompensation(string reason)
         {
-            _motionCompensationWarningCount++;
+            if (_motionCompensationWarningCount < int.MaxValue)
+                _motionCompensationWarningCount++;
             if (_motionCompensationWarningCount != 1 && _motionCompensationWarningCount % PointCloud2NativeFailureWarningIntervalFrames != 0)
                 return;
 
             Debug.LogWarning("[Foxglove] PointCloud2 motion compensation " + reason);
+        }
+
+        private bool IsUnityMainThread()
+        {
+            return _unityThreadId != 0 && Thread.CurrentThread.ManagedThreadId == _unityThreadId;
         }
 
         private static bool TryGetPointTimeRange(

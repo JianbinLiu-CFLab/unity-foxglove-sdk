@@ -155,8 +155,14 @@ namespace Foxglove.Schemas.PointCloud
             dracoPayload = null;
             SetLastError(null);
 
+            if (frame == null)
+            {
+                SetLastError("Draco point-cloud frame is empty.");
+                return false;
+            }
+
             var pointCount = frame.GetPointCount();
-            if (frame == null || pointCount == 0)
+            if (pointCount == 0)
             {
                 SetLastError("Draco point-cloud frame is empty.");
                 return false;
@@ -222,6 +228,13 @@ namespace Foxglove.Schemas.PointCloud
                 }
 
                 TryKillProcess(process);
+                try
+                {
+                    process.StandardError.BaseStream.Close();
+                }
+                catch
+                {
+                }
                 WaitForProcessExit(process, 200);
                 WaitForTask(_stderrTask, 200);
                 process.Dispose();

@@ -62,6 +62,13 @@ namespace Unity.FoxgloveSDK.Components
             _unityThreadId = Thread.CurrentThread.ManagedThreadId;
         }
 
+        protected override void OnDisable()
+        {
+            _warnedOffMainThreadPublishFrame = false;
+            ClearQueuedPublishFrames();
+            base.OnDisable();
+        }
+
         /// <summary>
         /// Publish one event-driven scan immediately, bypassing the regular Update cadence.
         /// Calls from worker threads are copied into a bounded queue and published on
@@ -111,9 +118,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Update()
         {
+            DrainQueuedPublishFrames(_manager != null && _manager.Runtime?.ReplayEnabled != true);
             if (_manager == null) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
-            DrainQueuedPublishFrames();
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
@@ -230,7 +237,18 @@ namespace Unity.FoxgloveSDK.Components
             Interlocked.Increment(ref _queuedOffMainThreadPublishFrameCount);
         }
 
-        private void DrainQueuedPublishFrames()
+        private void ClearQueuedPublishFrames()
+        {
+            while (_queuedPublishFrames.TryDequeue(out _))
+            {
+            }
+
+            Interlocked.Exchange(ref _queuedPublishFrameCount, 0);
+            Interlocked.Exchange(ref _queuedOffMainThreadPublishFrameCount, 0);
+            Interlocked.Exchange(ref _droppedQueuedPublishFrameCount, 0);
+        }
+
+        private void DrainQueuedPublishFrames(bool canPublishFrames)
         {
             var queuedFromWorker = Interlocked.Exchange(ref _queuedOffMainThreadPublishFrameCount, 0);
             if (queuedFromWorker > 0 && !_warnedOffMainThreadPublishFrame)
@@ -246,6 +264,9 @@ namespace Unity.FoxgloveSDK.Components
             while (_queuedPublishFrames.TryDequeue(out var frame))
             {
                 Interlocked.Decrement(ref _queuedPublishFrameCount);
+                if (!canPublishFrames)
+                    continue;
+
                 PublishFrameOnMainThread(
                     frame.LogTimeNs,
                     frame.FrameId,

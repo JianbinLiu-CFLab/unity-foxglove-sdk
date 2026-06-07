@@ -77,16 +77,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void FfmpegTimestampPairingDocumentsAccessUnitAssumption()
         {
-            CheckFfmpegTimestampComment("FfmpegH264EncoderSidecar.cs", "140-13E-1: FFmpeg H.264 timestamp pairing documents access-unit assumption");
-            CheckFfmpegTimestampComment("FfmpegH265EncoderSidecar.cs", "140-13E-2: FFmpeg H.265 timestamp pairing documents access-unit assumption");
+            CheckFfmpegTimestampComment("FfmpegH264EncoderSidecar.cs", "140-13E-1: FFmpeg H.264 timestamp pairing documents rawvideo PTS limitation");
+            CheckFfmpegTimestampComment("FfmpegH265EncoderSidecar.cs", "140-13E-2: FFmpeg H.265 timestamp pairing documents rawvideo PTS limitation");
         }
 
         private static void CheckFfmpegTimestampComment(string fileName, string description)
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/" + fileName);
 
-            Check(source.Contains("one access unit per submitted raw frame", StringComparison.Ordinal)
-                  && source.Contains("timestamp pairing", StringComparison.Ordinal),
+            Check(source.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
+                  && source.Contains("accepted approximation", StringComparison.Ordinal),
                 description);
         }
 
