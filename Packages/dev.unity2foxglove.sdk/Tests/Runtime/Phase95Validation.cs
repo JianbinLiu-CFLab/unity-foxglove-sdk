@@ -116,6 +116,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "95B-6: runtime rejects wildcard hosts");
             Check(Throws<ArgumentException>(() => new Ros2BridgeRuntime("192.168.1.10", 8767, 1, 10, 10, factory.Create)),
                 "95B-7: runtime rejects LAN hosts");
+            Check(Throws<ArgumentOutOfRangeException>(() => runtime.Send(CreateFrame("/unity/timeout", 3), timeoutMs: 0)),
+                "95B-8: runtime Send rejects non-positive timeout values");
         }
 
         private static void VerifyRuntimeReconnect()
