@@ -103,38 +103,42 @@ namespace Unity.FoxgloveSDK.Transport
             try { _listener?.Stop(); } catch { }
             _listener = null;
 
-            var clients = _clients.ToArray();
-            var disconnects = clients
-                .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
-                .ToArray();
-            if (disconnects.Length > 0)
+            try
             {
-                bool completed = false;
-                try { completed = Task.WaitAll(disconnects, StopDisconnectWaitMs); }
-                catch (AggregateException ex) { _logger.LogError($"Client disconnect error during stop: {FormatExceptionChain(ex)}"); }
-
-                if (!completed)
+                var clients = _clients.ToArray();
+                var disconnects = clients
+                    .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
+                    .ToArray();
+                if (disconnects.Length > 0)
                 {
-                    _logger.LogWarning(
-                        $"Client disconnect did not complete within {StopDisconnectWaitMs}ms during stop; forcing network close for remaining clients.");
-                    foreach (var pair in clients)
+                    bool completed = false;
+                    try { completed = Task.WaitAll(disconnects, StopDisconnectWaitMs); }
+                    catch (AggregateException ex) { _logger.LogError($"Client disconnect error during stop: {FormatExceptionChain(ex)}"); }
+
+                    if (!completed)
                     {
-                        try { pair.Value.Dispose(); } catch { }
+                        _logger.LogWarning(
+                            $"Client disconnect did not complete within {StopDisconnectWaitMs}ms during stop; forcing network close for remaining clients.");
+                        foreach (var pair in clients)
+                        {
+                            try { pair.Value.Dispose(); } catch { }
+                        }
+
+                        try { completed = Task.WaitAll(disconnects, StopForcedCloseWaitMs); }
+                        catch (AggregateException ex) { _logger.LogError($"Client disconnect error during forced stop: {FormatExceptionChain(ex)}"); }
                     }
 
-                    try { completed = Task.WaitAll(disconnects, StopForcedCloseWaitMs); }
-                    catch (AggregateException ex) { _logger.LogError($"Client disconnect error during forced stop: {FormatExceptionChain(ex)}"); }
-                }
-
-                if (!completed)
-                {
-                    _logger.LogWarning(
-                        "Client disconnect callbacks are still running after forced stop; deferring cancellation token disposal.");
-                    return;
+                    if (!completed)
+                    {
+                        _logger.LogWarning(
+                            "Client disconnect callbacks are still running after forced stop; continuing shutdown.");
+                    }
                 }
             }
-
-            cts?.Dispose();
+            finally
+            {
+                cts?.Dispose();
+            }
         }
 
         /// <summary>Send a UTF-8 text frame to a specific client.</summary>
