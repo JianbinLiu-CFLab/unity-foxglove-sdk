@@ -18,6 +18,7 @@ namespace Unity.FoxgloveSDK.Core
         public readonly string SchemaEncoding;
         public readonly ulong LogTimeNs;
         public readonly ulong ReplayStartTimeNs;
+        public readonly ulong ReplaySessionId;
         public readonly byte[] Payload;
 
         public ReplayMessageContext(
@@ -28,7 +29,8 @@ namespace Unity.FoxgloveSDK.Core
             string schemaEncoding,
             ulong logTimeNs,
             ulong replayStartTimeNs,
-            byte[] payload)
+            byte[] payload,
+            ulong replaySessionId = 0UL)
         {
             ChannelId = channelId;
             Topic = topic ?? string.Empty;
@@ -37,6 +39,7 @@ namespace Unity.FoxgloveSDK.Core
             SchemaEncoding = schemaEncoding ?? string.Empty;
             LogTimeNs = logTimeNs;
             ReplayStartTimeNs = replayStartTimeNs;
+            ReplaySessionId = replaySessionId;
             Payload = payload;
         }
     }
@@ -48,6 +51,7 @@ namespace Unity.FoxgloveSDK.Core
     {
         public readonly ulong BatchLogTimeNs;
         public readonly ulong ReplayStartTimeNs;
+        public readonly ulong ReplaySessionId;
         public readonly int MessageCount;
         public readonly string Source;
 
@@ -55,10 +59,12 @@ namespace Unity.FoxgloveSDK.Core
             ulong batchLogTimeNs,
             ulong replayStartTimeNs,
             int messageCount,
-            string source)
+            string source,
+            ulong replaySessionId = 0UL)
         {
             BatchLogTimeNs = batchLogTimeNs;
             ReplayStartTimeNs = replayStartTimeNs;
+            ReplaySessionId = replaySessionId;
             MessageCount = messageCount;
             Source = source ?? string.Empty;
         }

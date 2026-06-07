@@ -78,6 +78,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly BoundedEventQueue<ReplayCallbackDispatch> _pendingReplayCallbacks =
             new(MaxPendingReplayCallbacks, MaxPendingReplayCallbackPayloadBytes, MeasureReplayCallbackPayloadBytes);
         private long _lastReplayCallbackOverflowWarningTicks;
+        private ulong _replaySessionId;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => Volatile.Read(ref _replayEnabled);
@@ -274,6 +275,7 @@ namespace Unity.FoxgloveSDK.Core
                         }
 
                     _clock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
+                    _replaySessionId = NextReplaySessionId(_replaySessionId);
                     _replayEngine.Play();
                     Volatile.Write(ref _replayEnabled, true);
                     _hasPanelHistoryTime = false;
@@ -706,7 +708,8 @@ namespace Unity.FoxgloveSDK.Core
                 batchLogTimeNs,
                 _replayEngine?.StartTimeNs ?? 0UL,
                 messages.Count,
-                source)));
+                source,
+                replaySessionId: _replaySessionId)));
         }
 
         /// <summary>
@@ -863,7 +866,17 @@ namespace Unity.FoxgloveSDK.Core
                 schemaEncoding: schema?.Encoding ?? string.Empty,
                 logTimeNs: logTimeNs,
                 replayStartTimeNs: replayStartTimeNs,
-                payload: message.Data);
+                payload: message.Data,
+                replaySessionId: _replaySessionId);
+        }
+
+        private static ulong NextReplaySessionId(ulong previous)
+        {
+            unchecked
+            {
+                var next = previous + 1UL;
+                return next == 0UL ? 1UL : next;
+            }
         }
 
         /// <summary>Seek the replay engine to the given nanosecond timestamp.</summary>

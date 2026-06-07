@@ -8,6 +8,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
@@ -19,6 +20,8 @@ namespace Unity.FoxgloveSDK.Components
     /// Drives Unity GameObjects from MCAP replay messages.
     /// Searches scene for GameObjects matching frame_id / entity_id by name.
     /// Manual FrameMapping / EntityMapping arrays override automatic lookup.
+    /// Scene entities map one target Transform per entity; when an entity has
+    /// multiple primitives, the adapter applies the first cube/model primitive.
     /// </summary>
     public class FoxgloveReplayObjectAdapter : MonoBehaviour
     {
@@ -67,6 +70,10 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<string, Transform> _frameCache = new();
         /// <summary>Lookup cache for entity_id to Transform.</summary>
         private readonly Dictionary<string, Transform> _entityCache = new();
+        /// <summary>Per-session negative cache for frame IDs that failed auto-lookup.</summary>
+        private readonly HashSet<string> _missedFrames = new();
+        /// <summary>Per-session negative cache for entity IDs that failed auto-lookup.</summary>
+        private readonly HashSet<string> _missedEntities = new();
         /// <summary>Transform instance lookup used when deferred poses resolve after the init window.</summary>
         private readonly Dictionary<int, Transform> _transformByPoseKey = new();
         /// <summary>Local channel overrides used when heuristic topic fallback fails to decode.</summary>
@@ -85,9 +92,13 @@ namespace Unity.FoxgloveSDK.Components
         private bool _subscribed;
         private bool _hasReplaySession;
         private ulong _activeReplayStartTimeNs;
+        private ulong _activeReplaySessionId;
         /// <summary>Disabled trace hook used only for manual before/after replay pose investigations.</summary>
         private const bool ReplayPoseTraceEnabled = false;
         private const int MaxReplayJsonPayloadBytes = 4 * 1024 * 1024;
+        private static readonly object ReflectionCacheGate = new();
+        private static readonly Dictionary<string, ProtobufParserBinding> ProtobufParserCache = new();
+        private static readonly Dictionary<string, PropertyInfo> PropertyCache = new();
 
         /// <summary>
         /// Resolves the FoxgloveManager and loads manual FrameMapping and
@@ -200,7 +211,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var warningKey = string.IsNullOrEmpty(context.Topic) ? context.SchemaName : context.Topic;
                 if (_warnedTopics.Add(warningKey ?? string.Empty))
-                    Debug.LogWarning($"[Foxglove Replay] Failed to parse replay channel {context.ChannelId} ({warningKey}): {ex.Message}");
+                    Debug.LogWarning($"[Foxglove Replay] Failed to parse replay channel {context.ChannelId} ({warningKey}): {FormatReplayException(ex)}");
                 if (IsTopicFallbackBehavior(context))
                     _channelBehaviorOverrides[context.ChannelId] = ReplayChannelBehavior.NonPose;
             }
@@ -214,9 +225,11 @@ namespace Unity.FoxgloveSDK.Components
             var behavior = _manager != null
                 ? _manager.GetReplayChannelBehavior(context.ChannelId)
                 : ReplayChannelBehavior.NotLoaded;
+            if (behavior == ReplayChannelBehavior.NonPose)
+                return behavior;
+
             if (behavior != ReplayChannelBehavior.NotLoaded
-                && behavior != ReplayChannelBehavior.Unclassified
-                && behavior != ReplayChannelBehavior.NonPose)
+                && behavior != ReplayChannelBehavior.Unclassified)
                 return behavior;
 
             if (json != null)
@@ -233,7 +246,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnReplayBatchCompleted(ReplayBatchContext context)
         {
-            if (!_hasReplaySession || _activeReplayStartTimeNs != context.ReplayStartTimeNs)
+            if (!_hasReplaySession || !IsSameReplaySession(context))
                 return;
 
             FlushDeferredScenePoses(context);
@@ -241,12 +254,29 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnsureReplaySession(ReplayMessageContext context)
         {
-            if (_hasReplaySession && _activeReplayStartTimeNs == context.ReplayStartTimeNs)
+            if (_hasReplaySession && IsSameReplaySession(context))
                 return;
 
             ResetPoseOwnershipSession();
             _activeReplayStartTimeNs = context.ReplayStartTimeNs;
+            _activeReplaySessionId = context.ReplaySessionId;
             _hasReplaySession = true;
+        }
+
+        private bool IsSameReplaySession(ReplayMessageContext context)
+        {
+            if (context.ReplaySessionId != 0UL || _activeReplaySessionId != 0UL)
+                return _activeReplaySessionId == context.ReplaySessionId;
+
+            return _activeReplayStartTimeNs == context.ReplayStartTimeNs;
+        }
+
+        private bool IsSameReplaySession(ReplayBatchContext context)
+        {
+            if (context.ReplaySessionId != 0UL || _activeReplaySessionId != 0UL)
+                return _activeReplaySessionId == context.ReplaySessionId;
+
+            return _activeReplayStartTimeNs == context.ReplayStartTimeNs;
         }
 
         private void ResetPoseOwnershipSession()
@@ -254,11 +284,14 @@ namespace Unity.FoxgloveSDK.Components
             _poseArbiter.Reset();
             _transformByPoseKey.Clear();
             _channelBehaviorOverrides.Clear();
+            _missedFrames.Clear();
+            _missedEntities.Clear();
             _warnedFrames.Clear();
             _warnedEntities.Clear();
             _warnedTopics.Clear();
             _hasReplaySession = false;
             _activeReplayStartTimeNs = 0;
+            _activeReplaySessionId = 0;
         }
 
         private void FlushDeferredScenePoses(ReplayBatchContext context)
@@ -331,30 +364,46 @@ namespace Unity.FoxgloveSDK.Components
 
         private static object ParseProtobuf(string typeName, byte[] payload)
         {
-            var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto");
-            if (type == null)
-                throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
-
-            var parser = type.GetProperty("Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-            if (parser == null)
-                throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
-
-            var parseFrom = parser.GetType().GetMethod(
-                "ParseFrom",
-                BindingFlags.Public | BindingFlags.Instance,
-                null,
-                new[] { typeof(byte[]) },
-                null);
-            if (parseFrom == null)
-                throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
+            var binding = ResolveProtobufParser(typeName);
 
             try
             {
-                return parseFrom.Invoke(parser, new object[] { payload });
+                return binding.ParseFrom.Invoke(binding.Parser, new object[] { payload });
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {
-                throw ex.InnerException;
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
+
+        private static ProtobufParserBinding ResolveProtobufParser(string typeName)
+        {
+            lock (ReflectionCacheGate)
+            {
+                if (ProtobufParserCache.TryGetValue(typeName, out var binding))
+                    return binding;
+
+                var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto");
+                if (type == null)
+                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
+
+                var parser = ResolveProperty(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                if (parser == null)
+                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
+
+                var parseFrom = parser.GetType().GetMethod(
+                    "ParseFrom",
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null,
+                    new[] { typeof(byte[]) },
+                    null);
+                if (parseFrom == null)
+                    throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
+
+                binding = new ProtobufParserBinding(parser, parseFrom);
+                ProtobufParserCache[typeName] = binding;
+                return binding;
             }
         }
 
@@ -437,14 +486,14 @@ namespace Unity.FoxgloveSDK.Components
             var rotation = tf["rotation"];
             pose = new ReplayPoseSample(
                 translation != null,
-                translation != null ? (float)translation["x"] : 0,
-                translation != null ? (float)translation["y"] : 0,
-                translation != null ? (float)translation["z"] : 0,
+                ReadJsonFloat(translation, "x", 0f),
+                ReadJsonFloat(translation, "y", 0f),
+                ReadJsonFloat(translation, "z", 0f),
                 rotation != null,
-                rotation != null ? (float)rotation["x"] : 0,
-                rotation != null ? (float)rotation["y"] : 0,
-                rotation != null ? (float)rotation["z"] : 0,
-                rotation != null ? (float)rotation["w"] : 1);
+                ReadJsonFloat(rotation, "x", 0f),
+                ReadJsonFloat(rotation, "y", 0f),
+                ReadJsonFloat(rotation, "z", 0f),
+                ReadJsonFloat(rotation, "w", 1f));
             return pose.HasPosition || pose.HasRotation;
         }
 
@@ -470,9 +519,14 @@ namespace Unity.FoxgloveSDK.Components
         private Transform ResolveFrame(string childFrameId)
         {
             if (_frameCache.TryGetValue(childFrameId, out var target))
-                return target;
+            {
+                if (target != null)
+                    return target;
 
-            if (_autoLookup)
+                _frameCache.Remove(childFrameId);
+            }
+
+            if (_autoLookup && !_missedFrames.Contains(childFrameId))
             {
                 var go = GameObject.Find(childFrameId);
                 if (go != null)
@@ -481,6 +535,8 @@ namespace Unity.FoxgloveSDK.Components
                     _frameCache[childFrameId] = t;
                     return t;
                 }
+
+                _missedFrames.Add(childFrameId);
             }
 
             if (_warnedFrames.Add(childFrameId))
@@ -549,9 +605,14 @@ namespace Unity.FoxgloveSDK.Components
         private Transform ResolveEntity(string entityId)
         {
             if (_entityCache.TryGetValue(entityId, out var target))
-                return target;
+            {
+                if (target != null)
+                    return target;
 
-            if (_autoLookup)
+                _entityCache.Remove(entityId);
+            }
+
+            if (_autoLookup && !_missedEntities.Contains(entityId))
             {
                 var go = GameObject.Find(entityId);
                 if (go != null)
@@ -560,6 +621,8 @@ namespace Unity.FoxgloveSDK.Components
                     _entityCache[entityId] = t;
                     return t;
                 }
+
+                _missedEntities.Add(entityId);
             }
 
             if (_warnedEntities.Add(entityId))
@@ -677,7 +740,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             var scaleObj = primitive[sizeKey] as JObject;
             if (scaleObj != null)
-                target.localScale = new Vector3((float)scaleObj["x"], (float)scaleObj["y"], (float)scaleObj["z"]);
+                target.localScale = new Vector3(
+                    ReadJsonFloat(scaleObj, "x", 0f),
+                    ReadJsonFloat(scaleObj, "y", 0f),
+                    ReadJsonFloat(scaleObj, "z", 0f));
 
             var color = primitive["color"] as JObject;
             if (color != null)
@@ -687,7 +753,11 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
                     renderer.GetPropertyBlock(_propBlock);
-                    _propBlock.SetColor("_BaseColor", new Color((float)color["r"], (float)color["g"], (float)color["b"], (float)color["a"]));
+                    _propBlock.SetColor("_BaseColor", new Color(
+                        ReadJsonFloat(color, "r", 0f),
+                        ReadJsonFloat(color, "g", 0f),
+                        ReadJsonFloat(color, "b", 0f),
+                        ReadJsonFloat(color, "a", 1f)));
                     renderer.SetPropertyBlock(_propBlock);
                 }
             }
@@ -714,14 +784,14 @@ namespace Unity.FoxgloveSDK.Components
             var orient = pose["orientation"];
             sample = new ReplayPoseSample(
                 pos != null,
-                pos != null ? (float)pos["x"] : 0,
-                pos != null ? (float)pos["y"] : 0,
-                pos != null ? (float)pos["z"] : 0,
+                ReadJsonFloat(pos, "x", 0f),
+                ReadJsonFloat(pos, "y", 0f),
+                ReadJsonFloat(pos, "z", 0f),
                 orient != null,
-                orient != null ? (float)orient["x"] : 0,
-                orient != null ? (float)orient["y"] : 0,
-                orient != null ? (float)orient["z"] : 0,
-                orient != null ? (float)orient["w"] : 1);
+                ReadJsonFloat(orient, "x", 0f),
+                ReadJsonFloat(orient, "y", 0f),
+                ReadJsonFloat(orient, "z", 0f),
+                ReadJsonFloat(orient, "w", 1f));
             return sample.HasPosition || sample.HasRotation;
         }
 
@@ -782,7 +852,22 @@ namespace Unity.FoxgloveSDK.Components
                 : "Foxglove.FrameTransform";
 
         private static object GetPropertyValue(object source, string propertyName)
-            => source?.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(source);
+            => source == null ? null : ResolveProperty(source.GetType(), propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(source);
+
+        private static PropertyInfo ResolveProperty(Type type, string propertyName, BindingFlags bindingFlags)
+        {
+            var key = type.FullName + "|" + bindingFlags + "|" + propertyName;
+            lock (ReflectionCacheGate)
+            {
+                if (!PropertyCache.TryGetValue(key, out var property))
+                {
+                    property = type.GetProperty(propertyName, bindingFlags);
+                    PropertyCache[key] = property;
+                }
+
+                return property;
+            }
+        }
 
         private static string GetStringProperty(object source, string propertyName)
             => GetPropertyValue(source, propertyName) as string;
@@ -812,5 +897,25 @@ namespace Unity.FoxgloveSDK.Components
 
         private static Vector3 ToUnityVector(object value)
             => new Vector3(GetFloatProperty(value, "X"), GetFloatProperty(value, "Y"), GetFloatProperty(value, "Z"));
+
+        private static float ReadJsonFloat(JToken obj, string propertyName, float defaultValue)
+            => obj is JObject map && map[propertyName] != null && map[propertyName].Type != JTokenType.Null
+                ? (float)map[propertyName]
+                : defaultValue;
+
+        private static string FormatReplayException(Exception ex)
+            => ex.ToString();
+
+        private sealed class ProtobufParserBinding
+        {
+            public ProtobufParserBinding(object parser, MethodInfo parseFrom)
+            {
+                Parser = parser;
+                ParseFrom = parseFrom;
+            }
+
+            public object Parser { get; }
+            public MethodInfo ParseFrom { get; }
+        }
     }
 }
