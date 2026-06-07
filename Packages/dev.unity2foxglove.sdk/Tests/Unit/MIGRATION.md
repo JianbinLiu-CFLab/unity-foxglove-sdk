@@ -23,6 +23,7 @@ subset migrated (remainder noted).
 | Phase37 | Mcap | `Mcap/McapDirectMessageRecordsTests` | full | |
 | Phase36 | Transport | `Transport/TransportStatsSnapshotTests` | partial | Pure-logic 36A / 36B-1..6 migrated. Real-socket `TestDisconnectedClientDropsRetained` + `TestRuntimeAccessorLifecycle` stay in console (integration, handled later). |
 | Phase7 | Protocol | `Protocol/ServiceAndCapabilityTests` | partial | Pure-logic migrated (capabilities, logger, service registry/call, param subscription, time-frame). Real-server `TestStopStartPreservesParameters` + `TestHandlerDelegateSuccessAndFailure` (bind fixed ports 18795/18796) stay in console. |
+| Phase6 | Protocol | `Protocol/ParameterAndServiceTests` | full | All checks are fake-transport pure logic (capabilities, parameter store/subscriptions, service advertise, binary codec, call timeout/sweep). |
 
 ## Deferred (not yet migrated)
 
