@@ -138,6 +138,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Activate playback mode and set the time range. Clock starts paused at <c>startNs</c>.</summary>
         public void EnableRange(ulong startNs, ulong endNs)
         {
+            if (startNs > endNs)
+                endNs = startNs;
+
             _enabled = true;
             _startNs = startNs;
             _endNs = endNs;
@@ -157,7 +160,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (IsValidSpeed(speed))
                 _speed = speed;
-            else if (command != 1)
+            else if (command == 0)
                 _speed = 1f;
 
             switch (command)

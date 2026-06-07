@@ -56,6 +56,8 @@ namespace Unity.FoxgloveSDK.Util
                 hasReflectivity |= point.HasReflectivity;
                 hasRing |= point.HasRing;
                 hasTimeOffset |= point.HasTimeOffset;
+                if (hasIntensity && hasReflectivity && hasRing && hasTimeOffset)
+                    break;
             }
 
             var stride = XyzPackedStrideBytes;

@@ -122,13 +122,16 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 try
                 {
+                    ct.ThrowIfCancellationRequested();
                     stream.ReadTimeout = 5000;
                     stream.WriteTimeout = 5000;
                     var requestLine = ReadLine(stream, MaxRequestLineBytes);
+                    ct.ThrowIfCancellationRequested();
                     if (string.IsNullOrEmpty(requestLine))
                         return;
 
                     DrainHeaders(stream);
+                    ct.ThrowIfCancellationRequested();
                     var parts = requestLine.Split(' ');
                     if (parts.Length < 2 || parts[0] != "GET")
                     {
@@ -156,6 +159,7 @@ namespace Unity.FoxgloveSDK.Transport
 
                     WriteText(stream, "404 Not Found", "text/plain", "Not found.");
                 }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
                 catch (IOException) { }
                 catch (SocketException) { }
                 catch (ObjectDisposedException) { }
@@ -186,17 +190,34 @@ namespace Unity.FoxgloveSDK.Transport
                 return;
             }
 
-            var info = new FileInfo(path);
-            if (info.Length > MaxCertificateFileBytes)
+            var bytes = ReadFileWithinLimit(path, MaxCertificateFileBytes);
+            if (bytes == null)
             {
                 WriteText(stream, "413 Payload Too Large", "text/plain", "Certificate file is too large.");
                 return;
             }
 
-            var bytes = File.ReadAllBytes(path);
             WriteHeader(stream, "200 OK", contentType, bytes.Length);
             stream.Write(bytes, 0, bytes.Length);
             stream.Flush();
+        }
+
+        private static byte[] ReadFileWithinLimit(string path, int maxBytes)
+        {
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[8192];
+            while (true)
+            {
+                var read = file.Read(chunk, 0, chunk.Length);
+                if (read == 0)
+                    return buffer.ToArray();
+
+                if (buffer.Length + read > maxBytes)
+                    return null;
+
+                buffer.Write(chunk, 0, read);
+            }
         }
 
         private static void WriteText(Stream stream, string status, string contentType, string text)

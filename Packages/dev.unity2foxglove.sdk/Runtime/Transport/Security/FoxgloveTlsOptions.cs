@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Transport
                 cert = new X509Certificate2(
                     CertificatePfxPath,
                     CertificatePassword ?? string.Empty,
-                    X509KeyStorageFlags.Exportable);
+                    X509KeyStorageFlags.DefaultKeySet);
 #pragma warning restore SYSLIB0057
             }
             catch (CryptographicException ex)

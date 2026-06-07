@@ -36,15 +36,40 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Load the configured certificate before opening the listener.</summary>
         public override void Start(string host, int port)
         {
-            _serverCertificate?.Dispose();
+            DisposeServerCertificate();
             _serverCertificate = _tlsOptions.LoadCertificate();
-            base.Start(host, port);
+            try
+            {
+                base.Start(host, port);
+            }
+            catch
+            {
+                DisposeServerCertificate();
+                throw;
+            }
+        }
+
+        /// <summary>Stop the listener and release the active server certificate.</summary>
+        public override void Stop()
+        {
+            try
+            {
+                base.Stop();
+            }
+            finally
+            {
+                DisposeServerCertificate();
+            }
         }
 
         /// <summary>Dispose the active certificate after stopping the listener.</summary>
         public override void Dispose()
         {
-            base.Dispose();
+            Stop();
+        }
+
+        private void DisposeServerCertificate()
+        {
             _serverCertificate?.Dispose();
             _serverCertificate = null;
         }

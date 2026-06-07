@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly bool _ownsStream;
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private List<McapMessage> _linearMessagesCache;
+        private ulong _linearMessagesCacheChunkSizeLimit;
         private bool _linearMessagesCacheValidatedCrcs;
         private bool _disposed;
 
@@ -379,7 +380,8 @@ namespace Unity.FoxgloveSDK.IO
         private List<McapMessage> ReadLinearMessages(McapReadOptions options)
         {
             if (_linearMessagesCache == null ||
-                (options.ValidateCrcs && !_linearMessagesCacheValidatedCrcs))
+                (options.ValidateCrcs && !_linearMessagesCacheValidatedCrcs) ||
+                options.ChunkUncompressedSizeLimit != _linearMessagesCacheChunkSizeLimit)
             {
                 var scanOptions = new McapReadOptions
                 {
@@ -394,6 +396,7 @@ namespace Unity.FoxgloveSDK.IO
                 _stream.Seek(0, SeekOrigin.Begin);
                 using var streamingReader = new McapStreamingReader(_stream, leaveOpen: true, _sequentialReadLimits);
                 _linearMessagesCache = streamingReader.Read(scanOptions).Messages;
+                _linearMessagesCacheChunkSizeLimit = options.ChunkUncompressedSizeLimit;
                 _linearMessagesCacheValidatedCrcs = options.ValidateCrcs;
             }
 

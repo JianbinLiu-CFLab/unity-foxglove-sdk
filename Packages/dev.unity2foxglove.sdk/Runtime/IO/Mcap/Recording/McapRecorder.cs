@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Default chunk size in bytes (1 MiB).
         /// </summary>
-        public const int DefaultChunkSizeBytes = 1024 * 1024;
+        public const int DefaultChunkSizeBytes = McapWriterOptions.DefaultChunkSizeBytes;
 
         /// <summary>
         /// Creates a new MCAP recorder writing to the given stream.
@@ -76,13 +76,21 @@ namespace Unity.FoxgloveSDK.IO
             if (!stream.CanSeek)
                 throw new NotSupportedException("MCAP recorder requires a seekable output stream.");
 
+            _log = logger ?? new ConsoleLogger();
             _options = McapWriterOptions.Normalize(options);
             _w = new McapWriter(stream, leaveOpen);
-            _log = logger ?? new ConsoleLogger();
             _chunkSz = _options.ChunkSizeBytes;
             _compression = _options.Compression;
-            _w.WriteMagic();
-            _w.WriteHeader("", "unity-foxglove-sdk");
+            try
+            {
+                _w.WriteMagic();
+                _w.WriteHeader("", "unity-foxglove-sdk");
+            }
+            catch
+            {
+                _w.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -282,8 +290,25 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_closed) return;
-                _closed = true;
-                FlushChunk();
+                var flushStartPosition = _w.Position;
+                try
+                {
+                    FlushChunk();
+                }
+                catch (Exception ex) when (_w.CanSeek && _w.Position == flushStartPosition)
+                {
+                    _log.LogWarning(
+                        $"MCAP recorder dropped the final unflushed chunk during close; writing a minimal valid trailer: {ex.Message}");
+                    WriteMinimalTrailerAfterDroppedFinalChunk();
+                    _closed = true;
+                    return;
+                }
+                catch
+                {
+                    _closed = true;
+                    throw;
+                }
+
                 var dataSectionCrc = _options.EnableDataCrcs
                     ? _w.ComputeCrc32FromStartToCurrent()
                     : 0;
@@ -384,7 +409,16 @@ namespace Unity.FoxgloveSDK.IO
                 _w.WriteFooter(footerSummaryStart, sumOffStart, summaryCrc);
                 _w.WriteMagic();
                 _w.Flush();
+                _closed = true;
             }
+        }
+
+        private void WriteMinimalTrailerAfterDroppedFinalChunk()
+        {
+            _w.WriteDataEnd(0);
+            _w.WriteFooter(0, 0, 0);
+            _w.WriteMagic();
+            _w.Flush();
         }
 
         /// <summary>

@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Transport
@@ -207,16 +208,18 @@ namespace Unity.FoxgloveSDK.Transport
 
         public bool WaitUntilEmpty(TimeSpan timeout)
         {
-            var deadline = DateTime.UtcNow + timeout;
+            var startTimestamp = Stopwatch.GetTimestamp();
+            var timeoutSeconds = Math.Max(0d, timeout.TotalSeconds);
             lock (_lock)
             {
                 while (CountLocked > 0)
                 {
-                    var remaining = deadline - DateTime.UtcNow;
-                    if (remaining <= TimeSpan.Zero)
+                    var elapsedSeconds = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    var remainingSeconds = timeoutSeconds - elapsedSeconds;
+                    if (remainingSeconds <= 0d)
                         return false;
 
-                    Monitor.Wait(_lock, remaining);
+                    Monitor.Wait(_lock, TimeSpan.FromSeconds(remainingSeconds));
                 }
 
                 return true;

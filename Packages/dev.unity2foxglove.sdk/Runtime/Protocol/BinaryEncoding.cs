@@ -5,6 +5,7 @@
 // Purpose: Encodes/decodes binary WebSocket frames for the Foxglove protocol v1.
 
 using System;
+using System.ComponentModel;
 
 namespace Unity.FoxgloveSDK.Protocol
 {
@@ -39,6 +40,7 @@ namespace Unity.FoxgloveSDK.Protocol
         /// Decode a server→client MessageData frame (for roundtrip testing only).
         /// Format: opcode(1) + subscriptionId(u32 LE) + logTime(u64 LE) + payload
         /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public static bool TryDecodeServerMessageData(byte[] data, out uint subscriptionId, out ulong logTimeNs, out byte[] payload)
         {
             subscriptionId = 0;
@@ -180,8 +182,7 @@ namespace Unity.FoxgloveSDK.Protocol
             frame[0] = ServerOpcode.FetchAssetResponse;
             WriteU32LE(frame, 1, requestId);
             frame[5] = 0; // status: success
-            // errorMessageLen = 0
-            frame[6] = 0; frame[7] = 0; frame[8] = 0; frame[9] = 0;
+            WriteU32LE(frame, 6, 0u);
             if (payload != null && payload.Length > 0)
                 Buffer.BlockCopy(payload, 0, frame, 10, payload.Length);
             return frame;
@@ -242,6 +243,11 @@ namespace Unity.FoxgloveSDK.Protocol
             bool didSeek, string requestId)
         {
             var idBytes = requestId != null ? System.Text.Encoding.UTF8.GetBytes(requestId) : Array.Empty<byte>();
+            if (idBytes.Length > MaxPlaybackRequestIdBytes)
+                throw new ArgumentOutOfRangeException(
+                    nameof(requestId),
+                    $"PlaybackState request id must be at most {MaxPlaybackRequestIdBytes} UTF-8 bytes.");
+
             var frame = new byte[1 + 1 + 8 + 4 + 1 + 4 + idBytes.Length];
             frame[0] = ServerOpcode.PlaybackState;
             frame[1] = status;

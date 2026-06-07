@@ -157,7 +157,7 @@ namespace Unity.FoxgloveSDK.IO
                     if (options.ValidateCrcs && !attachment.CrcValid)
                         throw new InvalidDataException("MCAP attachment CRC mismatch.");
                     AddAttachment(result, attachment, ref retainedAttachmentBytes);
-                    result.Summary.AttachmentIndexes.Add(new McapAttachmentIndex
+                    AddAttachmentIndex(result.Summary, new McapAttachmentIndex
                     {
                         Offset = recordStart,
                         Length = recordLength,
@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.IO
                 case McapWriter.OpcodeMetadata:
                     var metadata = McapRecordDecoder.DecodeMetadata(content);
                     AddMetadata(result, metadata, ref retainedMetadataBytes);
-                    result.Summary.MetadataIndexes.Add(new McapMetadataIndex
+                    AddMetadataIndex(result.Summary, new McapMetadataIndex
                     {
                         Offset = recordStart,
                         Length = recordLength,
@@ -185,10 +185,10 @@ namespace Unity.FoxgloveSDK.IO
                     result.Summary.ChunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(content));
                     break;
                 case McapWriter.OpcodeAttachmentIndex:
-                    result.Summary.AttachmentIndexes.Add(McapRecordDecoder.DecodeAttachmentIndex(content));
+                    AddAttachmentIndex(result.Summary, McapRecordDecoder.DecodeAttachmentIndex(content));
                     break;
                 case McapWriter.OpcodeMetadataIndex:
-                    result.Summary.MetadataIndexes.Add(McapRecordDecoder.DecodeMetadataIndex(content));
+                    AddMetadataIndex(result.Summary, McapRecordDecoder.DecodeMetadataIndex(content));
                     break;
                 case McapWriter.OpcodeSummaryOffset:
                     break;
@@ -312,6 +312,24 @@ namespace Unity.FoxgloveSDK.IO
 
             result.Attachments.Add(attachment);
             retainedAttachmentBytes += attachmentBytes;
+        }
+
+        private static void AddAttachmentIndex(McapFileSummary summary, McapAttachmentIndex index)
+        {
+            for (var i = 0; i < summary.AttachmentIndexes.Count; i++)
+                if (summary.AttachmentIndexes[i].Offset == index.Offset)
+                    return;
+
+            summary.AttachmentIndexes.Add(index);
+        }
+
+        private static void AddMetadataIndex(McapFileSummary summary, McapMetadataIndex index)
+        {
+            for (var i = 0; i < summary.MetadataIndexes.Count; i++)
+                if (summary.MetadataIndexes[i].Offset == index.Offset)
+                    return;
+
+            summary.MetadataIndexes.Add(index);
         }
 
         private static long EstimateMetadataBytes(McapMetadata metadata)
