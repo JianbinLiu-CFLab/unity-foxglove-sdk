@@ -159,6 +159,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!source.Contains("Phase 94 accepts only IPv4 loopback hosts", StringComparison.Ordinal)
                   && source.Contains("--port must be an integer in 1..65535", StringComparison.Ordinal),
                 "134-16H-4: sidecar argument errors are explicit and avoid stale phase wording");
+            Check(source.Contains("bool read_exact(", StringComparison.Ordinal)
+                  && source.Contains("const rclcpp::Node::SharedPtr & node", StringComparison.Ordinal)
+                  && source.Contains(
+                      "read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)",
+                      StringComparison.Ordinal)
+                  && source.Contains("read_raw_frame(client_fd, node)", StringComparison.Ordinal)
+                  && !source.Contains("socket read timed out", StringComparison.Ordinal),
+                "134-16H-5: sidecar spins ROS executor while waiting for idle client data");
         }
 
         private static void PowerShellPreflightChecksNativeExitCodes()

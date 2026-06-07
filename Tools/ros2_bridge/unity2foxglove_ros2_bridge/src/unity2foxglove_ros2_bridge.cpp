@@ -288,13 +288,17 @@ int accept_with_timeout(int listen_fd)
   }
 
   timeval receive_timeout {};
-  receive_timeout.tv_sec = 5;
-  receive_timeout.tv_usec = 0;
+  receive_timeout.tv_sec = 0;
+  receive_timeout.tv_usec = 250000;
   ::setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &receive_timeout, sizeof(receive_timeout));
   return client_fd;
 }
 
-bool read_exact(int fd, std::vector<uint8_t> & buffer, size_t count)
+bool read_exact(
+  int fd,
+  std::vector<uint8_t> & buffer,
+  size_t count,
+  const rclcpp::Node::SharedPtr & node)
 {
   buffer.assign(count, 0);
   size_t offset = 0;
@@ -311,7 +315,8 @@ bool read_exact(int fd, std::vector<uint8_t> & buffer, size_t count)
         continue;
       }
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        throw std::runtime_error("socket read timed out");
+        rclcpp::spin_some(node);
+        continue;
       }
       throw std::runtime_error("socket read failed");
     }
@@ -360,10 +365,10 @@ void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<u
   write_all(fd, frame);
 }
 
-RawFrame read_raw_frame(int fd)
+RawFrame read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)
 {
   std::vector<uint8_t> fixed_header;
-  if (!read_exact(fd, fixed_header, 16)) {
+  if (!read_exact(fd, fixed_header, 16, node)) {
     throw std::runtime_error("client closed");
   }
 
@@ -387,11 +392,11 @@ RawFrame read_raw_frame(int fd)
   }
 
   std::vector<uint8_t> header_bytes;
-  if (!read_exact(fd, header_bytes, header_length)) {
+  if (!read_exact(fd, header_bytes, header_length, node)) {
     throw std::runtime_error("unexpected EOF while reading JSON header");
   }
   std::vector<uint8_t> payload;
-  if (payload_length > 0 && !read_exact(fd, payload, payload_length)) {
+  if (payload_length > 0 && !read_exact(fd, payload, payload_length, node)) {
     throw std::runtime_error("unexpected EOF while reading payload");
   }
 
@@ -592,7 +597,7 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
 {
   while (rclcpp::ok()) {
     try {
-      const auto raw = read_raw_frame(client_fd);
+      const auto raw = read_raw_frame(client_fd, node);
       if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
         throw std::runtime_error("reject frame: missing or invalid op");
       }
