@@ -7,6 +7,8 @@ namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Maintains the manager-level sensor clock epoch shared by LiDAR, IMU, and camera publishers.
+    /// This helper is main-thread-only and intentionally not synchronized; callers
+    /// must invoke it from the Unity owner thread that samples sensor timestamps.
     /// </summary>
     internal sealed class FoxgloveSharedSensorClock
     {

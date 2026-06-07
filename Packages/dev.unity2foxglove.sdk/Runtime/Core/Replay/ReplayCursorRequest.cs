@@ -6,6 +6,7 @@
 
 using System;
 using System.Text;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Transport;
 
@@ -19,6 +20,8 @@ namespace Unity.FoxgloveSDK.Core
     public readonly struct ReplayCursorState
     {
         private const ulong NanosecondsPerSecond = 1_000_000_000UL;
+        private const byte PlaybackStatusPlaying = 0;
+        private const byte PlaybackStatusEnded = 3;
 
         /// <summary>State returned when replay state is not available.</summary>
         public static ReplayCursorState Unavailable(string message)
@@ -91,8 +94,8 @@ namespace Unity.FoxgloveSDK.Core
                 available,
                 replayEnabled,
                 playbackEnabled,
-                snapshot.Status == 0,
-                snapshot.Status == 3,
+                snapshot.Status == PlaybackStatusPlaying,
+                snapshot.Status == PlaybackStatusEnded,
                 snapshot.CurrentTimeNs,
                 startNs,
                 endNs,
@@ -114,7 +117,7 @@ namespace Unity.FoxgloveSDK.Core
             AppendTime(builder, "time", TimeNs).Append(',');
             AppendTime(builder, "startTime", StartNs).Append(',');
             AppendTime(builder, "endTime", EndNs).Append(',');
-            builder.Append("\"message\":\"").Append(Escape(Message)).Append("\"");
+            builder.Append("\"message\":").Append(JsonEscape(Message));
             builder.Append('}');
             return builder.ToString();
         }
@@ -134,8 +137,8 @@ namespace Unity.FoxgloveSDK.Core
                 .Append('}');
         }
 
-        private static string Escape(string value)
-            => (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        private static string JsonEscape(string value)
+            => JsonConvert.ToString(value ?? string.Empty);
     }
 
     /// <summary>

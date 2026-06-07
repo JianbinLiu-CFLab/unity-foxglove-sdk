@@ -4,6 +4,8 @@
 // Module: Runtime/Core/Replay
 // Purpose: Coalesces optional external replay cursor requests for main-thread drain.
 
+using System.Threading;
+
 namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>Result of accepting or rejecting an external replay cursor request.</summary>
@@ -30,13 +32,18 @@ namespace Unity.FoxgloveSDK.Core
     public sealed class ExternalReplayCursorController
     {
         private readonly object _gate = new object();
+        private int _enabled;
         private bool _hasPending;
         private bool _hasLastAccepted;
         private ulong _lastAcceptedNs;
         private ReplayCursorRequest _pending;
 
         /// <summary>Whether the optional cursor bridge should accept requests.</summary>
-        public bool Enabled { get; set; }
+        public bool Enabled
+        {
+            get => Volatile.Read(ref _enabled) != 0;
+            set => Volatile.Write(ref _enabled, value ? 1 : 0);
+        }
 
         /// <summary>Queue a cursor request after disabled, replay, duplicate, and range checks.</summary>
         public ExternalReplayCursorEnqueueResult TryEnqueue(

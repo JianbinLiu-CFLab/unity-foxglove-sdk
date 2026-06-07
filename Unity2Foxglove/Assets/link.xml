@@ -3,4 +3,7 @@
   <assembly fullname="Newtonsoft.Json" preserve="all" />
   <!-- Preserve Foxglove SDK runtime -->
   <assembly fullname="Unity.FoxgloveSDK" preserve="all" />
+  <!-- Preserve Google.Protobuf and generated proto types for IL2CPP -->
+  <assembly fullname="Google.Protobuf" preserve="all" />
+  <assembly fullname="Unity.FoxgloveSDK.Proto" preserve="all" />
 </linker>

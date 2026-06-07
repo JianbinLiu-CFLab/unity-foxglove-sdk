@@ -5,16 +5,24 @@
 // Purpose: Optional loopback HTTP endpoint for Foxglove extension cursor metadata.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading;
+using Newtonsoft.Json;
 
 namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>Runtime options for the optional Unity replay cursor endpoint.</summary>
     public readonly struct UnityReplayCursorEndpointOptions
     {
+        private static readonly string[] DefaultAllowedCorsOrigins =
+        {
+            "https://app.foxglove.dev",
+            "https://studio.foxglove.dev"
+        };
+
         /// <summary>Default disabled, loopback-only endpoint settings.</summary>
         public static readonly UnityReplayCursorEndpointOptions Default =
             new UnityReplayCursorEndpointOptions(false, "127.0.0.1", 8892, "/v1/replay-cursor", string.Empty, 2048);
@@ -37,6 +45,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Maximum accepted request body size in bytes.</summary>
         public int MaxBodyBytes { get; }
 
+        /// <summary>Browser origins allowed to call the loopback endpoint.</summary>
+        public IReadOnlyList<string> AllowedCorsOrigins { get; }
+
         /// <summary>Create endpoint options.</summary>
         public UnityReplayCursorEndpointOptions(
             bool enabled,
@@ -45,6 +56,19 @@ namespace Unity.FoxgloveSDK.Core
             string path,
             string bearerToken,
             int maxBodyBytes)
+            : this(enabled, host, port, path, bearerToken, maxBodyBytes, DefaultAllowedCorsOrigins)
+        {
+        }
+
+        /// <summary>Create endpoint options with an explicit browser-origin allow-list.</summary>
+        public UnityReplayCursorEndpointOptions(
+            bool enabled,
+            string host,
+            int port,
+            string path,
+            string bearerToken,
+            int maxBodyBytes,
+            IEnumerable<string> allowedCorsOrigins)
         {
             Enabled = enabled;
             Host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host.Trim();
@@ -52,6 +76,7 @@ namespace Unity.FoxgloveSDK.Core
             Path = NormalizePath(path);
             BearerToken = bearerToken ?? string.Empty;
             MaxBodyBytes = maxBodyBytes > 0 ? maxBodyBytes : Default.MaxBodyBytes;
+            AllowedCorsOrigins = NormalizeAllowedCorsOrigins(allowedCorsOrigins);
         }
 
         /// <summary>Return true when this host is safe for the default loopback-only endpoint.</summary>
@@ -73,6 +98,25 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             return path.StartsWith("/", StringComparison.Ordinal) ? path : "/" + path;
+        }
+
+        private static IReadOnlyList<string> NormalizeAllowedCorsOrigins(IEnumerable<string> origins)
+        {
+            var result = new List<string>();
+            if (origins != null)
+            {
+                foreach (var origin in origins)
+                {
+                    if (string.IsNullOrWhiteSpace(origin))
+                    {
+                        continue;
+                    }
+
+                    result.Add(origin.Trim().TrimEnd('/'));
+                }
+            }
+
+            return result.Count == 0 ? DefaultAllowedCorsOrigins : result;
         }
     }
 
@@ -219,15 +263,21 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
-            {
-                TryWrite(context, 204, string.Empty);
-                return;
-            }
-
             if (!IsAuthorized(context.Request))
             {
                 TryWrite(context, 401, "{\"error\":\"unauthorized\"}");
+                return;
+            }
+
+            if (!IsCorsOriginAllowed(context.Request))
+            {
+                TryWrite(context, 403, "{\"error\":\"origin not allowed\"}");
+                return;
+            }
+
+            if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+            {
+                TryWrite(context, 204, string.Empty);
                 return;
             }
 
@@ -259,7 +309,7 @@ namespace Unity.FoxgloveSDK.Core
 
             if (!ReplayCursorRequest.TryParseJson(body, out var request, out var error))
             {
-                TryWrite(context, 400, "{\"error\":\"" + Escape(error) + "\"}");
+                TryWrite(context, 400, "{\"error\":" + JsonEscape(error) + "}");
                 return;
             }
 
@@ -267,7 +317,7 @@ namespace Unity.FoxgloveSDK.Core
             TryWrite(
                 context,
                 result.Success ? 202 : 409,
-                "{\"accepted\":" + (result.Success ? "true" : "false") + ",\"message\":\"" + Escape(result.Message) + "\"}");
+                "{\"accepted\":" + (result.Success ? "true" : "false") + ",\"message\":" + JsonEscape(result.Message) + "}");
         }
 
         private bool IsAuthorized(HttpListenerRequest request)
@@ -283,6 +333,28 @@ namespace Unity.FoxgloveSDK.Core
                 StringComparison.Ordinal);
         }
 
+        private bool IsCorsOriginAllowed(HttpListenerRequest request)
+            => IsCorsOriginAllowed(request?.Headers["Origin"]);
+
+        private bool IsCorsOriginAllowed(string origin)
+        {
+            if (string.IsNullOrWhiteSpace(origin))
+            {
+                return true;
+            }
+
+            var normalizedOrigin = origin.Trim().TrimEnd('/');
+            foreach (var allowedOrigin in _options.AllowedCorsOrigins)
+            {
+                if (string.Equals(normalizedOrigin, allowedOrigin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private string ReadBody(HttpListenerRequest request)
         {
             using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
@@ -296,7 +368,7 @@ namespace Unity.FoxgloveSDK.Core
             return new string(buffer, 0, read);
         }
 
-        private static void TryWrite(HttpListenerContext context, int statusCode, string body)
+        private void TryWrite(HttpListenerContext context, int statusCode, string body)
         {
             body ??= string.Empty;
             var bytes = Encoding.UTF8.GetBytes(body);
@@ -305,7 +377,12 @@ namespace Unity.FoxgloveSDK.Core
                 context.Response.StatusCode = statusCode;
                 context.Response.ContentType = "application/json";
                 context.Response.ContentEncoding = Encoding.UTF8;
-                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+                var origin = context.Request.Headers["Origin"];
+                if (!string.IsNullOrWhiteSpace(origin) && IsCorsOriginAllowed(origin))
+                {
+                    context.Response.Headers["Access-Control-Allow-Origin"] = origin.Trim().TrimEnd('/');
+                }
+
                 context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
                 context.Response.Headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
                 context.Response.Headers["Cache-Control"] = "no-store";
@@ -321,8 +398,8 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private static string Escape(string value)
-            => (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        private static string JsonEscape(string value)
+            => JsonConvert.ToString(value ?? string.Empty);
 
         /// <summary>Stop the endpoint.</summary>
         public void Dispose() => Stop();

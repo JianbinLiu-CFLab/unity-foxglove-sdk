@@ -57,22 +57,23 @@ namespace Unity.FoxgloveSDK.Components
 
             EnsureRuntimeCreated();
 
-            RegisterAssetRoots();
-            SetupPlaybackControl();
-            if (!SetupRecording())
-            {
-                return;
-            }
-
-            if (!SetupReplay())
-            {
-                return;
-            }
-
-            SetupAllowedOrigins();
-
             try
             {
+                RegisterAssetRoots();
+                SetupPlaybackControl();
+                if (!SetupRecording())
+                {
+                    CleanupStartupAfterFailure();
+                    return;
+                }
+
+                if (!SetupReplay())
+                {
+                    CleanupStartupAfterFailure();
+                    return;
+                }
+
+                SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
                 _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
                 StartRemoteMcapFileServerIfNeeded();
@@ -85,10 +86,7 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch
             {
-                CleanupPendingRecordingSidecar();
-                StopRemoteMcapFileServer();
-                StopReplayCursorEndpoint();
-                StopCertificateDistributor();
+                CleanupStartupAfterFailure();
                 throw;
             }
 
@@ -119,6 +117,30 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             Debug.Log($"[Foxglove] Server started on {BuildConnectionUrl(redactToken: true)}");
+        }
+
+        private void CleanupStartupAfterFailure()
+        {
+            CleanupPendingRecordingSidecar();
+            StopRemoteMcapFileServer();
+            StopReplayCursorEndpoint();
+            StopCertificateDistributor();
+            TryCleanupStartupStep(() => _runtime?.Stop(), "stop runtime after failed startup");
+            TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
+            TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
+            TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
+        }
+
+        private static void TryCleanupStartupStep(System.Action cleanup, string description)
+        {
+            try
+            {
+                cleanup?.Invoke();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("[Foxglove] Failed to " + description + ": " + ex.Message);
+            }
         }
 
         /// <summary>

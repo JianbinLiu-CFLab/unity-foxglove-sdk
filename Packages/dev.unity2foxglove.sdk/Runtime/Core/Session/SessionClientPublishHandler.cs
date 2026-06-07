@@ -60,17 +60,21 @@ namespace Unity.FoxgloveSDK.Core
 
         public void RemoveClient(uint clientId)
         {
+            var removedGraphTopics = new List<(uint channelId, string topic)>();
             lock (_clientChannelsLock)
             {
                 var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
                 foreach (var k in toRemove)
                 {
                     if (_clientChannels.Remove(k, out var ch))
-                        _graph.RemoveClientPublishedTopic(clientId, k.chId, ch.Topic);
+                        removedGraphTopics.Add((k.chId, ch.Topic));
                 }
 
                 _budgetWarnedClients.Remove(clientId);
             }
+
+            foreach (var (channelId, topic) in removedGraphTopics)
+                _graph.RemoveClientPublishedTopic(clientId, channelId, topic);
         }
 
         public void Advertise(uint clientId, string json)

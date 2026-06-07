@@ -21,6 +21,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _lock = new();
 
         /// <summary>Subscribe. null or empty parameterNames subscribes to all.</summary>
+        /// <remarks>
+        /// Once a client is subscribed to all parameters, a later named
+        /// subscribe request is additive and cannot narrow the subscription;
+        /// callers must unsubscribe first if they want a narrower set.
+        /// </remarks>
         public void Subscribe(uint clientId, IEnumerable<string> parameterNames)
         {
             lock (_lock)

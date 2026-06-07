@@ -8,6 +8,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
@@ -62,6 +63,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ReplayOrchestrator _replayOrchestrator;
         private readonly TickCoordinator _tickCoordinator;
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
+        private int _disposed;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
@@ -529,6 +531,9 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
             Stop();
             _parameters.Clear();
             _services.Clear();
@@ -554,7 +559,13 @@ namespace Unity.FoxgloveSDK.Core
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (method == null) return;
 
-                method.Invoke(null, new object[] { _schemaRegistry });
+                var register = (Action<ISchemaRegistry>)Delegate.CreateDelegate(
+                    typeof(Action<ISchemaRegistry>),
+                    method,
+                    throwOnBindFailure: false);
+                if (register == null) return;
+
+                register(_schemaRegistry);
                 _protobufSchemasRegistered = true;
             }
             catch (Exception ex)

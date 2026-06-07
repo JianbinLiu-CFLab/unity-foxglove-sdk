@@ -48,8 +48,8 @@ namespace Unity.FoxgloveSDK.Core
 
         public void Subscribe(uint clientId)
         {
-            _graph.Subscribe(clientId);
-            _transport.SendText(clientId, JsonConvert.SerializeObject(_graph.GetSnapshot()));
+            var snapshot = _graph.SubscribeAndGetSnapshot(clientId);
+            _transport.SendText(clientId, JsonConvert.SerializeObject(snapshot));
         }
 
         public void Unsubscribe(uint clientId)

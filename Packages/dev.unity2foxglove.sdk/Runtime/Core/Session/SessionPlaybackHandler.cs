@@ -58,7 +58,13 @@ namespace Unity.FoxgloveSDK.Core
                 while (_pendingPlaybackControls.Count >= MaxPendingPlaybackControls)
                     _pendingPlaybackControls.Dequeue();
                 _pendingPlaybackControls.Enqueue(new PendingPlaybackControl(
-                    clientId, playbackCommand, playbackSpeed, playbackHasSeek, playbackSeekNs, playbackRequestId));
+                    clientId,
+                    playbackCommand,
+                    playbackSpeed,
+                    playbackHasSeek,
+                    playbackSeekNs,
+                    playbackRequestId,
+                    runtime.GetPlaybackState(didSeek: false, playbackRequestId)));
             }
 
             return true;
@@ -78,7 +84,10 @@ namespace Unity.FoxgloveSDK.Core
 
                 var runtime = _runtimeProvider();
                 if (runtime?.PlaybackEnabled != true)
+                {
+                    SendPlaybackState(request.ClientId, request.DisabledFallbackState);
                     continue;
+                }
 
                 if (request.HasSeek)
                     FoxgloveReplayTrace.ResetBudget();
@@ -94,18 +103,23 @@ namespace Unity.FoxgloveSDK.Core
                 if (request.HasSeek)
                     _clearQueuedDataAfterSeek();
 
-                var playbackFrame = BinaryEncoding.EncodePlaybackState(
-                    state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
+                SendPlaybackState(request.ClientId, state);
                 if (FoxgloveReplayTrace.TryEvent(
                     "STATE",
                     $"targetClient={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
                     out var stateTrace))
                     _logger.LogWarning(stateTrace);
-
-                // PlaybackState responses that carry requestId are request-correlated.
-                // Send them only to the client that issued the PlaybackControl request.
-                _transport.SendBinary(request.ClientId, playbackFrame);
             }
+        }
+
+        private void SendPlaybackState(uint clientId, PlaybackClock.PlaybackStateSnapshot state)
+        {
+            var playbackFrame = BinaryEncoding.EncodePlaybackState(
+                state.Status, state.CurrentTimeNs, state.Speed, state.DidSeek, state.RequestId);
+
+            // PlaybackState responses that carry requestId are request-correlated.
+            // Send them only to the client that issued the PlaybackControl request.
+            _transport.SendBinary(clientId, playbackFrame);
         }
 
         private readonly struct PendingPlaybackControl
@@ -116,8 +130,16 @@ namespace Unity.FoxgloveSDK.Core
             public readonly bool HasSeek;
             public readonly ulong SeekNs;
             public readonly string RequestId;
+            public readonly PlaybackClock.PlaybackStateSnapshot DisabledFallbackState;
 
-            public PendingPlaybackControl(uint clientId, byte command, float speed, bool hasSeek, ulong seekNs, string requestId)
+            public PendingPlaybackControl(
+                uint clientId,
+                byte command,
+                float speed,
+                bool hasSeek,
+                ulong seekNs,
+                string requestId,
+                PlaybackClock.PlaybackStateSnapshot disabledFallbackState)
             {
                 ClientId = clientId;
                 Command = command;
@@ -125,6 +147,7 @@ namespace Unity.FoxgloveSDK.Core
                 HasSeek = hasSeek;
                 SeekNs = seekNs;
                 RequestId = requestId;
+                DisabledFallbackState = disabledFallbackState;
             }
         }
     }

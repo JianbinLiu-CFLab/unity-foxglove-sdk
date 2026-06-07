@@ -95,7 +95,12 @@ namespace Unity.FoxgloveSDK.Core
                 return staged;
 
             if (PublishStagedSidecar(staged, out var publishWarning))
-                return staged;
+                return new SchemaEvidenceSidecarResult(
+                    true,
+                    staged.Complete,
+                    staged.SidecarDirectory,
+                    staged.Warnings,
+                    staged.SidecarDirectory);
 
             var warnings = new List<string>(staged.Warnings);
             warnings.Add(publishWarning);
@@ -208,11 +213,13 @@ namespace Unity.FoxgloveSDK.Core
             }
             catch (Exception ex)
             {
+                var restoredBackup = false;
                 if (!Directory.Exists(targetDirectory) && Directory.Exists(backupDirectory))
                 {
                     try
                     {
                         Directory.Move(backupDirectory, targetDirectory);
+                        restoredBackup = true;
                     }
                     catch
                     {
@@ -221,6 +228,11 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 warning = "Failed to publish schema evidence sidecar: " + ex.Message;
+                if (!restoredBackup && Directory.Exists(backupDirectory))
+                {
+                    warning += " Preserved existing sidecar backup at: " + backupDirectory;
+                }
+
                 return false;
             }
             finally

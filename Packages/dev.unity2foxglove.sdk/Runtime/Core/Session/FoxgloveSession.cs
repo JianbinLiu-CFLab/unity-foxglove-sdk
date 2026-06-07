@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SessionClientPublishHandler _clientPublish;
         private readonly SessionAssetHandler _assets;
         private readonly HashSet<uint> _subscriptionBudgetWarnedClients = new();
+        private readonly object _subscriptionBudgetWarnedClientsLock = new();
         /// <summary>Maximum queued playback control requests awaiting the runtime owner tick.</summary>
         internal const int MaxPendingPlaybackControls = SessionPlaybackHandler.MaxPendingPlaybackControls;
         /// <summary>Raised when a client-published binary message is received.</summary>
@@ -164,7 +165,8 @@ namespace Unity.FoxgloveSDK.Core
             _graph.Clear();
             _playback.Clear();
             _clientPublish.Clear();
-            _subscriptionBudgetWarnedClients.Clear();
+            lock (_subscriptionBudgetWarnedClientsLock)
+                _subscriptionBudgetWarnedClients.Clear();
         }
 
         /// <summary>Stop the transport and detach all event handlers.</summary>
@@ -527,9 +529,11 @@ namespace Unity.FoxgloveSDK.Core
                 ? rateHz
                 : 10f;
             var interval = Math.Max(1L, (long)(TimeSpan.TicksPerSecond / (double)effectiveRate));
-            if (now - _lastTimeBroadcastTicks < interval)
+            var last = Interlocked.Read(ref _lastTimeBroadcastTicks);
+            if (now - last < interval)
                 return;
-            _lastTimeBroadcastTicks = now;
+            if (Interlocked.CompareExchange(ref _lastTimeBroadcastTicks, now, last) != last)
+                return;
 
             var frame = BinaryEncoding.EncodeTime(_clock.NowNs);
             BroadcastDataBinary(frame);
@@ -690,19 +694,6 @@ namespace Unity.FoxgloveSDK.Core
                 }));
         }
 
-        private void BroadcastSessionSnapshot()
-        {
-            _transport.BroadcastText(SerializeServerInfo(CreateServerInfo()));
-
-            var chs = _channels.GetAll();
-            if (chs.Count > 0)
-                _transport.BroadcastText(JsonConvert.SerializeObject(new Advertise { Channels = chs }));
-
-            var svcs = _services.GetAll();
-            if (svcs.Count > 0)
-                _transport.BroadcastText(JsonConvert.SerializeObject(new AdvertiseServices { Services = svcs }));
-        }
-
         // ── Transport event handlers ──
 
         /// <summary>
@@ -740,7 +731,8 @@ namespace Unity.FoxgloveSDK.Core
             _paramSubs.RemoveClient(clientId);
             _services.RemoveClientCalls(clientId);
             _clientPublish.RemoveClient(clientId);
-            _subscriptionBudgetWarnedClients.Remove(clientId);
+            lock (_subscriptionBudgetWarnedClientsLock)
+                _subscriptionBudgetWarnedClients.Remove(clientId);
 
             _graph.RemoveClient(clientId);
             _graph.BroadcastUpdate();

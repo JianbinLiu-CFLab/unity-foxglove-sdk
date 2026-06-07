@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -56,7 +57,7 @@ namespace Unity.FoxgloveSDK.Core
                     }
 
                     if (changes.Count > 0)
-                        _runtime?.RequestReplaySubscriberBackfill();
+                        Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
                 }
                 _graph.BroadcastUpdate();
             }
@@ -65,9 +66,14 @@ namespace Unity.FoxgloveSDK.Core
 
         private void WarnSubscriptionBudgetRejected(uint clientId, string error)
         {
-            if (_subscriptionBudgetWarnedClients.Add(clientId))
-                _logger.LogWarning(
-                    $"subscribe batch rejected atomically from client {clientId}; no subscriptions from this batch were applied: {error}");
+            lock (_subscriptionBudgetWarnedClientsLock)
+            {
+                if (!_subscriptionBudgetWarnedClients.Add(clientId))
+                    return;
+            }
+
+            _logger.LogWarning(
+                $"subscribe batch rejected atomically from client {clientId}; no subscriptions from this batch were applied: {error}");
         }
 
         /// <summary>

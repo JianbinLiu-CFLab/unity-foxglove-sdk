@@ -236,7 +236,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (_runtime.ReplayStartBlockedBySchemaMismatch)
                 {
-                    Debug.LogError("[Foxglove] Replay startup aborted because FoxRun schema mismatch blocked replay. Live publishers remain disabled for this Play session.");
+                    Debug.LogError("[Foxglove] Replay startup aborted because FoxRun schema mismatch blocked replay. Startup cleanup will restore live publishers.");
                     return false;
                 }
 

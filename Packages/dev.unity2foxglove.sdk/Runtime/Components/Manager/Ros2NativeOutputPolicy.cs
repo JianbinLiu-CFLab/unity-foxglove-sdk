@@ -13,6 +13,10 @@ namespace Unity.FoxgloveSDK.Components
     /// R2FU components query <see cref="Enabled"/> instead of each re-implementing
     /// the FoxgloveManager lookup. Returns true when no manager is present so the
     /// R2FU samples still work standalone.
+    ///
+    /// <para>Must be queried from the Unity main thread. The fallback lookup uses
+    /// Unity object discovery so callers that cache or Refresh policy from worker
+    /// threads should marshal back to the Unity owner thread first.</para>
     /// </summary>
     public static class Ros2NativeOutputPolicy
     {

@@ -36,6 +36,16 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock) { _graphSubscribers.Add(clientId); }
         }
 
+        /// <summary>Register a client and return the topology snapshot from the same lock epoch.</summary>
+        public ConnectionGraphUpdate SubscribeAndGetSnapshot(uint clientId)
+        {
+            lock (_lock)
+            {
+                _graphSubscribers.Add(clientId);
+                return BuildSnapshotLocked();
+            }
+        }
+
         /// <summary>Remove a client from graph subscription updates.</summary>
         public void Unsubscribe(uint clientId)
         {
@@ -157,17 +167,22 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
-                var snapshot = new ConnectionGraphUpdate
-                {
-                    PublishedTopics = new List<PublishedTopic>(_publishedTopics.Count),
-                    SubscribedTopics = new List<SubscribedTopic>(_subscribedTopics.Count),
-                    AdvertisedServices = new List<AdvertisedService>(_advertisedServices.Count)
-                };
-                CopyTopologyPublished(_publishedTopics, snapshot.PublishedTopics);
-                CopyTopologySubscribed(_subscribedTopics, snapshot.SubscribedTopics);
-                CopyTopologyServices(_advertisedServices, snapshot.AdvertisedServices);
-                return snapshot;
+                return BuildSnapshotLocked();
             }
+        }
+
+        private ConnectionGraphUpdate BuildSnapshotLocked()
+        {
+            var snapshot = new ConnectionGraphUpdate
+            {
+                PublishedTopics = new List<PublishedTopic>(_publishedTopics.Count),
+                SubscribedTopics = new List<SubscribedTopic>(_subscribedTopics.Count),
+                AdvertisedServices = new List<AdvertisedService>(_advertisedServices.Count)
+            };
+            CopyTopologyPublished(_publishedTopics, snapshot.PublishedTopics);
+            CopyTopologySubscribed(_subscribedTopics, snapshot.SubscribedTopics);
+            CopyTopologyServices(_advertisedServices, snapshot.AdvertisedServices);
+            return snapshot;
         }
 
         private static void CopyTopologyPublished(

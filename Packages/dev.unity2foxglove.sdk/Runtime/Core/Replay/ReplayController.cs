@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -79,13 +80,13 @@ namespace Unity.FoxgloveSDK.Core
         private long _lastReplayCallbackOverflowWarningTicks;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
-        public bool IsEnabled => _replayEnabled;
+        public bool IsEnabled => Volatile.Read(ref _replayEnabled);
         /// <summary>Whether the most recent replay enable attempt observed a confirmed FoxRun schema mismatch.</summary>
-        public bool LastEnableHadSchemaMismatch => _lastEnableHadSchemaMismatch;
+        public bool LastEnableHadSchemaMismatch => Volatile.Read(ref _lastEnableHadSchemaMismatch);
         /// <summary>Whether the most recent replay enable attempt was blocked by a confirmed FoxRun schema mismatch.</summary>
-        public bool LastEnableBlockedBySchemaMismatch => _lastEnableBlockedBySchemaMismatch;
+        public bool LastEnableBlockedBySchemaMismatch => Volatile.Read(ref _lastEnableBlockedBySchemaMismatch);
         /// <summary>Message from the most recent failed replay enable attempt, or an empty string.</summary>
-        public string LastEnableFailureMessage => _lastEnableFailureMessage;
+        public string LastEnableFailureMessage => Volatile.Read(ref _lastEnableFailureMessage);
         /// <summary>
         /// Active replay engine instance; null when not replaying.
         /// <para>The returned engine is a short-lived snapshot. Do not retain it across runtime ticks.</para>
@@ -203,9 +204,9 @@ namespace Unity.FoxgloveSDK.Core
             {
                 // Clean any previous replay state to avoid leaking old engine/stream
                 Disable();
-                _lastEnableHadSchemaMismatch = false;
-                _lastEnableBlockedBySchemaMismatch = false;
-                _lastEnableFailureMessage = string.Empty;
+                Volatile.Write(ref _lastEnableHadSchemaMismatch, false);
+                Volatile.Write(ref _lastEnableBlockedBySchemaMismatch, false);
+                Volatile.Write(ref _lastEnableFailureMessage, string.Empty);
 
                 if (recordingEnabled)
                 {
@@ -222,11 +223,11 @@ namespace Unity.FoxgloveSDK.Core
                     {
                         var schemaGuard = ReplaySchemaGuard.Evaluate(_replayEngine);
                         if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch)
-                            _lastEnableHadSchemaMismatch = true;
+                            Volatile.Write(ref _lastEnableHadSchemaMismatch, true);
 
                         if (schemaGuard.IsBlocking && identityMode == SchemaIdentityMode.Strict)
                         {
-                            _lastEnableBlockedBySchemaMismatch = true;
+                            Volatile.Write(ref _lastEnableBlockedBySchemaMismatch, true);
                             throw new InvalidDataException(schemaGuard.Message);
                         }
 
@@ -274,13 +275,13 @@ namespace Unity.FoxgloveSDK.Core
 
                     _clock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
                     _replayEngine.Play();
-                    _replayEnabled = true;
+                    Volatile.Write(ref _replayEnabled, true);
                     _hasPanelHistoryTime = false;
                     _lastPanelHistoryTimeNs = 0;
                 }
                 catch (Exception ex)
                 {
-                    _lastEnableFailureMessage = ex.Message ?? string.Empty;
+                    Volatile.Write(ref _lastEnableFailureMessage, ex.Message ?? string.Empty);
                     _logger.LogError($"Failed to load MCAP replay '{filePath}': {ex.Message}");
                     _replayEngine?.Dispose();
                     _replayEngine = null;
@@ -288,7 +289,7 @@ namespace Unity.FoxgloveSDK.Core
                     _channelTopicMap = null;
                     _channelMap = null;
                     _channelBehaviorMap = null;
-                    _replayEnabled = false;
+                    Volatile.Write(ref _replayEnabled, false);
                 }
             }
         }
@@ -370,7 +371,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _replayEngine?.Dispose();
                 _replayEngine = null;
-                _replayEnabled = false;
+                Volatile.Write(ref _replayEnabled, false);
                 _summarySchemas = null;
                 _channelTopicMap = null;
                 _channelMap = null;
@@ -390,7 +391,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
             {
-                if (!_replayEnabled || _replayEngine == null || !_replayEngine.IsLoaded) return;
+                if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null || !_replayEngine.IsLoaded) return;
                 var channels = _replayEngine.Channels;
                 if (channels == null) return;
                 foreach (var ch in channels)
@@ -433,7 +434,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
             {
-                if (!_replayEnabled || _replayEngine == null) return;
+                if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
                 var messages = _replayEngine.Tick(nowNs, _replayTickBuffer);
                 if (messages == null || messages.Count == 0) return;
                 PublishMessages(session, messages, nowNs, "Tick", forwardToScene: true);
@@ -460,7 +461,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
             {
-                if (!_replayEnabled || _replayEngine == null) return;
+                if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
                 // External-clock following: the scene MUST reach the Foxglove cursor
                 // time every frame, or it lags further behind on every tick. The
                 // engine's per-tick cap protects the *live* main-thread playback path
@@ -497,7 +498,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
             {
-                if (!_replayEnabled || _replayEngine == null || session == null) return;
+                if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null || session == null) return;
                 var startNs = _replayEngine.StartTimeNs;
                 var clampedTo = timeNs > _replayEngine.EndTimeNs ? _replayEngine.EndTimeNs : timeNs;
                 if (clampedTo < startNs) clampedTo = startNs;
@@ -637,7 +638,7 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replayEngineLock)
             {
-                if (!_replayEnabled || _replayEngine == null) return;
+                if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
                 var messages = _replayEngine.Snapshot(timeNs, _replaySnapshotBuffer);
                 if (messages == null) return;
                 foreach (var msg in messages)
