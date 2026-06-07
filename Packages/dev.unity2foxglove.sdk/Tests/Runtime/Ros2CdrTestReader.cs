@@ -5,6 +5,7 @@
 // Purpose: Test-only ROS 2 CDR reader used by Phase 91 byte-level checks.
 
 using System;
+using System.IO;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -33,7 +34,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         public bool ReadBool()
         {
-            return ReadUInt8() != 0;
+            var value = ReadUInt8();
+            if (value > 1)
+                throw new InvalidDataException("ROS2 CDR bool value must be 0 or 1.");
+            return value != 0;
         }
 
         public int ReadInt32()
@@ -92,13 +96,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         public string ReadString()
         {
-            var length = checked((int)ReadUInt32());
-            Ensure(length);
+            var length = CheckedLength(ReadUInt32(), "ROS2 CDR string length");
             if (length == 0)
-                return string.Empty;
+                throw new InvalidDataException("ROS2 CDR string length must include a trailing NUL byte.");
+            Ensure(length);
+            if (_data[_offset + length - 1] != 0)
+                throw new InvalidDataException("ROS2 CDR string is missing the trailing NUL byte.");
 
-            var byteCount = _data[_offset + length - 1] == 0 ? length - 1 : length;
-            var value = Encoding.UTF8.GetString(_data, _offset, byteCount);
+            var value = Encoding.UTF8.GetString(_data, _offset, length - 1);
             _offset += length;
             return value;
         }
@@ -115,7 +120,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         public double[] ReadFloat64Sequence()
         {
-            var length = checked((int)ReadUInt32());
+            var length = CheckedLength(ReadUInt32(), "ROS2 CDR float64 sequence length", 8);
             var values = new double[length];
             for (var i = 0; i < values.Length; i++)
                 values[i] = ReadFloat64();
@@ -124,7 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         public uint[] ReadUInt32Sequence()
         {
-            var length = checked((int)ReadUInt32());
+            var length = CheckedLength(ReadUInt32(), "ROS2 CDR uint32 sequence length", 4);
             var values = new uint[length];
             for (var i = 0; i < values.Length; i++)
                 values[i] = ReadUInt32();
@@ -133,6 +138,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         public double[] ReadFloat64Fixed(int length)
         {
+            if (length < 0)
+                throw new ArgumentOutOfRangeException(nameof(length), "Fixed array length cannot be negative.");
+
+            Align(8);
+            if (length > 0 && (long)length * 8 > _data.Length - _offset)
+                throw new InvalidDataException("ROS2 CDR fixed float64 array length exceeds the remaining payload bytes.");
+
             var values = new double[length];
             for (var i = 0; i < values.Length; i++)
                 values[i] = ReadFloat64();
@@ -144,6 +156,18 @@ namespace Unity.FoxgloveSDK.Tests
             var relative = (_offset - AlignmentOrigin) % alignment;
             if (relative != 0)
                 _offset += alignment - relative;
+        }
+
+        private int CheckedLength(uint value, string label, int minElementByteCount = 1)
+        {
+            if (value > int.MaxValue)
+                throw new InvalidDataException(label + " exceeds the supported int32 range.");
+
+            var length = (int)value;
+            if (length > 0 && minElementByteCount > 0 &&
+                (long)length * minElementByteCount > _data.Length - _offset)
+                throw new InvalidDataException(label + " exceeds the remaining CDR payload bytes.");
+            return length;
         }
 
         private void Ensure(int count)
