@@ -223,8 +223,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
             finally
             {
-                if (File.Exists(tempPath))
-                    File.Delete(tempPath);
+                TryDeleteTempFile(tempPath);
             }
         }
 
@@ -310,6 +309,21 @@ namespace Unity.FoxgloveSDK.Editor
             // without hiding a real write failure.
             if (attempt + 1 < ReplaceAttempts)
                 Thread.Sleep(ReplaceRetryDelayMilliseconds);
+        }
+
+        private static void TryDeleteTempFile(string tempPath)
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
 
         private static string StringLiteral(string value)

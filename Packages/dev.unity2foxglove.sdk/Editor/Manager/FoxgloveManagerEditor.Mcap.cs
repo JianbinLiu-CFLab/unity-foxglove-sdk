@@ -81,7 +81,11 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             if (GetBool("_enableRemoteMcapFileServer") && replayAutoPlay.boolValue)
+            {
+                Undo.RecordObject(target, "Disable Replay Auto Play");
                 replayAutoPlay.boolValue = false;
+                EditorUtility.SetDirty(target);
+            }
 
             using (new EditorGUI.DisabledScope(GetBool("_enableRemoteMcapFileServer")))
             {
@@ -215,10 +219,7 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Open Current Evidence"))
-                {
-                    Directory.CreateDirectory(Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
-                    EditorUtility.RevealInFinder(Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
-                }
+                    OpenCurrentEvidenceRoot();
 
                 if (GUILayout.Button("Copy Hash"))
                     CopyCurrentSchemaEvidenceHash();
@@ -252,6 +253,24 @@ namespace Unity.FoxgloveSDK.Editor
             catch (System.Exception ex)
             {
                 Debug.LogError("[Foxglove] Failed to generate schema evidence:\n" + ex);
+            }
+        }
+
+        private static void OpenCurrentEvidenceRoot()
+        {
+            try
+            {
+                var currentRoot = Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot();
+                Directory.CreateDirectory(currentRoot);
+                EditorUtility.RevealInFinder(currentRoot);
+            }
+            catch (System.Exception ex)
+            {
+                EditorUtility.DisplayDialog(
+                    "Open Current Evidence",
+                    "Failed to open current schema evidence:\n" + ex.Message,
+                    "OK");
+                Debug.LogError("[Foxglove] Failed to open current schema evidence: " + ex.Message);
             }
         }
 

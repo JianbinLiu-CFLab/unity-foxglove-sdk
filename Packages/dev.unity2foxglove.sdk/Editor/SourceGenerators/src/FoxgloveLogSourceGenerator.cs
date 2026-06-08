@@ -8,7 +8,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -203,6 +205,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             foreach (var diagnostic in FoxRunGenerationModelValidator.Validate(model))
                 spc.ReportDiagnostic(Diagnostic.Create(Diags.Shared(diagnostic.Id), LocationFor(diagnostic, memberLocations), diagnostic.Target));
 
+            var emittedTypes = new List<FoxRunGenerationType>();
             var validByClass = valid
                 .GroupBy(m => (m.Ns, m.ClassName))
                 .ToDictionary(g => g.Key, g => g.ToList());
@@ -215,54 +218,24 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.NotPartial, Location.None, first.ClassName));
                     continue;
                 }
+                emittedTypes.Add(type);
                 EmitClass(spc, type);
             }
 
-            var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(model);
+            var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(
+                new FoxRunGenerationModel(emittedTypes, model.DescriptorVersion, model.GeneratorVersion));
             spc.AddSource("FoxRunGeneratedDescriptorInfo.g.cs", DescriptorCarrierSource(descriptor));
         }
 
         /// <summary>
         /// Emits the generated partial class implementing <c>IFoxgloveLogSource</c>
-        /// for one class name/namespace pair. Handles topic-to-member grouping,
-        /// schema conflict warnings, name collision detection, and delegates code
-        /// generation to <c>FoxgloveSourceEmitter.EmitClass</c> for output
+        /// for one class name/namespace pair. Shared model validation handles
+        /// topic warnings before this method delegates code generation to
+        /// <c>FoxgloveSourceEmitter.EmitClass</c> for output
         /// consistency with the build-time physical fallback path.
         /// </summary>
         private static void EmitClass(SourceProductionContext spc, FoxRunGenerationType type)
         {
-            var args = type.Members.Select(member => member.ToTopicMember()).ToList();
-
-            // Warn on schema conflicts
-            var byTopic = args.GroupBy(a => a.Topic);
-            foreach (var grp in byTopic)
-            {
-                var schemas = grp.Select(a => a.SchemaName).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
-                if (schemas.Count > 1)
-                    spc.ReportDiagnostic(Diagnostic.Create(Diags.TopicConflict, Location.None, grp.Key));
-            }
-
-            // Detect underscore-truncation name collisions
-            foreach (var grp in byTopic)
-            {
-                var cleanNames = grp.Select(a => a.MemberName.TrimStart('_')).ToList();
-                if (cleanNames.Distinct().Count() < cleanNames.Count)
-                    spc.ReportDiagnostic(Diagnostic.Create(Diags.NameConflict, Location.None, type.ClassName, grp.Key));
-            }
-
-            // Warn when a multi-member topic mixes policy knobs. The emitter
-            // remains deterministic by applying trigger precedence first, then
-            // the existing policy precedence, but authors should split topics
-            // or align policy for readability.
-            foreach (var grp in byTopic)
-            {
-                var mixedPolicy = grp.Select(a => a.PublishMode).Distinct().Count() > 1
-                    || grp.Select(a => a.ChangeEpsilon).Distinct().Count() > 1
-                    || grp.Select(a => a.ForceIntervalSeconds).Distinct().Count() > 1;
-                if (mixedPolicy)
-                    spc.ReportDiagnostic(Diagnostic.Create(Diags.MixedTopicPolicy, Location.None, grp.Key));
-            }
-
             var ns = type.Namespace;
             var className = type.ClassName;
             var source = FoxgloveSourceEmitter.EmitClass(type);
@@ -274,17 +247,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (diagnostic == null || memberLocations == null)
                 return Location.None;
 
-            foreach (var pair in memberLocations)
+            if (!string.IsNullOrEmpty(diagnostic.MemberName))
             {
-                var separator = pair.Key.IndexOf('|');
-                if (separator < 0)
-                    continue;
+                var declaringType = diagnostic.Target;
+                var memberSuffix = "." + diagnostic.MemberName;
+                if (declaringType.EndsWith(memberSuffix, StringComparison.Ordinal))
+                    declaringType = declaringType.Substring(0, declaringType.Length - memberSuffix.Length);
 
-                var declaringType = pair.Key.Substring(0, separator);
-                var memberName = pair.Key.Substring(separator + 1);
-                if (diagnostic.Target.StartsWith(declaringType, StringComparison.Ordinal)
-                    && diagnostic.Target.EndsWith("." + memberName, StringComparison.Ordinal))
-                    return pair.Value ?? Location.None;
+                if (memberLocations.TryGetValue(declaringType + "|" + diagnostic.MemberName, out var location))
+                    return location ?? Location.None;
             }
 
             return Location.None;
@@ -336,7 +307,33 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
             if (string.IsNullOrEmpty(value))
                 return string.Empty;
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+            var sb = new StringBuilder();
+            foreach (var ch in value)
+            {
+                switch (ch)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (ch < 0x20)
+                        {
+                            sb.Append("\\u");
+                            sb.Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            sb.Append(ch);
+                        }
+                        break;
+                }
+            }
+            return sb.ToString();
         }
 
         /// <summary>
@@ -485,7 +482,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// <summary>FOXRUN003: field names collide after stripping leading underscores.</summary>
             public static readonly DiagnosticDescriptor NameConflict = new DiagnosticDescriptor(
                 "FOXRUN003", "Field name collision",
-                "Class '{0}' topic '{1}' has field names that collide after stripping underscores",
+                "{0}: field names collide after stripping underscores",
                 "FoxRun", DiagnosticSeverity.Warning, true);
 
             /// <summary>FOXRUN004: multi-variable field declaration with <c>[FoxRun]</c> is unsupported.</summary>
@@ -549,6 +546,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             {
                 switch (id)
                 {
+                    case "FOXRUN002": return TopicConflict;
+                    case "FOXRUN003": return NameConflict;
+                    case "FOXRUN005": return MixedTopicPolicy;
                     case "FOXRUN006": return UnsupportedCanonicalType;
                     case "FOXRUN007": return GenericType;
                     case "FOXRUN008": return NonAbsoluteTopic;

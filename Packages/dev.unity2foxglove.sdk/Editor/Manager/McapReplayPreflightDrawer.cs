@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
 using UnityEditor;
@@ -30,6 +31,11 @@ namespace Unity.FoxgloveSDK.Editor
         private bool _mcapTopicsExpanded;
         private MessageType _mcapPreflightMessageType = MessageType.Info;
         private MessageType _identityMessageType = MessageType.Info;
+        private Task<McapReplayAnalysisResult> _analyzeReplayTask;
+        private Task<LatestRecordingResult> _findLatestRecordingTask;
+        private SerializedObject _pendingLatestSerializedObject;
+        private UnityEngine.Object _pendingLatestTargetObject;
+        private SerializedProperty _pendingLatestReplayPath;
 
         /// <summary>
         /// Draws latest-recording selection, replay-file analysis, and the
@@ -37,6 +43,9 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal void Draw(SerializedObject serializedObject, UnityEngine.Object targetObject, SerializedProperty replayPath)
         {
+            CompleteAnalyzeReplayMcapIfReady();
+            CompleteFindLatestRecordingIfReady();
+
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Replay Identity Preflight", EditorStyles.boldLabel);
 
@@ -44,21 +53,12 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (GUILayout.Button("Use Latest Recording"))
                 {
-                    if (FindLatestReadableRecording(out var latestRecording, out var error))
-                    {
-                        var projectRelativeReplayPath = MakeRelative(latestRecording);
-                        ApplyReplayPath(serializedObject, targetObject, replayPath, projectRelativeReplayPath);
-                        AnalyzeReplayMcap(latestRecording);
-                    }
-                    else
-                    {
-                        SetIdentityMessage(error, MessageType.Warning);
-                    }
+                    StartFindLatestReadableRecording(serializedObject, targetObject, replayPath);
                 }
 
                 if (GUILayout.Button("Compare With Current"))
                 {
-                    AnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue), refreshCurrentEvidence: true);
+                    StartAnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue), refreshCurrentEvidence: true);
                 }
             }
 
@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.LabelField("MCAP Indexed Reader Summary", EditorStyles.boldLabel);
 
             if (GUILayout.Button("Analyze Replay File"))
-                AnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue));
+                StartAnalyzeReplayMcap(ResolveProjectPath(replayPath.stringValue));
 
             if (!string.IsNullOrEmpty(_mcapPreflightSummary))
                 EditorGUILayout.HelpBox(_mcapPreflightSummary, _mcapPreflightMessageType);
@@ -105,7 +105,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private void AnalyzeReplayMcap(string path, bool refreshCurrentEvidence = false)
+        private void StartAnalyzeReplayMcap(string path, bool refreshCurrentEvidence = false)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -122,38 +122,76 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             AnalyzeReplayIdentity(path, refreshCurrentEvidence);
+            SetMcapPreflightMessage("Analyzing replay file: " + MakeRelative(path), MessageType.Info);
+            _analyzeReplayTask = Task.Run(() => AnalyzeReplayMcapWorker(path));
+            EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
+            EditorApplication.update += CompleteAnalyzeReplayMcapIfReady;
+        }
 
+        private void CompleteAnalyzeReplayMcapIfReady()
+        {
+            if (_analyzeReplayTask == null || !_analyzeReplayTask.IsCompleted)
+                return;
+
+            EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
+            var task = _analyzeReplayTask;
+            _analyzeReplayTask = null;
+
+            McapReplayAnalysisResult result;
             try
             {
-                using var indexed = McapIndexedReader.OpenRead(path);
-                var statistics = indexed.Summary.Statistics;
-                var rawMessageRange = statistics == null
-                    ? "unavailable"
-                    : $"{statistics.MessageStartTime} - {statistics.MessageEndTime} ns";
-                var humanMessageRange = FormatMcapTimeRange(statistics);
-                var messageCount = statistics == null ? "unavailable" : statistics.MessageCount.ToString("N0");
-                var size = new FileInfo(path).Length;
-                var topics = BuildTopicList(indexed.Channels);
-                var topicText = string.Join("\n", topics);
-
-                SetMcapPreflightMessage(
-                    "Path: " + MakeRelative(path) + "\n"
-                    + $"Size: {size:N0} bytes\n"
-                    + $"Channels: {indexed.Channels.Count}\n"
-                    + $"Chunks: {indexed.Summary.ChunkIndexes.Count}\n"
-                    + $"Messages: {messageCount}\n"
-                    + $"Time Range (UTC): {humanMessageRange}\n"
-                    + $"Raw Time Range: {rawMessageRange}\n"
-                    + $"Metadata Indexes: {indexed.MetadataIndexes.Count}\n"
-                    + $"Attachment Indexes: {indexed.AttachmentIndexes.Count}\n"
-                    + "Topic Preview: " + BuildTopicPreview(topics),
-                    MessageType.Info,
-                    topicText,
-                    topics.Count);
+                result = task.GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
                 SetMcapPreflightMessage($"MCAP preflight failed: {ex.Message}", MessageType.Error);
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetMcapPreflightMessage($"MCAP preflight failed: {result.ErrorMessage}", MessageType.Error);
+                return;
+            }
+
+            var topicText = string.Join("\n", result.Topics);
+            SetMcapPreflightMessage(
+                "Path: " + MakeRelative(result.Path) + "\n"
+                + $"Size: {result.SizeBytes:N0} bytes\n"
+                + $"Channels: {result.ChannelCount}\n"
+                + $"Chunks: {result.ChunkCount}\n"
+                + $"Messages: {result.MessageCount}\n"
+                + $"Time Range (UTC): {result.HumanMessageRange}\n"
+                + $"Raw Time Range: {result.RawMessageRange}\n"
+                + $"Metadata Indexes: {result.MetadataIndexCount}\n"
+                + $"Attachment Indexes: {result.AttachmentIndexCount}\n"
+                + "Topic Preview: " + BuildTopicPreview(result.Topics),
+                MessageType.Info,
+                topicText,
+                result.Topics.Count);
+        }
+
+        private static McapReplayAnalysisResult AnalyzeReplayMcapWorker(string path)
+        {
+            try
+            {
+                using var indexed = McapIndexedReader.OpenRead(path);
+                var statistics = indexed.Summary.Statistics;
+                return new McapReplayAnalysisResult(
+                    path,
+                    new FileInfo(path).Length,
+                    indexed.Channels.Count,
+                    indexed.Summary.ChunkIndexes.Count,
+                    statistics == null ? "unavailable" : statistics.MessageCount.ToString("N0"),
+                    statistics == null ? "unavailable" : $"{statistics.MessageStartTime} - {statistics.MessageEndTime} ns",
+                    FormatMcapTimeRange(statistics),
+                    indexed.MetadataIndexes.Count,
+                    indexed.AttachmentIndexes.Count,
+                    BuildTopicList(indexed.Channels));
+            }
+            catch (Exception ex)
+            {
+                return McapReplayAnalysisResult.Failed(path, ex.Message);
             }
         }
 
@@ -305,22 +343,76 @@ namespace Unity.FoxgloveSDK.Editor
             return string.IsNullOrWhiteSpace(hash) ? "(missing)" : hash.Trim();
         }
 
-        private static bool FindLatestReadableRecording(out string latestRecording, out string error)
+        private void StartFindLatestReadableRecording(
+            SerializedObject serializedObject,
+            UnityEngine.Object targetObject,
+            SerializedProperty replayPath)
         {
-            latestRecording = string.Empty;
-            error = string.Empty;
-
+            _pendingLatestSerializedObject = serializedObject;
+            _pendingLatestTargetObject = targetObject;
+            _pendingLatestReplayPath = replayPath?.Copy();
+            SetIdentityMessage("Searching latest readable recording...", MessageType.Info);
             var recordingsDir = Path.Combine(GetDefaultDir(), "Recordings");
+            _findLatestRecordingTask = Task.Run(() => FindLatestReadableRecordingWorker(recordingsDir));
+            EditorApplication.update -= CompleteFindLatestRecordingIfReady;
+            EditorApplication.update += CompleteFindLatestRecordingIfReady;
+        }
+
+        private void CompleteFindLatestRecordingIfReady()
+        {
+            if (_findLatestRecordingTask == null || !_findLatestRecordingTask.IsCompleted)
+                return;
+
+            EditorApplication.update -= CompleteFindLatestRecordingIfReady;
+            var task = _findLatestRecordingTask;
+            _findLatestRecordingTask = null;
+
+            LatestRecordingResult result;
+            try
+            {
+                result = task.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                SetIdentityMessage("Latest recording search failed: " + ex.Message, MessageType.Error);
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetIdentityMessage(result.ErrorMessage, MessageType.Warning);
+                return;
+            }
+
+            if (_pendingLatestReplayPath == null
+                || _pendingLatestSerializedObject == null
+                || _pendingLatestSerializedObject.targetObject == null)
+            {
+                return;
+            }
+
+            var latestRecording = result.Path;
+            var projectRelativeReplayPath = MakeRelative(latestRecording);
+            ApplyReplayPath(
+                _pendingLatestSerializedObject,
+                _pendingLatestTargetObject,
+                _pendingLatestReplayPath,
+                projectRelativeReplayPath);
+            StartAnalyzeReplayMcap(latestRecording);
+        }
+
+        private static LatestRecordingResult FindLatestReadableRecordingWorker(string recordingsDir)
+        {
             if (!Directory.Exists(recordingsDir))
             {
-                error = $"Recordings directory was not found: {recordingsDir}";
-                return false;
+                return LatestRecordingResult.Failed($"Recordings directory was not found: {recordingsDir}");
             }
 
             var candidates = Directory.GetFiles(recordingsDir, "*.mcap", SearchOption.AllDirectories);
             Array.Sort(candidates, (left, right) =>
                 File.GetLastWriteTimeUtc(right).CompareTo(File.GetLastWriteTimeUtc(left)));
 
+            var lastError = string.Empty;
             foreach (var candidate in candidates)
             {
                 try
@@ -333,22 +425,27 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                     }
 
-                    latestRecording = candidate;
-                    return true;
-                }
-                catch (IOException)
-                {
+                    return LatestRecordingResult.Found(candidate);
                 }
                 catch (InvalidDataException)
                 {
+                    lastError = "Skipping unreadable MCAP '" + candidate + "'.";
                 }
-                catch (UnauthorizedAccessException)
+                catch (Exception ex) when (
+                    ex is IOException
+                    || ex is UnauthorizedAccessException
+                    || ex is ArgumentException
+                    || ex is NotSupportedException
+                    || ex is PathTooLongException)
                 {
+                    lastError = "Skipping unreadable MCAP '" + candidate + "': " + ex.Message;
                 }
             }
 
-            error = $"No readable MCAP recordings were found under: {recordingsDir}";
-            return false;
+            var error = $"No readable MCAP recordings were found under: {recordingsDir}";
+            if (!string.IsNullOrEmpty(lastError))
+                error += "\n" + lastError;
+            return LatestRecordingResult.Failed(error);
         }
 
         private static List<string> BuildTopicList(IReadOnlyList<McapChannel> channels)
@@ -419,5 +516,78 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string ResolveProjectPath(string path)
             => FoxgloveManagerEditor.ResolveProjectPath(path);
+
+        private sealed class McapReplayAnalysisResult
+        {
+            public readonly bool Success;
+            public readonly string Path;
+            public readonly long SizeBytes;
+            public readonly int ChannelCount;
+            public readonly int ChunkCount;
+            public readonly string MessageCount;
+            public readonly string RawMessageRange;
+            public readonly string HumanMessageRange;
+            public readonly int MetadataIndexCount;
+            public readonly int AttachmentIndexCount;
+            public readonly List<string> Topics;
+            public readonly string ErrorMessage;
+
+            public McapReplayAnalysisResult(
+                string path,
+                long sizeBytes,
+                int channelCount,
+                int chunkCount,
+                string messageCount,
+                string rawMessageRange,
+                string humanMessageRange,
+                int metadataIndexCount,
+                int attachmentIndexCount,
+                List<string> topics)
+            {
+                Success = true;
+                Path = path ?? string.Empty;
+                SizeBytes = sizeBytes;
+                ChannelCount = channelCount;
+                ChunkCount = chunkCount;
+                MessageCount = messageCount ?? "unavailable";
+                RawMessageRange = rawMessageRange ?? "unavailable";
+                HumanMessageRange = humanMessageRange ?? "unavailable";
+                MetadataIndexCount = metadataIndexCount;
+                AttachmentIndexCount = attachmentIndexCount;
+                Topics = topics ?? new List<string>();
+                ErrorMessage = string.Empty;
+            }
+
+            private McapReplayAnalysisResult(string path, string errorMessage)
+            {
+                Success = false;
+                Path = path ?? string.Empty;
+                Topics = new List<string>();
+                ErrorMessage = errorMessage ?? string.Empty;
+            }
+
+            public static McapReplayAnalysisResult Failed(string path, string errorMessage)
+                => new McapReplayAnalysisResult(path, errorMessage);
+        }
+
+        private sealed class LatestRecordingResult
+        {
+            public readonly bool Success;
+            public readonly string Path;
+            public readonly string ErrorMessage;
+
+            private LatestRecordingResult(bool success, string path, string errorMessage)
+            {
+                Success = success;
+                Path = path ?? string.Empty;
+                ErrorMessage = errorMessage ?? string.Empty;
+            }
+
+            public static LatestRecordingResult Found(string path)
+                => new LatestRecordingResult(true, path, string.Empty);
+
+            public static LatestRecordingResult Failed(string errorMessage)
+                => new LatestRecordingResult(false, string.Empty, errorMessage);
+        }
     }
 }

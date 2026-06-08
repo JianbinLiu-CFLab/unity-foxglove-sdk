@@ -37,6 +37,8 @@ namespace Unity2Foxglove.Ros2ForUnity
 
         /// <summary>
         /// Creates or returns a node boundary with the supplied ROS2 node name.
+        /// Null or whitespace node names must be normalized by the implementation
+        /// to a deterministic fallback name rather than propagated to the runtime.
         /// Unavailable contexts return a no-op node that preserves normalized names
         /// and reports publish failures through <c>TryPublish</c>.
         /// </summary>

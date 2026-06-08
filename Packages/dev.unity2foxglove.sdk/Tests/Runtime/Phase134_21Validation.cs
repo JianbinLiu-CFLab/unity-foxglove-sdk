@@ -50,7 +50,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && installer.Contains("Debug.LogError", StringComparison.Ordinal),
                 "134-21-D2: editor delayCall reconciliation reports contextual package failures");
             Check(installer.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal)
-                  && installer.Contains("Leaving \" + CompileSymbol + \" disabled", StringComparison.Ordinal)
+                  && installer.Contains("Leaving ROS2 For Unity compile symbols disabled", StringComparison.Ordinal)
                   && installer.Contains("ContainsPackageKey(lockFile)", StringComparison.Ordinal),
                 "134-21-D3: runtime detection cross-checks Unity package lock resolution");
         }
@@ -70,7 +70,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-21-E1: optional asmdef auto-reference policy is intentional and documented");
             Check(readme.Contains("Packages/packages-lock.json", StringComparison.Ordinal)
                   && readme.Contains("Standalone build target", StringComparison.Ordinal)
-                  && readme.Contains("set the symbol manually", StringComparison.Ordinal),
+                  && readme.Contains("external source-only adapter samples", StringComparison.Ordinal)
+                  && readme.Contains("Do not enable `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE`", StringComparison.Ordinal),
                 "134-21-E2: README documents resolved-package and Standalone-only symbol behavior");
         }
 

@@ -224,9 +224,9 @@ namespace Unity.FoxgloveSDK.Tests
             var build = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
 
-            Check(editor.Contains("private static bool _connectionSecurityExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private static bool _publishDataExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private static bool _schemaEvidenceAdvancedExpanded;", StringComparison.Ordinal)
+            Check(editor.Contains("private bool _connectionSecurityExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _publishDataExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _schemaEvidenceAdvancedExpanded;", StringComparison.Ordinal)
                   && layout.Contains("WorkflowSubsection", StringComparison.Ordinal),
                 "115C-F1: low-frequency Inspector sections and schema evidence default collapsed");
 

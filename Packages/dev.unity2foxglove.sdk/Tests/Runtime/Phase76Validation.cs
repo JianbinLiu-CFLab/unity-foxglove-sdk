@@ -212,7 +212,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             Check(!string.IsNullOrEmpty(editorSource), "76E-1: dedicated camera publisher editor exists");
-            Check(editorSource.Contains("\"H.265 / HEVC (FFmpeg)\""),
+            var profileSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
+            Check(editorSource.Contains("BuildCameraOutputModeLabels")
+                  && profileSource.Contains("\"H.265 / HEVC (FFmpeg)\""),
                 "76E-2: editor exposes H.265 / HEVC output label");
             Check(editorSource.Contains("CameraOutputMode.H265Ffmpeg"),
                 "76E-3: editor handles H.265 mode explicitly");

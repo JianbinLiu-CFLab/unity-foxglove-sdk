@@ -55,34 +55,61 @@ namespace Unity.FoxgloveSDK.Editor
                 return true;
 
             var candidate = path.Trim().Replace('\\', '/');
-            if (Path.IsPathRooted(candidate))
-            {
-                var fullCandidate = Path.GetFullPath(candidate);
-                var project = ProjectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                              + Path.DirectorySeparatorChar;
-                if (!fullCandidate.StartsWith(project, StringComparison.OrdinalIgnoreCase))
-                {
-                    error = "Schema evidence root must be inside this Unity project.";
-                    return false;
-                }
-
-                candidate = fullCandidate.Substring(project.Length).Replace('\\', '/');
-            }
-
-            if (candidate.Equals("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets";
-                return true;
-            }
-
-            if (!candidate.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+            var isRooted = Path.IsPathRooted(candidate);
+            if (!isRooted
+                && !candidate.Equals("Assets", StringComparison.OrdinalIgnoreCase)
+                && !candidate.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
             {
                 error = "Schema evidence root must be an Assets-relative path, for example Assets/Generated.";
                 return false;
             }
 
-            normalized = "Assets" + candidate.Substring("Assets".Length).TrimEnd('/');
+            var fullCandidate = isRooted
+                ? Path.GetFullPath(candidate)
+                : Path.GetFullPath(Path.Combine(ProjectRoot, candidate));
+            var assetsRoot = ProjectAssetsRoot;
+            if (!IsSameOrChildPath(fullCandidate, assetsRoot))
+            {
+                error = "Schema evidence root must stay inside Assets.";
+                return false;
+            }
+
+            if (PathsEqual(fullCandidate, assetsRoot))
+            {
+                normalized = "Assets";
+                return true;
+            }
+
+            var assetsRootPrefix = assetsRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                                   + Path.DirectorySeparatorChar;
+            normalized = "Assets/" + fullCandidate.Substring(assetsRootPrefix.Length)
+                .Replace('\\', '/')
+                .TrimEnd('/');
             return true;
+        }
+
+        private static string ProjectAssetsRoot
+            => Path.GetFullPath(Path.Combine(ProjectRoot, "Assets"));
+
+        private static bool IsSameOrChildPath(string candidate, string parent)
+        {
+            var normalizedCandidate = NormalizeFullPath(candidate);
+            var normalizedParent = NormalizeFullPath(parent);
+            return normalizedCandidate.Equals(normalizedParent, StringComparison.OrdinalIgnoreCase)
+                   || normalizedCandidate.StartsWith(
+                       normalizedParent + Path.DirectorySeparatorChar,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            return NormalizeFullPath(left).Equals(NormalizeFullPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeFullPath(string path)
+        {
+            return Path.GetFullPath(path)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
 
         private static string ProjectRoot

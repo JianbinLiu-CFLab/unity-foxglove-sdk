@@ -38,6 +38,7 @@ internal class ROS2ForUnity
     private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
     private const string unity2FoxgloveRuntimePackageAssetPath =
         "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
+    private const string expectedRmwImplementation = "rmw_fastrtps_cpp";
     private XmlDocument ros2csMetadata = new XmlDocument();
     private XmlDocument ros2ForUnityMetadata = new XmlDocument();
     private bool ownsLifecycle;
@@ -374,6 +375,27 @@ internal class ROS2ForUnity
         Ros2csLogger.LogLevel = LogLevel.WARNING;
     }
 
+    private static void ValidateRmwImplementation(string rmwImpl)
+    {
+        if (string.Equals(rmwImpl, expectedRmwImplementation, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var errMessage = "Unsupported ROS2 RMW implementation '" + rmwImpl + "'. " +
+            "This Unity2Foxglove Jazzy Win64 runtime package is validated only with '" +
+            expectedRmwImplementation + "'. Ensure RMW_IMPLEMENTATION is unset or set to '" +
+            expectedRmwImplementation + "'.";
+        Debug.LogError(errMessage);
+#if UNITY_EDITOR
+        EditorApplication.isPlaying = false;
+        throw new InvalidOperationException(errMessage);
+#else
+        const int ROS_BAD_RMW_CODE = 35;
+        Application.Quit(ROS_BAD_RMW_CODE);
+#endif
+    }
+
     private static void SuppressRos2csFinalizer()
     {
         try
@@ -495,6 +517,7 @@ internal class ROS2ForUnity
         string rmwImpl = initializedThisInstance || Ros2cs.Ok()
             ? Ros2cs.GetRMWImplementation()
             : "unknown";
+        ValidateRmwImplementation(rmwImpl);
 
         Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 

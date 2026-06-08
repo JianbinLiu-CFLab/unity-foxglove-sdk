@@ -29,32 +29,17 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _showAdvancedJpeg;
         private static bool _showDiagnostics;
 
-        private static readonly string[] CameraOutputModeLabels =
-        {
-            "JPEG",
-            "H.264 (FFmpeg)",
-            "H.265 / HEVC (FFmpeg)",
-            "H.264 (OpenH264)",
-            "H.264 (Windows Native, Experimental)"
-        };
+        private static readonly string[] CameraOutputModeLabels = BuildCameraOutputModeLabels();
 
         private FfmpegExecutableCheckResult _ffmpegCheck =
             new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
         private OpenH264ExecutableCheckResult _openH264Check =
             new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
-
-        static FoxgloveCameraPublisherEditor()
-        {
-            var enumCount = Enum.GetValues(typeof(CameraOutputMode)).Length;
-            if (CameraOutputModeLabels.Length != enumCount)
-            {
-                Debug.LogWarning(
-                    $"Camera output mode label count ({CameraOutputModeLabels.Length}) does not match CameraOutputMode count ({enumCount}).");
-            }
-        }
+        private Task<OpenH264ExecutableCheckResult> _openH264CheckTask;
 
         public override void OnInspectorGUI()
         {
+            CompleteOpenH264CheckIfReady();
             serializedObject.Update();
 
             var manager = serializedObject.FindProperty("_manager");
@@ -191,6 +176,11 @@ namespace Unity.FoxgloveSDK.Editor
             serializedObject.ApplyModifiedProperties();
 
             DrawResolvedSummaries();
+        }
+
+        private void OnDisable()
+        {
+            EditorApplication.update -= CompleteOpenH264CheckIfReady;
         }
 
         private void DrawJpegSection(
@@ -397,14 +387,14 @@ namespace Unity.FoxgloveSDK.Editor
                 openH264HelperPath,
                 "Select OpenH264 Helper Executable",
                 Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "",
-                () => _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", ""));
+                ResetOpenH264Check);
 
             DrawOpenH264PathField(
                 "OpenH264 DLL",
                 openH264DllPath,
                 "Select OpenH264 DLL",
                 Application.platform == RuntimePlatform.WindowsEditor ? "dll" : "",
-                () => _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", ""));
+                ResetOpenH264Check);
 
             var checkRequested = false;
             var revealRequested = false;
@@ -434,7 +424,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             if (checkRequested)
-                _openH264Check = OpenH264ExecutableCheck.Check(openH264HelperPath.stringValue, openH264DllPath.stringValue, 3000);
+                StartOpenH264Check(openH264HelperPath.stringValue, openH264DllPath.stringValue);
 
             if (revealRequested)
                 RevealFolder(revealPath);
@@ -443,11 +433,14 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 OpenH264InstallWindow.ShowWindow((installedHelperPath, installedDllPath) =>
                 {
+                    if (this == null || serializedObject == null || serializedObject.targetObject == null)
+                        return;
+
                     serializedObject.Update();
                     openH264HelperPath.stringValue = installedHelperPath;
                     openH264DllPath.stringValue = installedDllPath;
                     serializedObject.ApplyModifiedProperties();
-                    _openH264Check = OpenH264ExecutableCheck.Check(installedHelperPath, installedDllPath, 3000);
+                    StartOpenH264Check(installedHelperPath, installedDllPath);
                     Repaint();
                 });
             }
@@ -610,9 +603,24 @@ namespace Unity.FoxgloveSDK.Editor
 
             var currentIndex = outputMode.enumValueIndex;
             if (currentIndex < 0 || currentIndex >= CameraOutputModeLabels.Length)
-                currentIndex = 0;
+            {
+                EditorGUILayout.HelpBox(
+                    "Camera output mode is outside the supported enum range. Update the SDK Inspector labels before editing this value.",
+                    MessageType.Error);
+                EditorGUILayout.Popup("Camera Output Mode", 0, CameraOutputModeLabels);
+                return;
+            }
 
             outputMode.enumValueIndex = EditorGUILayout.Popup("Camera Output Mode", currentIndex, CameraOutputModeLabels);
+        }
+
+        private static string[] BuildCameraOutputModeLabels()
+        {
+            var values = (CameraOutputMode[])Enum.GetValues(typeof(CameraOutputMode));
+            var labels = new string[values.Length];
+            for (var i = 0; i < values.Length; i++)
+                labels[i] = CameraVideoOutputProfile.ForMode(values[i]).DisplayName;
+            return labels;
         }
 
         private static CameraOutputMode GetMode(SerializedProperty outputMode)
@@ -848,6 +856,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawOpenH264Status(string helperPath, string dllPath)
         {
+            if (_openH264CheckTask != null)
+            {
+                EditorGUILayout.HelpBox("Checking OpenH264 helper and DLL...", MessageType.Info);
+                return;
+            }
+
             switch (_openH264Check.Status)
             {
                 case OpenH264ExecutableStatus.Found:
@@ -879,6 +893,49 @@ namespace Unity.FoxgloveSDK.Editor
                     EditorGUILayout.HelpBox("Status: Not Checked\nHelper: " + helperLabel + "\nDLL: " + dllLabel, MessageType.None);
                     break;
             }
+        }
+
+        private void ResetOpenH264Check()
+        {
+            EditorApplication.update -= CompleteOpenH264CheckIfReady;
+            _openH264CheckTask = null;
+            _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
+        }
+
+        private void StartOpenH264Check(string helperPath, string dllPath)
+        {
+            ResetOpenH264Check();
+            _openH264CheckTask = Task.Run(() => OpenH264ExecutableCheck.Check(helperPath, dllPath, 3000));
+            EditorApplication.update -= CompleteOpenH264CheckIfReady;
+            EditorApplication.update += CompleteOpenH264CheckIfReady;
+            Repaint();
+        }
+
+        private void CompleteOpenH264CheckIfReady()
+        {
+            if (_openH264CheckTask == null || !_openH264CheckTask.IsCompleted)
+                return;
+
+            EditorApplication.update -= CompleteOpenH264CheckIfReady;
+            var task = _openH264CheckTask;
+            _openH264CheckTask = null;
+
+            try
+            {
+                _openH264Check = task.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _openH264Check = new OpenH264ExecutableCheckResult(
+                    OpenH264ExecutableStatus.Invalid,
+                    "",
+                    "",
+                    "",
+                    ex.Message);
+            }
+
+            if (this != null)
+                Repaint();
         }
 
         private sealed class OpenH264InstallWindow : EditorWindow

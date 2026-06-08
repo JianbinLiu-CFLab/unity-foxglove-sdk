@@ -5,6 +5,8 @@
 // Purpose: Inspector for standard sensor_msgs/msg/CameraInfo output.
 
 using Unity.FoxgloveSDK.Components;
+using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -17,6 +19,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _showAdvancedCalibration;
         private static bool _showOptionalTfAnchor;
         private static bool _showAdvancedTransport;
+        private static readonly Dictionary<string, System.Type> ObjectFieldTypeCache =
+            new Dictionary<string, System.Type>(StringComparer.Ordinal);
 
         public override void OnInspectorGUI()
         {
@@ -196,13 +200,20 @@ namespace Unity.FoxgloveSDK.Editor
                 typeName = typeName.Substring(6, typeName.Length - 7);
             }
 
+            if (ObjectFieldTypeCache.TryGetValue(typeName, out var cachedType))
+                return cachedType;
+
             foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
             {
                 var type = assembly.GetType(typeName);
                 if (type != null)
+                {
+                    ObjectFieldTypeCache[typeName] = type;
                     return type;
+                }
             }
 
+            ObjectFieldTypeCache[typeName] = typeof(UnityEngine.Object);
             return typeof(UnityEngine.Object);
         }
     }

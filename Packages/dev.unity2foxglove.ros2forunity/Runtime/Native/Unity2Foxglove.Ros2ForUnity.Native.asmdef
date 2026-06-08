@@ -18,7 +18,8 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [
-    "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE"
   ],
   "versionDefines": [],
   "noEngineReferences": false

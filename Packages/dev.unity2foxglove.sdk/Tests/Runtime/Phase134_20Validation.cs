@@ -140,7 +140,8 @@ namespace Unity.FoxgloveSDK.Tests
             var prefs = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Ros2Bridge/Ros2BridgeEditorPrefs.cs");
 
             Check(paths.Contains("StringComparison.OrdinalIgnoreCase", StringComparison.Ordinal)
-                  && paths.Contains("\"Assets\" + candidate.Substring", StringComparison.Ordinal),
+                  && paths.Contains("ProjectAssetsRoot", StringComparison.Ordinal)
+                  && paths.Contains("normalized = \"Assets/\" + fullCandidate.Substring", StringComparison.Ordinal),
                 "134-20-G1: schema evidence paths canonicalize Assets casing");
             Check(generator.Contains("internal static class Unity2FoxgloveSchemaManifestGenerator", StringComparison.Ordinal),
                 "134-20-G2: schema manifest generator remains internal editor API");

@@ -158,8 +158,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("publishRateSource == null", StringComparison.Ordinal)
                   && editor.Contains("if (publishRateHz != null)", StringComparison.Ordinal),
                 "134-19-G1: camera publish-rate inspector tolerates missing serialized fields");
-            Check(editor.Contains("CameraOutputModeLabels.Length != enumCount", StringComparison.Ordinal)
-                  && editor.Contains("Debug.LogWarning", StringComparison.Ordinal),
+            Check(editor.Contains("BuildCameraOutputModeLabels", StringComparison.Ordinal)
+                  && editor.Contains("Enum.GetValues(typeof(CameraOutputMode))", StringComparison.Ordinal)
+                  && editor.Contains("CameraVideoOutputProfile.ForMode", StringComparison.Ordinal),
                 "134-19-G2: camera output mode labels are checked against the enum length");
             Check(editor.Contains("ResolveBrowseDefaultDirectory", StringComparison.Ordinal)
                   && editor.Contains("Directory.Exists(current)", StringComparison.Ordinal),

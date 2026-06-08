@@ -34,6 +34,9 @@ namespace Unity.FoxgloveSDK.Editor
                 if (current.Contains(fileName) || !IsOwnedGeneratedSourceFile(path))
                     continue;
 
+                if (IsReadOnly(path))
+                    throw CreateDeleteFailure(path, new UnauthorizedAccessException("File is read-only."));
+
                 DeleteGeneratedSourceFile(path);
                 DeleteSidecarMeta(path);
                 deleted.Add(fileName);
@@ -85,6 +88,22 @@ namespace Unity.FoxgloveSDK.Editor
                 "Failed to remove stale FoxRun generated source file '" + Path.GetFileName(path) + "' at '" + path + "'. " +
                 "Close the file in the editor or clear read-only permissions, then retry the build.",
                 inner);
+        }
+
+        private static bool IsReadOnly(string path)
+        {
+            try
+            {
+                return (File.GetAttributes(path) & FileAttributes.ReadOnly) != 0;
+            }
+            catch (IOException ex)
+            {
+                throw CreateDeleteFailure(path, ex);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw CreateDeleteFailure(path, ex);
+            }
         }
 
         private static void DeleteSidecarMeta(string sourcePath)

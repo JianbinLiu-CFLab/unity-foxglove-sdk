@@ -68,17 +68,18 @@ dev.unity2foxglove.ros2forunity
 dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 ```
 
-The adapter package automatically enables the Standalone build-target symbol when it detects the Jazzy Win64 runtime package:
+The adapter package automatically enables the Standalone build-target symbols when it detects the Jazzy Win64 runtime package:
 
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
+UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE
 ```
 
-Automatic detection is intentionally conservative: the runtime package must be present in both `Packages/manifest.json` and Unity's resolved `Packages/packages-lock.json`. If the manifest lists the runtime package but Unity has not resolved it yet, the installer leaves the symbol disabled and logs a package-specific warning rather than compiling guarded code against missing runtime assemblies. The automatic installer only edits the Standalone build target; set the symbol manually for external imports or other build targets.
+Automatic detection is intentionally conservative: the runtime package must be present in both `Packages/manifest.json` and Unity's resolved `Packages/packages-lock.json`. If the manifest lists the runtime package but Unity has not resolved it yet, the installer leaves both symbols disabled and logs a package-specific warning rather than compiling guarded code against missing runtime assemblies. The automatic installer only edits the Standalone build target. `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE` is managed by the runtime-package detector and gates the Native bridge assembly that hard-references the Jazzy Win64 runtime package.
 
 The adapter runtime and editor asmdefs remain `autoReferenced=true` on purpose. Imported Package Manager samples land in predefined project assemblies, so this convenience keeps the facade interfaces visible without requiring users to add sample asmdefs. The core SDK still has no reference to this optional package.
 
-For an external, non-package ROS2 For Unity import, add that symbol manually.
+The external source-only adapter samples may use `UNITY2FOXGLOVE_ROS2_FOR_UNITY` with an external ROS2 For Unity import. Do not enable `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE` unless the Jazzy Win64 runtime package is installed and resolved.
 
 The sample exposes one bidirectional `std_msgs/msg/String` smoke pair:
 

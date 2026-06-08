@@ -22,19 +22,24 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(Components.FoxgloveManager))]
     public partial class FoxgloveManagerEditor : UnityEditor.Editor
     {
-        private static bool _connectionSecurityExpanded;
-        private static bool _publishDataExpanded;
-        private static bool _ros2BridgeExpanded;
-        private static bool _mcapExpanded;
-        private static bool _schemaEvidenceAdvancedExpanded;
-        private static bool _remoteFileAccessExpanded = true;
-        private static bool _diagnosticsExpanded;
+        private bool _connectionSecurityExpanded;
+        private bool _publishDataExpanded;
+        private bool _ros2BridgeExpanded;
+        private bool _mcapExpanded;
+        private bool _schemaEvidenceAdvancedExpanded;
+        private bool _remoteFileAccessExpanded = true;
+        private bool _diagnosticsExpanded;
         private const string LocalRootCaDistributorHost = "127.0.0.1";
         private const int LocalRootCaDistributorPort = 8766;
         private const string LocalRootCaPageUrl = "http://127.0.0.1:8766/";
         private const string CertificateBackendEditorPrefKey = "Unity2Foxglove.LocalDevCertificate.Backend";
         private const string OpenSslPathEditorPrefKey = "Unity2Foxglove.LocalDevCertificate.OpenSslPath";
         private static FoxgloveCertificateDistributor _editorRootCaDistributor;
+        private static string _lastRootCaDistributorPath;
+        private static string _lastRootCaDistributorHost;
+        private static int _lastRootCaDistributorPort;
+        private string _cachedRootCaFingerprintPath;
+        private string _cachedRootCaFingerprint;
 
         static FoxgloveManagerEditor()
         {
@@ -195,7 +200,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var rootPath = GetString("_rootCaFilePath", "");
-            var fingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(ResolveProjectPath(rootPath));
+            var fingerprint = GetCachedRootCaFingerprint(ResolveProjectPath(rootPath));
             if (!string.IsNullOrEmpty(fingerprint))
             {
                 using (new EditorGUI.DisabledScope(true))
@@ -721,6 +726,9 @@ namespace Unity.FoxgloveSDK.Editor
                     rootCaPath,
                     logger: new Components.UnityLogger());
                 _editorRootCaDistributor.Start(host, port);
+                _lastRootCaDistributorPath = rootCaPath;
+                _lastRootCaDistributorHost = host;
+                _lastRootCaDistributorPort = port;
                 return true;
             }
             catch (System.Exception ex)
@@ -751,6 +759,38 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.EnteredPlayMode)
                 StopEditorRootCaDistributor();
+            else if (state == PlayModeStateChange.EnteredEditMode)
+                RestartEditorRootCaDistributorIfPossible();
+        }
+
+        private string GetCachedRootCaFingerprint(string resolvedPath)
+        {
+            if (string.Equals(_cachedRootCaFingerprintPath, resolvedPath, System.StringComparison.Ordinal))
+                return _cachedRootCaFingerprint;
+
+            _cachedRootCaFingerprintPath = resolvedPath;
+            _cachedRootCaFingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(resolvedPath);
+            return _cachedRootCaFingerprint;
+        }
+
+        private static void RestartEditorRootCaDistributorIfPossible()
+        {
+            if (string.IsNullOrEmpty(_lastRootCaDistributorPath)
+                || string.IsNullOrEmpty(_lastRootCaDistributorHost)
+                || _lastRootCaDistributorPort <= 0
+                || !File.Exists(_lastRootCaDistributorPath))
+            {
+                return;
+            }
+
+            if (!StartEditorRootCaDistributor(
+                    _lastRootCaDistributorPath,
+                    _lastRootCaDistributorHost,
+                    _lastRootCaDistributorPort,
+                    out var error))
+            {
+                Debug.LogWarning("[Foxglove] Could not restart the local Root CA page after Play Mode: " + error);
+            }
         }
 
         private static void NormalizeProjectRelativePath(SerializedProperty prop)

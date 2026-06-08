@@ -46,6 +46,8 @@ namespace Unity.FoxgloveSDK.Editor
 
                 foreach (var member in type.Members)
                     ValidateMember(member, diagnostics);
+
+                ValidateTopicGroups(type, diagnostics);
             }
             return diagnostics;
         }
@@ -84,12 +86,68 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrEmpty(member.Topic) || !member.Topic.StartsWith("/", StringComparison.Ordinal))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN008", target, member.MemberName, "FoxRun topic must be absolute and start with '/'."));
 
-            if (member.RateHz <= 0f && member.PublishMode != 3)
+            if (member.HasNonFiniteRateHz)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz must be finite; use OnTrigger or a positive finite rate for periodic output."));
+            else if (member.RateHz <= 0f && member.PublishMode != 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz <= 0 disables scheduled publishing; use OnTrigger or a positive rate for periodic output."));
+
+            if (member.HasNonFiniteChangeEpsilon)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "ChangeEpsilon must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
+
+            if (member.HasNonFiniteForceIntervalSeconds)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "ForceIntervalSeconds must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
 
             if (IsBinaryLike(member.RawObservedTypeName) || IsBinaryLike(member.EmissionTypeName) || IsBinaryLike(member.CanonicalType)
                 || (member.IsArray && member.CanonicalType == "uint8"))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN010", target, member.MemberName, "Binary/blob values are not supported in the FoxRun contract path."));
+        }
+
+        private static void ValidateTopicGroups(FoxRunGenerationType type, List<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            var byTopic = type.Members
+                .Where(member => !string.IsNullOrEmpty(member.Topic))
+                .GroupBy(member => member.Topic, StringComparer.Ordinal);
+
+            foreach (var group in byTopic)
+            {
+                var schemas = group
+                    .Select(member => member.SchemaName)
+                    .Where(schema => !string.IsNullOrEmpty(schema))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                if (schemas.Count > 1)
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                        "FOXRUN002",
+                        group.Key,
+                        "",
+                        "Topic has conflicting SchemaName values across FoxRun members."));
+
+                var collision = group
+                    .GroupBy(member => member.MemberName.TrimStart('_'), StringComparer.Ordinal)
+                    .FirstOrDefault(names => names.Count() > 1);
+                if (collision != null)
+                {
+                    var first = collision.First();
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                        "FOXRUN003",
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "FoxRun member names collide after stripping leading underscores for topic '" + group.Key + "'."));
+                }
+
+                var mixedPolicy = group.Select(member => member.PublishMode).Distinct().Count() > 1
+                    || group.Select(member => member.ChangeEpsilon).Distinct().Count() > 1
+                    || group.Select(member => member.ForceIntervalSeconds).Distinct().Count() > 1;
+                if (mixedPolicy)
+                {
+                    var first = group.First();
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                        "FOXRUN005",
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "Topic '" + group.Key + "' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values."));
+                }
+            }
         }
 
         private static bool IsUnsupportedGenericMember(FoxRunGenerationMember member)

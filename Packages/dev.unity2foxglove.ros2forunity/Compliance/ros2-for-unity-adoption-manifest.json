@@ -46,7 +46,7 @@
   "legacyRuntime": {
     "releaseAsset": "Ros2ForUnity_humble_standalone_windows11.zip",
     "releaseAssetUrl": "https://github.com/RobotecAI/ros2-for-unity/releases/download/1.3.0/Ros2ForUnity_humble_standalone_windows11.zip",
-    "releaseAssetSha256": "6650D1C68335087143237963E51A87751097FBFF58D6C0A5F6F93D399674D1AF",
+    "releaseAssetSha256": "6650d1c68335087143237963e51a87751097fbff58d6c0a5f6f93d399674d1af",
     "rosDistro": "humble",
     "supportLevel": "LegacySupported",
     "distributionLevel": "ExternalOnly",
