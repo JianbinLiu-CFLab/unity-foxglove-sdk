@@ -16,8 +16,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (payload == null)
                 throw new ArgumentNullException(parameterName, "ROS 2 CDR payload must be non-null.");
-            if (payload.Length == 0)
-                throw new ArgumentException("ROS 2 CDR payload must be non-empty.", parameterName);
             if (payload.Length < 4)
                 throw new ArgumentException("ROS 2 CDR payload must include a 4-byte encapsulation header.", parameterName);
             if (payload[0] != 0x00 || payload[1] != 0x01 || payload[2] != 0x00 || payload[3] != 0x00)

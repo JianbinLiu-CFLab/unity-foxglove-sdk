@@ -214,6 +214,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public void Send(Ros2BridgeFrame frame, int timeoutMs)
         {
+            if (timeoutMs <= 0)
+                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS2 Bridge send timeout must be positive.");
             if (!TryEnqueue(frame, out var reason))
                 throw new InvalidOperationException(reason);
         }

@@ -182,6 +182,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 throw new ArgumentOutOfRangeException(nameof(length), "Fixed array length cannot be negative.");
 
             Align(8);
+            // Bounds-check after alignment so padding cannot hide a truncated fixed array.
             if (length > 0 && (long)length * 8 > _data.Length - _offset)
                 throw new InvalidDataException("ROS2 CDR fixed float64 array length exceeds the remaining payload bytes.");
 

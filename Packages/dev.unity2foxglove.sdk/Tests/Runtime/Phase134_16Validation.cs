@@ -143,6 +143,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SidecarResetsPerClientStateAndRejectsMalformedFrames()
         {
             var source = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
+            var cmake = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
+            var packageXml = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/package.xml");
 
             Check(source.Contains("class ScopedFd", StringComparison.Ordinal)
                   && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
@@ -150,15 +152,28 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
             Check(source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
                   && source.IndexOf("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
-                  > source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
-                "134-16H-2: sidecar publisher maps are scoped per client connection");
+                  < source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
+                "134-16H-2: sidecar publisher maps survive client reconnects");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
                   && source.Contains("reject frame: missing or invalid op", StringComparison.Ordinal)
-                  && source.Contains("topic must not contain newline", StringComparison.Ordinal),
-                "134-16H-3: sidecar rejects missing op fields and newline-bearing topics");
+                  && source.Contains("topic must not contain newline", StringComparison.Ordinal)
+                  && source.Contains("topic contains invalid ROS 2 characters", StringComparison.Ordinal),
+                "134-16H-3: sidecar rejects missing op fields and malformed topics");
             Check(!source.Contains("Phase 94 accepts only IPv4 loopback hosts", StringComparison.Ordinal)
                   && source.Contains("--port must be an integer in 1..65535", StringComparison.Ordinal),
                 "134-16H-4: sidecar argument errors are explicit and avoid stale phase wording");
+            Check(source.Contains("bool read_exact(", StringComparison.Ordinal)
+                  && source.Contains("const rclcpp::Node::SharedPtr & node", StringComparison.Ordinal)
+                  && source.Contains(
+                      "read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)",
+                      StringComparison.Ordinal)
+                  && source.Contains("read_raw_frame(client_fd, node)", StringComparison.Ordinal)
+                  && !source.Contains("socket read timed out", StringComparison.Ordinal),
+                "134-16H-5: sidecar spins ROS executor while waiting for idle client data");
+            Check(cmake.Contains("if(BUILD_TESTING)", StringComparison.Ordinal)
+                  && cmake.Contains("ament_add_gtest(test_bridge_smoke", StringComparison.Ordinal)
+                  && packageXml.Contains("<test_depend>ament_cmake_gtest</test_depend>", StringComparison.Ordinal),
+                "134-16H-6: sidecar package exposes a BUILD_TESTING gtest target");
         }
 
         private static void PowerShellPreflightChecksNativeExitCodes()

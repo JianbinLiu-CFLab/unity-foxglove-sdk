@@ -15,7 +15,28 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     {
         private TcpClient _client;
 
-        public bool IsConnected => _client != null && _client.Connected;
+        public bool IsConnected
+        {
+            get
+            {
+                if (_client == null || !_client.Connected)
+                    return false;
+
+                try
+                {
+                    var socket = _client.Client;
+                    return !(socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0);
+                }
+                catch (SocketException)
+                {
+                    return false;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return false;
+                }
+            }
+        }
 
         public static void ValidateLoopbackHost(string host)
         {

@@ -35,6 +35,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (candidate.Length > 1)
                 candidate = candidate.TrimEnd('/');
 
+            if (candidate != "/" && !IsValidRos2TopicName(candidate))
+            {
+                error = "ROS2 Bridge namespace contains invalid ROS 2 topic characters.";
+                return false;
+            }
+
             normalized = candidate == "/" ? string.Empty : candidate;
             return true;
         }
@@ -66,6 +72,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (candidate.Length == 0 || candidate == "/")
             {
                 error = "ROS2 Bridge topic override must resolve to a concrete topic.";
+                return false;
+            }
+            if (!IsValidRos2TopicName(candidate))
+            {
+                error = "ROS2 Bridge topic override contains invalid ROS 2 topic characters.";
                 return false;
             }
 
@@ -121,11 +132,41 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 error = "ROS2 Bridge publisher topic must resolve to a concrete topic.";
                 return false;
             }
+            if (!IsValidRos2TopicName(normalizedPublisherTopic))
+            {
+                error = "ROS2 Bridge publisher topic contains invalid ROS 2 topic characters.";
+                return false;
+            }
 
             effectiveTopic = string.IsNullOrEmpty(normalizedNamespace)
                 ? normalizedPublisherTopic
                 : CollapseSlashes(normalizedNamespace + "/" + normalizedPublisherTopic.TrimStart('/'));
             return !string.IsNullOrEmpty(effectiveTopic);
+        }
+
+        public static bool IsValidRos2TopicName(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value[0] != '/')
+                return false;
+
+            var tokenHasCharacters = false;
+            for (var i = 1; i < value.Length; i++)
+            {
+                var ch = value[i];
+                if (ch == '/')
+                {
+                    if (!tokenHasCharacters)
+                        return false;
+                    tokenHasCharacters = false;
+                    continue;
+                }
+
+                if (!IsRos2TopicTokenCharacter(ch))
+                    return false;
+                tokenHasCharacters = true;
+            }
+
+            return tokenHasCharacters;
         }
 
         private static string CollapseSlashes(string value)
@@ -158,5 +199,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private static bool ContainsNewline(string value)
             => value != null && (value.IndexOf('\r') >= 0 || value.IndexOf('\n') >= 0);
+
+        private static bool IsRos2TopicTokenCharacter(char ch)
+            => ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
     }
 }

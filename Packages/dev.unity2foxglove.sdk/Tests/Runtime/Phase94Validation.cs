@@ -95,32 +95,35 @@ namespace Unity.FoxgloveSDK.Tests
 
             var headerJson = Encoding.UTF8.GetString(bytes, 16, checked((int)headerLength));
             var header = JObject.Parse(headerJson);
-            Check(header["topic"]?.ToString() == "/unity/tf", "94A-7: JSON header contains topic");
+            Check(header["op"]?.ToString() == "publish", "94A-7: JSON header declares publish op");
+            Check(header["topic"]?.ToString() == "/unity/tf", "94A-8: JSON header contains topic");
             Check(header["schemaName"]?.ToString() == "foxglove_msgs/msg/FrameTransform",
-                "94A-8: JSON header contains schemaName");
-            Check(header["encoding"]?.ToString() == "cdr", "94A-9: JSON header contains cdr encoding");
-            Check(header["logTimeNs"]?.Value<ulong>() == SampleTimeNs, "94A-10: JSON header contains logTimeNs");
-            Check(header["sequence"]?.Value<ulong>() == 7UL, "94A-11: JSON header contains sequence");
+                "94A-9: JSON header contains schemaName");
+            Check(header["encoding"]?.ToString() == "cdr", "94A-10: JSON header contains cdr encoding");
+            Check(header["logTimeNs"]?.Value<ulong>() == SampleTimeNs, "94A-11: JSON header contains logTimeNs");
+            Check(header["sequence"]?.Value<ulong>() == 7UL, "94A-12: JSON header contains sequence");
             Check(frame.Payload.SequenceEqual(bytes.Skip(16 + checked((int)headerLength))),
-                "94A-12: payload bytes are appended unchanged");
+                "94A-13: payload bytes are appended unchanged");
         }
 
         private static void VerifyFrameValidation()
         {
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[] { 1 })),
                 "94B-1: frame rejects topics without leading slash");
+            Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/bad topic", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[] { 1 })),
+                "94B-2: frame rejects topics with invalid ROS 2 characters");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/Missing", "cdr", 1, 1, new byte[] { 1 })),
-                "94B-2: frame rejects unknown ROS2 schema names");
+                "94B-3: frame rejects unknown ROS2 schema names");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "json", 1, 1, new byte[] { 1 })),
-                "94B-3: frame rejects non-cdr encoding");
+                "94B-4: frame rejects non-cdr encoding");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, Array.Empty<byte>())),
-                "94B-4: frame rejects empty payload");
+                "94B-5: frame rejects empty payload");
             Check(Throws<ArgumentException>(() => Ros2BridgeFrameWriter.Write(new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[Ros2BridgeFrameWriter.MaxPayloadBytes + 1]))),
-                "94B-5: frame writer rejects oversized payloads");
+                "94B-6: frame writer rejects oversized payloads");
             Check(Throws<ArgumentException>(() => Ros2BridgeTcpClient.ValidateLoopbackHost("0.0.0.0")),
-                "94B-6: bridge rejects wildcard host");
+                "94B-7: bridge rejects wildcard host");
             Check(Throws<ArgumentException>(() => Ros2BridgeTcpClient.ValidateLoopbackHost("192.168.1.10")),
-                "94B-7: bridge rejects LAN host");
+                "94B-8: bridge rejects LAN host");
         }
 
         private static void VerifyTcpClient()
@@ -164,23 +167,25 @@ namespace Unity.FoxgloveSDK.Tests
                     1,
                     new byte[] { 0, 1, 0, 0, 1, 2, 3 });
                 sink.Send(frame, timeoutMs: LoopbackTimeoutMs);
+                Check(done.Wait(LoopbackTimeoutMs), "94C-2: loopback server receives one frame");
+                if (serverError != null)
+                    throw new Exception("94C server failed: " + serverError.Message, serverError);
+                Check(WaitUntil(() => !sink.IsConnected, LoopbackTimeoutMs),
+                    "94C-3: TCP client observes remote close");
                 sink.Disconnect();
-                Check(!sink.IsConnected, "94C-2: TCP client disconnect closes socket state");
+                Check(!sink.IsConnected, "94C-4: TCP client disconnect closes socket state");
             }
 
-            Check(done.Wait(LoopbackTimeoutMs), "94C-3: loopback server receives one frame");
-            if (serverError != null)
-                throw new Exception("94C server failed: " + serverError.Message, serverError);
             Check(received.Count == 1 && received[0].Topic == "/unity/tf",
-                "94C-4: loopback server decodes sent frame topic");
+                "94C-5: loopback server decodes sent frame topic");
             Check(received[0].SchemaName == "foxglove_msgs/msg/FrameTransform" && received[0].Payload.SequenceEqual(new byte[] { 0, 1, 0, 0, 1, 2, 3 }),
-                "94C-5: loopback server decodes schema and payload");
+                "94C-6: loopback server decodes schema and payload");
 
             using var disconnected = new Ros2BridgeTcpClient();
             Check(Throws<InvalidOperationException>(() => disconnected.Send(
                 new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[] { 1 }),
                 timeoutMs: 1)),
-                "94C-6: send while disconnected throws");
+                "94C-7: send while disconnected throws");
         }
 
         private static void VerifyPublisherWrapper()
@@ -370,6 +375,19 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 return true;
             }
+        }
+
+        private static bool WaitUntil(Func<bool> condition, int timeoutMs)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                    return true;
+                Thread.Sleep(10);
+            }
+
+            return condition();
         }
 
         private static void Check(bool condition, string name)

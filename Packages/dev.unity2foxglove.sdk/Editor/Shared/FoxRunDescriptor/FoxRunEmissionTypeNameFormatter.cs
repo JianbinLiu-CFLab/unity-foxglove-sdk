@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var name = (typeName ?? string.Empty).Trim();
             if (name.Length == 0)
-                return "object";
+                return "<empty-type>";
 
             name = name.Replace("global::", string.Empty);
             name = name.Replace("+", ".");

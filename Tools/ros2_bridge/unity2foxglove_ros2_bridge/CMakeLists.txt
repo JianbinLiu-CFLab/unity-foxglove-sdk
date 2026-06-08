@@ -36,4 +36,11 @@ install(DIRECTORY scripts
   USE_SOURCE_PERMISSIONS
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_bridge_smoke
+    test/test_bridge_smoke.cpp
+  )
+endif()
+
 ament_package()

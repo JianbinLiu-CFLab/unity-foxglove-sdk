@@ -13,3 +13,4 @@ FOXRUN010 | FoxRun | Warning | Binary/blob values are unsupported in the FoxRun 
 FOXRUN011 | FoxRun | Error | FoxRun declaring class name is required.
 FOXRUN012 | FoxRun | Error | FoxRun member name is required.
 FOXRUN013 | FoxRun | Error | FoxRun publish mode must be between 0 and 3.
+FOXRUN014 | FoxRun | Error | FoxRun member kind must be field or property.

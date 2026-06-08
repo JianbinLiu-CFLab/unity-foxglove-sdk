@@ -139,6 +139,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && stringReader.ReadByteArray().SequenceEqual(new byte[] { 3, 4, 5 })
                   && stringReader.ReadFloat64Sequence().SequenceEqual(new[] { 0.25, 0.5 }),
                 "91B-5: string, uint8 sequence, and float64 sequence round-trip");
+
+            Check(Throws<InvalidDataException>(() => new Ros2CdrTestReader(new byte[] { 0, 1, 0, 0, 2 }).ReadBool()),
+                "91B-6: test CDR reader rejects non-canonical bool values");
+            Check(Throws<InvalidDataException>(() => new Ros2CdrTestReader(new byte[] { 0, 1, 0, 0, 0, 0, 0, 0 }).ReadString()),
+                "91B-7: test CDR reader rejects zero-length strings without trailing NUL");
+            Check(Throws<InvalidDataException>(() => new Ros2CdrTestReader(new byte[] { 0, 1, 0, 0, 2, 0, 0, 0, 104, 105 }).ReadString()),
+                "91B-8: test CDR reader rejects strings missing trailing NUL");
+            Check(Throws<ArgumentOutOfRangeException>(() => new Ros2CdrTestReader(new Ros2CdrWriter().ToArray()).ReadFloat64Fixed(-1)),
+                "91B-9: test CDR reader rejects negative fixed float64 lengths");
+            Check(Throws<InvalidDataException>(() => new Ros2CdrTestReader(new Ros2CdrWriter().ToArray()).ReadFloat64Fixed(1)),
+                "91B-10: test CDR reader rejects fixed float64 arrays beyond payload bounds");
         }
 
         private static void VerifyPayloadValidation()
