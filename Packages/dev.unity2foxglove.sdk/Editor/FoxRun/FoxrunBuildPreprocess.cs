@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Editor
                 Debug.Log("[FoxrunBuildPreprocess] No [FoxRun] types found.");
                 if (File.Exists(linkPath))
                 {
-                    File.Delete(linkPath);
+                    RemoveStaleLinkXml(linkPath);
                     Debug.Log("[FoxrunBuildPreprocess] Removed stale FoxRun_link.xml.");
                 }
                 return;
@@ -223,6 +223,24 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             Debug.Log($"[FoxrunBuildPreprocess] Wrote FoxRun_link.xml with {types.Count} type(s)");
+        }
+
+        private static void RemoveStaleLinkXml(string linkPath)
+        {
+            try
+            {
+                File.Delete(linkPath);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                throw new BuildFailedException(
+                    "[FoxRun] IL2CPP preservation cleanup failed.\n" +
+                    "The build was stopped because a stale Assets/FoxRun_link.xml\n" +
+                    "could not be removed after all [FoxRun] types were removed.\n\n" +
+                    "Details:\n" +
+                    "  - Failed at: delete-stale-link\n" +
+                    $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
+            }
         }
 
         private static void WriteTextIfChanged(string path, string text)
