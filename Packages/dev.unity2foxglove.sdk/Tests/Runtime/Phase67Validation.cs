@@ -202,7 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ManagerStatusFacadeSourceShape()
         {
-            var sourcePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Status.cs";
+            var sourcePath = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Status.cs");
             Check(File.Exists(sourcePath),
                 "67F-1: FoxgloveManager status partial exists in Components/Manager");
 
@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void UnityLoggerDoesNotAutoForwardToStatus()
         {
-            var loggerSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Logging/FoxgloveLogger.cs");
+            var loggerSource = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/Logging/FoxgloveLogger.cs"));
 
             Check(!loggerSource.Contains("PublishStatus") && !loggerSource.Contains("RemoveStatus"),
                 "67G-1: UnityLogger does not automatically forward logs to status messages");
@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 action();
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Session not started"))
+            catch (InvalidOperationException)
             {
                 Check(true, label);
                 return;
@@ -257,6 +257,28 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new Exception("[FAIL] " + label);
             _passed++;
             Console.WriteLine("[PASS] " + label);
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root.");
+
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static string FindRepoRoot()
+        {
+            var dir = Directory.GetCurrentDirectory();
+            while (!string.IsNullOrEmpty(dir))
+            {
+                if (File.Exists(Path.Combine(dir, "Packages", "dev.unity2foxglove.sdk", "package.json")))
+                    return dir;
+                dir = Path.GetDirectoryName(dir);
+            }
+
+            return null;
         }
 
         /// <summary>

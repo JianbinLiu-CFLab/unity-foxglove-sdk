@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
@@ -143,15 +144,7 @@ namespace Unity.FoxgloveSDK.Tests
             var resp = BinaryEncoding.EncodeServerServiceCallResponse(5, 10, "json", payload);
             Assert(resp[0] == ServerOpcode.ServiceCallResponse, "Response opcode correct");
 
-            // Build a client request frame manually: opcode(2) + serviceId + callId + encodingLen + encoding + payload
-            var enc = Encoding.UTF8.GetBytes("json");
-            var req = new byte[1 + 4 + 4 + 4 + enc.Length + payload.Length];
-            req[0] = ClientOpcode.ServiceCallRequest;
-            BinaryEncoding.WriteU32LE(req, 1, 5);
-            BinaryEncoding.WriteU32LE(req, 5, 10);
-            BinaryEncoding.WriteU32LE(req, 9, (uint)enc.Length);
-            Buffer.BlockCopy(enc, 0, req, 13, enc.Length);
-            Buffer.BlockCopy(payload, 0, req, 13 + enc.Length, payload.Length);
+            var req = EncodeClientServiceCallRequest(5, 10, "json", payload);
 
             var decoded = BinaryEncoding.TryDecodeClientServiceCallRequest(req,
                 out var sid, out var cid, out var decEnc, out var pl);
@@ -207,7 +200,7 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private sealed class Phase6FakeTransport : IFoxgloveTransport
         {
-            public bool IsRunning => true;
+            public bool IsRunning { get; private set; }
             public event Action<uint> OnClientConnected;
             public event Action<uint> OnClientDisconnected;
             public event Action<uint, string> OnTextReceived;
@@ -216,9 +209,9 @@ namespace Unity.FoxgloveSDK.Tests
             private readonly Dictionary<uint, List<byte[]>> _sentBinaries = new();
             public readonly List<string> BroadcastTexts = new();
 
-            public void Start(string host, int port) { }
-            public void Stop() { }
-            public void Dispose() { }
+            public void Start(string host, int port) => IsRunning = true;
+            public void Stop() => IsRunning = false;
+            public void Dispose() => Stop();
             public void SendText(uint clientId, string json)
             {
                 if (!_sentTexts.ContainsKey(clientId)) _sentTexts[clientId] = new();
@@ -233,6 +226,11 @@ namespace Unity.FoxgloveSDK.Tests
             public void BroadcastBinary(byte[] data) { }
             public List<string> SentTexts(uint clientId) => _sentTexts.TryGetValue(clientId, out var l) ? l : new();
             public List<byte[]> SentBinaries(uint clientId) => _sentBinaries.TryGetValue(clientId, out var l) ? l : new();
+            public void ClearSentTexts(uint clientId)
+            {
+                if (_sentTexts.TryGetValue(clientId, out var l))
+                    l.Clear();
+            }
             public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
             public void SimulateBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
@@ -254,7 +252,7 @@ namespace Unity.FoxgloveSDK.Tests
             fake.SimulateText(1, "{\"op\":\"subscribeParameterUpdates\",\"parameterNames\":[]}");
             Assert(session.Parameters.TrySetFromClient("/speed", 200), "param change successful");
             // getParameters should return updated value
-            fake.SentTexts(1).Clear();
+            fake.ClearSentTexts(1);
             fake.SimulateText(1, "{\"op\":\"getParameters\",\"parameterNames\":[],\"id\":\"r1\"}");
             var response = fake.SentTexts(1).Last();
             var obj = JObject.Parse(response);
@@ -328,11 +326,8 @@ namespace Unity.FoxgloveSDK.Tests
             var session = new FoxgloveSession("Test", fake);
             fake.SimulateConnect(1);
 
-            var request = BinaryEncoding.EncodeServerServiceCallResponse(999, 1, "json",
-                Encoding.UTF8.GetBytes("{}"));
-            request[0] = ClientOpcode.ServiceCallRequest;
-
-            fake.SimulateBinary(1, request);
+            fake.SimulateBinary(1, EncodeClientServiceCallRequest(999, 1, "json",
+                Encoding.UTF8.GetBytes("{}")));
             var sent = fake.SentTexts(1);
             var failure = JObject.Parse(sent.Last());
             Assert(failure["op"]?.ToString() == "serviceCallFailure", "Unknown service → failure");
@@ -347,7 +342,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var fake = new Phase6FakeTransport();
             var session = new FoxgloveSession("Test", fake);
-            session.Services.Register(new ServiceDescriptor
+            session.RegisterService(new ServiceDescriptor
             {
                 Name = "/test", Type = "/test",
                 Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
@@ -355,9 +350,7 @@ namespace Unity.FoxgloveSDK.Tests
             });
             fake.SimulateConnect(1);
 
-            var req = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "protobuf", new byte[] { 1 });
-            req[0] = ClientOpcode.ServiceCallRequest;
-            fake.SimulateBinary(1, req);
+            fake.SimulateBinary(1, EncodeClientServiceCallRequest(1, 1, "protobuf", new byte[] { 1 }));
             var sent = fake.SentTexts(1);
             Assert(sent.Last().Contains("Unsupported encoding"), "Wrong encoding → failure");
         }
@@ -370,7 +363,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var fake = new Phase6FakeTransport();
             var session = new FoxgloveSession("Test", fake);
-            session.Services.Register(new ServiceDescriptor
+            session.RegisterService(new ServiceDescriptor
             {
                 Name = "/test", Type = "/test",
                 Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
@@ -379,9 +372,7 @@ namespace Unity.FoxgloveSDK.Tests
             fake.SimulateConnect(1);
 
             var payload = Encoding.UTF8.GetBytes("{}");
-            var frame = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "json", payload);
-            frame[0] = ClientOpcode.ServiceCallRequest;
-            fake.SimulateBinary(1, frame);
+            fake.SimulateBinary(1, EncodeClientServiceCallRequest(1, 1, "json", payload));
 
             // Complete the pending call
             session.Services.CompleteResponse(1, 1, "json", Encoding.UTF8.GetBytes("{\"ok\":true}"));
@@ -400,7 +391,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var fake = new Phase6FakeTransport();
             var session = new FoxgloveSession("Test", fake);
-            session.Services.Register(new ServiceDescriptor
+            session.RegisterService(new ServiceDescriptor
             {
                 Name = "/test", Type = "/test",
                 Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
@@ -409,18 +400,35 @@ namespace Unity.FoxgloveSDK.Tests
             fake.SimulateConnect(1);
 
             var payload = Encoding.UTF8.GetBytes("{}");
-            var frame = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "json", payload);
-            frame[0] = ClientOpcode.ServiceCallRequest;
-            fake.SimulateBinary(1, frame);
+            fake.SimulateBinary(1, EncodeClientServiceCallRequest(1, 1, "json", payload));
 
-            // Manually set CreatedAt to simulate timeout
-            foreach (var call in session.Services.DrainCompleted()) { } // drain nothing
-            // Hack: register a call that's already timed out by setting completion externally
-            // For this test, we verify the timeout code path exists and doesn't crash
-            session.Services.SweepTimeouts(TimeSpan.Zero); // Zero timeout → all pending timed out
+            session.Services.SweepTimeouts(TimeSpan.FromDays(1));
+            Assert(!session.Services.DrainCompleted().Any(),
+                "Large timeout leaves fresh service call pending");
+
+            Thread.Sleep(20);
+            session.Services.SweepTimeouts(TimeSpan.FromMilliseconds(1));
             session.DrainServiceCalls();
             var texts = fake.SentTexts(1);
             Assert(texts.Any(t => t.Contains("serviceCallFailure")), "Timeout produces serviceCallFailure");
+        }
+
+        private static byte[] EncodeClientServiceCallRequest(
+            uint serviceId,
+            uint callId,
+            string encoding,
+            byte[] payload)
+        {
+            var enc = Encoding.UTF8.GetBytes(encoding ?? "");
+            payload ??= Array.Empty<byte>();
+            var req = new byte[1 + 4 + 4 + 4 + enc.Length + payload.Length];
+            req[0] = ClientOpcode.ServiceCallRequest;
+            BinaryEncoding.WriteU32LE(req, 1, serviceId);
+            BinaryEncoding.WriteU32LE(req, 5, callId);
+            BinaryEncoding.WriteU32LE(req, 9, (uint)enc.Length);
+            Buffer.BlockCopy(enc, 0, req, 13, enc.Length);
+            Buffer.BlockCopy(payload, 0, req, 13 + enc.Length, payload.Length);
+            return req;
         }
     }
 }

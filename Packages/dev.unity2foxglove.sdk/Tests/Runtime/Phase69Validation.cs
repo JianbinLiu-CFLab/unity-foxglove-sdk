@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new Exception(name);
+                throw new Exception("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine("[PASS] " + name);

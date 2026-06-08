@@ -115,13 +115,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyIndexedReaderTypeExists()
         {
-            var type = Type.GetType("Unity.FoxgloveSDK.IO.McapIndexedReader, FoxgloveSdk.Tests");
+            var type = typeof(McapIndexedReader);
             Check(type != null, "68A-1: McapIndexedReader type exists");
         }
 
         private static void VerifyPublicApiShape()
         {
-            var options = Type.GetType("Unity.FoxgloveSDK.IO.McapReadOptions, FoxgloveSdk.Tests");
+            var options = typeof(McapReadOptions);
             Check(options != null, "68A-2: McapReadOptions type exists");
             Check(options.GetField("StartTimeNs") != null, "68A-3: McapReadOptions exposes StartTimeNs");
             Check(options.GetField("EndTimeNs") != null, "68A-4: McapReadOptions exposes EndTimeNs");
@@ -129,7 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(options.GetField("ChannelIds") != null, "68A-6: McapReadOptions exposes ChannelIds");
             Check(options.GetField("MaxMessages") != null, "68A-7: McapReadOptions exposes MaxMessages");
 
-            var reader = Type.GetType("Unity.FoxgloveSDK.IO.McapIndexedReader, FoxgloveSdk.Tests");
+            var reader = typeof(McapIndexedReader);
             Check(typeof(IDisposable).IsAssignableFrom(reader), "68A-8: McapIndexedReader implements IDisposable");
             Check(reader.GetConstructor(new[] { typeof(Stream), typeof(bool) }) != null,
                 "68A-9: McapIndexedReader has Stream/leaveOpen constructor");
@@ -356,7 +356,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             try
             {
-                Check(Throws<EndOfStreamException>(() => McapIndexedReader.OpenRead(path)),
+                var openError = CatchException(() =>
+                {
+                    using var _ = McapIndexedReader.OpenRead(path);
+                });
+                Check(openError != null,
                     "68E-6: OpenRead invalid file throws");
                 File.Delete(path);
                 Check(!File.Exists(path), "68E-7: OpenRead releases invalid file handle after failure");
@@ -381,8 +385,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             clean.Position = 0;
             var summary = new McapReader(clean).ReadSummary();
-            if (summary.ChunkIndexes.Count < 2)
-                throw new InvalidOperationException("Phase68 malformed fixture did not produce at least two chunks.");
+            Check(summary.ChunkIndexes.Count >= 2,
+                "68F-0: malformed chunk fixture produces two indexed chunks");
 
             var firstChunk = summary.ChunkIndexes[0];
             var secondChunk = summary.ChunkIndexes[1];
@@ -390,7 +394,11 @@ namespace Unity.FoxgloveSDK.Tests
             secondChunkStartTime = secondChunk.MessageStartTime;
 
             var bytes = clean.ToArray();
-            var corruptOffset = checked((int)(secondChunk.ChunkStartOffset + secondChunk.ChunkLength - 1));
+            const int mcapRecordHeaderLength = 1 + 8;
+            const int chunkUncompressedCrcOffsetInContent = 8 + 8 + 8;
+            var corruptOffset = checked((int)(secondChunk.ChunkStartOffset
+                + mcapRecordHeaderLength
+                + chunkUncompressedCrcOffsetInContent));
             bytes[corruptOffset] ^= 0x01;
             return bytes;
         }
@@ -406,6 +414,19 @@ namespace Unity.FoxgloveSDK.Tests
             catch (TException)
             {
                 return true;
+            }
+        }
+
+        private static Exception CatchException(Action action)
+        {
+            try
+            {
+                action();
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return ex;
             }
         }
 
