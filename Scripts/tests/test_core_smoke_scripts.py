@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Regression tests for core smoke-script failure handling.
+
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import os
+import ssl
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+import urllib.error
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SMOKE = ROOT / "Scripts" / "smoke"
+
+
+def load_smoke_module(name: str, relative: str):
+    """Load one smoke helper with Scripts/smoke on sys.path for sibling imports."""
+    path = SMOKE / relative
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    original_path = list(sys.path)
+    sys.path.insert(0, str(SMOKE))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = original_path
+    return module
+
+
+class NeverAdvertisesWebSocket:
+    """Fake websocket whose receive call outlives the advertise timeout."""
+
+    async def recv(self):
+        """Sleep longer than any test advertise timeout."""
+        await asyncio.sleep(60)
+
+
+class CoreSmokeScriptTests(unittest.TestCase):
+    """Regression coverage for local smoke helper edge cases."""
+
+    def test_topic_waiters_raise_topic_not_found_on_advertise_timeout(self) -> None:
+        """Topic probes should return their structured timeout verdict path."""
+        cases = [
+            ("topic_rate_probe_under_test", "topic_rate_probe.py"),
+            ("pointcloud_qos_probe_under_test", "pointcloud_qos_probe.py"),
+            ("compressed_pointcloud_draco_probe_under_test", "compressed_pointcloud_draco_probe.py"),
+        ]
+
+        for name, relative in cases:
+            with self.subTest(relative=relative):
+                module = load_smoke_module(name, relative)
+                with self.assertRaises(module.TopicNotFoundError):
+                    asyncio.run(module.wait_for_channel(NeverAdvertisesWebSocket(), "/missing", 0.01))
+
+    def test_phase139b_launch_backend_enforces_startup_timeout_without_stdout(self) -> None:
+        """A silent child process should not block past startup_timeout."""
+        module = load_smoke_module("phase139b_under_test", "phase139b_remote_data_loader_acceptance.py")
+
+        class BlockingStdout:
+            """Stdout stub whose readline blocks like a quiet child process."""
+
+            def readline(self):
+                """Block briefly before returning no line."""
+                time.sleep(0.25)
+                return ""
+
+        class SilentProcess:
+            """Process stub that stays alive and never emits startup output."""
+
+            stdout = BlockingStdout()
+
+            def poll(self):
+                """Report that the process is still running."""
+                return None
+
+            def terminate(self):
+                """Record termination requested by cleanup."""
+                self.terminated = True
+
+        args = SimpleNamespace(
+            mcap="input.mcap",
+            host="127.0.0.1",
+            port=0,
+            source_id="phase139b-source",
+            name="phase139b",
+            max_data_bytes=None,
+            token="",
+            startup_timeout=0.02,
+        )
+
+        with mock.patch.object(module.subprocess, "Popen", return_value=SilentProcess()):
+            started = time.monotonic()
+            with self.assertRaises(RuntimeError):
+                module.launch_backend(args, ROOT)
+            elapsed = time.monotonic() - started
+
+        self.assertLess(elapsed, 0.12)
+
+    def test_phase139b_windows_stop_backend_does_not_raise_on_wait_timeout(self) -> None:
+        """Windows cleanup should not mask the original smoke result."""
+        module = load_smoke_module("phase139b_stop_under_test", "phase139b_remote_data_loader_acceptance.py")
+
+        class SlowProcess:
+            """Process stub whose first wait times out before kill."""
+
+            pid = 12345
+
+            def __init__(self):
+                """Initialize kill and wait tracking."""
+                self.killed = False
+                self.waits = 0
+
+            def poll(self):
+                """Report that the process is still running."""
+                return None
+
+            def wait(self, timeout=None):
+                """Timeout before kill and succeed after kill."""
+                self.waits += 1
+                if not self.killed:
+                    raise subprocess.TimeoutExpired(["fake"], timeout)
+                return 0
+
+            def kill(self):
+                """Record that the process was force-killed."""
+                self.killed = True
+
+        process = SlowProcess()
+        with mock.patch.object(module.os, "name", "nt"):
+            with mock.patch.object(module.subprocess, "run"):
+                module.stop_backend(process)
+
+        self.assertTrue(process.killed)
+
+    def test_compressed_mcap_inspector_reports_unsupported_compression_first(self) -> None:
+        """Compressed chunks should produce an unsupported-compression verdict, not Draco failure noise."""
+        module = load_smoke_module("compressed_mcap_under_test", "compressed_pointcloud_mcap_inspect.py")
+        parsed = module.ParsedMcap(schemas={}, channels={}, messages=[], unsupported_chunks=1)
+
+        ok, lines = module.inspect_mcap(parsed, module.RAW_TOPIC, module.COMPRESSED_TOPIC)
+
+        self.assertFalse(ok)
+        self.assertIn("unsupported", lines[0].lower())
+        self.assertFalse(any("no compressed payload decoded" in line for line in lines))
+
+    def test_phase139_e2e_supports_insecure_wss_context(self) -> None:
+        """The e2e helper should support local self-signed WSS smoke tests."""
+        module = load_smoke_module("phase139_e2e_under_test", "phase139_e2e_integration_smoke.py")
+        args = module.build_parser().parse_args(["--url", "wss://127.0.0.1:8765", "--insecure"])
+
+        context = module.build_ssl_context(args.url, args.insecure)
+
+        self.assertTrue(args.insecure)
+        self.assertIsNotNone(context)
+        self.assertFalse(context.check_hostname)
+        self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+
+    def test_phase34_fixture_constants_are_checked_without_assert(self) -> None:
+        """Optimized Python should still enforce load-bearing fixture constants."""
+        module = load_smoke_module("phase34_under_test", "phase34_attachment_mcap.py")
+
+        with mock.patch.object(module, "CHANNEL_ID", 2):
+            with self.assertRaises(ValueError):
+                module.validate_fixture_constants()
+
+    def test_phase110_import_does_not_exit_when_ros2_env_helper_is_missing(self) -> None:
+        """Importing the helper as a module should not terminate a composite runner."""
+        path = SMOKE / "phase110_string_smoke_acceptance.py"
+        spec = importlib.util.spec_from_file_location("phase110_import_under_test", path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        original_path = list(sys.path)
+        sys.path = [entry for entry in sys.path if Path(entry or os.getcwd()).resolve() != SMOKE.resolve()]
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path[:] = original_path
+
+        self.assertTrue(hasattr(module, "main"))
+
+    def test_phase139d_loopback_reports_url_errors_without_traceback(self) -> None:
+        """Unity cursor endpoint connection failures should return structured errors."""
+        module = load_smoke_module("phase139d_url_error_under_test", "phase139d_unity_cursor_bridge_acceptance.py")
+
+        with mock.patch.object(module.urllib.request, "urlopen", side_effect=urllib.error.URLError("refused")):
+            post = module.post_cursor("http://127.0.0.1:1/v1/replay-cursor", "", {}, 0.01)
+            state = module.get_unity_state("http://127.0.0.1:1/v1/replay-cursor", "", 0.01)
+
+        self.assertEqual(-1, post["status"])
+        self.assertIn("refused", post["body"])
+        self.assertEqual(-1, state["status"])
+        self.assertIn("refused", state["body"])
+
+    def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
+        """RViz2 topic patching should not silently leave the default /points topic."""
+        module = load_smoke_module("phase138l_rviz_under_test", "launch_phase138l_rviz2.py")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_config = root / "base.rviz"
+            base_config.write_text("Fixed Frame: map\nValue: /not-points\n", encoding="utf-8")
+
+            with self.assertRaises(RuntimeError):
+                module.write_runtime_rviz_config(base_config, root, "/unity/point_cloud2", "map")
+
+    def test_phase138m_republisher_closes_parent_log_handle_after_spawn(self) -> None:
+        """The parent process should not retain the republisher log handle."""
+        module = load_smoke_module("phase138m_log_under_test", "launch_phase138m_rviz2.py")
+
+        class FakeLog:
+            """Writable log stub that records close calls."""
+
+            def __init__(self):
+                """Initialize close tracking."""
+                self.closed = False
+
+            def write(self, _text):
+                """Accept writes from subprocess setup."""
+                return None
+
+            def close(self):
+                """Record close."""
+                self.closed = True
+
+        class FakeProcess:
+            """Process stub that stays alive after spawn."""
+
+            pid = 42
+
+            def poll(self):
+                """Report a running child."""
+                return None
+
+        fake_log = FakeLog()
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "republisher.log"
+            with mock.patch.object(module.pathlib.Path, "open", return_value=fake_log):
+                with mock.patch.object(module.subprocess, "Popen", return_value=FakeProcess()):
+                    with mock.patch.object(module.time, "sleep"):
+                        module.launch_image_republisher(Path(sys.executable), {}, "/camera/compressed", "/camera", log_path)
+
+        self.assertTrue(fake_log.closed)
+
+    def test_phase138m_cleanup_escapes_powershell_wildcards(self) -> None:
+        """PowerShell cleanup should escape wildcard characters in paths before -like matching."""
+        module = load_smoke_module("phase138m_cleanup_under_test", "launch_phase138m_rviz2.py")
+        commands: list[str] = []
+
+        def capture_run(args, **_kwargs):
+            """Capture the PowerShell command text."""
+            commands.append(args[-1])
+            return SimpleNamespace(stdout="", returncode=0)
+
+        with mock.patch.object(module.os, "name", "nt"):
+            with mock.patch.object(module.subprocess, "run", side_effect=capture_run):
+                module.cleanup_stale_processes(Path("C:/project[1]/script.py"), Path("C:/project[1]/view.rviz"), "map", "cam[1]")
+
+        self.assertEqual(1, len(commands))
+        self.assertIn("WildcardPattern", commands[0])
+
+    def test_phase138_inline_subscribers_use_monotonic_deadlines(self) -> None:
+        """Inline ROS2 subscriber deadlines should use monotonic time."""
+        for relative in ("phase138s_imu_native_dds_acceptance.py", "phase138t_camera_raw_image_dds_acceptance.py"):
+            with self.subTest(relative=relative):
+                source = (SMOKE / relative).read_text(encoding="utf-8")
+                self.assertNotIn("deadline = time.time() + spin_seconds", source)
+                self.assertNotIn("while time.time() < deadline", source)
+                self.assertIn("deadline = time.monotonic() + spin_seconds", source)
+
+    def test_phase138b_rejects_cmd_percent_expansion_in_vsdev_path(self) -> None:
+        """VsDevCmd.bat shell embedding should reject percent expansion."""
+        module = load_smoke_module("phase138b_cmd_under_test", "phase138b_r2fu_jazzy_windows_build.py")
+
+        with self.assertRaises(module.Phase138BError):
+            module.reject_cmd_shell_unsafe_path("VsDevCmd.bat", Path(r"C:\Tools\%COMSPEC%\VsDevCmd.bat"))
+
+    def test_bridge_shell_preflight_reports_missing_foxglove_msgs(self) -> None:
+        """The shell bridge sample should explain missing foxglove_msgs."""
+        script = ROOT / "Tools" / "ros2_bridge" / "unity2foxglove_ros2_bridge" / "scripts" / "run_bridge_sample.sh"
+        source = script.read_text(encoding="utf-8")
+
+        self.assertIn("if ! ros2 pkg prefix foxglove_msgs", source)
+        self.assertIn("foxglove_msgs is not installed", source)
+
+    def test_bridge_powershell_preserves_ros2_error_output(self) -> None:
+        """The PowerShell bridge sample should not discard ros2 diagnostics."""
+        script = ROOT / "Tools" / "ros2_bridge" / "unity2foxglove_ros2_bridge" / "scripts" / "run_bridge_sample.ps1"
+        source = script.read_text(encoding="utf-8")
+
+        self.assertNotIn("| Out-Null", source)
+        self.assertIn("$output", source)
+
+    def test_phase138t_cleanup_uses_configured_camera_frame(self) -> None:
+        """Camera raw RViz cleanup should not hardcode os_sensor."""
+        source = (SMOKE / "launch_phase138t_camera_raw_rviz2.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("--child-frame-id os_sensor", source)
+        self.assertNotIn("child_frame_id: 'os_sensor'", source)
+
+
+if __name__ == "__main__":
+    unittest.main()

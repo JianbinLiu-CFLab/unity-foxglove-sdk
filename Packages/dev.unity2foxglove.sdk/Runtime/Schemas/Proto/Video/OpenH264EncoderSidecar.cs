@@ -314,7 +314,7 @@ namespace Foxglove.Schemas.Video
                         return;
                     }
 
-                    EnqueueAccessUnit(payload);
+                    AcceptHelperAccessUnit(payload);
                 }
             }
             catch (OperationCanceledException)
@@ -408,6 +408,17 @@ namespace Foxglove.Schemas.Video
                 Interlocked.Increment(ref _outputCount);
                 Interlocked.Increment(ref _accessUnitsReceived);
             }
+        }
+
+        internal void AcceptHelperAccessUnit(byte[] accessUnit)
+        {
+            if (accessUnit == null)
+                throw new ArgumentNullException(nameof(accessUnit));
+
+            if (accessUnit.Length == 0)
+                throw new ArgumentException("OpenH264 access unit must not be empty.", nameof(accessUnit));
+
+            EnqueueAccessUnit(accessUnit);
         }
 
         private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, CancellationToken token)

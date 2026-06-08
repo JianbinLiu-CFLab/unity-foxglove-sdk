@@ -32,7 +32,13 @@ class Program
             int port = 8765;
             var portIdx = argList.IndexOf("--port");
             if (portIdx >= 0 && portIdx + 1 < argList.Count)
-                int.TryParse(argList[portIdx + 1], out port);
+            {
+                if (!int.TryParse(argList[portIdx + 1], out port))
+                {
+                    Console.Error.WriteLine("--port must be an integer.");
+                    return 1;
+                }
+            }
 
             var demo = argList.Contains("--demo");
             var demo3d = argList.Contains("--demo3d");
@@ -163,6 +169,13 @@ class Program
                 return 1;
             }
         }
+        var unknownFlag = argList.FirstOrDefault(IsUnknownDefaultFlag);
+        if (unknownFlag != null)
+        {
+            Console.Error.WriteLine("Unknown validation flag: " + unknownFlag);
+            return 1;
+        }
+
         return RunTests(argList.Contains("--local-evidence"));
     }
 
@@ -182,15 +195,30 @@ class Program
             return true;
         }
 
-        var selected = PhaseValidationRegistry.Find(argList);
-        if (selected == null)
+        var selected = PhaseValidationRegistry.FindAll(argList).ToList();
+        if (selected.Count == 0)
         {
             exitCode = 0;
             return false;
         }
 
-        exitCode = RunValidation(selected);
+        if (selected.Count > 1)
+        {
+            Console.Error.WriteLine(
+                "Multiple validation flags matched: " +
+                string.Join(", ", selected.Select(item => item.Name + " (" + string.Join("/", item.AllFlags()) + ")")));
+            exitCode = 1;
+            return true;
+        }
+
+        exitCode = RunValidation(selected[0]);
         return true;
+    }
+
+    private static bool IsUnknownDefaultFlag(string arg)
+    {
+        return arg.StartsWith("--", StringComparison.Ordinal)
+            && !string.Equals(arg, "--local-evidence", StringComparison.Ordinal);
     }
 
     private static int RunValidation(PhaseValidationCase validation)
@@ -292,7 +320,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -307,7 +335,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -322,7 +350,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -336,7 +364,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -350,7 +378,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[FAIL] {ex.Message}");
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
             return 1;
         }
     }
@@ -475,15 +503,22 @@ class Program
             ? "=== FoxgloveSDK CI-safe + local evidence validation ===\n"
             : "=== FoxgloveSDK CI-safe validation ===\n");
 
-        foreach (var validation in PhaseValidationRegistry.DefaultValidations(includeLocalEvidence))
+        try
         {
-            var result = RunValidation(validation);
-            if (result != 0)
-                return result;
-        }
+            foreach (var validation in PhaseValidationRegistry.DefaultValidations(includeLocalEvidence))
+            {
+                var result = RunValidation(validation);
+                if (result != 0)
+                    return result;
+            }
 
-        Console.WriteLine("\nAll checks passed.");
-        return 0;
+            Console.WriteLine("\nAll checks passed.");
+            return 0;
+        }
+        finally
+        {
+            TempMcapHelper.Cleanup();
+        }
     }
 
     /// <summary>Runs the manual Phase139B loopback server used by browser and Python acceptance probes.</summary>
@@ -535,13 +570,21 @@ class Program
             Console.WriteLine("PHASE139B_SERVER_READY=" + ready);
             Console.Out.Flush();
 
-            var done = new ManualResetEventSlim(false);
-            Console.CancelKeyPress += (_, e) =>
+            using var done = new ManualResetEventSlim(false);
+            ConsoleCancelEventHandler handler = (_, e) =>
             {
                 e.Cancel = true;
                 done.Set();
             };
-            done.Wait();
+            Console.CancelKeyPress += handler;
+            try
+            {
+                done.Wait();
+            }
+            finally
+            {
+                Console.CancelKeyPress -= handler;
+            }
         }
 
         return 0;
@@ -669,14 +712,21 @@ class Program
             }
             Console.WriteLine("Press Ctrl+C to stop...");
 
-            var done = new ManualResetEventSlim(false);
-            Console.CancelKeyPress += (_, e) =>
+            using var done = new ManualResetEventSlim(false);
+            ConsoleCancelEventHandler handler = (_, e) =>
             {
                 e.Cancel = true;
                 done.Set();
             };
-
-            done.Wait();
+            Console.CancelKeyPress += handler;
+            try
+            {
+                done.Wait();
+            }
+            finally
+            {
+                Console.CancelKeyPress -= handler;
+            }
             return 0;
         }
         finally

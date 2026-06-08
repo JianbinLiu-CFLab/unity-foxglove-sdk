@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Tests;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests
@@ -87,6 +88,18 @@ namespace Unity.FoxgloveSDK.UnitTests
             WriteU32LE(content, 11);
             Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeChunkIndex(content.ToArray())),
                 "134-9C-2: malformed chunk index vector length is rejected");
+        }
+
+        [Fact]
+        public void MessageIndexVectorLengthMustBeMultipleOfPairSize()
+        {
+            var content = new MemoryStream();
+            WriteU16LE(content, 1);
+            WriteU32LE(content, 17);
+            content.Write(new byte[17], 0, 17);
+
+            Assert.True(ThrowsInvalidData(() => McapRecordReader.DecodeMessageIndex(content.ToArray())),
+                "140-35A-1: malformed message index vector length is rejected");
         }
 
         [Fact]

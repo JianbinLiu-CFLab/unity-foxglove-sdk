@@ -30,10 +30,12 @@ import time
 
 try:
     import _ros2_windows_env as ros2env
-except ImportError:
-    sys.exit("[phase110] ERROR: _ros2_windows_env module not found; run from Scripts/smoke/ directory.")
+    ROS2_ENV_IMPORT_ERROR: ImportError | None = None
+except ImportError as exc:
+    ros2env = None
+    ROS2_ENV_IMPORT_ERROR = exc
 
-DEFAULT_ROS2_ROOT = ros2env.DEFAULT_ROS2_ROOT
+DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows") if ros2env is None else ros2env.DEFAULT_ROS2_ROOT
 NODE_NAME = "unity2foxglove_phase110"
 IN_TOPIC = "/unity2foxglove/ros2forunity/string/in"
 OUT_TOPIC = "/unity2foxglove/ros2forunity/string/out"
@@ -159,6 +161,13 @@ def main(argv: list[str]) -> int:
     """Script entry point."""
 
     args = parse_args(argv)
+    if ros2env is None:
+        print(
+            "[phase110] ERROR: _ros2_windows_env module not found; run from Scripts/smoke/ directory.",
+            file=sys.stderr,
+        )
+        return 1
+
     workspace_root = ros2env.find_workspace_root()
     ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
     pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)

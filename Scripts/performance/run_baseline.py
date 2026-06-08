@@ -39,8 +39,9 @@ BYTES_PER_DECIMAL_GB = 1_000_000_000.0
 QUICK_MODE_MIN_FREE_GIB = 1
 FULL_MODE_MIN_FREE_GIB = 5
 
-# Hard lower bound for full mode; below this, the run is not useful enough to start.
-FULL_MODE_ABORT_FREE_BYTES = 500_000_000
+# Secondary hard floor for full mode. The primary abort is the projected output
+# budget check below; this guard catches extremely low free-space cases first.
+FULL_MODE_HARD_FLOOR_BYTES = 500_000_000
 
 # Safety margin applied to the estimated full-mode output budget.
 FULL_MODE_SAFETY_MULTIPLIER = 1.2
@@ -115,7 +116,7 @@ def main() -> int:
     warn_gib = QUICK_MODE_MIN_FREE_GIB if mode == "quick" else FULL_MODE_MIN_FREE_GIB
     if free < warn_gib * BYTES_PER_GIB:
         print(f"[perf-baseline] WARNING: less than {warn_gib} GiB free on drive for {output_dir}")
-        if mode == "full" and free < FULL_MODE_ABORT_FREE_BYTES:
+        if mode == "full" and free < FULL_MODE_HARD_FLOOR_BYTES:
             print("[perf-baseline] ABORT: insufficient disk space for full mode.")
             return EXIT_FAILURE
 
@@ -154,8 +155,12 @@ def main() -> int:
         return EXIT_FAILURE
 
     result_path = os.path.join(output_dir, jsons[LATEST_RESULT_INDEX])
-    with open(result_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(result_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        print(f"[perf-baseline] malformed result JSON: {result_path}: {exc}")
+        return EXIT_FAILURE
 
     scenarios = data.get("scenarios", [])
     all_passed = True

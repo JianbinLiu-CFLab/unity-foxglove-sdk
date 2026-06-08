@@ -235,15 +235,15 @@ def cleanup_stale_processes(script_path: pathlib.Path, rviz_config: pathlib.Path
     if os.name != "nt":
         return
 
-    escaped_script = str(script_path).replace("'", "''")
-    escaped_config = str(rviz_config).replace("'", "''")
-    escaped_fixed = fixed_frame.replace("'", "''")
-    escaped_camera = camera_frame.replace("'", "''")
+    escaped_script = powershell_single_quote(str(script_path))
+    escaped_config = powershell_single_quote(str(rviz_config))
+    escaped_fixed = powershell_single_quote(fixed_frame)
+    escaped_camera = powershell_single_quote(camera_frame)
     command = f"""
-$script = '{escaped_script}'
-$config = '{escaped_config}'
-$fixed = '{escaped_fixed}'
-$camera = '{escaped_camera}'
+$script = [System.Management.Automation.WildcardPattern]::Escape('{escaped_script}')
+$config = [System.Management.Automation.WildcardPattern]::Escape('{escaped_config}')
+$fixed = [System.Management.Automation.WildcardPattern]::Escape('{escaped_fixed}')
+$camera = [System.Management.Automation.WildcardPattern]::Escape('{escaped_camera}')
 $matches = Get-CimInstance Win32_Process | Where-Object {{
     $cmd = $_.CommandLine
     if ([string]::IsNullOrWhiteSpace($cmd)) {{ return $false }}
@@ -270,6 +270,11 @@ foreach ($p in $matches) {{
     cleaned = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if cleaned:
         print("[phase138m-rviz] Cleaned stale helper process(es): " + ", ".join(cleaned))
+
+
+def powershell_single_quote(value: str) -> str:
+    """Escape a string for a PowerShell single-quoted literal."""
+    return value.replace("'", "''")
 
 
 def compressed_transport_base_topic(compressed_topic: str) -> str:
@@ -344,14 +349,17 @@ def launch_image_republisher(
     ]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = log_path.open("w", encoding="utf-8")
-    process = subprocess.Popen(
-        command,
-        env=env,
-        text=True,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        cwd=str(pathlib.Path.cwd()),
-    )
+    try:
+        process = subprocess.Popen(
+            command,
+            env=env,
+            text=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            cwd=str(pathlib.Path.cwd()),
+        )
+    finally:
+        log_file.close()
     time.sleep(0.5)
     exit_code = process.poll()
     if exit_code is not None:

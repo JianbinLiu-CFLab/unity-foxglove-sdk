@@ -28,9 +28,9 @@ function Invoke-Ros2Checked {
         [string[]]$Arguments
     )
 
-    & ros2 @Arguments | Out-Null
+    $output = & ros2 @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw ("{0} failed with exit code {1}: ros2 {2}" -f $Description, $LASTEXITCODE, ($Arguments -join " "))
+        throw ("{0} failed with exit code {1}: ros2 {2}`n{3}" -f $Description, $LASTEXITCODE, ($Arguments -join " "), ($output -join "`n"))
     }
 }
 

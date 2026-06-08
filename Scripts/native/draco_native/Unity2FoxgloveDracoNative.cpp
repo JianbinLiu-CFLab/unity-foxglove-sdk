@@ -22,6 +22,7 @@
 namespace {
 
 constexpr int kPositionQuantizationBits = 11;
+// Draco speed option 3 corresponds to CLI compression level 7 (inverse scale).
 constexpr int kCompressionLevelSevenSpeed = 3;
 constexpr int kMaxPointCount = 4 * 1000 * 1000;
 constexpr char kVersion[] =

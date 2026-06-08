@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -48,15 +49,19 @@ PACKAGE_SAMPLE = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Samples~" / "Fu
 # Fields that are useful in the live demo during local acceptance testing but
 # must stay portable in the packaged/imported sample.
 PORTABLE_FULL_DEMO_SCENE_OVERRIDES = (
-    ("  _transportMode:", "  _transportMode: 0"),
-    ("  _replayFilePath:", "  _replayFilePath:"),
-    ("  _recordingDirectory:", "  _recordingDirectory:"),
-    ("  _certificatePfxPath:", "  _certificatePfxPath:"),
-    ("  _certificatePassword:", "  _certificatePassword:"),
-    ("  _rootCaDistributorEnabled:", "  _rootCaDistributorEnabled: 0"),
-    ("  _rootCaFilePath:", "  _rootCaFilePath:"),
-    ("  _sharedToken:", "  _sharedToken:"),
+    ("_transportMode", "_transportMode: 0"),
+    ("_replayFilePath", "_replayFilePath:"),
+    ("_recordingDirectory", "_recordingDirectory:"),
+    ("_certificatePfxPath", "_certificatePfxPath:"),
+    ("_certificatePassword", "_certificatePassword:"),
+    ("_rootCaDistributorEnabled", "_rootCaDistributorEnabled: 0"),
+    ("_rootCaFilePath", "_rootCaFilePath:"),
+    ("_sharedToken", "_sharedToken:"),
 )
+PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN = re.compile(r"^(\s*)(_[A-Za-z0-9]+):")
+PORTABLE_FULL_DEMO_SCENE_FORBIDDEN_FIELDS = {
+    field for field, replacement in PORTABLE_FULL_DEMO_SCENE_OVERRIDES if replacement.endswith(":")
+}
 
 
 @dataclass(frozen=True)
@@ -185,12 +190,30 @@ def portable_full_demo_scene_payload(src: Path) -> bytes:
     for line in lines:
         body = line.rstrip("\r\n")
         replacement = None
-        for prefix, value in PORTABLE_FULL_DEMO_SCENE_OVERRIDES:
-            if body.startswith(prefix):
-                replacement = value
+        match = PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN.match(body)
+        for field, value in PORTABLE_FULL_DEMO_SCENE_OVERRIDES:
+            if match and match.group(2) == field:
+                replacement = match.group(1) + value
                 break
         rewritten.append(with_line_ending(line, replacement if replacement is not None else body))
-    return "".join(rewritten).encode("utf-8")
+    payload = "".join(rewritten).encode("utf-8")
+    validate_portable_full_demo_scene_payload(payload)
+    return payload
+
+
+def validate_portable_full_demo_scene_payload(payload: bytes) -> None:
+    """Reject portable sample scenes that still contain local-only values."""
+    text = payload.decode("utf-8", errors="replace")
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        match = PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN.match(line)
+        if not match or match.group(2) not in PORTABLE_FULL_DEMO_SCENE_FORBIDDEN_FIELDS:
+            continue
+        value = line.split(":", 1)[1].strip()
+        if value:
+            raise ValueError(
+                "Portable Full Demo scene still contains local-only value "
+                f"for {match.group(2)} on line {line_number}."
+            )
 
 
 def build_pairs(args: argparse.Namespace) -> list[tuple[Path, Path]]:

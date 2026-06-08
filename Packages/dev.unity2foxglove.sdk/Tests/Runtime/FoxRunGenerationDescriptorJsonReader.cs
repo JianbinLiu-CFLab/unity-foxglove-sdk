@@ -75,12 +75,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int PublishModeValue(JObject member)
         {
-            switch (StringValue(member, "publishMode"))
+            var mode = StringValue(member, "publishMode");
+            switch (mode)
             {
+                case "":
+                case "FixedRate": return (int)FoxRunPublishMode.FixedRate;
                 case "OnChange": return (int)FoxRunPublishMode.OnChange;
                 case "OnChangeOrInterval": return (int)FoxRunPublishMode.OnChangeOrInterval;
                 case "OnTrigger": return (int)FoxRunPublishMode.OnTrigger;
-                default: return (int)FoxRunPublishMode.FixedRate;
+                default: throw new InvalidOperationException("Unknown FoxRun publishMode: " + mode);
             }
         }
     }

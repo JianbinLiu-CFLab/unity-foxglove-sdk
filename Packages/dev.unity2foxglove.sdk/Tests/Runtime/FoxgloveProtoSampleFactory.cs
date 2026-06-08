@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// A schema-name/sample-message pair used by Phase 44 coverage tests.
     /// </summary>
-    public sealed class FoxgloveProtoSample
+    internal sealed class FoxgloveProtoSample
     {
         public FoxgloveProtoSample(FoxgloveProtoSchemaCatalogEntry catalogEntry, IMessage message)
         {
@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// These samples prove construct/serialize/publish/MCAP viability, not
     /// complete Foxglove panel semantics for every schema.
     /// </summary>
-    public static class FoxgloveProtoSampleFactory
+    internal static class FoxgloveProtoSampleFactory
     {
         private static readonly byte[] SampleBytes = { 0x01, 0x02, 0x03, 0x04 };
         private static readonly byte[] SampleImageBytes =

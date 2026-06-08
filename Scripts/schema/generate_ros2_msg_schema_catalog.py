@@ -15,6 +15,7 @@ import base64
 import hashlib
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -192,7 +193,8 @@ def try_source_commit(input_dir: Path) -> str:
             text=True,
         )
         return result.stdout.strip()
-    except Exception:
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"[ros2-msg-catalog] warning: source commit lookup failed: {exc}", file=sys.stderr)
         return ""
 
 

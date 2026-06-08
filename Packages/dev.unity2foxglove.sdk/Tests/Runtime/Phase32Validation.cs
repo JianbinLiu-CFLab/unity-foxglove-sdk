@@ -20,13 +20,15 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Transport;
 
+namespace Unity.FoxgloveSDK.Tests
+{
 /// <summary>
 /// Phase 32 validation: protobuf encoding support — dependency, FileDescriptorSet registry,
 /// schema advertisement, message publish, MCAP recording.
 /// </summary>
-public class Phase32Validation
+internal static class Phase32Validation
 {
-    public static void Run()
+    public static void Validate()
     {
         Console.WriteLine("=== Phase 32: Protobuf Encoding ===");
         var passed = 0;
@@ -359,4 +361,5 @@ public class Phase32Validation
         public void Disconnect(uint clientId) { }
         public void Dispose() { }
     }
+}
 }

@@ -115,7 +115,9 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(demoSetupSource.Contains("Mathf.Clamp") && demoSetupSource.Contains("ScaleMinimum") && demoSetupSource.Contains("ScaleMaximum"), "FullDemo demo setup clamps remote scale parameter");
 
             var sampleSyncSource = File.ReadAllText(Path.Combine(repoRoot, "Scripts", "samples", "sync_full_demo.py"));
-            Assert(sampleSyncSource.Contains("\"  _recordingDirectory:\""), "FullDemo sample sync scrubs recording directory");
+            Assert(
+                sampleSyncSource.Contains("(\"_recordingDirectory\", \"_recordingDirectory:\")"),
+                "FullDemo sample sync scrubs recording directory");
 
             // ── 17D: ROS2 Bridge Sample ──
             Assert(Directory.Exists(ros2Dir), "Ros2BridgeSample/ exists");

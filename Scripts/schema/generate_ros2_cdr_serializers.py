@@ -314,7 +314,7 @@ def writer_for_field(field: Field) -> list[str]:
     if field.array_kind == "scalar":
         return writer_for_scalar(field, "message")
     if field.base_type == "uint8":
-        return [f"writer.WriteByteArray({access}?.ToByteArray());"]
+        return [f"writer.WriteByteArray({access}?.ToByteArray() ?? Array.Empty<byte>());"]
     if field.array_kind == "fixed":
         return [f"writer.WriteFloat64Fixed({access}, {field.fixed_length}, {csharp_string(field.name)});"]
     if field.base_type == "float64":
@@ -429,20 +429,24 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "        {",
         "            if (writer == null)",
         "                throw new ArgumentNullException(nameof(writer));",
+        "            if (value == null)",
+        "                throw new ArgumentNullException(nameof(value));",
         "",
-        "            writer.WriteFloat64(value?.X ?? 0.0);",
-        "            writer.WriteFloat64(value?.Y ?? 0.0);",
-        "            writer.WriteFloat64(value?.Z ?? 0.0);",
+        "            writer.WriteFloat64(value.X);",
+        "            writer.WriteFloat64(value.Y);",
+        "            writer.WriteFloat64(value.Z);",
         "        }",
         "",
         "        private static void WriteProtoVector3(Ros2CdrWriter writer, global::Foxglove.Vector3 value)",
         "        {",
         "            if (writer == null)",
         "                throw new ArgumentNullException(nameof(writer));",
+        "            if (value == null)",
+        "                throw new ArgumentNullException(nameof(value));",
         "",
-        "            writer.WriteFloat64(value?.X ?? 0.0);",
-        "            writer.WriteFloat64(value?.Y ?? 0.0);",
-        "            writer.WriteFloat64(value?.Z ?? 0.0);",
+        "            writer.WriteFloat64(value.X);",
+        "            writer.WriteFloat64(value.Y);",
+        "            writer.WriteFloat64(value.Z);",
         "        }",
         "",
         "        private static void WriteProtoQuaternion(Ros2CdrWriter writer, global::Foxglove.Quaternion value)",
@@ -460,9 +464,11 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "        {",
         "            if (writer == null)",
         "                throw new ArgumentNullException(nameof(writer));",
+        "            if (value == null)",
+        "                throw new ArgumentNullException(nameof(value));",
         "",
-        "            WriteProtoVector3(writer, value?.Position);",
-        "            WriteProtoQuaternion(writer, value?.Orientation);",
+        "            WriteProtoVector3(writer, value.Position);",
+        "            WriteProtoQuaternion(writer, value.Orientation);",
         "        }",
         "",
     ]

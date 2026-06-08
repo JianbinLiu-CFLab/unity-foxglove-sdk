@@ -4,5 +4,6 @@
     "declarationDir": "./dist/types",
     "lib": ["dom", "dom.iterable", "es2020"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/index.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

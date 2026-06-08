@@ -229,6 +229,12 @@ namespace
         std::cout.write(reinterpret_cast<const char*>(bytes), 4);
     }
 
+    void WriteSkippedFrameSentinel()
+    {
+        WriteLittleEndianLength(0);
+        std::cout.flush();
+    }
+
     FrameReadStatus ReadFrame(std::vector<uint8_t>& frame)
     {
         std::cin.read(reinterpret_cast<char*>(frame.data()), static_cast<std::streamsize>(frame.size()));
@@ -274,18 +280,25 @@ namespace
         if (info.eFrameType == videoFrameTypeSkip)
         {
             std::cerr << "OpenH264 skipped frame." << std::endl;
+            WriteSkippedFrameSentinel();
             return;
         }
 
         if (info.eFrameType == videoFrameTypeInvalid)
+        {
+            WriteSkippedFrameSentinel();
             return;
+        }
 
         std::vector<uint8_t> accessUnit;
         for (int layer = 0; layer < info.iLayerNum; ++layer)
             AppendLayerNalUnits(info.sLayerInfo[layer], accessUnit);
 
         if (accessUnit.empty())
+        {
+            WriteSkippedFrameSentinel();
             return;
+        }
 
         if (accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
         {

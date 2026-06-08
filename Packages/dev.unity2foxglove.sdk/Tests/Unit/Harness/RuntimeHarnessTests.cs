@@ -1,0 +1,284 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Unit
+// Purpose: Runtime validation harness behavior and source-structure checks.
+
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Xunit;
+
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+
+namespace Unity.FoxgloveSDK.UnitTests
+{
+    [Trait("Phase", "140-35")]
+    [Trait("Domain", "Harness")]
+    public class RuntimeHarnessTests
+    {
+        private static readonly SemaphoreSlim HarnessBuildLock = new SemaphoreSlim(1, 1);
+        private static bool _harnessBuilt;
+
+        [Fact]
+        public async Task UnknownFlagFailsInsteadOfRunningDefaultSuite()
+        {
+            var result = await RunHarnessAsync(new[] { "--phase-typo" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("unknown", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task ServeRejectsNonIntegerPortWithoutStartingServer()
+        {
+            var result = await RunHarnessAsync(new[] { "--serve", "--port", "not-a-number" }, timeoutMilliseconds: 10_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);
+            Assert.Contains("integer", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task MultipleValidationFlagsFailInsteadOfRunningFirstMatch()
+        {
+            var result = await RunHarnessAsync(new[] { "--phase1", "--phase2" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("Multiple validation flags", result.StandardError, StringComparison.Ordinal);
+            Assert.Contains("--phase1", result.StandardError, StringComparison.Ordinal);
+            Assert.Contains("--phase2", result.StandardError, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Phase91GenerationFailuresWriteFailLineToStderr()
+        {
+            var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "phase140_35_" + Guid.NewGuid().ToString("N")));
+            try
+            {
+                var result = await RunHarnessAsync(new[] { "--phase91-ros2-cdr-mcap", tempDir.FullName }, timeoutMilliseconds: 20_000);
+
+                Assert.NotEqual(0, result.ExitCode);
+                Assert.Contains("[FAIL]", result.StandardError, StringComparison.Ordinal);
+                Assert.DoesNotContain("[FAIL]", result.StandardOutput, StringComparison.Ordinal);
+            }
+            finally
+            {
+                tempDir.Delete(recursive: true);
+            }
+        }
+
+        [Fact]
+        public void RunTestsCleansTempMcapHelperInFinally()
+        {
+            var method = LoadProgramTree()
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "RunTests");
+
+            var tryStatement = method.DescendantNodes().OfType<TryStatementSyntax>().SingleOrDefault();
+            Assert.NotNull(tryStatement);
+            Assert.Contains(
+                tryStatement!.Finally?.Block.DescendantNodes().OfType<InvocationExpressionSyntax>() ?? Enumerable.Empty<InvocationExpressionSyntax>(),
+                invocation => invocation.ToString().Contains("TempMcapHelper.Cleanup()", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void RegistryChecksDuplicateValidationNames()
+        {
+            var constructor = LoadRuntimeSyntax("PhaseValidationRegistry.cs")
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<ConstructorDeclarationSyntax>()
+                .Single(node => node.Modifiers.Any(SyntaxKind.StaticKeyword));
+
+            Assert.Contains(
+                constructor.DescendantNodes().OfType<MemberAccessExpressionSyntax>(),
+                access => access.Name.Identifier.ValueText == "Name");
+        }
+
+        [Fact]
+        public void Phase32UsesNamespaceAndValidateEntryPoint()
+        {
+            var root = LoadRuntimeSyntax("Phase32Validation.cs").GetRoot();
+            var declaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().Single(node => node.Identifier.ValueText == "Phase32Validation");
+
+            Assert.Contains(root.DescendantNodes().OfType<NamespaceDeclarationSyntax>(), ns => ns.Name.ToString() == "Unity.FoxgloveSDK.Tests");
+            Assert.Contains(declaration.Modifiers, token => token.IsKind(SyntaxKind.InternalKeyword));
+            Assert.Contains(declaration.Modifiers, token => token.IsKind(SyntaxKind.StaticKeyword));
+            Assert.Contains(declaration.Members.OfType<MethodDeclarationSyntax>(), method => method.Identifier.ValueText == "Validate");
+        }
+
+        [Fact]
+        public void ServerCancelKeyPressHandlersAreUnregistered()
+        {
+            var text = LoadRuntimeSource("Program.cs");
+            Assert.True(
+                CountOccurrences(text, "Console.CancelKeyPress -=") >= 2,
+                "Server paths should unregister their CancelKeyPress handlers before returning.");
+        }
+
+        [Fact]
+        public void RuntimeHelpersAreInternal()
+        {
+            AssertInternalClass("McapRecordReader.cs", "McapRecordReader");
+            AssertInternalClass("FoxgloveProtoSampleFactory.cs", "FoxgloveProtoSample");
+            AssertInternalClass("FoxgloveProtoSampleFactory.cs", "FoxgloveProtoSampleFactory");
+        }
+
+        [Fact]
+        public void DescriptorReaderRejectsUnknownPublishMode()
+        {
+            var method = LoadRuntimeSyntax("FoxRunGenerationDescriptorJsonReader.cs")
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "PublishModeValue");
+
+            Assert.Contains(
+                method.DescendantNodes().OfType<ThrowStatementSyntax>(),
+                statement => statement.ToString().Contains("Unknown FoxRun publishMode", StringComparison.Ordinal));
+        }
+
+        private static async Task<ProcessResult> RunHarnessAsync(params string[] args)
+            => await RunHarnessAsync(args, timeoutMilliseconds: 20_000);
+
+        private static async Task<ProcessResult> RunHarnessAsync(string[] args, int timeoutMilliseconds)
+        {
+            var repoRoot = FindRepoRoot();
+            var project = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "FoxgloveSdk.Tests.csproj");
+            await EnsureHarnessBuiltAsync(repoRoot, project);
+            var harnessDll = Path.Combine(repoRoot, "build", "Tests", "Debug", "net9.0", "FoxgloveSdk.Tests.dll");
+            if (!File.Exists(harnessDll))
+                throw new FileNotFoundException("Runtime harness build did not produce the expected DLL.", harnessDll);
+
+            return await RunProcessAsync("dotnet", repoRoot, timeoutMilliseconds, new[] { harnessDll }.Concat(args).ToArray());
+        }
+
+        private static async Task EnsureHarnessBuiltAsync(string repoRoot, string project)
+        {
+            await HarnessBuildLock.WaitAsync();
+            try
+            {
+                if (_harnessBuilt)
+                    return;
+
+                var result = await RunProcessAsync("dotnet", repoRoot, 120_000, new[] { "build", project, "--nologo" });
+                if (result.ExitCode != 0)
+                    throw new InvalidOperationException(
+                        "Failed to build runtime harness before CLI tests." + Environment.NewLine +
+                        result.StandardOutput + Environment.NewLine + result.StandardError);
+
+                _harnessBuilt = true;
+            }
+            finally
+            {
+                HarnessBuildLock.Release();
+            }
+        }
+
+        private static async Task<ProcessResult> RunProcessAsync(string fileName, string workingDirectory, int timeoutMilliseconds, string[] args)
+        {
+            var startInfo = new ProcessStartInfo(fileName)
+            {
+                WorkingDirectory = workingDirectory,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+            };
+            foreach (var arg in args)
+                startInfo.ArgumentList.Add(arg);
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+                throw new InvalidOperationException("Failed to start runtime harness process.");
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(timeoutMilliseconds))
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                throw new TimeoutException("Runtime harness process did not exit before timeout.");
+            }
+
+            return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+        }
+
+        private static SyntaxTree LoadProgramTree()
+            => LoadRuntimeSyntax("Program.cs");
+
+        private static SyntaxTree LoadRuntimeSyntax(string fileName)
+            => CSharpSyntaxTree.ParseText(LoadRuntimeSource(fileName));
+
+        private static string LoadRuntimeSource(string fileName)
+        {
+            var path = Path.Combine(
+                FindRepoRoot(),
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Tests",
+                "Runtime",
+                fileName);
+            return File.ReadAllText(path);
+        }
+
+        private static void AssertInternalClass(string fileName, string className)
+        {
+            var declaration = LoadRuntimeSyntax(fileName)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == className);
+
+            Assert.Contains(declaration.Modifiers, token => token.IsKind(SyntaxKind.InternalKeyword));
+        }
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
+
+        private static string FindRepoRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+        }
+
+        private sealed class ProcessResult
+        {
+            public ProcessResult(int exitCode, string standardOutput, string standardError)
+            {
+                ExitCode = exitCode;
+                StandardOutput = standardOutput;
+                StandardError = standardError;
+            }
+
+            public int ExitCode { get; }
+            public string StandardOutput { get; }
+            public string StandardError { get; }
+        }
+    }
+}
