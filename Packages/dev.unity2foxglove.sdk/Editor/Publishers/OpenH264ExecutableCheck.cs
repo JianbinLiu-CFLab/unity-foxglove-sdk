@@ -106,8 +106,7 @@ namespace Unity.FoxgloveSDK.Editor
                         return Invalid(normalizedHelper, normalizedDll, "", "OpenH264 validation timed out.");
                     }
 
-                    process.WaitForExit();
-                    WaitForStreamDrain(stdoutTask, stderrTask, -1);
+                    WaitForStreamDrain(stdoutTask, stderrTask, 500);
                     var stdout = GetCompletedOutput(stdoutTask);
                     var hasLengthPrefix = stdout.Length >= 4;
                     var stderr = GetCompletedOutput(stderrTask);

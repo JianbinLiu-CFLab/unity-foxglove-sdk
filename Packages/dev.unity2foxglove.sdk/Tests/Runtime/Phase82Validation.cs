@@ -339,7 +339,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorUxSource()
         {
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
-            Check(editorSource.Contains("\"H.264 (Windows Native, Experimental)\""),
+            var profileSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
+            Check(editorSource.Contains("BuildCameraOutputModeLabels")
+                  && profileSource.Contains("\"H.264 (Windows Native, Experimental)\""),
                 "82E-1: camera editor exposes native Windows H.264 label");
             Check(editorSource.Contains("DrawNativeH264Section"),
                 "82E-2: camera editor has a dedicated native H.264 section");

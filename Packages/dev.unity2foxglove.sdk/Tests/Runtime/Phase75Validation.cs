@@ -187,7 +187,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editorSource.Contains("Camera Output Mode"), "75D-3: editor draws Camera Output Mode");
             Check(editorSource.Contains("CameraOutputModeLabels"),
                 "75D-4: editor uses explicit camera output mode labels");
-            Check(editorSource.Contains("\"JPEG\"") && editorSource.Contains("\"H.264 (FFmpeg)"),
+            var profileSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
+            Check(editorSource.Contains("BuildCameraOutputModeLabels")
+                  && profileSource.Contains("\"JPEG\"")
+                  && profileSource.Contains("\"H.264 (FFmpeg)"),
                 "75D-5: editor labels use canonical JPEG and FFmpeg casing");
             Check(!editorSource.Contains("PropertyField(outputMode"),
                 "75D-6: editor does not expose raw enum names for camera output mode");

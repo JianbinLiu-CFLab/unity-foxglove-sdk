@@ -93,7 +93,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorUxSources()
         {
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
-            Check(editor.Contains("\"H.264 (OpenH264)\""),
+            var profile = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraOutputMode.cs");
+            Check(editor.Contains("BuildCameraOutputModeLabels")
+                  && profile.Contains("\"H.264 (OpenH264)\""),
                 "81C-1: camera output dropdown includes H.264 OpenH264");
             Check(editor.Contains("OpenH264 Helper") && editor.Contains("OpenH264 DLL"),
                 "81C-2: OpenH264 section separates helper and DLL configuration");
