@@ -71,6 +71,7 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     private bool _loggedFirstPublish;
     private bool _loggedInvalidTopicProbe;
     private bool _loggedBinaryRejectionProbe;
+    private bool _previousRunInBackground;
 
     /// <summary>
     /// True when the component is intentionally verifying that overlay data is blocked.
@@ -85,6 +86,7 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     /// </summary>
     private void OnEnable()
     {
+        _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishTime = 0f;
         _publishedCount = 0;
@@ -96,6 +98,11 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
         _loggedInvalidTopicProbe = false;
         _loggedBinaryRejectionProbe = false;
         _lastStatus = "Waiting for Play Mode publish.";
+    }
+
+    private void OnDisable()
+    {
+        Application.runInBackground = _previousRunInBackground;
     }
 
     /// <summary>

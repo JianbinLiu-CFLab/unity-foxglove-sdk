@@ -531,7 +531,14 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
 
 def check_generator_alignment(results: list[CheckResult]) -> None:
     """Validate the generator knows about the lifecycle-patched package shape."""
-    generator = (ROOT / "Scripts" / "release" / "build_r2fu_runtime_package.py").read_text(encoding="utf-8", errors="replace")
+    generator_path = ROOT / "Scripts" / "release" / "build_r2fu_runtime_package.py"
+    try:
+        generator = generator_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        add(results, "runtime package generator script readable", False, f"{rel(generator_path)}: {exc}")
+        return
+
+    add(results, "runtime package generator script readable", True, rel(generator_path))
     required = (
         "collect_local_patch_overlays",
         "apply_local_patch_overlays",

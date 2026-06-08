@@ -146,8 +146,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("WarnInvalidScaleOnce", StringComparison.Ordinal)
                   && !source.Contains("catch { }", StringComparison.Ordinal),
                 "134-24-F7: Full Demo reports invalid scale values instead of swallowing them");
-            Check(source.Contains("Player-tagged fallback object", StringComparison.Ordinal),
-                "134-24-F8: Full Demo warns when falling back from Cube name lookup to Player tag");
+            Check(!source.Contains("FindGameObjectWithTag(\"Player\")", StringComparison.Ordinal)
+                  && !source.Contains("Player-tagged fallback object", StringComparison.Ordinal),
+                "134-24-F8: Full Demo stays inside its explicit Cube/name lookup boundary");
         }
 
         private static string ReadRepoFile(string relativePath)

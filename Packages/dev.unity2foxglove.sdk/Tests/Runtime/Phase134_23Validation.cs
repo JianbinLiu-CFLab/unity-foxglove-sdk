@@ -56,7 +56,6 @@ namespace Unity.FoxgloveSDK.Tests
             RequireSampleFile("BasicVisualization/FoxgloveSimpleLayout.json", "134-23-B1: Basic sample layout asset exists");
             RequireSampleFile("BasicVisualization/Scenes/BasicVisualization.unity", "134-23-B2: Basic sample scene exists");
             RequireSampleFile("FullDemoVisualization/FoxgloveFullLayout.json", "134-23-B3: Full demo layout asset exists");
-            RequireSampleFile("FullDemoVisualization/InputSystem_Actions.inputactions", "134-23-B4: Full demo input actions asset exists");
             RequireSampleFile("FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-B5: Full demo scene exists");
             RequireSampleFile("FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-B6: Full demo setup script exists");
             RequireSampleFile("Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-B7: ROS2 bridge sample layout asset exists");
@@ -71,7 +70,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyMetaSidecar("BasicVisualization/FoxgloveSimpleLayout.json", "134-23-C1: Basic layout has Unity meta sidecar");
             VerifyMetaSidecar("BasicVisualization/Scenes/BasicVisualization.unity", "134-23-C2: Basic scene has Unity meta sidecar");
             VerifyMetaSidecar("FullDemoVisualization/FoxgloveFullLayout.json", "134-23-C3: Full demo layout has Unity meta sidecar");
-            VerifyMetaSidecar("FullDemoVisualization/InputSystem_Actions.inputactions", "134-23-C4: Full demo input actions have Unity meta sidecar");
             VerifyMetaSidecar("FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-C5: Full demo scene has Unity meta sidecar");
             VerifyMetaSidecar("FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-C6: Full demo setup has Unity meta sidecar");
             VerifyMetaSidecar("Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-C7: ROS2 bridge layout has Unity meta sidecar");
@@ -96,6 +94,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && validator.Contains("check_sample_boundaries(results)", StringComparison.Ordinal)
                   && validator.Contains("check_forbidden_sample_artifacts(results)", StringComparison.Ordinal),
                 "134-23-D3: release validator runs sample meta, boundary, and artifact checks");
+            Check(validator.Contains("FullDemo avoids project-level input action assets", StringComparison.Ordinal)
+                  && validator.Contains("InputSystem_Actions.inputactions", StringComparison.Ordinal),
+                "134-23-D5: release validator rejects project-level input action assets from FullDemo sample");
             Check(validator.Contains("FORBIDDEN_SAMPLE_PARTS", StringComparison.Ordinal)
                   && validator.Contains("\"Generated\"", StringComparison.Ordinal)
                   && validator.Contains("__pycache__", StringComparison.Ordinal),
@@ -146,14 +147,28 @@ namespace Unity.FoxgloveSDK.Tests
                   && demoSetup.Contains("Debug.LogWarning(\"[FoxgloveDemo] Ignoring invalid /cube/scale parameter", StringComparison.Ordinal),
                 "134-23-F4: Full demo reports invalid scale parameters instead of silently swallowing them");
             Check(demoSetup.Contains("[SerializeField] private GameObject _cube;", StringComparison.Ordinal)
-                  && demoSetup.Contains("using Player-tagged fallback object", StringComparison.Ordinal),
-                "134-23-F5: Full demo prefers explicit cube assignment and warns on Player-tag fallback");
+                  && !demoSetup.Contains("FindGameObjectWithTag(\"Player\")", StringComparison.Ordinal)
+                  && !demoSetup.Contains("using Player-tagged fallback object", StringComparison.Ordinal),
+                "134-23-F5: Full demo stays inside its own Cube object boundary");
+            Check(demoSetup.Contains("private bool TryInitializeDemo()", StringComparison.Ordinal)
+                  && demoSetup.Contains("private bool _initialized;", StringComparison.Ordinal)
+                  && demoSetup.Contains("if (!TryInitializeDemo())", StringComparison.Ordinal),
+                "134-23-F10: Full demo retries setup until FoxgloveManager session is ready");
+            Check(demoSetup.Contains("return JToken.Parse(\"{\\\"status\\\":\\\"error\\\",\\\"reason\\\":\\\"cube not found\\\"}\");", StringComparison.Ordinal),
+                "134-23-F11: Full demo reset_pose reports missing cube as an error");
+            Check(demoSetup.Contains("private static readonly UTF8Encoding StrictUtf8", StringComparison.Ordinal)
+                  && demoSetup.Contains("new UTF8Encoding(false, true)", StringComparison.Ordinal),
+                "134-23-F12: Full demo client-message preview uses strict UTF-8 so binary payloads fall back to hex");
 
             var mouseDrag = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/MouseDragCube.cs");
             Check(mouseDrag.Contains("#if ENABLE_INPUT_SYSTEM", StringComparison.Ordinal)
                   && mouseDrag.Contains("#elif ENABLE_LEGACY_INPUT_MANAGER", StringComparison.Ordinal)
                   && mouseDrag.Contains("TryReadMouse", StringComparison.Ordinal),
                 "134-23-F6: MouseDragCube compiles without a hard Input System package dependency");
+            Check(mouseDrag.Contains("private Camera _camera;", StringComparison.Ordinal)
+                  && mouseDrag.Contains("_camera = Camera.main;", StringComparison.Ordinal)
+                  && mouseDrag.Contains("var cam = _camera;", StringComparison.Ordinal),
+                "134-23-F13: MouseDragCube caches the main camera instead of resolving it every frame");
 
             var manager = ReadRepoFile(PackageRoot + "/Runtime/Components/Manager/FoxgloveManager.cs");
             Check(manager.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler", StringComparison.Ordinal)
@@ -163,6 +178,9 @@ namespace Unity.FoxgloveSDK.Tests
             var testLog = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/TestLog.cs");
             Check(testLog.Contains("_health = 95f + Mathf.Sin", StringComparison.Ordinal),
                 "134-23-F8: Full demo FoxRun health telemetry changes over time");
+            Check(testLog.Contains("private Vector3 _position2;", StringComparison.Ordinal)
+                  && !testLog.Contains("public Vector3 position;", StringComparison.Ordinal),
+                "134-23-F14: Full demo FoxRun telemetry fields stay private");
 
             var triggerSmoke = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxRunTriggerTelemetrySmoke.cs");
             Check(triggerSmoke.Contains("public long fixedCounter;", StringComparison.Ordinal),

@@ -50,7 +50,7 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
 {
     // Automatically publishes to /demo/heartbeat at 2 Hz.
     [FoxRun("/demo/heartbeat", RateHz = 2f)]
-    public int fixedCounter;
+    public long fixedCounter;
 
     // Equivalent conceptual form:
     //   [FoxRun("topic", PublishMode = OnTrigger)]

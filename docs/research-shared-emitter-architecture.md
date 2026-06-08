@@ -1,6 +1,6 @@
 # Shared-Emitter Dual-Host AOT Code Generation for Unity Telemetry
 
-**Draft Research Note — Unity2Foxglove Project, 2026-05-12**
+**Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-08.**
 
 ## 1 Introduction
 
@@ -136,16 +136,28 @@ The type fields in that model are intentionally split:
 
 This distinction matters because Roslyn and reflection can observe the same type with different strings, such as `Outer.Inner` versus `Outer+Inner`, or C# generic syntax versus CLR generic names. The formatter and canonical normalizer turn those host-specific observations into stable emission and schema values before the shared emitter runs.
 
+The current `FoxRunGenerationMember` keeps three construction paths for this split. Older call sites can still provide one raw type string, newer host lowerers can provide separate raw-observed and emission type strings, and the most explicit path can also pass a canonical type override. When no canonical type is supplied, arrays are canonicalized from their element type before normalization, while scalar and generic values use the normalized emission type. This keeps descriptor identity stable without forcing every host to observe type syntax in the same way.
+
+`FoxRunGenerationType` also normalizes member order before emission. Members are sorted by topic, member name, schema name, and canonical type, all with ordinal string comparison. That order is not merely aesthetic: it makes descriptor JSON and emitted source comparable across Roslyn and reflection hosts even when each host discovers members in a different raw order.
+
 The descriptor is serialized from the same model instance passed to `FoxgloveSourceEmitter`. Semantic fields such as declaring type, member name, canonical type, topic, schema, encoding, publish mode, and policy values participate in equivalence checks. Provenance fields such as host kind, raw type display, member order, or conditional-symbol notes are retained for diagnostics but are not replay identity and do not define semantic equality.
 
 ### 5.3 Shared Emitter Layer
 
 The shared emitter converts the generation model into C# source.
 
-In Unity2Foxglove, this is implemented by:
+In Unity2Foxglove, the shared emitter is now a small coordinator plus focused emitter modules:
 
 ```text
-Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs
+Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/
+  FoxgloveSourceEmitter.cs   // entry point and orchestration
+  ClassFrameEmitter.cs       // namespace/class/interface frame
+  TopicMetadataEmitter.cs    // topic metadata and publish-mode literals
+  PublishDispatchEmitter.cs  // per-topic payload dispatch
+  TriggerEmitter.cs          // OnTrigger methods and TriggerAll emission
+  PolicyEmitter.cs           // ShouldPublish/MarkPublished policy logic
+  TypeExprEmitter.cs         // type-aware member/value/change expressions
+  StringLiteralEmitter.cs    // generated string literal escaping
 ```
 
 Its constraints are deliberate:
@@ -157,6 +169,8 @@ Its constraints are deliberate:
 - deterministic source output for a given model.
 
 The emitter exists to prevent semantic drift between Editor and Player generation paths.
+
+The publish policy surface currently has four modes: `FixedRate`, `OnChange`, `OnChangeOrInterval`, and `OnTrigger`. `FixedRate` publishes on the scheduler cadence, `OnChange` and `OnChangeOrInterval` use generated last-value storage plus `FoxRunPublishPolicy`, and `OnTrigger` opts out of automatic policy publishing. For trigger-mode topics, the emitter generates member-specific trigger methods and `FoxRun_TriggerAll()`, which publish through `FoxgloveLogHub.Trigger(...)`.
 
 ### 5.4 Host Injection Layer
 
@@ -236,7 +250,7 @@ This is not a reason to avoid a shared emitter. It means the emitter must be tre
 
 - user-controlled strings must be escaped before entering C# literals;
 - floating-point and timestamp formatting must be culture-invariant;
-- publish-mode precedence needs tests and diagnostics;
+- publish-mode precedence needs tests and diagnostics, especially because `OnTrigger` must not be auto-published by the scheduler;
 - generated source should have snapshot or structural tests;
 - generated JSON payloads must avoid anonymous object shapes that can lose property metadata under IL2CPP serialization;
 - physical fallback output should be checked for freshness before IL2CPP release validation.
@@ -276,7 +290,7 @@ Schema Evidence identity policy makes that governance adjustable for different p
 
 | Evidence | Location | Meaning |
 | --- | --- | --- |
-| Shared emitter | `Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs` | Single source of generation semantics |
+| Shared emitter | `Editor/Shared/FoxgloveSourceEmitter/` | Single source of generation semantics, split into a coordinator plus focused class-frame, topic metadata, dispatch, trigger, policy, type-expression, and string-literal emitters |
 | Shared generation model | `Editor/Shared/FoxRunDescriptor/` | Host-independent model, descriptor writer, comparer, validator, and canonical type normalizer |
 | Emission type formatter | `Editor/Shared/FoxRunDescriptor/FoxRunEmissionTypeNameFormatter.cs` | Converts Roslyn and reflection type observations into legal, stable C# source type names |
 | FoxRun canonical manifest | `Editor/Shared/FoxRunManifest/` | Host-independent contract normalization and fingerprinting |
@@ -287,7 +301,7 @@ Schema Evidence identity policy makes that governance adjustable for different p
 | Generation descriptor | `Assets/Generated/FoxRun/foxrun.generation-descriptor.json` | Non-replay-blocking audit descriptor serialized from the model passed to the emitter |
 | Descriptor reader validation | `Tests/Runtime/FoxRunGenerationDescriptorJsonReader.cs`, `Phase115FValidation.cs` | Test-owned parser that proves descriptor JSON round-trips back into the model comparer |
 | Checked-in analyzer DLL | `Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll` | Unity-loaded Roslyn analyzer/source generator artifact; must be rebuilt after source changes |
-| IL2CPP-safe JSON payload emission | `Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs`, `Phase115FValidation.cs` | Emits dictionary payloads instead of anonymous objects so Player JSON serialization keeps payload fields |
+| IL2CPP-safe JSON payload emission | `Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs`, `Phase115FValidation.cs` | Emits dictionary payloads instead of anonymous objects so Player JSON serialization keeps payload fields |
 | Play Mode manifest hook | `Editor/FoxRun/FoxrunManifestPlayModeHook.cs` | Refreshes canonical manifest artifacts before Editor Play Mode |
 | Build preprocess hook | `Editor/FoxRun/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
 | IL2CPP preservation | `Editor/FoxRun/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
@@ -295,6 +309,7 @@ Schema Evidence identity policy makes that governance adjustable for different p
 | Runtime schema info | `Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs` | Exposes generated manifest hash evidence without reflection |
 | MCAP schema metadata | `Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs` | Stores and compares recorded/current `globalManifestHash` values for replay mismatch protection |
 | Runtime scheduler | `Runtime/Components/FoxRun/FoxgloveLogHub.cs` | Registers or discovers generated publisher interfaces without CLR reflection-based member binding |
+| Cross-target generated logging evidence | Unity2Rerun v0.4.0 release notes and Zenodo DOI `10.5281/zenodo.20247513` | Shows the same architectural pressure applied to a Rerun target: generated logging attributes, Editor source generation, build-time generated-file fallback, and Windows IL2CPP validation |
 
 This implementation also generates `FoxRun_link.xml` for IL2CPP preservation. That is separate from publisher execution: it is a build-time preservation artifact, not a runtime reflection scanner.
 
@@ -327,7 +342,7 @@ The work is best framed as system integration and domain adaptation: existing co
 
 The traceability value is secondary to the AOT safety claim, but important for robotics and simulation evidence. A release can archive the physical `_FoxRun.g.cs` output, generation descriptors, validation logs, and MCAP smoke artifacts to show which telemetry bindings participated in a Player build. This makes missing or changed telemetry topics easier to audit after a recorded experiment.
 
-A useful future comparison is Unity2Rerun or any other Unity telemetry target that reuses the same declaration-to-model layer. If a second target can share the model resolution and most emitter infrastructure while swapping only the runtime adapter and schema mapping, the architecture is better described as multi-target declarative telemetry rather than only a dual-host Foxglove generator. That claim should wait for measured migration evidence instead of being assumed here.
+Since the first draft of this note, Unity2Rerun v0.4.0 has become a concrete second-target data point rather than only a future comparison. Its release notes describe generated logging attributes (`[RerunLog]`, `[RerunScalar]`, and `[RerunTransform]`), an IL2CPP-oriented architecture with Editor source generation plus build-time generated-file fallback, Windows Standalone IL2CPP validation, `.rrd` verification through `rerun rrd verify`, and a version DOI for exact reproduction. That evidence upgrades the multi-target claim from hypothetical to partially demonstrated: the declaration-to-generated-logging architecture has now been applied to both Foxglove/MCAP and Rerun/RRD telemetry targets. The remaining research work is to measure how much of the model and emitter infrastructure was actually reused versus forked.
 
 ## 11 Future Work
 
@@ -335,7 +350,7 @@ The following evidence would strengthen this research note:
 
 1. **Generated-vs-reflection benchmark.** Compare direct generated field access against `FieldInfo.GetValue()` and reflection-based publisher dispatch.
 
-2. **Emitter migration/churn analysis.** If the shared-emitter pattern is reused in Unity2Rerun, measure how much code changes in the declaration/model layer, shared emitter infrastructure, schema mapping, and runtime adapter layer.
+2. **Cross-target churn analysis.** Unity2Rerun v0.4.0 now provides the second-target evidence point. Measure how much code changed or was reused in the declaration/model layer, shared emitter infrastructure, schema mapping, runtime adapter layer, generated-file fallback, and validation harness. Report whether the Rerun target mostly swaps adapters and schemas or requires generation semantics to fork.
 
 3. **Broader model-equivalence matrix.** The single-fixture descriptor comparison now proves the shared-model boundary, and the current manual evidence covers one IL2CPP Player payload smoke. Future work should extend that matrix to more Unity assemblies, asmdef layouts, conditional symbols, Unity value types, and additional Player-build scenarios.
 

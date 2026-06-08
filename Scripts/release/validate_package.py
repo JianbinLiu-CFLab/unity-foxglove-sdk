@@ -44,6 +44,7 @@ THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 
 # File extensions that Unity tracks with .meta sidecar files in samples.
 UNITY_META_EXTENSIONS = {
+    ".asmdef",
     ".asset",
     ".cs",
     ".dll",
@@ -109,7 +110,7 @@ def rel(path: Path) -> str:
     try:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()
 
 
 def iter_files(root: Path) -> Iterable[Path]:
@@ -233,7 +234,6 @@ def check_sample_boundaries(results: list[CheckResult]) -> None:
     required_full = [
         full / "FoxgloveFullLayout.json",
         full / "FoxgloveFullLayout.json.meta",
-        full / "InputSystem_Actions.inputactions",
         full / "Scenes" / "FullDemoVisualization.unity",
         full / "Scripts" / "FoxgloveDemoSetup.cs",
         full / "Scripts" / "MouseDragCube.cs",
@@ -243,6 +243,13 @@ def check_sample_boundaries(results: list[CheckResult]) -> None:
     ]
     missing = [rel(p) for p in required_full if not p.exists()]
     add(results, "FullDemo required files", not missing, "; ".join(missing) if missing else "all required files present")
+
+    forbidden_full = [
+        full / "InputSystem_Actions.inputactions",
+        full / "InputSystem_Actions.inputactions.meta",
+    ]
+    conflicts = [rel(p) for p in forbidden_full if p.exists()]
+    add(results, "FullDemo avoids project-level input action assets", not conflicts, "; ".join(conflicts) if conflicts else "no InputSystem_Actions asset")
 
 
 def check_forbidden_public_content(results: list[CheckResult]) -> None:
@@ -269,22 +276,27 @@ def check_forbidden_public_content(results: list[CheckResult]) -> None:
 
 def check_forbidden_sample_artifacts(results: list[CheckResult]) -> None:
     """Reject generated, local, or benchmark files from package samples."""
-    offenders: list[str] = []
+    offenders: set[Path] = set()
     for path in SAMPLES.rglob("*"):
-        parts = set(path.relative_to(SAMPLES).parts)
-        if parts & FORBIDDEN_SAMPLE_PARTS:
-            offenders.append(rel(path))
+        relative_parts = path.relative_to(SAMPLES).parts
+        forbidden_index = next(
+            (index for index, part in enumerate(relative_parts) if part in FORBIDDEN_SAMPLE_PARTS),
+            None,
+        )
+        if forbidden_index is not None:
+            offenders.add(SAMPLES.joinpath(*relative_parts[: forbidden_index + 1]))
             continue
         if path.name in FORBIDDEN_SAMPLE_NAMES:
-            offenders.append(rel(path))
+            offenders.add(path)
             continue
         if any(pattern.match(path.name) for pattern in FORBIDDEN_SAMPLE_NAME_PATTERNS):
-            offenders.append(rel(path))
+            offenders.add(path)
+    offender_list = sorted(rel(path) for path in offenders)
     add(
         results,
         "samples contain no generated/local artifacts",
-        not offenders,
-        "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no forbidden sample artifacts",
+        not offender_list,
+        "; ".join(offender_list[:MAX_REPORTED_OFFENDERS]) if offender_list else "no forbidden sample artifacts",
     )
 
 

@@ -79,6 +79,13 @@ class VersionBump:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8", newline="\n")
 
+    def sub_exactly_once(self, path: Path, text: str, pattern: str, replacement: str, label: str) -> str:
+        """Apply one regex replacement and fail loudly when the target is ambiguous."""
+        hits = list(re.finditer(pattern, text))
+        if len(hits) != SINGLE_REPLACEMENT:
+            raise ValueError(f"Expected one {label} in {self.rel(path)}, found {len(hits)}.")
+        return re.sub(pattern, replacement, text, count=SINGLE_REPLACEMENT)
+
     def package_version(self) -> str:
         """Read the current semantic version from package.json."""
         package_json = self.root / "Packages/dev.unity2foxglove.sdk/package.json"
@@ -106,8 +113,20 @@ class VersionBump:
         """Keep the Phase16 package-version assertion aligned with package.json."""
         path = self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs"
         text = self.read(path)
-        text = re.sub(r'"\\"version\\": \\"\d+\.\d+\.\d+\\""', f'"\\"version\\": \\"{self.version}\\""', text)
-        text = re.sub(r"package\.json version is \d+\.\d+\.\d+", f"package.json version is {self.version}", text)
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'"\\"version\\": \\"\d+\.\d+\.\d+\\""',
+            f'"\\"version\\": \\"{self.version}\\""',
+            "Phase16 package.json version assertion literal",
+        )
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r"package\.json version is \d+\.\d+\.\d+",
+            f"package.json version is {self.version}",
+            "Phase16 package.json version status text",
+        )
         self.write_if_changed(path, text, f"update Phase16 package version assertion to {self.version}")
 
     # Maximum number of old release-note links kept in README.
@@ -142,7 +161,7 @@ class VersionBump:
         # Trim old entries to keep only the latest KEEP_RELEASE_NOTES.
         hits = list(release_note_re.finditer(text))
         if len(hits) > self.KEEP_RELEASE_NOTES:
-            for hit in hits[: -self.KEEP_RELEASE_NOTES]:
+            for hit in reversed(hits[self.KEEP_RELEASE_NOTES :]):
                 start = hit.start()
                 end = hit.end()
                 if end < len(text) and text[end] == "\n":

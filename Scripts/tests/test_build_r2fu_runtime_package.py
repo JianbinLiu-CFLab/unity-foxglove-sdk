@@ -12,6 +12,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -66,6 +67,58 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             target = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
             self.assertEqual("ok", target.read_text(encoding="utf-8"))
+
+    def test_patch_ros2_for_unity_requires_copyright_replacement(self) -> None:
+        """Patch generation fails when the expected copyright line is absent."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n'
+                + self.builder.UPSTREAM_PATH_BLOCK,
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError):
+                self.builder.patch_ros2_for_unity(package)
+
+    def test_build_package_restores_existing_package_when_generation_fails(self) -> None:
+        """A failed regeneration should not leave the package directory destroyed."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "Packages" / self.builder.PACKAGE_NAME
+            package.mkdir(parents=True)
+            sentinel = package / "sentinel.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+
+            with mock.patch.object(self.builder, "ROOT", root):
+                with mock.patch.object(self.builder, "require_inputs", return_value={}):
+                    with mock.patch.object(self.builder, "extract_runtime", side_effect=RuntimeError("boom")):
+                        with self.assertRaises(RuntimeError):
+                            self.builder.build_package(paths)
+
+            self.assertTrue(sentinel.exists())
+            self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
+
+    def test_build_package_keeps_existing_package_if_reset_fails(self) -> None:
+        """Rollback should not mask reset_package_dir path-safety failures."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "not-the-package"
+            package.mkdir()
+            sentinel = package / "sentinel.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+
+            with mock.patch.object(self.builder, "ROOT", root):
+                with mock.patch.object(self.builder, "require_inputs", return_value={}):
+                    with self.assertRaises(ValueError):
+                        self.builder.build_package(paths)
+
+            self.assertTrue(sentinel.exists())
+            self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

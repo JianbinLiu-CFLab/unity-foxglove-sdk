@@ -77,7 +77,7 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
     // [FoxRun("/debug/115f/nested", PublishMode = FoxRunPublishMode.OnTrigger)]
     public NestedPayload nestedPayload = new NestedPayload();
 
-    private int _frameCount;
+    private long _frameCount;
 
     /// <summary>
     /// Initializes probe values when the component is first added or reset.
@@ -117,10 +117,10 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
 
         sampleList[0] = vectorValue.y;
         sampleList[1] = scalarValue * 10f;
-        sampleList[2] = _frameCount;
+        sampleList[2] = (float)(_frameCount % 16777216L);
 
-        optionalCount = _publishNullOptional ? (int?)null : _frameCount;
-        nestedPayload.count = _frameCount;
+        optionalCount = _publishNullOptional ? (int?)null : (int)(_frameCount % int.MaxValue);
+        nestedPayload.count = optionalCount ?? -1;
         nestedPayload.label = _publishNullOptional ? "nullable:null" : "nullable:value";
         nestedPayload.offset = vectorValue;
 

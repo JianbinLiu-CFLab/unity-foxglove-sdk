@@ -7,7 +7,9 @@
 
 using System.Collections;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+#endif
 using Unity.FoxgloveSDK.Components;
 
 /// <summary>
@@ -54,19 +56,39 @@ public class FoxgloveStatusSmoke : MonoBehaviour
     }
 
     /// <summary>
-    /// Handles manual keyboard shortcuts using Unity's Input System package.
+    /// Handles manual keyboard shortcuts using the active Unity input backend.
     /// F7 publishes a warning status; F8 removes the same status immediately.
     /// </summary>
     private void Update()
     {
-        if (Keyboard.current == null || manager == null || !manager.IsRunning)
+        if (manager == null || !manager.IsRunning)
             return;
 
-        if (Keyboard.current.f7Key.wasPressedThisFrame)
+        if (WasKeyPressed(KeyCode.F7))
             PublishAndAutoClear();
 
-        if (Keyboard.current.f8Key.wasPressedThisFrame)
+        if (WasKeyPressed(KeyCode.F8))
             ClearStatus();
+    }
+
+    private static bool WasKeyPressed(KeyCode legacyKey)
+    {
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard == null)
+            return false;
+
+        return legacyKey switch
+        {
+            KeyCode.F7 => keyboard.f7Key.wasPressedThisFrame,
+            KeyCode.F8 => keyboard.f8Key.wasPressedThisFrame,
+            _ => false
+        };
+#elif ENABLE_LEGACY_INPUT_MANAGER
+        return Input.GetKeyDown(legacyKey);
+#else
+        return false;
+#endif
     }
 
     /// <summary>
@@ -101,4 +123,3 @@ public class FoxgloveStatusSmoke : MonoBehaviour
         Debug.Log("[FoxgloveStatusSmoke] Requested status removal.");
     }
 }
-

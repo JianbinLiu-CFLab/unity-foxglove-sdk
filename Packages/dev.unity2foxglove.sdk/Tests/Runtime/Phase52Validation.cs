@@ -599,7 +599,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var startIndex = demoSource.IndexOf("private void Start()", StringComparison.Ordinal);
             var sessionGuardIndex = demoSource.IndexOf("_manager?.Runtime?.Session == null", startIndex, StringComparison.Ordinal);
+            if (sessionGuardIndex < 0)
+                sessionGuardIndex = demoSource.IndexOf("runtime?.Session == null", startIndex, StringComparison.Ordinal);
             var runtimeCaptureIndex = demoSource.IndexOf("var rt = _manager.Runtime", startIndex, StringComparison.Ordinal);
+            if (runtimeCaptureIndex < 0)
+                runtimeCaptureIndex = demoSource.IndexOf("var rt = runtime", startIndex, StringComparison.Ordinal);
             Check(startIndex >= 0 && sessionGuardIndex >= 0 && runtimeCaptureIndex >= 0 && sessionGuardIndex < runtimeCaptureIndex,
                 "52C-1h: demo setup skips service wiring when manager start failed before session creation");
             Check(editorSource.Contains("Generate Local Dev Certificate")

@@ -36,15 +36,14 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     [SerializeField, Min(1)] private int _maxOutputQueue = 4;
     [SerializeField] private bool _logDiagnostics;
 
-    [Header("Read-only Counters")]
-    [SerializeField] private int _framesCaptured;
-    [SerializeField] private int _framesSubmitted;
-    [SerializeField] private int _accessUnitsReceived;
-    [SerializeField] private int _publishedMessages;
-    [SerializeField] private int _droppedInputFrames;
-    [SerializeField] private int _invalidAccessUnits;
-    [SerializeField] private string _lastHelperError = "";
-    [SerializeField] private string _lastHelperStderr = "";
+    [NonSerialized] private int _framesCaptured;
+    [NonSerialized] private int _framesSubmitted;
+    [NonSerialized] private int _accessUnitsReceived;
+    [NonSerialized] private int _publishedMessages;
+    [NonSerialized] private int _droppedInputFrames;
+    [NonSerialized] private int _invalidAccessUnits;
+    [NonSerialized] private string _lastHelperError = "";
+    [NonSerialized] private string _lastHelperStderr = "";
 
     private Camera _sourceCamera;
     private Camera _captureCamera;
@@ -57,7 +56,15 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     private int _sidecarWidth;
     private int _sidecarHeight;
     private bool _warnedUnavailable;
-    private bool _warnedConversionFailure;
+    private int _conversionFailureCount;
+    private bool _captureCameraDirty;
+    private Camera _lastCopiedSourceCamera;
+    private int _lastCaptureWidth;
+    private int _lastCaptureHeight;
+    private float _lastCaptureFieldOfView;
+    private int _lastCaptureCullingMask;
+    private CameraClearFlags _lastCaptureClearFlags;
+    private Color _lastCaptureBackgroundColor;
 
     protected override string SchemaName => ProbeSchema;
     public override bool SupportsJsonEncoding => false;
@@ -77,7 +84,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         _cleanupWhenReadbacksDrain = false;
         _captureGeneration++;
         _warnedUnavailable = false;
-        _warnedConversionFailure = false;
+        _conversionFailureCount = 0;
+        _captureCameraDirty = true;
         if (string.IsNullOrEmpty(_topic))
             _topic = ProbeTopic;
 
@@ -281,19 +289,48 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
 
             _captureTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
             _captureTexture.Create();
+            _captureCameraDirty = true;
         }
 
         if (_captureCamera == null)
         {
             var go = new GameObject("_OpenH264ProbeCaptureCamera");
+            go.hideFlags = HideFlags.HideAndDontSave;
             go.transform.SetParent(transform, false);
             _captureCamera = go.AddComponent<Camera>();
             _captureCamera.enabled = false;
+            _captureCameraDirty = true;
         }
 
-        _captureCamera.CopyFrom(_sourceCamera);
+        SyncCaptureCameraIfDirty(width, height);
         _captureCamera.targetTexture = _captureTexture;
         _captureCamera.enabled = false;
+    }
+
+    private void SyncCaptureCameraIfDirty(int width, int height)
+    {
+        if (_sourceCamera == null || _captureCamera == null)
+            return;
+
+        if (!_captureCameraDirty
+            && _lastCopiedSourceCamera == _sourceCamera
+            && _lastCaptureWidth == width
+            && _lastCaptureHeight == height
+            && Mathf.Approximately(_lastCaptureFieldOfView, _sourceCamera.fieldOfView)
+            && _lastCaptureCullingMask == _sourceCamera.cullingMask
+            && _lastCaptureClearFlags == _sourceCamera.clearFlags
+            && _lastCaptureBackgroundColor == _sourceCamera.backgroundColor)
+            return;
+
+        _captureCamera.CopyFrom(_sourceCamera);
+        _lastCopiedSourceCamera = _sourceCamera;
+        _lastCaptureWidth = width;
+        _lastCaptureHeight = height;
+        _lastCaptureFieldOfView = _sourceCamera.fieldOfView;
+        _lastCaptureCullingMask = _sourceCamera.cullingMask;
+        _lastCaptureClearFlags = _sourceCamera.clearFlags;
+        _lastCaptureBackgroundColor = _sourceCamera.backgroundColor;
+        _captureCameraDirty = false;
     }
 
     private void CompletePendingReadback()
@@ -346,12 +383,18 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     private void LogConversionFailure(string message)
     {
         _lastHelperError = message ?? "";
-        if (_warnedConversionFailure)
+        _conversionFailureCount++;
+        if (_conversionFailureCount != 1 && !IsPowerOfTwo(_conversionFailureCount))
             return;
 
-        _warnedConversionFailure = true;
-        Debug.LogWarning("[Foxglove] OpenH264 probe conversion failed: " + _lastHelperError);
+        Debug.LogWarning("[Foxglove] OpenH264 probe conversion failed: "
+                         + _lastHelperError
+                         + " conversion failure count="
+                         + _conversionFailureCount);
     }
+
+    private static bool IsPowerOfTwo(int value)
+        => value > 0 && (value & (value - 1)) == 0;
 
     private bool ValidateProbeConfig(out int width, out int height, out int i420Bytes)
     {

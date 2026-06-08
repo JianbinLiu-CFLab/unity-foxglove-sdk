@@ -116,7 +116,7 @@ def main() -> int:
         print(f"\n{green('All CI checks passed.')}")
     else:
         failed = [n for n, ok in results.items() if not ok]
-        print(f"\n{red(f'Failed: {', '.join(failed)}')}")
+        print(f"\n{red('Failed: ' + ', '.join(failed))}")
     return 0 if all_pass else 1
 
 
@@ -126,6 +126,10 @@ def _check_boundary() -> bool:
         ["git", "ls-files", "--", "Plan/**", "Developer/**"],
         capture_output=True, text=True, cwd=REPO_ROOT,
     )
+    if root_private.returncode != 0:
+        print(f"\n{red('FAIL')} git ls-files failed while checking Plan/Developer/:")
+        print(root_private.stderr.strip())
+        return False
     if root_private.stdout.strip():
         print(f"\n{red('FAIL')} Plan/ or Developer/ files are tracked and must not be:")
         print(root_private.stdout)
@@ -135,6 +139,10 @@ def _check_boundary() -> bool:
         ["git", "ls-files", "--", ":(glob)**/Developer/**", ":(glob)**/Developer.meta"],
         capture_output=True, text=True, cwd=REPO_ROOT,
     )
+    if nested_dev.returncode != 0:
+        print(f"\n{red('FAIL')} git ls-files failed while checking nested Developer/ files:")
+        print(nested_dev.stderr.strip())
+        return False
     if nested_dev.stdout.strip():
         print(f"\n{red('FAIL')} Nested Developer/ files are tracked:")
         print(nested_dev.stdout)

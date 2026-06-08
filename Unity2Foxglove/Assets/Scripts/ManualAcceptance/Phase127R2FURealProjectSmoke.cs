@@ -74,6 +74,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private MethodInfo _startExecutor;
     private bool _ownsRos2UnityComponent;
     private bool _executorStarted;
+    private bool _warnedMissingStartExecutor;
     private bool _initializationBlocked;
 #endif
 
@@ -235,7 +236,19 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         if (_executorStarted)
             return;
 
-        _startExecutor?.Invoke(_ros2Unity, null);
+        if (_startExecutor == null)
+        {
+            if (!_warnedMissingStartExecutor)
+            {
+                _warnedMissingStartExecutor = true;
+                Debug.LogWarning(LogPrefix + " StartExecutor reflection hook was not found; continuing without explicit executor start.");
+            }
+
+            _executorStarted = true;
+            return;
+        }
+
+        _startExecutor.Invoke(_ros2Unity, null);
         _executorStarted = true;
     }
 
@@ -450,6 +463,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         private bool _readyLogged;
         private bool _endpointsLogged;
         private bool _executorStarted;
+        private bool _warnedMissingStartExecutor;
         private bool _runtimeRootLogged;
         private bool _completed;
         private float _inboundDeadlineAt;
@@ -593,7 +607,20 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
             var method = typeof(ROS2UnityComponent).GetMethod(
                 "StartExecutor",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            method?.Invoke(_ros2Unity, null);
+            if (method == null)
+            {
+                if (!_warnedMissingStartExecutor)
+                {
+                    _warnedMissingStartExecutor = true;
+                    Debug.LogWarning(LogPrefix + " StartExecutor reflection hook was not found; continuing without explicit executor start.");
+                }
+
+                _executorStarted = true;
+                Debug.Log(LogPrefix + " UNITY2FOXGLOVE_R2FU_EXECUTOR_STARTED=False");
+                return;
+            }
+
+            method.Invoke(_ros2Unity, null);
             _executorStarted = true;
             Debug.Log(LogPrefix + " UNITY2FOXGLOVE_R2FU_EXECUTOR_STARTED=True");
         }

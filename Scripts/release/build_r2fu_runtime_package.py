@@ -213,6 +213,37 @@ def reset_package_dir(package: Path) -> None:
     package.mkdir(parents=True)
 
 
+def snapshot_package_dir(package: Path) -> Path | None:
+    """Copy the existing package to an ignored rollback root before regeneration."""
+    if not package.exists():
+        return None
+
+    rollback_root = ROOT / "build" / "r2fu-runtime-package-rollback"
+    rollback_root.mkdir(parents=True, exist_ok=True)
+    snapshot = rollback_root / f"{package.name}-{os.getpid()}-{time.time_ns()}"
+    shutil.copytree(windows_long_path(package), windows_long_path(snapshot), copy_function=shutil.copy2)
+    return snapshot
+
+
+def restore_package_dir(package: Path, snapshot: Path | None) -> None:
+    """Restore or remove the generated package after a failed regeneration."""
+    if package.exists():
+        rmtree_with_writable_retry(package)
+
+    if snapshot is None:
+        return
+
+    package.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(windows_long_path(snapshot), windows_long_path(package), copy_function=shutil.copy2)
+
+
+def remove_package_snapshot(snapshot: Path | None) -> None:
+    """Delete a temporary package rollback snapshot."""
+    if snapshot is None or not snapshot.exists():
+        return
+    rmtree_with_writable_retry(snapshot)
+
+
 def rmtree_with_writable_retry(path: Path) -> None:
     """Remove a tree, retrying read-only paths across Python shutil APIs."""
     raw_path = windows_long_path(path)
@@ -643,11 +674,11 @@ def patch_ros2_for_unity(package: Path) -> None:
             '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n',
             '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n' + PACKAGE_CONSTANTS_BLOCK,
         )
-    text = text.replace(
-        "// Modifications Copyright (c) 2026 Jianbin Liu.\n",
-        "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n",
-        1,
-    )
+    old_copyright = "// Modifications Copyright (c) 2026 Jianbin Liu.\n"
+    new_copyright = "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n"
+    if old_copyright not in text:
+        raise ValueError("Could not find upstream modifications copyright line to patch.")
+    text = text.replace(old_copyright, new_copyright, 1)
     write_text(source, text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK))
 
 
@@ -668,16 +699,23 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object]) -> None
 def build_package(paths: BuildPaths) -> None:
     """Build the runtime package from the runtime artifact."""
     inventory = require_inputs(paths)
+    snapshot = snapshot_package_dir(paths.package)
     overlays = collect_local_patch_overlays(paths.package)
     meta_overlays = collect_meta_overlays(paths.package)
-    reset_package_dir(paths.package)
-    extract_runtime(paths)
-    prune_non_contract_examples(paths.package)
-    patch_ros2_for_unity(paths.package)
-    apply_local_patch_overlays(paths.package, overlays)
-    write_package_files(paths, inventory)
-    apply_meta_overlays(paths.package, meta_overlays)
-    write_generated_metas(paths.package)
+    try:
+        reset_package_dir(paths.package)
+        extract_runtime(paths)
+        prune_non_contract_examples(paths.package)
+        patch_ros2_for_unity(paths.package)
+        apply_local_patch_overlays(paths.package, overlays)
+        write_package_files(paths, inventory)
+        apply_meta_overlays(paths.package, meta_overlays)
+        write_generated_metas(paths.package)
+    except Exception:
+        restore_package_dir(paths.package, snapshot)
+        raise
+    finally:
+        remove_package_snapshot(snapshot)
 
 
 def main(argv: list[str]) -> int:

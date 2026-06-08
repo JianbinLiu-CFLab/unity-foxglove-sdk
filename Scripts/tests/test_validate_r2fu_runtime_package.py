@@ -79,6 +79,17 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertIn("ValidateRmwImplementation", source)
         self.assertIn("rmw_fastrtps_cpp", source)
 
+    def test_generator_alignment_reports_missing_generator_as_failed_check(self) -> None:
+        """Missing generator source should produce a structured failed result."""
+        with tempfile.TemporaryDirectory() as temp:
+            self.validator.ROOT = Path(temp)
+            results = []
+
+            self.validator.check_generator_alignment(results)
+
+        self.assertFalse(results[0].ok)
+        self.assertIn("generator script readable", results[0].name)
+
 
 if __name__ == "__main__":
     unittest.main()
