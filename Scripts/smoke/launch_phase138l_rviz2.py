@@ -168,8 +168,8 @@ def write_runtime_rviz_config(
 ) -> pathlib.Path:
     """Write a temporary RViz config containing the selected PointCloud2 topic."""
     text = base_config.read_text(encoding="utf-8")
-    text = text.replace("Value: /points", f"Value: {points_topic}")
-    text = text.replace("Name: PointCloud2 /points", f"Name: PointCloud2 {points_topic}")
+    text = replace_required(text, "Value: /points", f"Value: {points_topic}", base_config)
+    text = replace_required(text, "Name: PointCloud2 /points", f"Name: PointCloud2 {points_topic}", base_config)
     text = re.sub(r"Fixed Frame: .+", f"Fixed Frame: {fixed_frame}", text)
 
     output_dir = workspace_root / "build" / "rviz2"
@@ -177,6 +177,13 @@ def write_runtime_rviz_config(
     output_path = output_dir / f"phase138l_{sanitize_config_suffix(points_topic)}.rviz"
     output_path.write_text(text, encoding="utf-8", newline="\n")
     return output_path
+
+
+def replace_required(text: str, old: str, new: str, source: pathlib.Path) -> str:
+    """Replace one required RViz2 config token and fail loudly if it is absent."""
+    if old not in text:
+        raise RuntimeError(f"Required RViz2 config token not found in {source}: {old}")
+    return text.replace(old, new)
 
 
 def probe_topic(

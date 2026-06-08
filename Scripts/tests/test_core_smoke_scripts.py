@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -190,6 +191,125 @@ class CoreSmokeScriptTests(unittest.TestCase):
             sys.path[:] = original_path
 
         self.assertTrue(hasattr(module, "main"))
+
+    def test_phase139d_loopback_reports_url_errors_without_traceback(self) -> None:
+        """Unity cursor endpoint connection failures should return structured errors."""
+        module = load_smoke_module("phase139d_url_error_under_test", "phase139d_unity_cursor_bridge_acceptance.py")
+
+        with mock.patch.object(module.urllib.request, "urlopen", side_effect=urllib.error.URLError("refused")):
+            post = module.post_cursor("http://127.0.0.1:1/v1/replay-cursor", "", {}, 0.01)
+            state = module.get_unity_state("http://127.0.0.1:1/v1/replay-cursor", "", 0.01)
+
+        self.assertEqual(-1, post["status"])
+        self.assertIn("refused", post["body"])
+        self.assertEqual(-1, state["status"])
+        self.assertIn("refused", state["body"])
+
+    def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
+        """RViz2 topic patching should not silently leave the default /points topic."""
+        module = load_smoke_module("phase138l_rviz_under_test", "launch_phase138l_rviz2.py")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_config = root / "base.rviz"
+            base_config.write_text("Fixed Frame: map\nValue: /not-points\n", encoding="utf-8")
+
+            with self.assertRaises(RuntimeError):
+                module.write_runtime_rviz_config(base_config, root, "/unity/point_cloud2", "map")
+
+    def test_phase138m_republisher_closes_parent_log_handle_after_spawn(self) -> None:
+        """The parent process should not retain the republisher log handle."""
+        module = load_smoke_module("phase138m_log_under_test", "launch_phase138m_rviz2.py")
+
+        class FakeLog:
+            """Writable log stub that records close calls."""
+
+            def __init__(self):
+                """Initialize close tracking."""
+                self.closed = False
+
+            def write(self, _text):
+                """Accept writes from subprocess setup."""
+                return None
+
+            def close(self):
+                """Record close."""
+                self.closed = True
+
+        class FakeProcess:
+            """Process stub that stays alive after spawn."""
+
+            pid = 42
+
+            def poll(self):
+                """Report a running child."""
+                return None
+
+        fake_log = FakeLog()
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "republisher.log"
+            with mock.patch.object(module.pathlib.Path, "open", return_value=fake_log):
+                with mock.patch.object(module.subprocess, "Popen", return_value=FakeProcess()):
+                    with mock.patch.object(module.time, "sleep"):
+                        module.launch_image_republisher(Path(sys.executable), {}, "/camera/compressed", "/camera", log_path)
+
+        self.assertTrue(fake_log.closed)
+
+    def test_phase138m_cleanup_escapes_powershell_wildcards(self) -> None:
+        """PowerShell cleanup should escape wildcard characters in paths before -like matching."""
+        module = load_smoke_module("phase138m_cleanup_under_test", "launch_phase138m_rviz2.py")
+        commands: list[str] = []
+
+        def capture_run(args, **_kwargs):
+            """Capture the PowerShell command text."""
+            commands.append(args[-1])
+            return SimpleNamespace(stdout="", returncode=0)
+
+        with mock.patch.object(module.os, "name", "nt"):
+            with mock.patch.object(module.subprocess, "run", side_effect=capture_run):
+                module.cleanup_stale_processes(Path("C:/project[1]/script.py"), Path("C:/project[1]/view.rviz"), "map", "cam[1]")
+
+        self.assertEqual(1, len(commands))
+        self.assertIn("WildcardPattern", commands[0])
+
+    def test_phase138_inline_subscribers_use_monotonic_deadlines(self) -> None:
+        """Inline ROS2 subscriber deadlines should use monotonic time."""
+        for relative in ("phase138s_imu_native_dds_acceptance.py", "phase138t_camera_raw_image_dds_acceptance.py"):
+            with self.subTest(relative=relative):
+                source = (SMOKE / relative).read_text(encoding="utf-8")
+                self.assertNotIn("deadline = time.time() + spin_seconds", source)
+                self.assertNotIn("while time.time() < deadline", source)
+                self.assertIn("deadline = time.monotonic() + spin_seconds", source)
+
+    def test_phase138b_rejects_cmd_percent_expansion_in_vsdev_path(self) -> None:
+        """VsDevCmd.bat shell embedding should reject percent expansion."""
+        module = load_smoke_module("phase138b_cmd_under_test", "phase138b_r2fu_jazzy_windows_build.py")
+
+        with self.assertRaises(module.Phase138BError):
+            module.reject_cmd_shell_unsafe_path("VsDevCmd.bat", Path(r"C:\Tools\%COMSPEC%\VsDevCmd.bat"))
+
+    def test_bridge_shell_preflight_reports_missing_foxglove_msgs(self) -> None:
+        """The shell bridge sample should explain missing foxglove_msgs."""
+        script = ROOT / "Tools" / "ros2_bridge" / "unity2foxglove_ros2_bridge" / "scripts" / "run_bridge_sample.sh"
+        source = script.read_text(encoding="utf-8")
+
+        self.assertIn("if ! ros2 pkg prefix foxglove_msgs", source)
+        self.assertIn("foxglove_msgs is not installed", source)
+
+    def test_bridge_powershell_preserves_ros2_error_output(self) -> None:
+        """The PowerShell bridge sample should not discard ros2 diagnostics."""
+        script = ROOT / "Tools" / "ros2_bridge" / "unity2foxglove_ros2_bridge" / "scripts" / "run_bridge_sample.ps1"
+        source = script.read_text(encoding="utf-8")
+
+        self.assertNotIn("| Out-Null", source)
+        self.assertIn("$output", source)
+
+    def test_phase138t_cleanup_uses_configured_camera_frame(self) -> None:
+        """Camera raw RViz cleanup should not hardcode os_sensor."""
+        source = (SMOKE / "launch_phase138t_camera_raw_rviz2.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("--child-frame-id os_sensor", source)
+        self.assertNotIn("child_frame_id: 'os_sensor'", source)
 
 
 if __name__ == "__main__":

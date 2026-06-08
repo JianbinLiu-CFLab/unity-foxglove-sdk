@@ -122,6 +122,11 @@ def post_cursor(url: str, token: str, payload: dict, timeout: float) -> dict:
             "status": exc.code,
             "body": exc.read().decode("utf-8", "replace"),
         }
+    except urllib.error.URLError as exc:
+        return {
+            "status": -1,
+            "body": str(exc),
+        }
 
 
 def get_unity_state(url: str, token: str, timeout: float) -> dict:
@@ -142,6 +147,11 @@ def get_unity_state(url: str, token: str, timeout: float) -> dict:
         return {
             "status": exc.code,
             "body": exc.read().decode("utf-8", "replace"),
+        }
+    except urllib.error.URLError as exc:
+        return {
+            "status": -1,
+            "body": str(exc),
         }
 
 

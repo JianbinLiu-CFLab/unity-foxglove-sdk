@@ -44,7 +44,10 @@ if ! command -v ros2 >/dev/null 2>&1; then
   exit 1
 fi
 
-ros2 pkg prefix foxglove_msgs >/dev/null
+if ! ros2 pkg prefix foxglove_msgs >/dev/null 2>&1; then
+  echo "foxglove_msgs is not installed. Install the ros-${ROS_DISTRO:-<distro>}-foxglove-msgs package for your ROS2 distribution." >&2
+  exit 1
+fi
 
 schemas=(
   foxglove_msgs/msg/FrameTransform

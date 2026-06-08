@@ -378,6 +378,8 @@ def reject_cmd_shell_unsafe_path(label: str, path: pathlib.Path) -> None:
 
     if '"' in str(path):
         raise Phase138BError("BLOCKED_VSDEV_ENV", f"{label} contains an unsupported quote: {path}")
+    if "%" in str(path):
+        raise Phase138BError("BLOCKED_VSDEV_ENV", f"{label} contains unsupported percent expansion: {path}")
 
 
 def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: pathlib.Path) -> dict[str, str]:

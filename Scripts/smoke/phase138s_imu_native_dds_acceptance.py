@@ -352,9 +352,9 @@ subscriptions = [
     node.create_subscription(Imu, topic, capture, qos_reliable),
     node.create_subscription(Imu, topic, capture, qos_best_effort),
 ]
-deadline = time.time() + spin_seconds
+deadline = time.monotonic() + spin_seconds
 try:
-    while time.time() < deadline and not received:
+    while time.monotonic() < deadline and not received:
         rclpy.spin_once(node, timeout_sec=0.2)
 finally:
     for subscription in subscriptions:

@@ -266,7 +266,7 @@ Window Geometry:
     return output_path
 
 
-def cleanup_stale_processes(script_path: pathlib.Path, rviz_config: pathlib.Path) -> None:
+def cleanup_stale_processes(script_path: pathlib.Path, rviz_config: pathlib.Path, camera_parent_frame: str) -> None:
     """Stop stale Phase138T RViz/helper processes from previous script runs."""
 
     if sys.platform != "win32":
@@ -274,16 +274,18 @@ def cleanup_stale_processes(script_path: pathlib.Path, rviz_config: pathlib.Path
 
     escaped_script = str(script_path).replace("'", "''")
     escaped_config = str(rviz_config).replace("'", "''")
+    escaped_camera = camera_parent_frame.replace("'", "''")
     command = f"""
 $script = '{escaped_script}'
 $config = '{escaped_config}'
+$camera = '{escaped_camera}'
 $matches = Get-CimInstance Win32_Process | Where-Object {{
     $cmd = $_.CommandLine
     if ([string]::IsNullOrWhiteSpace($cmd)) {{ return $false }}
     if ($cmd -like "*$script*" -and $cmd -like "*--camera-tf-fallback-child*") {{ return $true }}
     if ($_.Name -eq "rviz2.exe" -and $cmd -like "*$config*") {{ return $true }}
-    if ($cmd -like "*static_transform_publisher*" -and $cmd -like "*--child-frame-id os_sensor*") {{ return $true }}
-    if ($cmd -like "*topic pub /tf*" -and $cmd -like "*child_frame_id: 'os_sensor'*") {{ return $true }}
+    if ($cmd -like "*static_transform_publisher*" -and $cmd -like "*--child-frame-id $camera*") {{ return $true }}
+    if ($cmd -like "*topic pub /tf*" -and $cmd -like "*child_frame_id: '$camera'*") {{ return $true }}
     return $false
 }}
 foreach ($p in $matches) {{
@@ -496,7 +498,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     if not args.no_cleanup_stale:
-        cleanup_stale_processes(script_path, runtime_config)
+        cleanup_stale_processes(script_path, runtime_config, camera_parent_frame)
 
     if not args.no_camera_static_tf:
         launch_camera_tf_fallback(pixi_python, env, script_path, fixed_frame, camera_parent_frame, workspace_root)
