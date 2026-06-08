@@ -28,7 +28,6 @@ Use the repository `Unity2Foxglove/` project when you are contributing to the SD
 ## Requirements
 
 - Unity 6000.0 LTSC or later.
-- Input System (`com.unity.inputsystem`).
 - Universal Render Pipeline (`com.unity.render-pipelines.universal`).
 
 This sample was developed on Unity 6000.3.14f1 LTSC and is intended to remain compatible with Unity 6000.0.74f1 LTSC or later.
@@ -36,7 +35,7 @@ This sample was developed on Unity 6000.3.14f1 LTSC and is intended to remain co
 ## Import Steps
 
 1. Install `dev.unity2foxglove.sdk` through Unity Package Manager.
-2. Install Input System and URP if your project does not already include them.
+2. Install URP if your project does not already include it.
 3. Open **Window > Package Manager**.
 4. Select **Unity2Foxglove SDK**.
 5. Expand **Samples**.
@@ -52,7 +51,6 @@ Assets/Samples/Unity2Foxglove SDK/<version>/Full Demo Visualization/
 
 - `Scenes/FullDemoVisualization.unity`
 - `FoxgloveFullLayout.json`
-- `InputSystem_Actions.inputactions`
 - `Scripts/FoxgloveDemoSetup.cs`
 - `Scripts/MouseDragCube.cs`
 - `Scripts/TestLog.cs`

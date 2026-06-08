@@ -93,9 +93,10 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(fullDir, "Scripts", "TestLog.cs")), "FullDemo scripts: TestLog.cs");
             Assert(File.Exists(Path.Combine(fullDir, "Scripts", "TestLog.cs.meta")), "FullDemo scripts: TestLog.cs.meta");
 
-            // InputSystem
-            Assert(File.Exists(Path.Combine(fullDir, "InputSystem_Actions.inputactions")), "FullDemo InputSystem_Actions.inputactions exists");
-            Assert(File.Exists(Path.Combine(fullDir, "InputSystem_Actions.inputactions.meta")), "FullDemo InputSystem_Actions.inputactions.meta exists");
+            // FullDemo should not import a project-level InputSystem_Actions asset
+            // that can collide with the user's own input setup.
+            Assert(!File.Exists(Path.Combine(fullDir, "InputSystem_Actions.inputactions")), "FullDemo does not ship InputSystem_Actions.inputactions");
+            Assert(!File.Exists(Path.Combine(fullDir, "InputSystem_Actions.inputactions.meta")), "FullDemo does not ship InputSystem_Actions.inputactions.meta");
 
             // URP settings
             Assert(Directory.Exists(Path.Combine(fullDir, "Settings")), "FullDemo Settings/ exists");

@@ -233,7 +233,6 @@ def check_sample_boundaries(results: list[CheckResult]) -> None:
     required_full = [
         full / "FoxgloveFullLayout.json",
         full / "FoxgloveFullLayout.json.meta",
-        full / "InputSystem_Actions.inputactions",
         full / "Scenes" / "FullDemoVisualization.unity",
         full / "Scripts" / "FoxgloveDemoSetup.cs",
         full / "Scripts" / "MouseDragCube.cs",
@@ -243,6 +242,13 @@ def check_sample_boundaries(results: list[CheckResult]) -> None:
     ]
     missing = [rel(p) for p in required_full if not p.exists()]
     add(results, "FullDemo required files", not missing, "; ".join(missing) if missing else "all required files present")
+
+    forbidden_full = [
+        full / "InputSystem_Actions.inputactions",
+        full / "InputSystem_Actions.inputactions.meta",
+    ]
+    conflicts = [rel(p) for p in forbidden_full if p.exists()]
+    add(results, "FullDemo avoids project-level input action assets", not conflicts, "; ".join(conflicts) if conflicts else "no InputSystem_Actions asset")
 
 
 def check_forbidden_public_content(results: list[CheckResult]) -> None:

@@ -56,7 +56,6 @@ namespace Unity.FoxgloveSDK.Tests
             RequireSampleFile("BasicVisualization/FoxgloveSimpleLayout.json", "134-23-B1: Basic sample layout asset exists");
             RequireSampleFile("BasicVisualization/Scenes/BasicVisualization.unity", "134-23-B2: Basic sample scene exists");
             RequireSampleFile("FullDemoVisualization/FoxgloveFullLayout.json", "134-23-B3: Full demo layout asset exists");
-            RequireSampleFile("FullDemoVisualization/InputSystem_Actions.inputactions", "134-23-B4: Full demo input actions asset exists");
             RequireSampleFile("FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-B5: Full demo scene exists");
             RequireSampleFile("FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-B6: Full demo setup script exists");
             RequireSampleFile("Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-B7: ROS2 bridge sample layout asset exists");
@@ -71,7 +70,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyMetaSidecar("BasicVisualization/FoxgloveSimpleLayout.json", "134-23-C1: Basic layout has Unity meta sidecar");
             VerifyMetaSidecar("BasicVisualization/Scenes/BasicVisualization.unity", "134-23-C2: Basic scene has Unity meta sidecar");
             VerifyMetaSidecar("FullDemoVisualization/FoxgloveFullLayout.json", "134-23-C3: Full demo layout has Unity meta sidecar");
-            VerifyMetaSidecar("FullDemoVisualization/InputSystem_Actions.inputactions", "134-23-C4: Full demo input actions have Unity meta sidecar");
             VerifyMetaSidecar("FullDemoVisualization/Scenes/FullDemoVisualization.unity", "134-23-C5: Full demo scene has Unity meta sidecar");
             VerifyMetaSidecar("FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs", "134-23-C6: Full demo setup has Unity meta sidecar");
             VerifyMetaSidecar("Ros2BridgeSample/FoxgloveRos2BridgeLayout.json", "134-23-C7: ROS2 bridge layout has Unity meta sidecar");
@@ -96,6 +94,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && validator.Contains("check_sample_boundaries(results)", StringComparison.Ordinal)
                   && validator.Contains("check_forbidden_sample_artifacts(results)", StringComparison.Ordinal),
                 "134-23-D3: release validator runs sample meta, boundary, and artifact checks");
+            Check(validator.Contains("FullDemo avoids project-level input action assets", StringComparison.Ordinal)
+                  && validator.Contains("InputSystem_Actions.inputactions", StringComparison.Ordinal),
+                "134-23-D5: release validator rejects project-level input action assets from FullDemo sample");
             Check(validator.Contains("FORBIDDEN_SAMPLE_PARTS", StringComparison.Ordinal)
                   && validator.Contains("\"Generated\"", StringComparison.Ordinal)
                   && validator.Contains("__pycache__", StringComparison.Ordinal),

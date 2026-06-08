@@ -70,8 +70,6 @@ class FileMap:
 # Canonical list of files mirrored between the live demo and package sample.
 FILE_MAPS = (
     FileMap(DEMO_CONFIGS / "FoxgloveFullLayout.json", PACKAGE_SAMPLE / "FoxgloveFullLayout.json"),
-    FileMap(DEMO_ASSETS / "InputSystem_Actions.inputactions", PACKAGE_SAMPLE / "InputSystem_Actions.inputactions"),
-    FileMap(DEMO_ASSETS / "InputSystem_Actions.inputactions.meta", PACKAGE_SAMPLE / "InputSystem_Actions.inputactions.meta"),
     FileMap(DEMO_ASSETS / "Scenes" / "SampleScene.unity", PACKAGE_SAMPLE / "Scenes" / "FullDemoVisualization.unity"),
     FileMap(DEMO_ASSETS / "Scenes" / "SampleScene.unity.meta", PACKAGE_SAMPLE / "Scenes" / "FullDemoVisualization.unity.meta"),
     FileMap(FULL_DEMO_VISUALIZATION_SCRIPTS / "FoxgloveDemoSetup.cs", PACKAGE_SAMPLE / "Scripts" / "FoxgloveDemoSetup.cs"),
