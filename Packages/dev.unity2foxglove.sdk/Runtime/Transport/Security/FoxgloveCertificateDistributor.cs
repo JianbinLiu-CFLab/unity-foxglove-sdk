@@ -33,15 +33,21 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
         private readonly IFoxgloveLogger _logger;
+        private readonly int _clientIoTimeoutMs;
         private TcpListener _listener;
         private CancellationTokenSource _cts;
         private string _rootCaSha256Fingerprint;
 
-        public FoxgloveCertificateDistributor(string rootCaPath, string rootCaPemPath = null, IFoxgloveLogger logger = null)
+        public FoxgloveCertificateDistributor(
+            string rootCaPath,
+            string rootCaPemPath = null,
+            IFoxgloveLogger logger = null,
+            int clientIoTimeoutMs = 5000)
         {
             _rootCaPath = rootCaPath ?? string.Empty;
             _rootCaPemPath = rootCaPemPath ?? string.Empty;
             _logger = logger ?? new ConsoleLogger();
+            _clientIoTimeoutMs = Math.Max(1, clientIoTimeoutMs);
         }
 
         /// <summary>Whether the HTTP listener is currently active.</summary>
@@ -123,8 +129,8 @@ namespace Unity.FoxgloveSDK.Transport
                 try
                 {
                     ct.ThrowIfCancellationRequested();
-                    stream.ReadTimeout = 5000;
-                    stream.WriteTimeout = 5000;
+                    stream.ReadTimeout = _clientIoTimeoutMs;
+                    stream.WriteTimeout = _clientIoTimeoutMs;
                     var requestLine = ReadLine(stream, MaxRequestLineBytes);
                     ct.ThrowIfCancellationRequested();
                     if (string.IsNullOrEmpty(requestLine))

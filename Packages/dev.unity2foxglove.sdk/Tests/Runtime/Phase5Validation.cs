@@ -98,10 +98,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var transport = new LifecycleFakeTransport();
             var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
-            runtime.Start("R1", "127.0.0.1", 18790);
+            runtime.Start("R1", "127.0.0.1", 0);
             runtime.Stop();
             // Restart with same transport — must not throw
-            runtime.Start("R2", "127.0.0.1", 18790);
+            runtime.Start("R2", "127.0.0.1", 0);
             Assert(runtime.Session != null, "Restarted session exists");
             runtime.Dispose();
         }
@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var transport = new LifecycleFakeTransport();
             var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
-            runtime.Start("D1", "127.0.0.1", 18791);
+            runtime.Start("D1", "127.0.0.1", 0);
             runtime.Dispose();
             Assert(transport.DisposeCalled == 1, "Runtime.Dispose calls transport.Dispose exactly once");
         }

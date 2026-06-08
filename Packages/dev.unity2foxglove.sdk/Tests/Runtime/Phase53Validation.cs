@@ -167,20 +167,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            var baseDir = AppContext.BaseDirectory;
-            for (var i = 0; i < 8; i++)
-            {
-                var candidate = Path.GetFullPath(Path.Combine(baseDir, relativePath));
-                if (File.Exists(candidate))
-                    return File.ReadAllText(candidate);
-                baseDir = Path.GetFullPath(Path.Combine(baseDir, ".."));
-            }
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root for '" + relativePath + "'.");
 
-            var cwdCandidate = Path.GetFullPath(relativePath);
-            if (File.Exists(cwdCandidate))
-                return File.ReadAllText(cwdCandidate);
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Could not find file '" + relativePath + "'.", path);
 
-            throw new FileNotFoundException($"Could not find file '{relativePath}'.");
+            return File.ReadAllText(path);
         }
 
         private static void Check(bool condition, string label)
