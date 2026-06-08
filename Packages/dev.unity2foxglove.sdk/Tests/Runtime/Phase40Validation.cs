@@ -120,7 +120,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestInspectorBackpressurePlacement()
         {
-            var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
+            if (!TryReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
+                out var editor))
+                return;
+
             Check(editor.Contains("Foldout(_showAdvancedJpeg, \"Advanced JPEG\"", StringComparison.Ordinal),
                 "40B-1: camera inspector groups backpressure under the collapsed Advanced JPEG foldout");
             Check(!editor.Contains("DrawBackpressureSection(", StringComparison.Ordinal),
@@ -140,14 +144,22 @@ namespace Unity.FoxgloveSDK.Tests
             Check(firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex, label);
         }
 
-        private static string ReadRepoText(string relativePath)
+        private static bool TryReadRepoText(string relativePath, out string source)
         {
+            source = null;
             var root = FindRepoRoot();
             if (root == null)
-                return "";
+            {
+                Console.WriteLine("[WARN] repository root unavailable; skipping source inspection for " + relativePath);
+                return false;
+            }
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : "";
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing repository file: " + relativePath, path);
+
+            source = File.ReadAllText(path);
+            return true;
         }
 
         private static string FindRepoRoot()

@@ -446,6 +446,9 @@ namespace Unity.FoxgloveSDK.Tests
                     },
                     out var trackedPrivateFiles))
             {
+                if (IsCiEnvironment())
+                    Assert(false, "git is available for tracked private workspace boundary checks in CI");
+
                 Console.WriteLine("[WARN] git unavailable; skipping tracked private workspace boundary checks");
                 return;
             }
@@ -489,6 +492,13 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 return false;
             }
+        }
+
+        static bool IsCiEnvironment()
+        {
+            var ci = Environment.GetEnvironmentVariable("CI");
+            return string.Equals(ci, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ci, "1", StringComparison.OrdinalIgnoreCase);
         }
 
         static string QuoteGitArgument(string value)

@@ -20,7 +20,6 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase97Validation
     {
-        private static readonly object EnvironmentGate = new object();
         private static int _passed;
 
         /// <summary>
@@ -132,52 +131,44 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMockedLiveHealthReport()
         {
-            lock (EnvironmentGate)
-            {
-                var oldDistro = Environment.GetEnvironmentVariable("ROS_DISTRO");
-                try
-                {
-                    Environment.SetEnvironmentVariable("ROS_DISTRO", "jazzy");
-                    var ready = new Ros2BridgeHealthRunner(
-                        new RecordingCommandRunner(successByDefault: true),
-                        new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
-                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
+            var ready = new Ros2BridgeHealthRunner(
+                new RecordingCommandRunner(successByDefault: true),
+                new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
+                FixedClock,
+                () => "jazzy").Run(new Ros2BridgeHealthOptions(liveMode: true));
 
-                    Check(ready.Summary == Ros2BridgeHealthSummary.Ready, "97C-1: mocked healthy live report is Ready");
-                    Check(ready.Environment.RosDistro == "jazzy", "97C-2: live report records ROS_DISTRO");
-                    Check(ready.Checks.Single(c => c.Id == "interfaces.catalog").Message.Contains(FoxgloveRos2MsgSchemaCatalog.SourceFileCount.ToString()),
-                        "97C-3: live interface check covers all 41 schemas");
+            Check(ready.Summary == Ros2BridgeHealthSummary.Ready, "97C-1: mocked healthy live report is Ready");
+            Check(ready.Environment.RosDistro == "jazzy", "97C-2: live report records ROS_DISTRO");
+            Check(ready.Checks.Single(c => c.Id == "interfaces.catalog").Message.Contains(FoxgloveRos2MsgSchemaCatalog.SourceFileCount.ToString()),
+                "97C-3: live interface check covers all 41 schemas");
 
-                    var noRos2 = new Ros2BridgeHealthRunner(
-                        new RecordingCommandRunner(successByDefault: false),
-                        new FakeProbe(true),
-                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
-                    Check(noRos2.Summary == Ros2BridgeHealthSummary.NeedsSetup,
-                        "97C-4: missing ros2 maps to NeedsSetup");
-                    Check(noRos2.Checks.Single(c => c.Id == "foxglove_msgs.package").Status == Ros2BridgeHealthStatus.Skipped,
-                        "97C-5: missing ros2 skips dependent package check");
+            var noRos2 = new Ros2BridgeHealthRunner(
+                new RecordingCommandRunner(successByDefault: false),
+                new FakeProbe(true),
+                FixedClock,
+                () => "jazzy").Run(new Ros2BridgeHealthOptions(liveMode: true));
+            Check(noRos2.Summary == Ros2BridgeHealthSummary.NeedsSetup,
+                "97C-4: missing ros2 maps to NeedsSetup");
+            Check(noRos2.Checks.Single(c => c.Id == "foxglove_msgs.package").Status == Ros2BridgeHealthStatus.Skipped,
+                "97C-5: missing ros2 skips dependent package check");
 
-                    var wslSidecarReady = new Ros2BridgeHealthRunner(
-                        new LaunchFailureCommandRunner(),
-                        new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
-                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
-                    Check(wslSidecarReady.Summary == Ros2BridgeHealthSummary.Ready,
-                        "97C-6: sidecar-ready report tolerates missing Windows ros2 CLI");
-                    Check(wslSidecarReady.Checks.Single(c => c.Id == "ros2.cli").Status == Ros2BridgeHealthStatus.Warning,
-                        "97C-7: missing Windows ros2 CLI is a warning when command launch fails");
+            var wslSidecarReady = new Ros2BridgeHealthRunner(
+                new LaunchFailureCommandRunner(),
+                new FakeProbe(true, "unity2foxglove_ros2_bridge", "0.1.0"),
+                FixedClock,
+                () => "jazzy").Run(new Ros2BridgeHealthOptions(liveMode: true));
+            Check(wslSidecarReady.Summary == Ros2BridgeHealthSummary.Ready,
+                "97C-6: sidecar-ready report tolerates missing Windows ros2 CLI");
+            Check(wslSidecarReady.Checks.Single(c => c.Id == "ros2.cli").Status == Ros2BridgeHealthStatus.Warning,
+                "97C-7: missing Windows ros2 CLI is a warning when command launch fails");
 
-                    var sidecarDown = new Ros2BridgeHealthRunner(
-                        new RecordingCommandRunner(successByDefault: true),
-                        new FakeProbe(false),
-                        FixedClock).Run(new Ros2BridgeHealthOptions(liveMode: true));
-                    Check(sidecarDown.Summary == Ros2BridgeHealthSummary.SidecarNotRunning,
-                        "97C-8: sidecar-only failure maps to SidecarNotRunning");
-                }
-                finally
-                {
-                    Environment.SetEnvironmentVariable("ROS_DISTRO", oldDistro);
-                }
-            }
+            var sidecarDown = new Ros2BridgeHealthRunner(
+                new RecordingCommandRunner(successByDefault: true),
+                new FakeProbe(false),
+                FixedClock,
+                () => "jazzy").Run(new Ros2BridgeHealthOptions(liveMode: true));
+            Check(sidecarDown.Summary == Ros2BridgeHealthSummary.SidecarNotRunning,
+                "97C-8: sidecar-only failure maps to SidecarNotRunning");
         }
 
         private static void VerifyU2R2HealthCodecBoundary()

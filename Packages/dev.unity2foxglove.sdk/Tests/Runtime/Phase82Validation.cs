@@ -53,6 +53,8 @@ namespace Unity.FoxgloveSDK.Tests
             var sidecarType = FindType("Foxglove.Schemas.Video.MediaFoundationH264EncoderSidecar");
             if (optionsType == null || sidecarType == null)
                 throw new InvalidOperationException("Native H.264 types are not available.");
+            if (!typeof(IDisposable).IsAssignableFrom(sidecarType))
+                throw new InvalidOperationException("Native H.264 sidecar does not implement IDisposable.");
 
             var options = Activator.CreateInstance(optionsType);
             SetField(optionsType, options, "Width", 640);
@@ -354,7 +356,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMediaFoundationGuidTable(Type sidecarType)
         {
             var guidTable = sidecarType.GetNestedType("MfGuids", BindingFlags.NonPublic);
-            Check(guidTable != null, "82C-15a: Media Foundation GUID table exists");
+            Check(guidTable != null, "82C-30: Media Foundation GUID table exists");
 
             try
             {
@@ -366,11 +368,11 @@ namespace Unity.FoxgloveSDK.Tests
                         continue;
 
                     var value = (Guid)field.GetValue(null);
-                    Check(value != Guid.Empty, "82C-16-" + field.Name + ": Media Foundation GUID is valid");
+                    Check(value != Guid.Empty, "82C-31-" + field.Name + ": Media Foundation GUID is valid");
                     count++;
                 }
 
-                Check(count >= 10, "82C-15c: Media Foundation GUID table covers required attributes");
+                Check(count >= 10, "82C-32: Media Foundation GUID table covers required attributes");
                 CheckGuidField(guidTable, "MF_MT_MPEG2_PROFILE", "AD76A80B-2D5C-4E0B-B375-64E520137036");
                 CheckGuidField(guidTable, "MF_MT_MPEG_SEQUENCE_HEADER", "3C036DE7-3AD0-4C9E-9216-EE6D6AC21CB3");
                 CheckGuidField(guidTable, "CODECAPI_AVLowLatencyMode", "9C27891A-ED7A-40E1-88E8-B22727A024EE");
@@ -380,7 +382,7 @@ namespace Unity.FoxgloveSDK.Tests
             catch (Exception ex)
             {
                 throw new InvalidOperationException(
-                    "82C-16: Media Foundation GUID table initializes without TypeInitializationException: "
+                    "82C-33: Media Foundation GUID table initializes without TypeInitializationException: "
                     + ex.GetType().Name + " " + ex.Message,
                     ex);
             }
@@ -389,9 +391,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckGuidField(Type guidTable, string fieldName, string expected)
         {
             var field = guidTable.GetField(fieldName, BindingFlags.Public | BindingFlags.Static);
-            Check(field != null, "82C-15d: Media Foundation GUID " + fieldName + " exists");
+            Check(field != null, "82C-34: Media Foundation GUID " + fieldName + " exists");
             var value = (Guid)field.GetValue(null);
-            Check(value == new Guid(expected), "82C-15e: Media Foundation GUID " + fieldName + " matches Windows SDK");
+            Check(value == new Guid(expected), "82C-35: Media Foundation GUID " + fieldName + " matches Windows SDK");
         }
 
         private static string GetStringProperty(Type type, object target, string name)

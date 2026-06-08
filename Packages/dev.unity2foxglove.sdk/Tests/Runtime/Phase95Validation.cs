@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase95Validation
     {
         private const ulong SampleTimeNs = 1_700_095_000_000_000_000UL;
+        private const int BackgroundRuntimeTimeoutMs = 10_000;
         private static int _passed;
 
         /// <summary>
@@ -133,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             runtime.Start(enabled: true, autoConnect: true);
             Check(runtime.TryEnqueue(CreateFrame("/unity/tf", 1), out _), "95C-1: runtime enqueues before reconnect succeeds");
-            Check(WaitUntil(() => factory.AllSentFrames.Count == 1, 3000),
+            Check(WaitUntil(() => factory.AllSentFrames.Count == 1, BackgroundRuntimeTimeoutMs),
                 "95C-2: runtime reconnects and sends queued frame");
             var stats = runtime.GetStatsSnapshot();
             Check(stats.Connected && stats.SentFrames == 1 && stats.FailedFrames == 0,
@@ -155,27 +156,37 @@ namespace Unity.FoxgloveSDK.Tests
                 sinkFactory: factory.Create);
 
             runtime.Start(enabled: true, autoConnect: true);
-            Check(factory.ConnectStarted.Wait(3000), "95C2-1: stop race test reaches blocked connect");
-
-            Exception stopException = null;
-            var stopThread = new Thread(() =>
+            Thread stopThread = null;
+            try
             {
-                try
-                {
-                    factory.StopStarted.Set();
-                    runtime.Stop();
-                }
-                catch (Exception ex)
-                {
-                    stopException = ex;
-                }
-            });
-            stopThread.Start();
-            Check(factory.StopStarted.Wait(3000), "95C2-2: stop race test starts Stop while connect is blocked");
-            factory.ReleaseConnect.Set();
+                Check(factory.ConnectStarted.Wait(3000), "95C2-1: stop race test reaches blocked connect");
 
-            Check(stopThread.Join(3000) && stopException == null, "95C2-3: Stop returns after late connect completes");
-            Check(factory.DisposeCalls > 0, "95C2-4: Stop disposes sink connected during shutdown race");
+                Exception stopException = null;
+                stopThread = new Thread(() =>
+                {
+                    try
+                    {
+                        factory.StopStarted.Set();
+                        runtime.Stop();
+                    }
+                    catch (Exception ex)
+                    {
+                        stopException = ex;
+                    }
+                });
+                stopThread.Start();
+                Check(factory.StopStarted.Wait(3000), "95C2-2: stop race test starts Stop while connect is blocked");
+                factory.ReleaseConnect.Set();
+
+                Check(stopThread.Join(3000) && stopException == null, "95C2-3: Stop returns after late connect completes");
+                Check(factory.DisposeCalls > 0, "95C2-4: Stop disposes sink connected during shutdown race");
+            }
+            finally
+            {
+                factory.ReleaseConnect.Set();
+                if (stopThread != null && stopThread.IsAlive)
+                    stopThread.Join(1000);
+            }
         }
 
         private static void VerifyPublisherWrapperUsesRuntime()
@@ -187,7 +198,7 @@ namespace Unity.FoxgloveSDK.Tests
             var publisher = new Ros2BridgePublisher(runtime);
             publisher.Publish("/unity/tf", "foxglove_msgs/msg/FrameTransform", CreateFrameTransformSample(), SampleTimeNs);
 
-            Check(WaitUntil(() => factory.AllSentFrames.Count == 1, 3000),
+            Check(WaitUntil(() => factory.AllSentFrames.Count == 1, BackgroundRuntimeTimeoutMs),
                 "95D-1: Ros2BridgePublisher can use background runtime sink");
             var frame = factory.AllSentFrames[0];
             Check(frame.Topic == "/unity/tf" && frame.SchemaName == "foxglove_msgs/msg/FrameTransform",
@@ -508,7 +519,8 @@ namespace Unity.FoxgloveSDK.Tests
                 public void Connect(string host, int port, int timeoutMs)
                 {
                     _owner.ConnectStarted.Set();
-                    _owner.ReleaseConnect.Wait();
+                    if (!_owner.ReleaseConnect.Wait(Math.Max(timeoutMs, 3000)))
+                        throw new TimeoutException("Timed out waiting for Phase95 stop-race test to release blocked connect.");
                     IsConnected = true;
                 }
 

@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase52Validation
     {
         private const int TestTimeoutMs = 5000;
+        private const int CertificateDistributorIdleTimeoutTestMs = 100;
         private const int QuietLogWaitMs = 250;
         private const string ValidToken = "phase52-secret";
         private const string WrongToken = "phase52-wrong";
@@ -550,13 +551,16 @@ namespace Unity.FoxgloveSDK.Tests
             using var fixture = Phase52CertificateFixture.Create();
             var port = GetFreeTcpPort();
             var logger = new Phase52CaptureLogger();
-            using var distributor = new FoxgloveCertificateDistributor(fixture.RootCaPath, logger: logger);
+            using var distributor = new FoxgloveCertificateDistributor(
+                fixture.RootCaPath,
+                logger: logger,
+                clientIoTimeoutMs: CertificateDistributorIdleTimeoutTestMs);
             distributor.Start("127.0.0.1", port);
 
             using (var client = new TcpClient())
             {
                 client.Connect("127.0.0.1", port);
-                Thread.Sleep(TestTimeoutMs + 750);
+                WaitUntil(() => logger.ErrorCount > 0, CertificateDistributorIdleTimeoutTestMs + 500);
             }
 
             distributor.Stop();

@@ -322,7 +322,7 @@ namespace Unity.FoxgloveSDK.Tests
             using var client = new TcpClient();
             client.ReceiveTimeout = 2000;
             client.SendTimeout = 2000;
-            client.Connect("127.0.0.1", port);
+            ConnectWithRetry(client, "127.0.0.1", port, 2000);
             var stream = client.GetStream();
             var bytes = Encoding.ASCII.GetBytes(request);
             stream.Write(bytes, 0, bytes.Length);
@@ -355,6 +355,27 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 listener.Stop();
             }
+        }
+
+        private static void ConnectWithRetry(TcpClient client, string host, int port, int timeoutMs)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            SocketException lastError = null;
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    client.Connect(host, port);
+                    return;
+                }
+                catch (SocketException ex)
+                {
+                    lastError = ex;
+                    Thread.Sleep(10);
+                }
+            }
+
+            throw lastError ?? new SocketException();
         }
 
         private static byte[] BuildClientMessageData(uint channelId, byte[] payload)

@@ -205,6 +205,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             var scene = ReadRepoText("Packages/dev.unity2foxglove.sdk/Samples~/Ros2BridgeSample/Scenes/Ros2BridgeSample.unity");
             var sceneCubePublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
+            Check(scene.StartsWith("%YAML", StringComparison.Ordinal),
+                "98A-5a: sample scene is serialized as readable Unity YAML");
             Check(scene.Contains("_ros2BridgeEnabled: 1")
                   && scene.Contains("_ros2BridgeNamespace: /unity2foxglove")
                   && scene.Contains("_defaultRos2BridgeOutputEnabled: 1"),

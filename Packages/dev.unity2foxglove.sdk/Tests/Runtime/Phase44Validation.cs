@@ -18,9 +18,10 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Tests;
 using Unity.FoxgloveSDK.Transport;
 
+namespace Unity.FoxgloveSDK.Tests
+{
 /// <summary>
 /// Validation type for Phase44Validation.
 /// </summary>
@@ -133,13 +134,10 @@ public static class Phase44Validation
             session.RegisterProtobufSchemaChannel(channelId, $"/phase44/{sample.SchemaName}", sample.SchemaName);
             var adv = JObject.Parse(transport.LastBroadcastText);
             var channel = (adv["channels"] as JArray)?[0];
-            if (channel?["schemaName"]?.ToString() != sample.SchemaName
-                || channel?["encoding"]?.ToString() != "protobuf"
-                || channel?["schemaEncoding"]?.ToString() != "protobuf")
-            {
-                check(false, $"44C-1: advertise uses protobuf for {sample.SchemaName}");
-                return;
-            }
+            var advertiseOk = channel?["schemaName"]?.ToString() == sample.SchemaName
+                && channel?["encoding"]?.ToString() == "protobuf"
+                && channel?["schemaEncoding"]?.ToString() == "protobuf";
+            check(advertiseOk, $"44C-1/{sample.SchemaName}: advertise uses protobuf");
             subscriptions.Add(new Subscription { Id = subscriptionId++, ChannelId = channelId++ });
         }
 
@@ -151,8 +149,8 @@ public static class Phase44Validation
             session.PublishProto(channelId++, sample.Message, 1_000_000_000UL + channelId);
         }
 
-        check(transport.SentBinaryFrames.Count == samples.Count, "44C-1: protobuf publish emits one binary frame per schema");
-        check(transport.SentBinaryFrames.All(frame => frame != null && frame.Length > 0), "44C-2: every protobuf publish frame is non-empty");
+        check(transport.SentBinaryFrames.Count == samples.Count, "44C-2: protobuf publish emits one binary frame per schema");
+        check(transport.SentBinaryFrames.All(frame => frame != null && frame.Length > 0), "44C-3: every protobuf publish frame is non-empty");
     }
 
     private static void ValidateMcapCoverage(
@@ -170,11 +168,11 @@ public static class Phase44Validation
         ms.Position = 0;
         var reader = new McapReader(ms);
         var summary = reader.ReadSummary();
-        check(summary.Schemas.Count == samples.Count, "44C-3: MCAP summary contains one schema per catalog entry");
-        check(summary.Channels.Count == samples.Count, "44C-4: MCAP summary contains one channel per catalog entry");
-        check(summary.Statistics != null && summary.Statistics.MessageCount == (ulong)samples.Count, "44C-5: MCAP statistics message count matches catalog");
-        check(summary.Schemas.All(s => s.Encoding == "protobuf" && s.Data != null && s.Data.Length > 0), "44C-6: all MCAP schemas use protobuf encoding with data");
-        check(summary.Channels.All(c => c.MessageEncoding == "protobuf"), "44C-7: all MCAP channels use protobuf message encoding");
+        check(summary.Schemas.Count == samples.Count, "44D-1: MCAP summary contains one schema per catalog entry");
+        check(summary.Channels.Count == samples.Count, "44D-2: MCAP summary contains one channel per catalog entry");
+        check(summary.Statistics != null && summary.Statistics.MessageCount == (ulong)samples.Count, "44D-3: MCAP statistics message count matches catalog");
+        check(summary.Schemas.All(s => s.Encoding == "protobuf" && s.Data != null && s.Data.Length > 0), "44D-4: all MCAP schemas use protobuf encoding with data");
+        check(summary.Channels.All(c => c.MessageEncoding == "protobuf"), "44D-5: all MCAP channels use protobuf message encoding");
     }
 
     private static void WriteAllSamplesToRecorder(McapRecorder recorder, DefaultSchemaRegistry schemaRegistry, IReadOnlyList<FoxgloveProtoSample> samples)
@@ -204,10 +202,32 @@ public static class Phase44Validation
         {
             foreach (var message in file.MessageType)
             {
-                if ($"{file.Package}.{message.Name}" == schemaName)
+                if (FileMessageContains(file.Package, message, schemaName))
                     return true;
             }
         }
+        return false;
+    }
+
+    private static bool FileMessageContains(string packageName, DescriptorProto message, string schemaName)
+    {
+        var fullName = string.IsNullOrEmpty(packageName)
+            ? message.Name
+            : $"{packageName}.{message.Name}";
+        return DescriptorMessageContains(fullName, message, schemaName);
+    }
+
+    private static bool DescriptorMessageContains(string fullName, DescriptorProto message, string schemaName)
+    {
+        if (fullName == schemaName)
+            return true;
+
+        foreach (var nested in message.NestedType)
+        {
+            if (DescriptorMessageContains($"{fullName}.{nested.Name}", nested, schemaName))
+                return true;
+        }
+
         return false;
     }
 
@@ -281,4 +301,5 @@ public static class Phase44Validation
         /// <param name="json">JSON payload used by the transport stub.</param>
         public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
     }
+}
 }

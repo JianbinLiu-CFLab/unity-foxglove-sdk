@@ -151,19 +151,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             try
             {
-                try
-                {
-                    var response = SendRawHandshake(port, "https://evil.example.com");
-                    Assert(response.StartsWith("HTTP/1.1 403", StringComparison.Ordinal),
-                        "Disallowed Origin: raw handshake receives HTTP 403");
-                    Assert(response.Contains("403 Forbidden", StringComparison.Ordinal),
-                        "Disallowed Origin: response names 403 Forbidden");
-                }
-                catch (WebSocketException)
-                {
-                    // Expected — server refuses the connection
-                    Assert(true, "Disallowed Origin: connection rejected");
-                }
+                var response = SendRawHandshake(port, "https://evil.example.com");
+                Assert(response.StartsWith("HTTP/1.1 403", StringComparison.Ordinal),
+                    "Disallowed Origin: raw handshake receives HTTP 403");
+                Assert(response.Contains("403 Forbidden", StringComparison.Ordinal),
+                    "Disallowed Origin: response names 403 Forbidden");
             }
             finally
             {

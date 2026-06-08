@@ -140,7 +140,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayDisableClearsSummaryMaps()
         {
-            var controller = new ReplayController(new ConsoleLogger());
+            var controller = new ReplayController(new ConsoleLogger(), null, null);
             SetPrivateField(controller, "_summarySchemas", new Dictionary<ushort, McapSchema>
             {
                 [1] = new McapSchema { Id = 1, Name = "old" }
