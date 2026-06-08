@@ -9,13 +9,16 @@
   "scripts": {
     "build": "foxglove-extension build",
     "package": "foxglove-extension package",
-    "local-install": "foxglove-extension install"
+    "local-install": "foxglove-extension install",
+    "test": "vitest run"
   },
   "dependencies": {
     "@foxglove/extension": "2.54.0"
   },
   "devDependencies": {
     "create-foxglove-extension": "1.3.2",
-    "typescript": "^5.5.0"
+    "jsdom": "^29.1.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.8"
   }
 }
