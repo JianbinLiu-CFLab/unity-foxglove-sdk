@@ -222,20 +222,19 @@ def find_asmdef_cycles(metrics: list[AsmdefMetric]) -> list[list[str]]:
         best = min(rotations)
         return tuple(best + [best[0]])
 
-    def visit(node: str, stack: list[str]) -> None:
-        """Depth-first cycle walk for one asmdef node."""
-        if node in stack:
-            cycle = stack[stack.index(node) :] + [node]
-            key = canonical_cycle(cycle)
-            if key not in seen:
-                seen.add(key)
-                cycles.append(list(key))
-            return
-        for child in graph.get(node, []):
-            visit(child, stack + [node])
-
     for node in graph:
-        visit(node, [])
+        stack: list[tuple[str, list[str]]] = [(node, [])]
+        while stack:
+            current, path = stack.pop()
+            if current in path:
+                cycle = path[path.index(current) :] + [current]
+                key = canonical_cycle(cycle)
+                if key not in seen:
+                    seen.add(key)
+                    cycles.append(list(key))
+                continue
+            for child in reversed(graph.get(current, [])):
+                stack.append((child, path + [current]))
     return cycles
 
 
@@ -283,6 +282,8 @@ def find_registry_default_test_files(repo_root: Path) -> set[str]:
             continue
         for class_name in re.findall(r"\b([A-Za-z0-9_]+Validation)\.", line):
             files.add(f"Packages/dev.unity2foxglove.sdk/Tests/Runtime/{class_name}.cs")
+    if not files:
+        print(f"[architecture] warning: no default validation classes parsed from {registry_path}", file=sys.stderr)
     return files
 
 

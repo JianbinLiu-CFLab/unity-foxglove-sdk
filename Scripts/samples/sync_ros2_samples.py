@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import json
 import shutil
 import sys
 from dataclasses import dataclass
@@ -25,14 +26,28 @@ EXIT_FAILURE = 1
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_PACKAGE_ROOT = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Samples~"
-DEFAULT_IMPORTED_ROOT = (
-    ROOT
-    / "Unity2Foxglove"
-    / "Assets"
-    / "Samples"
-    / "Unity2Foxglove ROS2 For Unity"
-    / "0.1.0-preview.1"
-)
+
+
+def package_version(root: Path = ROOT) -> str:
+    """Read the ROS2 For Unity package version from package.json."""
+    manifest = root / "Packages" / "dev.unity2foxglove.ros2forunity" / "package.json"
+    with manifest.open("r", encoding="utf-8") as handle:
+        return str(json.load(handle)["version"])
+
+
+def default_imported_root(root: Path = ROOT) -> Path:
+    """Return the imported sample root that matches the package manifest version."""
+    return (
+        root
+        / "Unity2Foxglove"
+        / "Assets"
+        / "Samples"
+        / "Unity2Foxglove ROS2 For Unity"
+        / package_version(root)
+    )
+
+
+DEFAULT_IMPORTED_ROOT = default_imported_root(ROOT)
 
 # The imported demo project extends the original string smoke with batch
 # acceptance hooks. Keep that file intentionally imported-owned.

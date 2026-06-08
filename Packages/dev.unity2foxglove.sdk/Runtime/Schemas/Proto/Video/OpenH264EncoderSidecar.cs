@@ -299,11 +299,16 @@ namespace Foxglove.Schemas.Video
                         break;
 
                     var length = readLength.Length;
-                    if (length <= 0 || length > MaxAccessUnitBytes)
+                    if (length < 0 || length > MaxAccessUnitBytes)
                     {
                         LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
                         TryKillProcess(process);
                         return;
+                    }
+                    if (length == 0)
+                    {
+                        AcceptHelperAccessUnit(Array.Empty<byte>());
+                        continue;
                     }
 
                     var payload = new byte[length];
@@ -314,7 +319,7 @@ namespace Foxglove.Schemas.Video
                         return;
                     }
 
-                    EnqueueAccessUnit(payload);
+                    AcceptHelperAccessUnit(payload);
                 }
             }
             catch (OperationCanceledException)
@@ -408,6 +413,20 @@ namespace Foxglove.Schemas.Video
                 Interlocked.Increment(ref _outputCount);
                 Interlocked.Increment(ref _accessUnitsReceived);
             }
+        }
+
+        internal void AcceptHelperAccessUnit(byte[] accessUnit)
+        {
+            if (accessUnit == null)
+                throw new ArgumentNullException(nameof(accessUnit));
+
+            if (accessUnit.Length == 0)
+            {
+                _encodedFrameTimestamps.TryDequeue(out _);
+                return;
+            }
+
+            EnqueueAccessUnit(accessUnit);
         }
 
         private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, CancellationToken token)

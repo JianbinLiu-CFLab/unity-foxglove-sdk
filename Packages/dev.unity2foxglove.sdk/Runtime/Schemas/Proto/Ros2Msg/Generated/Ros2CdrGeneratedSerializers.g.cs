@@ -16,20 +16,24 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
 
-            writer.WriteFloat64(value?.X ?? 0.0);
-            writer.WriteFloat64(value?.Y ?? 0.0);
-            writer.WriteFloat64(value?.Z ?? 0.0);
+            writer.WriteFloat64(value.X);
+            writer.WriteFloat64(value.Y);
+            writer.WriteFloat64(value.Z);
         }
 
         private static void WriteProtoVector3(Ros2CdrWriter writer, global::Foxglove.Vector3 value)
         {
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
 
-            writer.WriteFloat64(value?.X ?? 0.0);
-            writer.WriteFloat64(value?.Y ?? 0.0);
-            writer.WriteFloat64(value?.Z ?? 0.0);
+            writer.WriteFloat64(value.X);
+            writer.WriteFloat64(value.Y);
+            writer.WriteFloat64(value.Z);
         }
 
         private static void WriteProtoQuaternion(Ros2CdrWriter writer, global::Foxglove.Quaternion value)
@@ -47,9 +51,11 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
 
-            WriteProtoVector3(writer, value?.Position);
-            WriteProtoQuaternion(writer, value?.Orientation);
+            WriteProtoVector3(writer, value.Position);
+            WriteProtoQuaternion(writer, value.Orientation);
         }
 
         public static byte[] Serialize(global::Foxglove.ArrowPrimitive message)
@@ -492,7 +498,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.FrameId);
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
             writer.WriteString(message.Format);
         }
 
@@ -505,7 +511,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.FrameId);
             WriteProtoPose(writer, message.Pose);
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
             writer.WriteString(message.Format);
         }
 
@@ -517,7 +523,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.FrameId);
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
             writer.WriteString(message.Format);
         }
 
@@ -600,7 +606,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 foreach (var item in message.Fields)
                     WritePackedElementField(writer, item);
             }
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
         }
 
         internal static void WriteImageAnnotations(Ros2CdrWriter writer, global::Foxglove.ImageAnnotations message)
@@ -779,7 +785,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             writer.WriteBool(message.OverrideColor);
             writer.WriteString(message.Url);
             writer.WriteString(message.MediaType);
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
         }
 
         internal static void WriteOdometry(Ros2CdrWriter writer, global::Foxglove.Odometry message)
@@ -841,7 +847,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 foreach (var item in message.Fields)
                     WritePackedElementField(writer, item);
             }
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
         }
 
         internal static void WritePointsAnnotation(Ros2CdrWriter writer, global::Foxglove.PointsAnnotation message)
@@ -909,7 +915,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             message ??= new global::Foxglove.RawAudio();
 
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
             writer.WriteString(message.Format);
             writer.WriteUInt32(message.SampleRate);
             writer.WriteUInt32(message.NumberOfChannels);
@@ -927,7 +933,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             writer.WriteUInt32(message.Height);
             writer.WriteString(message.Encoding);
             writer.WriteUInt32(message.Step);
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
         }
 
         internal static void WriteSceneEntity(Ros2CdrWriter writer, global::Foxglove.SceneEntity message)
@@ -1127,7 +1133,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 foreach (var item in message.Fields)
                     WritePackedElementField(writer, item);
             }
-            writer.WriteByteArray(message.Data?.ToByteArray());
+            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
         }
 
     }
