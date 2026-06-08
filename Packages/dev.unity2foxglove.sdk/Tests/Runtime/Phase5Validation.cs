@@ -227,7 +227,10 @@ namespace Unity.FoxgloveSDK.Tests
                         break;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[WARN] Could not inspect link.xml candidate '" + path + "': " + ex.Message);
+                }
             }
             Assert(valid, "At least one Assets/**/link.xml preserves Newtonsoft.Json and Unity.FoxgloveSDK");
         }

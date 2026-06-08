@@ -6,6 +6,8 @@
 
 using System;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
@@ -142,7 +144,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Request = new ServiceSchemaDescriptor { SchemaName = "/r" },
                 Response = new ServiceSchemaDescriptor { SchemaName = "/s" }
             });
-            rt.Start("Test", "127.0.0.1", 18795);
+            rt.Start("Test", "127.0.0.1", GetEphemeralTcpPort());
             rt.Stop();
             var p = rt.Parameters.GetWireParameter("/p1");
             Assert(p != null, "Parameter survives Stop/Start");
@@ -162,7 +164,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestHandlerDelegateSuccessAndFailure()
         {
             var rt = new FoxgloveRuntime();
-            rt.Start("Test", "127.0.0.1", 18796);
+            rt.Start("Test", "127.0.0.1", GetEphemeralTcpPort());
             try
             {
                 rt.RegisterService(new ServiceDescriptor
@@ -232,6 +234,20 @@ namespace Unity.FoxgloveSDK.Tests
             public void BroadcastText(string json) { }
             public void BroadcastBinary(byte[] data) { }
             public void SimulateConnect(uint id) => OnClientConnected?.Invoke(id);
+        }
+
+        private static int GetEphemeralTcpPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
         }
 
         /// <summary>

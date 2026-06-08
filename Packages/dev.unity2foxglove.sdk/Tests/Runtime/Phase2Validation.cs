@@ -717,7 +717,7 @@ namespace Unity.FoxgloveSDK.Tests
                 // leave a pending ReceiveAsync that later aborts cleanup.
                 using var noMessageCts = new CancellationTokenSource();
                 var recvTask = ws.ReceiveAsync(seg, noMessageCts.Token);
-                var timeout = Task.Delay(800);
+                var timeout = Task.Delay(2000);
                 var winner = Task.WhenAny(recvTask, timeout).GetAwaiter().GetResult();
                 Assert(winner == timeout, "Integration: no message after unsubscribe");
                 if (winner == timeout)

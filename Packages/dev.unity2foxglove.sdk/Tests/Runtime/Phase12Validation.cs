@@ -368,8 +368,9 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteLengthPrefixedBytes(sch, Encoding.UTF8.GetBytes("{}"));
             WriteRecord(ms, 0x03, sch);
 
-            // Client channel with high-bit ID
-            var cid = (ushort)(0xA0000001 & 0xFFFF);
+            // Schemaless client channel. MCAP channel IDs are uint16 in this writer fixture,
+            // so high-bit replay IDs are covered by replay routing tests rather than here.
+            ushort cid = 1;
             var ch = new MemoryStream();
             McapWriter.WriteU16(ch, cid); McapWriter.WriteU16(ch, 0); // sid=0 (schemaless)
             McapWriter.WriteString(ch, "/client/topic"); McapWriter.WriteString(ch, "json");

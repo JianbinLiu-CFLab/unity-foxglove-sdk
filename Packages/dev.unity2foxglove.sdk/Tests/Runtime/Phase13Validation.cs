@@ -487,8 +487,13 @@ namespace Unity.FoxgloveSDK.Tests
                 rt.OnReplayMessage += (topic, payload) => count++;
                 rt.Start("replay-clock-test", "127.0.0.1", 9878);
                 rt.ReplayPlay();
-                System.Threading.Thread.Sleep(20);
-                rt.Tick();
+                var deadline = DateTime.UtcNow.AddMilliseconds(500);
+                while (count < 2 && DateTime.UtcNow < deadline)
+                {
+                    rt.Tick();
+                    if (count < 2)
+                        System.Threading.Thread.Sleep(1);
+                }
 
                 Assert(count == 2, "Runtime ReplayPlay advances playback clock and emits both messages (expected=2, actual=" + count + ")");
             }
@@ -556,7 +561,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayObjectAdapterRoutesProtobufBeforeJsonParse()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
+            if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs", out var source))
+                return;
             Assert(source.Contains("OnReplayMessage(ReplayMessageContext context)", StringComparison.Ordinal)
                 && source.Contains("ResolveBehavior(context", StringComparison.Ordinal),
                 "Replay adapter routes by replay message context and behavior before protobuf parsing");
@@ -573,7 +579,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayControllerSerializesReplayCursorAccess()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs", out var source))
+                return;
 
             Assert(source.Contains("private readonly object _replayEngineLock", StringComparison.Ordinal),
                 "Replay controller has a dedicated replay cursor synchronization lock");
@@ -583,11 +590,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestPlaybackControlRunsOnRuntimeTick()
         {
-            var sessionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs");
-            var playbackHandlerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
-            var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            var tickSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs", out var sessionSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs", out var playbackHandlerSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs", out var runtimeSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs", out var tickSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs", out var replaySource))
+                return;
 
             Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
                 && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
@@ -1211,9 +1219,26 @@ namespace Unity.FoxgloveSDK.Tests
             return File.ReadAllText(RepoPath(relativePath));
         }
 
+        static bool TryReadRepoText(string relativePath, out string source)
+        {
+            source = null;
+            var root = FindRepoRoot();
+            if (root == null)
+            {
+                Console.WriteLine("[WARN] repo root unavailable; skipping source inspection for " + relativePath);
+                return false;
+            }
+
+            var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+            source = File.ReadAllText(Path.Combine(root, localPath));
+            return true;
+        }
+
         static string RepoPath(string relativePath)
         {
             var root = FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not locate repository root for " + relativePath);
             var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
             return Path.Combine(root, localPath);
         }
@@ -1228,7 +1253,7 @@ namespace Unity.FoxgloveSDK.Tests
                 dir = dir.Parent;
             }
 
-            return Directory.GetCurrentDirectory();
+            return null;
         }
     }
 

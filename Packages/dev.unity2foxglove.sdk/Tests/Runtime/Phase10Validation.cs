@@ -257,6 +257,7 @@ namespace Unity.FoxgloveSDK.Tests
                 for (var i = 0; i < recs.Length - 1; i++)
                     if (recs[i] == 0x05) totalMsgs++;
             }
+            Assert(totalMsgs >= 5, $"Chunk records contain all 5 messages (got {totalMsgs})");
         }
 
         /// <summary>
@@ -306,16 +307,6 @@ namespace Unity.FoxgloveSDK.Tests
                         if (inner[i] == 0x05) found++;
                 }
             }
-            Console.WriteLine($"  Chunk records in file: {records.Count(r => r.Opcode == 0x06)}");
-            foreach (var rec in records)
-            {
-                if (rec.Opcode == 0x06)
-                {
-                    var (st, et, sz, crc, comp, _, inner) = McapRecordReader.DecodeChunk(rec.Content);
-                    Console.WriteLine($"  Chunk inner bytes length: {inner.Length}, first 20: {BitConverter.ToString(inner.Take(20).ToArray())}");
-                }
-            }
-            Console.WriteLine($"  Total file bytes: {data.Length}");
             Assert(found >= 1, $"Dual write: {found} messages in MCAP");
         }
 
