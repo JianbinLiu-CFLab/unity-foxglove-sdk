@@ -291,29 +291,42 @@ internal static class Phase32Validation
         Check(unsupported.Effective == PublisherEffectiveEncoding.Unsupported && unsupported.FellBack,
             "32G-5: Publisher with no supported encodings resolves to Unsupported");
 
-        var managerSourcePath = Path.Combine(
-            Unity.FoxgloveSDK.Tests.Phase16Validation.FindRepoRoot(),
-            "Packages",
-            "dev.unity2foxglove.sdk",
-            "Runtime",
-            "Components",
-            "Manager",
-            "FoxgloveManager.cs");
-        var managerSource = File.ReadAllText(managerSourcePath);
-        Check(managerSource.Contains("_defaultPublisherEncoding = GlobalEncoding.Protobuf"),
-            "32G-6: new FoxgloveManager defaults publisher encoding to protobuf");
+        var managerSource = TryReadRepoText(
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs",
+            "32G-6");
+        if (managerSource != null)
+        {
+            Check(managerSource.Contains("_defaultPublisherEncoding = GlobalEncoding.Protobuf"),
+                "32G-6: new FoxgloveManager defaults publisher encoding to protobuf");
+        }
 
-        var publisherBaseSourcePath = Path.Combine(
-            Unity.FoxgloveSDK.Tests.Phase16Validation.FindRepoRoot(),
-            "Packages",
-            "dev.unity2foxglove.sdk",
-            "Runtime",
-            "Components",
-            "Publishing",
-            "FoxglovePublisherBase.cs");
-        var publisherBaseSource = File.ReadAllText(publisherBaseSourcePath);
-        Check(publisherBaseSource.Contains("_manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf"),
-            "32G-7: publisher base unresolved-manager fallback matches protobuf default");
+        var publisherBaseSource = TryReadRepoText(
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs",
+            "32G-7");
+        if (publisherBaseSource != null)
+        {
+            Check(publisherBaseSource.Contains("_manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf"),
+                "32G-7: publisher base unresolved-manager fallback matches protobuf default");
+        }
+
+        string TryReadRepoText(string relativePath, string label)
+        {
+            var root = Unity.FoxgloveSDK.Tests.Phase16Validation.FindRepoRoot();
+            if (root == null)
+            {
+                Console.WriteLine($"[WARN] {label}: repository root unavailable; skipping source inspection for {relativePath}");
+                return null;
+            }
+
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+            {
+                Check(false, $"{label}: source file exists at {relativePath}");
+                return null;
+            }
+
+            return File.ReadAllText(path);
+        }
 
         Console.WriteLine($"\nPhase 32: {passed} passed, {failed} failed.");
         if (failed > 0)

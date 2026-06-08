@@ -609,8 +609,10 @@ namespace Unity.FoxgloveSDK.Tests
             var sid1 = runtime.Session.SessionId;
             runtime.Stop();
 
-            // Restart with same transport — should not leak old session event handlers
-            runtime.Start("R2", "127.0.0.1", port);
+            // Restart with same transport on a fresh port to avoid OS-level
+            // listener release races while still proving session state resets.
+            var restartPort = GetEphemeralTcpPort();
+            runtime.Start("R2", "127.0.0.1", restartPort);
             runtime.RegisterChannel(new AdvertiseChannel { Id = 2, Topic = "/t2", Encoding = "json" });
             Assert(runtime.Session.SessionId != sid1, "Restarted session has different SessionId");
             Assert(runtime.Session.Channels.Count == 1, "Restarted session has clean channel state");
@@ -619,7 +621,7 @@ namespace Unity.FoxgloveSDK.Tests
             var ws = new ClientWebSocket();
             ws.Options.AddSubProtocol(Subprotocol.SdkV1);
             var cts = new CancellationTokenSource(5000);
-            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), cts.Token).GetAwaiter().GetResult();
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{restartPort}/"), cts.Token).GetAwaiter().GetResult();
             Assert(ws.State == WebSocketState.Open, "Restart: WebSocket connected");
 
             var buf = new byte[4096];

@@ -18,9 +18,10 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Tests;
 using Unity.FoxgloveSDK.Transport;
 
+namespace Unity.FoxgloveSDK.Tests
+{
 /// <summary>
 /// Validation type for Phase44Validation.
 /// </summary>
@@ -281,4 +282,5 @@ public static class Phase44Validation
         /// <param name="json">JSON payload used by the transport stub.</param>
         public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
     }
+}
 }

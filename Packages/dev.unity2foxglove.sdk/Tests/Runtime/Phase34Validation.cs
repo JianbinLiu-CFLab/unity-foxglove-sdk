@@ -178,12 +178,25 @@ namespace Unity.FoxgloveSDK.Tests
 
             // Forge the data_size field: overwrite it with 100, which exceeds
             // the actual 5 data bytes + 4 CRC bytes remaining in content.
-            var contentStart = (int)index.Offset + 1 + 8;
-            var dsOff = contentStart + 8 + 8 + 4 + 1 + 4 + 1;
-            var fakeSize = (ulong)100;
-            allBytes[dsOff] = (byte)fakeSize;
-            allBytes[dsOff + 1] = (byte)(fakeSize >> 8);
-            allBytes[dsOff + 7] = (byte)(fakeSize >> 56);
+            using (var cleanMs = new MemoryStream(allBytes))
+            {
+                var cleanReader = new McapReader(cleanMs);
+                var cleanAtt = cleanReader.ReadAttachmentAt(index.Offset);
+                var contentStart = (int)index.Offset + 1 + 8;
+                var dsOff = contentStart + 8 + 8
+                    + 4 + Encoding.UTF8.GetByteCount(cleanAtt.Name)
+                    + 4 + Encoding.UTF8.GetByteCount(cleanAtt.MediaType);
+
+                var fakeSize = (ulong)100;
+                allBytes[dsOff] = (byte)fakeSize;
+                allBytes[dsOff + 1] = (byte)(fakeSize >> 8);
+                allBytes[dsOff + 2] = (byte)(fakeSize >> 16);
+                allBytes[dsOff + 3] = (byte)(fakeSize >> 24);
+                allBytes[dsOff + 4] = (byte)(fakeSize >> 32);
+                allBytes[dsOff + 5] = (byte)(fakeSize >> 40);
+                allBytes[dsOff + 6] = (byte)(fakeSize >> 48);
+                allBytes[dsOff + 7] = (byte)(fakeSize >> 56);
+            }
 
             using var ms = new MemoryStream(allBytes);
             // Skip summary path —read the attachment directly.
@@ -360,23 +373,16 @@ namespace Unity.FoxgloveSDK.Tests
                 recorder.Close();
             }
 
-            // Corrupt a byte in the summary section
+            // Keep the summary syntactically valid and corrupt only the footer
+            // summary_crc field so the test proves the CRC check itself.
             var allBytes = ms.ToArray();
             // Find the footer (opcode 0x02 near end, before trailing magic)
             var footerIdx = allBytes.Length
                 - McapWriter.MagicLength
                 - McapWriter.RecordHeaderLength
                 - McapWriter.FooterContentLength;
-            var footer = new McapFooter
-            {
-                SummaryStart = allBytes[footerIdx + 1 + 8 + 0] | ((ulong)allBytes[footerIdx + 1 + 8 + 1] << 8)
-                    | ((ulong)allBytes[footerIdx + 1 + 8 + 2] << 16) | ((ulong)allBytes[footerIdx + 1 + 8 + 3] << 24)
-                    | ((ulong)allBytes[footerIdx + 1 + 8 + 4] << 32) | ((ulong)allBytes[footerIdx + 1 + 8 + 5] << 40)
-                    | ((ulong)allBytes[footerIdx + 1 + 8 + 6] << 48) | ((ulong)allBytes[footerIdx + 1 + 8 + 7] << 56)
-            };
-            // Corrupt a summary section byte (just after summary start)
-            if (footer.SummaryStart > 0)
-                allBytes[(int)footer.SummaryStart + 2] ^= 0xFF;
+            var summaryCrcOffset = footerIdx + 1 + 8 + 8 + 8;
+            allBytes[summaryCrcOffset] ^= 0x01;
 
             ms.Position = 0;
             ms.Write(allBytes, 0, allBytes.Length);
@@ -389,11 +395,10 @@ namespace Unity.FoxgloveSDK.Tests
                 reader.ReadSummary();
                 Check(false, "34C-2: corrupted summary CRC should throw");
             }
-            catch (Exception ex) when (ex is InvalidDataException || ex is EndOfStreamException)
+            catch (InvalidDataException ex)
             {
-                // The corruption may cause a summary CRC mismatch, a record parsing error,
-                // or a truncated stream. All are acceptable outcomes for a corrupted file.
-                Check(true, "34C-2: corrupted summary is rejected");
+                Check(ex.Message.Contains("summary CRC mismatch", StringComparison.OrdinalIgnoreCase),
+                    "34C-2: summary CRC mismatch is rejected specifically");
             }
         }
 

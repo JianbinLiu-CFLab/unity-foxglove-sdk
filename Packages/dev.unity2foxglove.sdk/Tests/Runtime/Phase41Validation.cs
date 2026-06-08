@@ -89,14 +89,28 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void TestEpsilonSuppressesSmallChange()
         {
-            var diff = Math.Abs(1.0f - 1.05f);
-            Check(diff <= 0.1f, "41A-7: epsilon 0.1 suppresses diff 0.05");
+            var changed = FoxRunChangeHelper.FloatChanged(1.05f, 1.0f, 0.1f);
+            var shouldPublish = FoxRunPublishPolicy.ShouldPublish(
+                FoxRunPublishMode.OnChange,
+                nowSec: 10,
+                hasPreviousValue: true,
+                valueChanged: changed,
+                lastPublishSec: 8,
+                forceIntervalSec: 0);
+            Check(!changed && !shouldPublish, "41A-7: epsilon 0.1 suppresses diff 0.05 through publish policy");
         }
 
         private static void TestEpsilonAllowsLargeChange()
         {
-            var diff = Math.Abs(1.0f - 1.2f);
-            Check(diff > 0.1f, "41A-8: epsilon 0.1 allows diff 0.2");
+            var changed = FoxRunChangeHelper.FloatChanged(1.2f, 1.0f, 0.1f);
+            var shouldPublish = FoxRunPublishPolicy.ShouldPublish(
+                FoxRunPublishMode.OnChange,
+                nowSec: 10,
+                hasPreviousValue: true,
+                valueChanged: changed,
+                lastPublishSec: 8,
+                forceIntervalSec: 0);
+            Check(changed && shouldPublish, "41A-8: epsilon 0.1 allows diff 0.2 through publish policy");
         }
 
         private static void TestRepeatedNaNNoSpam()

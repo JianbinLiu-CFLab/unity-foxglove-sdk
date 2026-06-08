@@ -404,10 +404,10 @@ namespace Unity.FoxgloveSDK.Tests
             // Write an Attachment record (opcode 0x09) in summary
             var sumStart = (ulong)ms.Position;
             var attInner = new MemoryStream();
-            McapWriter.WriteString(attInner, "calibration"); // name
-            McapWriter.WriteString(attInner, "application/json"); // content type
             McapWriter.WriteU64(attInner, 100); // log time
             McapWriter.WriteU64(attInner, 100); // create time
+            McapWriter.WriteString(attInner, "calibration"); // name
+            McapWriter.WriteString(attInner, "application/json"); // media type
             McapWriter.WriteLengthPrefixedBytes(attInner, new byte[] { 1, 2, 3 }); // data
             var attBytes = attInner.ToArray();
             ms.WriteByte(0x09);

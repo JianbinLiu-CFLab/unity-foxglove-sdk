@@ -335,7 +335,6 @@ namespace Unity.FoxgloveSDK.Tests
                 "}]}";
             SendMaskedTextFrame(stream, subscribe);
 
-            Thread.Sleep(100);
             return client;
         }
 
