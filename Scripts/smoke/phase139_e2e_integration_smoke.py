@@ -50,6 +50,21 @@ DEFAULT_COMPRESSED_IMAGE_TOPIC = "/unity/sensor/camera/image/compressed"
 DEFAULT_CAMERA_INFO_TOPIC = "/unity/sensor/camera/camera_info"
 
 
+def build_ssl_context(url: str, insecure: bool) -> ssl.SSLContext | None:
+    """Return a TLS context for wss endpoints, optionally disabling validation."""
+
+    if not url.lower().startswith("wss://"):
+        return None
+
+    if not insecure:
+        return ssl.create_default_context()
+
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
 @dataclass(frozen=True)
 class TopicExpectation:
     """Topic expected by a Phase139 scenario."""
@@ -127,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Human-readable scene/profile label stored in JSON evidence.",
     )
     parser.add_argument("--url", default=DEFAULT_WEBSOCKET_URL, help="Foxglove WebSocket URL.")
+    parser.add_argument("--insecure", action="store_true", help="Skip TLS certificate validation for local WSS smoke tests.")
     parser.add_argument("--duration", type=float, default=8.0, help="Message collection window.")
     parser.add_argument("--advertise-timeout", type=float, default=8.0, help="Seconds to wait for channel advertisements.")
     parser.add_argument("--idle-timeout", type=float, default=2.0, help="Seconds to wait between WebSocket messages.")
@@ -295,7 +311,7 @@ async def run_websocket_core(args: argparse.Namespace) -> tuple[str, dict[str, O
     }
     limitations: list[str] = []
 
-    ssl_context = ssl.create_default_context() if args.url.startswith("wss://") else None
+    ssl_context = build_ssl_context(args.url, args.insecure)
     async with websockets.connect(args.url, subprotocols=[FOXGLOVE_SUBPROTOCOL], ssl=ssl_context) as websocket:
         channels = await collect_advertisements(websocket, set(expected_by_topic), args.advertise_timeout, args.idle_timeout)
         for channel in channels.values():

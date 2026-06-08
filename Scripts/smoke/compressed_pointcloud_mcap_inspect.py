@@ -42,6 +42,7 @@ COMPRESSED_POINTCLOUD_FORMAT_TAG = 42
 
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
+EXIT_UNSUPPORTED_COMPRESSION = 2
 
 
 @dataclass(frozen=True)
@@ -290,6 +291,13 @@ def messages_for_topic(parsed: ParsedMcap, topic: str) -> list[McapMessage]:
 def inspect_mcap(parsed: ParsedMcap, raw_topic: str, compressed_topic: str) -> tuple[bool, list[str]]:
     """Validate raw/compressed channels and one Draco payload."""
     lines: list[str] = []
+    if parsed.unsupported_chunks:
+        lines.append(
+            f"[UNSUPPORTED] skipped {parsed.unsupported_chunks} compressed MCAP chunk(s); "
+            "record without MCAP compression for this inspector"
+        )
+        return False, lines
+
     ok = True
 
     raw_channel, raw_schema = find_channel(parsed, raw_topic)
@@ -339,9 +347,6 @@ def inspect_mcap(parsed: ParsedMcap, raw_topic: str, compressed_topic: str) -> t
             f"messages={len(compressed_messages)}"
         )
 
-    if parsed.unsupported_chunks:
-        lines.append(f"[WARN] skipped {parsed.unsupported_chunks} compressed MCAP chunk(s); record without MCAP compression for this inspector")
-
     return ok, lines
 
 
@@ -378,6 +383,10 @@ def main() -> int:
     print(f"[phase88] schemas={len(parsed.schemas)} channels={len(parsed.channels)} messages={len(parsed.messages)}")
     for line in lines:
         print(line)
+
+    if parsed.unsupported_chunks:
+        print("Verdict: UNSUPPORTED_COMPRESSION")
+        return EXIT_UNSUPPORTED_COMPRESSION
 
     print("Verdict: PASS" if ok else "Verdict: FAIL")
     return EXIT_SUCCESS if ok else EXIT_FAILURE

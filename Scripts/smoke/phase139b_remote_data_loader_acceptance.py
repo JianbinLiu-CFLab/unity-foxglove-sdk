@@ -18,8 +18,10 @@ import argparse
 import calendar
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -30,6 +32,7 @@ from pathlib import Path
 
 MCAP_MAGIC = b"\x89MCAP0\r\n"
 NANOSECONDS_PER_SECOND = 1_000_000_000
+STDOUT_POLL_SECONDS = 0.05
 
 
 def repo_root() -> Path:
@@ -180,9 +183,16 @@ def launch_backend(args: argparse.Namespace, root: Path) -> tuple[subprocess.Pop
     )
 
     logs: list[str] = []
+    stdout_lines: queue.Queue[str] = queue.Queue()
+    if process.stdout is not None:
+        threading.Thread(target=drain_stdout, args=(process.stdout, stdout_lines), daemon=True).start()
+
     deadline = time.monotonic() + args.startup_timeout
     while time.monotonic() < deadline:
-        line = process.stdout.readline() if process.stdout else ""
+        try:
+            line = stdout_lines.get(timeout=min(STDOUT_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+        except queue.Empty:
+            line = ""
         if line:
             line = line.rstrip()
             logs.append(line)
@@ -198,6 +208,12 @@ def launch_backend(args: argparse.Namespace, root: Path) -> tuple[subprocess.Pop
     raise RuntimeError("Phase139B backend did not become ready. Logs:\n" + "\n".join(logs[-40:]))
 
 
+def drain_stdout(stream, output: queue.Queue[str]) -> None:
+    """Drain process stdout on a background thread so startup timeout remains bounded."""
+    for line in iter(stream.readline, ""):
+        output.put(line)
+
+
 def stop_backend(process: subprocess.Popen | None) -> None:
     """Stop a backend process started by this script."""
     if process is None or process.poll() is not None:
@@ -209,7 +225,14 @@ def stop_backend(process: subprocess.Popen | None) -> None:
             stderr=subprocess.DEVNULL,
             check=False,
         )
-        process.wait(timeout=5)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
         return
 
     process.terminate()
@@ -217,7 +240,10 @@ def stop_backend(process: subprocess.Popen | None) -> None:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=5)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def find_free_loopback_port() -> int:

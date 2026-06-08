@@ -155,7 +155,10 @@ async def wait_for_channel(ws: websockets.WebSocketClientProtocol, topic: str, t
 
     while time.perf_counter() < deadline:
         remaining = max(0.01, deadline - time.perf_counter())
-        frame = await asyncio.wait_for(ws.recv(), timeout=remaining)
+        try:
+            frame = await asyncio.wait_for(ws.recv(), timeout=remaining)
+        except asyncio.TimeoutError:
+            break
         if not isinstance(frame, str):
             continue
 

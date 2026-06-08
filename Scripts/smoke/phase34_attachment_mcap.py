@@ -61,7 +61,6 @@ OP_DATA_END = 0x0F
 # Stable identifiers for the single schema/channel/message in this fixture.
 SCHEMA_ID = 1
 CHANNEL_ID = 1
-assert CHANNEL_ID == 1, "fixture stability: CHANNEL_ID is encoded in chunk_index and statistics records"
 MESSAGE_SEQUENCE = 1
 MESSAGE_COUNT = 1
 CHANNEL_COUNT = 1
@@ -94,11 +93,20 @@ MESSAGE_INDEX_RECORDS_BYTE_LENGTH = 16
 # The single message starts at the first indexed payload offset for this fixture.
 MESSAGE_INDEX_MESSAGE_OFFSET = ZERO_OFFSET
 
-# Summary/statistics fixture sizes that are asserted by downstream readers.
-SUMMARY_OFFSET_GROUP_COUNT = 10
+# Byte length of a single-entry MCAP uint16->uint64 map: u16 key + u64 value.
+MAP_SINGLE_ENTRY_BYTES = 10
 MIN_SMOKE_MCAP_BYTES = 64
 FOOTER_CONTENT_LENGTH_BYTES = 20
 ZERO_CRC_SENTINEL = 0
+
+
+def validate_fixture_constants() -> None:
+    """Validate load-bearing fixture constants even when Python assertions are optimized out."""
+    if CHANNEL_ID != 1:
+        raise ValueError("fixture stability: CHANNEL_ID is encoded in chunk_index and statistics records")
+
+
+validate_fixture_constants()
 
 
 def crc32(data: bytes) -> int:
@@ -206,7 +214,7 @@ def chunk_index_content(
         + u64(MESSAGE_TIME_NS)
         + u64(chunk_offset)
         + u64(chunk_length)
-        + u32(SUMMARY_OFFSET_GROUP_COUNT)
+        + u32(MAP_SINGLE_ENTRY_BYTES)
         + u16(CHANNEL_ID)
         + u64(message_index_offset)
         + u64(message_index_length)
@@ -258,7 +266,7 @@ def statistics_content() -> bytes:
         + u32(CHUNK_COUNT)
         + u64(MESSAGE_TIME_NS)
         + u64(MESSAGE_TIME_NS)
-        + u32(SUMMARY_OFFSET_GROUP_COUNT)
+        + u32(MAP_SINGLE_ENTRY_BYTES)
         + u16(CHANNEL_ID)
         + u64(MESSAGE_COUNT)
     )
