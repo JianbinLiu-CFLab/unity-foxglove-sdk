@@ -146,14 +146,28 @@ namespace Unity.FoxgloveSDK.Tests
                   && demoSetup.Contains("Debug.LogWarning(\"[FoxgloveDemo] Ignoring invalid /cube/scale parameter", StringComparison.Ordinal),
                 "134-23-F4: Full demo reports invalid scale parameters instead of silently swallowing them");
             Check(demoSetup.Contains("[SerializeField] private GameObject _cube;", StringComparison.Ordinal)
-                  && demoSetup.Contains("using Player-tagged fallback object", StringComparison.Ordinal),
-                "134-23-F5: Full demo prefers explicit cube assignment and warns on Player-tag fallback");
+                  && !demoSetup.Contains("FindGameObjectWithTag(\"Player\")", StringComparison.Ordinal)
+                  && !demoSetup.Contains("using Player-tagged fallback object", StringComparison.Ordinal),
+                "134-23-F5: Full demo stays inside its own Cube object boundary");
+            Check(demoSetup.Contains("private bool TryInitializeDemo()", StringComparison.Ordinal)
+                  && demoSetup.Contains("private bool _initialized;", StringComparison.Ordinal)
+                  && demoSetup.Contains("if (!TryInitializeDemo())", StringComparison.Ordinal),
+                "134-23-F10: Full demo retries setup until FoxgloveManager session is ready");
+            Check(demoSetup.Contains("return JToken.Parse(\"{\\\"status\\\":\\\"error\\\",\\\"reason\\\":\\\"cube not found\\\"}\");", StringComparison.Ordinal),
+                "134-23-F11: Full demo reset_pose reports missing cube as an error");
+            Check(demoSetup.Contains("private static readonly UTF8Encoding StrictUtf8", StringComparison.Ordinal)
+                  && demoSetup.Contains("new UTF8Encoding(false, true)", StringComparison.Ordinal),
+                "134-23-F12: Full demo client-message preview uses strict UTF-8 so binary payloads fall back to hex");
 
             var mouseDrag = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/MouseDragCube.cs");
             Check(mouseDrag.Contains("#if ENABLE_INPUT_SYSTEM", StringComparison.Ordinal)
                   && mouseDrag.Contains("#elif ENABLE_LEGACY_INPUT_MANAGER", StringComparison.Ordinal)
                   && mouseDrag.Contains("TryReadMouse", StringComparison.Ordinal),
                 "134-23-F6: MouseDragCube compiles without a hard Input System package dependency");
+            Check(mouseDrag.Contains("private Camera _camera;", StringComparison.Ordinal)
+                  && mouseDrag.Contains("_camera = Camera.main;", StringComparison.Ordinal)
+                  && mouseDrag.Contains("var cam = _camera;", StringComparison.Ordinal),
+                "134-23-F13: MouseDragCube caches the main camera instead of resolving it every frame");
 
             var manager = ReadRepoFile(PackageRoot + "/Runtime/Components/Manager/FoxgloveManager.cs");
             Check(manager.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler", StringComparison.Ordinal)
@@ -163,6 +177,9 @@ namespace Unity.FoxgloveSDK.Tests
             var testLog = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/TestLog.cs");
             Check(testLog.Contains("_health = 95f + Mathf.Sin", StringComparison.Ordinal),
                 "134-23-F8: Full demo FoxRun health telemetry changes over time");
+            Check(testLog.Contains("private Vector3 _position2;", StringComparison.Ordinal)
+                  && !testLog.Contains("public Vector3 position;", StringComparison.Ordinal),
+                "134-23-F14: Full demo FoxRun telemetry fields stay private");
 
             var triggerSmoke = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxRunTriggerTelemetrySmoke.cs");
             Check(triggerSmoke.Contains("public long fixedCounter;", StringComparison.Ordinal),

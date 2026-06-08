@@ -23,6 +23,7 @@ public class MouseDragCube : MonoBehaviour
     [SerializeField] private float _maxScale = FoxgloveDemoSetup.ScaleMaximum;
     [SerializeField] private FoxgloveDemoSetup _demo;
 
+    private Camera _camera;
     private Vector2 _lastMouse;
     private bool _isDragging;
 
@@ -33,6 +34,7 @@ public class MouseDragCube : MonoBehaviour
     {
         if (_demo == null)
             _demo = FindFirstObjectByType<FoxgloveDemoSetup>();
+        _camera = Camera.main;
     }
 
     /// <summary>
@@ -42,7 +44,12 @@ public class MouseDragCube : MonoBehaviour
     /// </summary>
     private void Update()
     {
-        var cam = Camera.main;
+        var cam = _camera;
+        if (cam == null)
+        {
+            cam = Camera.main;
+            _camera = cam;
+        }
         if (cam == null) return;
 
         if (!TryReadMouse(out var pos, out var leftPressed, out var rightPressed, out var scroll))
