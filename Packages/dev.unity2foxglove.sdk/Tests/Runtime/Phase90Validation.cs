@@ -200,23 +200,19 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var runtimeRoot = Path.Combine(Phase16Validation.FindRepoRoot(), "Packages", "dev.unity2foxglove.sdk", "Runtime");
             Check(Directory.Exists(runtimeRoot), "90G-0: Runtime source root exists");
-            var runtimeText = string.Join("\n", Directory.EnumerateFiles(runtimeRoot, "*.cs", SearchOption.AllDirectories)
-                .Select(File.ReadAllText));
             var componentsRoot = Path.Combine(runtimeRoot, "Components");
             Check(Directory.Exists(componentsRoot), "90G-0b: Runtime Components source root exists");
-            var componentText = string.Join("\n", Directory.EnumerateFiles(componentsRoot, "*.cs", SearchOption.AllDirectories)
-                .Select(File.ReadAllText));
             var catalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
 
-            Check(!runtimeText.Contains("class CdrWriter") && !runtimeText.Contains("Ros2CdrPublisher"),
+            Check(SourceTreeAvoids(runtimeRoot, "class CdrWriter", "Ros2CdrPublisher"),
                 "90G-1: Phase90 does not introduce CDR writer or CDR publisher");
-            Check(!componentText.Contains("PublisherEffectiveEncoding.Cdr"),
+            Check(SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr"),
                 "90G-2: Phase90 does not add publisher CDR output mode");
             Check(!catalog.Contains("HasDedicatedUnityPublisher"),
                 "90G-3: ROS2 catalog does not imply dedicated ROS2 CDR publisher support");
 
-            Check(componentText.Contains("PublisherEffectiveEncoding.Ros2")
-                  && !componentText.Contains("PublisherEffectiveEncoding.Cdr"),
+            Check(SourceTreeContains(componentsRoot, "PublisherEffectiveEncoding.Ros2")
+                  && SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr"),
                 "90G-4: publisher output mode uses product ROS2 labeling instead of CDR internals");
         }
 
@@ -247,6 +243,21 @@ namespace Unity.FoxgloveSDK.Tests
             var adv = JObject.Parse(json);
             return (adv["channels"] as JArray)?[0];
         }
+
+        private static bool SourceTreeContains(string root, params string[] needles)
+        {
+            foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            {
+                var text = File.ReadAllText(path);
+                if (needles.Any(needle => text.Contains(needle, StringComparison.Ordinal)))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool SourceTreeAvoids(string root, params string[] needles)
+            => !SourceTreeContains(root, needles);
 
         private static string ComputeSourceTreeSha256(string sourceRoot)
         {

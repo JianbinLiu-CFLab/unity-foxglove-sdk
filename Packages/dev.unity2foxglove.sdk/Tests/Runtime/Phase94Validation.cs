@@ -155,31 +155,41 @@ namespace Unity.FoxgloveSDK.Tests
             thread.IsBackground = true;
             thread.Start();
 
-            using (var sink = new Ros2BridgeTcpClient())
+            try
             {
-                sink.Connect("127.0.0.1", port, timeoutMs: LoopbackTimeoutMs);
-                Check(sink.IsConnected, "94C-1: TCP client connects to loopback server");
-                var frame = new Ros2BridgeFrame(
-                    "/unity/tf",
-                    "foxglove_msgs/msg/FrameTransform",
-                    "cdr",
-                    SampleTimeNs,
-                    1,
-                    new byte[] { 0, 1, 0, 0, 1, 2, 3 });
-                sink.Send(frame, timeoutMs: LoopbackTimeoutMs);
-                Check(done.Wait(LoopbackTimeoutMs), "94C-2: loopback server receives one frame");
-                if (serverError != null)
-                    throw new Exception("94C server failed: " + serverError.Message, serverError);
-                Check(WaitUntil(() => !sink.IsConnected, LoopbackTimeoutMs),
-                    "94C-3: TCP client observes remote close");
-                sink.Disconnect();
-                Check(!sink.IsConnected, "94C-4: TCP client disconnect closes socket state");
-            }
+                using (var sink = new Ros2BridgeTcpClient())
+                {
+                    sink.Connect("127.0.0.1", port, timeoutMs: LoopbackTimeoutMs);
+                    Check(sink.IsConnected, "94C-1: TCP client connects to loopback server");
+                    var frame = new Ros2BridgeFrame(
+                        "/unity/tf",
+                        "foxglove_msgs/msg/FrameTransform",
+                        "cdr",
+                        SampleTimeNs,
+                        1,
+                        new byte[] { 0, 1, 0, 0, 1, 2, 3 });
+                    sink.Send(frame, timeoutMs: LoopbackTimeoutMs);
+                    Check(done.Wait(LoopbackTimeoutMs), "94C-2: loopback server receives one frame");
+                    if (serverError != null)
+                        throw new Exception("94C server failed: " + serverError.Message, serverError);
+                    Check(WaitUntil(() => !sink.IsConnected, LoopbackTimeoutMs),
+                        "94C-3: TCP client observes remote close");
+                    sink.Disconnect();
+                    Check(!sink.IsConnected, "94C-4: TCP client disconnect closes socket state");
+                }
 
-            Check(received.Count == 1 && received[0].Topic == "/unity/tf",
-                "94C-5: loopback server decodes sent frame topic");
-            Check(received[0].SchemaName == "foxglove_msgs/msg/FrameTransform" && received[0].Payload.SequenceEqual(new byte[] { 0, 1, 0, 0, 1, 2, 3 }),
-                "94C-6: loopback server decodes schema and payload");
+                Check(received.Count == 1 && received[0].Topic == "/unity/tf",
+                    "94C-5: loopback server decodes sent frame topic");
+                Check(received[0].SchemaName == "foxglove_msgs/msg/FrameTransform" && received[0].Payload.SequenceEqual(new byte[] { 0, 1, 0, 0, 1, 2, 3 }),
+                    "94C-6: loopback server decodes schema and payload");
+            }
+            finally
+            {
+                server.Stop();
+                done.Wait(1000);
+                if (thread.IsAlive)
+                    thread.Join(1000);
+            }
 
             using var disconnected = new Ros2BridgeTcpClient();
             Check(Throws<InvalidOperationException>(() => disconnected.Send(

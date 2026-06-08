@@ -453,16 +453,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Directory.Exists(componentsRoot), "91G-0: Runtime Components source root exists");
             Check(Directory.Exists(publishersRoot), "91G-0b: Runtime Proto publisher source root exists");
 
-            var componentText = string.Join("\n", Directory.EnumerateFiles(componentsRoot, "*.cs", SearchOption.AllDirectories)
-                .Select(File.ReadAllText));
-            var publisherText = string.Join("\n", Directory.EnumerateFiles(publishersRoot, "*.cs", SearchOption.AllDirectories)
-                .Select(File.ReadAllText));
             var managerPublishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var sessionText = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
 
-            Check(!componentText.Contains("PublisherEffectiveEncoding.Cdr") && !componentText.Contains("GlobalEncoding.Cdr"),
+            Check(SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr", "GlobalEncoding.Cdr"),
                 "91G-1: Phase91 does not add publisher or global CDR output modes");
-            Check(!publisherText.Contains("PublishRos2Cdr"),
+            Check(SourceTreeAvoids(publishersRoot, "PublishRos2Cdr"),
                 "91G-2: product publishers do not call the low-level ROS2 CDR helper directly");
             Check(managerPublishing.Contains("GetOrRegisterRos2MsgSchemaChannel")
                   && !managerPublishing.Contains("GetOrRegisterSchemaChannel(topic, schemaName, CdrEncoding)"),
@@ -604,6 +600,21 @@ namespace Unity.FoxgloveSDK.Tests
 
             return File.ReadAllText(path);
         }
+
+        private static bool SourceTreeContains(string root, params string[] needles)
+        {
+            foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            {
+                var text = File.ReadAllText(path);
+                if (needles.Any(needle => text.Contains(needle, StringComparison.Ordinal)))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool SourceTreeAvoids(string root, params string[] needles)
+            => !SourceTreeContains(root, needles);
 
         private sealed class Phase91Sample
         {

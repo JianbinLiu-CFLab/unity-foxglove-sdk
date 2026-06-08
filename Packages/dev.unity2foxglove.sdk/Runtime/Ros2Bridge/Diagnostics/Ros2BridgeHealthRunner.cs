@@ -26,15 +26,18 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private readonly IRos2BridgeCommandRunner _commandRunner;
         private readonly IRos2BridgeHealthProbe _healthProbe;
         private readonly Func<DateTimeOffset> _clock;
+        private readonly Func<string> _rosDistroProvider;
 
         public Ros2BridgeHealthRunner(
             IRos2BridgeCommandRunner commandRunner = null,
             IRos2BridgeHealthProbe healthProbe = null,
-            Func<DateTimeOffset> clock = null)
+            Func<DateTimeOffset> clock = null,
+            Func<string> rosDistroProvider = null)
         {
             _commandRunner = commandRunner ?? new ProcessRos2BridgeCommandRunner();
             _healthProbe = healthProbe ?? new Ros2BridgeU2R2HealthProbe();
             _clock = clock ?? (() => DateTimeOffset.UtcNow);
+            _rosDistroProvider = rosDistroProvider ?? (() => Environment.GetEnvironmentVariable("ROS_DISTRO") ?? string.Empty);
         }
 
         public Ros2BridgeHealthReport Run(Ros2BridgeHealthOptions options)
@@ -84,7 +87,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
             else
             {
-                rosDistro = Environment.GetEnvironmentVariable("ROS_DISTRO") ?? string.Empty;
+                rosDistro = _rosDistroProvider() ?? string.Empty;
                 checks.Add(CheckRosDistro(rosDistro));
 
                 ThrowIfCancellationRequested(options);

@@ -48,7 +48,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(cameraOutputMode.Contains("H264OpenH264", StringComparison.Ordinal),
                 "80A-3: production CameraOutputMode records the promoted OpenH264 mode");
 
-            Check(!HasCommittedOpenH264BinaryArtifacts(),
+            Check(!OpenH264ValidationHelpers.HasCommittedOpenH264BinaryArtifacts(),
                 "80A-4: no OpenH264 binary artifacts are committed under package/assets paths");
         }
 
@@ -145,34 +145,6 @@ namespace Unity.FoxgloveSDK.Tests
                 "80D-2: helper README documents source-only OpenH264 stance");
             Check(readme.Contains("RGB24") && readme.Contains("I420") && readme.Contains("Manual Smoke"),
                 "80D-3: helper README covers conversion and manual smoke");
-        }
-
-        private static bool HasCommittedOpenH264BinaryArtifacts()
-        {
-            var root = FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root.");
-
-            var roots = new[]
-            {
-                Path.Combine(root, "Packages"),
-                Path.Combine(root, "Unity2Foxglove", "Assets")
-            };
-            var extensions = new[] { ".dll", ".exe", ".lib", ".so", ".dylib" };
-            foreach (var searchRoot in roots.Where(Directory.Exists))
-            {
-                foreach (var file in Directory.EnumerateFiles(searchRoot, "*", SearchOption.AllDirectories))
-                {
-                    var name = Path.GetFileName(file);
-                    if (name.IndexOf("openh264", StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
-
-                    if (extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-                        return true;
-                }
-            }
-
-            return false;
         }
 
         private static bool ContainsAny(string text, params string[] needles)
