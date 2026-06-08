@@ -19,7 +19,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     internal static class Ros2ForUnityRuntimeDefineInstaller
     {
         private const string RuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
-        private const string CompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
+        private const string BaseCompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
+        private const string NativeRuntimePackageCompileSymbol =
+            "UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE";
 
         static Ros2ForUnityRuntimeDefineInstaller()
         {
@@ -70,21 +72,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 .Where(value => value.Length > 0)
                 .ToList();
 
-            var hasSymbol = parts.Contains(CompileSymbol, StringComparer.Ordinal);
-            if (runtimeInstalled && hasSymbol)
+            var changed = runtimeInstalled
+                ? EnsureSymbol(parts, BaseCompileSymbol) | EnsureSymbol(parts, NativeRuntimePackageCompileSymbol)
+                : RemoveSymbol(parts, BaseCompileSymbol) | RemoveSymbol(parts, NativeRuntimePackageCompileSymbol);
+            if (!changed)
                 return;
-            if (!runtimeInstalled && !hasSymbol)
-                return;
-
-            if (runtimeInstalled)
-                parts.Add(CompileSymbol);
-            else
-                parts.RemoveAll(value => string.Equals(value, CompileSymbol, StringComparison.Ordinal));
 
             PlayerSettings.SetScriptingDefineSymbols(target, string.Join(";", parts));
             Debug.Log(runtimeInstalled
-                ? "Unity2Foxglove enabled " + CompileSymbol + " because " + RuntimePackageName + " is installed."
-                : "Unity2Foxglove removed " + CompileSymbol + " because " + RuntimePackageName + " is not installed.");
+                ? "Unity2Foxglove enabled " + BaseCompileSymbol + " and " + NativeRuntimePackageCompileSymbol
+                  + " because " + RuntimePackageName + " is installed."
+                : "Unity2Foxglove removed " + BaseCompileSymbol + " and " + NativeRuntimePackageCompileSymbol
+                  + " because " + RuntimePackageName + " is not installed.");
+        }
+
+        private static bool EnsureSymbol(System.Collections.Generic.List<string> parts, string symbol)
+        {
+            if (parts.Contains(symbol, StringComparer.Ordinal))
+                return false;
+
+            parts.Add(symbol);
+            return true;
+        }
+
+        private static bool RemoveSymbol(System.Collections.Generic.List<string> parts, string symbol)
+        {
+            return parts.RemoveAll(value => string.Equals(value, symbol, StringComparison.Ordinal)) > 0;
         }
 
         private static bool IsRuntimePackageInstalled()
@@ -108,7 +121,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 Debug.LogWarning(
                     "Unity2Foxglove found " + RuntimePackageName
                     + " in manifest.json, but Packages/packages-lock.json is missing. "
-                    + "Leaving " + CompileSymbol + " disabled until Unity resolves the runtime package.");
+                    + "Leaving ROS2 For Unity compile symbols disabled until Unity resolves the runtime package.");
                 return false;
             }
 
@@ -119,7 +132,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Debug.LogWarning(
                 "Unity2Foxglove found " + RuntimePackageName
                 + " in manifest.json, but not in packages-lock.json. "
-                + "Leaving " + CompileSymbol + " disabled until the runtime package is resolved.");
+                + "Leaving ROS2 For Unity compile symbols disabled until the runtime package is resolved.");
             return false;
         }
 
@@ -132,7 +145,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static string FormatFailureMessage(string context, Exception ex)
         {
             return "Unity2Foxglove ROS2 For Unity compile symbol " + context
-                   + " failed for " + RuntimePackageName + " / " + CompileSymbol + ": "
+                   + " failed for " + RuntimePackageName + " / " + BaseCompileSymbol + " / "
+                   + NativeRuntimePackageCompileSymbol + ": "
                    + ex.GetType().Name + ": " + ex.Message;
         }
     }

@@ -76,6 +76,7 @@ namespace Unity2Foxglove.Ros2ForUnity
 
             public IUnity2FoxgloveRos2Subscription CreateSubscription<T>(string topic, Action<T> callback)
             {
+                // Unavailable subscriptions preserve the topic but intentionally do not invoke callbacks.
                 return new UnavailableSubscription(
                     Unity2FoxgloveRos2UnavailableContext.NormalizeTopic(topic));
             }
