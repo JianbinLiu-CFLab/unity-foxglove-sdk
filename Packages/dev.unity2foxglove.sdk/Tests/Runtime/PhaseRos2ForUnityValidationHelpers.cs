@@ -102,6 +102,7 @@ namespace Unity.FoxgloveSDK.Tests
                         continue;
 
                     var previous = stack.Pop();
+                    // `#else` is define-guarded only after an earlier branch required !define.
                     stack.Push(new GuardFrame(
                         previous.ParentGuarded,
                         previous.ParentGuarded || previous.PriorRequiresNotDefine,

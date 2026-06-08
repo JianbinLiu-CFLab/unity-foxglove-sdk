@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyLocalAssetIgnoreRules();
             VerifyPackageHasNoHardR2fuDependency();
             VerifyAcceptanceComponent();
+            VerifySharedGuardHelperBranchSemantics();
             VerifyTrackedAssetBoundary();
             VerifyDocsBoundary();
 
@@ -118,6 +119,23 @@ namespace Unity.FoxgloveSDK.Tests
                 "106C-9: acceptance component does not manually spin ROS2");
             Check(AllR2fuReferencesAreGuarded(text, out var guardError),
                 "106C-10: ROS2 For Unity API references stay inside compile guard" + guardError);
+        }
+
+        private static void VerifySharedGuardHelperBranchSemantics()
+        {
+            var tokens = new[] { "ROS2Node" };
+            Check(PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(
+                    "#if !" + Define + "\n#else\nROS2Node node;\n#endif",
+                    Define,
+                    tokens,
+                    out _),
+                "106C-11: shared R2FU guard treats #else after !define as define-guarded");
+            Check(!PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(
+                    "#if " + Define + "\n#else\nROS2Node node;\n#endif",
+                    Define,
+                    tokens,
+                    out _),
+                "106C-12: shared R2FU guard rejects #else after positive define");
         }
 
         private static void VerifyTrackedAssetBoundary()

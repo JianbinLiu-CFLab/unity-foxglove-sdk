@@ -9965,11 +9965,11 @@ MonoBehaviour:
   _recordingDirectory: 
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
-  _enableReplay: 1
-  _replayFilePath: Recordings/foxglove_20260608_125210_5310303Z.mcap
+  _enableReplay: 0
+  _replayFilePath:
   _replayAutoPlay: 0
-  _disableLivePublishers: 1
-  _enableRemoteMcapFileServer: 1
+  _disableLivePublishers: 0
+  _enableRemoteMcapFileServer: 0
   _remoteMcapFileServerHost: 127.0.0.1
   _remoteMcapFileServerPort: 8891
   _remoteMcapFileServerSourceId: local-mcap
