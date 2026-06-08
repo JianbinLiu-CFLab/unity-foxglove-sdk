@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// Test-only sequential MCAP reader for verification of generated files.
     /// Uses McapBinaryReader for LE helpers.
     /// </summary>
-    public static class McapRecordReader
+    internal static class McapRecordReader
     {
         public struct McapRecord
         {
@@ -178,6 +178,8 @@ namespace Unity.FoxgloveSDK.Tests
             var off = 0;
             var chId = McapBinaryReader.ReadU16LE(content, ref off);
             var recsLen = McapBinaryReader.ReadU32LE(content, ref off);
+            if (recsLen % 16 != 0)
+                throw new InvalidDataException($"MessageIndex records length {recsLen} is not a multiple of 16.");
             var count = recsLen / 16;
             var entries = new List<(ulong, ulong)>();
             for (uint i = 0; i < count; i++)

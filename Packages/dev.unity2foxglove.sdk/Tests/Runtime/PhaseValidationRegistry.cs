@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase24d", "Phase 24D", Phase24DValidation.Validate),
             Ci("--phase28", "Phase 28", Phase28Validation.Validate),
             Ci("--phase31", "Phase 31", Phase31Validation.Validate),
-            Ci("--phase32", "Phase 32", Phase32Validation.Run),
+            Ci("--phase32", "Phase 32", Phase32Validation.Validate),
             Ci("--phase33", "Phase 33", Phase33Validation.Validate),
             Ci("--phase34", "Phase 34", Phase34Validation.Validate),
             Ci("--phase36", "Phase 36", Phase36Validation.Validate),
@@ -231,6 +231,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             if (duplicate != null)
                 throw new InvalidOperationException("Duplicate validation flag registered: " + duplicate.Key);
+
+            var duplicateName = All
+                .GroupBy(item => item.Name, StringComparer.Ordinal)
+                .FirstOrDefault(group => group.Count() > 1);
+
+            if (duplicateName != null)
+                throw new InvalidOperationException("Duplicate validation name registered: " + duplicateName.Key);
         }
 
         /// <summary>
@@ -250,6 +257,14 @@ namespace Unity.FoxgloveSDK.Tests
         public static PhaseValidationCase Find(IReadOnlyCollection<string> args)
         {
             return All.FirstOrDefault(item => item.Matches(args));
+        }
+
+        /// <summary>
+        /// Finds all validation cases matching CLI args.
+        /// </summary>
+        public static IEnumerable<PhaseValidationCase> FindAll(IReadOnlyCollection<string> args)
+        {
+            return All.Where(item => item.Matches(args));
         }
 
         /// <summary>

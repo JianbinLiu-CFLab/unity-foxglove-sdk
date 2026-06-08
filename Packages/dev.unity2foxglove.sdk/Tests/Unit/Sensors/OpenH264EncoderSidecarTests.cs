@@ -16,17 +16,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     public sealed class OpenH264EncoderSidecarTests
     {
         [Fact]
-        public void ZeroLengthSkipSentinelConsumesSkippedFrameTimestamp()
+        public void EmptyAccessUnitIsRejectedWithoutConsumingTimestamp()
         {
             var sidecar = new OpenH264EncoderSidecar();
             PendingTimestamps(sidecar).Enqueue(100UL);
             PendingTimestamps(sidecar).Enqueue(200UL);
 
-            sidecar.AcceptHelperAccessUnit(System.Array.Empty<byte>());
+            Assert.Throws<System.ArgumentException>(() => sidecar.AcceptHelperAccessUnit(System.Array.Empty<byte>()));
             sidecar.AcceptHelperAccessUnit(new byte[] { 1, 2, 3 });
 
             Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var accessUnit));
-            Assert.Equal(200UL, accessUnit.TimestampNs);
+            Assert.Equal(100UL, accessUnit.TimestampNs);
             Assert.Equal(new byte[] { 1, 2, 3 }, accessUnit.Data);
             Assert.False(sidecar.TryDequeueEncodedAccessUnit(out _));
         }

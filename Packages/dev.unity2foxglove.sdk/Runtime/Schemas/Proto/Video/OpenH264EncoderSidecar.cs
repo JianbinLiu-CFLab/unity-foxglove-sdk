@@ -299,16 +299,11 @@ namespace Foxglove.Schemas.Video
                         break;
 
                     var length = readLength.Length;
-                    if (length < 0 || length > MaxAccessUnitBytes)
+                    if (length <= 0 || length > MaxAccessUnitBytes)
                     {
                         LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
                         TryKillProcess(process);
                         return;
-                    }
-                    if (length == 0)
-                    {
-                        AcceptHelperAccessUnit(Array.Empty<byte>());
-                        continue;
                     }
 
                     var payload = new byte[length];
@@ -421,10 +416,7 @@ namespace Foxglove.Schemas.Video
                 throw new ArgumentNullException(nameof(accessUnit));
 
             if (accessUnit.Length == 0)
-            {
-                _encodedFrameTimestamps.TryDequeue(out _);
-                return;
-            }
+                throw new ArgumentException("OpenH264 access unit must not be empty.", nameof(accessUnit));
 
             EnqueueAccessUnit(accessUnit);
         }
