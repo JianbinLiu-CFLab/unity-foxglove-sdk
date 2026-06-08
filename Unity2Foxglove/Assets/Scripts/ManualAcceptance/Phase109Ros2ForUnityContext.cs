@@ -33,7 +33,19 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         _host = host;
     }
 
-    public bool IsAvailable => TryEnsureReady();
+    public bool IsAvailable
+    {
+        get
+        {
+            if (_disposed)
+                return false;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            return !_initializationFailed && _ros2Unity != null && _ros2Unity.Ok();
+#else
+            return false;
+#endif
+        }
+    }
 
     public Unity2FoxgloveRos2Status Status
     {

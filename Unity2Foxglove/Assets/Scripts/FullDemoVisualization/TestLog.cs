@@ -29,7 +29,7 @@ public partial class TestLog : MonoBehaviour
     // - ChangeEpsilon suppresses tiny Vector jitter.
     // - ForceIntervalSeconds still sends a heartbeat every second.
     [FoxRun("/debug/position2", RateHz = 10, PublishMode = FoxRunPublishMode.OnChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
-    public Vector3 position;
+    private Vector3 _position2;
 
     void Awake()
     {
@@ -45,6 +45,7 @@ public partial class TestLog : MonoBehaviour
     {
         var trackedPosition = _trackedCube != null ? _trackedCube.position : transform.position;
         _pos = trackedPosition;
-        position = trackedPosition;
+        _position2 = trackedPosition;
+        _health = 95f + Mathf.Sin(Time.time * 0.75f) * 5f;
     }
 }

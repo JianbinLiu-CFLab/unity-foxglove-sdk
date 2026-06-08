@@ -408,8 +408,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c65c7a2314563254aab3e6689c67c1b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup
-  _manager: {fileID: 0}
-  _cube: {fileID: 0}
+  _manager: {fileID: 346350281}
+  _cube: {fileID: 2004464831}
 --- !u!114 &346350284
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -844,7 +844,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
-  position: {x: 0, y: 0, z: 0}
 --- !u!1 &1691798670
 GameObject:
   m_ObjectHideFlags: 0

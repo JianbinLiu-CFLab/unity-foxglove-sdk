@@ -38,7 +38,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
         {
             case 0: mgr.PublishJson("/debug/health", "", new Dictionary<string, object> { ["health"] = this._health }, nowNs); break;
             case 1: mgr.PublishJson("/debug/position", "", new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = this._pos.x, ["y"] = this._pos.y, ["z"] = this._pos.z } }, nowNs); break;
-            case 2: mgr.PublishJson("/debug/position2", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this.position.x, ["y"] = this.position.y, ["z"] = this.position.z } }, nowNs); break;
+            case 2: mgr.PublishJson("/debug/position2", "", new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = this._position2.x, ["y"] = this._position2.y, ["z"] = this._position2.z } }, nowNs); break;
         }
     }
 
@@ -67,7 +67,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
             case 1: return true;
             case 2:
                 changed = !__hasLast_2;
-                if (!changed) changed = __foxrun_float_changed(this.position.x, __last_2_0.x, 0.00999999978f) || __foxrun_float_changed(this.position.y, __last_2_0.y, 0.00999999978f) || __foxrun_float_changed(this.position.z, __last_2_0.z, 0.00999999978f);
+                if (!changed) changed = __foxrun_float_changed(this._position2.x, __last_2_0.x, 0.00999999978f) || __foxrun_float_changed(this._position2.y, __last_2_0.y, 0.00999999978f) || __foxrun_float_changed(this._position2.z, __last_2_0.z, 0.00999999978f);
                 return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChangeOrInterval, nowSec, __hasLast_2, changed, __lastPublishSec_2, 1f);
             default: return true;
         }
@@ -78,7 +78,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
         switch (topicIndex)
         {
             case 2:
-                __last_2_0 = this.position;
+                __last_2_0 = this._position2;
                 __hasLast_2 = true;
                 __lastPublishSec_2 = nowSec;
                 break;

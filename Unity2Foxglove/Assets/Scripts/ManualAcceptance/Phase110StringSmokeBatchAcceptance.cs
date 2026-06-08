@@ -65,6 +65,7 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
         private float _inboundDeadlineAt = float.PositiveInfinity;
         private bool _previousRunInBackground;
         private bool _executorsStarted;
+        private bool _warnedMissingStartExecutor;
         private bool _previousEnterPlayModeOptionsEnabled;
         private EnterPlayModeOptions _previousEnterPlayModeOptions;
 
@@ -241,6 +242,12 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 
             if (_startExecutor == null)
             {
+                if (!_warnedMissingStartExecutor)
+                {
+                    _warnedMissingStartExecutor = true;
+                    Debug.LogWarning(LogPrefix + " StartExecutor reflection hook was not found; continuing without explicit executor start.");
+                }
+
                 _executorsStarted = true;
                 return;
             }

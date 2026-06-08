@@ -21,6 +21,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
     internal const float ScaleMinimum = 0.2f;
     internal const float ScaleMaximum = 5f;
     private const int ClientPayloadPreviewBytes = 160;
+    private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
     [SerializeField] private FoxgloveManager _manager;
     [SerializeField] private GameObject _cube;
@@ -32,7 +33,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
     private bool _initialized;
     private bool _warnedWaitingForManager;
     private bool _warnedInvalidScale;
-    private bool _warnedPlayerTagFallback;
     private SynchronizationContext _unityContext;
     private FoxgloveSceneCubePublisher _scenePublisher;
     private GameObject _cachedCube;
@@ -50,13 +50,14 @@ public class FoxgloveDemoSetup : MonoBehaviour
 
     private bool TryInitializeDemo()
     {
-        if (_initialized)
-            return true;
-
         if (_manager == null)
             _manager = GetComponent<FoxgloveManager>();
-        if (_manager?.Runtime?.Session == null)
+
+        var runtime = _manager?.Runtime;
+        if (runtime?.Session == null)
         {
+            if (_initialized)
+                ClearRuntimeWiring();
             if (!_warnedWaitingForManager)
             {
                 _warnedWaitingForManager = true;
@@ -66,7 +67,10 @@ public class FoxgloveDemoSetup : MonoBehaviour
             return false;
         }
 
-        var rt = _manager.Runtime;
+        if (_initialized)
+            return true;
+
+        var rt = runtime;
 
         rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
         rt.RegisterParameter("/cube/scale", 1.0, "number", true);
@@ -80,6 +84,9 @@ public class FoxgloveDemoSetup : MonoBehaviour
         }, req =>
         {
             var cube = FindCube();
+            if (cube == null)
+                return JToken.Parse("{\"status\":\"error\",\"reason\":\"cube not found\"}");
+
             if (cube != null)
             {
                 cube.transform.position = Vector3.zero;
@@ -123,19 +130,32 @@ public class FoxgloveDemoSetup : MonoBehaviour
     /// </summary>
     private void OnDestroy()
     {
+        ClearRuntimeWiring();
+    }
+
+    private void ClearRuntimeWiring()
+    {
         var runtime = _manager?.Runtime;
         if (runtime != null)
         {
             runtime.Parameters.OnParameterChanged -= OnParameterChanged;
-            _manager.OnClientMessage -= OnClientMessageReceived;
             if (_resetSvcId != 0)
             {
                 runtime.UnregisterService(_resetSvcId);
                 _resetSvcId = 0;
             }
         }
+
+        if (_manager != null)
+            _manager.OnClientMessage -= OnClientMessageReceived;
+
         if (_scenePublisher != null)
+        {
             _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
+            _scenePublisher = null;
+        }
+
+        _initialized = false;
     }
 
     /// <summary>
@@ -147,8 +167,16 @@ public class FoxgloveDemoSetup : MonoBehaviour
         if (!TryInitializeDemo())
             return;
 
+        var runtime = _manager?.Runtime;
+        if (runtime?.Session == null)
+        {
+            if (_initialized)
+                ClearRuntimeWiring();
+            return;
+        }
+
         // Scale still mirrors the existing manual demo behavior.
-        var scaleParam = _manager.Runtime.Parameters.GetWireParameter("/cube/scale");
+        var scaleParam = runtime.Parameters.GetWireParameter("/cube/scale");
         if (scaleParam?.Value != null)
         {
             try
@@ -178,7 +206,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
     }
 
     /// <summary>
-    /// Locates the cube GameObject by name or Player tag.
+    /// Locates the cube GameObject by explicit binding or demo object name.
     /// </summary>
     private GameObject FindCube()
     {
@@ -187,15 +215,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
         if (_cachedCube != null)
             return _cachedCube;
         _cachedCube = GameObject.Find("Cube");
-        if (_cachedCube == null)
-        {
-            _cachedCube = GameObject.FindGameObjectWithTag("Player");
-            if (_cachedCube != null && !_warnedPlayerTagFallback)
-            {
-                _warnedPlayerTagFallback = true;
-                Debug.LogWarning("[FoxgloveDemo] Cube object not found; using Player-tagged fallback object.");
-            }
-        }
         return _cachedCube;
     }
 
@@ -311,7 +330,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         var count = Mathf.Min(payload.Length, ClientPayloadPreviewBytes);
         try
         {
-            var text = new UTF8Encoding(false, true).GetString(payload, 0, count);
+            var text = StrictUtf8.GetString(payload, 0, count);
             return payload.Length > count ? $"utf8:{text}..." : $"utf8:{text}";
         }
         catch (System.Exception)

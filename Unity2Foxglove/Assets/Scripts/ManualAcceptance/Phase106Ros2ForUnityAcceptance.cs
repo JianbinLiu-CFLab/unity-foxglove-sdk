@@ -20,6 +20,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
     private float _nextPublishTime;
     private int _publishCount;
     private bool _warnedMissingDefine;
+    private bool _previousRunInBackground;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private ROS2UnityComponent _ros2Unity;
@@ -32,6 +33,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void OnEnable()
     {
+        _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishTime = 0f;
         _publishCount = 0;
@@ -62,6 +64,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void OnDisable()
     {
+        Application.runInBackground = _previousRunInBackground;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         DisposeRos2Endpoints();
 #endif
