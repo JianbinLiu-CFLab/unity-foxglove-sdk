@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Threading;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -23,6 +25,10 @@ namespace Unity.FoxgloveSDK.Editor
     /// </summary>
     public class FoxrunBuildPreprocess : IPreprocessBuildWithReport, IProcessSceneWithReport
     {
+        private const int ReplaceAttempts = 3;
+        private const int ReplaceRetryDelayMilliseconds = 50;
+        private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
+
         /// <summary>
         /// Runs early (before most other build callbacks) so generated source
         /// files are present for IL2CPP compilation.
@@ -51,9 +57,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             Debug.Log("[FoxrunBuildPreprocess] Generating FoxRun source files...");
             List<string> files;
+            FoxRunCanonicalManifest manifest;
             try
             {
-                files = FoxrunCodeGenerator.GenerateSourceFiles();
+                files = FoxrunCodeGenerator.GenerateSourceFiles(out manifest);
             }
             catch (Exception ex)
             {
@@ -74,7 +81,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
-                var verification = FoxrunCodeGenerator.VerifyGeneratedSchemaInfoFiles();
+                var verification = FoxrunCodeGenerator.VerifyGeneratedSchemaInfoFiles(manifest);
                 Debug.Log("[FoxrunBuildPreprocess] Verified FoxRun schema info after regeneration: " +
                           verification.ActualGlobalManifestHash);
                 var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts();
@@ -199,7 +206,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
-                File.WriteAllText(linkPath, linkXml);
+                WriteTextIfChanged(linkPath, linkXml);
             }
             catch (Exception ex)
             {
@@ -216,6 +223,53 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             Debug.Log($"[FoxrunBuildPreprocess] Wrote FoxRun_link.xml with {types.Count} type(s)");
+        }
+
+        private static void WriteTextIfChanged(string path, string text)
+        {
+            var bytes = Utf8NoBom.GetBytes(text ?? string.Empty);
+            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
+                return;
+
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+            var tempPath = path + ".tmp";
+            File.WriteAllBytes(tempPath, bytes);
+
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                        File.Replace(tempPath, path, null);
+                    else
+                        File.Move(tempPath, path);
+                    return;
+                }
+                catch when (attempt < ReplaceAttempts)
+                {
+                    Thread.Sleep(ReplaceRetryDelayMilliseconds);
+                }
+                catch
+                {
+                    TryDeleteTempFile(tempPath);
+                    throw;
+                }
+            }
+        }
+
+        private static void TryDeleteTempFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+                // Preserve the original write failure.
+            }
         }
     }
 }

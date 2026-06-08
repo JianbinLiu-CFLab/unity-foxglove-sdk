@@ -48,6 +48,9 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                     EditorApplication.isPlaying = false;
+                    // The manifest, schema info, and descriptor are refreshed as
+                    // one artifact set, then Unity recompiles before the next Play attempt
+                    // observes the generated schema-info constants.
                     Debug.LogWarning(
                         "[FoxRun] Generated FoxRunSchemaInfo.g.cs changed before Play Mode. " +
                         "Unity must recompile it before runtime schema consumers can use the new manifest hash. " +

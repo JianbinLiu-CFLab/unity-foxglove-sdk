@@ -23,8 +23,9 @@ namespace Unity.FoxgloveSDK.Editor
     /// </summary>
     public static class FoxrunCodeGenerator
     {
-        const string OutputDir = "Assets/Scripts/Generated/";
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
+        private const int ReplaceAttempts = 3;
+        private const int ReplaceRetryDelayMilliseconds = 50;
 
         /// <summary>
         /// Collect the types that GenerateSourceFiles would process, without writing files.
@@ -87,6 +88,11 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public static List<string> GenerateSourceFiles()
         {
+            return GenerateSourceFiles(out _);
+        }
+
+        public static List<string> GenerateSourceFiles(out FoxRunCanonicalManifest manifest)
+        {
             var result = new List<string>();
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var byClass = scan.ByClass;
@@ -106,17 +112,8 @@ namespace Unity.FoxgloveSDK.Editor
                     var absolutePath = Path.Combine(outputDirectory, fileName);
                     var sourceBytes = Utf8NoBom.GetBytes(source);
 
-                    bool shouldWrite = true;
-                    if (File.Exists(absolutePath))
+                    if (WriteSourceFileIfChanged(absolutePath, sourceBytes))
                     {
-                        var existing = File.ReadAllBytes(absolutePath);
-                        if (existing.SequenceEqual(sourceBytes))
-                            shouldWrite = false;
-                    }
-
-                    if (shouldWrite)
-                    {
-                        File.WriteAllBytes(absolutePath, sourceBytes);
                         Debug.Log($"[FoxrunCodeGenerator] Generated {fileName}");
                     }
 
@@ -128,7 +125,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (deleted.Count > 0)
                 Debug.Log("[FoxrunCodeGenerator] Removed stale generated file(s): " + string.Join(", ", deleted));
 
-            var manifest = WriteManifestFiles(scan.ManifestMembers);
+            manifest = WriteManifestFiles(scan.ManifestMembers);
             WriteSchemaInfoFiles(manifest);
             WriteDescriptorFile(model);
 
@@ -136,8 +133,9 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Refresh canonical FoxRun manifest artifacts and generated runtime
-        /// schema info without writing physical Player publisher fallback files.
+        /// Refresh canonical FoxRun manifest artifacts, generated runtime
+        /// schema info, and generation descriptor evidence without writing
+        /// physical Player publisher fallback files.
         /// </summary>
         public static FoxRunCanonicalManifest GenerateManifestFilesOnly()
         {
@@ -170,6 +168,14 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var manifest = FoxRunManifestBuilder.Build(scan.ManifestMembers);
+            return VerifyGeneratedSchemaInfoFiles(manifest);
+        }
+
+        public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles(FoxRunCanonicalManifest manifest)
+        {
+            if (manifest == null)
+                throw new ArgumentNullException(nameof(manifest));
+
             var sourcePath = Path.Combine(GetManifestOutputDirectory(), FoxRunSchemaInfoWriter.SchemaInfoFileName);
             if (!File.Exists(sourcePath))
                 throw new InvalidOperationException("Missing generated FoxRun schema info: " + sourcePath);
@@ -197,7 +203,7 @@ namespace Unity.FoxgloveSDK.Editor
             var outputDirectory = GetManifestOutputDirectory();
             Directory.CreateDirectory(outputDirectory);
             var path = Path.Combine(outputDirectory, FoxRunGenerationDescriptorConstants.DescriptorFileName);
-            File.WriteAllText(path, FoxRunGenerationDescriptorJsonWriter.Write(model), Utf8NoBom);
+            WriteTextFileIfChanged(path, FoxRunGenerationDescriptorJsonWriter.Write(model));
         }
 
         private static FoxRunGenerationModel LowerReflectionMembers(IReadOnlyList<FoxRunReflectionGenerationMember> members)
@@ -252,10 +258,11 @@ namespace Unity.FoxgloveSDK.Editor
                         reflectionMembers.AddRange(members.Select(member => member.ToReflectionMember()));
                     }
                 }
-                catch (ReflectionTypeLoadException)
+                catch (ReflectionTypeLoadException ex)
                 {
                     if (!ignoreReflectionTypeLoadExceptions)
                         throw;
+                    WarnSkippedAssembly(asm, ex);
                     // Source fallback generation is best-effort because the Roslyn
                     // path already reports authoring errors in the Editor. The
                     // link.xml scan is fail-fast and catches preservation risk.
@@ -516,7 +523,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (type.IsGenericType)
             {
                 var definition = type.GetGenericTypeDefinition();
-                if (definition == typeof(List<>) || definition == typeof(IReadOnlyList<>))
+                if (definition == typeof(List<>) || definition == typeof(IReadOnlyList<>) || definition == typeof(IList<>))
                 {
                     elementType = type.GetGenericArguments()[0];
                     return true;
@@ -525,6 +532,89 @@ namespace Unity.FoxgloveSDK.Editor
 
             elementType = null;
             return false;
+        }
+
+        private static void WarnSkippedAssembly(Assembly asm, ReflectionTypeLoadException ex)
+        {
+            var assemblyName = asm == null ? "<unknown>" : asm.GetName().Name;
+            Debug.LogWarning(
+                "[FoxrunCodeGenerator] Skipped assembly '" + assemblyName + "' while scanning [FoxRun] members because type loading failed. " +
+                LoaderExceptionSummary(ex));
+        }
+
+        private static string LoaderExceptionSummary(ReflectionTypeLoadException ex)
+        {
+            if (ex == null || ex.LoaderExceptions == null || ex.LoaderExceptions.Length == 0)
+                return "No LoaderExceptions were provided.";
+
+            var messages = ex.LoaderExceptions
+                .Where(loader => loader != null)
+                .Select(loader => loader.GetType().Name + ": " + loader.Message)
+                .Take(3)
+                .ToList();
+            if (messages.Count == 0)
+                return "LoaderExceptions contained no exception details.";
+
+            if (ex.LoaderExceptions.Length > messages.Count)
+                messages.Add("... " + (ex.LoaderExceptions.Length - messages.Count).ToString() + " more");
+            return "LoaderExceptions: " + string.Join(" | ", messages);
+        }
+
+        private static bool WriteSourceFileIfChanged(string path, byte[] bytes)
+        {
+            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
+                return false;
+
+            WriteBytesWithTempReplace(path, bytes);
+            return true;
+        }
+
+        private static void WriteTextFileIfChanged(string path, string text)
+        {
+            WriteSourceFileIfChanged(path, Utf8NoBom.GetBytes(text ?? string.Empty));
+        }
+
+        private static void WriteBytesWithTempReplace(string path, byte[] bytes)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+            var tempPath = path + ".tmp";
+            File.WriteAllBytes(tempPath, bytes ?? Array.Empty<byte>());
+
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                        File.Replace(tempPath, path, null);
+                    else
+                        File.Move(tempPath, path);
+                    return;
+                }
+                catch when (attempt < ReplaceAttempts)
+                {
+                    System.Threading.Thread.Sleep(ReplaceRetryDelayMilliseconds);
+                }
+                catch
+                {
+                    TryDeleteTempFile(tempPath);
+                    throw;
+                }
+            }
+        }
+
+        private static void TryDeleteTempFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+                // Preserve the original write failure.
+            }
         }
     }
 }

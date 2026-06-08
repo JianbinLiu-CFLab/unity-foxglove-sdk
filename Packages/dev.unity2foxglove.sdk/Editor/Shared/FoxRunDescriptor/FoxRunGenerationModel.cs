@@ -112,6 +112,9 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string PublishModeName;
         public readonly float ChangeEpsilon;
         public readonly float ForceIntervalSeconds;
+        public readonly bool HasNonFiniteRateHz;
+        public readonly bool HasNonFiniteChangeEpsilon;
+        public readonly bool HasNonFiniteForceIntervalSeconds;
         public readonly string HostKind;
         public readonly int RawMemberOrder;
         public readonly string ConditionalSymbols;
@@ -235,6 +238,9 @@ namespace Unity.FoxgloveSDK.Editor
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             Encoding = FoxRunGenerationDescriptorConstants.JsonEncoding;
+            HasNonFiniteRateHz = IsNonFinite(rateHz);
+            HasNonFiniteChangeEpsilon = IsNonFinite(changeEpsilon);
+            HasNonFiniteForceIntervalSeconds = IsNonFinite(forceIntervalSeconds);
             RateHz = NormalizeRateHz(rateHz);
             PublishMode = publishMode;
             PublishModeName = PublishModeToName(publishMode);
@@ -271,16 +277,21 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static float NormalizeRateHz(float rateHz)
         {
-            if (float.IsNaN(rateHz) || float.IsInfinity(rateHz) || rateHz <= 0f)
+            if (IsNonFinite(rateHz) || rateHz <= 0f)
                 return 0f;
             return rateHz;
         }
 
         public static float NormalizeNonNegative(float value)
         {
-            if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f)
+            if (IsNonFinite(value) || value < 0f)
                 return 0f;
             return value;
+        }
+
+        private static bool IsNonFinite(float value)
+        {
+            return float.IsNaN(value) || float.IsInfinity(value);
         }
 
         public static string PublishModeToName(int mode)
