@@ -96,9 +96,10 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             }
 
             _stop = new CancellationTokenSource();
-            _stdinTask = Task.Run(() => RunStdinWriter(_stop.Token));
-            _stdoutTask = Task.Run(() => RunStdoutReader(_stop.Token));
-            _stderrTask = Task.Run(() => RunStderrReader(_stop.Token));
+            var process = _process;
+            _stdinTask = Task.Run(() => RunStdinWriter(process, _stop.Token));
+            _stdoutTask = Task.Run(() => RunStdoutReader(process, _stop.Token));
+            _stderrTask = Task.Run(() => RunStderrReader(process, _stop.Token));
             return true;
         }
         catch (Win32Exception ex)
@@ -156,46 +157,20 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
     public void Stop()
     {
-        lock (_lifecycleLock)
-        {
-            if (_stopping)
-                return;
-            _stopping = true;
-        }
-
-        CancellationTokenSource stop;
-        Process process;
-        Task stdinTask;
-        Task stdoutTask;
-        Task stderrTask;
-        lock (_lifecycleLock)
-        {
-            stop = _stop;
-            process = _process;
-            stdinTask = _stdinTask;
-            stdoutTask = _stdoutTask;
-            stderrTask = _stderrTask;
-
-            _process = null;
-            _stdinTask = null;
-            _stdoutTask = null;
-            _stderrTask = null;
-            _stop = null;
-        }
+        if (!TryCaptureStopState(
+                out var stop,
+                out var process,
+                out var stdinTask,
+                out var stdoutTask,
+                out var stderrTask))
+            return;
 
         if (stop != null && !stop.IsCancellationRequested)
             stop.Cancel();
 
         if (process != null)
         {
-            try
-            {
-                if (!process.HasExited)
-                    process.StandardInput.BaseStream.Close();
-            }
-            catch
-            {
-            }
+            CloseProcessStreams(process);
 
             try
             {
@@ -205,33 +180,11 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             catch
             {
             }
-
-            try
-            {
-                process.WaitForExit(200);
-            }
-            catch
-            {
-            }
-
-            WaitForWorkerTasks(stdinTask, stdoutTask, stderrTask);
-
-            try
-            {
-                process.Dispose();
-            }
-            catch
-            {
-            }
-        }
-        else
-        {
-            WaitForWorkerTasks(stdinTask, stdoutTask, stderrTask);
         }
 
-        stop?.Dispose();
+        ScheduleWorkerCleanup(process, stop, stdinTask, stdoutTask, stderrTask);
         DrainQueues();
-        _stopping = false;
+        ClearStoppingFlag();
     }
 
     public void Dispose()
@@ -262,11 +215,54 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         };
     }
 
-    private async Task RunStdinWriter(CancellationToken token)
+    private bool TryCaptureStopState(
+        out CancellationTokenSource stop,
+        out Process process,
+        out Task stdinTask,
+        out Task stdoutTask,
+        out Task stderrTask)
+    {
+        lock (_lifecycleLock)
+        {
+            if (_stopping)
+            {
+                stop = null;
+                process = null;
+                stdinTask = null;
+                stdoutTask = null;
+                stderrTask = null;
+                return false;
+            }
+
+            _stopping = true;
+            stop = _stop;
+            process = _process;
+            stdinTask = _stdinTask;
+            stdoutTask = _stdoutTask;
+            stderrTask = _stderrTask;
+
+            _process = null;
+            _stdinTask = null;
+            _stdoutTask = null;
+            _stderrTask = null;
+            _stop = null;
+            return true;
+        }
+    }
+
+    private void ClearStoppingFlag()
+    {
+        lock (_lifecycleLock)
+        {
+            _stopping = false;
+        }
+    }
+
+    private async Task RunStdinWriter(Process process, CancellationToken token)
     {
         try
         {
-            var stream = _process.StandardInput.BaseStream;
+            var stream = process.StandardInput.BaseStream;
             while (!token.IsCancellationRequested && IsRunning)
             {
                 if (_inputFrames.TryDequeue(out var frame))
@@ -290,11 +286,11 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
     }
 
-    private async Task RunStdoutReader(CancellationToken token)
+    private async Task RunStdoutReader(Process process, CancellationToken token)
     {
         try
         {
-            var stream = _process.StandardOutput.BaseStream;
+            var stream = process.StandardOutput.BaseStream;
             while (!token.IsCancellationRequested && IsRunning)
             {
                 var readLength = await ReadLittleEndianLength(stream, token).ConfigureAwait(false);
@@ -329,11 +325,11 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
     }
 
-    private async Task RunStderrReader(CancellationToken token)
+    private async Task RunStderrReader(Process process, CancellationToken token)
     {
         try
         {
-            var reader = _process.StandardError;
+            var reader = process.StandardError;
             while (!token.IsCancellationRequested && IsRunning)
             {
                 var line = await reader.ReadLineAsync().ConfigureAwait(false);
@@ -348,6 +344,72 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             if (!(ex is ObjectDisposedException))
                 LastError = ex.Message;
         }
+    }
+
+    private static void CloseProcessStreams(Process process)
+    {
+        if (process == null)
+            return;
+
+        try
+        {
+            process.StandardInput.BaseStream.Close();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            process.StandardOutput.BaseStream.Close();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            // StreamReader.ReadLineAsync cannot take a CancellationToken on
+            // Unity's .NET Standard profile; closing the stream unblocks it.
+            process.StandardError.BaseStream.Close();
+        }
+        catch
+        {
+        }
+    }
+
+    private static void ScheduleWorkerCleanup(Process process, CancellationTokenSource stop, params Task[] tasks)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                if (process != null)
+                {
+                    try
+                    {
+                        process.WaitForExit(200);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                WaitForWorkerTasks(tasks);
+            }
+            finally
+            {
+                try
+                {
+                    process?.Dispose();
+                }
+                catch
+                {
+                }
+
+                stop?.Dispose();
+            }
+        });
     }
 
     private void EnqueueAccessUnit(byte[] accessUnit)
@@ -380,7 +442,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
             try
             {
-                task.Wait(500);
+                Task.WaitAll(new[] { task }, 500);
             }
             catch
             {

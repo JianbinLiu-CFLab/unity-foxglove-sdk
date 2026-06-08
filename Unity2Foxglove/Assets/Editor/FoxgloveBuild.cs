@@ -48,6 +48,7 @@ public static class FoxgloveBuild
         {
             "Assets/Scenes/SampleScene.unity"
         };
+        ValidateScenesExist(scenes);
 
         var config = ResolveTarget(targetName);
         var outputPath = string.IsNullOrEmpty(outputPathOverride) ? config.OutputPath : outputPathOverride;
@@ -119,11 +120,25 @@ public static class FoxgloveBuild
         var args = System.Environment.GetCommandLineArgs();
         for (var i = 0; i < args.Length - 1; i++)
         {
-            if (args[i] == name)
-                return args[i + 1];
+            if (args[i] != name)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(args[i + 1]) || args[i + 1].StartsWith("-", System.StringComparison.Ordinal))
+                return null;
+
+            return args[i + 1];
         }
 
         return null;
+    }
+
+    private static void ValidateScenesExist(string[] scenes)
+    {
+        foreach (var scene in scenes)
+        {
+            if (!File.Exists(scene))
+                throw new FileNotFoundException("Missing Unity build scene: " + scene, scene);
+        }
     }
 
     private readonly struct BuildConfig
