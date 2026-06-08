@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 import hashlib
 import re
 import sys
@@ -38,6 +39,7 @@ ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
 ARTIFACT_SHA256 = "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232"
 ARTIFACT_SIZE = 17472174
 INVENTORY_FILE_COUNT = 1053
+EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 
 CRITICAL_DLLS = (
     "rcl.dll",
@@ -206,7 +208,7 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
         "unityPlatform": "Windows",
         "architecture": "x86_64",
         "buildType": "standalone",
-        "rmwImplementation": "rmw_fastrtps_cpp",
+        "rmwImplementation": EXPECTED_RMW_IMPLEMENTATION,
         "artifactName": ARTIFACT_NAME,
         "artifactSha256": ARTIFACT_SHA256,
         "artifactSize": ARTIFACT_SIZE,
@@ -249,7 +251,7 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     )
 
 
-def check_inventory(results: list[CheckResult]) -> None:
+def check_inventory(results: list[CheckResult], release_gate: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
     if not data:
@@ -262,13 +264,28 @@ def check_inventory(results: list[CheckResult]) -> None:
         "artifactSize": ARTIFACT_SIZE,
         "sha256": ARTIFACT_SHA256,
         "rosDistro": "jazzy",
-        "rmw": "rmw_fastrtps_cpp",
+        "rmw": EXPECTED_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",
         "fileCount": INVENTORY_FILE_COUNT,
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    redistribution_status = str(data.get("redistributionStatus", ""))
+    add(
+        results,
+        "runtime inventory redistributionStatus recorded",
+        redistribution_status in {"candidate_not_published", "published"},
+        f"redistributionStatus={redistribution_status!r}",
+    )
+    if release_gate:
+        add(
+            results,
+            "release gate: runtime redistributionStatus is published",
+            redistribution_status == "published",
+            f"redistributionStatus={redistribution_status!r}",
+        )
 
     categories = data.get("categoryCounts", {})
     add(
@@ -472,6 +489,14 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
     add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
+    add(
+        results,
+        "ROS2ForUnity enforces expected RMW",
+        "expectedRmwImplementation" in runtime
+        and "ValidateRmwImplementation" in runtime
+        and EXPECTED_RMW_IMPLEMENTATION in runtime,
+        "ROS2ForUnity.cs",
+    )
 
     dotnet_time = read_optional_text(scripts / "Time" / "DotnetTimeSource.cs")
     add(
@@ -545,6 +570,25 @@ def check_public_docs(results: list[CheckResult]) -> None:
         "Install only one" in readme and "runtime.*" in readme,
         "README.md",
     )
+    add(
+        results,
+        "README documents artifact SHA-256",
+        ARTIFACT_SHA256 in readme,
+        "README.md",
+    )
+    notices = (PACKAGE / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists() else ""
+    add(
+        results,
+        "THIRD_PARTY_NOTICES documents artifact SHA-256",
+        ARTIFACT_SHA256 in notices,
+        "THIRD_PARTY_NOTICES.md",
+    )
+    add(
+        results,
+        "README documents WSL2 NAT topology limit",
+        "WSL2 NAT" in readme and "diagnostic-only" in readme and "Windows Defender Firewall" in readme,
+        "README.md",
+    )
 
 
 def check_package_boundaries(results: list[CheckResult]) -> None:
@@ -566,13 +610,13 @@ def check_package_boundaries(results: list[CheckResult]) -> None:
     )
 
 
-def run_checks() -> list[CheckResult]:
+def run_checks(release_gate: bool = False) -> list[CheckResult]:
     """Run all runtime package checks."""
     results: list[CheckResult] = []
     check_package_metadata(results)
     check_required_files(results)
     check_runtime_manifest(results)
-    check_inventory(results)
+    check_inventory(results, release_gate=release_gate)
     check_runtime_files(results)
     check_package_path_patch(results)
     check_runtime_asmdef(results)
@@ -591,9 +635,21 @@ def print_results(results: list[CheckResult]) -> None:
         print(f"[{status}] {result.name}{detail}")
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse validator command-line arguments."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--release-gate",
+        action="store_true",
+        help="Require redistributionStatus=published before release publication.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
     """Run validation and return a process exit code."""
-    results = run_checks()
+    args = parse_args(argv)
+    results = run_checks(release_gate=args.release_gate)
     print_results(results)
     failures = [result for result in results if not result.ok]
     if failures:
