@@ -57,6 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gitignore.Contains("bin/") || gitignore.Contains("**/bin/"), ".gitignore covers bin/");
             Assert(gitignore.Contains("obj/") || gitignore.Contains("**/obj/"), ".gitignore covers obj/");
             Assert(gitignore.Contains("build/"), ".gitignore covers build/");
+            ValidatePackageBuildOutputsAbsent(repoRoot);
 
             // 鈹€鈹€ 16D: CI workflows 鈹€鈹€
             var ciDir = Path.Combine(repoRoot, ".github", "workflows");
@@ -80,6 +81,26 @@ namespace Unity.FoxgloveSDK.Tests
             ValidateThirdPartyNotices(repoRoot);
 
             Console.WriteLine("Phase 16: All checks passed.");
+        }
+
+        static void ValidatePackageBuildOutputsAbsent(string repoRoot)
+        {
+            var packagesDir = Path.Combine(repoRoot, "Packages");
+            Assert(Directory.Exists(packagesDir), "Packages directory exists");
+
+            var leakedDirectories = Directory.EnumerateDirectories(packagesDir, "*", SearchOption.AllDirectories)
+                .Where(path =>
+                {
+                    var name = Path.GetFileName(path);
+                    return string.Equals(name, "bin", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(name, "obj", StringComparison.OrdinalIgnoreCase);
+                })
+                .Select(path => Path.GetRelativePath(repoRoot, path).Replace('\\', '/'))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            Assert(leakedDirectories.Length == 0,
+                "Packages contains no bin/ or obj/ build output directories: " + string.Join(", ", leakedDirectories));
         }
 
         static void ValidateRepositoryHeaders(string repoRoot)

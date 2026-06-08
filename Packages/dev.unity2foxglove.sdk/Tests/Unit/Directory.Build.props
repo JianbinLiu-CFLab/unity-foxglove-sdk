@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\Tests\Unit\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(BaseOutputPath)obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseOutputPath)obj\</MSBuildProjectExtensionsPath>
+    <RestoreOutputPath>$(BaseOutputPath)obj\</RestoreOutputPath>
+  </PropertyGroup>
+</Project>
