@@ -217,7 +217,7 @@ namespace Unity.FoxgloveSDK.Components
             out string reason)
         {
             effectiveTopic = string.Empty;
-            qos = ResolveRos2BridgeQos();
+            qos = default;
             reason = string.Empty;
 
             if (SuppressLivePublishersForReplay)
@@ -231,6 +231,8 @@ namespace Unity.FoxgloveSDK.Components
                 reason = "ROS2 Bridge is disabled.";
                 return false;
             }
+
+            qos = ResolveRos2BridgeQos();
 
             if (_ros2BridgeRuntime == null)
             {

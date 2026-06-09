@@ -9,6 +9,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
@@ -461,7 +462,16 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
-            Publish(channelId, Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message)), logTimeNs);
+            using (var stream = new MemoryStream())
+            {
+                using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, leaveOpen: true))
+                using (var jsonWriter = new JsonTextWriter(writer))
+                {
+                    JsonSerializer.CreateDefault().Serialize(jsonWriter, message);
+                }
+
+                Publish(channelId, stream.ToArray(), logTimeNs);
+            }
         }
 
         /// <summary>
