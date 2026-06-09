@@ -215,7 +215,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
             else
             {
-                throw new Exception("[FAIL] 138J-5E: camera worker loop exists");
+                throw new InvalidOperationException("[FAIL] 138J-5E: camera worker loop exists");
             }
         }
 
@@ -294,7 +294,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string label)
         {
             if (!condition)
-                throw new Exception("[FAIL] " + label);
+                throw new InvalidOperationException("[FAIL] " + label);
 
             _passed++;
             Console.WriteLine("[PASS] " + label);

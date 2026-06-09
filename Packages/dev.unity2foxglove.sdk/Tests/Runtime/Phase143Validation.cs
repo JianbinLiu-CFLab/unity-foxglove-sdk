@@ -177,16 +177,18 @@ namespace Unity.FoxgloveSDK.Tests
                 };
                 using var process = Process.Start(startInfo);
                 if (process == null)
-                    return Array.Empty<string>();
+                    throw new InvalidOperationException("Phase143 could not start git ls-files.");
                 var output = process.StandardOutput.ReadToEnd();
                 if (!process.WaitForExit(5000) || process.ExitCode != 0)
-                    return Array.Empty<string>();
+                    throw new InvalidOperationException(
+                        "Phase143 git ls-files failed or timed out. stderr: "
+                        + process.StandardError.ReadToEnd());
                 return output.Replace("\r\n", "\n")
                     .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
             }
-            catch
+            catch (Exception ex) when (ex is not InvalidOperationException)
             {
-                return Array.Empty<string>();
+                throw new InvalidOperationException("Phase143 requires git ls-files for tracked-artifact hygiene.", ex);
             }
         }
 

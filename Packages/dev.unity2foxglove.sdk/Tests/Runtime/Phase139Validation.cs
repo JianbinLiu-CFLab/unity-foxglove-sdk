@@ -9,6 +9,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -157,24 +158,37 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             if (process == null)
-                throw new InvalidOperationException("Could not start Python self-test.");
+                throw new InvalidOperationException(
+                    "Phase139 Python self-test could not start '" + python + "'. "
+                    + "Install Python or set PYTHON to a valid executable before running --phase139.");
             using (process)
             {
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit(10_000);
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
 
-                if (!process.HasExited)
+                if (!process.WaitForExit(10_000))
                 {
                     try { process.Kill(entireProcessTree: true); } catch { }
-                    throw new InvalidOperationException("Phase139 Python self-test timed out.");
+                    process.WaitForExit(5_000);
+                    throw new InvalidOperationException(
+                        "Phase139 Python self-test timed out."
+                        + "\nstdout:\n" + ReadCompletedOutput(outputTask)
+                        + "\nstderr:\n" + ReadCompletedOutput(errorTask));
                 }
+
+                var output = outputTask.GetAwaiter().GetResult();
+                var error = errorTask.GetAwaiter().GetResult();
 
                 if (process.ExitCode != 0)
                     throw new InvalidOperationException("Phase139 Python self-test failed: " + output + error);
 
-                return output + error;
+                return output;
             }
+        }
+
+        private static string ReadCompletedOutput(Task<string> task)
+        {
+            return task.IsCompleted ? task.GetAwaiter().GetResult() : string.Empty;
         }
 
         private static string ResolvePythonExecutable()

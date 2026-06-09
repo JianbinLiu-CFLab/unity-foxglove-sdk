@@ -141,7 +141,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string label)
         {
             if (!condition)
-                throw new Exception("[FAIL] " + label);
+                throw new InvalidOperationException("[FAIL] " + label);
 
             _passed++;
             Console.WriteLine("[PASS] " + label);

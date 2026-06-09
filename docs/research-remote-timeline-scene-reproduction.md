@@ -1,6 +1,6 @@
 # Remote Timeline-Controlled Scene Reproduction for Unity-Based Telemetry Replay
 
-**Draft Research Note — Unity2Foxglove Project, 2026-05-12**
+**Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-09.**
 
 ## 1 Introduction
 
@@ -10,7 +10,7 @@ This note describes the replay architecture behind Unity2Foxglove's paused-scrub
 
 The key observation is that paused scrubbing is not ordinary playback at a different speed. It is a state-reproduction query initiated by a remote client.
 
-Unity2Foxglove addresses this by separating three responsibilities: protocol state broadcast, latest-at scene reproduction, and ordered replay/panel data delivery. Full continuous range-history reconstruction is treated as follow-up work. This separation produces a replay loop where Foxglove is not only a viewer of MCAP data, but also a controller of the Unity replay timeline.
+Unity2Foxglove addresses this by separating three responsibilities: protocol state broadcast, latest-at scene reproduction, and ordered replay/panel data delivery. Full continuous range history is available when Foxglove opens the MCAP through the Remote files path; bounded WebSocket history remains available for replay sessions that do not use that file-backed path. This separation produces a replay loop where Foxglove is not only a viewer of MCAP data, but also a controller of the Unity replay timeline.
 
 ## 2 Problem
 
@@ -71,7 +71,7 @@ Unity-specific replay systems such as commercial asset-store tools and open-sour
 | MCAP data source | Partial | Yes | Yes | No | No | Yes | Yes |
 | External Unity scene reproduction | No | No | No | No | Yes (Unity-local) | No | Yes |
 | Latest-at scene state | Yes (viewer) | No | Client-local | No | Snapshot-like | No | Yes |
-| Range panel data | Yes | Ordered stream | Client/file | Live stream | Usually no | ROS topic stream / assertions | Current point / limited batch; full curve future |
+| Range panel data | Yes | Ordered stream | Client/file | Live stream | Usually no | ROS topic stream / assertions | Full curve through Remote files; bounded settled-scrub history through WebSocket |
 | Dual output (3D engine + panels) | No | Yes | No | ROS to Foxglove | Unity-only | ROS nodes | Yes |
 | Remote timeline controls | Viewer-local | PlaybackControl | Client controls | No | Unity-local | CLI/test-runner | PlaybackControl |
 | Multi-client state broadcast | N/A | Partial | Client-local | No | No | No | Yes |
@@ -103,6 +103,19 @@ flowchart TD
   Stream --> FoxglovePanels["Foxglove panels"]
   Runtime --> State["PlaybackState broadcast"]
   State --> FoxglovePanels
+```
+
+Phase139D adds a separate control path for Foxglove-owned Remote files replay:
+
+```mermaid
+flowchart TD
+  FoxgloveCursor["Foxglove cursor (up to 60 Hz)"] --> CursorBridge["Unity Replay Sync panel"]
+  CursorBridge --> ExternalCursor["ExternalReplayCursorController"]
+  ExternalCursor --> ShouldSeek{"Explicit seek, backwards motion,\nor large jump?"}
+  ShouldSeek -- Yes --> SeekPath["Latest-at scene snapshot"]
+  ShouldSeek -- No --> AdvancePath["Uncapped scene advance to cursor"]
+  SeekPath --> UnityScene["Unity scene"]
+  AdvancePath --> UnityScene
 ```
 
 The contrast with a single-stream replay loop is the important architectural boundary:
@@ -153,13 +166,13 @@ Paused seek applies a latest-at MCAP snapshot to Unity scene listeners. This pat
 Paused scrubbing has two phases:
 
 - **Active drag phase:** every seek command updates playback state and Unity scene state. Panel history is suppressed. Plot may remain empty or stale during this phase.
-- **Settled phase:** after a debounce window expires with no newer seek, the SDK sends coherent panel data for the settled time and then parks Foxglove time at the requested seek time. This stabilizes current-point panel state; full continuous Plot reconstruction remains a separate bounded-history problem.
+- **Settled phase:** after a debounce window expires with no newer seek, the SDK sends coherent bounded panel history for the settled time and then parks Foxglove time at the requested seek time. In the Phase139C/D Remote files workflow, Foxglove reads the complete MCAP history directly, so Plot can show a continuous curve without relying on this WebSocket history path.
 
 This avoids flooding the WebSocket client while the user is still dragging and prevents transient backwards-time warnings.
 
 ### 5.6 Playback Resumption
 
-When playback resumes, panel-history delta state is invalidated. The next paused seek should not assume that the previous paused history window is still a valid basis for a delta update. This keeps Play, Pause, and Seek transitions from reusing stale range state.
+When playback resumes, panel-history delta state is invalidated. The next paused seek should not assume that the previous paused history window is still a valid basis for a delta update. Unity-local Play, Pause, Seek, and replay-disable operations also clear external cursor state so an older Foxglove cursor cannot interfere after Unity resumes local control.
 
 ## 6 Current Semantics
 
@@ -169,12 +182,13 @@ The current implementation supports the following user-facing behavior:
 - Paused seek updates the Unity scene to the requested time.
 - Backward paused seek does not produce Foxglove "data went back in time" warnings.
 - Foxglove remains connected and stable during repeated paused scrubbing.
-- The Plot panel may show the current coherent point rather than a continuous historical curve.
+- In the Phase139C/D Foxglove Timeline Replay workflow, Plot shows a continuous curve because Foxglove reads the full MCAP file directly.
+- In WebSocket-only replay, Plot receives bounded settled-scrub history rather than the complete file-backed curve.
 - Pressing Play after paused seek resumes replay successfully.
 
 Scene reproduction applies recorded telemetry state to Unity objects. It does not re-simulate physics, user input, random state, gameplay logic, or other nondeterministic systems from the original run.
 
-This is a deliberate semantic boundary. A single point in paused mode is acceptable for scene reproduction. A continuous Plot curve requires a bounded history-window policy and is a separate feature described in Section 9.
+This is a deliberate semantic boundary. Unity scene reproduction remains a latest-at operation even when Foxglove independently has access to the full file-backed history.
 
 ## Phase139C Remote Data Loader Workflow
 
@@ -249,6 +263,11 @@ The script checks both the contract endpoints (`/v1/manifest` and `/v1/data`)
 and the direct Remote files compatibility endpoint
 `/v1/files/local-mcap.mcap` with a byte-range MCAP magic read.
 
+`/v1/data` accepts time-range requests and uses `RemoteMcapRangeWriter` to
+produce an MCAP slice within the configured in-memory response cap. The direct
+`.mcap` route instead supports byte-range streaming for Foxglove Remote files
+and large-file access.
+
 Remote Data Loader `/v1/data` range requests are cache and prefetch requests,
 not a reliable signal for the current Foxglove playhead. Unity scene replay
 should continue to use the local replay controls and the live WebSocket
@@ -281,7 +300,9 @@ call `context.watch("currentTime")` and read `renderState.currentTime` from
 `context.onRender`. It also watches `startTime`, `endTime`, and `didSeek` so a
 Unity endpoint can distinguish timeline bounds, smooth playback advances, and
 explicit seek events. Cursor time is sent as separate `{ sec, nsec }` fields to
-avoid JavaScript integer precision loss.
+avoid JavaScript integer precision loss. The cursor payload also carries
+optional `startTime` and `endTime` values so Unity can validate the timeline
+bounds reported by Foxglove.
 
 The prototype bridge originally explored both directions. The product path now
 keeps only the Foxglove -> Unity direction because it gives users one visible
@@ -297,6 +318,44 @@ coalesce rapid updates so Unity handles cursor work on the main runtime tick
 rather than on an endpoint thread. During smooth playback, Unity advances replay
 incrementally through due MCAP messages; only explicit seeks, backwards motion,
 or large timeline jumps use the latest-at scene snapshot path.
+
+The panel targets a maximum cursor cadence of 60 Hz. This is a clock-sync
+cadence, not a telemetry sampling rate: Unity still processes every replay
+message in `(lastCursor, currentCursor]`, including messages from 100 Hz and
+higher-rate topics. The earlier 20 Hz cadence made Unity scene motion visibly
+choppy while Foxglove playback remained smooth.
+
+The current cursor sender is fire-and-forget and replaces an older in-flight
+request when a newer cursor is ready. This bounds stale work differently from a
+concurrent request backlog, but it does not provide response-aware
+backpressure. A stronger follow-up design is single-flight, latest-wins
+delivery: keep at most one request in flight, retain only the newest pending
+cursor, and send that cursor when Unity responds. A simple busy-time drop is
+insufficient because it can lose the final cursor when Foxglove pauses.
+
+Foxglove remains the single timeline owner. The current panel extension API
+observes playback state but does not expose a supported playback-rate control,
+so Unity cannot ask Foxglove to slow its visible timeline without reintroducing
+an unsupported reverse-control path.
+
+The same loopback endpoint supports `GET /v1/replay-cursor` for diagnostics and
+smoke tests. Its state includes replay availability, play/end state, speed,
+current time, and timeline bounds. The GET route is observational only; it is
+not a Unity-to-Foxglove synchronization path.
+
+### Phase139D Implemented Replay Components
+
+| Component | Responsibility |
+| --- | --- |
+| `ReplaySnapshotStateMachine` | Separates pending scene snapshots from panel snapshots |
+| `ReplayOrchestrator` | Coordinates replay lifecycle and subsystem operations |
+| `ReplayPoseOwnershipArbiter` | Resolves replay pose ownership between recorded channels |
+| `ReplayCoordinateModeGuard` | Detects coordinate-mode incompatibility |
+| `ReplaySchemaGuard` | Detects recorded/current FoxRun schema mismatch |
+| `ReplayChannelBehavior` | Classifies replay channel behavior |
+| `FoxgloveReplayObjectAdapter` | Applies replay messages to Unity scene objects |
+| `RemoteMcapRangeWriter` | Produces time-range MCAP slices for `/v1/data` |
+| `RemoteMcapHttpOptions` | Configures the local Remote files HTTP service |
 
 ## 7 Validation Evidence
 
@@ -321,7 +380,7 @@ Recent validation results:
 - Release package validation passed.
 - Manual Foxglove testing confirmed no warnings during paused backward scrub.
 
-**Implementation status note:** The checks listed above reflect currently implemented behavior. Full continuous Plot reconstruction, large-MCAP scrub latency, and deeper backpressure benchmarking remain follow-up evidence items.
+**Implementation status note:** The checks listed above reflect currently implemented behavior. Full continuous Plot reconstruction is available through the Phase139C/D Remote files path. Large-MCAP scrub latency optimization and response-aware cursor backpressure remain follow-up evidence items.
 
 ## 8 Contribution
 
@@ -337,26 +396,28 @@ Unity2Foxglove introduces a WebSocket-controlled replay architecture for Unity s
 
 The main contribution boundary is not "Unity2Foxglove is the first replay system." It is narrower and more specific: Unity2Foxglove applies remote WebSocket playback control to an in-process Unity MCAP replay server and separates latest-at scene reproduction from replay streaming sufficiently to support stable paused backward scrubbing.
 
-The current completed claim is **scene reproduction**, not full historical panel reconstruction. Continuous range-history reconstruction is a related follow-up problem. Unity2Foxglove does not claim that Foxglove's native MCAP playback has been reimplemented over WebSocket, that all large-MCAP performance cases are solved, or that it is the first system to replay a 3D scene from telemetry.
+The current completed claims are **Unity scene reproduction** and **full historical panel reconstruction through Foxglove Remote files**. WebSocket-only replay intentionally provides bounded settled-scrub history rather than reimplementing Foxglove's native file playback. Unity2Foxglove does not claim that all large-MCAP performance cases are solved or that it is the first system to replay a 3D scene from telemetry.
 
 ## 9 Future Work
 
-The current implementation includes bounded server-push history for settled paused scrubs: active dragging suppresses panel history, superseded history generations are cancelled, and the server keeps the history response within configured message and transport headroom budgets. The remaining research and engineering step is full continuous Plot reconstruction for large MCAP files:
+The current implementation includes bounded server-push history for settled
+paused scrubs and full continuous Plot history through the Remote files path.
+The remaining large-MCAP scrub latency is a separate optimization concern.
+Remaining research and engineering work is narrower:
 
-- Forward paused scrub can publish richer delta ranges.
-- Backward paused scrub can rebuild a bounded window (e.g., 30 seconds before the seek target) without exceeding latency budgets.
-- Large-MCAP scrub latency needs deeper indexing, benchmark evidence, and backpressure-aware batching.
-- Client-side caching or range-capable asset access may reduce repeated server-side scans.
-
-An alternative architecture is client-side preloading: serving the MCAP file via Foxglove's `fetchAsset` capability so the client performs its own range queries locally. A more client-native variant would expose indexed MCAP assets through `fetchAsset` or a range-capable asset service, letting Foxglove-side code perform cached range queries directly. This could reduce server-push pressure for large MCAP files and align more closely with native MCAP playback behavior, but it requires client or panel support, cache invalidation policy, asset authorization design, and agreement on how cloud-hosted or remote MCAP indexes are discovered. The bounded server-push approach is used because it works within the existing WebSocket streaming model.
-
-This follow-up would extend scene reproduction into full dual-consumer replay: latest-at for Unity scene state, bounded range for Foxglove analytical panels.
+- Implement and benchmark response-aware, single-flight, latest-wins cursor
+  delivery so slow Unity frames cannot cause repeated request cancellation.
+- Measure and optimize large-MCAP seek and scrub latency.
+- Decide whether WebSocket-only replay needs richer history beyond its current
+  bounded settled-scrub window.
+- Evaluate whether future Foxglove panel APIs can expose timeline-rate control
+  without reintroducing a second timeline owner.
 
 ## 10 Conclusion
 
 This note describes a replay architecture that separates remote timeline control, Unity scene reproduction, and Foxglove panel data delivery. The architecture uses the latest-at/range distinction, established in systems such as Rerun, as an architectural boundary between scene state and analytical panel history, applied to a remote WebSocket-controlled Unity replay loop.
 
-The current system demonstrates stable paused scrubbing without backwards-time warnings and includes bounded server-push history for settled panel updates. Full continuous Plot reconstruction, large-MCAP scrub latency, and client-side range caching remain future work. The contribution is best understood as a compositional systems contribution: mature pieces exist in neighboring systems, but the reviewed public material did not identify this combination as a documented Unity-based telemetry replay architecture.
+The current system demonstrates stable paused scrubbing without backwards-time warnings, bounded server-push history for settled panel updates, and full continuous Plot reconstruction through Remote files. Large-MCAP scrub latency optimization and response-aware cursor backpressure remain future work. The contribution is best understood as a compositional systems contribution: mature pieces exist in neighboring systems, but the reviewed public material did not identify this combination as a documented Unity-based telemetry replay architecture.
 
 ## References
 

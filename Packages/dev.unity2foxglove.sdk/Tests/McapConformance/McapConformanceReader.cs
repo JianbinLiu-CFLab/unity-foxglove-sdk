@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Util;
 
@@ -16,11 +17,12 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
     {
         public static List<SerializableMcapRecord> ReadStreamed(string filePath)
         {
+            McapStreamingReadResult streamingResult;
             using (var file = File.OpenRead(filePath))
             using (var nonSeekable = new NonSeekableReadStream(file))
             using (var streaming = new McapStreamingReader(nonSeekable, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests))
             {
-                streaming.Read(new McapReadOptions
+                streamingResult = streaming.Read(new McapReadOptions
                 {
                     Order = McapReadOrder.FileOrder,
                     UseOfficialEndTimeSemantics = true,
@@ -29,7 +31,68 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             }
 
             var scanner = new Scanner(File.ReadAllBytes(filePath));
-            return scanner.ReadStreamed();
+            var records = scanner.ReadStreamed();
+            ValidateStreamingResult(streamingResult, records);
+            return records;
+        }
+
+        private static void ValidateStreamingResult(
+            McapStreamingReadResult result,
+            List<SerializableMcapRecord> scannerRecords)
+        {
+            var actual = new List<SerializableMcapRecord>();
+            actual.AddRange(result.Summary.Schemas.Select(ToRecord));
+            actual.AddRange(result.Summary.Channels.Select(ToRecord));
+            actual.AddRange(result.Messages.Select(ToRecord));
+            actual.AddRange(result.Metadata.Select(ToRecord));
+            actual.AddRange(result.Attachments.Select(ToRecord));
+
+            var expectedHasStatistics = scannerRecords.Any(record => record.Type == "Statistics");
+            if (expectedHasStatistics && result.Summary.Statistics != null)
+                actual.Add(ToRecord(result.Summary.Statistics));
+
+            var expected = NormalizeCoreRecords(scannerRecords);
+            var normalizedActual = NormalizeCoreRecords(actual);
+            if (!expected.SequenceEqual(normalizedActual, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Production McapStreamingReader output does not match the streamed conformance record scan.");
+            }
+
+            var expectedMessages = SerializeRecords(scannerRecords.Where(record => record.Type == "Message"));
+            var actualMessages = SerializeRecords(result.Messages.Select(ToRecord));
+            if (!expectedMessages.SequenceEqual(actualMessages, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Production McapStreamingReader did not preserve MCAP file-order message delivery.");
+            }
+        }
+
+        private static List<string> NormalizeCoreRecords(IEnumerable<SerializableMcapRecord> records)
+        {
+            var normalized = SerializeRecords(records
+                .Where(record => record.Type == "Schema"
+                                 || record.Type == "Channel"
+                                 || record.Type == "Message"
+                                 || record.Type == "Metadata"
+                                 || record.Type == "Attachment"
+                                 || record.Type == "Statistics"));
+
+            var inventory = normalized
+                .Where(value => value.Contains("\"type\":\"Schema\"", StringComparison.Ordinal)
+                                || value.Contains("\"type\":\"Channel\"", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal);
+            var bodies = normalized
+                .Where(value => !value.Contains("\"type\":\"Schema\"", StringComparison.Ordinal)
+                                && !value.Contains("\"type\":\"Channel\"", StringComparison.Ordinal));
+            return inventory.Concat(bodies).OrderBy(value => value, StringComparer.Ordinal).ToList();
+        }
+
+        private static List<string> SerializeRecords(IEnumerable<SerializableMcapRecord> records)
+        {
+            return records
+                .Select(record => McapConformanceJson.WriteStreamed(new List<SerializableMcapRecord> { record }))
+                .ToList();
         }
 
         public static IndexedReadResult ReadIndexed(string filePath)

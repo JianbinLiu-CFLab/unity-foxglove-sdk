@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
@@ -318,11 +319,11 @@ namespace Unity.FoxgloveSDK.Tests
             var type = Type.GetType(typeName + ", FoxgloveSdk.Tests")
                        ?? Type.GetType(typeName);
             if (type == null)
-                throw new Exception("Missing type " + typeName);
+                throw new InvalidOperationException("Missing type " + typeName);
 
             var method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
             if (method == null)
-                throw new Exception("Missing method " + typeName + "." + methodName);
+                throw new InvalidOperationException("Missing method " + typeName + "." + methodName);
 
             return (byte[])method.Invoke(null, args);
         }
@@ -331,10 +332,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadDirectory(string path)
         {
-            var output = "";
+            var bytes = 0;
+            var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories))
-                output += File.ReadAllText(file) + "\n";
-            return output;
+            {
+                var content = File.ReadAllText(file);
+                output.AppendLine(content);
+                bytes += content.Length;
+                if (bytes > 8_000_000)
+                    throw new InvalidOperationException("Phase138M validation reading too much source in single pass.");
+            }
+            return output.ToString();
         }
 
         private static string ReadCameraPublisherSources()
@@ -349,7 +357,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string label)
         {
             if (!condition)
-                throw new Exception("[FAIL] " + label);
+                throw new InvalidOperationException("[FAIL] " + label);
 
             _passed++;
             Console.WriteLine("[PASS] " + label);

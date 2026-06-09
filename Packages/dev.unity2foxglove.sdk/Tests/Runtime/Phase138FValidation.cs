@@ -42,9 +42,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             for (var i = 1; i < times.Count; i++)
             {
-                Check(times[i] > times[i - 1], "138F-2: generated sample times are strictly increasing");
+                Check(times[i] > times[i - 1], $"138F-2[{i}]: generated sample times are strictly increasing");
                 Check(Math.Abs(times[i] - times[i - 1] - period) <= 1e-12,
-                    "138F-3: generated sample spacing stays at 1/200s in physics-time grid");
+                    $"138F-3[{i}]: generated sample spacing stays at 1/200s in physics-time grid");
             }
         }
 
@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var gap = times[i] - times[i - 1];
                 Check(gap >= period - 1e-12 && gap <= period + 1e-12,
-                    "138F-6: downsampled sample spacing stays on 1/50s physics grid");
+                    $"138F-6[{i}]: downsampled sample spacing stays on 1/50s physics grid");
             }
         }
 
