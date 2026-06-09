@@ -402,6 +402,7 @@ The current completed claims are **Unity scene reproduction** and **full histori
 
 The current implementation includes bounded server-push history for settled
 paused scrubs and full continuous Plot history through the Remote files path.
+The remaining large-MCAP scrub latency is a separate optimization concern.
 Remaining research and engineering work is narrower:
 
 - Implement and benchmark response-aware, single-flight, latest-wins cursor

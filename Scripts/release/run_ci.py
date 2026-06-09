@@ -181,10 +181,12 @@ def main() -> int:
                 "dotnet", "test",
                 "--no-restore", UNIT_TESTS_PROJ,
                 "--logger", "trx;LogFileName=unit-tests.trx",
+                "--results-directory", "build/TestResults/Unit",
             ],
             [
                 "dotnet", "test", UNIT_TESTS_PROJ,
                 "--logger", "trx;LogFileName=unit-tests.trx",
+                "--results-directory", "build/TestResults/Unit",
             ],
             "xUnit unit tests",
         )
