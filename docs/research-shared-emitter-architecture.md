@@ -1,6 +1,6 @@
 # Shared-Emitter Dual-Host AOT Code Generation for Unity Telemetry
 
-**Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-08.**
+**Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-09.**
 
 ## 1 Introduction
 
@@ -11,6 +11,23 @@ This note describes the source-generation architecture behind Unity2Foxglove's `
 The result is a zero-CLR-reflection telemetry binding path: runtime code does not scan assemblies, inspect attributes, call `FieldInfo.GetValue()`, or emit IL dynamically to discover telemetry members. It only executes statically generated publisher code that has already been produced during compilation or build preparation.
 
 The architecture also treats Player-build success as insufficient evidence by itself. A generated publisher can compile and still fail semantically under IL2CPP if the generated payload shape depends on metadata that the Player runtime strips. Unity2Foxglove therefore validates not only that physical `_FoxRun.g.cs` files participate in the IL2CPP build, but also that a built Player publishes concrete JSON payload values into Foxglove.
+
+### 1.1 Why Unity Is the Target Platform
+
+Unity is the primary target of this project, not a test vehicle for a general-purpose C# SDK. The project exists to make Foxglove streaming, MCAP recording and replay, and declarative telemetry work inside Unity's development and Player lifecycle. That target introduces constraints that a conventional .NET host does not share:
+
+| Constraint | Unity Editor / IL2CPP Player | Conventional .NET JIT host |
+| --- | --- | --- |
+| Runtime code generation | Restricted or unavailable in IL2CPP | Generally available |
+| Managed code stripping | Player builds may strip unrooted metadata and members | Not normally part of JIT execution |
+| Lifecycle integration | Bound to Unity compilation, Play Mode, Player builds, and `MonoBehaviour` execution | Application-defined |
+| Packaging | UPM package, asmdefs, analyzer labels, generated Unity assets, and build hooks | NuGet/MSBuild conventions |
+| Domain adaptation | Unity value types, scene objects, physics, and left-handed coordinates | Host-specific |
+| Platform restrictions | Unity platform matrix, including WebGL socket restrictions | Depends on the selected .NET runtime |
+
+IL2CPP is therefore a useful high-pressure validation environment for the shared-emitter design. Passing Editor and IL2CPP Player validation provides strong evidence that generated telemetry semantics do not depend on JIT-only code generation or reflection-heavy member binding. It does **not**, by itself, prove compatibility with every standard .NET, trimmed, or Native AOT host: those targets still require their own target-framework builds, dependency audits, and runtime tests.
+
+This distinction keeps the project positioning precise. Unity-specific constraints motivate the architecture and remain the product acceptance boundary. Any future platform-neutral extraction would reuse proven implementation pieces without redefining Unity2Foxglove as a general Foxglove SDK replacement.
 
 ## 2 Problem
 
@@ -340,6 +357,8 @@ The contribution boundary is:
 
 The work is best framed as system integration and domain adaptation: existing code-generation ideas are organized into a new telemetry-specific architecture with Unity IL2CPP as the high-pressure target environment.
 
+Using Unity IL2CPP as the primary validation target is part of that contribution boundary. It demonstrates that the generated telemetry path survives Unity lifecycle integration, managed-code stripping pressure, and the absence of JIT code generation. This provides directional confidence for reuse in less constrained C# hosts, while stopping short of claiming compatibility that has not been independently built and tested.
+
 The traceability value is secondary to the AOT safety claim, but important for robotics and simulation evidence. A release can archive the physical `_FoxRun.g.cs` output, generation descriptors, validation logs, and MCAP smoke artifacts to show which telemetry bindings participated in a Player build. This makes missing or changed telemetry topics easier to audit after a recorded experiment.
 
 Since the first draft of this note, Unity2Rerun v0.4.0 has become a concrete second-target data point rather than only a future comparison. Its release notes describe generated logging attributes (`[RerunLog]`, `[RerunScalar]`, and `[RerunTransform]`), an IL2CPP-oriented architecture with Editor source generation plus build-time generated-file fallback, Windows Standalone IL2CPP validation, `.rrd` verification through `rerun rrd verify`, and a version DOI for exact reproduction. That evidence upgrades the multi-target claim from hypothetical to partially demonstrated: the declaration-to-generated-logging architecture has now been applied to both Foxglove/MCAP and Rerun/RRD telemetry targets. The remaining research work is to measure how much of the model and emitter infrastructure was actually reused versus forked.
@@ -359,6 +378,12 @@ The following evidence would strengthen this research note:
 5. **Traceability bundle.** Archive physical `_FoxRun.g.cs` outputs, normalized generation descriptors, validation logs, and MCAP smoke artifacts with the release evidence so the telemetry binding used in an experiment can be audited later.
 
 6. **Public evidence release.** Tag the exact version and archive it through Zenodo while keeping the repository-level `CITATION.cff` on the Zenodo Concept DOI. Record the version-specific DOI in release notes and evidence metadata only when exact artifact reproduction is required.
+
+7. **Evaluate a platform-neutral managed core.** Large parts of `Runtime/Transport/`, `Runtime/Protocol/`, `Runtime/IO/`, and `Runtime/Core/` are already written against BCL and project-owned abstractions rather than direct `UnityEngine` APIs. That is promising evidence for reuse, but these directories are not yet an independently packaged library boundary. The current graph still includes dependencies from Core and IO into project `Components` and `Schemas`, and `McapDecodeRegistry` contains a Unity-conditional runtime reload hook.
+
+   A credible extraction would first define the smallest reusable contracts for transport, Foxglove protocol handling, and MCAP IO; move Unity lifecycle and reload behavior behind adapter interfaces; and remove dependency edges from the candidate core back into Unity-facing components. It could then add an independently built, versioned, and tested managed package target, while the existing UPM package retained `MonoBehaviour`, Inspector, sensor, coordinate-conversion, source-generation host, and Player-build integration.
+
+   This should be treated as a measured packaging and dependency-boundary project, not as an assumption that the current directory layout can be published unchanged. Acceptance would require clean non-Unity builds, API compatibility review for the selected target frameworks, conformance tests, and separate JIT and Native AOT evidence where those environments are claimed. Unity remains the primary product target regardless of whether such a library is extracted.
 
 ## 12 Conclusion
 
