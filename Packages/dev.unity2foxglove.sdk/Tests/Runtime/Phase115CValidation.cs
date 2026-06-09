@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase115CValidation
     {
-        private const string ExpectedFoxRunFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
+        private const string ExpectedGlobalFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
         private const string SdkFixtureHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private static int _passed;
 
@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
                       && File.Exists(sentinel),
                     "115C-A3: successful sidecar staging does not replace target before publish");
 
-            Check(SchemaEvidenceSidecarWriter.PublishStagedSidecar(staged, out _)
+                Check(SchemaEvidenceSidecarWriter.PublishStagedSidecar(staged, out _)
                       && File.Exists(Path.Combine(sidecarRoot, "schema-evidence.json"))
                       && !File.Exists(sentinel),
                     "115C-A4: staged sidecar publishes into final location after explicit commit");
@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115C-B1: canonical writers and generated source constants use deterministic G9 float formatting");
 
             var manifest = FoxRunManifestBuilder.Build(Phase115BFixtureMembers());
-            Check(manifest.GlobalManifestHash == ExpectedFoxRunFixtureHash,
+            Check(manifest.GlobalManifestHash == ExpectedGlobalFixtureHash,
                 "115C-B2: updated FoxRun fixture hash reflects G9 canonical text");
 
             Check(HashWrittenLast("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs", "ManifestReportFileName", "ManifestHashFileName")
@@ -324,7 +324,7 @@ namespace Unity.FoxgloveSDK.Tests
             var foxRun = Path.Combine(currentRoot, "FoxRun");
             Directory.CreateDirectory(foxRun);
             File.WriteAllText(Path.Combine(foxRun, "foxrun.manifest.json"), "{}", Encoding.UTF8);
-            File.WriteAllText(Path.Combine(foxRun, "foxrun.manifest.hash"), ExpectedFoxRunFixtureHash + "\n", Encoding.UTF8);
+            File.WriteAllText(Path.Combine(foxRun, "foxrun.manifest.hash"), ExpectedGlobalFixtureHash + "\n", Encoding.UTF8);
         }
 
         private static void CreateCompleteEvidenceFixture(string currentRoot)

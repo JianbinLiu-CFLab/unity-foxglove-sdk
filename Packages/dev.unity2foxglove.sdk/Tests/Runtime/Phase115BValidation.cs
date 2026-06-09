@@ -82,11 +82,13 @@ namespace Unity.FoxgloveSDK.Tests
             var current = FixtureRuntimeInfo(ExpectedFoxRunFixtureHash);
             FoxRunSchemaMcapMetadata.TryCreateJson(current, out var matchingJson);
             FoxRunSchemaMcapMetadata.TryCreateJson(FixtureRuntimeInfo(MismatchedHash), out var mismatchedJson);
-            var matchingPath = CreateTempMcapWithSchemaMetadata(matchingJson, "matching");
-            var mismatchPath = CreateTempMcapWithSchemaMetadata(mismatchedJson, "mismatch");
+            string matchingPath = null;
+            string mismatchPath = null;
 
             try
             {
+                matchingPath = CreateTempMcapWithSchemaMetadata(matchingJson, "matching");
+                mismatchPath = CreateTempMcapWithSchemaMetadata(mismatchedJson, "mismatch");
                 FoxRunSchemaInfoRegistry.ClearForTests();
                 FoxRunSchemaInfoRegistry.RegisterGenerated(current);
 

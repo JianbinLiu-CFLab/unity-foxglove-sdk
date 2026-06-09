@@ -245,8 +245,8 @@ namespace Unity.FoxgloveSDK.Tests
                 recorder.WriteMessage(1, 50, Encoding.UTF8.GetBytes("{\"a\":50}"));
                 recorder.WriteMessage(3, 50, Encoding.UTF8.GetBytes("{\"tie\":50}"));
                 recorder.WriteMessage(2, 60, Encoding.UTF8.GetBytes("{\"b\":60}"));
-                recorder.WriteMessage(3, 80, Encoding.UTF8.GetBytes("{\"tie\":80a}"));
-                recorder.WriteMessage(3, 80, Encoding.UTF8.GetBytes("{\"tie\":80b}"));
+                recorder.WriteMessage(3, 80, Encoding.UTF8.GetBytes("{\"tie\":\"80a\"}"));
+                recorder.WriteMessage(3, 80, Encoding.UTF8.GetBytes("{\"tie\":\"80b\"}"));
                 recorder.AddAttachment("phase116.txt", "text/plain", Encoding.UTF8.GetBytes("phase116"), 75);
                 if (includeFoxRunMetadata)
                     recorder.WriteMetadata(FoxRunSchemaMcapMetadata.MetadataName, foxRunMetadataJson);
