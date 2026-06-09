@@ -23,6 +23,8 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string CurrentHash = "1111111111111111111111111111111111111111111111111111111111111111";
         private const string MismatchedHash = "2222222222222222222222222222222222222222222222222222222222222222";
+        private const string CurrentFoxRunHash = "3333333333333333333333333333333333333333333333333333333333333333";
+        private const string MismatchedFoxRunHash = "4444444444444444444444444444444444444444444444444444444444444444";
         private static int _passed;
 
         /// <summary>
@@ -159,6 +161,17 @@ namespace Unity.FoxgloveSDK.Tests
                         "116-E1: matching FoxRun metadata is surfaced as an info diagnostic");
                 }
 
+                FoxRunSchemaMcapMetadata.TryCreateJson(
+                    CreateSchemaInfo(CurrentHash, MismatchedFoxRunHash),
+                    out var sameGlobalDifferentFoxRunJson);
+                using (var sameGlobalDifferentFoxRun = CreateFixture(sameGlobalDifferentFoxRunJson))
+                using (var loader = (IDisposable)CreateLoader(sameGlobalDifferentFoxRun))
+                {
+                    var problems = Problems(Invoke(loader, "Initialize"));
+                    Check(problems.Any(p => StringMember(p, "Code") == "FoxRunSchemaMetadataMatch"),
+                        "116-E1b: schema governance compares global hash rather than FoxRun section hash");
+                }
+
                 using (var missing = CreateFixture(includeFoxRunMetadata: false))
                 using (var loader = (IDisposable)CreateLoader(missing))
                 {
@@ -257,14 +270,16 @@ namespace Unity.FoxgloveSDK.Tests
             return ms;
         }
 
-        private static FoxRunSchemaManifestInfo CreateSchemaInfo(string hash)
+        private static FoxRunSchemaManifestInfo CreateSchemaInfo(
+            string globalHash,
+            string foxRunHash = CurrentFoxRunHash)
             => new FoxRunSchemaManifestInfo(
                 1,
                 "dev.unity2foxglove.sdk",
                 "Phase116Fixture",
                 1,
-                hash,
-                hash,
+                globalHash,
+                foxRunHash,
                 new List<FoxRunSchemaTypeInfo>());
 
         private static object CreateLoader(Stream stream)
@@ -289,7 +304,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static Type RequiredType(string name)
         {
             var type = Type.GetType(name + ", FoxgloveSdk.Tests");
-            Check(type != null, "116-type: required type exists: " + name);
+            Check(type != null, "116-type-exists: required type exists: " + name);
             return type;
         }
 

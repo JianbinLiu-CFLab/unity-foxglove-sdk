@@ -379,6 +379,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int ReserveFreeLoopbackPort()
         {
+            // UnityReplayCursorEndpoint currently requires a concrete port and
+            // does not expose the actual bound port for port 0, so this helper
+            // knowingly accepts the short free-port TOCTOU window.
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             try

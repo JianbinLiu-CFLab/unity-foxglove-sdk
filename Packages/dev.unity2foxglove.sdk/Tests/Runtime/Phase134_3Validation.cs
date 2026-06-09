@@ -252,12 +252,14 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var reported = arbiter.GetType().GetField("_reportedContentions", BindingFlags.Instance | BindingFlags.NonPublic);
+            Check(reported != null,
+                "134-3J-3a: pose contention de-duplication field exists");
             var reportedSet = reported?.GetValue(arbiter);
-            var count = reportedSet == null
-                ? -1
-                : (int)reportedSet.GetType().GetProperty("Count").GetValue(reportedSet);
-            Check(count >= 0 && count <= 4096,
-                "134-3J-3: pose contention de-duplication set is bounded");
+            Check(reportedSet != null,
+                "134-3J-3b: pose contention de-duplication set is initialized");
+            var count = (int)reportedSet.GetType().GetProperty("Count").GetValue(reportedSet);
+            Check(count <= 4096,
+                "134-3J-3c: pose contention de-duplication set is bounded");
         }
 
         private static void VerifyRecordingReplaySourceCleanups()
@@ -289,7 +291,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
             if (field == null)
-                throw new MissingFieldException(target.GetType().FullName, name);
+                throw new MissingFieldException(
+                    target.GetType().FullName,
+                    name + " (required by Phase134_3 recorder-finalization failure test)");
             field.SetValue(target, value);
         }
 

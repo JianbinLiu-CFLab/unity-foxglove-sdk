@@ -668,7 +668,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static string Read(string relativePath)
         {
             if (!File.Exists(relativePath))
-                return "";
+                throw new InvalidOperationException("Phase 138Q cannot find expected file: " + Path.GetFullPath(relativePath));
             return File.ReadAllText(relativePath);
         }
 

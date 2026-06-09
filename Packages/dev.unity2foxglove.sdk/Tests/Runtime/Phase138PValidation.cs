@@ -513,8 +513,11 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var bytes = stream.ToArray();
-            var footerOffset = bytes.Length - 8 - 9 - 20;
-            WriteU64LE(bytes, footerOffset + 1 + 8, summaryStart);
+            var footerOffset = bytes.Length
+                               - McapWriter.MagicLength
+                               - McapWriter.RecordHeaderLength
+                               - McapWriter.FooterContentLength;
+            WriteU64LE(bytes, footerOffset + 1 + sizeof(ulong), summaryStart);
             return new MemoryStream(bytes);
         }
 

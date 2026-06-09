@@ -220,11 +220,13 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.Combine(root, "ProjectSettings")
             };
             var checkedAny = false;
+            var foundSearchRoot = false;
             foreach (var searchRoot in searchRoots)
             {
                 if (!Directory.Exists(searchRoot))
                     continue;
 
+                foundSearchRoot = true;
                 foreach (var file in Directory.EnumerateFiles(searchRoot, "*.*", SearchOption.AllDirectories))
                 {
                     var extension = Path.GetExtension(file);
@@ -249,6 +251,7 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
+            Check(foundSearchRoot, "134-1K-0: serialized Unity asset search roots exist for committed manager secret scan");
             Check(checkedAny, "134-1K-2: serialized Unity assets were scanned for committed manager secrets");
         }
 

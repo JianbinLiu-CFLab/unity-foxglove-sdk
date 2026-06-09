@@ -7,6 +7,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -47,12 +48,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(result.ExitCode == 0,
                 "121-E1: phase121 conformance wrapper exits successfully");
 
-            var report = File.ReadAllText(reportPath, Encoding.UTF8);
-            Check(report.Contains("\"externalToolingStatus\"", StringComparison.Ordinal)
-                  && report.Contains("\"runners\"", StringComparison.Ordinal)
-                  && report.Contains("\"verdict\"", StringComparison.Ordinal),
-                "121-E2: phase121 conformance report is written with required schema");
-            try { File.Delete(reportPath); } catch { /* best effort cleanup */ }
+            try
+            {
+                var report = File.ReadAllText(reportPath, Encoding.UTF8);
+                Check(report.Contains("\"externalToolingStatus\"", StringComparison.Ordinal)
+                      && report.Contains("\"runners\"", StringComparison.Ordinal)
+                      && report.Contains("\"verdict\"", StringComparison.Ordinal),
+                    "121-E2: phase121 conformance report is written with required schema");
+            }
+            finally
+            {
+                try { File.Delete(reportPath); } catch { /* best effort cleanup */ }
+            }
         }
 
         private static void VerifyValidationWiring()
@@ -150,13 +157,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "externalToolingStatus",
                 "phase121-conformance-report.json",
                 "write_skipped_report",
-                "EXPECTED_OBSERVED_COMMIT",
-                observedCommit
+                "EXPECTED_OBSERVED_COMMIT"
             })
             {
                 Check(script.Contains(required, StringComparison.Ordinal),
                     "121-D1: conformance wrapper records " + required);
             }
+            Check(observedCommit.Length == 40 && observedCommit.All(IsLowerHex),
+                "121-D1b: conformance wrapper pins a lowercase 40-character commit hash");
 
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
             Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
@@ -179,6 +187,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             return script.Substring(start, end - start);
         }
+
+        private static bool IsLowerHex(char value)
+            => value >= '0' && value <= '9' || value >= 'a' && value <= 'f';
 
         /// <summary>Maximum time to wait for the full external conformance wrapper before killing it.</summary>
         private const int SubprocessTimeoutMs = 1_500_000;

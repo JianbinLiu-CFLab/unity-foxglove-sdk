@@ -123,7 +123,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(setup.Contains("_replayAutoPlay && !_enableRemoteMcapFileServer", StringComparison.Ordinal)
                   && setup.Contains("Replay Auto Play ignored", StringComparison.Ordinal),
                 "139C-3F: runtime ignores Replay Auto Play while Foxglove owns the replay timeline");
-            Check(manager.Contains("_disableLivePublishers;") || manager.Contains("_disableLivePublishers = false", StringComparison.Ordinal),
+            Check(manager.Contains("_disableLivePublishers;", StringComparison.Ordinal)
+                  || manager.Contains("_disableLivePublishers = false", StringComparison.Ordinal),
                 "139C-3G: Disable Live Publishers defaults off for normal replay setup");
         }
 

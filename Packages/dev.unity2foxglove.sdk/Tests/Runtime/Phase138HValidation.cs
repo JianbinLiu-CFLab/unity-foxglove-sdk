@@ -37,14 +37,13 @@ namespace Unity.FoxgloveSDK.Tests
         private const string LidarModelSpecRelativePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarModelSpec.cs";
         private const string DemoEditorRelativePath =
-            "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoSceneBuilder.cs";
+            "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
         private const string DemoBootstrapRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
         private const string DemoVehicleRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
         private const string ImportedDemoBootstrapRelativePath =
             "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
-        private const string DemoEditorFileName = "Phase138MazeDemoSceneBuilder.cs";
 
         /// <summary>Run all Phase 138H checks.</summary>
         public static void Validate()
@@ -298,32 +297,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ResolveDemoBuilderSource(string repoRoot)
         {
-            try
-            {
-                var literal = Path.Combine(repoRoot, DemoEditorRelativePath.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(literal))
-                    return File.ReadAllText(literal);
-            }
-            catch (Exception)
-            {
-                // Ignore and fall back to filename search for environments where relative
-                // paths with `~` or spaces are normalized differently.
-            }
-
-            var matches = Directory.GetFiles(repoRoot, DemoEditorFileName, SearchOption.AllDirectories);
-            var packageMatches = Array.FindAll(matches, path =>
-                path.Replace('\\', '/').Contains("/Packages/dev.unity2foxglove.sdk/Samples~/", StringComparison.OrdinalIgnoreCase));
-            if (packageMatches.Length == 1)
-                return File.ReadAllText(packageMatches[0]);
-            if (packageMatches.Length > 1)
-                throw new InvalidOperationException(
-                    $"Phase 138H cannot disambiguate demo source file: {DemoEditorRelativePath} ({packageMatches.Length} package matches)");
-
-            if (matches.Length == 1)
-                return File.ReadAllText(matches[0]);
-
-            throw new InvalidOperationException(
-                $"Phase 138H cannot find expected file: {DemoEditorRelativePath} (found {matches.Length} matches)");
+            var literal = Path.Combine(repoRoot, DemoEditorRelativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(literal))
+                throw new InvalidOperationException($"Phase 138H cannot find expected file: {literal}");
+            return File.ReadAllText(literal);
         }
 
         private static void Check(bool condition, string label)

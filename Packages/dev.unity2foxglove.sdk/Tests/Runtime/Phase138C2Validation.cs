@@ -148,10 +148,10 @@ namespace Unity.FoxgloveSDK.Tests
         /// <param name="name">Readable check name for log output.</param>
         private static void Check(bool condition, string name)
         {
-            _passed++;
             Console.WriteLine(condition ? $"[PASS] {name}" : $"[FAIL] {name}");
             if (!condition)
                 throw new InvalidOperationException($"Phase 138C2 validation failed: {name}");
+            _passed++;
         }
 
         /// <summary>

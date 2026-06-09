@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 12 Tests ---");
+            _passCount = 0;
 
             TestCompressedChunkRoundtrip();
             TestCompressedMcapReadable();
@@ -99,7 +100,7 @@ namespace Unity.FoxgloveSDK.Tests
             var zstdResult = McapCompression.Decompress("zstd", zstdComp, raw.Length);
             Assert(Encoding.UTF8.GetString(raw) == Encoding.UTF8.GetString(zstdResult), "Zstd compress-decompress roundtrip");
 
-            // No compression returns data unchanged
+            // No compression currently returns the original buffer so callers can avoid a needless copy.
             var noneComp = McapCompression.Compress("", raw);
             Assert(raw == noneComp, "No-op compress returns original array");
         }
@@ -236,13 +237,10 @@ namespace Unity.FoxgloveSDK.Tests
             WriteRecord(ms, 0x0C, metaContent);
             var metaLen = (ulong)ms.Position - metaOff;
 
-            // Write metadata index
-            var metaIdxOff = (ulong)ms.Position;
             var metaIdxContent = new MemoryStream();
             McapWriter.WriteU64(metaIdxContent, metaOff);
             McapWriter.WriteU64(metaIdxContent, metaLen);
             McapWriter.WriteString(metaIdxContent, "foxglove.parameters");
-            WriteRecord(ms, 0x0D, metaIdxContent);
 
             var de = new MemoryStream(); McapWriter.WriteU32(de, 0);
             WriteRecord(ms, 0x0F, de);
@@ -544,26 +542,18 @@ namespace Unity.FoxgloveSDK.Tests
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
-            var data = ms.ToArray();
-            var path = Path.Combine(Path.GetTempPath(), $"test_coord_mode_mismatch_{Guid.NewGuid()}.mcap");
-            File.WriteAllBytes(path, data);
-            try
-            {
-                // Create a temporary reader to verify metadata
-                using var fs = File.OpenRead(path);
-                var reader = new McapReader(fs);
-                var summary = reader.ReadSummary();
+            ms.Position = 0;
+            var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
 
-                // Verify we CAN read the metadata and it differs from default
-                var mcapMode = summary.Channels[0].Metadata["coordinate_mode"];
-                Assert(mcapMode == "RightHand", "CoordMismatch: MCAP has RightHand");
+            // Verify we CAN read the metadata and it differs from default
+            var mcapMode = summary.Channels[0].Metadata["coordinate_mode"];
+            Assert(mcapMode == "RightHand", "CoordMismatch: MCAP has RightHand");
 
-                // The warning is logged at runtime via FoxgloveRuntime.EnableReplay.
-                // We verify the detection logic works: mcapMode != "LeftHand"
-                bool mismatch = mcapMode != "LeftHand";
-                Assert(mismatch, "CoordMismatch: RightHand != LeftHand detected");
-            }
-            finally { File.Delete(path); }
+            // The warning is logged at runtime via FoxgloveRuntime.EnableReplay.
+            // We verify the detection logic works: mcapMode != "LeftHand"
+            bool mismatch = mcapMode != "LeftHand";
+            Assert(mismatch, "CoordMismatch: RightHand != LeftHand detected");
         }
 
         // ── Test 8: MetadataIndex read/parse roundtrip ──

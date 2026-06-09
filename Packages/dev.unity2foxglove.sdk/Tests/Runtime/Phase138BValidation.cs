@@ -329,11 +329,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Check(bool condition, string label)
         {
-            _passed++;
             Console.WriteLine(condition ? $"[PASS] {label}" : $"[FAIL] {label}");
             if (!condition)
                 throw new InvalidOperationException($"Phase 138B validation failed: {label}");
+            _passed++;
         }
     }
 }
-

@@ -7,6 +7,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
@@ -163,8 +165,8 @@ namespace Unity.FoxgloveSDK.Tests
                 Assert(msgs[0].LogTime == 1000UL * 1000 * 1000, "First message logTime correct");
 
                 msgs = engine.Tick(engine.EndTimeNs + 1);
-                // After all messages consumed, status should be Ended or Buffering (depending on chunk layout)
-                Assert(msgs.Count >= 0, "Tick past all messages returns empty or null");
+                Assert(msgs != null && msgs.Count == 1, "Tick past all messages emits the remaining message exactly once");
+                Assert(msgs[0].LogTime == 2000UL * 1000 * 1000, "Tick past all messages emits the final message");
             }
             finally { File.Delete(tmp); }
         }
@@ -172,9 +174,8 @@ namespace Unity.FoxgloveSDK.Tests
         // ── McapBinaryReader bounds checks ──
 
         /// <summary>
-        /// Verifies that truncated or out-of-bounds reads throw
-        /// <c>InvalidDataException</c> for U16, string, prefixed data,
-        /// and map operations.
+        /// Verifies that replay ticks emit messages from different channels in
+        /// global log-time order, not in channel-registration order.
         /// </summary>
         static void TestReplayTickSortsCrossChannelLogTimes()
         {
@@ -209,8 +210,8 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestReplayDefaultTickBudgetLimitsSeekBacklog()
         {
             using var engine = new McapReplayEngine();
-            Assert(engine.MaxMessagesPerTick <= 8,
-                "Replay default tick budget is small enough to limit stale in-flight frames on seek");
+            Assert(engine.MaxMessagesPerTick == 8,
+                "Replay default tick budget stays pinned at 8 messages per tick");
         }
 
         static void TestMcapBinaryReaderBounds()
@@ -424,7 +425,6 @@ namespace Unity.FoxgloveSDK.Tests
             // Roundtrip for position is identity by construction. Rotation involves handness flip
             // and the result won't be component-wise identical but represents equivalent rotation.
             // Assert representative quaternion roundtrips directly; q and -q are treated as equivalent.
-            Assert(true, "CoordRnd: position roundtrip passes ((1,2,3) unchanged)");
             const double sqrtHalf = 0.7071067811865476;
             Assert(QuaternionRoundtripEquivalent((0, 0, 0, 1)),
                 "CoordRnd: identity quaternion roundtrip is equivalent");
@@ -456,13 +456,14 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestReplayHandlerNoAccumulate()
         {
             int count = 0;
-            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), new SystemClock(), new DefaultSchemaRegistry());
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), clock, new DefaultSchemaRegistry());
             rt.OnReplayMessage += (t, d) => count++;
-            rt.Start("test", "127.0.0.1", 9877);
+            rt.Start("test", "127.0.0.1", GetFreeLoopbackPort());
             rt.Stop();
-            rt.Start("test", "127.0.0.1", 9877);
+            rt.Start("test", "127.0.0.1", GetFreeLoopbackPort());
             rt.Stop();
-            rt.Start("test", "127.0.0.1", 9877);
+            rt.Start("test", "127.0.0.1", GetFreeLoopbackPort());
 
             // Fire replay via internal test hook
             rt.FireReplayForTests("/tf", new byte[] { });
@@ -479,21 +480,17 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestRuntimeReplayPlayAdvancesPlaybackClock()
         {
             var tmp = CreateTempMcap(2, 1_000_000UL);
-            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), new SystemClock(), new DefaultSchemaRegistry());
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), clock, new DefaultSchemaRegistry());
             int count = 0;
             try
             {
                 rt.EnableReplay(tmp);
                 rt.OnReplayMessage += (topic, payload) => count++;
-                rt.Start("replay-clock-test", "127.0.0.1", 9878);
+                rt.Start("replay-clock-test", "127.0.0.1", GetFreeLoopbackPort());
                 rt.ReplayPlay();
-                var deadline = DateTime.UtcNow.AddMilliseconds(500);
-                while (count < 2 && DateTime.UtcNow < deadline)
-                {
-                    rt.Tick();
-                    if (count < 2)
-                        System.Threading.Thread.Sleep(1);
-                }
+                clock.AdvanceNs(3_000_000UL);
+                rt.Tick();
 
                 Assert(count == 2, "Runtime ReplayPlay advances playback clock and emits both messages (expected=2, actual=" + count + ")");
             }
@@ -528,7 +525,7 @@ namespace Unity.FoxgloveSDK.Tests
                 }
 
                 rt.EnableReplay(tmp);
-                rt.Start("protobuf-replay-schema", "127.0.0.1", 9880);
+                rt.Start("protobuf-replay-schema", "127.0.0.1", GetFreeLoopbackPort());
 
                 JObject replayChannel = null;
                 foreach (var text in transport.SentText)
@@ -618,7 +615,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("playback-state-broadcast", "127.0.0.1", 9886);
+                rt.Start("playback-state-broadcast", "127.0.0.1", GetFreeLoopbackPort());
                 transport.SimulateConnect(7);
                 transport.SimulateConnect(8);
                 transport.ClearBinary(7);
@@ -651,7 +648,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("paused-seek-snapshot", "127.0.0.1", 9881);
+                rt.Start("paused-seek-snapshot", "127.0.0.1", GetFreeLoopbackPort());
 
                 var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
                 transport.SimulateConnect(7);
@@ -731,7 +728,7 @@ namespace Unity.FoxgloveSDK.Tests
                     sceneMessageCount++;
                     sceneTopic = topic;
                 };
-                rt.Start("paused-seek-scene-only", "127.0.0.1", 9883);
+                rt.Start("paused-seek-scene-only", "127.0.0.1", GetFreeLoopbackPort());
 
                 var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
                 transport.SimulateConnect(7);
@@ -775,7 +772,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 rt.EnableReplay(tmp);
                 rt.OnReplayMessage += (_, _) => sceneMessageCount++;
-                rt.Start("active-paused-scrub", "127.0.0.1", 9887);
+                rt.Start("active-paused-scrub", "127.0.0.1", GetFreeLoopbackPort());
 
                 var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
                 transport.SimulateConnect(7);
@@ -827,7 +824,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("play-invalidates-history-watermark", "127.0.0.1", 9888);
+                rt.Start("play-invalidates-history-watermark", "127.0.0.1", GetFreeLoopbackPort());
 
                 var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
                 transport.SimulateConnect(7);
@@ -905,7 +902,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("late-replay-panel-subscribe", "127.0.0.1", 9889);
+                rt.Start("late-replay-panel-subscribe", "127.0.0.1", GetFreeLoopbackPort());
 
                 var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
                 transport.SimulateConnect(7);
@@ -946,7 +943,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("replay-live-gate", "127.0.0.1", 9884);
+                rt.Start("replay-live-gate", "127.0.0.1", GetFreeLoopbackPort());
                 transport.SimulateConnect(7);
 
                 rt.RegisterChannel(new AdvertiseChannel
@@ -988,7 +985,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("replay-live-advertise-gate", "127.0.0.1", 9885);
+                rt.Start("replay-live-advertise-gate", "127.0.0.1", GetFreeLoopbackPort());
 
                 var textCountBefore = transport.SentText.Count;
                 rt.RegisterChannel(new AdvertiseChannel
@@ -1018,7 +1015,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
-                rt.Start("replay-priority", "127.0.0.1", 9882);
+                rt.Start("replay-priority", "127.0.0.1", GetFreeLoopbackPort());
 
                 var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
                 transport.SimulateConnect(7);
@@ -1241,6 +1238,20 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not locate repository root for " + relativePath);
             var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
             return Path.Combine(root, localPath);
+        }
+
+        static int GetFreeLoopbackPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
         }
 
         static string FindRepoRoot()

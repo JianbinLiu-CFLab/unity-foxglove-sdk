@@ -225,9 +225,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!content.Contains("using ROS2;") && !content.Contains("using sensor_msgs;"),
                 "7.3-3: VirtualLidar.cs has no ROS2/sensor_msgs using directives");
 
-            Check((content.Contains("SetFrame") || content.Contains("PublishFrame"))
-                  && !content.Contains("PublishJson") && !content.Contains("PublishProto"),
-                "7.3-4: VirtualLidar.cs calls SetFrame/PublishFrame, not PublishJson/PublishProto directly");
+            var framePublisherPath = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+                "Runtime", "Sensors", "Lidar", "VirtualLidarScanFramePublisher.cs");
+            Check(File.Exists(framePublisherPath), "7.3-4a: VirtualLidarScanFramePublisher.cs exists at expected path");
+
+            var framePublisherContent = File.ReadAllText(framePublisherPath);
+            Check(content.Contains("FoxglovePointCloudPublisher") && framePublisherContent.Contains(".SetFrame("),
+                "7.3-4b: VirtualLidar routes source-driven frames through the point-cloud publisher SetFrame handoff");
+            Check(!content.Contains("PublishJson") && !content.Contains("PublishProto")
+                  && !framePublisherContent.Contains("PublishJson") && !framePublisherContent.Contains("PublishProto"),
+                "7.3-4c: VirtualLidar source path does not call PublishJson/PublishProto directly");
         }
 
         // ---------------------------------------------------------------
@@ -291,20 +298,20 @@ namespace Unity.FoxgloveSDK.Tests
                 }
 
                 Check(hasInputSupport,
-                    "7.4-5: vehicle controller supports Input System or falls back gracefully on legacy");
+                    "7.4-6: vehicle controller supports Input System or falls back gracefully on legacy");
             }
             else
             {
-                Check(false, "7.4-5: no vehicle controller file found");
+                Check(false, "7.4-6: no vehicle controller file found");
             }
         }
 
         private static void Check(bool condition, string label)
         {
-            _passed++;
             Console.WriteLine(condition ? $"[PASS] {label}" : $"[FAIL] {label}");
             if (!condition)
                 throw new InvalidOperationException($"Phase 138 validation failed: {label}");
+            _passed++;
         }
     }
 }
