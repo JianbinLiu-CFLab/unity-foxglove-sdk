@@ -137,8 +137,10 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     var ring = i / effCols;
                     var col = (i % effCols) * 4;
-                    pattern.TryGetRay(i, 0, out var p, out _);
-                    gen.TryGetRay(col, ring, out var g, out _);
+                    Check(pattern.TryGetRay(i, 0, out var p, out _),
+                        $"8.2-5A[{i}]: SpinningScanPattern ray exists");
+                    Check(gen.TryGetRay(col, ring, out var g, out _),
+                        $"8.2-5B[{i}]: LidarRayGenerator ray exists");
                     maxDiff = Math.Max(maxDiff, Math.Abs(p.X - g.X));
                     maxDiff = Math.Max(maxDiff, Math.Abs(p.Y - g.Y));
                     maxDiff = Math.Max(maxDiff, Math.Abs(p.Z - g.Z));
@@ -202,8 +204,10 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             // 9. Non-repetition: frameIndex=0 vs frameIndex=1 produce different directions for same ray index
-            pattern.TryGetRay(0, 0, out var dir0, out _);
-            pattern.TryGetRay(0, 1, out var dir1, out _);
+            Check(pattern.TryGetRay(0, 0, out var dir0, out _),
+                "8.3-3A: Mid-360 frame 0 ray exists");
+            Check(pattern.TryGetRay(0, 1, out var dir1, out _),
+                "8.3-3B: Mid-360 frame 1 ray exists");
             var diff = Math.Abs(dir0.X - dir1.X) + Math.Abs(dir0.Y - dir1.Y) + Math.Abs(dir0.Z - dir1.Z);
             Check(diff > 1e-6f,
                 $"8.3-3: Mid-360 golden-angle rotation changes direction (frame0 vs frame1 diff={diff:F6})");
@@ -215,7 +219,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySourceText()
         {
-            var repoRoot = Phase16Validation.FindRepoRoot();
+            var repoRoot = RequireRepoRoot("8.4-0: repo root is available for VirtualLidar source checks");
             var path = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
                 "Runtime", "Sensors", "Lidar", "VirtualLidar.cs");
 
@@ -315,7 +319,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             // Source-text: verify the parser source file exists so v2/v3 handling can be added later
-            var repoRoot = Phase16Validation.FindRepoRoot();
+            var repoRoot = RequireRepoRoot("8.5-0: repo root is available for LidarProfileLoader source checks");
             var loaderPath = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
                 "Runtime", "Sensors", "Lidar", "LidarProfileLoader.cs");
             Check(File.Exists(loaderPath),
@@ -333,6 +337,13 @@ namespace Unity.FoxgloveSDK.Tests
             if (!condition)
                 throw new InvalidOperationException($"Phase 138B validation failed: {label}");
             _passed++;
+        }
+
+        private static string RequireRepoRoot(string label)
+        {
+            var repoRoot = Phase16Validation.FindRepoRoot();
+            Check(repoRoot != null, label);
+            return repoRoot;
         }
     }
 }

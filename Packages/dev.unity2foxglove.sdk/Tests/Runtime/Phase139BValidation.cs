@@ -128,18 +128,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyEmbeddedHttpSurface()
         {
             var mcapPath = CreateIndexedFixture("http");
-            var port = FindFreeLoopbackPort();
             var options = new RemoteMcapHttpOptions
             {
                 Host = "127.0.0.1",
-                Port = port,
                 McapPath = mcapPath,
                 SourceId = "phase139b-http",
                 ManifestName = "Phase139B HTTP Fixture"
             };
 
             string baseUrl;
-            using (var server = RemoteMcapHttpServer.Start(options))
+            using (var server = StartRemoteMcapServerWithRetry(options))
             using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 baseUrl = server.BaseUrl;
@@ -230,18 +228,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyBearerAuthSurface()
         {
             var mcapPath = CreateIndexedFixture("auth");
-            var port = FindFreeLoopbackPort();
             var options = new RemoteMcapHttpOptions
             {
                 Host = "127.0.0.1",
-                Port = port,
                 McapPath = mcapPath,
                 SourceId = "phase139b-auth",
                 ManifestName = "Phase139B Auth Fixture",
                 RequiredBearerToken = "phase139b-token"
             };
 
-            using (var server = RemoteMcapHttpServer.Start(options))
+            using (var server = StartRemoteMcapServerWithRetry(options))
             using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 var manifestWithoutToken = client.GetAsync(server.BaseUrl + "/v1/manifest").GetAwaiter().GetResult();
@@ -255,6 +251,21 @@ namespace Unity.FoxgloveSDK.Tests
                 var dataWithWrongToken = client.SendAsync(badData).GetAwaiter().GetResult();
                 Check(dataWithWrongToken.StatusCode == HttpStatusCode.Unauthorized,
                     "139B-4B: data requests with the wrong bearer token return 401");
+
+                var fileWithoutToken = new HttpRequestMessage(
+                    HttpMethod.Head,
+                    server.BaseUrl + "/v1/files/phase139b-auth.mcap");
+                var fileWithoutTokenResponse = client.SendAsync(fileWithoutToken).GetAwaiter().GetResult();
+                Check(fileWithoutTokenResponse.StatusCode == HttpStatusCode.Unauthorized,
+                    "139B-4B2: direct MCAP file requests without the configured bearer token return 401");
+
+                var badFile = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    server.BaseUrl + "/v1/files/phase139b-auth.mcap");
+                badFile.Headers.TryAddWithoutValidation("Authorization", "Bearer wrong-token");
+                var fileWithWrongToken = client.SendAsync(badFile).GetAwaiter().GetResult();
+                Check(fileWithWrongToken.StatusCode == HttpStatusCode.Unauthorized,
+                    "139B-4B3: direct MCAP file requests with the wrong bearer token return 401");
 
                 var goodManifest = new HttpRequestMessage(HttpMethod.Get, server.BaseUrl + "/v1/manifest");
                 goodManifest.Headers.TryAddWithoutValidation("Authorization", "Bearer phase139b-token");
@@ -271,6 +282,15 @@ namespace Unity.FoxgloveSDK.Tests
                       && dataWithToken.Content.Headers.ContentType != null
                       && dataWithToken.Content.Headers.ContentType.MediaType == "application/octet-stream",
                     "139B-4D: data requests with the configured bearer token stream MCAP bytes");
+
+                var goodFile = new HttpRequestMessage(
+                    HttpMethod.Head,
+                    server.BaseUrl + "/v1/files/phase139b-auth.mcap");
+                goodFile.Headers.TryAddWithoutValidation("Authorization", "Bearer phase139b-token");
+                var fileWithToken = client.SendAsync(goodFile).GetAwaiter().GetResult();
+                Check(fileWithToken.StatusCode == HttpStatusCode.OK
+                      && fileWithToken.Content.Headers.ContentLength > 0,
+                    "139B-4E: direct MCAP file requests with the configured bearer token succeed");
             }
         }
 
@@ -282,17 +302,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNanosecondRangeSurface()
         {
             var mcapPath = CreateNanosecondFixture();
-            var port = FindFreeLoopbackPort();
             var options = new RemoteMcapHttpOptions
             {
                 Host = "127.0.0.1",
-                Port = port,
                 McapPath = mcapPath,
                 SourceId = "phase139b-ns",
                 ManifestName = "Phase139B Nanosecond Fixture"
             };
 
-            using (var server = RemoteMcapHttpServer.Start(options))
+            using (var server = StartRemoteMcapServerWithRetry(options))
             using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 var data = client.GetAsync(server.BaseUrl + "/v1/data?recordingId=phase139b-ns&startTime=1970-01-01T00:00:00.00000002Z&endTime=1970-01-01T00:00:00.00000002Z")
@@ -385,9 +403,6 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int FindFreeLoopbackPort()
         {
-            // RemoteMcapHttpServer currently validates ports as 1..65535 and
-            // does not expose the actual bound port for a port-0 listener, so
-            // this helper knowingly accepts the short free-port TOCTOU window.
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             try
@@ -398,6 +413,34 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 listener.Stop();
             }
+        }
+
+        private static RemoteMcapHttpServer StartRemoteMcapServerWithRetry(RemoteMcapHttpOptions options)
+        {
+            Exception lastError = null;
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                options.Port = FindFreeLoopbackPort();
+                try
+                {
+                    return RemoteMcapHttpServer.Start(options);
+                }
+                catch (Exception ex) when (IsAddressAlreadyInUse(ex))
+                {
+                    lastError = ex;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Phase139B could not bind a loopback HTTP test server after 5 attempts.",
+                lastError);
+        }
+
+        private static bool IsAddressAlreadyInUse(Exception error)
+        {
+            return error is SocketException socket && socket.SocketErrorCode == SocketError.AddressAlreadyInUse
+                   || error is HttpListenerException listener
+                   && (listener.ErrorCode == 183 || listener.ErrorCode == 10_048);
         }
 
         private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));

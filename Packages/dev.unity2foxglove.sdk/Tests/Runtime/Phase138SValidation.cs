@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && dtoType.GetProperty("Orientation") != null
                   && dtoType.GetProperty("HasOrientation") != null,
                 "138S-1C: ImuNativeFrame exposes frame fields required by native bridge");
-            Check(File.Exists("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Imu.meta"),
+            Check(File.Exists(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Imu.meta")),
                 "138S-1D: new Runtime/Schemas/Imu folder has a tracked Unity meta file");
         }
 
@@ -214,13 +214,14 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(registry.Contains("Ci(\"--phase138s\"", StringComparison.Ordinal),
                 "138S-7A: phase 138s is registered in validation registry");
-            Check(registry.Contains("includeInDefault: false", StringComparison.Ordinal)
-                  && registry.Contains("--phase138s", StringComparison.Ordinal),
+            var phaseEntry = ExtractRegistryEntry(registry, "Ci(\"--phase138s\"");
+            Check(phaseEntry.Contains("includeInDefault: false", StringComparison.Ordinal),
                 "138S-7B: phase 138s is available as explicit CI phase and not in default");
         }
 
         private static string ReadDirectory(string path, bool includeMd)
         {
+            path = RepoPath(path);
             var bytes = 0;
             var sb = new System.Text.StringBuilder();
             if (!Directory.Exists(path))
@@ -253,7 +254,24 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string relativePath)
-            => File.ReadAllText(relativePath);
+            => File.ReadAllText(RepoPath(relativePath));
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase138S validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static string ExtractRegistryEntry(string registry, string startToken)
+        {
+            var start = registry.IndexOf(startToken, StringComparison.Ordinal);
+            if (start < 0)
+                return "";
+            var end = registry.IndexOf(");", start, StringComparison.Ordinal);
+            return end < start ? registry.Substring(start) : registry.Substring(start, end - start + 2);
+        }
 
         private static bool ContainsSignature(string source, string signature)
             => source.Contains(signature, StringComparison.Ordinal);

@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyCursorControllerContract();
             VerifyEndpointContract();
             VerifyEndpointLoopbackBehavior();
+            VerifyEndpointBearerTokenBehavior();
             VerifySmokeScript();
             VerifyWorkflowDocumentation();
             VerifyRuntimeWiring();
@@ -145,44 +146,73 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEndpointLoopbackBehavior()
         {
-            var port = ReserveFreeLoopbackPort();
-            var endpoint = new UnityReplayCursorEndpoint();
             ReplayCursorRequest received = default;
-            try
-            {
-                endpoint.Start(
-                    new UnityReplayCursorEndpointOptions(
-                        enabled: true,
-                        host: "127.0.0.1",
-                        port: port,
-                        path: "/v1/replay-cursor",
-                        bearerToken: string.Empty,
-                        maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes),
-                    request =>
-                    {
-                        received = request;
-                        return new UnityReplayCursorEndpointQueueResult(true, "accepted");
-                    });
+            using var endpoint = StartCursorEndpointWithRetry(
+                bearerToken: string.Empty,
+                request =>
+                {
+                    received = request;
+                    return new UnityReplayCursorEndpointQueueResult(true, "accepted");
+                },
+                out var port);
 
-                var response = PostJson(
-                    $"http://127.0.0.1:{port}/v1/replay-cursor",
-                    "{\"source\":\"test\",\"sequence\":3,\"mode\":\"seek\",\"time\":{\"sec\":22,\"nsec\":33}}");
+            var response = PostJson(
+                $"http://127.0.0.1:{port}/v1/replay-cursor",
+                "{\"source\":\"test\",\"sequence\":3,\"mode\":\"seek\",\"time\":{\"sec\":22,\"nsec\":33}}");
 
-                Check(response.Contains("\"accepted\":true", StringComparison.Ordinal)
-                      && received.TimeNs == 22_000_000_033UL,
-                    "139D-4I: cursor endpoint accepts loopback POSTs into the runtime queue");
+            Check(response.Contains("\"accepted\":true", StringComparison.Ordinal)
+                  && received.TimeNs == 22_000_000_033UL,
+                "139D-4I: cursor endpoint accepts loopback POSTs into the runtime queue");
 
-                var state = GetText($"http://127.0.0.1:{port}/v1/replay-cursor");
-                Check(state.Contains("\"available\":", StringComparison.Ordinal)
-                      && state.Contains("\"time\":", StringComparison.Ordinal)
-                      && state.Contains("\"sec\":", StringComparison.Ordinal)
-                      && state.Contains("\"nsec\":", StringComparison.Ordinal),
-                    "139D-4J: cursor endpoint returns split-time Unity replay state");
-            }
-            finally
-            {
-                endpoint.Dispose();
-            }
+            var state = GetText($"http://127.0.0.1:{port}/v1/replay-cursor");
+            Check(state.Contains("\"available\":", StringComparison.Ordinal)
+                  && state.Contains("\"time\":", StringComparison.Ordinal)
+                  && state.Contains("\"sec\":", StringComparison.Ordinal)
+                  && state.Contains("\"nsec\":", StringComparison.Ordinal),
+                "139D-4J: cursor endpoint returns split-time Unity replay state");
+        }
+
+        private static void VerifyEndpointBearerTokenBehavior()
+        {
+            var acceptedCount = 0;
+            ReplayCursorRequest received = default;
+            using var endpoint = StartCursorEndpointWithRetry(
+                bearerToken: "phase139d-token",
+                request =>
+                {
+                    acceptedCount++;
+                    received = request;
+                    return new UnityReplayCursorEndpointQueueResult(true, "accepted");
+                },
+                out var port);
+
+            const string payload = "{\"source\":\"test\",\"sequence\":4,\"mode\":\"seek\",\"time\":{\"sec\":23,\"nsec\":44}}";
+            var unauthorized = PostJsonStatus(
+                $"http://127.0.0.1:{port}/v1/replay-cursor",
+                payload,
+                bearerToken: string.Empty,
+                out _);
+            Check(unauthorized == HttpStatusCode.Unauthorized && acceptedCount == 0,
+                "139D-4K: cursor endpoint rejects missing bearer token before queueing");
+
+            var wrongToken = PostJsonStatus(
+                $"http://127.0.0.1:{port}/v1/replay-cursor",
+                payload,
+                bearerToken: "wrong-token",
+                out _);
+            Check(wrongToken == HttpStatusCode.Unauthorized && acceptedCount == 0,
+                "139D-4L: cursor endpoint rejects wrong bearer token before queueing");
+
+            var accepted = PostJsonStatus(
+                $"http://127.0.0.1:{port}/v1/replay-cursor",
+                payload,
+                bearerToken: "phase139d-token",
+                out var response);
+            Check(accepted == HttpStatusCode.Accepted
+                  && response.Contains("\"accepted\":true", StringComparison.Ordinal)
+                  && acceptedCount == 1
+                  && received.TimeNs == 23_000_000_044UL,
+                "139D-4M: cursor endpoint accepts correct bearer token");
         }
 
         private static void VerifyExtensionScaffold()
@@ -379,9 +409,6 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int ReserveFreeLoopbackPort()
         {
-            // UnityReplayCursorEndpoint currently requires a concrete port and
-            // does not expose the actual bound port for port 0, so this helper
-            // knowingly accepts the short free-port TOCTOU window.
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             try
@@ -394,12 +421,70 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        private static UnityReplayCursorEndpoint StartCursorEndpointWithRetry(
+            string bearerToken,
+            Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> queue,
+            out int port)
+        {
+            Exception lastError = null;
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                port = ReserveFreeLoopbackPort();
+                var endpoint = new UnityReplayCursorEndpoint();
+                try
+                {
+                    endpoint.Start(
+                        new UnityReplayCursorEndpointOptions(
+                            enabled: true,
+                            host: "127.0.0.1",
+                            port: port,
+                            path: "/v1/replay-cursor",
+                            bearerToken: bearerToken,
+                            maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes),
+                        queue);
+                    return endpoint;
+                }
+                catch (Exception ex) when (IsAddressAlreadyInUse(ex))
+                {
+                    endpoint.Dispose();
+                    lastError = ex;
+                }
+            }
+
+            port = 0;
+            throw new InvalidOperationException(
+                "Phase139D could not bind a loopback cursor endpoint after 5 attempts. Last error: "
+                + lastError?.GetType().Name + ": " + lastError?.Message,
+                lastError);
+        }
+
+        private static bool IsAddressAlreadyInUse(Exception error)
+        {
+            return error is SocketException socket && socket.SocketErrorCode == SocketError.AddressAlreadyInUse
+                   || error is HttpListenerException listener
+                   && (listener.ErrorCode == 183 || listener.ErrorCode == 10_048);
+        }
+
         private static string PostJson(string url, string json)
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = client.PostAsync(url, content).GetAwaiter().GetResult();
             return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+        }
+
+        private static HttpStatusCode PostJsonStatus(string url, string json, string bearerToken, out string body)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            if (!string.IsNullOrEmpty(bearerToken))
+                request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + bearerToken);
+            using var response = client.SendAsync(request).GetAwaiter().GetResult();
+            body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            return response.StatusCode;
         }
 
         private static string GetText(string url)

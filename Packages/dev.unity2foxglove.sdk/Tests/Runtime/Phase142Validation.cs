@@ -47,15 +47,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Check(bool condition, string label)
         {
-            if (condition)
-            {
-                Console.WriteLine("[PASS] " + label);
-                _passCount++;
-            }
-            else
-            {
-                Console.WriteLine("[FAIL] " + label);
-            }
+            if (!condition)
+                throw new InvalidOperationException("[FAIL] " + label);
+
+            Console.WriteLine("[PASS] " + label);
+            _passCount++;
         }
 
         private static void VerifyChangeHelperParity()
@@ -221,7 +217,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyNoNewDiagnosticIds()
         {
-            var generatorSource = File.ReadAllText(SourceGeneratorPath);
+            var generatorSource = File.ReadAllText(RepoPath(SourceGeneratorPath));
             // Match string-literal future IDs to avoid false-positive on comments.
             Check(!generatorSource.Contains("\"FOXRUN015\"", StringComparison.Ordinal),
                 "142-37: source generator contains no FOXRUN015 diagnostic descriptor");
@@ -231,7 +227,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyInventoryBackwardCompatible()
         {
-            var generatorSource = File.ReadAllText(SourceGeneratorPath);
+            var generatorSource = File.ReadAllText(RepoPath(SourceGeneratorPath));
 
             var expected = new Dictionary<string, (string title, string severity)>
             {
@@ -266,7 +262,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyChangeHelperCompiles()
         {
-            var helperPath = "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/FoxRunChangeHelper.cs";
+            var helperPath = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/FoxRunChangeHelper.cs");
             Check(File.Exists(helperPath), "142-42: FoxRunChangeHelper.cs exists");
             var content = File.ReadAllText(helperPath);
             Check(content.Contains("class FoxRunChangeHelper", StringComparison.Ordinal),
@@ -274,6 +270,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(content.Contains("FloatChanged", StringComparison.Ordinal)
                   && content.Contains("DoubleChanged", StringComparison.Ordinal),
                 "142-44: both FloatChanged and DoubleChanged methods are present");
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase142 validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static FoxRunGenerationModel MakeModel(params FoxRunGenerationMember[] members)

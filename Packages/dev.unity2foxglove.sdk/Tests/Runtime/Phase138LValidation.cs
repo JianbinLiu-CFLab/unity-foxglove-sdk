@@ -19,6 +19,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138LValidation
     {
+        private const int ExpectedFoxgloveRos2SchemaSnapshotCount = 41;
         private static int _passed;
 
         /// <summary>Runs all Phase 138L validation checks.</summary>
@@ -216,9 +217,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot()
         {
-            Check(FoxgloveRos2MsgSchemaCatalog.SourceFileCount == 41
-                  && FoxgloveRos2MsgSchemaCatalog.Entries.Count == 41,
-                "138L-2Z: standard PointCloud2 support does not mutate the Foxglove ROS2 snapshot count");
+            Check(FoxgloveRos2MsgSchemaCatalog.SourceFileCount == ExpectedFoxgloveRos2SchemaSnapshotCount
+                  && FoxgloveRos2MsgSchemaCatalog.Entries.Count == ExpectedFoxgloveRos2SchemaSnapshotCount,
+                "138L-2Z: Foxglove ROS2 schema snapshot count stays at "
+                + ExpectedFoxgloveRos2SchemaSnapshotCount
+                + "; update the expected count intentionally when adding/removing generated schemas");
             Check(FoxgloveRos2MsgSchemaCatalog.TryGet(Ros2PublisherSchemaNames.SensorPointCloud2, out var entry)
                   && entry.Content.Contains("sensor_msgs/PointField", StringComparison.Ordinal)
                   && entry.Content.Contains("MSG: sensor_msgs/PointField", StringComparison.Ordinal),
@@ -385,7 +388,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string label)
         {
             if (!condition)
-                throw new Exception("[FAIL] " + label);
+                throw new InvalidOperationException("[FAIL] " + label);
 
             _passed++;
             Console.WriteLine("[PASS] " + label);

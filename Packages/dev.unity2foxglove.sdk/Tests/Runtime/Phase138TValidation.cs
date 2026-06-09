@@ -248,7 +248,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(registry.Contains("Ci(\"--phase138t\"", StringComparison.Ordinal),
                 "138T-8A: phase 138t is registered");
-            Check(registry.Contains("--phase138t") && registry.Contains("includeInDefault: false", StringComparison.Ordinal),
+            var phaseEntry = ExtractRegistryEntry(registry, "Ci(\"--phase138t\"");
+            Check(phaseEntry.Contains("includeInDefault: false", StringComparison.Ordinal),
                 "138T-8B: phase 138t is explicit CI-only");
             Check(registry.Contains("Phase138TValidation.Validate", StringComparison.Ordinal),
                 "138T-8C: phase 138t points at the right validation entrypoint");
@@ -256,6 +257,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadDirectory(string path, bool includeMd)
         {
+            path = RepoPath(path);
             var bytes = 0;
             var sb = new StringBuilder();
             if (!Directory.Exists(path))
@@ -290,15 +292,32 @@ namespace Unity.FoxgloveSDK.Tests
             return sb.ToString();
         }
 
-        private static string Read(string relativePath) => File.ReadAllText(relativePath);
+        private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase138T validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static string ExtractRegistryEntry(string registry, string startToken)
+        {
+            var start = registry.IndexOf(startToken, StringComparison.Ordinal);
+            if (start < 0)
+                return "";
+            var end = registry.IndexOf(");", start, StringComparison.Ordinal);
+            return end < start ? registry.Substring(start) : registry.Substring(start, end - start + 2);
+        }
 
         private static string ReadCameraPublisherSources()
         {
-            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
-            var output = "";
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
+            var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
-                output += File.ReadAllText(file) + "\n";
-            return output;
+                output.AppendLine(File.ReadAllText(file));
+            return output.ToString();
         }
 
         private static void Check(bool condition, string label)

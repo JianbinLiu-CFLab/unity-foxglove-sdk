@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Performance
         static int Main(string[] args)
         {
             var mode = "quick";
+            var modeWasSpecified = false;
             string outputDir = null;
             string thresholdPath = null;
             var thresholdsEnabled = true;
@@ -36,16 +37,32 @@ namespace Unity.FoxgloveSDK.Performance
             {
                 switch (args[i])
                 {
-                    case "--quick": mode = "quick"; break;
-                    case "--full": mode = "full"; break;
+                    case "--quick":
+                        if (modeWasSpecified && mode != "quick")
+                            return UsageError("--quick and --full cannot be used together.");
+                        mode = "quick";
+                        modeWasSpecified = true;
+                        break;
+                    case "--full":
+                        if (modeWasSpecified && mode != "full")
+                            return UsageError("--quick and --full cannot be used together.");
+                        mode = "full";
+                        modeWasSpecified = true;
+                        break;
                     case "--no-thresholds": thresholdsEnabled = false; break;
                     case "--threshold-self-test": thresholdSelfTest = true; break;
                     case "--output":
-                        if (i + 1 < args.Length) outputDir = args[++i];
+                        if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                            return UsageError("--output requires a directory.");
+                        outputDir = args[++i];
                         break;
                     case "--thresholds":
-                        if (i + 1 < args.Length) thresholdPath = args[++i];
+                        if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                            return UsageError("--thresholds requires a JSON file.");
+                        thresholdPath = args[++i];
                         break;
+                    default:
+                        return UsageError("Unknown argument: " + args[i]);
                 }
             }
 
@@ -83,7 +100,15 @@ namespace Unity.FoxgloveSDK.Performance
             PerformanceThresholdConfig thresholds;
             if (thresholdsEnabled)
             {
-                thresholds = LoadThresholds(mode, thresholdPath, out resolvedThresholdPath);
+                try
+                {
+                    thresholds = LoadThresholds(mode, thresholdPath, out resolvedThresholdPath);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.Error.WriteLine(ex.Message);
+                    return 2;
+                }
             }
             else
             {
@@ -142,6 +167,14 @@ namespace Unity.FoxgloveSDK.Performance
             return 0;
         }
 
+        private static int UsageError(string message)
+        {
+            Console.Error.WriteLine(message);
+            Console.Error.WriteLine(
+                "Usage: [--quick|--full] [--output <directory>] [--thresholds <json>] [--no-thresholds] [--threshold-self-test]");
+            return 2;
+        }
+
         private static PerformanceThresholdConfig LoadThresholds(
             string mode,
             string thresholdPath,
@@ -180,6 +213,10 @@ namespace Unity.FoxgloveSDK.Performance
                 || ex is ArgumentException
                 || ex is NotSupportedException)
             {
+                if (!string.IsNullOrWhiteSpace(thresholdPath))
+                    throw new InvalidOperationException(
+                        $"Explicit performance threshold config '{fullPath}' could not be loaded.",
+                        ex);
                 Console.Error.WriteLine(
                     $"Performance threshold config '{fullPath}' could not be loaded; using built-in {mode} defaults. {ex.GetType().Name}: {ex.Message}");
                 return PerformanceRunner.CreateDefaultThresholds(mode);

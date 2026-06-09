@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Numerics;
+using System.Text;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
@@ -272,14 +273,18 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var min = float.MaxValue;
             var max = float.MinValue;
+            var validCount = 0;
             for (var i = 0; i < count; i++)
             {
                 if (points[i].IsValid == 0)
                     continue;
+                validCount++;
                 var x = useAcquisition && points[i].HasAcquisitionFrame != 0 ? points[i].AcquisitionX : points[i].X;
                 if (x < min) min = x;
                 if (x > max) max = x;
             }
+            if (validCount == 0)
+                return 0f;
             return max - min;
         }
 
@@ -334,13 +339,29 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadDirectory(string path)
         {
-            var output = "";
+            path = RepoPath(path);
+            var bytes = 0;
+            var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories))
-                output += File.ReadAllText(file) + "\n";
-            return output;
+            {
+                var content = File.ReadAllText(file);
+                output.AppendLine(content);
+                bytes += content.Length;
+                if (bytes > 8_000_000)
+                    throw new InvalidOperationException("Phase138U validation reading too much source in single pass.");
+            }
+            return output.ToString();
         }
 
-        private static string Read(string relativePath) => File.ReadAllText(relativePath);
+        private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase138U validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
 
         private static void Check(bool condition, string label)
         {

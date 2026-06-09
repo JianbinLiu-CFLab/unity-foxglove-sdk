@@ -415,6 +415,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
         {
             var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException(
+                    "Phase 138I cannot find the repository root while reading " + relativePath + ".");
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new InvalidOperationException($"Phase 138I cannot find expected file: {path}");

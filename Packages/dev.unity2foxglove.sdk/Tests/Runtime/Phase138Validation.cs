@@ -129,7 +129,13 @@ namespace Unity.FoxgloveSDK.Tests
 
                 for (var c = 0; c < profile.ColumnsPerFrame; c++)
                 {
-                    gen1.TryGetRay(c, ring, out _, out var t);
+                    if (!gen1.TryGetRay(c, ring, out _, out var t))
+                    {
+                        monotonic = false;
+                        belowOne = false;
+                        break;
+                    }
+
                     if (t <= prevOffset) monotonic = false;
                     if (t >= 1.0f) belowOne = false;
                     prevOffset = t;
@@ -143,9 +149,12 @@ namespace Unity.FoxgloveSDK.Tests
             //    aggregate XZ direction set must span both hemispheres.
             {
                 const int ring = 16; // mid-ring (non-zero altitude OK)
-                gen1.TryGetRay(0, ring, out var dirAt0, out _);
-                gen1.TryGetRay(profile.ColumnsPerFrame / 2, ring, out var dirAtHalf, out _);
-                gen1.TryGetRay(profile.ColumnsPerFrame / 4, ring, out var dirAtQuarter, out _);
+                Check(gen1.TryGetRay(0, ring, out var dirAt0, out _),
+                    "7.1-16A: column 0 ray exists");
+                Check(gen1.TryGetRay(profile.ColumnsPerFrame / 2, ring, out var dirAtHalf, out _),
+                    "7.1-16B: half-rotation ray exists");
+                Check(gen1.TryGetRay(profile.ColumnsPerFrame / 4, ring, out var dirAtQuarter, out _),
+                    "7.1-17A: quarter-rotation ray exists");
 
                 // After half a rotation the XZ heading must be roughly opposite.
                 var dot = dirAt0.X * dirAtHalf.X + dirAt0.Z * dirAtHalf.Z;
@@ -211,7 +220,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyVirtualLidarSource()
         {
-            var repoRoot = Phase16Validation.FindRepoRoot();
+            var repoRoot = RequireRepoRoot("7.3-0: repo root is available for VirtualLidar source checks");
             var path = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
                 "Runtime", "Sensors", "Lidar", "VirtualLidar.cs");
 
@@ -243,7 +252,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMazeDemoFiles()
         {
-            var repoRoot = Phase16Validation.FindRepoRoot();
+            var repoRoot = RequireRepoRoot("7.4-0: repo root is available for maze demo source checks");
             var mazeDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
                 "Samples~", "Virtual LiDAR Maze Demo");
             var readmePath = Path.Combine(mazeDir, "README.md");
@@ -312,6 +321,13 @@ namespace Unity.FoxgloveSDK.Tests
             if (!condition)
                 throw new InvalidOperationException($"Phase 138 validation failed: {label}");
             _passed++;
+        }
+
+        private static string RequireRepoRoot(string label)
+        {
+            var repoRoot = Phase16Validation.FindRepoRoot();
+            Check(repoRoot != null, label);
+            return repoRoot;
         }
     }
 }

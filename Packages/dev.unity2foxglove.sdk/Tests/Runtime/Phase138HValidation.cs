@@ -278,6 +278,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadText(string repoRoot, string relativePath)
         {
+            if (repoRoot == null)
+                throw new InvalidOperationException(
+                    "Phase 138H cannot find the repository root while reading " + relativePath + ".");
             var path = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new InvalidOperationException($"Phase 138H cannot find expected file: {path}");
@@ -286,6 +289,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string TryReadText(string repoRoot, string relativePath)
         {
+            if (repoRoot == null)
+                throw new InvalidOperationException(
+                    "Phase 138H cannot find the repository root while reading " + relativePath + ".");
             var path = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             return File.Exists(path) ? File.ReadAllText(path) : null;
         }
@@ -297,6 +303,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ResolveDemoBuilderSource(string repoRoot)
         {
+            if (repoRoot == null)
+                throw new InvalidOperationException(
+                    "Phase 138H cannot find the repository root while reading " + DemoEditorRelativePath + ".");
             var literal = Path.Combine(repoRoot, DemoEditorRelativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(literal))
                 throw new InvalidOperationException($"Phase 138H cannot find expected file: {literal}");

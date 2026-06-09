@@ -12,7 +12,9 @@
     <PackageReference Include="ZstdSharp.Port" Version="0.8.4" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../../Runtime/IO/Mcap/*.cs" />
+    <Compile Include="../../Runtime/IO/Mcap/Common/*.cs" />
+    <Compile Include="../../Runtime/IO/Mcap/Reader/*.cs" />
+    <Compile Include="../../Runtime/IO/Mcap/Writer/*.cs" />
     <Compile Include="../../Runtime/Utilities/Crc32Helper.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="McapConformanceJson.cs" />

@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase138DValidation
     {
         private const string ImuSchemaName = ImuSchema.SchemaName;
+        private static int _passed;
 
         /// <summary>
         /// Runs all 138D checks.
@@ -29,10 +30,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Console.WriteLine();
             Console.WriteLine("=== Phase 138D: Virtual IMU Sensor ===");
+            _passed = 0;
 
             VerifyImuSchemaRegistration();
 
-            Console.WriteLine("Phase 138D: all checks passed.");
+            Console.WriteLine($"Phase 138D: {_passed} checks passed.");
             Console.WriteLine();
         }
 
@@ -62,6 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!condition)
                 throw new InvalidOperationException($"Phase 138D validation failed: {name}");
             Console.WriteLine($"[PASS] {name}");
+            _passed++;
         }
     }
 }
