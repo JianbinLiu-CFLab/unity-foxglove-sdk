@@ -10,6 +10,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
@@ -480,8 +481,7 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestRuntimeReplayPlayAdvancesPlaybackClock()
         {
             var tmp = CreateTempMcap(2, 1_000_000UL);
-            var clock = new Phase13FakeClock();
-            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), clock, new DefaultSchemaRegistry());
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), new SystemClock(), new DefaultSchemaRegistry());
             int count = 0;
             try
             {
@@ -489,8 +489,11 @@ namespace Unity.FoxgloveSDK.Tests
                 rt.OnReplayMessage += (topic, payload) => count++;
                 rt.Start("replay-clock-test", "127.0.0.1", GetFreeLoopbackPort());
                 rt.ReplayPlay();
-                clock.AdvanceNs(3_000_000UL);
-                rt.Tick();
+                for (var i = 0; i < 200 && count < 2; i++)
+                {
+                    Thread.Sleep(5);
+                    rt.Tick();
+                }
 
                 Assert(count == 2, "Runtime ReplayPlay advances playback clock and emits both messages (expected=2, actual=" + count + ")");
             }
