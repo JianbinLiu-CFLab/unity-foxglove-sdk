@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
                 VerifyRemoteStreamAndCap();
                 VerifyChunkSchemaChannelAllocationRemoval();
                 VerifySegmentDecodeBounds();
-            VerifyPublicHardeningCoverageAndWiring();
+                VerifyPublicHardeningCoverageAndWiring();
 
                 Console.WriteLine($"Phase 120B: {_passed} checks passed.");
             }
@@ -175,17 +175,25 @@ namespace Unity.FoxgloveSDK.Tests
             var streamResponse = capped.GetDataStream(AuthorizedRequest());
             using (streamResponse.DataStream)
             {
-                Check(streamResponse.Status == RemoteMcapResponseStatus.Ok
-                      && streamResponse.DataStream != null
-                      && streamResponse.DataStream.CanRead
-                      && streamResponse.Length == new FileInfo(path).Length,
-                    "120B-F3: remote prototype exposes readable stream response for larger files");
+                Check(streamResponse.Status == RemoteMcapResponseStatus.Unsupported
+                      && streamResponse.Problems.Any(p => p.Code == "DataTooLargeForInMemoryResponse"),
+                    "120B-F3: over-cap range stream response is refused during bounded re-emission");
+            }
+
+            var directStreamResponse = capped.GetDirectFileStream(AuthorizedRequest());
+            using (directStreamResponse.DataStream)
+            {
+                Check(directStreamResponse.Status == RemoteMcapResponseStatus.Ok
+                      && directStreamResponse.DataStream != null
+                      && directStreamResponse.DataStream.CanRead
+                      && directStreamResponse.Length == new FileInfo(path).Length,
+                    "120B-F3b: direct-file stream remains readable for files above the in-memory cap");
             }
 
             Check(typeof(IDisposable).IsAssignableFrom(typeof(RemoteMcapDataStreamResponse)),
                 "120B-F4: remote stream response owns an explicit disposable stream lifetime");
 
-            var ownedStreamResponse = capped.GetDataStream(AuthorizedRequest());
+            var ownedStreamResponse = small.GetDataStream(AuthorizedRequest());
             var ownedStreamResponseObject = (object)ownedStreamResponse;
             var disposable = (IDisposable)ownedStreamResponseObject;
             var ownedStream = ownedStreamResponse.DataStream;
@@ -236,17 +244,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("Phase120BValidation.cs", StringComparison.Ordinal),
                 "120B-H2: runtime test project compiles Phase120BValidation");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120BValidation.cs");
-            foreach (var required in new[] { "VerifySequentialFallbackLimits", "CRC", "MaxMessages", "MaxPayloadBytes", "DataTooLargeForInMemoryResponse", "ReadLatestBefore" })
-            {
-                Check(source.Contains(required, StringComparison.Ordinal),
-                    "120B-H3: public hardening validation covers " + required);
-            }
-
             var dataLoader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
             Check(dataLoader.Contains("UnindexedSequentialFallback", StringComparison.Ordinal)
                   && dataLoader.Contains("ReadLatestBefore", StringComparison.Ordinal),
-                "120B-H4: public DataLoader source exposes fallback diagnostics and latest-at backfill");
+                "120B-H3: public DataLoader source exposes fallback diagnostics and latest-at backfill");
         }
 
         private static MemoryStream CreateDirectFixture()

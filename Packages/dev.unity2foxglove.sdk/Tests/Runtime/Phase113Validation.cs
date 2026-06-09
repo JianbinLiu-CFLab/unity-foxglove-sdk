@@ -94,33 +94,38 @@ namespace Unity.FoxgloveSDK.Tests
                 first.Types);
 
             FoxRunSchemaInfoRegistry.ClearForTests();
-            Check(!FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo
-                  && !FoxRunSchemaInfoRegistry.HasConflict
-                  && FoxRunSchemaInfoRegistry.Current == null,
-                "113-B1: registry starts empty after test clear");
+            try
+            {
+                Check(!FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo
+                      && !FoxRunSchemaInfoRegistry.HasConflict
+                      && FoxRunSchemaInfoRegistry.Current == null,
+                    "113-B1: registry starts empty after test clear");
 
-            FoxRunSchemaInfoRegistry.RegisterGenerated(first);
-            Check(FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo
-                  && FoxRunSchemaInfoRegistry.Current == first
-                  && FoxRunSchemaInfoRegistry.Current.GlobalManifestHash == ExpectedGlobalFixtureHash
-                  && FoxRunSchemaInfoRegistry.Current.TypeCount == 1
-                  && FoxRunSchemaInfoRegistry.Current.ContractCount == 1
-                  && FoxRunSchemaInfoRegistry.Current.FieldCount == 1,
-                "113-B2: registry exposes manifest hash and schema metadata without reflection");
+                FoxRunSchemaInfoRegistry.RegisterGenerated(first);
+                Check(FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo
+                      && FoxRunSchemaInfoRegistry.Current == first
+                      && FoxRunSchemaInfoRegistry.Current.GlobalManifestHash == ExpectedGlobalFixtureHash
+                      && FoxRunSchemaInfoRegistry.Current.TypeCount == 1
+                      && FoxRunSchemaInfoRegistry.Current.ContractCount == 1
+                      && FoxRunSchemaInfoRegistry.Current.FieldCount == 1,
+                    "113-B2: registry exposes manifest hash and schema metadata without reflection");
 
-            FoxRunSchemaInfoRegistry.RegisterGenerated(sameHash);
-            Check(!FoxRunSchemaInfoRegistry.HasConflict
-                  && FoxRunSchemaInfoRegistry.Current == first,
-                "113-B3: same-hash duplicate registration preserves the first manifest");
+                FoxRunSchemaInfoRegistry.RegisterGenerated(sameHash);
+                Check(!FoxRunSchemaInfoRegistry.HasConflict
+                      && FoxRunSchemaInfoRegistry.Current == first,
+                    "113-B3: same-hash duplicate registration preserves the first manifest");
 
-            FoxRunSchemaInfoRegistry.RegisterGenerated(conflicting);
-            Check(FoxRunSchemaInfoRegistry.HasConflict
-                  && FoxRunSchemaInfoRegistry.Current == first
-                  && FoxRunSchemaInfoRegistry.ConflictingHash == conflicting.GlobalManifestHash
-                  && FoxRunSchemaInfoRegistry.ConflictMessage.Contains("different manifest hash", StringComparison.Ordinal),
-                "113-B4: different-hash registration records conflict without replacing current manifest");
-
-            FoxRunSchemaInfoRegistry.ClearForTests();
+                FoxRunSchemaInfoRegistry.RegisterGenerated(conflicting);
+                Check(FoxRunSchemaInfoRegistry.HasConflict
+                      && FoxRunSchemaInfoRegistry.Current == first
+                      && FoxRunSchemaInfoRegistry.ConflictingHash == conflicting.GlobalManifestHash
+                      && FoxRunSchemaInfoRegistry.ConflictMessage.Contains("different manifest hash", StringComparison.Ordinal),
+                    "113-B4: different-hash registration records conflict without replacing current manifest");
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
         }
 
         private static void VerifyWriterFilesAndMeta()

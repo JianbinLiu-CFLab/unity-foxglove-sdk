@@ -144,8 +144,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Check(bool condition, string label)
         {
-            if (condition) { Console.WriteLine("[PASS] " + label); _passed++; }
-            else Console.WriteLine("[FAIL] " + label);
+            if (!condition)
+            {
+                Console.WriteLine("[FAIL] " + label);
+                throw new InvalidOperationException("Phase 137F validation failed: " + label);
+            }
+
+            Console.WriteLine("[PASS] " + label);
+            _passed++;
         }
 
         private sealed class ThrowOnStartTransport : IFoxgloveTransport

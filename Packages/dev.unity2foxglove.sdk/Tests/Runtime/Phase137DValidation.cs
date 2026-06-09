@@ -105,8 +105,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Check(bool condition, string label)
         {
-            if (condition) { Console.WriteLine("[PASS] " + label); _passed++; }
-            else Console.WriteLine("[FAIL] " + label);
+            if (!condition)
+            {
+                Console.WriteLine("[FAIL] " + label);
+                throw new InvalidOperationException("Phase 137D validation failed: " + label);
+            }
+
+            Console.WriteLine("[PASS] " + label);
+            _passed++;
         }
     }
 }

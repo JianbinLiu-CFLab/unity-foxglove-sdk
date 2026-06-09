@@ -8,6 +8,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -55,6 +58,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "115H-B1: validation registry wires --phase115h");
             Check(project.Contains("Phase115HValidation.cs", StringComparison.Ordinal),
                 "115H-B2: runtime test project compiles Phase115HValidation");
+            Check(
+                DocumentationContainsTerms(
+                    LongSummaryFixture(),
+                    "public sealed class LongSummaryFixture",
+                    "semantic", "descriptor"),
+                "115H-B3: documentation lookup is independent of fixed line-window size");
         }
 
         private static void VerifyVendoredLocalPatchGovernance()
@@ -235,22 +244,42 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckSummaryBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
             var text = ReadRepoText(relativePath);
-            var window = WindowBefore(text, declaration, 18);
-            var ok = window.Contains("/// <summary>", StringComparison.Ordinal)
-                     && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
-            Check(ok, message);
+            Check(DocumentationContainsTerms(text, declaration, requiredTerms), message);
         }
 
-        private static string WindowBefore(string text, string declaration, int lookbackLines)
+        private static bool DocumentationContainsTerms(string text, string declaration, params string[] requiredTerms)
         {
-            var normalized = text.Replace("\r\n", "\n");
-            var lines = normalized.Split('\n');
-            var index = Array.FindIndex(lines, line => line.Contains(declaration, StringComparison.Ordinal));
+            var index = text.IndexOf(declaration, StringComparison.Ordinal);
             if (index < 0)
                 throw new InvalidOperationException("Phase115H could not find declaration: " + declaration);
 
-            var start = Math.Max(0, index - lookbackLines);
-            return string.Join("\n", lines.Skip(start).Take(index - start));
+            var root = CSharpSyntaxTree.ParseText(text).GetRoot();
+            var declarationNode = root.FindToken(index).Parent?
+                .AncestorsAndSelf()
+                .OfType<MemberDeclarationSyntax>()
+                .FirstOrDefault();
+            if (declarationNode == null)
+                throw new InvalidOperationException("Phase115H could not resolve declaration syntax: " + declaration);
+
+            var documentation = declarationNode.GetLeadingTrivia()
+                .Select(trivia => trivia.GetStructure())
+                .OfType<DocumentationCommentTriviaSyntax>()
+                .FirstOrDefault();
+            var documentationText = documentation?.ToFullString();
+            return documentationText != null
+                   && requiredTerms.All(term =>
+                       documentationText.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static string LongSummaryFixture()
+        {
+            return "namespace Phase115HFixture\n{\n"
+                   + "    /// <summary>\n"
+                   + string.Join("\n", Enumerable.Repeat("    /// filler", 24))
+                   + "\n    /// semantic descriptor evidence\n"
+                   + "    /// </summary>\n"
+                   + "    public sealed class LongSummaryFixture { }\n"
+                   + "}\n";
         }
 
         private static string ReadRepoText(string relativePath)

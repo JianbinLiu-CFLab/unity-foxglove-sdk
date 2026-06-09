@@ -301,17 +301,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string FindRepoRoot()
         {
-            var dir = AppContext.BaseDirectory;
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, ".git"))
-                    || Directory.Exists(Path.Combine(dir, "Packages")))
-                    return dir;
-
-                dir = Directory.GetParent(dir)?.FullName;
-            }
-
-            throw new DirectoryNotFoundException("Could not find repository root.");
+            return Phase16Validation.FindRepoRoot()
+                   ?? throw new DirectoryNotFoundException("Could not find repository root.");
         }
 
         private static void Check(bool condition, string message)

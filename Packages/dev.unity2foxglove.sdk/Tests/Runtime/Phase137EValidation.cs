@@ -94,7 +94,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var count = 0;
                 foreach (var f in PartialFiles)
-                    if (File.ReadAllText(Path.Combine(Dir, f)).Contains("private static bool " + field + ";"))
+                    if (File.ReadAllText(Path.Combine(Dir, f)).Contains("private bool " + field + ";"))
                         count++;
                 Check(count == 1, "137E-6: " + field + " declared exactly once (found " + count + ")");
             }
@@ -140,8 +140,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void Check(bool condition, string label)
         {
-            if (condition) { Console.WriteLine("[PASS] " + label); _passed++; }
-            else Console.WriteLine("[FAIL] " + label);
+            if (!condition)
+            {
+                Console.WriteLine("[FAIL] " + label);
+                throw new InvalidOperationException("Phase 137E validation failed: " + label);
+            }
+
+            Console.WriteLine("[PASS] " + label);
+            _passed++;
         }
     }
 }

@@ -47,11 +47,9 @@ namespace Unity.FoxgloveSDK.Tests
             Limitations.Clear();
 
             Directory.CreateDirectory(CompatDir());
-            VerifyReportSchemaSurface();
             VerifyValidationWiring();
             VerifyPriorPhaseHooks();
             VerifyPublicParitySurface();
-            VerifyCompatibilityClaimLedger();
 
             var unityChunked = CreateUnityChunkedFixture();
             var unityDirect = CreateUnityDirectFixture();
@@ -68,29 +66,24 @@ namespace Unity.FoxgloveSDK.Tests
             Limitations.Add("Foxglove Desktop manual visual open is deferred.");
             Limitations.Add("Production Remote Data Loader, cloud cache, range serving, organization auth, and Remote Access Gateway remain out of scope.");
 
+            VerifyReportSchemaSurface(includeOfficialPython);
+            VerifyCompatibilityClaimLedger();
             WriteReport(includeOfficialPython);
             Console.WriteLine($"Phase 120: {_passed} checks passed.");
         }
 
-        private static void VerifyReportSchemaSurface()
+        private static void VerifyReportSchemaSurface(bool includeOfficialPython)
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120Validation.cs");
-            foreach (var required in new[]
-            {
-                "PASS WITH NOTED LIMITATIONS",
-                "externalToolingStatus",
-                "coreChecks",
-                "optionalChecks",
-                "fixtures",
-                "limitations",
-                "phase120-report.json"
-            })
-            {
-                Check(source.Contains(required, StringComparison.Ordinal),
-                    "120-A1: compatibility report surface contains " + required);
-            }
+            var report = JObject.Parse(JsonConvert.SerializeObject(CreateReport(includeOfficialPython)));
+            Check((string)report["verdict"] == "PASS WITH NOTED LIMITATIONS"
+                  && report["coreChecks"]?.Type == JTokenType.Array
+                  && report["optionalChecks"]?.Type == JTokenType.Array
+                  && report["officialTooling"]?.Type == JTokenType.String
+                  && report["fixtures"]?.Type == JTokenType.Array
+                  && report["limitations"]?.Type == JTokenType.Array,
+                "120-A1: serialized compatibility report exposes the required typed schema");
 
-            AddCore("phase120-report-schema", "passed", "Compatibility report schema is enforced by tracked validation source.");
+            AddCore("phase120-report-schema", "passed", "Compatibility report schema is enforced by serialized report behavior.");
         }
 
         private static void VerifyValidationWiring()
@@ -152,12 +145,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCompatibilityClaimLedger()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase120Validation.cs");
-            Check(source.Contains("Foxglove Desktop manual visual open is deferred", StringComparison.Ordinal)
-                  && source.Contains("Production Remote Data Loader, cloud cache, range serving, organization auth, and Remote Access Gateway remain out of scope.", StringComparison.Ordinal),
+            Check(Limitations.Contains("Foxglove Desktop manual visual open is deferred.")
+                  && Limitations.Contains("Production Remote Data Loader, cloud cache, range serving, organization auth, and Remote Access Gateway remain out of scope."),
                 "120-E1: claim ledger records explicit non-claims");
-            Check(source.Contains("Run --phase120-official to execute Python mcap interop.", StringComparison.Ordinal)
-                  && source.Contains("Local readers opened generated fixture.", StringComparison.Ordinal),
+            Check(OptionalChecks.Any(check =>
+                      check.name == "official-python-interop"
+                      && check.details.Contains("Run --phase120-official", StringComparison.Ordinal))
+                  && CoreChecks.Any(check =>
+                      check.details == "Local readers opened generated fixture."),
                 "120-E2: claim ledger records allowed local compatibility claims");
             AddCore("claim-ledger", "passed", "Claim ledger distinguishes supported claims from non-claims.");
         }
@@ -366,7 +361,14 @@ print(json.dumps({
 
         private static void WriteReport(bool includeOfficialPython)
         {
-            var report = new Phase120Report
+            var path = Path.Combine(CompatDir(), "phase120-report.json");
+            File.WriteAllText(path, JsonConvert.SerializeObject(CreateReport(includeOfficialPython), Formatting.Indented), Encoding.UTF8);
+            Check(File.Exists(path), "120-H1: phase120-report.json is written");
+        }
+
+        private static Phase120Report CreateReport(bool includeOfficialPython)
+        {
+            return new Phase120Report
             {
                 verdict = Limitations.Count == 0 ? "PASS" : "PASS WITH NOTED LIMITATIONS",
                 generatedAtUtc = DateTime.UtcNow.ToString("o"),
@@ -378,10 +380,6 @@ print(json.dumps({
                 manualChecks = "Foxglove Desktop manual open skipped/deferred",
                 limitations = Limitations
             };
-
-            var path = Path.Combine(CompatDir(), "phase120-report.json");
-            File.WriteAllText(path, JsonConvert.SerializeObject(report, Formatting.Indented), Encoding.UTF8);
-            Check(File.Exists(path), "120-H1: phase120-report.json is written");
         }
 
         private static string FindPython()

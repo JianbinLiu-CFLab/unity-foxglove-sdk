@@ -134,14 +134,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             runtime.Start(enabled: true, autoConnect: true);
             Check(runtime.TryEnqueue(CreateFrame("/unity/tf", 1), out _), "95C-1: runtime enqueues before reconnect succeeds");
-            Check(WaitUntil(() => factory.AllSentFrames.Count == 1, BackgroundRuntimeTimeoutMs),
+            Check(WaitUntil(() => factory.SentFrameCount == 1, BackgroundRuntimeTimeoutMs),
                 "95C-2: runtime reconnects and sends queued frame");
             var stats = runtime.GetStatsSnapshot();
             Check(stats.Connected && stats.SentFrames == 1 && stats.FailedFrames == 0,
                 "95C-3: reconnect failures do not count as frame send failures");
 
             runtime.Stop();
-            Check(factory.DisconnectCalls > 0, "95C-4: runtime disconnects sink on Stop");
+            Check(factory.DisconnectCalls > 0 && factory.DisposeCalls > 0 && factory.DisconnectedBeforeDispose,
+                "95C-4: runtime disconnects sink before disposing it on Stop");
         }
 
         private static void VerifyRuntimeStopDisposesLateConnectedSink()
@@ -198,9 +199,9 @@ namespace Unity.FoxgloveSDK.Tests
             var publisher = new Ros2BridgePublisher(runtime);
             publisher.Publish("/unity/tf", "foxglove_msgs/msg/FrameTransform", CreateFrameTransformSample(), SampleTimeNs);
 
-            Check(WaitUntil(() => factory.AllSentFrames.Count == 1, BackgroundRuntimeTimeoutMs),
+            Check(WaitUntil(() => factory.SentFrameCount == 1, BackgroundRuntimeTimeoutMs),
                 "95D-1: Ros2BridgePublisher can use background runtime sink");
-            var frame = factory.AllSentFrames[0];
+            var frame = factory.GetSentFrame(0);
             Check(frame.Topic == "/unity/tf" && frame.SchemaName == "foxglove_msgs/msg/FrameTransform",
                 "95D-2: runtime-backed publisher preserves topic and schema");
             Check(frame.Payload.Length > 4 && frame.Payload[0] == 0 && frame.Payload[1] == 1,
@@ -406,9 +407,30 @@ namespace Unity.FoxgloveSDK.Tests
         private sealed class FakeSinkFactory
         {
             private readonly object _gate = new object();
-            public readonly List<Ros2BridgeFrame> AllSentFrames = new List<Ros2BridgeFrame>();
+            private readonly List<Ros2BridgeFrame> _allSentFrames = new List<Ros2BridgeFrame>();
             public int ConnectFailuresRemaining;
             public int DisconnectCalls;
+            public int DisposeCalls;
+            public bool DisconnectedBeforeDispose;
+
+            public int SentFrameCount
+            {
+                get
+                {
+                    lock (_gate)
+                    {
+                        return _allSentFrames.Count;
+                    }
+                }
+            }
+
+            public Ros2BridgeFrame GetSentFrame(int index)
+            {
+                lock (_gate)
+                {
+                    return _allSentFrames[index];
+                }
+            }
 
             /// <summary>
             /// Validation method for Create.
@@ -422,6 +444,8 @@ namespace Unity.FoxgloveSDK.Tests
             private sealed class FakeSink : IRos2BridgeSink
             {
                 private readonly FakeSinkFactory _owner;
+                private bool _disconnectCalled;
+
                 /// <summary>
                 /// Validation constructor for FakeSink.
                 /// </summary>
@@ -460,7 +484,7 @@ namespace Unity.FoxgloveSDK.Tests
                         throw new InvalidOperationException("not connected");
                     lock (_owner._gate)
                     {
-                        _owner.AllSentFrames.Add(frame);
+                        _owner._allSentFrames.Add(frame);
                     }
                 }
 
@@ -472,6 +496,7 @@ namespace Unity.FoxgloveSDK.Tests
                     IsConnected = false;
                     lock (_owner._gate)
                     {
+                        _disconnectCalled = true;
                         _owner.DisconnectCalls++;
                     }
                 }
@@ -479,7 +504,15 @@ namespace Unity.FoxgloveSDK.Tests
                 /// <summary>
                 /// Validation method for Dispose.
                 /// </summary>
-                public void Dispose() => Disconnect();
+                public void Dispose()
+                {
+                    lock (_owner._gate)
+                    {
+                        _owner.DisposeCalls++;
+                        if (_disconnectCalled)
+                            _owner.DisconnectedBeforeDispose = true;
+                    }
+                }
             }
         }
 

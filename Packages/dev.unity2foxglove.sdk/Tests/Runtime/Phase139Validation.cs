@@ -5,6 +5,7 @@
 // Purpose: Phase 139 validation for end-to-end smoke harness contracts.
 
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -142,24 +143,38 @@ namespace Unity.FoxgloveSDK.Tests
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(start);
-            if (process == null)
-                throw new InvalidOperationException("Could not start Python self-test.");
-
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit(10_000);
-
-            if (!process.HasExited)
+            Process process;
+            try
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                throw new InvalidOperationException("Phase139 Python self-test timed out.");
+                process = Process.Start(start);
+            }
+            catch (Win32Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Phase139 Python self-test could not start '" + python + "'. " +
+                    "Install Python or set PYTHON to a valid executable before running --phase139.",
+                    ex);
             }
 
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("Phase139 Python self-test failed: " + output + error);
+            if (process == null)
+                throw new InvalidOperationException("Could not start Python self-test.");
+            using (process)
+            {
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit(10_000);
 
-            return output + error;
+                if (!process.HasExited)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    throw new InvalidOperationException("Phase139 Python self-test timed out.");
+                }
+
+                if (process.ExitCode != 0)
+                    throw new InvalidOperationException("Phase139 Python self-test failed: " + output + error);
+
+                return output + error;
+            }
         }
 
         private static string ResolvePythonExecutable()

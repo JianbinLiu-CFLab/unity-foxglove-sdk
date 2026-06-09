@@ -53,8 +53,6 @@ namespace Unity.FoxgloveSDK.Tests
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var adapter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs");
-            var validation = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase115GValidation.cs");
-
             Check(controller.Contains("event Action<ReplayBatchContext> OnReplayBatchCompleted", StringComparison.Ordinal)
                   && runtime.Contains("event Action<ReplayBatchContext> OnReplayBatchCompleted", StringComparison.Ordinal)
                   && manager.Contains("Action<ReplayBatchContext> OnReplayBatchCompleted", StringComparison.Ordinal)
@@ -66,9 +64,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && !adapter.Contains("LogTimeNs <= context.ReplayStartTimeNs", StringComparison.Ordinal),
                 "115G-B2: scene pose deferral flushes by replay batch boundary, not timestamp advancement");
 
-            Check(validation.Contains("scene primitive pose and frame-transform pose for the same resolved Transform", StringComparison.Ordinal)
-                  || validation.Contains("MixedInitialBatch", StringComparison.Ordinal),
-                "115G-B3: validation documents mixed scene/frame initial-batch ownership ordering");
+            var arbiter = new ReplayPoseOwnershipArbiter();
+            var sceneDecision = arbiter.OfferPose(
+                115,
+                20,
+                ReplayChannelBehavior.ScenePrimitivePose,
+                100,
+                ReplayPoseSample.CreatePosition(1, 2, 3));
+            var frameDecision = arbiter.OfferPose(
+                115,
+                10,
+                ReplayChannelBehavior.FrameTransformPose,
+                100,
+                ReplayPoseSample.CreatePosition(4, 5, 6));
+            Check(sceneDecision.Kind == ReplayPoseOwnershipDecisionKind.Hold
+                  && frameDecision.Kind == ReplayPoseOwnershipDecisionKind.Apply
+                  && frameDecision.OwnerChannelId == 10
+                  && arbiter.EndInitDeferral().Count == 0,
+                "115G-B3: mixed initial batch gives frame-transform ownership over deferred scene pose");
         }
 
         private static void VerifyReplayTickDoesNotSplitLogTimeGroups()
@@ -369,20 +382,10 @@ public partial class NestedObjectProbe
 
         private static string RepoPath(string relativePath)
         {
-            var dir = AppContext.BaseDirectory;
-            while (!string.IsNullOrEmpty(dir))
-            {
-                var candidate = Path.Combine(dir, relativePath.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(candidate))
-                    return candidate;
-
-                var parent = Directory.GetParent(dir);
-                if (parent == null)
-                    break;
-                dir = parent.FullName;
-            }
-
-            return Path.GetFullPath(relativePath);
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase115G validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
     }
 }

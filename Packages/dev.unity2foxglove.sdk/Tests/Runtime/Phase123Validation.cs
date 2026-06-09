@@ -161,13 +161,17 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             using (var stream = new CountingSeekStream(new MemoryStream(direct)))
-            using (var indexed = new McapIndexedReader(stream, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests))
             {
-                stream.ResetSeekToStartCount();
-                Check(indexed.ReadMessages().Count == 3
-                      && indexed.ReadLatestBefore(new McapReadOptions { EndTimeNs = 30 }).Count == 1
-                      && stream.SeekToStartCount == 1,
-                    "123-D3: non-index linear fallback caches one full scan across read and latest-at queries");
+                using (var indexed = new McapIndexedReader(stream, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests))
+                {
+                    stream.ResetSeekToStartCount();
+                    Check(indexed.ReadMessages().Count == 3
+                          && indexed.ReadLatestBefore(new McapReadOptions { EndTimeNs = 30 }).Count == 1
+                          && stream.SeekToStartCount == 1,
+                        "123-D3: non-index linear fallback caches one full scan across read and latest-at queries");
+                }
+
+                Check(!stream.CanRead, "123-D3b: CountingSeekStream forwards owned-stream disposal");
             }
 
             var chunked = TempMcap(CreateTimedSample(new McapWriterOptions { ChunkSizeBytes = 96 }));
@@ -400,6 +404,13 @@ namespace Unity.FoxgloveSDK.Tests
             /// <param name="offset">Zero-based offset used by the stream operation.</param>
             /// <param name="count">Number of bytes to read or write.</param>
             public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                    _inner.Dispose();
+                base.Dispose(disposing);
+            }
         }
 
         private sealed class NonSeekableReadStream : Stream

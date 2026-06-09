@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static void Validate()
         {
             Console.WriteLine("--- Phase 11 Tests ---");
+            _passCount = 0;
 
             TestCompressionRoundtrip();
             TestBinaryReaderHelpers();

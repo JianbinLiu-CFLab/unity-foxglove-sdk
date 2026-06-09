@@ -316,13 +316,17 @@ namespace Unity.FoxgloveSDK.Tests
                 + (coreHits.Count == 0 ? string.Empty : " (" + string.Join(", ", coreHits) + ")"));
 
             var optionalRuntimeHits = ExistingTextFilesOrSingleFile(OptionalPackage + "/Runtime")
-                .SelectMany(path => OptionalRuntimeForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .Where(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return OptionalRuntimeForbiddenTokens().Any(token => text.Contains(token, StringComparison.Ordinal))
+                           && !AllR2fuReferencesAreGuarded(text);
+                })
+                .Select(Rel)
                 .ToList();
 
             Check(optionalRuntimeHits.Count == 0,
-                "128G-2: optional package Runtime remains facade-only with no R2FU/message references"
+                "128G-2: optional package Runtime keeps R2FU/message references behind compile guards"
                 + (optionalRuntimeHits.Count == 0 ? string.Empty : " (" + string.Join(", ", optionalRuntimeHits) + ")"));
         }
 

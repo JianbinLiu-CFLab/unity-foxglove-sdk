@@ -24,7 +24,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase114Validation
     {
-        private const string ExpectedFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
+        private const string ExpectedGlobalFixtureHash = "9a0f11b37e2893c60aadd6edddf6b83cae27407041c8a5dc413579ead7a1d58e";
+        private const string ExpectedFoxRunFixtureHash = "653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d";
         private const string MismatchedHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private const string MetadataRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs";
         private const string RecordingControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs";
@@ -68,12 +69,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && (int)parsed["generatorMajorVersion"] == 1,
                 "114-A2: metadata JSON includes schema and generator versions");
 
-            Check((string)parsed["globalManifestHash"] == ExpectedFixtureHash
-                  && (string)parsed["manifestHash"] == ExpectedFixtureHash
+            Check((string)parsed["globalManifestHash"] == ExpectedGlobalFixtureHash
+                  && (string)parsed["manifestHash"] == ExpectedFoxRunFixtureHash
                   && (int)parsed["typeCount"] == 1
                   && (int)parsed["contractCount"] == 1
                   && (int)parsed["fieldCount"] == 1,
-                "114-A3: metadata JSON includes manifest hashes and counts");
+                "114-A3: metadata JSON preserves distinct global and FoxRun manifest hashes");
 
             var contract = (JObject)parsed["contracts"][0];
             Check((string)contract["topic"] == "/phase112/battery"
@@ -92,7 +93,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(FoxRunSchemaMcapMetadata.TryParseJson(json, out var record, out var error)
                   && string.IsNullOrEmpty(error)
-                  && record.GlobalManifestHash == ExpectedFixtureHash
+                  && record.GlobalManifestHash == ExpectedGlobalFixtureHash
+                  && record.ManifestHash == ExpectedFoxRunFixtureHash
                   && record.Contracts.Count == 1,
                 "114-A6: metadata JSON parses back into the runtime record DTO");
         }
@@ -123,8 +125,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(mismatch.State == FoxRunReplaySchemaGuardState.Mismatch
                   && mismatch.IsBlocking
                   && mismatch.Message.Contains("FoxRun replay schema mismatch.", StringComparison.Ordinal)
-                  && mismatch.Message.Contains("Recorded: 000000000000", StringComparison.Ordinal)
-                  && mismatch.Message.Contains("Current:  653e287d1f7a", StringComparison.Ordinal),
+                  && mismatch.Message.Contains("Recorded: " + MismatchedHash.Substring(0, 12), StringComparison.Ordinal)
+                  && mismatch.Message.Contains("Current:  " + ExpectedGlobalFixtureHash.Substring(0, 12), StringComparison.Ordinal),
                 "114-B5: global manifest hash mismatch blocks replay with short-hash diagnostics");
 
             var editedDiagnostic = JObject.Parse(matchingJson);
@@ -191,8 +193,8 @@ namespace Unity.FoxgloveSDK.Tests
                 var metadataIndex = indexed.MetadataIndexes.Single(x => x.Name == FoxRunSchemaMcapMetadata.MetadataName);
                 var metadata = indexed.ReadMetadata(metadataIndex);
                 Check(metadata.Metadata.TryGetValue("value", out var value)
-                      && value.Contains(ExpectedFixtureHash, StringComparison.Ordinal),
-                    "114-D2: recorded FoxRun schema metadata includes current global manifest hash");
+                      && value.Contains(ExpectedFoxRunFixtureHash, StringComparison.Ordinal),
+                    "114-D2: recorded FoxRun schema metadata includes current FoxRun manifest hash");
             }
             finally
             {
@@ -383,7 +385,7 @@ namespace Unity.FoxgloveSDK.Tests
             => Path.Combine(Path.GetTempPath(), "unity2foxglove-phase114-" + label + "-" + Guid.NewGuid().ToString("N") + ".mcap");
 
         private static FoxRunSchemaManifestInfo FixtureRuntimeInfo()
-            => ToRuntimeInfo(FixtureManifest(), ExpectedFixtureHash);
+            => ToRuntimeInfo(FixtureManifest(), ExpectedGlobalFixtureHash);
 
         private static FoxRunSchemaManifestInfo MismatchedRuntimeInfo()
             => ToRuntimeInfo(FixtureManifest(), MismatchedHash);

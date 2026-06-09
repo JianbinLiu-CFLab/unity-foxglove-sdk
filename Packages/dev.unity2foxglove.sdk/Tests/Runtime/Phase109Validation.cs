@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -191,7 +190,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTrackedAssetBoundary()
         {
-            var forbiddenTracked = GitLsFiles()
+            var forbiddenTracked = PhaseRos2ForUnityValidationHelpers.GitLsFiles(RepoRoot())
                 .Where(path => path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)
                                || IsForbiddenR2fuArtifact(path)
                                || IsOptionalPackageRuntimeBinary(path))
@@ -295,35 +294,6 @@ namespace Unity.FoxgloveSDK.Tests
                    || extension.Equals(".unitypackage", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static IReadOnlyList<string> GitLsFiles()
-        {
-            var root = RepoRoot();
-            var start = new ProcessStartInfo("git", "ls-files")
-            {
-                WorkingDirectory = root,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(start);
-            if (process == null)
-                throw new InvalidOperationException("Could not start git ls-files.");
-
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("git ls-files failed: " + error);
-
-            return output.Replace("\r\n", "\n")
-                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(path => path.Replace('\\', '/'))
-                .ToList();
         }
 
         private static bool HasTextExtension(string path)

@@ -372,10 +372,21 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string GeneratedSourceText(IReadOnlyList<GeneratedSourceResult> sources, string hintName)
-            => sources.First(source => source.HintName == hintName).SourceText.ToString();
+        {
+            var source = sources.FirstOrDefault(candidate => candidate.HintName == hintName);
+            if (source.HintName == null)
+                throw new InvalidOperationException("Generated source is missing expected hint: " + hintName);
+            return source.SourceText.ToString();
+        }
 
         private static string GeneratedFoxRunSource(IReadOnlyList<GeneratedSourceResult> sources)
-            => sources.First(source => source.HintName.EndsWith("_FoxRun.g.cs", StringComparison.Ordinal)).SourceText.ToString();
+        {
+            var source = sources.FirstOrDefault(candidate =>
+                candidate.HintName.EndsWith("_FoxRun.g.cs", StringComparison.Ordinal));
+            if (source.HintName == null)
+                throw new InvalidOperationException("Generated sources do not contain an expected *_FoxRun.g.cs hint.");
+            return source.SourceText.ToString();
+        }
 
         private static FoxRunGenerationModel BuildReflectionModelFromFixtureAssembly()
         {

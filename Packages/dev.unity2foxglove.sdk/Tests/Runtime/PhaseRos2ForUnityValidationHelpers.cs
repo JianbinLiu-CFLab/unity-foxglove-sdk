@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -51,6 +52,36 @@ namespace Unity.FoxgloveSDK.Tests
                    || path.EndsWith(LegacyHumbleArtifactName, StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static IReadOnlyList<string> GitLsFiles(string repoRoot)
+        {
+            if (string.IsNullOrWhiteSpace(repoRoot))
+                throw new ArgumentException("Repository root is required.", nameof(repoRoot));
+
+            var start = new ProcessStartInfo("git", "ls-files")
+            {
+                WorkingDirectory = repoRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(start);
+            if (process == null)
+                throw new InvalidOperationException("Could not start git ls-files.");
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException("git ls-files failed: " + error);
+
+            return output.Replace("\r\n", "\n")
+                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(path => path.Replace('\\', '/'))
+                .ToList();
         }
 
         public static bool AllR2fuReferencesAreGuarded(
@@ -102,6 +133,7 @@ namespace Unity.FoxgloveSDK.Tests
                         continue;
 
                     var previous = stack.Pop();
+                    // `#else` is define-guarded only after an earlier branch required !define.
                     stack.Push(new GuardFrame(
                         previous.ParentGuarded,
                         previous.ParentGuarded || previous.PriorRequiresNotDefine,

@@ -169,7 +169,9 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IRangePlaybackClock _clock;
 
         /// <summary>
-        /// Load an MCAP file for replay with the default Strict schema identity mode.
+        /// Load an MCAP file for replay with the selected schema identity mode.
+        /// Strict blocks schema mismatches, Warn reports them and continues, and Off
+        /// skips schema identity comparison. The default mode is Strict.
         /// Recording-state and coordinate-mode values are read from the injected
         /// <see cref="IRecordingStateReader"/>.
         /// </summary>

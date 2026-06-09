@@ -385,6 +385,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int FindFreeLoopbackPort()
         {
+            // RemoteMcapHttpServer currently validates ports as 1..65535 and
+            // does not expose the actual bound port for a port-0 listener, so
+            // this helper knowingly accepts the short free-port TOCTOU window.
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             try

@@ -463,8 +463,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerPublishing.Contains("GetOrRegisterRos2MsgSchemaChannel")
                   && !managerPublishing.Contains("GetOrRegisterSchemaChannel(topic, schemaName, CdrEncoding)"),
                 "91G-3: manager uses a dedicated ros2msg CDR channel helper");
-            Check(sessionText.Contains("Ros2CdrPayloadValidator.Validate(payload);")
-                  && !sessionText.Contains("PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)\n        {\n            payload ??="),
+            var publishRos2CdrBody = SourceMethodBody(sessionText, "PublishRos2Cdr");
+            Check(publishRos2CdrBody.Contains("Ros2CdrPayloadValidator.Validate(payload);", StringComparison.Ordinal)
+                  && !publishRos2CdrBody.Contains("payload ??=", StringComparison.Ordinal),
                 "91G-4: PublishRos2Cdr validates payload without null-coalescing to empty");
         }
 
@@ -615,6 +616,31 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool SourceTreeAvoids(string root, params string[] needles)
             => !SourceTreeContains(root, needles);
+
+        private static string SourceMethodBody(string source, string methodName)
+        {
+            var idx = source.IndexOf(methodName, StringComparison.Ordinal);
+            if (idx < 0)
+                return string.Empty;
+            var braceStart = source.IndexOf('{', idx);
+            if (braceStart < 0)
+                return string.Empty;
+
+            var depth = 0;
+            for (var i = braceStart; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(braceStart, i - braceStart + 1);
+                }
+            }
+
+            return source.Substring(braceStart);
+        }
 
         private sealed class Phase91Sample
         {

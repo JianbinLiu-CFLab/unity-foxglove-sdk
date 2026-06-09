@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -117,10 +116,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(GetStringProperty(publisher, "Topic") == "/unity2foxglove/phase108/out",
                 "108-B4: unavailable publisher preserves topic");
             var tryPublish = publisher.GetType().GetMethod("TryPublish", new[] { typeof(string), typeof(string).MakeByRefType() });
+            Check(tryPublish != null, "108-B5: unavailable publisher exposes TryPublish(string, out string)");
+            if (tryPublish == null)
+                return;
             var publishArgs = new object[] { "hello", null };
             var published = (bool)tryPublish.Invoke(publisher, publishArgs);
             Check(!published && !string.IsNullOrWhiteSpace((string)publishArgs[1]),
-                "108-B5: unavailable publisher TryPublish returns false with error");
+                "108-B6: unavailable publisher TryPublish returns false with error");
 
             var received = false;
             var subscription = InvokeGeneric(
@@ -130,7 +132,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "/unity2foxglove/phase108/in",
                 new Action<string>(_ => received = true));
             Check(GetStringProperty(subscription, "Topic") == "/unity2foxglove/phase108/in" && !received,
-                "108-B6: unavailable subscription preserves topic without invoking callback");
+                "108-B7: unavailable subscription preserves topic without invoking callback");
 
             try
             {
@@ -138,11 +140,11 @@ namespace Unity.FoxgloveSDK.Tests
                 DisposeTwice(subscription);
                 DisposeTwice(node);
                 DisposeTwice(context);
-                Check(true, "108-B7: unavailable facade Dispose methods are idempotent");
+                Check(true, "108-B8: unavailable facade Dispose methods are idempotent");
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("108-B7: unavailable facade Dispose methods are idempotent", ex);
+                throw new InvalidOperationException("108-B8: unavailable facade Dispose methods are idempotent", ex);
             }
         }
 
@@ -225,7 +227,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBinaryBoundary()
         {
-            var tracked = GitLsFiles();
+            var tracked = PhaseRos2ForUnityValidationHelpers.GitLsFiles(RepoRoot());
             var forbiddenTracked = tracked
                 .Where(path => path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)
                                || IsForbiddenR2fuArtifact(path)
@@ -315,35 +317,6 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var text = ReadRepoText(relativePath);
             return JObject.Parse(text);
-        }
-
-        private static IReadOnlyList<string> GitLsFiles()
-        {
-            var root = RepoRoot();
-            var start = new ProcessStartInfo("git", "ls-files")
-            {
-                WorkingDirectory = root,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(start);
-            if (process == null)
-                throw new InvalidOperationException("Could not start git ls-files.");
-
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("git ls-files failed: " + error);
-
-            return output.Replace("\r\n", "\n")
-                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(path => path.Replace('\\', '/'))
-                .ToList();
         }
 
         private static bool HasTextExtension(string path)

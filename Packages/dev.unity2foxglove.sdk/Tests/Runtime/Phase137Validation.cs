@@ -232,6 +232,7 @@ namespace Unity.FoxgloveSDK.Tests
             else
             {
                 Console.WriteLine("[FAIL] " + label);
+                throw new InvalidOperationException("Phase 137 validation failed: " + label);
             }
         }
     }
