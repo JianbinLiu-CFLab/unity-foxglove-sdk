@@ -5,6 +5,7 @@
 // Purpose: Routes embedded Remote Data Loader HTTP requests to MCAP manifest/data operations.
 
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -58,12 +59,11 @@ namespace Unity.FoxgloveSDK.IO
                 return WriteTextAsync(context.Response, HttpStatusCode.MethodNotAllowed, "GET is required for /v1/manifest.");
 
             var request = BuildRequest(context);
-            var manifest = _source.GetManifest(request);
-            if (manifest.Status != RemoteMcapResponseStatus.Ok)
-                return WriteTextAsync(context.Response, ToHttpStatus(manifest.Status), FirstProblem(manifest.Problems));
+            var bytes = _source.GetManifestBytes(request, out var error);
+            if (error != null)
+                return WriteTextAsync(context.Response, ToHttpStatus(error.Status), FirstProblem(error.Problems));
 
-            var json = RemoteMcapOfficialManifestSerializer.Serialize(manifest.Manifest);
-            return WriteBytesAsync(context.Response, HttpStatusCode.OK, "application/json", Encoding.UTF8.GetBytes(json));
+            return WriteBytesAsync(context.Response, HttpStatusCode.OK, "application/json", bytes);
         }
 
         private async Task HandleDataAsync(HttpListenerContext context)
@@ -259,17 +259,24 @@ namespace Unity.FoxgloveSDK.IO
                     }
                     else
                     {
-                        var buffer = new byte[81920];
-                        var remaining = maxBytes;
-                        while (remaining > 0)
+                        var buffer = ArrayPool<byte>.Shared.Rent(81920);
+                        try
                         {
-                            var readSize = remaining < buffer.Length ? (int)remaining : buffer.Length;
-                            var read = await source.ReadAsync(buffer, 0, readSize).ConfigureAwait(false);
-                            if (read <= 0)
-                                break;
+                            var remaining = maxBytes;
+                            while (remaining > 0)
+                            {
+                                var readSize = remaining < buffer.Length ? (int)remaining : buffer.Length;
+                                var read = await source.ReadAsync(buffer, 0, readSize).ConfigureAwait(false);
+                                if (read <= 0)
+                                    break;
 
-                            await response.OutputStream.WriteAsync(buffer, 0, read).ConfigureAwait(false);
-                            remaining -= read;
+                                await response.OutputStream.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+                                remaining -= read;
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<byte>.Shared.Return(buffer);
                         }
                     }
                 }
@@ -287,7 +294,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private static async Task WriteBytesAsync(HttpListenerResponse response, HttpStatusCode status, string contentType, byte[] body)
         {
-            var bytes = body ?? new byte[0];
+            var bytes = body ?? Array.Empty<byte>();
             response.StatusCode = (int)status;
             response.ContentType = contentType;
             response.ContentLength64 = bytes.Length;

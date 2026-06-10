@@ -111,11 +111,11 @@ namespace Unity.FoxgloveSDK.IO
         public string Text = string.Empty;
 
         /// <summary>Original raw payload bytes.</summary>
-        public byte[] RawData = new byte[0];
+        public byte[] RawData = Array.Empty<byte>();
 
         /// <summary>Create a raw payload view.</summary>
         public static McapDecodedPayload Raw(byte[] rawData)
-            => new McapDecodedPayload { Kind = McapDecodedPayloadKind.Raw, RawData = rawData ?? new byte[0] };
+            => new McapDecodedPayload { Kind = McapDecodedPayloadKind.Raw, RawData = rawData ?? Array.Empty<byte>() };
     }
 
     /// <summary>Schema-aware diagnostic view for ROS2 CDR payloads.</summary>

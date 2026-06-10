@@ -75,7 +75,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (schema == null)
                     continue;
 
-                var data = schema.Data ?? new byte[0];
+                var data = schema.Data ?? Array.Empty<byte>();
                 source.Schemas.Add(new RemoteMcapSchema
                 {
                     Id = schema.SchemaId,

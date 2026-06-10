@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.IO
@@ -25,6 +26,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly long _maxInMemoryDataBytes;
         private readonly object _manifestCacheGate = new object();
         private RemoteMcapManifest _cachedManifest;
+        private byte[] _cachedManifestBytes;
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
 
@@ -77,6 +79,29 @@ namespace Unity.FoxgloveSDK.IO
                 Authorization = authorization,
                 Manifest = GetCachedManifest()
             };
+        }
+
+        internal byte[] GetManifestBytes(RemoteMcapRequest request, out RemoteMcapManifestResponse error)
+        {
+            request = request ?? new RemoteMcapRequest();
+            if (IsUnsupportedMultiSource(request))
+            {
+                error = ManifestProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
+                    "Phase 119 prototype supports one local MCAP source only.");
+                return Array.Empty<byte>();
+            }
+
+            var authorization = Authorize(request);
+            if (!authorization.Allowed)
+            {
+                error = ManifestProblem(RemoteMcapResponseStatus.Unauthorized, "Unauthorized",
+                    "Manifest request is not authorized for this MCAP source.");
+                error.Authorization = authorization;
+                return Array.Empty<byte>();
+            }
+
+            error = null;
+            return GetCachedManifestBytes();
         }
 
         /// <summary>Returns the complete MCAP file as bytes when it is within the configured memory cap.</summary>
@@ -274,9 +299,44 @@ namespace Unity.FoxgloveSDK.IO
                 }
 
                 _cachedManifest = CloneManifest(manifest);
+                _cachedManifestBytes = null;
                 _cachedManifestLength = cacheLength;
                 _cachedManifestLastWriteUtc = cacheLastWriteUtc;
                 return CloneManifest(manifest);
+            }
+        }
+
+        private byte[] GetCachedManifestBytes()
+        {
+            var info = new FileInfo(_mcapPath);
+            lock (_manifestCacheGate)
+            {
+                if (_cachedManifestBytes != null
+                    && _cachedManifestLength == (info.Exists ? info.Length : 0L)
+                    && _cachedManifestLastWriteUtc == (info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue))
+                {
+                    return _cachedManifestBytes;
+                }
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(RemoteMcapOfficialManifestSerializer.Serialize(GetCachedManifest()));
+            info.Refresh();
+            var cacheLength = info.Exists ? info.Length : 0L;
+            var cacheLastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue;
+
+            lock (_manifestCacheGate)
+            {
+                if (_cachedManifestBytes != null
+                    && _cachedManifestLength == cacheLength
+                    && _cachedManifestLastWriteUtc == cacheLastWriteUtc)
+                {
+                    return _cachedManifestBytes;
+                }
+
+                _cachedManifestBytes = bytes;
+                _cachedManifestLength = cacheLength;
+                _cachedManifestLastWriteUtc = cacheLastWriteUtc;
+                return _cachedManifestBytes;
             }
         }
 

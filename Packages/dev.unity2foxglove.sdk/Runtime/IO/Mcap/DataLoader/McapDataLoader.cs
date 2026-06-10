@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.IO
             ThrowIfDisposed();
             Initialize();
             if (!QueryCanMatch(query?.ChannelIds, query?.Topics))
-                return new List<McapDataLoaderMessage>();
+                return Array.Empty<McapDataLoaderMessage>();
 
             var messages = _reader.ReadMessages(ToReadOptions(query));
             var result = new List<McapDataLoaderMessage>(messages.Count);
@@ -162,7 +162,7 @@ namespace Unity.FoxgloveSDK.IO
 
             query = query ?? new McapDataLoaderBackfillQuery();
             if (!QueryCanMatch(query.ChannelIds, query.Topics))
-                return new List<McapDataLoaderMessage>();
+                return Array.Empty<McapDataLoaderMessage>();
 
             var selected = _reader.ReadLatestBefore(new McapReadOptions
             {
@@ -296,7 +296,7 @@ namespace Unity.FoxgloveSDK.IO
                     SchemaId = schema.Id,
                     Name = schema.Name ?? string.Empty,
                     Encoding = schema.Encoding ?? string.Empty,
-                    Data = schema.Data ?? new byte[0]
+                    Data = schema.Data ?? Array.Empty<byte>()
                 });
             }
         }
@@ -469,14 +469,10 @@ namespace Unity.FoxgloveSDK.IO
 
         private void AddSchemaReferenceProblems(McapDataLoaderInitialization initialization)
         {
-            var schemaIds = new HashSet<ushort>();
-            for (var i = 0; i < initialization.Schemas.Count; i++)
-                schemaIds.Add(initialization.Schemas[i].SchemaId);
-
             for (var i = 0; i < initialization.Channels.Count; i++)
             {
                 var channel = initialization.Channels[i];
-                if (channel.SchemaId != 0 && !schemaIds.Contains(channel.SchemaId))
+                if (channel.SchemaId != 0 && !_schemaMap.ContainsKey(channel.SchemaId))
                 {
                     initialization.Problems.Add(new McapDataLoaderProblem(
                         McapDataLoaderProblemSeverity.Warning,
@@ -588,7 +584,7 @@ namespace Unity.FoxgloveSDK.IO
                 Sequence = message.Sequence,
                 LogTime = message.LogTime,
                 PublishTime = message.PublishTime,
-                Data = message.Data ?? new byte[0]
+                Data = message.Data ?? Array.Empty<byte>()
             };
         }
 

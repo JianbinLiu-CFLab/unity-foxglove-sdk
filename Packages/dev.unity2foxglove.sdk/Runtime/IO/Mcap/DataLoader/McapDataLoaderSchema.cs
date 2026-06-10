@@ -4,6 +4,8 @@
 // Module: Runtime/IO/Mcap/DataLoader
 // Purpose: Schema DTO exposed by the local MCAP DataLoader facade.
 
+using System;
+
 namespace Unity.FoxgloveSDK.IO
 {
     /// <summary>Schema summary and raw schema payload exposed by local MCAP initialization.</summary>
@@ -26,7 +28,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             Name = string.Empty;
             Encoding = string.Empty;
-            Data = new byte[0];
+            Data = Array.Empty<byte>();
         }
     }
 }
