@@ -361,7 +361,7 @@ namespace Unity.FoxgloveSDK.IO
             var latestOptions = CopyReadOptions(options);
             latestOptions.MaxMessages = 0;
             latestOptions.Order = McapReadOrder.LogTimeAscending;
-            var orderedMessages = ReadLinearMessages(latestOptions);
+            var orderedMessages = new List<McapMessage>(ReadLinearMessages(latestOptions));
             orderedMessages.Sort(CompareMessages);
             for (var i = orderedMessages.Count - 1; i >= 0; i--)
             {
@@ -377,7 +377,7 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
-        private List<McapMessage> ReadLinearMessages(McapReadOptions options)
+        private IReadOnlyList<McapMessage> ReadLinearMessages(McapReadOptions options)
         {
             if (_linearMessagesCache == null ||
                 (options.ValidateCrcs && !_linearMessagesCacheValidatedCrcs) ||
@@ -400,7 +400,7 @@ namespace Unity.FoxgloveSDK.IO
                 _linearMessagesCacheValidatedCrcs = options.ValidateCrcs;
             }
 
-            return new List<McapMessage>(_linearMessagesCache);
+            return _linearMessagesCache;
         }
 
         /// <summary>

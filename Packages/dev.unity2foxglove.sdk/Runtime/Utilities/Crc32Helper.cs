@@ -7,6 +7,7 @@
 // (validation).
 
 using System;
+using System.Buffers;
 using System.IO;
 
 namespace Unity.FoxgloveSDK.Util
@@ -17,6 +18,7 @@ namespace Unity.FoxgloveSDK.Util
     /// </summary>
     public static class Crc32Helper
     {
+        private const int StreamBufferSize = 64 * 1024;
         private static readonly uint[] _table = BuildTable();
 
         /// <summary>
@@ -47,17 +49,24 @@ namespace Unity.FoxgloveSDK.Util
             if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
 
             uint crc = Initialize();
-            var buffer = new byte[64 * 1024];
-            var remaining = length;
-            while (remaining > 0)
+            var buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
+            try
             {
-                var toRead = (int)Math.Min(buffer.Length, remaining);
-                var read = stream.Read(buffer, 0, toRead);
-                if (read <= 0)
-                    throw new EndOfStreamException("Unexpected end of stream while computing CRC32.");
+                var remaining = length;
+                while (remaining > 0)
+                {
+                    var toRead = (int)Math.Min(StreamBufferSize, remaining);
+                    var read = stream.Read(buffer, 0, toRead);
+                    if (read <= 0)
+                        throw new EndOfStreamException("Unexpected end of stream while computing CRC32.");
 
-                crc = Update(crc, new ReadOnlySpan<byte>(buffer, 0, read));
-                remaining -= read;
+                    crc = Update(crc, new ReadOnlySpan<byte>(buffer, 0, read));
+                    remaining -= read;
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
 
             return Finalize(crc);

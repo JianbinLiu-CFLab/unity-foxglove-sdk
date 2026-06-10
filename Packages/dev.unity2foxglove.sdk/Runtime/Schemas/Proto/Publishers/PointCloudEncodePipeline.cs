@@ -5,6 +5,7 @@
 // Purpose: Unified native point-cloud encode drain/queue/stop wrapper.
 
 using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
@@ -17,6 +18,7 @@ namespace Unity.FoxgloveSDK.Components
         where TRequest : class, IBackgroundEncodeRequest
     {
         private readonly BackgroundEncodePipeline<TRequest, TResult> _pipeline;
+        private readonly List<TResult> _drainedResults = new List<TResult>();
         private readonly Func<TResult, bool> _isSuccess;
         private readonly Func<TResult, string> _failureMessage;
         private readonly Func<string, string> _formatFailureWarning;
@@ -88,17 +90,17 @@ namespace Unity.FoxgloveSDK.Components
 
         public void Drain(bool logQosDrops, Action<int> onDroppedCompleted, Action onResultsProcessed)
         {
-            var results = _pipeline.Drain(out var droppedCompletedResults);
+            _pipeline.Drain(_drainedResults, out var droppedCompletedResults);
             if (droppedCompletedResults > 0 && logQosDrops)
                 _logWarning(_droppedCompletedWarning(droppedCompletedResults));
 
             if (droppedCompletedResults > 0)
                 onDroppedCompleted?.Invoke(droppedCompletedResults);
 
-            if (results == null || results.Count == 0)
+            if (_drainedResults.Count == 0)
                 return;
 
-            foreach (var result in results)
+            foreach (var result in _drainedResults)
             {
                 if (!_isSuccess(result))
                 {
@@ -117,6 +119,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public void Stop(bool clearCompleted)
         {
+            _drainedResults.Clear();
             if (_pipeline.Stop(clearCompleted, out var waitedForWorker))
             {
                 if (waitedForWorker)

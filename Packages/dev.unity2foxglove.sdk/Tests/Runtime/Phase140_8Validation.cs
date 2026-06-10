@@ -31,6 +31,9 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriterDisposeSuppressesFlushFailure();
             McapRecorderConstructorDisposesOwnedWriterOnHeaderFailure();
             RecorderDefaultChunkSizeAliasesWriterDefault();
+            SegmentCompressionRoundTripsWithoutCopyPatterns();
+            SummaryCrcUsesIncrementalSegments();
+            RecorderReusesChannelScratchAndTopicSignature();
 
             Console.WriteLine($"Phase 140-8: {_passed} checks passed.");
         }
@@ -115,6 +118,55 @@ namespace Unity.FoxgloveSDK.Tests
                     "public const int DefaultChunkSizeBytes = McapWriterOptions.DefaultChunkSizeBytes;",
                     StringComparison.Ordinal),
                 "140-8E-2: recorder default chunk size is an alias, not an independent literal");
+        }
+
+        private static void SegmentCompressionRoundTripsWithoutCopyPatterns()
+        {
+            var source = Enumerable.Range(0, 1024).Select(i => (byte)(i * 17)).ToArray();
+            var segment = new ArraySegment<byte>(source, 73, 811);
+            foreach (var compression in new[] { "lz4", "zstd" })
+            {
+                var compressed = McapCompression.Compress(compression, segment);
+                var compact = new byte[compressed.Count];
+                Buffer.BlockCopy(compressed.Array, compressed.Offset, compact, 0, compressed.Count);
+                var roundTrip = McapCompression.Decompress(compression, compact, segment.Count);
+                Check(roundTrip.SequenceEqual(source.Skip(segment.Offset).Take(segment.Count)),
+                    $"140-8F: {compression} compression preserves a non-zero-offset source segment");
+            }
+
+            var compressionSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Common/McapCompression.cs");
+            Check(!compressionSource.Contains("ms.ToArray()", StringComparison.Ordinal)
+                  && !compressionSource.Contains("var copy = new byte[sourceCount]", StringComparison.Ordinal)
+                  && !compressionSource.Contains("compressor.Wrap(copy).ToArray()", StringComparison.Ordinal),
+                "140-8F-3: chunk compression avoids full input and output copy patterns");
+        }
+
+        private static void SummaryCrcUsesIncrementalSegments()
+        {
+            var recorderSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var conformanceSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
+            foreach (var source in new[] { recorderSource, conformanceSource })
+            {
+                Check(!source.Contains("summaryBuilder.ToArray()", StringComparison.Ordinal)
+                      && !source.Contains("var crcInput = new byte[", StringComparison.Ordinal),
+                    "140-8G: summary writing avoids full summary and concatenated CRC copies");
+            }
+        }
+
+        private static void RecorderReusesChannelScratchAndTopicSignature()
+        {
+            var source = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            Check(source.Contains("private readonly HashSet<ushort> _seenChannelIds = new();", StringComparison.Ordinal)
+                  && source.Contains("private readonly List<ChannelWriteState> _allChannelWriteStates = new();", StringComparison.Ordinal)
+                  && !source.Contains("var seen = new HashSet<ushort>();", StringComparison.Ordinal),
+                "140-8H-1: recorder reuses explicit channel-state scratch collections");
+            Check(source.Contains("CreateTopicSignature(", StringComparison.Ordinal)
+                  && !source.Contains("var incoming = new TopicSignature", StringComparison.Ordinal),
+                "140-8H-2: topic routing constructs one reusable signature instead of dead duplicate hashes");
         }
 
         private static void ReplaceChunkBufferWithNonPublicBuffer(McapRecorder recorder)

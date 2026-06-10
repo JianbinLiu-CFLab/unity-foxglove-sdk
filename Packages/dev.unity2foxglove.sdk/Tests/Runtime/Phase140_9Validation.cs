@@ -32,6 +32,8 @@ namespace Unity.FoxgloveSDK.Tests
             ReaderRejectsOffsetsBeyondSeekableRange();
             ReaderReportsNonSeekableStreamGuidance();
             ReaderXmlDocDoesNotContainDuplicateSummaryTag();
+            CompressedChunkReadersPreserveMessages();
+            ReaderOptimizationShapesAvoidKnownCopies();
 
             Console.WriteLine($"Phase 140-9: {_passed} checks passed.");
         }
@@ -130,6 +132,45 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!source.Contains("/// <summary>\r\n        /// <summary>", StringComparison.Ordinal)
                   && !source.Contains("/// <summary>\n        /// <summary>", StringComparison.Ordinal),
                 "140-9E-1: McapReader XML docs do not contain duplicate summary opening tags");
+        }
+
+        private static void CompressedChunkReadersPreserveMessages()
+        {
+            foreach (var compression in new[] { "lz4", "zstd" })
+            {
+                var bytes = CreateFixture(new McapWriterOptions { Compression = compression });
+                using var indexed = new McapIndexedReader(new MemoryStream(bytes), leaveOpen: false);
+                Check(indexed.ReadMessages().Select(message => message.LogTime).SequenceEqual(new ulong[] { 10, 20, 30 }),
+                    $"140-9F: indexed reader preserves {compression} chunk messages");
+
+                using var streaming = new McapStreamingReader(
+                    new MemoryStream(bytes),
+                    leaveOpen: false,
+                    McapSequentialReadLimits.UnlimitedForTests);
+                Check(streaming.Read().Messages.Select(message => message.LogTime).SequenceEqual(new ulong[] { 10, 20, 30 }),
+                    $"140-9F: streaming reader preserves {compression} chunk messages");
+            }
+        }
+
+        private static void ReaderOptimizationShapesAvoidKnownCopies()
+        {
+            var decoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapRecordDecoder.cs");
+            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
+            var streaming = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapStreamingReader.cs");
+            var indexed = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapIndexedReader.cs");
+
+            Check(!decoder.Contains("var compressed = new byte[(int)compSize]", StringComparison.Ordinal)
+                  && decoder.Contains("new ArraySegment<byte>(content, off, (int)compSize)", StringComparison.Ordinal),
+                "140-9G-1: chunk decoder passes the compressed source segment without a full copy");
+            Check(!reader.Contains("var crcInput = new byte[", StringComparison.Ordinal),
+                "140-9G-2: summary CRC validation avoids a concatenated copy");
+            Check(streaming.Contains("private readonly byte[] _recordHeaderBuffer", StringComparison.Ordinal)
+                  && !streaming.Contains("headerBytes = new byte[McapWriter.RecordHeaderLength]", StringComparison.Ordinal),
+                "140-9G-3: streaming reader reuses its record header buffer");
+            Check(indexed.Contains("private IReadOnlyList<McapMessage> ReadLinearMessages", StringComparison.Ordinal)
+                  && indexed.Contains("var orderedMessages = new List<McapMessage>(ReadLinearMessages(latestOptions));", StringComparison.Ordinal)
+                  && !indexed.Contains("return new List<McapMessage>(_linearMessagesCache);", StringComparison.Ordinal),
+                "140-9G-4: linear fallback only copies cached messages for the sorting path");
         }
 
         private static byte[] CreateFixture(McapWriterOptions options, Action<McapRecorder> extra = null)

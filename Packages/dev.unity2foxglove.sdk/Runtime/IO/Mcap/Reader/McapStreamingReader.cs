@@ -37,6 +37,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Stream _stream;
         private readonly bool _ownsStream;
         private readonly McapSequentialReadLimits _limits;
+        private readonly byte[] _recordHeaderBuffer = new byte[McapWriter.RecordHeaderLength];
+        private readonly byte[] _magicProbeBuffer = new byte[McapWriter.MagicLength];
         private long _bytesRead;
         private bool _disposed;
 
@@ -452,7 +454,7 @@ namespace Unity.FoxgloveSDK.IO
             var magic = McapWriter.Magic;
             if ((byte)first == magic[0])
             {
-                var probe = new byte[McapWriter.MagicLength];
+                var probe = _magicProbeBuffer;
                 probe[0] = (byte)first;
                 ReadExact(probe, 1, McapWriter.MagicLength - 1);
                 var isMagic = true;
@@ -468,13 +470,13 @@ namespace Unity.FoxgloveSDK.IO
                 if (isMagic)
                     return false;
 
-                headerBytes = new byte[McapWriter.RecordHeaderLength];
+                headerBytes = _recordHeaderBuffer;
                 Buffer.BlockCopy(probe, 0, headerBytes, 0, probe.Length);
                 ReadExact(headerBytes, probe.Length, 1);
             }
             else
             {
-                headerBytes = new byte[McapWriter.RecordHeaderLength];
+                headerBytes = _recordHeaderBuffer;
                 headerBytes[0] = (byte)first;
                 ReadExact(headerBytes, 1, McapWriter.RecordHeaderLength - 1);
             }

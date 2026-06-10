@@ -167,10 +167,10 @@ namespace Unity.FoxgloveSDK.IO
 
                 var footerPrefix = McapWriter.BuildFooterCrcPrefix(footer.SummaryStart, footer.SummaryOffsetStart);
 
-                var crcInput = new byte[summaryBytes.Length + footerPrefix.Length];
-                Buffer.BlockCopy(summaryBytes, 0, crcInput, 0, summaryBytes.Length);
-                Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryBytes.Length, footerPrefix.Length);
-                var recomputed = Crc32Helper.Compute(crcInput);
+                var crc = Crc32Helper.Initialize();
+                crc = Crc32Helper.Update(crc, summaryBytes);
+                crc = Crc32Helper.Update(crc, footerPrefix);
+                var recomputed = Crc32Helper.Finalize(crc);
                 if (recomputed != footer.SummaryCrc)
                     throw new InvalidDataException("MCAP summary CRC mismatch");
             }

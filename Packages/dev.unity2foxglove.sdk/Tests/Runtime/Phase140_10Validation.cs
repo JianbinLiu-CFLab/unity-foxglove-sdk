@@ -37,6 +37,9 @@ namespace Unity.FoxgloveSDK.Tests
             HistorySkipsRedundantSortForCappedQueries();
             DisposedReplayEngineRejectsRetainedReferences();
             TickHasNoUnreachablePendingBufferingBranch();
+            ReplayFiltersBeforeCopyingPayloads();
+            SnapshotAvoidsLinqSorting();
+            ReplayEngineHasNoDeadCrcWarningHelper();
 
             Console.WriteLine($"Phase 140-10: {_passed} checks passed.");
         }
@@ -168,6 +171,37 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
             Check(!source.Contains("PeekPending().LogTime <= clampedNow", StringComparison.Ordinal),
                 "140-10H-1: Tick no longer keeps unreachable pending buffering branch");
+        }
+
+        private static void ReplayFiltersBeforeCopyingPayloads()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var tick = SourceBetween(source, "public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)", "public List<McapMessage> Snapshot");
+            var snapshot = SourceBetween(source, "public List<McapMessage> Snapshot", "public List<McapMessage> History");
+            var history = SourceBetween(source, "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)", "public void Play()");
+
+            Check(AppearsBefore(tick, "if (logNs < emitAfter)", "var data = new byte[dataLen]"),
+                "140-10I-1: Tick rejects stale messages before copying payloads");
+            Check(AppearsBefore(snapshot, "if (logNs > clampedTime)", "var data = new byte[dataLen]"),
+                "140-10I-2: Snapshot rejects future messages before copying payloads");
+            Check(AppearsBefore(history, "if (logNs < clampedFrom || logNs > clampedTo)", "var data = new byte[dataLen]"),
+                "140-10I-3: History rejects out-of-range messages before copying payloads");
+        }
+
+        private static void SnapshotAvoidsLinqSorting()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var snapshot = SourceBetween(source, "public List<McapMessage> Snapshot", "public List<McapMessage> History");
+            Check(!snapshot.Contains(".OrderBy(", StringComparison.Ordinal)
+                  && !snapshot.Contains(".ThenBy(", StringComparison.Ordinal),
+                "140-10J-1: Snapshot sorts its caller-owned result without LINQ sorting");
+        }
+
+        private static void ReplayEngineHasNoDeadCrcWarningHelper()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            Check(!source.Contains("private void LogCrcWarning(", StringComparison.Ordinal),
+                "140-10K-1: replay engine removes the unused CRC warning helper");
         }
 
         private static int GetPendingCount(McapReplayEngine engine)
@@ -306,6 +340,22 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
 
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private static string SourceBetween(string source, string startMarker, string endMarker)
+        {
+            var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+            var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+            if (start < 0 || end < 0)
+                throw new InvalidOperationException("Could not locate source markers for Phase140-10 validation.");
+            return source.Substring(start, end - start);
+        }
+
+        private static bool AppearsBefore(string source, string firstMarker, string secondMarker)
+        {
+            var first = source.IndexOf(firstMarker, StringComparison.Ordinal);
+            var second = source.IndexOf(secondMarker, StringComparison.Ordinal);
+            return first >= 0 && second >= 0 && first < second;
         }
 
         private static void CheckThrows<TException>(Action action, string message)

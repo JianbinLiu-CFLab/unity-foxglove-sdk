@@ -86,18 +86,21 @@ namespace Unity.FoxgloveSDK.Util
             }
         }
 
-        public List<TResult> Drain(out int droppedCompletedResults)
+        public void Drain(List<TResult> results, out int droppedCompletedResults)
         {
+            if (results == null)
+                throw new ArgumentNullException(nameof(results));
+
             lock (_worker.Gate)
             {
+                results.Clear();
                 droppedCompletedResults = _droppedCompletedCount;
                 _droppedCompletedCount = 0;
                 if (_completed.Count == 0)
-                    return null;
+                    return;
 
-                var results = new List<TResult>(_completed);
+                results.AddRange(_completed);
                 _completed.Clear();
-                return results;
             }
         }
 

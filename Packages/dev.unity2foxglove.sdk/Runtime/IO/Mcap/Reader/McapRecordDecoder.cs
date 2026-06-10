@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Util;
 
@@ -40,13 +39,14 @@ namespace Unity.FoxgloveSDK.IO
             if (off + (int)compSize > content.Length)
                 throw new InvalidDataException("Chunk compressed data is truncated");
 
-            var compressed = new byte[(int)compSize];
-            Buffer.BlockCopy(content, off, compressed, 0, (int)compSize);
-
             var maxOutputBytes = uncompressedSizeLimit > int.MaxValue
                 ? int.MaxValue
                 : (int)uncompressedSizeLimit;
-            var uncompressed = McapCompression.Decompress(compression, compressed, (int)uncompSize, maxOutputBytes);
+            var uncompressed = McapCompression.Decompress(
+                compression,
+                new ArraySegment<byte>(content, off, (int)compSize),
+                (int)uncompSize,
+                maxOutputBytes);
             if (crc != 0)
                 crcValid = Crc32Helper.Compute(uncompressed) == crc;
             else
