@@ -9,6 +9,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
@@ -42,6 +43,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly object _subscriberScratchLock = new();
         private readonly List<(uint clientId, uint subscriptionId)> _subscriberScratch = new();
+        private readonly List<uint> _paramSubScratch = new();
         private readonly ISchemaRegistry _schemaRegistry;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
@@ -461,7 +463,16 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
-            Publish(channelId, Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message)), logTimeNs);
+            using (var stream = new MemoryStream())
+            {
+                using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, leaveOpen: true))
+                using (var jsonWriter = new JsonTextWriter(writer))
+                {
+                    JsonSerializer.CreateDefault().Serialize(jsonWriter, message);
+                }
+
+                Publish(channelId, stream.ToArray(), logTimeNs);
+            }
         }
 
         /// <summary>
@@ -744,9 +755,22 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientText(uint clientId, string json)
         {
-            string op;
-            try { op = JObject.Parse(json)["op"]?.ToString(); }
-            catch { _logger.LogWarning($"Malformed JSON from client {clientId}"); return; }
+            string op = null;
+            try
+            {
+                op = TryReadOpField(json);
+            }
+            catch
+            {
+                _logger.LogWarning($"Malformed JSON from client {clientId}");
+                return;
+            }
+
+            if (op == null)
+            {
+                _logger.LogWarning($"Missing or null 'op' field from client {clientId}");
+                return;
+            }
 
             switch (op)
             {
@@ -763,6 +787,36 @@ namespace Unity.FoxgloveSDK.Core
                 case "fetchAsset": HandleFetchAsset(clientId, json); break;
                 default: _logger.LogWarning($"Unknown op '{op}' from client {clientId}"); break;
             }
+        }
+
+        /// <summary>
+        /// Read the top-level "op" field from a Foxglove control-message JSON
+        /// string without allocating a full JObject. Returns the string value,
+        /// empty string for null, or null when the field is absent.
+        /// Matches <c>JObject.Parse(json)["op"]?.ToString()</c> exactly, including
+        /// the duplicate-key rule: JObject's default DuplicatePropertyNameHandling
+        /// is Replace (last value wins), so this keeps the LAST top-level "op"
+        /// rather than returning on the first match. Internal for direct test access.
+        /// </summary>
+        internal static string TryReadOpField(string json)
+        {
+            string result = null;
+            using (var reader = new JsonTextReader(new StringReader(json)))
+            {
+                while (reader.Read())
+                {
+                    if (reader.Depth == 1
+                        && reader.TokenType == JsonToken.PropertyName
+                        && string.Equals(reader.Value as string, "op", StringComparison.Ordinal))
+                    {
+                        reader.Read();
+                        // JValue(null)?.ToString() == ""; last top-level "op" wins.
+                        result = reader.TokenType == JsonToken.Null ? "" : reader.Value?.ToString();
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>

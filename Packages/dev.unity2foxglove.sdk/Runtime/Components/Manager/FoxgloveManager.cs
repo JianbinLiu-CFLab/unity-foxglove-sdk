@@ -7,6 +7,7 @@
 // WebSocket server, coordinate mode, asset roots, playback control, MCAP
 // recording, and MCAP replay.
 
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
@@ -89,6 +90,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _allowPublisherRos2BridgeOverride = true;
         [Tooltip("Optional ROS2 Bridge namespace prefix, for example /robot1. WebSocket topics are unchanged.")]
         [SerializeField] private string _ros2BridgeNamespace = "";
+        private string _cachedRos2BridgeNamespace;
+        private bool _ros2BridgeNamespaceCacheValid;
         [SerializeField] private Ros2BridgeQosPreset _ros2BridgeQosPreset = Ros2BridgeQosPreset.ReliableDefault;
         [SerializeField] private Ros2BridgeReliability _ros2BridgeCustomReliability = Ros2BridgeReliability.Reliable;
         [SerializeField] private Ros2BridgeDurability _ros2BridgeCustomDurability = Ros2BridgeDurability.Volatile;
@@ -174,6 +177,7 @@ namespace Unity.FoxgloveSDK.Components
             new(MaxQueuedClientLifecycleEvents, 0, MeasureClientEventPayloadBytes);
         private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
             new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
+        private readonly List<ClientEvent> _clientEventDrainScratch = new();
 
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
@@ -307,10 +311,22 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                return Ros2BridgeTopicProfile.TryNormalizeRos2BridgeNamespace(_ros2BridgeNamespace, out var normalized, out _)
-                    ? normalized
-                    : string.Empty;
+                if (!_ros2BridgeNamespaceCacheValid)
+                {
+                    _cachedRos2BridgeNamespace = Ros2BridgeTopicProfile.TryNormalizeRos2BridgeNamespace(
+                        _ros2BridgeNamespace, out var normalized, out _)
+                        ? normalized
+                        : string.Empty;
+                    _ros2BridgeNamespaceCacheValid = true;
+                }
+
+                return _cachedRos2BridgeNamespace;
             }
+        }
+
+        private void InvalidateRos2BridgeNamespaceCache()
+        {
+            _ros2BridgeNamespaceCacheValid = false;
         }
 
         /// <summary>Manager-level ROS2 Bridge QoS preset.</summary>
@@ -460,6 +476,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnValidate()
         {
+            InvalidateRos2BridgeNamespaceCache();
             _port = Mathf.Clamp(_port, 1, 65535);
             _rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);
             _recordingChunkSizeKB = Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB);
@@ -525,20 +542,28 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
         {
-            while (queue.TryDequeue(out var evt))
+            queue.DrainTo(_clientEventDrainScratch);
+            try
             {
-                if (evt.IsMessage)
+                foreach (var evt in _clientEventDrainScratch)
                 {
-                    OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
+                    if (evt.IsMessage)
+                    {
+                        OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
+                    }
+                    else if (evt.IsConnect)
+                    {
+                        OnClientConnected?.Invoke(evt.ClientId);
+                    }
+                    else
+                    {
+                        OnClientDisconnected?.Invoke(evt.ClientId);
+                    }
                 }
-                else if (evt.IsConnect)
-                {
-                    OnClientConnected?.Invoke(evt.ClientId);
-                }
-                else
-                {
-                    OnClientDisconnected?.Invoke(evt.ClientId);
-                }
+            }
+            finally
+            {
+                _clientEventDrainScratch.Clear();
             }
         }
 
@@ -683,6 +708,7 @@ namespace Unity.FoxgloveSDK.Components
             _lastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
             _lastRos2BridgeEnabled = _ros2BridgeEnabled;
             _outputModeWatchInitialized = true;
+            InvalidateRos2BridgeNamespaceCache();
         }
 
         /// <summary>

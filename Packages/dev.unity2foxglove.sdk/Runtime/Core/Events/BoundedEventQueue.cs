@@ -78,6 +78,22 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Drains all queued items into a caller-supplied list under a single lock.
+        /// </summary>
+        public void DrainTo(List<T> destination)
+        {
+            lock (_lock)
+            {
+                while (_queue.Count > 0)
+                {
+                    var queued = _queue.Dequeue();
+                    destination.Add(queued.Item);
+                    _queuedBytes = Math.Max(0, _queuedBytes - queued.SizeBytes);
+                }
+            }
+        }
+
         public void Clear()
         {
             lock (_lock)

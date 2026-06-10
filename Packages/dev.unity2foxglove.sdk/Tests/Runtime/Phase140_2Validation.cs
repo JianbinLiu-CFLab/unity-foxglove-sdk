@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
@@ -38,6 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyConnectionGraphSubscribeUsesAtomicSnapshot();
             VerifyDeadSnapshotBroadcastHelperWasRemoved();
             VerifyParameterSubscribeAllBehaviorIsDocumented();
+            VerifyOpt10OnClientTextOpExtractionEquivalence();
 
             Console.WriteLine($"Phase 140-2: {_passed} checks passed.");
         }
@@ -161,6 +164,57 @@ namespace Unity.FoxgloveSDK.Tests
             return idLength == 0
                 ? string.Empty
                 : Encoding.UTF8.GetString(frame, 19, (int)idLength);
+        }
+
+        /// <summary>
+        /// OPT-10: Validate that JsonTextReader-based "op" field extraction produces
+        /// identical results to JObject.Parse(json)["op"]?.ToString() for all
+        /// supported control-message shapes, including edge cases.
+        /// This test MUST pass before replacing the JObject.Parse call in OnClientText.
+        /// </summary>
+        private static void VerifyOpt10OnClientTextOpExtractionEquivalence()
+        {
+            var testCases = new (string json, string expectedOp)[]
+            {
+                // Normal messages
+                (@"{""op"":""subscribe"",""id"":1}", "subscribe"),
+                (@"{""id"":1,""op"":""unsubscribe""}", "unsubscribe"), // op not first
+                (@"{""op"":""advertise"",""channels"":[{""id"":1,""topic"":""/t""}]}", "advertise"),
+                // No op field
+                (@"{""id"":1,""channels"":[]}", null),
+                (@"{}", null),
+                // Null op value
+                (@"{""op"":null}", null),
+                // Numeric op (shouldn't happen but must match JObject behavior)
+                (@"{""op"":123}", "123"),
+                // Unicode in op value
+                (@"{""op"":""\u4e2d\u6587""}", "\u4e2d\u6587"),
+                // Whitespace
+                ("  { \"op\" : \"subscribe\" , \"id\" : 1 }  ", "subscribe"),
+                // Nested "op" should NOT shadow top-level
+                (@"{""data"":{""op"":""nested""},""op"":""top""}", "top"),
+                // Duplicate top-level "op": JObject default DuplicatePropertyNameHandling
+                // is Replace (last wins), so the extractor must return the LAST "op".
+                (@"{""op"":""subscribe"",""op"":""advertise""}", "advertise"),
+            };
+
+            foreach (var (json, expected) in testCases)
+            {
+                string oldResult = null;
+                try { oldResult = JObject.Parse(json)["op"]?.ToString(); }
+                catch { oldResult = null; }
+
+                // Drive the REAL production method (internal, same assembly), not a copy,
+                // mirroring OnClientText's catch -> treat-as-missing semantics.
+                string newResult;
+                try { newResult = FoxgloveSession.TryReadOpField(json); }
+                catch { newResult = null; }
+
+                var label = $"OPT-10 op extraction [{json.Substring(0, Math.Min(40, json.Length))}...]";
+                Check(oldResult == newResult, label);
+                if (expected != null)
+                    Check(newResult == expected, $"OPT-10 expected op={expected} for {label.Split('[')[1].Split(']')[0]}");
+            }
         }
 
         private static string ReadRepoText(string relativePath)

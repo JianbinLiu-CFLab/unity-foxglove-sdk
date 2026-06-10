@@ -71,7 +71,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint? excludeClient)
         {
-            foreach (var subscribedClientId in _paramSubs.GetSubscribedClientIds())
+            _paramSubs.CopySubscribedClientIdsTo(_paramSubScratch);
+            foreach (var subscribedClientId in _paramSubScratch)
             {
                 if (excludeClient.HasValue && subscribedClientId == excludeClient.Value) continue;
                 foreach (var parameterName in names)
@@ -89,10 +90,18 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void BroadcastParameterValues(IEnumerable<string> parameterNames)
         {
-            var names = parameterNames?
-                .Where(n => !string.IsNullOrEmpty(n))
-                .Distinct()
-                .ToList();
+            List<string> names = null;
+            if (parameterNames != null)
+            {
+                var seen = new HashSet<string>();
+                names = new List<string>();
+                foreach (var n in parameterNames)
+                {
+                    if (!string.IsNullOrEmpty(n) && seen.Add(n))
+                        names.Add(n);
+                }
+            }
+
             if (names == null || names.Count == 0)
                 return;
 

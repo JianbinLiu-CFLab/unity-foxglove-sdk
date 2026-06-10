@@ -130,8 +130,13 @@ namespace Unity.FoxgloveSDK.Core
 
         public void BroadcastUpdate()
         {
+            var hasDirtyRecorder = Volatile.Read(ref _dirty) == 1 && _recorderProvider() != null;
+            var subscribers = _graph.GetSubscribers();
+            if (subscribers.Count == 0 && !hasDirtyRecorder)
+                return;
+
             var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
-            foreach (var subId in _graph.GetSubscribers())
+            foreach (var subId in subscribers)
                 _transport.SendText(subId, json);
 
             FlushMetadataSnapshotIfDirty(json);
