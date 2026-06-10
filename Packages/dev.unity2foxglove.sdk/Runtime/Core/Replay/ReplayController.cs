@@ -9,7 +9,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
@@ -136,8 +135,8 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (handlersGate)
             {
-                cache = Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler)
-                    .GetInvocationList().Cast<T>().ToArray();
+                cache = ToTypedHandlerArray<T>(
+                    Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler));
             }
         }
 
@@ -145,11 +144,22 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (handlersGate)
             {
-                var combined = Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler);
-                cache = combined != null
-                    ? combined.GetInvocationList().Cast<T>().ToArray()
-                    : Array.Empty<T>();
+                cache = ToTypedHandlerArray<T>(
+                    Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler));
             }
+        }
+
+        // LINQ-free conversion: ReplayController must not import System.Linq (see 134-3K-2).
+        private static T[] ToTypedHandlerArray<T>(Delegate combined) where T : Delegate
+        {
+            if (combined == null)
+                return Array.Empty<T>();
+
+            var invocationList = combined.GetInvocationList();
+            var result = new T[invocationList.Length];
+            for (var i = 0; i < invocationList.Length; i++)
+                result[i] = (T)invocationList[i];
+            return result;
         }
 
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>

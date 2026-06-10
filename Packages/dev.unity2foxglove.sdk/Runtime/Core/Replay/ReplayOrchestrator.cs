@@ -4,7 +4,6 @@
 // Module: Runtime/Core/Replay
 
 using System;
-using System.Linq;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -48,8 +47,8 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (handlersGate)
             {
-                cache = Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler)
-                    .GetInvocationList().Cast<T>().ToArray();
+                cache = ToTypedHandlerArray<T>(
+                    Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler));
             }
         }
 
@@ -57,11 +56,22 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (handlersGate)
             {
-                var combined = Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler);
-                cache = combined != null
-                    ? combined.GetInvocationList().Cast<T>().ToArray()
-                    : Array.Empty<T>();
+                cache = ToTypedHandlerArray<T>(
+                    Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler));
             }
+        }
+
+        // LINQ-free conversion to keep the replay path free of System.Linq (mirrors 134-3K-2).
+        private static T[] ToTypedHandlerArray<T>(Delegate combined) where T : Delegate
+        {
+            if (combined == null)
+                return Array.Empty<T>();
+
+            var invocationList = combined.GetInvocationList();
+            var result = new T[invocationList.Length];
+            for (var i = 0; i < invocationList.Length; i++)
+                result[i] = (T)invocationList[i];
+            return result;
         }
 
         /// <summary>
