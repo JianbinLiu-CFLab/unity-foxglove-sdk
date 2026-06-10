@@ -124,33 +124,38 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
-            if (!ShouldPrepareAnyPublishPayload()) return;
+            if (!ShouldPrepareAnyPublishPayload(
+                out var publishWebSocket,
+                out var publishBridge,
+                out var encodingResolution,
+                out var bridgeResolution))
+            {
+                return;
+            }
 
             var unixNs = CurrentLogTimeNs;
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
             var message = CreateMessage(unixNs);
             if (message == null) return;
             byte[] ros2Payload = null;
 
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProtobufSceneUpdate(unixNs);
+                PublishProtobufSceneUpdate(unixNs, encodingResolution);
             }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
             {
                 if (TryBuildRos2SceneUpdate(message, out ros2Payload))
-                    PublishRos2(ros2Payload, unixNs);
+                    PublishRos2(ros2Payload, unixNs, encodingResolution);
             }
             else if (publishWebSocket)
             {
-                Publish(message, unixNs);
+                Publish(message, unixNs, encodingResolution);
             }
 
             if (publishBridge)
             {
                 if (ros2Payload != null || TryBuildRos2SceneUpdate(message, out ros2Payload))
-                    PublishRos2Bridge(ros2Payload, unixNs);
+                    PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
             }
         }
 
@@ -202,7 +207,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void PublishProtobufSceneUpdate(ulong unixNs)
+        private void PublishProtobufSceneUpdate(ulong unixNs, PublisherEncodingResolution resolution)
         {
             var protoScene = new Foxglove.SceneUpdate
             {
@@ -231,7 +236,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
             };
 
-            PublishProto(protoScene.ToByteArray(), unixNs);
+            PublishProto(protoScene.ToByteArray(), unixNs, resolution);
         }
     }
 }

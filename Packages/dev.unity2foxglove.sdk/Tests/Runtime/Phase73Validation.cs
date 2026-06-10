@@ -256,14 +256,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             var transformSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveTransformPublisher.cs");
             var transformUpdate = Slice(transformSource, "protected override void Update()", "protected override FrameTransformMessage CreateMessage()");
-            CheckOrdered(transformUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73F-6: transform publisher preflights after cadence");
-            CheckOrdered(transformUpdate, "ShouldPreparePublishPayload()", "PublishProtobufTransform", "73F-7: transform publisher preflights before protobuf transform creation");
-            CheckOrdered(transformUpdate, "ShouldPreparePublishPayload()", "CreateMessage(unixNs)", "73F-8: transform publisher preflights before JSON transform creation");
+            CheckOrdered(transformUpdate, "ShouldPublishNow()", "ShouldPrepareAnyPublishPayload(", "73F-6: transform publisher preflights after cadence");
+            CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "PublishProtobufTransform", "73F-7: transform publisher preflights before protobuf transform creation");
+            CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "CreateMessage(unixNs)", "73F-8: transform publisher preflights before JSON transform creation");
 
             var calibrationSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraCalibrationPublisher.cs");
             var calibrationUpdate = Slice(calibrationSource, "private void Update()", "private CameraCalibrationMessage BuildCalibration");
-            CheckOrdered(calibrationUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73F-9: camera calibration preflights after cadence");
-            CheckOrdered(calibrationUpdate, "ShouldPreparePublishPayload()", "BuildCalibration", "73F-10: camera calibration preflights before object construction");
+            CheckOrdered(calibrationUpdate, "ShouldPublishNow()", "ShouldPrepareAnyPublishPayload(", "73F-9: camera calibration preflights after cadence");
+            CheckOrdered(calibrationUpdate, "ShouldPrepareAnyPublishPayload(", "BuildCalibration", "73F-10: camera calibration preflights before object construction");
 
             var laserSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveLaserScanPublisher.cs");
             var laserUpdate = Slice(laserSource, "private void Update()", "private double[] ResolveRanges()");
@@ -283,9 +283,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var sceneSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
             var sceneUpdate = Slice(sceneSource, "protected override void Update()", "protected override SceneUpdateMessage CreateMessage()");
-            CheckOrdered(sceneUpdate, "ShouldPublishNow()", "ShouldPreparePublishPayload()", "73G-5: scene cube preflights after cadence");
-            CheckOrdered(sceneUpdate, "ShouldPreparePublishPayload()", "PublishProtobufSceneUpdate", "73G-6: scene cube preflights before protobuf scene construction");
-            CheckOrdered(sceneUpdate, "ShouldPreparePublishPayload()", "CreateMessage(unixNs)", "73G-7: scene cube preflights before JSON scene construction");
+            CheckOrdered(sceneUpdate, "ShouldPublishNow()", "ShouldPrepareAnyPublishPayload(", "73G-5: scene cube preflights after cadence");
+            CheckOrdered(sceneUpdate, "ShouldPrepareAnyPublishPayload(", "PublishProtobufSceneUpdate", "73G-6: scene cube preflights before protobuf scene construction");
+            CheckOrdered(sceneUpdate, "ShouldPrepareAnyPublishPayload(", "CreateMessage(unixNs)", "73G-7: scene cube preflights before JSON scene construction");
 
             var pointSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var pointUpdate = Slice(pointSource, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
