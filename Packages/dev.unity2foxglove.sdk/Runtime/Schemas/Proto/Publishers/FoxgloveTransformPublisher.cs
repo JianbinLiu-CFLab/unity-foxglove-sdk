@@ -57,33 +57,36 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
             var nativeHandler = FrameTransformReady;
             var publishNativeFrame = nativeHandler != null;
-            if (!ShouldPrepareAnyPublishPayload() && !publishNativeFrame) return;
+            if (!ShouldPrepareAnyPublishPayload(
+                out var publishWebSocket,
+                out var publishBridge,
+                out var encodingResolution,
+                out var bridgeResolution) && !publishNativeFrame)
+                return;
 
             var unixNs = CurrentTransformTimeNs();
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
             var message = CreateMessage(unixNs);
             if (message == null) return;
             byte[] ros2Payload = null;
 
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProtobufTransform(unixNs);
+                PublishProtobufTransform(unixNs, encodingResolution);
             }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
+            else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
             {
                 ros2Payload = Ros2CdrFrameTransformBuilder.Serialize(message);
-                PublishRos2(ros2Payload, unixNs);
+                PublishRos2(ros2Payload, unixNs, encodingResolution);
             }
             else if (publishWebSocket)
             {
-                Publish(message, unixNs);
+                Publish(message, unixNs, encodingResolution);
             }
 
             if (publishBridge)
             {
                 ros2Payload ??= Ros2CdrFrameTransformBuilder.Serialize(message);
-                PublishRos2Bridge(ros2Payload, unixNs);
+                PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
             }
 
             if (publishNativeFrame)
@@ -123,7 +126,7 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private void PublishProtobufTransform(ulong unixNs)
+        private void PublishProtobufTransform(ulong unixNs, PublisherEncodingResolution resolution)
         {
             ResolveTransform(out var pos, out var rot);
 
@@ -136,7 +139,7 @@ namespace Unity.FoxgloveSDK.Components
                 Rotation = new Foxglove.Quaternion { X = (double)rot.x, Y = (double)rot.y, Z = (double)rot.z, W = (double)rot.w }
             };
 
-            PublishProto(protoFt.ToByteArray(), unixNs);
+            PublishProto(protoFt.ToByteArray(), unixNs, resolution);
         }
 
         private void ResolveTransform(out UVector3 position, out UQuaternion rotation)

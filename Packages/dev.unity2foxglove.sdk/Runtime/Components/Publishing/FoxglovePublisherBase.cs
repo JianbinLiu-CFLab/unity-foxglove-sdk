@@ -225,7 +225,7 @@ namespace Unity.FoxgloveSDK.Components
         protected static string SanitizeFrameId(string raw, string fallback)
         {
             var sanitized = string.IsNullOrEmpty(raw) ? fallback : raw;
-            return sanitized.Replace(' ', '_');
+            return sanitized.Contains(' ') ? sanitized.Replace(' ', '_') : sanitized;
         }
 
         /// <summary>
@@ -237,18 +237,49 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Return whether this publisher should prepare payload data for the web
+        /// socket output path using a pre-resolved encoding and return it to
+        /// callers that need to reuse the same resolution.
+        /// </summary>
+        protected bool TryPreparePublishPayload(out PublisherEncodingResolution resolution)
+        {
+            resolution = ResolvePublisherEncoding();
+            return ShouldPreparePublishPayload(resolution, resolution.Effective);
+        }
+
+        /// <summary>
+        /// Return whether any enabled output path needs this publisher to prepare
+        /// payload data, and return both the web-socket and bridge resolutions.
+        /// </summary>
+        protected bool ShouldPrepareAnyPublishPayload(
+            out PublisherEncodingResolution encodingResolution,
+            out Ros2BridgeOutputResolution bridgeResolution)
+        {
+            return ShouldPrepareAnyPublishPayload(out _, out _, out encodingResolution, out bridgeResolution);
+        }
+
+        /// <summary>
+        /// Return whether this publisher should prepare payload data for any output path and
+        /// return which paths are actually enabled, as well as the resolved output resolutions.
+        /// </summary>
+        protected bool ShouldPrepareAnyPublishPayload(
+            out bool shouldPrepareWebSocket,
+            out bool shouldPrepareRos2Bridge,
+            out PublisherEncodingResolution encodingResolution,
+            out Ros2BridgeOutputResolution bridgeResolution)
+        {
+            shouldPrepareWebSocket = TryPreparePublishPayload(out encodingResolution);
+            shouldPrepareRos2Bridge = ShouldPrepareRos2BridgePayload(out bridgeResolution);
+            return shouldPrepareWebSocket || shouldPrepareRos2Bridge;
+        }
+
+        /// <summary>
         /// Return whether this publisher should prepare payload data for an attempted encoding.
         /// </summary>
         protected bool ShouldPreparePublishPayload(PublisherEffectiveEncoding effectiveEncoding)
         {
             var resolution = ResolvePublisherEncoding();
             return ShouldPreparePublishPayload(resolution, effectiveEncoding);
-        }
-
-        protected bool TryPreparePublishPayload(out PublisherEncodingResolution resolution)
-        {
-            resolution = ResolvePublisherEncoding();
-            return ShouldPreparePublishPayload(resolution, resolution.Effective);
         }
 
         private bool ShouldPreparePublishPayload(
@@ -287,10 +318,20 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPrepareRos2BridgePayload()
         {
+            return ShouldPrepareRos2BridgePayload(out _);
+        }
+
+        protected bool ShouldPrepareRos2BridgePayload(out Ros2BridgeOutputResolution resolution)
+        {
+            resolution = ResolveRos2BridgeOutput();
+            return ShouldPrepareRos2BridgePayload(resolution);
+        }
+
+        private bool ShouldPrepareRos2BridgePayload(Ros2BridgeOutputResolution resolution)
+        {
             if (_manager == null) return false;
             if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return false;
 
-            var resolution = ResolveRos2BridgeOutput();
             WarnIfRos2BridgeFallback(resolution);
             if (!resolution.IsEnabled)
                 return false;
@@ -316,7 +357,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPrepareAnyPublishPayload()
         {
-            return ShouldPreparePublishPayload() || ShouldPrepareRos2BridgePayload();
+            return ShouldPrepareAnyPublishPayload(out _, out _);
         }
 
         /// <summary>Publish a message through the manager. Safe no-op if manager is null.</summary>
@@ -346,10 +387,16 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish protobuf bytes through the manager. Safe no-op if manager is null.</summary>
         protected void PublishProto(byte[] payload, ulong logTimeNs)
         {
+            var resolution = ResolvePublisherEncoding();
+            PublishProto(payload, logTimeNs, resolution);
+        }
+
+        /// <summary>Publish protobuf bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
+        protected void PublishProto(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
+        {
             if (_manager == null) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
-            var resolution = ResolvePublisherEncoding();
             WarnIfEncodingFallback(resolution);
             if (!resolution.IsSupported) return;
             if (resolution.Effective != PublisherEffectiveEncoding.Protobuf)
@@ -364,10 +411,16 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish ROS 2 CDR bytes through the manager. Safe no-op if manager is null.</summary>
         protected void PublishRos2(byte[] payload, ulong logTimeNs)
         {
+            var resolution = ResolvePublisherEncoding();
+            PublishRos2(payload, logTimeNs, resolution);
+        }
+
+        /// <summary>Publish ROS 2 CDR bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
+        protected void PublishRos2(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
+        {
             if (_manager == null) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
-            var resolution = ResolvePublisherEncoding();
             WarnIfEncodingFallback(resolution);
             if (!resolution.IsSupported) return;
             if (resolution.Effective != PublisherEffectiveEncoding.Ros2)
@@ -388,10 +441,16 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Mirror ROS 2 CDR bytes to ROS2 Bridge. Safe no-op if manager is null or disabled.</summary>
         protected void PublishRos2Bridge(byte[] payload, ulong logTimeNs)
         {
+            var resolution = ResolveRos2BridgeOutput();
+            PublishRos2Bridge(payload, logTimeNs, resolution);
+        }
+
+        /// <summary>Mirror ROS 2 CDR bytes to ROS2 Bridge using an already resolved output resolution.</summary>
+        protected void PublishRos2Bridge(byte[] payload, ulong logTimeNs, Ros2BridgeOutputResolution resolution)
+        {
             if (_manager == null) return;
             if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return;
 
-            var resolution = ResolveRos2BridgeOutput();
             WarnIfRos2BridgeFallback(resolution);
             if (!resolution.IsEnabled) return;
 
@@ -404,7 +463,7 @@ namespace Unity.FoxgloveSDK.Components
             _manager.PublishRos2BridgeCdr(_topic, _ros2BridgeTopicOverride, Ros2BridgeSchemaName, payload, logTimeNs);
         }
 
-        private PublisherEncodingResolution ResolvePublisherEncoding()
+        protected virtual PublisherEncodingResolution ResolvePublisherEncoding()
         {
             var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf;
             var allowPublisherOverride = _manager == null || _manager.AllowPublisherOverride;
@@ -417,7 +476,7 @@ namespace Unity.FoxgloveSDK.Components
                 SupportsRos2Encoding);
         }
 
-        private Ros2BridgeOutputResolution ResolveRos2BridgeOutput()
+        protected virtual Ros2BridgeOutputResolution ResolveRos2BridgeOutput()
         {
             var managerEnabled = _manager != null && _manager.Ros2BridgeEnabled;
             var managerDefaultEnabled = _manager != null && _manager.DefaultRos2BridgeOutputEnabled;
