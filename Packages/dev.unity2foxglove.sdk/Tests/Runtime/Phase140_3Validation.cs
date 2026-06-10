@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
@@ -36,6 +37,10 @@ namespace Unity.FoxgloveSDK.Tests
             ExternalCursorEnabledCheckIsSynchronized();
             SchemaSidecarSuccessResultPointsAtExistingDirectory();
             SchemaSidecarPublishFailureReportsPreservedBackup();
+            VerifyOpt1DrainReplayCallbacksUsesPooledBuffer();
+            VerifyOpt4EndInitDeferralNoToArray();
+            VerifyOpt2ReplayControllerCachedInvocationList();
+            VerifyOpt3ReplayOrchestratorCachedInvocationList();
 
             Console.WriteLine($"Phase 140-3: {_passed} checks passed.");
         }
@@ -193,6 +198,188 @@ namespace Unity.FoxgloveSDK.Tests
             var directory = Path.Combine(root, group);
             Directory.CreateDirectory(directory);
             File.WriteAllText(Path.Combine(directory, fileName), content);
+        }
+
+        /// <summary>
+        /// OPT-1: Verify DrainReplayCallbacks can safely drain reentrant fire paths.
+        /// </summary>
+        private static void VerifyOpt1DrainReplayCallbacksUsesPooledBuffer()
+        {
+            var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var order = new List<string>();
+            var reentered = false;
+
+            Action<ReplayMessageContext> first = _ =>
+            {
+                order.Add("first");
+                if (!reentered)
+                {
+                    reentered = true;
+                    controller.FireContextForTests(NewTestContext("/phase140_3/reenter"));
+                }
+            };
+            Action<ReplayMessageContext> second = _ => order.Add("second");
+
+            controller.OnReplayMessageContext += first;
+            controller.OnReplayMessageContext += second;
+            controller.FireContextForTests(NewTestContext("/phase140_3/original"));
+
+            Check(order.Count == 4, "OPT-1: reentrant callback fire preserves both listeners across nested DrainReplayCallbacks calls");
+            Check(order[0] == "first" && order[1] == "second" && order[2] == "first" && order[3] == "second",
+                "OPT-1: callback order is deterministic for direct fire and reentrant fire");
+            Check(order.Distinct().Count() == 2,
+                "OPT-1: callback set remains stable under reentrant invocation");
+        }
+
+        /// <summary>
+        /// OPT-4: Verify EndInitDeferral returns _resolvedHeld directly
+        /// instead of allocating a copy via ToArray().
+        /// </summary>
+        private static void VerifyOpt4EndInitDeferralNoToArray()
+        {
+            var arbiter = new ReplayPoseOwnershipArbiter();
+            var held = arbiter.OfferPose(
+                transformKey: 101,
+                channelId: 10,
+                behavior: ReplayChannelBehavior.ScenePrimitivePose,
+                logTimeNs: 100,
+                pose: ReplayPoseSample.CreatePosition(1, 2, 3));
+            Check(held.Kind == ReplayPoseOwnershipDecisionKind.Hold, "OPT-4: deferred pose is initially held");
+
+            var resolved = arbiter.EndInitDeferral();
+            Check(resolved.Count == 1 && resolved[0].Kind == ReplayPoseOwnershipDecisionKind.Apply,
+                "OPT-4: EndInitDeferral resolves held poses into readable decisions");
+
+            var later = arbiter.OfferPose(
+                transformKey: 101,
+                channelId: 10,
+                behavior: ReplayChannelBehavior.ScenePrimitivePose,
+                logTimeNs: 200,
+                pose: ReplayPoseSample.CreatePosition(4, 5, 6));
+            Check(later.Kind == ReplayPoseOwnershipDecisionKind.Apply && later.OwnerChannelId == 10,
+                "OPT-4: subsequent pose application still works after EndInitDeferral");
+            Check(resolved.Count == 1, "OPT-4: resolved list remains stable for read-only use after subsequent Applies");
+        }
+
+        /// <summary>
+        /// OPT-2: Verify ReplayController uses cached handler arrays instead of
+        /// per-call GetInvocationList().
+        /// </summary>
+        private static void VerifyOpt2ReplayControllerCachedInvocationList()
+        {
+            var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var messages = new List<string>();
+            var contexts = new List<string>();
+            var batches = new List<string>();
+
+            Action<string, byte[]> onMessage1 = (_, _) => messages.Add("message-1");
+            Action<string, byte[]> onMessage2 = (_, _) => messages.Add("message-2");
+            Action<ReplayMessageContext> onContext1 = _ => contexts.Add("context-1");
+            Action<ReplayMessageContext> onContext2 = _ => contexts.Add("context-2");
+            Action<ReplayBatchContext> onBatch1 = _ => batches.Add("batch-1");
+            Action<ReplayBatchContext> onBatch2 = _ => batches.Add("batch-2");
+
+            controller.OnReplayMessage += onMessage1;
+            controller.OnReplayMessage += onMessage2;
+            controller.OnReplayMessageContext += onContext1;
+            controller.OnReplayMessageContext += onContext2;
+            controller.OnReplayBatchCompleted += onBatch1;
+            controller.OnReplayBatchCompleted += onBatch2;
+
+            controller.FireForTests("/phase140_3", new byte[] { 1, 2, 3 });
+            Check(messages.Count == 2 && messages[0] == "message-1" && messages[1] == "message-2",
+                $"OPT-2: replay controller invokes all message handlers after multi-subscribe (count={messages.Count}, values={string.Join(',', messages)})");
+            messages.Clear();
+            contexts.Clear();
+
+            controller.FireContextForTests(NewTestContext("/phase140_3/context-1"));
+            Check(contexts.Count == 2 && contexts.Contains("context-1") && contexts.Contains("context-2"),
+                $"OPT-2: replay controller invokes all context handlers after multi-subscribe (count={contexts.Count}, values={string.Join(',', contexts)})");
+            contexts.Clear();
+
+            controller.FireBatchCompletedForTests(new ReplayBatchContext(
+                batchLogTimeNs: 100,
+                replayStartTimeNs: 0,
+                messageCount: 1,
+                source: "phase140_3",
+                replaySessionId: 1));
+            Check(batches.Count == 2 && batches.Contains("batch-1") && batches.Contains("batch-2"),
+                $"OPT-2: replay controller invokes all batch handlers after multi-subscribe (count={batches.Count}, values={string.Join(',', batches)})");
+            batches.Clear();
+
+            controller.OnReplayMessage -= onMessage1;
+            controller.OnReplayMessageContext -= onContext1;
+            controller.OnReplayBatchCompleted -= onBatch1;
+            messages.Clear();
+            contexts.Clear();
+
+            controller.FireForTests("/phase140_3", new byte[] { 4, 5, 6 });
+            Check(messages.Count == 1 && messages.Contains("message-2"),
+                $"OPT-2: replay controller removes one message handler correctly (count={messages.Count}, values={string.Join(',', messages)})");
+            messages.Clear();
+            contexts.Clear();
+
+            controller.FireContextForTests(NewTestContext("/phase140_3/context-2"));
+            Check(contexts.Count == 1 && contexts.Contains("context-2"),
+                $"OPT-2: replay controller removes one context handler correctly (count={contexts.Count}, values={string.Join(',', contexts)})");
+            contexts.Clear();
+
+            controller.FireBatchCompletedForTests(new ReplayBatchContext(
+                batchLogTimeNs: 200,
+                replayStartTimeNs: 0,
+                messageCount: 1,
+                source: "phase140_3",
+                replaySessionId: 1));
+            Check(batches.Count == 1 && batches[0] == "batch-2",
+                "OPT-2: replay controller removes one batch handler correctly");
+        }
+
+        /// <summary>
+        /// OPT-3: Verify ReplayOrchestrator uses cached handler arrays instead of
+        /// per-call GetInvocationList().
+        /// </summary>
+        private static void VerifyOpt3ReplayOrchestratorCachedInvocationList()
+        {
+            var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var orchestrator = new ReplayOrchestrator(new ConsoleLogger());
+            var contexts = new List<string>();
+
+            Action<ReplayMessageContext> onContext1 = _ => contexts.Add("context-1");
+            Action<ReplayMessageContext> onContext2 = _ => contexts.Add("context-2");
+
+            orchestrator.OnReplayMessageContext += onContext1;
+            orchestrator.OnReplayMessageContext += onContext2;
+            orchestrator.Attach(controller, null);
+
+            controller.FireContextForTests(NewTestContext("/phase140_3/orchestrated-1"));
+            Check(contexts.Count == 2 && contexts[0] == "context-1" && contexts[1] == "context-2",
+                "OPT-3: orchestrator forwards replay context to both listeners after multi-subscribe");
+
+            orchestrator.OnReplayMessageContext -= onContext1;
+            contexts.Clear();
+            controller.FireContextForTests(NewTestContext("/phase140_3/orchestrated-2"));
+            Check(contexts.Count == 1 && contexts[0] == "context-2",
+                "OPT-3: orchestrator removes one context listener correctly");
+
+            orchestrator.Detach(controller);
+            contexts.Clear();
+            controller.FireContextForTests(NewTestContext("/phase140_3/orchestrated-3"));
+            Check(contexts.Count == 0,
+                "OPT-3: orchestrator detach stops forwarding context callbacks");
+        }
+
+        private static ReplayMessageContext NewTestContext(string topic, string message = "phase140_3")
+        {
+            return new ReplayMessageContext(
+                channelId: 10,
+                topic: topic,
+                messageEncoding: "json",
+                schemaName: "phase140_3.Message",
+                schemaEncoding: "json",
+                logTimeNs: 100,
+                replayStartTimeNs: 0,
+                payload: System.Text.Encoding.UTF8.GetBytes(message),
+                replaySessionId: 1);
         }
 
         private static string ReadRepoText(string relativePath)

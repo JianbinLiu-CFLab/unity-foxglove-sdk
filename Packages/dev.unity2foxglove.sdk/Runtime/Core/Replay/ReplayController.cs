@@ -77,8 +77,12 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private readonly BoundedEventQueue<ReplayCallbackDispatch> _pendingReplayCallbacks =
             new(MaxPendingReplayCallbacks, MaxPendingReplayCallbackPayloadBytes, MeasureReplayCallbackPayloadBytes);
+        private readonly List<ReplayCallbackDispatch> _drainBuffer = new();
+        private readonly object _replayCallbackDrainGate = new();
         private long _lastReplayCallbackOverflowWarningTicks;
         private ulong _replaySessionId;
+        private readonly object _replayHandlersGate = new();
+        private bool _isDrainingReplayCallbacks;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => Volatile.Read(ref _replayEnabled);
@@ -105,17 +109,58 @@ namespace Unity.FoxgloveSDK.Core
         /// Fires when the replay engine outputs a message.
         /// <para>First argument is the topic, second is the raw message data.</para>
         /// </summary>
-        public event Action<string, byte[]> OnReplayMessage;
+        private Action<string, byte[]>[] _replayMessageHandlers = Array.Empty<Action<string, byte[]>>();
+        private Action<ReplayMessageContext>[] _replayMessageContextHandlers = Array.Empty<Action<ReplayMessageContext>>();
+        private Action<ReplayBatchContext>[] _replayBatchCompletedHandlers = Array.Empty<Action<ReplayBatchContext>>();
 
-        /// <summary>
-        /// Fires when replay data is forwarded with channel, schema, and log-time context.
-        /// </summary>
-        public event Action<ReplayMessageContext> OnReplayMessageContext;
+        public event Action<string, byte[]> OnReplayMessage
+        {
+            add { AddHandler(ref _replayMessageHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayMessageHandlers, _replayHandlersGate, value); }
+        }
 
-        /// <summary>
-        /// Fires after a replay batch has been forwarded to scene listeners.
-        /// </summary>
-        public event Action<ReplayBatchContext> OnReplayBatchCompleted;
+        public event Action<ReplayMessageContext> OnReplayMessageContext
+        {
+            add { AddHandler(ref _replayMessageContextHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayMessageContextHandlers, _replayHandlersGate, value); }
+        }
+
+        public event Action<ReplayBatchContext> OnReplayBatchCompleted
+        {
+            add { AddHandler(ref _replayBatchCompletedHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayBatchCompletedHandlers, _replayHandlersGate, value); }
+        }
+
+        private static void AddHandler<T>(ref T[] cache, object handlersGate, T handler) where T : Delegate
+        {
+            lock (handlersGate)
+            {
+                cache = ToTypedHandlerArray<T>(
+                    Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler));
+            }
+        }
+
+        private static void RemoveHandler<T>(ref T[] cache, object handlersGate, T handler) where T : Delegate
+        {
+            lock (handlersGate)
+            {
+                cache = ToTypedHandlerArray<T>(
+                    Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler));
+            }
+        }
+
+        // LINQ-free conversion: ReplayController must not import System.Linq (see 134-3K-2).
+        private static T[] ToTypedHandlerArray<T>(Delegate combined) where T : Delegate
+        {
+            if (combined == null)
+                return Array.Empty<T>();
+
+            var invocationList = combined.GetInvocationList();
+            var result = new T[invocationList.Length];
+            for (var i = 0; i < invocationList.Length; i++)
+                result[i] = (T)invocationList[i];
+            return result;
+        }
 
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
         internal void FireForTests(string topic, byte[] data)
@@ -720,28 +765,51 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DrainReplayCallbacks()
         {
-            List<ReplayCallbackDispatch> callbacks;
-            lock (_replayEngineLock)
+            lock (_replayCallbackDrainGate)
             {
-                if (_pendingReplayCallbacks.Count == 0)
+                if (_isDrainingReplayCallbacks)
                     return;
 
-                callbacks = new List<ReplayCallbackDispatch>(_pendingReplayCallbacks.Count);
-                while (_pendingReplayCallbacks.TryDequeue(out var callback))
-                    callbacks.Add(callback);
+                _isDrainingReplayCallbacks = true;
             }
 
-            foreach (var callback in callbacks)
+            try
             {
-                if (callback.IsBatch)
+                while (true)
                 {
-                    InvokeReplayBatchCompleted(callback.BatchContext.Value);
-                    continue;
+                    _drainBuffer.Clear();
+                    lock (_replayEngineLock)
+                    {
+                        if (_pendingReplayCallbacks.Count == 0)
+                            break;
+
+                        while (_pendingReplayCallbacks.TryDequeue(out var callback))
+                            _drainBuffer.Add(callback);
+                    }
+
+                    for (var i = 0; i < _drainBuffer.Count; i++)
+                    {
+                        var callback = _drainBuffer[i];
+                        if (callback.IsBatch)
+                        {
+                            InvokeReplayBatchCompleted(callback.BatchContext.Value);
+                            continue;
+                        }
+
+                        var context = callback.MessageContext.Value;
+                        InvokeReplayMessageContext(context);
+                        InvokeReplayMessage(context.Topic, context.Payload);
+                    }
+                }
+            }
+            finally
+            {
+                lock (_replayCallbackDrainGate)
+                {
+                    _isDrainingReplayCallbacks = false;
                 }
 
-                var context = callback.MessageContext.Value;
-                InvokeReplayMessageContext(context);
-                InvokeReplayMessage(context.Topic, context.Payload);
+                _drainBuffer.Clear();
             }
         }
 
@@ -795,58 +863,31 @@ namespace Unity.FoxgloveSDK.Core
 
         private void InvokeReplayMessage(string topic, byte[] data)
         {
-            var handlers = OnReplayMessage;
-            if (handlers == null)
-                return;
-
-            foreach (Action<string, byte[]> handler in handlers.GetInvocationList())
+            var handlers = _replayMessageHandlers;
+            foreach (var handler in handlers)
             {
-                try
-                {
-                    handler(topic, data);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning($"Replay message listener failed: {ex.Message}");
-                }
+                try { handler(topic, data); }
+                catch (Exception ex) { _logger?.LogWarning($"Replay message listener failed: {ex.Message}"); }
             }
         }
 
         private void InvokeReplayMessageContext(ReplayMessageContext context)
         {
-            var handlers = OnReplayMessageContext;
-            if (handlers == null)
-                return;
-
-            foreach (Action<ReplayMessageContext> handler in handlers.GetInvocationList())
+            var handlers = _replayMessageContextHandlers;
+            foreach (var handler in handlers)
             {
-                try
-                {
-                    handler(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning($"Replay message context listener failed: {ex.Message}");
-                }
+                try { handler(context); }
+                catch (Exception ex) { _logger?.LogWarning($"Replay message context listener failed: {ex.Message}"); }
             }
         }
 
         private void InvokeReplayBatchCompleted(ReplayBatchContext context)
         {
-            var handlers = OnReplayBatchCompleted;
-            if (handlers == null)
-                return;
-
-            foreach (Action<ReplayBatchContext> handler in handlers.GetInvocationList())
+            var handlers = _replayBatchCompletedHandlers;
+            foreach (var handler in handlers)
             {
-                try
-                {
-                    handler(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning($"Replay batch listener failed: {ex.Message}");
-                }
+                try { handler(context); }
+                catch (Exception ex) { _logger?.LogWarning($"Replay batch listener failed: {ex.Message}"); }
             }
         }
 
