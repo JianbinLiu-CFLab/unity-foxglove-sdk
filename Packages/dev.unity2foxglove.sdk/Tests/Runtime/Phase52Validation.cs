@@ -55,6 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestSecureStopStartReleasesPort();
             TestReceiveLoopIgnoresSslStreamDisposalRace();
             TestFrameCodecTreatsRemoteAbortAggregateAsCleanEnd();
+            TestWebSocketFrameProtocolDecodesMaskedClientFrame();
             TestWebSocketFrameProtocolRejectsInvalidClientFrames();
             TestSendQueueZeroByteLimitKeepsProtocolFramesUsable();
             TestClientConnectedExceptionDisconnectsRegisteredClient();
@@ -379,6 +380,19 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(ReadFrameFromBytes(BuildClientFrame(0x3, Encoding.UTF8.GetBytes("reserved"), masked: true, fin: true)) == null,
                 "52B-5f: reserved data opcodes are rejected");
+        }
+
+        private static void TestWebSocketFrameProtocolDecodesMaskedClientFrame()
+        {
+            var payload = Encoding.UTF8.GetBytes("known masked client frame");
+            var frame = ReadFrameFromBytes(BuildClientFrame(WsOpcode.Binary, payload, masked: true, fin: true));
+
+            Check(frame != null, "52B-4c: masked client frame decodes");
+            Check(frame != null && frame.Fin, "52B-4d: decoded client frame preserves FIN");
+            Check(frame != null && frame.Opcode == WsOpcode.Binary,
+                "52B-4e: decoded client frame preserves opcode");
+            Check(frame != null && frame.Payload.SequenceEqual(payload),
+                "52B-4f: decoded client frame payload is unmasked");
         }
 
         private static void TestSendQueueZeroByteLimitKeepsProtocolFramesUsable()

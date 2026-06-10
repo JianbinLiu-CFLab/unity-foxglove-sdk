@@ -127,6 +127,20 @@ namespace Unity.FoxgloveSDK.UnitTests
                 "36B-6b: Clients is not a mutable List");
         }
 
+        [Fact]
+        public void AllowedOriginsReturnsIndependentSnapshot()
+        {
+            using var backend = new ManagedWsBackend();
+            backend.AddAllowedOrigin("https://first.example");
+
+            var snapshot = backend.AllowedOrigins;
+            backend.AddAllowedOrigin("https://second.example");
+
+            Assert.Single(snapshot);
+            Assert.Contains("https://first.example", snapshot);
+            Assert.DoesNotContain("https://second.example", snapshot);
+        }
+
         private static QueuedFrame D(byte b) =>
             new(WsOpcode.Binary, new[] { b }, FramePriority.Data);
 

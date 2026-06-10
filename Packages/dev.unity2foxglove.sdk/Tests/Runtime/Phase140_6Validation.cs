@@ -23,6 +23,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string WsSendQueuePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs";
 
+        private const string WsFrameCodecPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsFrameCodec.cs";
+
         private const string CertificateDistributorPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Transport/Security/FoxgloveCertificateDistributor.cs";
 
@@ -44,6 +47,9 @@ namespace Unity.FoxgloveSDK.Tests
             PlaybackClockHandlesInvalidRangesAndUnknownCommands();
             CertificateDistributorHonorsCancellationAndAvoidsSizeCheckRace();
             TlsOptionsDoesNotMarkLoadedPrivateKeysExportable();
+            FrameDecodeUsesStackBuffers();
+            LiveDataBroadcastAvoidsClientArraySnapshot();
+            BackendSnapshotsOriginsAndAggregatesStatsInOnePass();
 
             Console.WriteLine($"Phase 140-6: {_passed} checks passed.");
         }
@@ -125,6 +131,43 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!source.Contains("X509KeyStorageFlags.Exportable", StringComparison.Ordinal)
                   && source.Contains("X509KeyStorageFlags.DefaultKeySet", StringComparison.Ordinal),
                 "140-6F-1: TLS PFX loading avoids marking private keys exportable");
+        }
+
+        private static void FrameDecodeUsesStackBuffers()
+        {
+            var source = ReadRepoText(WsFrameCodecPath);
+            var readFrame = ExtractMethodBody(source, "internal static bool TryReadFrame");
+
+            Check(readFrame.Contains("stackalloc byte[2]", StringComparison.Ordinal)
+                  && readFrame.Contains("stackalloc byte[4]", StringComparison.Ordinal)
+                  && readFrame.Contains("stackalloc byte[8]", StringComparison.Ordinal)
+                  && !readFrame.Contains("new byte[2]", StringComparison.Ordinal)
+                  && !readFrame.Contains("new byte[4]", StringComparison.Ordinal)
+                  && !readFrame.Contains("new byte[8]", StringComparison.Ordinal),
+                "140-6G-1: inbound frame fixed-size headers use stack buffers");
+        }
+
+        private static void LiveDataBroadcastAvoidsClientArraySnapshot()
+        {
+            var source = ReadRepoText(ManagedWsBackendPath);
+            var dataBroadcast = ExtractMethodBody(source, "public void BroadcastDataBinary");
+            var controlBroadcast = ExtractMethodBody(source, "public void BroadcastBinary");
+
+            Check(!dataBroadcast.Contains("_clients.ToArray()", StringComparison.Ordinal)
+                  && dataBroadcast.Contains("foreach", StringComparison.Ordinal)
+                  && controlBroadcast.Contains("_clients.ToArray()", StringComparison.Ordinal),
+                "140-6G-2: live-data broadcast avoids snapshots while control broadcast preserves them");
+        }
+
+        private static void BackendSnapshotsOriginsAndAggregatesStatsInOnePass()
+        {
+            var source = ReadRepoText(ManagedWsBackendPath);
+            var stats = ExtractMethodBody(source, "public TransportStatsSnapshot GetStatsSnapshot");
+
+            Check(source.Contains("return _allowedOrigins.ToArray();", StringComparison.Ordinal)
+                  && stats.Contains("totalDropped += cs.DroppedDataFrames;", StringComparison.Ordinal)
+                  && !stats.Contains("foreach (var cs in clientList)", StringComparison.Ordinal),
+                "140-6G-3: backend uses compact origin snapshots and one-pass stats aggregation");
         }
 
         private static string ExtractMethodBody(string source, string signaturePrefix)
