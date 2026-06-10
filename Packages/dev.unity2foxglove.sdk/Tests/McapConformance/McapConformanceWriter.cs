@@ -168,16 +168,19 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             }
 
             summaryWriter.Flush();
-            var summaryData = summaryBuilder.ToArray();
-            var hasSummary = summaryData.Length > 0;
+            if (!summaryBuilder.TryGetBuffer(out var summaryData))
+                throw new InvalidOperationException("MCAP summary buffer is not publicly visible.");
+            var hasSummary = summaryData.Count > 0;
             var footerSummaryStart = hasSummary ? summaryStart : 0UL;
             if (!hasSummary)
                 summaryOffsetStart = 0;
             var footerPrefix = McapWriter.BuildFooterCrcPrefix(footerSummaryStart, summaryOffsetStart);
-            var crcInput = new byte[summaryData.Length + footerPrefix.Length];
-            Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
-            Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
-            var summaryCrc = Crc32Helper.Compute(crcInput);
+            var crc = Crc32Helper.Initialize();
+            crc = Crc32Helper.Update(
+                crc,
+                new ReadOnlySpan<byte>(summaryData.Array, summaryData.Offset, summaryData.Count));
+            crc = Crc32Helper.Update(crc, footerPrefix);
+            var summaryCrc = Crc32Helper.Finalize(crc);
             writer.WriteBytes(summaryData);
             writer.WriteFooter(footerSummaryStart, summaryOffsetStart, summaryCrc);
             writer.WriteMagic();

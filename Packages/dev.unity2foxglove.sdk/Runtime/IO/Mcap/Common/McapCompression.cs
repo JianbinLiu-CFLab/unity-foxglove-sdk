@@ -108,15 +108,18 @@ namespace Unity.FoxgloveSDK.IO
                     {
                         using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
                             lz4.Write(sourceArray, sourceOffset, sourceCount);
-                        return new ArraySegment<byte>(ms.ToArray());
+                        if (!ms.TryGetBuffer(out var compressed))
+                            throw new InvalidOperationException("LZ4 output buffer is not publicly visible.");
+                        return compressed;
                     }
                 case "zstd":
                     using (var compressor = new Compressor())
                     {
-                        var copy = new byte[sourceCount];
-                        if (sourceCount > 0)
-                            Buffer.BlockCopy(sourceArray, sourceOffset, copy, 0, sourceCount);
-                        return new ArraySegment<byte>(compressor.Wrap(copy).ToArray());
+                        var output = new byte[Compressor.GetCompressBound(sourceCount)];
+                        var compressedSize = compressor.Wrap(
+                            new ArraySegment<byte>(sourceArray, sourceOffset, sourceCount),
+                            new ArraySegment<byte>(output));
+                        return new ArraySegment<byte>(output, 0, compressedSize);
                     }
                 default:
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");

@@ -35,6 +35,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<uint, ChannelWriteState> _chMap = new();
         private readonly Dictionary<string, ChannelWriteState> _topicChannelWriteState = new();
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
+        private readonly HashSet<ushort> _seenChannelIds = new();
+        private readonly List<ChannelWriteState> _allChannelWriteStates = new();
         private readonly List<SchemaRecordState> _schemas = new();
         private readonly List<ChannelRecordState> _channels = new();
         private readonly List<ChunkIndexState> _chunkIdx = new();
@@ -107,7 +109,8 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 var normalizedEnc = NormalizeMessageEncoding(enc);
-                if (WouldMixTopicSignature(topic, normalizedEnc, sName, sEnc, sContent))
+                var signature = CreateTopicSignature(normalizedEnc, sName, sEnc, sContent);
+                if (WouldMixTopicSignature(topic, signature))
                 {
                     _log.LogWarning(
                         $"MCAP: skipping server channel for topic '{topic}' because its signature is incompatible with an existing recorded channel.");
@@ -127,7 +130,7 @@ namespace Unity.FoxgloveSDK.IO
                     meta["coordinate_mode"] = CoordinateMode;
                 _w.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
                 _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = new Dictionary<string, string>(meta) });
-                RecordTopicSignature(topic, normalizedEnc, sName, sEnc, sContent);
+                RecordTopicSignature(topic, signature);
             }
         }
 
@@ -146,13 +149,14 @@ namespace Unity.FoxgloveSDK.IO
                 if (!_clientChannelWriteState.TryGetValue(key, out var map))
                 {
                     var messageEncoding = NormalizeMessageEncoding(enc);
-                    if (TryReuseExistingTopicChannel(topic, messageEncoding, sName, sEnc, sContent, out map))
+                    var signature = CreateTopicSignature(messageEncoding, sName, sEnc, sContent);
+                    if (TryReuseExistingTopicChannel(topic, signature, sContent, out map))
                     {
                         _clientChannelWriteState[key] = map;
                     }
                     else
                     {
-                        if (WouldMixTopicSignature(topic, messageEncoding, sName, sEnc, sContent))
+                        if (WouldMixTopicSignature(topic, signature))
                         {
                             _skippedClientChannels.Add(key);
                             _log.LogWarning(
@@ -171,7 +175,7 @@ namespace Unity.FoxgloveSDK.IO
                             : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
                         _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                         _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
-                        RecordTopicSignature(topic, messageEncoding, sName, sEnc, sContent);
+                        RecordTopicSignature(topic, signature);
                     }
                 }
                 WriteMessageToChannelWriteState(map, logNs, payload);
@@ -391,8 +395,9 @@ namespace Unity.FoxgloveSDK.IO
                 }
 
                 summaryWriter.Flush();
-                var summaryData = summaryBuilder.ToArray();
-                var hasSummary = summaryData.Length > 0;
+                if (!summaryBuilder.TryGetBuffer(out var summaryData))
+                    throw new InvalidOperationException("MCAP summary buffer is not publicly visible.");
+                var hasSummary = summaryData.Count > 0;
                 var footerSummaryStart = hasSummary ? sumStart : 0UL;
                 if (!hasSummary)
                     sumOffStart = 0;
@@ -400,10 +405,16 @@ namespace Unity.FoxgloveSDK.IO
             // Compute summary_crc per MCAP spec: CRC32 over summary_data, then
             // continue CRC32 over footer prefix (opcode, length, sumStart, sumOffStart).
                 var footerPrefix = McapWriter.BuildFooterCrcPrefix(footerSummaryStart, sumOffStart);
-                var crcInput = new byte[summaryData.Length + footerPrefix.Length];
-                Buffer.BlockCopy(summaryData, 0, crcInput, 0, summaryData.Length);
-                Buffer.BlockCopy(footerPrefix, 0, crcInput, summaryData.Length, footerPrefix.Length);
-                var summaryCrc = _options.EnableCrcs ? Crc32Helper.Compute(crcInput) : 0;
+                var summaryCrc = 0u;
+                if (_options.EnableCrcs)
+                {
+                    var crc = Crc32Helper.Initialize();
+                    crc = Crc32Helper.Update(
+                        crc,
+                        new ReadOnlySpan<byte>(summaryData.Array, summaryData.Offset, summaryData.Count));
+                    crc = Crc32Helper.Update(crc, footerPrefix);
+                    summaryCrc = Crc32Helper.Finalize(crc);
+                }
 
                 _w.WriteBytes(summaryData);
                 _w.WriteFooter(footerSummaryStart, sumOffStart, summaryCrc);
@@ -464,20 +475,23 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         // Helpers
-        IEnumerable<ChannelWriteState> AllChannelWriteStates()
+        List<ChannelWriteState> AllChannelWriteStates()
         {
-            var seen = new HashSet<ushort>();
+            _seenChannelIds.Clear();
+            _allChannelWriteStates.Clear();
             foreach (var m in _chMap.Values)
             {
-                if (seen.Add(m.McapId))
-                    yield return m;
+                if (_seenChannelIds.Add(m.McapId))
+                    _allChannelWriteStates.Add(m);
             }
 
             foreach (var m in _clientChannelWriteState.Values)
             {
-                if (seen.Add(m.McapId))
-                    yield return m;
+                if (_seenChannelIds.Add(m.McapId))
+                    _allChannelWriteStates.Add(m);
             }
+
+            return _allChannelWriteStates;
         }
 
         /// <summary>
@@ -633,29 +647,32 @@ namespace Unity.FoxgloveSDK.IO
         static string NormalizeMessageEncoding(string enc) =>
             string.IsNullOrEmpty(enc) ? "json" : enc;
 
-        // Channel routing
-        bool TryReuseExistingTopicChannel(string topic, string enc, string sName, string sEnc,
-            string sContent, out ChannelWriteState state)
-        {
-            state = null;
-            var normalizedEnc = NormalizeMessageEncoding(enc);
-            if (string.IsNullOrEmpty(topic)) return false;
-            if (!_topicChannelWriteState.TryGetValue(topic, out var existingState)) return false;
-            if (!_topicSignatures.TryGetValue(topic, out var existing)) return false;
-
-            var incoming = new TopicSignature
+        static TopicSignature CreateTopicSignature(string enc, string sName, string sEnc, string sContent) =>
+            new()
             {
-                Encoding = normalizedEnc,
+                Encoding = NormalizeMessageEncoding(enc),
                 SchemaName = sName ?? "",
                 SchemaEncoding = sEnc ?? "",
                 Hash = ComputeSchemaHash(sContent, sName, sEnc)
             };
 
-            if (!string.IsNullOrEmpty(sName) &&
+        // Channel routing
+        bool TryReuseExistingTopicChannel(
+            string topic,
+            TopicSignature incoming,
+            string sContent,
+            out ChannelWriteState state)
+        {
+            state = null;
+            if (string.IsNullOrEmpty(topic)) return false;
+            if (!_topicChannelWriteState.TryGetValue(topic, out var existingState)) return false;
+            if (!_topicSignatures.TryGetValue(topic, out var existing)) return false;
+
+            if (!string.IsNullOrEmpty(incoming.SchemaName) &&
                 string.IsNullOrEmpty(sContent) &&
-                existing.Encoding == normalizedEnc &&
-                existing.SchemaName == (sName ?? "") &&
-                (string.IsNullOrEmpty(sEnc) || existing.SchemaEncoding == (sEnc ?? "")) &&
+                existing.Encoding == incoming.Encoding &&
+                existing.SchemaName == incoming.SchemaName &&
+                (string.IsNullOrEmpty(incoming.SchemaEncoding) || existing.SchemaEncoding == incoming.SchemaEncoding) &&
                 !string.IsNullOrEmpty(existing.Hash))
             {
                 state = existingState;
@@ -669,34 +686,21 @@ namespace Unity.FoxgloveSDK.IO
         /// Check whether an incoming topic signature conflicts with a previously
         /// recorded signature for the same topic.
         /// </summary>
-        bool WouldMixTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
+        bool WouldMixTopicSignature(string topic, TopicSignature signature)
         {
             if (string.IsNullOrEmpty(topic)) return false;
-            var sig = new TopicSignature
-            {
-                Encoding = NormalizeMessageEncoding(enc),
-                SchemaName = sName ?? "",
-                SchemaEncoding = sEnc ?? "",
-                Hash = ComputeSchemaHash(sContent, sName, sEnc)
-            };
-            return _topicSignatures.TryGetValue(topic, out var existing) && !existing.Equals(sig);
+            return _topicSignatures.TryGetValue(topic, out var existing) && !existing.Equals(signature);
         }
 
         /// <summary>
         /// Persist the topic signature on first use so future channels for the
         /// same topic can be validated for compatibility.
         /// </summary>
-        void RecordTopicSignature(string topic, string enc, string sName, string sEnc, string sContent)
+        void RecordTopicSignature(string topic, TopicSignature signature)
         {
             if (string.IsNullOrEmpty(topic)) return;
             if (_topicSignatures.ContainsKey(topic)) return;
-            _topicSignatures[topic] = new TopicSignature
-            {
-                Encoding = NormalizeMessageEncoding(enc),
-                SchemaName = sName ?? "",
-                SchemaEncoding = sEnc ?? "",
-                Hash = ComputeSchemaHash(sContent, sName, sEnc)
-            };
+            _topicSignatures[topic] = signature;
         }
 
         // Nested state types

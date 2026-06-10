@@ -302,6 +302,12 @@ namespace Unity.FoxgloveSDK.IO
             });
         /// <summary>Write raw bytes directly to the underlying stream without MCAP opcode/length framing.</summary>
         public void WriteBytes(byte[] data) { if (data != null && data.Length > 0) _stream.Write(data, 0, data.Length); }
+        /// <summary>Write a raw byte segment directly to the underlying stream without MCAP opcode/length framing.</summary>
+        public void WriteBytes(ArraySegment<byte> data)
+        {
+            if (data.Array != null && data.Count > 0)
+                _stream.Write(data.Array, data.Offset, data.Count);
+        }
         /// <summary>
         /// Compute a CRC32 of all bytes from the start of the stream through
         /// the current position without changing the final position.
