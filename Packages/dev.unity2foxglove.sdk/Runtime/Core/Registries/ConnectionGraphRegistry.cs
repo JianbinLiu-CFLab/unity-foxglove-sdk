@@ -63,6 +63,9 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
+                if (_graphSubscribers.Count == 0)
+                    return Array.Empty<uint>();
+
                 var result = new List<uint>(_graphSubscribers.Count);
                 foreach (var clientId in _graphSubscribers)
                     result.Add(clientId);
