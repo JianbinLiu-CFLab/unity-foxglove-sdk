@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly object _subscriberScratchLock = new();
         private readonly List<(uint clientId, uint subscriptionId)> _subscriberScratch = new();
+        private readonly List<uint> _paramSubScratch = new();
         private readonly ISchemaRegistry _schemaRegistry;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;

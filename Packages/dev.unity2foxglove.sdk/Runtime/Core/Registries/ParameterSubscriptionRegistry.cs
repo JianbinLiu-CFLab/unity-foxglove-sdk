@@ -78,6 +78,19 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock) { return _clients.Keys.ToList(); }
         }
 
+        /// <summary>
+        /// Copy subscribed client IDs into a caller-owned list.
+        /// </summary>
+        public void CopySubscribedClientIdsTo(List<uint> destination)
+        {
+            destination.Clear();
+            lock (_lock)
+            {
+                foreach (var clientId in _clients.Keys)
+                    destination.Add(clientId);
+            }
+        }
+
         /// <summary>Check if a client is subscribed to a given parameter name.</summary>
         public bool IsSubscribed(uint clientId, string parameterName)
         {

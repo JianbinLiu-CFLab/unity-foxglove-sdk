@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, HashSet<(uint clientId, uint subscriptionId)>> _byChannel
             = new Dictionary<uint, HashSet<(uint clientId, uint subscriptionId)>>();
 
+        private int _totalSubscriptionCount;
         private readonly object _lock = new object();
 
         /// <summary>Add a subscription for a client. Called when a "subscribe" message is received.</summary>
@@ -203,7 +204,15 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 _byChannel.Remove(channelId);
-                RemoveEmptyClientEntriesLocked();
+                _totalSubscriptionCount -= removed.Count;
+
+                // Only check clients affected by this removal for empty entries
+                foreach (var (clientId, _, _) in removed)
+                {
+                    if (_clients.TryGetValue(clientId, out var clientSubs) && clientSubs.Count == 0)
+                        _clients.Remove(clientId);
+                }
+
                 return removed;
             }
         }
@@ -260,6 +269,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _clients.Clear();
                 _byChannel.Clear();
+                _totalSubscriptionCount = 0;
             }
         }
 
@@ -269,13 +279,7 @@ namespace Unity.FoxgloveSDK.Core
             get { lock (_lock) { return _clients.Count; } }
         }
 
-        private int TotalSubscriptionCountLocked()
-        {
-            var count = 0;
-            foreach (var subs in _clients.Values)
-                count += subs.Count;
-            return count;
-        }
+        private int TotalSubscriptionCountLocked() => _totalSubscriptionCount;
 
         private void RemoveEmptyClientEntriesLocked()
         {
@@ -298,7 +302,8 @@ namespace Unity.FoxgloveSDK.Core
                 _byChannel[channelId] = subscribers;
             }
 
-            subscribers.Add((clientId, subscriptionId));
+            if (subscribers.Add((clientId, subscriptionId)))
+                _totalSubscriptionCount++;
         }
 
         private void RemoveReverseIndex(uint channelId, uint clientId, uint subscriptionId)
@@ -306,7 +311,8 @@ namespace Unity.FoxgloveSDK.Core
             if (!_byChannel.TryGetValue(channelId, out var subscribers))
                 return;
 
-            subscribers.Remove((clientId, subscriptionId));
+            if (subscribers.Remove((clientId, subscriptionId)))
+                _totalSubscriptionCount--;
 
             if (subscribers.Count == 0)
                 _byChannel.Remove(channelId);

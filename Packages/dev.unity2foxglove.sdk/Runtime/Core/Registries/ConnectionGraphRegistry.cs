@@ -5,6 +5,7 @@
 // Purpose: Maintains a publish/subscribe topology snapshot and per-client
 // graph subscription state for the Foxglove ConnectionGraph capability.
 
+using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Protocol;
 
