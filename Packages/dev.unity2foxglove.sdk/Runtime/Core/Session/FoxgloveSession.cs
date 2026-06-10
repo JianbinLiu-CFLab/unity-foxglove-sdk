@@ -793,9 +793,14 @@ namespace Unity.FoxgloveSDK.Core
         /// Read the top-level "op" field from a Foxglove control-message JSON
         /// string without allocating a full JObject. Returns the string value,
         /// empty string for null, or null when the field is absent.
+        /// Matches <c>JObject.Parse(json)["op"]?.ToString()</c> exactly, including
+        /// the duplicate-key rule: JObject's default DuplicatePropertyNameHandling
+        /// is Replace (last value wins), so this keeps the LAST top-level "op"
+        /// rather than returning on the first match. Internal for direct test access.
         /// </summary>
-        private static string TryReadOpField(string json)
+        internal static string TryReadOpField(string json)
         {
+            string result = null;
             using (var reader = new JsonTextReader(new StringReader(json)))
             {
                 while (reader.Read())
@@ -805,14 +810,13 @@ namespace Unity.FoxgloveSDK.Core
                         && string.Equals(reader.Value as string, "op", StringComparison.Ordinal))
                     {
                         reader.Read();
-                        if (reader.TokenType == JsonToken.Null)
-                            return "";
-                        return reader.Value?.ToString();
+                        // JValue(null)?.ToString() == ""; last top-level "op" wins.
+                        result = reader.TokenType == JsonToken.Null ? "" : reader.Value?.ToString();
                     }
                 }
             }
 
-            return null;
+            return result;
         }
 
         /// <summary>

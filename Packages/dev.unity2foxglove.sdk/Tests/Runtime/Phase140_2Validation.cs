@@ -193,6 +193,9 @@ namespace Unity.FoxgloveSDK.Tests
                 ("  { \"op\" : \"subscribe\" , \"id\" : 1 }  ", "subscribe"),
                 // Nested "op" should NOT shadow top-level
                 (@"{""data"":{""op"":""nested""},""op"":""top""}", "top"),
+                // Duplicate top-level "op": JObject default DuplicatePropertyNameHandling
+                // is Replace (last wins), so the extractor must return the LAST "op".
+                (@"{""op"":""subscribe"",""op"":""advertise""}", "advertise"),
             };
 
             foreach (var (json, expected) in testCases)
@@ -201,49 +204,16 @@ namespace Unity.FoxgloveSDK.Tests
                 try { oldResult = JObject.Parse(json)["op"]?.ToString(); }
                 catch { oldResult = null; }
 
-                string newResult = TryReadOpFieldWithJsonReader(json);
+                // Drive the REAL production method (internal, same assembly), not a copy,
+                // mirroring OnClientText's catch -> treat-as-missing semantics.
+                string newResult;
+                try { newResult = FoxgloveSession.TryReadOpField(json); }
+                catch { newResult = null; }
 
                 var label = $"OPT-10 op extraction [{json.Substring(0, Math.Min(40, json.Length))}...]";
                 Check(oldResult == newResult, label);
                 if (expected != null)
                     Check(newResult == expected, $"OPT-10 expected op={expected} for {label.Split('[')[1].Split(']')[0]}");
-            }
-        }
-
-        /// <summary>
-        /// Extract the "op" field value from a Foxglove control-message JSON string
-        /// without allocating a full JObject. Equivalent to
-        /// JObject.Parse(json)["op"]?.ToString() for well-formed control messages.
-        /// </summary>
-        private static string TryReadOpFieldWithJsonReader(string json)
-        {
-            if (string.IsNullOrEmpty(json))
-                return null;
-            try
-            {
-                using (var reader = new JsonTextReader(new StringReader(json)))
-                {
-                    while (reader.Read())
-                    {
-                        // Only match top-level "op" property (JObject["op"] does not recurse)
-                        if (reader.Depth == 1
-                            && reader.TokenType == JsonToken.PropertyName
-                            && string.Equals(reader.Value as string, "op", StringComparison.Ordinal))
-                        {
-                            reader.Read();
-                            // JValue(null)?.ToString() returns "", not null
-                            if (reader.TokenType == JsonToken.Null)
-                                return "";
-                            return reader.Value?.ToString();
-                        }
-                    }
-                }
-
-                return null;
-            }
-            catch
-            {
-                return null;
             }
         }
 
