@@ -29,12 +29,21 @@ namespace Unity.FoxgloveSDK.Util
             string source,
             string label,
             IReadOnlyDictionary<string, object> values)
+            : this(source, label, values, copyValues: true)
+        {
+        }
+
+        private FoxgloveDebugOverlayEnvelope(
+            string source,
+            string label,
+            IReadOnlyDictionary<string, object> values,
+            bool copyValues)
         {
             Version = CurrentVersion;
             Kind = KindName;
             Source = source;
             Label = string.IsNullOrWhiteSpace(label) ? null : label;
-            Values = CopyValues(values);
+            Values = copyValues ? CopyValues(values) : values;
         }
 
         [JsonProperty("version", Order = 0)]
@@ -105,12 +114,30 @@ namespace Unity.FoxgloveSDK.Util
             if (string.IsNullOrWhiteSpace(key))
                 return false;
 
-            var values = new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                [key] = value
-            };
+            if (!IsValidTopic(topic) || string.IsNullOrWhiteSpace(source))
+                return false;
 
-            return TryCreate(topic, source, values, label, out envelope);
+            try
+            {
+                if (!IsSupportedJsonValue(value, 0))
+                    return false;
+
+                var values = new SortedDictionary<string, object>(StringComparer.Ordinal)
+                {
+                    [key] = value
+                };
+                envelope = new FoxgloveDebugOverlayEnvelope(
+                    source,
+                    label,
+                    new ReadOnlyDictionary<string, object>(values),
+                    copyValues: false);
+                return true;
+            }
+            catch (Exception ex) when (IsRecoverableEnvelopeException(ex))
+            {
+                envelope = null;
+                return false;
+            }
         }
 
         private static IReadOnlyDictionary<string, object> CopyValues(IReadOnlyDictionary<string, object> values)

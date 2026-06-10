@@ -28,6 +28,12 @@ namespace Unity.FoxgloveSDK.Tests
         private const string PointCloudQoSPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/PointCloudQoS.cs";
 
+        private const string Crc32HelperPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/Crc32Helper.cs";
+
+        private const string DebugOverlayEnvelopePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/FoxgloveDebugOverlayEnvelope.cs";
+
         private static int _passed;
 
         /// <summary>Runs all Phase 140-7 protocol and utility review checks.</summary>
@@ -43,7 +49,10 @@ namespace Unity.FoxgloveSDK.Tests
             RosTransformMathRejectsNonFiniteInputAndNormalizesFiniteOutput();
             DropOldestBoundedQueueHasConcurrentStressCoverage();
             BackgroundEncodePipelineTimeoutInvalidatesStaleWorkerResults();
+            BackgroundEncodePipelineDrainsIntoReusableList();
             PointCloudStrideScanShortCircuitsWhenLayoutIsKnown();
+            StreamCrcUsesPooledBuffer();
+            SingleValueDebugEnvelopeAvoidsIntermediateDictionary();
             PublisherRateStateReviewFindingStaysClosedOnCurrentHead();
 
             Console.WriteLine($"Phase 140-7: {_passed} checks passed.");
@@ -161,25 +170,57 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void BackgroundEncodePipelineTimeoutInvalidatesStaleWorkerResults()
         {
+            using var encodeStarted = new ManualResetEventSlim(false);
             var pipeline = new BackgroundEncodePipeline<Phase140_7Request, int>(
                 "phase140-7-slow-worker",
                 completedCapacity: 2,
                 stopWaitMs: 5,
                 encode: request =>
                 {
+                    encodeStarted.Set();
                     Thread.Sleep(75);
                     return request.Value;
                 });
 
             Check(pipeline.Enqueue(new Phase140_7Request { Value = 99 }, out _, out _),
                 "140-7F-1: slow background encode request can be queued");
-            Thread.Sleep(10);
+            Check(encodeStarted.Wait(1000),
+                "140-7F-2: slow background encode worker enters the encode delegate");
             Check(!pipeline.Stop(clearCompleted: true, out var waitedForWorker) && waitedForWorker,
-                "140-7F-2: slow background encode stop reports timeout after bounded wait");
+                "140-7F-3: slow background encode stop reports timeout after bounded wait");
             Thread.Sleep(100);
-            var drained = pipeline.Drain(out var dropped);
-            Check((drained == null || drained.Count == 0) && dropped == 0,
-                "140-7F-3: timed-out background encode result is discarded by generation guard");
+            var drained = new List<int>();
+            pipeline.Drain(drained, out var dropped);
+            Check(drained.Count == 0 && dropped == 0,
+                "140-7F-4: timed-out background encode result is discarded by generation guard");
+        }
+
+        private static void BackgroundEncodePipelineDrainsIntoReusableList()
+        {
+            using var encodeCompleted = new ManualResetEventSlim(false);
+            var pipeline = new BackgroundEncodePipeline<Phase140_7Request, int>(
+                "phase140-7-reusable-drain",
+                completedCapacity: 2,
+                stopWaitMs: 100,
+                encode: request =>
+                {
+                    encodeCompleted.Set();
+                    return request.Value;
+                });
+            var results = new List<int> { -1 };
+
+            Check(pipeline.Enqueue(new Phase140_7Request { Value = 42 }, out _, out _)
+                  && encodeCompleted.Wait(1000),
+                "140-7G-1: reusable drain pipeline produces a result");
+            SpinWait.SpinUntil(() =>
+            {
+                pipeline.Drain(results, out _);
+                return results.Count > 0;
+            }, 1000);
+
+            Check(results.Count == 1 && results[0] == 42,
+                "140-7G-2: reusable drain clears and fills the caller-owned list");
+            pipeline.Stop(clearCompleted: true, out _);
         }
 
         private static void PointCloudStrideScanShortCircuitsWhenLayoutIsKnown()
@@ -189,7 +230,42 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(method.Contains("if (hasIntensity && hasReflectivity && hasRing && hasTimeOffset)", StringComparison.Ordinal)
                   && method.Contains("break;", StringComparison.Ordinal),
-                "140-7G-1: PointCloud stride scan stops once all optional fields are known");
+                "140-7H-1: PointCloud stride scan stops once all optional fields are known");
+        }
+
+        private static void StreamCrcUsesPooledBuffer()
+        {
+            var source = ReadRepoText(Crc32HelperPath);
+            var method = ExtractMethodBody(source, "public static uint Compute(Stream stream, long length)");
+            var data = Enumerable.Range(0, 100_000).Select(i => (byte)i).ToArray();
+            using var stream = new MemoryStream(data);
+
+            Check(Crc32Helper.Compute(stream, data.Length) == Crc32Helper.Compute(data),
+                "140-7I-1: pooled stream CRC remains byte-equivalent");
+            Check(method.Contains("ArrayPool<byte>.Shared.Rent", StringComparison.Ordinal)
+                  && method.Contains("ArrayPool<byte>.Shared.Return", StringComparison.Ordinal)
+                  && method.Contains("finally", StringComparison.Ordinal)
+                  && method.Contains("Math.Min(StreamBufferSize, remaining)", StringComparison.Ordinal),
+                "140-7I-2: stream CRC returns its rented buffer in a finally block");
+        }
+
+        private static void SingleValueDebugEnvelopeAvoidsIntermediateDictionary()
+        {
+            var source = ReadRepoText(DebugOverlayEnvelopePath);
+            var method = ExtractMethodBody(source, "public static bool TryCreateValue");
+
+            Check(FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                    "/debug/phase140-7",
+                    "Phase140_7Validation",
+                    "value",
+                    42,
+                    null,
+                    out var envelope)
+                  && envelope.Values.Count == 1
+                  && (int)envelope.Values["value"] == 42,
+                "140-7J-1: single-value debug envelope preserves observable values");
+            Check(!method.Contains("new Dictionary<string, object>", StringComparison.Ordinal),
+                "140-7J-2: single-value debug envelope avoids an intermediate Dictionary");
         }
 
         private static void PublisherRateStateReviewFindingStaysClosedOnCurrentHead()
@@ -199,7 +275,7 @@ namespace Unity.FoxgloveSDK.Tests
             var onEnable = ExtractMethodBody(source, "protected virtual void OnEnable");
 
             Check(onEnable.Contains("_publishRateState = default;", StringComparison.Ordinal),
-                "140-7H-1: stale indexed publisher-rate finding remains closed on current HEAD");
+                "140-7K-1: stale indexed publisher-rate finding remains closed on current HEAD");
         }
 
         private sealed class Phase140_7Request : IBackgroundEncodeRequest
