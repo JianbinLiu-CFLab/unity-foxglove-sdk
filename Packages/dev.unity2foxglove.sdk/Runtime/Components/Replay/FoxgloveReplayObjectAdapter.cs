@@ -98,7 +98,6 @@ namespace Unity.FoxgloveSDK.Components
         private const int MaxReplayJsonPayloadBytes = 4 * 1024 * 1024;
         private static readonly object ReflectionCacheGate = new();
         private static readonly Dictionary<string, ProtobufParserBinding> ProtobufParserCache = new();
-        private static readonly Dictionary<string, PropertyInfo> PropertyCache = new();
 
         /// <summary>
         /// Resolves the FoxgloveManager and loads manual FrameMapping and
@@ -388,7 +387,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (type == null)
                     throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
 
-                var parser = ResolveProperty(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                var parser = ReplayPropertyCache.Resolve(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
                 if (parser == null)
                     throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
 
@@ -723,16 +722,17 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ApplyPoseSample(Transform target, ReplayPoseSample pose)
         {
+            var shouldConvert = ShouldConvert;
             if (pose.HasPosition)
             {
                 var fp = new Vector3(pose.PositionX, pose.PositionY, pose.PositionZ);
-                target.localPosition = ShouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
+                target.localPosition = shouldConvert ? CoordinateConverter.FoxgloveToUnityPosition(fp) : fp;
             }
 
             if (pose.HasRotation)
             {
                 var fr = new Quaternion(pose.RotationX, pose.RotationY, pose.RotationZ, pose.RotationW);
-                target.localRotation = ShouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
+                target.localRotation = shouldConvert ? CoordinateConverter.FoxgloveToUnityRotation(fr) : fr;
             }
         }
 
@@ -852,22 +852,7 @@ namespace Unity.FoxgloveSDK.Components
                 : "Foxglove.FrameTransform";
 
         private static object GetPropertyValue(object source, string propertyName)
-            => source == null ? null : ResolveProperty(source.GetType(), propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(source);
-
-        private static PropertyInfo ResolveProperty(Type type, string propertyName, BindingFlags bindingFlags)
-        {
-            var key = type.FullName + "|" + bindingFlags + "|" + propertyName;
-            lock (ReflectionCacheGate)
-            {
-                if (!PropertyCache.TryGetValue(key, out var property))
-                {
-                    property = type.GetProperty(propertyName, bindingFlags);
-                    PropertyCache[key] = property;
-                }
-
-                return property;
-            }
-        }
+            => source == null ? null : ReplayPropertyCache.Resolve(source.GetType(), propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(source);
 
         private static string GetStringProperty(object source, string propertyName)
             => GetPropertyValue(source, propertyName) as string;
@@ -917,5 +902,6 @@ namespace Unity.FoxgloveSDK.Components
             public object Parser { get; }
             public MethodInfo ParseFrom { get; }
         }
+
     }
 }

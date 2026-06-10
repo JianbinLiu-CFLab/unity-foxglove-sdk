@@ -39,6 +39,8 @@ namespace Unity.FoxgloveSDK.Tests
             ReplayAdapterCachesLookupMissesAndEvictsStaleTransforms();
             ReplayAdapterReadsPartialJsonFieldsSafely();
             ReplayAdapterCachesReflectionAndPreservesParseStacks();
+            ReplayAdapterReflectionCacheAvoidsHotPathStringKeys();
+            ReplayAdapterReusesCoordinateConversionDecisionPerPose();
             ReplayAdapterDocumentsSinglePrimitiveEntityConstraint();
 
             Console.WriteLine($"Phase 140-5: {_passed} checks passed.");
@@ -119,13 +121,31 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(AdapterPath);
 
             Check(source.Contains("ProtobufParserCache", StringComparison.Ordinal)
-                  && source.Contains("PropertyCache", StringComparison.Ordinal)
                   && source.Contains("ResolveProtobufParser", StringComparison.Ordinal)
-                  && source.Contains("ResolveProperty", StringComparison.Ordinal),
+                  && source.Contains("ReplayPropertyCache.Resolve", StringComparison.Ordinal),
                 "140-5E-1: replay adapter caches protobuf parser and property reflection lookups");
             Check(source.Contains("ExceptionDispatchInfo.Capture(ex.InnerException).Throw();", StringComparison.Ordinal)
                   && source.Contains("FormatReplayException(ex)", StringComparison.Ordinal),
                 "140-5E-2: replay adapter preserves protobuf parse stacks and logs full replay exceptions");
+        }
+
+        private static void ReplayAdapterReflectionCacheAvoidsHotPathStringKeys()
+        {
+            var source = ReadRepoText(AdapterPath);
+
+            Check(source.Contains("ReplayPropertyCache.Resolve", StringComparison.Ordinal)
+                  && !source.Contains("type.FullName +", StringComparison.Ordinal),
+                "140-5E-3: property reflection cache uses a non-allocating value key");
+        }
+
+        private static void ReplayAdapterReusesCoordinateConversionDecisionPerPose()
+        {
+            var source = ReadRepoText(AdapterPath);
+            var applyPose = ExtractMethodBody(source, "private void ApplyPoseSample");
+
+            Check(Regex.Matches(applyPose, @"\bShouldConvert\b").Count == 1
+                  && applyPose.Contains("var shouldConvert = ShouldConvert;", StringComparison.Ordinal),
+                "140-5E-4: pose application resolves coordinate conversion once");
         }
 
         private static void ReplayAdapterDocumentsSinglePrimitiveEntityConstraint()

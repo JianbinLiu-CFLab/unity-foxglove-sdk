@@ -179,7 +179,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Send droppable live data binary frames to every connected client.</summary>
         public void BroadcastDataBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients.ToArray())
+            foreach (var (id, conn) in _clients)
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
         }
 
@@ -204,7 +204,7 @@ namespace Unity.FoxgloveSDK.Transport
             var clientList = new List<TransportClientStats>();
             long totalQueuedFrames = 0;
             long totalQueuedBytes = 0;
-            var droppedDisconnected = Interlocked.Read(ref _totalDroppedDataFrames);
+            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);
 
             foreach (var kv in _clients.ToArray())
             {
@@ -212,11 +212,8 @@ namespace Unity.FoxgloveSDK.Transport
                 clientList.Add(cs);
                 totalQueuedFrames += cs.QueuedFrames;
                 totalQueuedBytes += cs.QueuedBytes;
-            }
-
-            var totalDropped = droppedDisconnected;
-            foreach (var cs in clientList)
                 totalDropped += cs.DroppedDataFrames;
+            }
 
             return new TransportStatsSnapshot
             {
@@ -242,7 +239,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Snapshot of currently allowed browser origins. Empty means no browser clients are allowed.</summary>
         public IReadOnlyCollection<string> AllowedOrigins
         {
-            get { lock (_allowedOriginsLock) return _allowedOrigins.ToList(); }
+            get { lock (_allowedOriginsLock) return _allowedOrigins.ToArray(); }
         }
 
         /// <summary>Add an origin to the allowlist (case-insensitive). Full page URLs are normalized to their browser Origin.</summary>

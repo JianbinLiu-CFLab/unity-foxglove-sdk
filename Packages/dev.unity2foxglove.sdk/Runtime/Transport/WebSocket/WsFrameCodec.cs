@@ -82,8 +82,8 @@ namespace Unity.FoxgloveSDK.Transport
         {
             frame = null;
 
-            var header = new byte[2];
-            if (!ReadExact(stream, header, 0, 2))
+            Span<byte> header = stackalloc byte[2];
+            if (!ReadExact(stream, header))
                 return false;
 
             if ((header[0] & ReservedBitsMask) != 0)
@@ -96,15 +96,15 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (payloadLen == Payload16BitLengthMarker)
             {
-                var ext = new byte[2];
-                if (!ReadExact(stream, ext, 0, 2))
+                Span<byte> ext = stackalloc byte[2];
+                if (!ReadExact(stream, ext))
                     return false;
                 payloadLen = (ext[0] << 8) | ext[1];
             }
             else if (payloadLen == Payload64BitLengthMarker)
             {
-                var ext = new byte[8];
-                if (!ReadExact(stream, ext, 0, 8))
+                Span<byte> ext = stackalloc byte[8];
+                if (!ReadExact(stream, ext))
                     return false;
                 var len64 = (long)(((long)ext[0] << 56) | ((long)ext[1] << 48) | ((long)ext[2] << 40)
                                  | ((long)ext[3] << 32) | ((long)ext[4] << 24) | ((long)ext[5] << 16)
@@ -124,8 +124,8 @@ namespace Unity.FoxgloveSDK.Transport
                 && (!fin || payloadLen > SmallPayloadLimit))
                 return false;
 
-            var mask = new byte[4];
-            if (!ReadExact(stream, mask, 0, 4))
+            Span<byte> mask = stackalloc byte[4];
+            if (!ReadExact(stream, mask))
                 return false;
 
             if (payloadLen > MaxPayloadBytes)
@@ -167,6 +167,27 @@ namespace Unity.FoxgloveSDK.Transport
                         return false;
                     offset += read;
                     count -= read;
+                }
+            }
+            catch (Exception ex) when (IsExpectedStreamShutdown(ex))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Read exactly enough bytes to fill the span, returning <c>false</c> if the stream ends early.</summary>
+        private static bool ReadExact(Stream stream, Span<byte> buffer)
+        {
+            try
+            {
+                while (!buffer.IsEmpty)
+                {
+                    var read = stream.Read(buffer);
+                    if (read == 0)
+                        return false;
+                    buffer = buffer.Slice(read);
                 }
             }
             catch (Exception ex) when (IsExpectedStreamShutdown(ex))
