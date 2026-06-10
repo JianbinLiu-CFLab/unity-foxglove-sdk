@@ -9,7 +9,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.IO
@@ -283,11 +282,17 @@ namespace Unity.FoxgloveSDK.IO
                         var dataLen = recordLength - (_readOffset - startOff);
                         if (dataLen < 0 || dataLen > _currentUncompressed.Length - _readOffset)
                             throw new InvalidDataException("MCAP chunk message record is truncated.");
+
+                        if (logNs < emitAfter)
+                        {
+                            _readOffset += dataLen;
+                            continue;
+                        }
+
                         var data = new byte[dataLen];
                         Buffer.BlockCopy(_currentUncompressed, _readOffset, data, 0, dataLen);
                         _readOffset += dataLen;
 
-                        if (logNs < emitAfter) continue;
                         if (logNs > clampedNow)
                         {
                             AddPending(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
@@ -363,25 +368,31 @@ namespace Unity.FoxgloveSDK.IO
                     var dataLen = recordLength - (offset - startOff);
                     if (dataLen < 0 || dataLen > uncompressed.Length - offset)
                         throw new InvalidDataException("MCAP chunk message record is truncated.");
+
+                    if (logNs > clampedTime)
+                    {
+                        offset += dataLen;
+                        continue;
+                    }
+
                     var data = new byte[dataLen];
                     Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
                     offset += dataLen;
 
-                    if (logNs <= clampedTime)
+                    latestByChannel[chId] = new McapMessage
                     {
-                        latestByChannel[chId] = new McapMessage
-                        {
-                            ChannelId = chId,
-                            Sequence = seq,
-                            LogTime = logNs,
-                            PublishTime = pubNs,
-                            Data = data
-                        };
-                    }
+                        ChannelId = chId,
+                        Sequence = seq,
+                        LogTime = logNs,
+                        PublishTime = pubNs,
+                        Data = data
+                    };
                 }
             }
 
-            result.AddRange(latestByChannel.Values.OrderBy(m => m.LogTime).ThenBy(m => m.ChannelId));
+            result.AddRange(latestByChannel.Values);
+            if (result.Count > 1)
+                result.Sort(CompareMessages);
             return result;
         }
 
@@ -448,12 +459,16 @@ namespace Unity.FoxgloveSDK.IO
                     var dataLen = recordLength - (offset - startOff);
                     if (dataLen < 0 || dataLen > uncompressed.Length - offset)
                         throw new InvalidDataException("MCAP chunk message record is truncated.");
+
+                    if (logNs < clampedFrom || logNs > clampedTo)
+                    {
+                        offset += dataLen;
+                        continue;
+                    }
+
                     var data = new byte[dataLen];
                     Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
                     offset += dataLen;
-
-                    if (logNs < clampedFrom || logNs > clampedTo)
-                        continue;
 
                     AddHistoryMessage(result, new McapMessage
                     {
@@ -665,11 +680,6 @@ namespace Unity.FoxgloveSDK.IO
             else
                 _pending.RemoveRange(0, _pendingHeadIndex);
             _pendingHeadIndex = 0;
-        }
-
-        private void LogCrcWarning(string scope)
-        {
-            _logger.LogWarning($"[McapReplayEngine] {scope} CRC mismatch; data may be corrupted.");
         }
 
         private bool ShouldUseChunkRecords(string scope, bool crcValid)
