@@ -4,6 +4,7 @@
 // Module: Runtime/Core/Replay
 
 using System;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -20,9 +21,41 @@ namespace Unity.FoxgloveSDK.Core
         private Action<ReplayMessageContext> _replayContextForwarder;
         private Action<ReplayBatchContext> _replayBatchForwarder;
 
-        public event Action<string, byte[]> OnReplayMessage;
-        public event Action<ReplayMessageContext> OnReplayMessageContext;
-        public event Action<ReplayBatchContext> OnReplayBatchCompleted;
+        private Action<string, byte[]>[] _replayMessageHandlers = Array.Empty<Action<string, byte[]>>();
+        private Action<ReplayMessageContext>[] _replayMessageContextHandlers = Array.Empty<Action<ReplayMessageContext>>();
+        private Action<ReplayBatchContext>[] _replayBatchCompletedHandlers = Array.Empty<Action<ReplayBatchContext>>();
+
+        public event Action<string, byte[]> OnReplayMessage
+        {
+            add { AddHandler(ref _replayMessageHandlers, value); }
+            remove { RemoveHandler(ref _replayMessageHandlers, value); }
+        }
+
+        public event Action<ReplayMessageContext> OnReplayMessageContext
+        {
+            add { AddHandler(ref _replayMessageContextHandlers, value); }
+            remove { RemoveHandler(ref _replayMessageContextHandlers, value); }
+        }
+
+        public event Action<ReplayBatchContext> OnReplayBatchCompleted
+        {
+            add { AddHandler(ref _replayBatchCompletedHandlers, value); }
+            remove { RemoveHandler(ref _replayBatchCompletedHandlers, value); }
+        }
+
+        private static void AddHandler<T>(ref T[] cache, T handler) where T : Delegate
+        {
+            cache = ((Delegate)(object)Delegate.Combine((Delegate)(object)cache, handler))
+                .GetInvocationList().Cast<T>().ToArray();
+        }
+
+        private static void RemoveHandler<T>(ref T[] cache, T handler) where T : Delegate
+        {
+            var combined = Delegate.Remove(Delegate.Combine((Delegate)(object)cache), handler);
+            cache = combined != null
+                ? combined.GetInvocationList().Cast<T>().ToArray()
+                : Array.Empty<T>();
+        }
 
         /// <summary>
         /// Creates a <see cref="ReplayOrchestrator"/> with the given logger for
@@ -70,58 +103,31 @@ namespace Unity.FoxgloveSDK.Core
 
         private void SafeInvokeReplayMessage(string topic, byte[] data)
         {
-            var handlers = OnReplayMessage;
-            if (handlers == null)
-                return;
-
-            foreach (Action<string, byte[]> handler in handlers.GetInvocationList())
+            var handlers = _replayMessageHandlers;
+            foreach (var handler in handlers)
             {
-                try
-                {
-                    handler(topic, data);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Replay message listener failed: {ex.Message}");
-                }
+                try { handler(topic, data); }
+                catch (Exception ex) { _logger.LogWarning($"Replay message listener failed: {ex.Message}"); }
             }
         }
 
         private void SafeInvokeReplayMessageContext(ReplayMessageContext context)
         {
-            var handlers = OnReplayMessageContext;
-            if (handlers == null)
-                return;
-
-            foreach (Action<ReplayMessageContext> handler in handlers.GetInvocationList())
+            var handlers = _replayMessageContextHandlers;
+            foreach (var handler in handlers)
             {
-                try
-                {
-                    handler(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Replay message context listener failed: {ex.Message}");
-                }
+                try { handler(context); }
+                catch (Exception ex) { _logger.LogWarning($"Replay message context listener failed: {ex.Message}"); }
             }
         }
 
         private void SafeInvokeReplayBatchCompleted(ReplayBatchContext context)
         {
-            var handlers = OnReplayBatchCompleted;
-            if (handlers == null)
-                return;
-
-            foreach (Action<ReplayBatchContext> handler in handlers.GetInvocationList())
+            var handlers = _replayBatchCompletedHandlers;
+            foreach (var handler in handlers)
             {
-                try
-                {
-                    handler(context);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Replay batch listener failed: {ex.Message}");
-                }
+                try { handler(context); }
+                catch (Exception ex) { _logger.LogWarning($"Replay batch listener failed: {ex.Message}"); }
             }
         }
     }

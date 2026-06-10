@@ -36,6 +36,10 @@ namespace Unity.FoxgloveSDK.Tests
             ExternalCursorEnabledCheckIsSynchronized();
             SchemaSidecarSuccessResultPointsAtExistingDirectory();
             SchemaSidecarPublishFailureReportsPreservedBackup();
+            VerifyOpt1DrainReplayCallbacksUsesPooledBuffer();
+            VerifyOpt4EndInitDeferralNoToArray();
+            VerifyOpt2ReplayControllerCachedInvocationList();
+            VerifyOpt3ReplayOrchestratorCachedInvocationList();
 
             Console.WriteLine($"Phase 140-3: {_passed} checks passed.");
         }
@@ -193,6 +197,69 @@ namespace Unity.FoxgloveSDK.Tests
             var directory = Path.Combine(root, group);
             Directory.CreateDirectory(directory);
             File.WriteAllText(Path.Combine(directory, fileName), content);
+        }
+
+        /// <summary>
+        /// OPT-1: Verify DrainReplayCallbacks uses a pooled drain buffer instead of
+        /// allocating a new List on every call.
+        /// </summary>
+        private static void VerifyOpt1DrainReplayCallbacksUsesPooledBuffer()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var body = ExtractMethodBody(source, "public void DrainReplayCallbacks()");
+            Check(!string.IsNullOrEmpty(body), "OPT-1: DrainReplayCallbacks method body found");
+            Check(!body.Contains("new List<ReplayCallbackDispatch>", StringComparison.Ordinal),
+                "OPT-1: DrainReplayCallbacks no longer allocates a new List per call");
+            Check(source.Contains("_drainBuffer", StringComparison.Ordinal)
+                || source.Contains("_replayCallbackDrainBuffer", StringComparison.Ordinal),
+                "OPT-1: pooled drain buffer field exists");
+            Check(body.Contains("Clear()", StringComparison.Ordinal),
+                "OPT-1: drain buffer is cleared after iteration");
+        }
+
+        /// <summary>
+        /// OPT-4: Verify EndInitDeferral returns _resolvedHeld directly
+        /// instead of allocating a copy via ToArray().
+        /// </summary>
+        private static void VerifyOpt4EndInitDeferralNoToArray()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayPoseOwnershipArbiter.cs");
+            var body = ExtractMethodBody(source, "public IReadOnlyList<ReplayPoseOwnershipDecision> EndInitDeferral()");
+            Check(!string.IsNullOrEmpty(body), "OPT-4: EndInitDeferral method body found");
+            Check(!body.Contains("ToArray()", StringComparison.Ordinal),
+                "OPT-4: EndInitDeferral no longer calls ToArray()");
+            Check(body.Contains("return _resolvedHeld", StringComparison.Ordinal),
+                "OPT-4: EndInitDeferral returns _resolvedHeld directly");
+        }
+
+        /// <summary>
+        /// OPT-2: Verify ReplayController uses cached handler arrays instead of
+        /// per-call GetInvocationList().
+        /// </summary>
+        private static void VerifyOpt2ReplayControllerCachedInvocationList()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var body = ExtractMethodBody(source, "private void InvokeReplayMessage(");
+            Check(!string.IsNullOrEmpty(body), "OPT-2: InvokeReplayMessage method body found");
+            Check(!body.Contains("GetInvocationList()", StringComparison.Ordinal),
+                "OPT-2: InvokeReplayMessage no longer calls GetInvocationList()");
+            Check(source.Contains("_replayMessageHandlers", StringComparison.Ordinal),
+                "OPT-2: cached _replayMessageHandlers array field exists");
+        }
+
+        /// <summary>
+        /// OPT-3: Verify ReplayOrchestrator uses cached handler arrays instead of
+        /// per-call GetInvocationList().
+        /// </summary>
+        private static void VerifyOpt3ReplayOrchestratorCachedInvocationList()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
+            var body = ExtractMethodBody(source, "private void SafeInvokeReplayMessage(");
+            Check(!string.IsNullOrEmpty(body), "OPT-3: SafeInvokeReplayMessage method body found");
+            Check(!body.Contains("GetInvocationList()", StringComparison.Ordinal),
+                "OPT-3: SafeInvokeReplayMessage no longer calls GetInvocationList()");
+            Check(source.Contains("_replayMessageHandlers", StringComparison.Ordinal),
+                "OPT-3: cached _replayMessageHandlers array field exists");
         }
 
         private static string ReadRepoText(string relativePath)

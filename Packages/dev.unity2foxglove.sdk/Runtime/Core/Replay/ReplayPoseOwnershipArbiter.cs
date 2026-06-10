@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _held.Clear();
-            return _resolvedHeld.ToArray();
+            return _resolvedHeld;
         }
 
         /// <summary>Clears all ownership state and resets deferral to active.</summary>
