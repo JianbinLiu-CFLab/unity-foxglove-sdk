@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
         private Action<string, byte[]> _replayForwarder;
         private Action<ReplayMessageContext> _replayContextForwarder;
         private Action<ReplayBatchContext> _replayBatchForwarder;
+        private readonly object _replayHandlersGate = new();
 
         private Action<string, byte[]>[] _replayMessageHandlers = Array.Empty<Action<string, byte[]>>();
         private Action<ReplayMessageContext>[] _replayMessageContextHandlers = Array.Empty<Action<ReplayMessageContext>>();
@@ -27,34 +28,40 @@ namespace Unity.FoxgloveSDK.Core
 
         public event Action<string, byte[]> OnReplayMessage
         {
-            add { AddHandler(ref _replayMessageHandlers, value); }
-            remove { RemoveHandler(ref _replayMessageHandlers, value); }
+            add { AddHandler(ref _replayMessageHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayMessageHandlers, _replayHandlersGate, value); }
         }
 
         public event Action<ReplayMessageContext> OnReplayMessageContext
         {
-            add { AddHandler(ref _replayMessageContextHandlers, value); }
-            remove { RemoveHandler(ref _replayMessageContextHandlers, value); }
+            add { AddHandler(ref _replayMessageContextHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayMessageContextHandlers, _replayHandlersGate, value); }
         }
 
         public event Action<ReplayBatchContext> OnReplayBatchCompleted
         {
-            add { AddHandler(ref _replayBatchCompletedHandlers, value); }
-            remove { RemoveHandler(ref _replayBatchCompletedHandlers, value); }
+            add { AddHandler(ref _replayBatchCompletedHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayBatchCompletedHandlers, _replayHandlersGate, value); }
         }
 
-        private static void AddHandler<T>(ref T[] cache, T handler) where T : Delegate
+        private static void AddHandler<T>(ref T[] cache, object handlersGate, T handler) where T : Delegate
         {
-            cache = ((Delegate)(object)Delegate.Combine((Delegate)(object)cache, handler))
-                .GetInvocationList().Cast<T>().ToArray();
+            lock (handlersGate)
+            {
+                cache = Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler)
+                    .GetInvocationList().Cast<T>().ToArray();
+            }
         }
 
-        private static void RemoveHandler<T>(ref T[] cache, T handler) where T : Delegate
+        private static void RemoveHandler<T>(ref T[] cache, object handlersGate, T handler) where T : Delegate
         {
-            var combined = Delegate.Remove(Delegate.Combine((Delegate)(object)cache), handler);
-            cache = combined != null
-                ? combined.GetInvocationList().Cast<T>().ToArray()
-                : Array.Empty<T>();
+            lock (handlersGate)
+            {
+                var combined = Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler);
+                cache = combined != null
+                    ? combined.GetInvocationList().Cast<T>().ToArray()
+                    : Array.Empty<T>();
+            }
         }
 
         /// <summary>

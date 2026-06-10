@@ -79,8 +79,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly BoundedEventQueue<ReplayCallbackDispatch> _pendingReplayCallbacks =
             new(MaxPendingReplayCallbacks, MaxPendingReplayCallbackPayloadBytes, MeasureReplayCallbackPayloadBytes);
         private readonly List<ReplayCallbackDispatch> _drainBuffer = new();
+        private readonly object _replayCallbackDrainGate = new();
         private long _lastReplayCallbackOverflowWarningTicks;
         private ulong _replaySessionId;
+        private readonly object _replayHandlersGate = new();
+        private bool _isDrainingReplayCallbacks;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => Volatile.Read(ref _replayEnabled);
@@ -113,34 +116,40 @@ namespace Unity.FoxgloveSDK.Core
 
         public event Action<string, byte[]> OnReplayMessage
         {
-            add { AddHandler(ref _replayMessageHandlers, value); }
-            remove { RemoveHandler(ref _replayMessageHandlers, value); }
+            add { AddHandler(ref _replayMessageHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayMessageHandlers, _replayHandlersGate, value); }
         }
 
         public event Action<ReplayMessageContext> OnReplayMessageContext
         {
-            add { AddHandler(ref _replayMessageContextHandlers, value); }
-            remove { RemoveHandler(ref _replayMessageContextHandlers, value); }
+            add { AddHandler(ref _replayMessageContextHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayMessageContextHandlers, _replayHandlersGate, value); }
         }
 
         public event Action<ReplayBatchContext> OnReplayBatchCompleted
         {
-            add { AddHandler(ref _replayBatchCompletedHandlers, value); }
-            remove { RemoveHandler(ref _replayBatchCompletedHandlers, value); }
+            add { AddHandler(ref _replayBatchCompletedHandlers, _replayHandlersGate, value); }
+            remove { RemoveHandler(ref _replayBatchCompletedHandlers, _replayHandlersGate, value); }
         }
 
-        private static void AddHandler<T>(ref T[] cache, T handler) where T : Delegate
+        private static void AddHandler<T>(ref T[] cache, object handlersGate, T handler) where T : Delegate
         {
-            cache = ((Delegate)(object)Delegate.Combine((Delegate)(object)cache, handler))
-                .GetInvocationList().Cast<T>().ToArray();
+            lock (handlersGate)
+            {
+                cache = Delegate.Combine(Delegate.Combine((Delegate[])(object)cache), handler)
+                    .GetInvocationList().Cast<T>().ToArray();
+            }
         }
 
-        private static void RemoveHandler<T>(ref T[] cache, T handler) where T : Delegate
+        private static void RemoveHandler<T>(ref T[] cache, object handlersGate, T handler) where T : Delegate
         {
-            var combined = Delegate.Remove(Delegate.Combine((Delegate)(object)cache), handler);
-            cache = combined != null
-                ? combined.GetInvocationList().Cast<T>().ToArray()
-                : Array.Empty<T>();
+            lock (handlersGate)
+            {
+                var combined = Delegate.Remove(Delegate.Combine((Delegate[])(object)cache), handler);
+                cache = combined != null
+                    ? combined.GetInvocationList().Cast<T>().ToArray()
+                    : Array.Empty<T>();
+            }
         }
 
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
@@ -746,33 +755,50 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DrainReplayCallbacks()
         {
-            lock (_replayEngineLock)
+            lock (_replayCallbackDrainGate)
             {
-                if (_pendingReplayCallbacks.Count == 0)
+                if (_isDrainingReplayCallbacks)
                     return;
 
-                _drainBuffer.Clear();
-                while (_pendingReplayCallbacks.TryDequeue(out var callback))
-                    _drainBuffer.Add(callback);
+                _isDrainingReplayCallbacks = true;
             }
 
             try
             {
-                foreach (var callback in _drainBuffer)
+                while (true)
                 {
-                    if (callback.IsBatch)
+                    _drainBuffer.Clear();
+                    lock (_replayEngineLock)
                     {
-                        InvokeReplayBatchCompleted(callback.BatchContext.Value);
-                        continue;
+                        if (_pendingReplayCallbacks.Count == 0)
+                            break;
+
+                        while (_pendingReplayCallbacks.TryDequeue(out var callback))
+                            _drainBuffer.Add(callback);
                     }
 
-                    var context = callback.MessageContext.Value;
-                    InvokeReplayMessageContext(context);
-                    InvokeReplayMessage(context.Topic, context.Payload);
+                    for (var i = 0; i < _drainBuffer.Count; i++)
+                    {
+                        var callback = _drainBuffer[i];
+                        if (callback.IsBatch)
+                        {
+                            InvokeReplayBatchCompleted(callback.BatchContext.Value);
+                            continue;
+                        }
+
+                        var context = callback.MessageContext.Value;
+                        InvokeReplayMessageContext(context);
+                        InvokeReplayMessage(context.Topic, context.Payload);
+                    }
                 }
             }
             finally
             {
+                lock (_replayCallbackDrainGate)
+                {
+                    _isDrainingReplayCallbacks = false;
+                }
+
                 _drainBuffer.Clear();
             }
         }
