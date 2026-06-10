@@ -755,9 +755,22 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientText(uint clientId, string json)
         {
-            string op;
-            try { op = JObject.Parse(json)["op"]?.ToString(); }
-            catch { _logger.LogWarning($"Malformed JSON from client {clientId}"); return; }
+            string op = null;
+            try
+            {
+                op = TryReadOpField(json);
+            }
+            catch
+            {
+                _logger.LogWarning($"Malformed JSON from client {clientId}");
+                return;
+            }
+
+            if (op == null)
+            {
+                _logger.LogWarning($"Missing or null 'op' field from client {clientId}");
+                return;
+            }
 
             switch (op)
             {
@@ -774,6 +787,32 @@ namespace Unity.FoxgloveSDK.Core
                 case "fetchAsset": HandleFetchAsset(clientId, json); break;
                 default: _logger.LogWarning($"Unknown op '{op}' from client {clientId}"); break;
             }
+        }
+
+        /// <summary>
+        /// Read the top-level "op" field from a Foxglove control-message JSON
+        /// string without allocating a full JObject. Returns the string value,
+        /// empty string for null, or null when the field is absent.
+        /// </summary>
+        private static string TryReadOpField(string json)
+        {
+            using (var reader = new JsonTextReader(new StringReader(json)))
+            {
+                while (reader.Read())
+                {
+                    if (reader.Depth == 1
+                        && reader.TokenType == JsonToken.PropertyName
+                        && string.Equals(reader.Value as string, "op", StringComparison.Ordinal))
+                    {
+                        reader.Read();
+                        if (reader.TokenType == JsonToken.Null)
+                            return "";
+                        return reader.Value?.ToString();
+                    }
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
