@@ -195,11 +195,11 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Ends the init-batch deferral period, resolving all held poses to Apply decisions.</summary>
         public IReadOnlyList<ReplayPoseOwnershipDecision> EndInitDeferral()
         {
-            _resolvedHeld.Clear();
             if (!IsDeferralActive)
                 return Array.Empty<ReplayPoseOwnershipDecision>();
 
             IsDeferralActive = false;
+            _resolvedHeld.Clear();
             foreach (var pair in _held)
             {
                 var held = pair.Value;
@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _held.Clear();
-            return _resolvedHeld;
+            return new List<ReplayPoseOwnershipDecision>(_resolvedHeld);
         }
 
         /// <summary>Clears all ownership state and resets deferral to active.</summary>
