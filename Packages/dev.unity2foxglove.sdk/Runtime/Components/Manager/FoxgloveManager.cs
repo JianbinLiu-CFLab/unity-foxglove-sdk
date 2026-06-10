@@ -7,6 +7,7 @@
 // WebSocket server, coordinate mode, asset roots, playback control, MCAP
 // recording, and MCAP replay.
 
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
