@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Tests
             CaptureCameraIsHiddenAndNotSaved();
             OutputModeWarningIsNotLoggedFromPropertyGetter();
             VideoFrameFactoryNullCheckRunsBeforeOtherValidation();
+            VideoFrameSubmitAvoidsPerFrameClosure();
+            CameraDemandChecksReuseResolvedProfile();
             RawImageBuilderDocumentsPackedRgb24Assumption();
             PhaseWiringIsPresent();
 
@@ -104,9 +106,33 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var method = ExtractMethod(source, "public CameraVideoSubmitResult SubmitVideoFrame");
 
-            Check(method.IndexOf("if (frameBytesFactory == null", StringComparison.Ordinal)
-                  < method.IndexOf("if (frameByteLength <= 0)", StringComparison.Ordinal),
-                "140-14G-1: video frame bytes factory null check runs before other validation");
+            Check(!method.Contains("Func<byte[]>", StringComparison.Ordinal)
+                  && method.Contains("ICameraVideoFrameBytesSource", StringComparison.Ordinal)
+                  && method.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
+                "140-14G-1: video submit accepts a frame byte source and defers the copy until validation passes");
+        }
+
+        private static void VideoFrameSubmitAvoidsPerFrameClosure()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs");
+            var method = ExtractMethod(source, "private void SubmitVideoFrame");
+
+            Check(!method.Contains("() => readbackData.ToArray()", StringComparison.Ordinal)
+                  && method.Contains("new CameraVideoReadbackFrameBytesSource(req)", StringComparison.Ordinal)
+                  && method.Contains("readbackData,", StringComparison.Ordinal),
+                "140-14G-2: camera video readback submit does not allocate a per-frame bytes factory closure");
+        }
+
+        private static void CameraDemandChecksReuseResolvedProfile()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var lateUpdate = ExtractMethod(source, "private void LateUpdate");
+            var readback = ExtractMethod(source, "private void OnReadbackComplete");
+
+            Check(lateUpdate.Contains("HasSensorCompressedImageDemand(profile)", StringComparison.Ordinal)
+                  && readback.Contains("HasSensorCompressedImageDemand(profile)", StringComparison.Ordinal)
+                  && source.Contains("private bool HasSensorCompressedImageDemand(CameraVideoOutputProfile profile)", StringComparison.Ordinal),
+                "140-14G-3: camera compressed-image demand reuses the per-frame resolved profile");
         }
 
         private static void RawImageBuilderDocumentsPackedRgb24Assumption()

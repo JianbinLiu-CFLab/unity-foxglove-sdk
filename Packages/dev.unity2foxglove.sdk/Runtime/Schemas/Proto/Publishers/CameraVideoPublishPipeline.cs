@@ -39,6 +39,12 @@ namespace Unity.FoxgloveSDK.Components
         public bool Submitted => Outcome == CameraVideoSubmitOutcome.Submitted;
     }
 
+    internal interface ICameraVideoFrameBytesSource
+    {
+        int Length { get; }
+        byte[] ToArray();
+    }
+
     internal sealed class CameraVideoPublishPipeline
     {
         private readonly CameraPublishDiagnostics _diagnostics;
@@ -90,17 +96,14 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
-        public CameraVideoSubmitResult SubmitVideoFrame(
-            Func<byte[]> frameBytesFactory,
-            int frameByteLength,
+        public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(
+            TFrameBytes frameBytes,
             ulong renderUnixNs,
             int captureWidth,
-            int captureHeight)
+            int captureHeight) where TFrameBytes : struct, ICameraVideoFrameBytesSource
         {
             var submitStart = Stopwatch.GetTimestamp();
-            if (frameBytesFactory == null)
-                throw new ArgumentNullException(nameof(frameBytesFactory));
-            if (frameByteLength <= 0)
+            if (frameBytes.Length <= 0)
                 return new CameraVideoSubmitResult(CameraVideoSubmitOutcome.FrameDataMissing, "Video frame data is empty.", 0d);
 
             var sidecar = _videoSidecarSession.Sidecar;
@@ -131,7 +134,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!CameraVideoFrameValidator.TryValidateCapturedFrame(
                 captureWidth,
                 captureHeight,
-                frameByteLength,
+                frameBytes.Length,
                 _videoSidecarSession.Width,
                 _videoSidecarSession.Height,
                 out var dimensionError))
@@ -144,8 +147,8 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
-            var frameBytes = frameBytesFactory();
-            if (frameBytes == null || frameBytes.Length == 0)
+            var ownedFrameBytes = frameBytes.ToArray();
+            if (ownedFrameBytes == null || ownedFrameBytes.Length == 0)
             {
                 _diagnostics.RecordVideoSubmitFailure();
                 var result = new CameraVideoSubmitResult(
@@ -160,7 +163,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var i420 = new byte[captureWidth * captureHeight * 3 / 2];
                 if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(
-                    frameBytes,
+                    ownedFrameBytes,
                     captureWidth,
                     captureHeight,
                     i420,
@@ -176,10 +179,10 @@ namespace Unity.FoxgloveSDK.Components
                     return result;
                 }
 
-                frameBytes = i420;
+                ownedFrameBytes = i420;
             }
 
-            if (!_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs))
+            if (!_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, renderUnixNs))
             {
                 _diagnostics.RecordVideoSubmitFailure();
                 var result = new CameraVideoSubmitResult(

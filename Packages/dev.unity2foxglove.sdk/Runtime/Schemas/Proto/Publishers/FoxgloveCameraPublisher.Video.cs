@@ -29,13 +29,17 @@ namespace Unity.FoxgloveSDK.Components
         /// Submits a rendered camera frame to the active video sidecar using the
         /// dimensions captured with the same readback request.
         /// </summary>
-        private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)
+        private void SubmitVideoFrame(
+            AsyncGPUReadbackRequest req,
+            CameraVideoOutputProfile profile,
+            ulong renderUnixNs,
+            int captureWidth,
+            int captureHeight)
         {
-            var readbackData = req.GetData<byte>();
+            var readbackData = new CameraVideoReadbackFrameBytesSource(req);
             EnsureVideoPublishPipeline();
             var result = _videoPublishPipeline.SubmitVideoFrame(
-                () => readbackData.ToArray(),
-                readbackData.Length,
+                readbackData,
                 renderUnixNs,
                 captureWidth,
                 captureHeight);
@@ -53,13 +57,28 @@ namespace Unity.FoxgloveSDK.Components
                     break;
                 case CameraVideoSubmitOutcome.FrameDataMissing:
                     EmitVideoDiagnosticsIfNeeded();
-                    LogVideoEncoderUnavailable(ActiveProfile, result.Reason);
+                    LogVideoEncoderUnavailable(profile, result.Reason);
                     break;
                 default:
                     EmitVideoDiagnosticsIfNeeded();
-                    LogVideoEncoderUnavailable(ActiveProfile, result.Reason);
+                    LogVideoEncoderUnavailable(profile, result.Reason);
                     break;
             }
+        }
+
+        private readonly struct CameraVideoReadbackFrameBytesSource : ICameraVideoFrameBytesSource
+        {
+            private readonly AsyncGPUReadbackRequest _request;
+
+            public CameraVideoReadbackFrameBytesSource(AsyncGPUReadbackRequest request)
+            {
+                _request = request;
+            }
+
+            public int Length => _request.GetData<byte>().Length;
+
+            public byte[] ToArray()
+                => _request.GetData<byte>().ToArray();
         }
 
         /// <summary>

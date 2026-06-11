@@ -213,7 +213,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!profile.IsVideo && !AllowJpegCaptureByBackpressure()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
-            var publishNativeFrame = HasSensorCompressedImageDemand();
+            var publishNativeFrame = HasSensorCompressedImageDemand(profile);
             var publishRawFrame = HasSensorRawImageDemand();
             if (!publishWebSocket && !publishBridge && !publishNativeFrame && !publishRawFrame) return;
             LogRawBandwidthWarningIfNeeded();
@@ -267,12 +267,12 @@ namespace Unity.FoxgloveSDK.Components
 
                 var publishWebSocket = ShouldPreparePublishPayload();
                 var publishBridge = ShouldPrepareRos2BridgePayload();
-                var publishNativeFrame = HasSensorCompressedImageDemand();
+                var publishNativeFrame = HasSensorCompressedImageDemand(profile);
                 var publishJpegFrame = publishWebSocket || publishBridge || publishNativeFrame;
                 var publishVideo = profile.IsVideo && (publishWebSocket || publishBridge);
                 if (publishVideo)
                 {
-                    SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight);
+                    SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight);
                     if (publishRawFrame)
                     {
                         var rawBytes = req.GetData<byte>().ToArray();
@@ -368,8 +368,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private bool HasSensorCompressedImageDemand()
+            => HasSensorCompressedImageDemand(ActiveProfile);
+
+        private bool HasSensorCompressedImageDemand(CameraVideoOutputProfile profile)
             => CameraSensorProfileResolver.HasCompressedImageDemand(
-                IsStandardRos2CompressedImageOutput,
+                profile.Mode == CameraOutputMode.Jpeg && _publishStandardRos2CompressedImage,
                 SensorCompressedImageReady != null);
 
         private bool HasSensorRawImageDemand()
