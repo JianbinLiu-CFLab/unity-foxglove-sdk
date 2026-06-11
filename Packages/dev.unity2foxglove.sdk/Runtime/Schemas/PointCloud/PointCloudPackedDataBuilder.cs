@@ -160,28 +160,39 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
                 layout.HasAbsoluteTime = frame.EmitAbsoluteTimeNs && layout.HasTimeOffset;
 
-                var fields = new List<PointCloudPackedField>
-                {
-                    Field("x", 0, PointCloudPackedNumericType.Float32),
-                    Field("y", 4, PointCloudPackedNumericType.Float32),
-                    Field("z", 8, PointCloudPackedNumericType.Float32)
-                };
+                var fieldCount = 3
+                    + (layout.HasIntensity ? 1 : 0)
+                    + (layout.HasReflectivity ? 1 : 0)
+                    + (layout.HasRing ? 1 : 0)
+                    + (layout.HasTimeOffset ? 1 : 0)
+                    + (layout.HasAbsoluteTime ? 1 : 0);
+                var fields = new PointCloudPackedField[fieldCount];
+                fields[0] = Field("x", 0, PointCloudPackedNumericType.Float32);
+                fields[1] = Field("y", 4, PointCloudPackedNumericType.Float32);
+                fields[2] = Field("z", 8, PointCloudPackedNumericType.Float32);
 
                 uint offset = 12;
-                if (layout.HasIntensity) AddField(fields, "intensity", PointCloudPackedNumericType.Float32, ref offset, 4);
-                if (layout.HasReflectivity) AddField(fields, "reflectivity", PointCloudPackedNumericType.Float32, ref offset, 4);
-                if (layout.HasRing) AddField(fields, "ring", PointCloudPackedNumericType.Uint16, ref offset, 2);
-                if (layout.HasTimeOffset) AddField(fields, "time_offset", PointCloudPackedNumericType.Float32, ref offset, 4);
-                if (layout.HasAbsoluteTime) AddField(fields, "t", PointCloudPackedNumericType.Uint32, ref offset, 4);
+                var fieldIndex = 3;
+                if (layout.HasIntensity) AddField(fields, ref fieldIndex, "intensity", PointCloudPackedNumericType.Float32, ref offset, 4);
+                if (layout.HasReflectivity) AddField(fields, ref fieldIndex, "reflectivity", PointCloudPackedNumericType.Float32, ref offset, 4);
+                if (layout.HasRing) AddField(fields, ref fieldIndex, "ring", PointCloudPackedNumericType.Uint16, ref offset, 2);
+                if (layout.HasTimeOffset) AddField(fields, ref fieldIndex, "time_offset", PointCloudPackedNumericType.Float32, ref offset, 4);
+                if (layout.HasAbsoluteTime) AddField(fields, ref fieldIndex, "t", PointCloudPackedNumericType.Uint32, ref offset, 4);
 
                 layout.Stride = offset;
-                layout.Fields = fields.ToArray();
+                layout.Fields = fields;
                 return layout;
             }
 
-            private static void AddField(List<PointCloudPackedField> fields, string name, PointCloudPackedNumericType type, ref uint offset, uint width)
+            private static void AddField(
+                PointCloudPackedField[] fields,
+                ref int fieldIndex,
+                string name,
+                PointCloudPackedNumericType type,
+                ref uint offset,
+                uint width)
             {
-                fields.Add(Field(name, offset, type));
+                fields[fieldIndex++] = Field(name, offset, type);
                 offset += width;
             }
 

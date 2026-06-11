@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.Camera;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
@@ -34,6 +35,12 @@ namespace Unity.FoxgloveSDK.Tests
             DefaultSchemaRegistrySerializesDictionaryAccess();
             PointCloud2RowStepOverflowHasClearArgumentError();
             RawImageJsonOmissionIsDocumented();
+            NativePointCloudLayoutsAreCachedAndReadOnly();
+            ManagedPointCloudLayoutAvoidsIntermediateList();
+            SchemaRegistryNormalizesEncodingOnce();
+            SchemaRegistryEncodingBehaviorIsPreserved();
+            RawImageRgb8UsesFastPath();
+            RawImageEncodingBehaviorIsPreserved();
             PhaseWiringIsPresent();
 
             Console.WriteLine($"Phase 140-12: {_passed} checks passed.");
@@ -107,6 +114,63 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-12F-1: RawImage JSON schema omission is documented beside core JSON schema registration");
         }
 
+        private static void NativePointCloudLayoutsAreCachedAndReadOnly()
+        {
+            var points = new[]
+            {
+                new VirtualLidarPointData { IsValid = 1 }
+            };
+            var first = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: false);
+            var second = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: false);
+            var timed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(points, emitAbsoluteTimeNs: true);
+
+            Check(ReferenceEquals(first.Fields, second.Fields)
+                  && first.Fields is not PointCloudPackedField[]
+                  && first.Fields.Count == 7
+                  && timed.Fields.Count == 8,
+                "140-12H-1: native point-cloud layouts are cached without exposing mutable arrays");
+        }
+
+        private static void ManagedPointCloudLayoutAvoidsIntermediateList()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+            var layout = SourceBetween(source, "private sealed class PointCloudLayout", "        }\n    }\n}");
+            Check(!layout.Contains("new List<PointCloudPackedField>", StringComparison.Ordinal)
+                  && !layout.Contains("fields.ToArray()", StringComparison.Ordinal),
+                "140-12H-2: managed point-cloud layout allocates only its final field array");
+        }
+
+        private static void SchemaRegistryNormalizesEncodingOnce()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Registry/ISchemaRegistry.cs");
+            var makeKey = SourceBetween(source, "private static string MakeKey", "private static string NormalizeEncoding");
+            Check(!makeKey.Contains("NormalizeEncoding", StringComparison.Ordinal),
+                "140-12H-3: schema registry key construction does not normalize an already-normalized encoding");
+        }
+
+        private static void SchemaRegistryEncodingBehaviorIsPreserved()
+        {
+            var registry = new DefaultSchemaRegistry();
+            registry.Register(new SchemaEntry { Name = "phase140.MixedEncoding", Encoding = "ProToBuF" });
+            Check(registry.TryGetSchema("phase140.MixedEncoding", "PROTOBUF", out var entry)
+                  && entry.Encoding == "protobuf",
+                "140-12H-4: schema registry preserves case-insensitive encoding lookup");
+        }
+
+        private static void RawImageRgb8UsesFastPath()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Camera/SensorRawImageFrame.cs");
+            Check(source.Contains("string.Equals(encoding, \"rgb8\", StringComparison.Ordinal)", StringComparison.Ordinal),
+                "140-12H-5: exact rgb8 camera frames bypass string normalization");
+        }
+
+        private static void RawImageEncodingBehaviorIsPreserved()
+        {
+            var frame = new SensorRawImageFrame(0UL, "camera", 1, 1, new byte[3], " RGB8 ");
+            Check(frame.Encoding == "rgb8",
+                "140-12H-6: raw image encoding still accepts padded mixed-case rgb8");
+        }
+
         private static void PhaseWiringIsPresent()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
@@ -151,6 +215,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var root = FindRepoRoot();
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private static string SourceBetween(string source, string startMarker, string endMarker)
+        {
+            var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+            var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+            if (start < 0 || end < 0)
+                throw new InvalidOperationException("Could not locate Phase140-12 source markers.");
+            return source.Substring(start, end - start);
         }
 
         private static string FindRepoRoot()

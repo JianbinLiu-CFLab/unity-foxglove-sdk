@@ -15,6 +15,27 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     {
         private const uint BaseStride = 26U;
         private const uint AbsoluteTimeStride = 30U;
+        private static readonly IReadOnlyList<PointCloudPackedField> BaseFields = Array.AsReadOnly(new[]
+        {
+            Field("x", 0, PointCloudPackedNumericType.Float32),
+            Field("y", 4, PointCloudPackedNumericType.Float32),
+            Field("z", 8, PointCloudPackedNumericType.Float32),
+            Field("intensity", 12, PointCloudPackedNumericType.Float32),
+            Field("reflectivity", 16, PointCloudPackedNumericType.Float32),
+            Field("ring", 20, PointCloudPackedNumericType.Uint16),
+            Field("time_offset", 22, PointCloudPackedNumericType.Float32)
+        });
+        private static readonly IReadOnlyList<PointCloudPackedField> AbsoluteTimeFields = Array.AsReadOnly(new[]
+        {
+            Field("x", 0, PointCloudPackedNumericType.Float32),
+            Field("y", 4, PointCloudPackedNumericType.Float32),
+            Field("z", 8, PointCloudPackedNumericType.Float32),
+            Field("intensity", 12, PointCloudPackedNumericType.Float32),
+            Field("reflectivity", 16, PointCloudPackedNumericType.Float32),
+            Field("ring", 20, PointCloudPackedNumericType.Uint16),
+            Field("time_offset", 22, PointCloudPackedNumericType.Float32),
+            Field("t", 26, PointCloudPackedNumericType.Uint32)
+        });
 
         /// <summary>
         /// Builds the full SLAM PointCloud2 field layout from compacted valid
@@ -102,21 +123,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         private static IReadOnlyList<PointCloudPackedField> BuildFields(bool emitAbsoluteTimeNs)
         {
-            var fields = new List<PointCloudPackedField>
-            {
-                Field("x", 0, PointCloudPackedNumericType.Float32),
-                Field("y", 4, PointCloudPackedNumericType.Float32),
-                Field("z", 8, PointCloudPackedNumericType.Float32),
-                Field("intensity", 12, PointCloudPackedNumericType.Float32),
-                Field("reflectivity", 16, PointCloudPackedNumericType.Float32),
-                Field("ring", 20, PointCloudPackedNumericType.Uint16),
-                Field("time_offset", 22, PointCloudPackedNumericType.Float32)
-            };
-
-            if (emitAbsoluteTimeNs)
-                fields.Add(Field("t", 26, PointCloudPackedNumericType.Uint32));
-
-            return fields.ToArray();
+            return emitAbsoluteTimeNs ? AbsoluteTimeFields : BaseFields;
         }
 
         private static PointCloudPackedField Field(string name, uint offset, PointCloudPackedNumericType type)
