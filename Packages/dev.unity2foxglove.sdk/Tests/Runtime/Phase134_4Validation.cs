@@ -107,7 +107,8 @@ namespace Unity.FoxgloveSDK.Tests
             var editor = ReadRepoText(PublisherEditorPath);
             Check(editor.Contains("serializedObject.FindProperty(\"_topic\")", StringComparison.Ordinal),
                 "134-4D-1: publisher Inspector reads the serialized topic field");
-            Check(editor.Contains("HasValidPublisherTopic(topic.stringValue)", StringComparison.Ordinal)
+            Check((editor.Contains("HasValidPublisherTopic(topic.stringValue)", StringComparison.Ordinal)
+                   || editor.Contains("HasValidPublisherTopic(_topic.stringValue)", StringComparison.Ordinal))
                   && editor.Contains("Blank publisher topics are not advertised or published.", StringComparison.Ordinal)
                   && editor.Contains("MessageType.Error", StringComparison.Ordinal),
                 "134-4D-2: publisher Inspector surfaces blank topics as an error");
