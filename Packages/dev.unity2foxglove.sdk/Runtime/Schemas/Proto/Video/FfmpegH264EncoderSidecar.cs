@@ -36,6 +36,8 @@ namespace Foxglove.Schemas.Video
         private Task _stderrTask;
         private FfmpegH264EncoderOptions _options;
         private H264AnnexBAccessUnitPacketizer _packetizer;
+        private int _maxInputQueue = 2;
+        private int _maxOutputQueue = 4;
         private int _inputCount;
         private int _outputCount;
         private long _framesSubmitted;
@@ -95,6 +97,9 @@ namespace Foxglove.Schemas.Video
                 LastError = validationError;
                 return false;
             }
+
+            _maxInputQueue = Math.Max(1, _options.MaxInputQueue);
+            _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
 
             try
             {
@@ -187,8 +192,7 @@ namespace Foxglove.Schemas.Video
 
             lock (_inputLock)
             {
-                var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
-                while (_inputCount >= capacity && _inputFrames.TryDequeue(out _))
+                while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out _))
                     _inputCount--;
 
                 _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
@@ -331,9 +335,7 @@ namespace Foxglove.Schemas.Video
                     if (read <= 0)
                         break;
 
-                    var chunk = new byte[read];
-                    Buffer.BlockCopy(buffer, 0, chunk, 0, read);
-                    _packetizer.Append(chunk);
+                    _packetizer.Append(buffer, 0, read);
                     DrainPacketizer();
                 }
 
@@ -434,8 +436,7 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
-                var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
-                while (_outputCount >= capacity && _outputAccessUnits.TryDequeue(out _))
+                while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
                 {
                     _outputCount--;
                     Interlocked.Increment(ref _accessUnitsDropped);

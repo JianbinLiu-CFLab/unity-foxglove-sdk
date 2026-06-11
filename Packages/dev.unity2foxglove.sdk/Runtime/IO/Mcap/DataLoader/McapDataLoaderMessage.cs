@@ -4,6 +4,8 @@
 // Module: Runtime/IO/Mcap/DataLoader
 // Purpose: Raw message DTO returned by local MCAP DataLoader queries.
 
+using System;
+
 namespace Unity.FoxgloveSDK.IO
 {
     /// <summary>Raw serialized MCAP message with channel and timing context.</summary>
@@ -38,7 +40,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             Topic = string.Empty;
             MessageEncoding = string.Empty;
-            Data = new byte[0];
+            Data = Array.Empty<byte>();
         }
     }
 }

@@ -56,13 +56,28 @@ namespace Foxglove.Schemas.Video
             if (data == null || data.Length == 0)
                 return;
 
-            if (AvailableBufferBytes + data.Length > _maxPendingAccessUnitBytes)
+            Append(data, 0, data.Length);
+        }
+
+        /// <summary>
+        /// Appends a range of bytes from an Annex B H.264 stream.
+        /// </summary>
+        public void Append(byte[] data, int offset, int count)
+        {
+            if (data == null || count <= 0)
+                return;
+            if (offset < 0 || count < 0 || offset + count > data.Length)
+                throw new ArgumentOutOfRangeException(nameof(count));
+
+            if (AvailableBufferBytes + count > _maxPendingAccessUnitBytes)
             {
                 DropPendingAccessUnit("Pending H.264 access unit exceeds configured byte limit.");
                 return;
             }
 
-            _buffer.AddRange(data);
+            _buffer.Capacity = Math.Max(_buffer.Capacity, _buffer.Count + count);
+            for (var i = 0; i < count; i++)
+                _buffer.Add(data[offset + i]);
             ParseBufferedBytes(flush: false);
         }
 
@@ -243,8 +258,8 @@ namespace Foxglove.Schemas.Video
         private byte[] CopyBufferRange(int offset, int count)
         {
             var copy = new byte[Math.Max(0, count)];
-            for (var i = 0; i < copy.Length; i++)
-                copy[i] = _buffer[offset + i];
+            if (copy.Length > 0)
+                _buffer.CopyTo(offset, copy, 0, copy.Length);
             return copy;
         }
 

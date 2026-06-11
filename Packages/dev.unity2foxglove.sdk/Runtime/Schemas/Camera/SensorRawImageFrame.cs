@@ -26,7 +26,9 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             if (height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(height), "height must be positive.");
 
-            var fixedEncoding = string.IsNullOrWhiteSpace(encoding) ? "rgb8" : encoding.Trim().ToLowerInvariant();
+            var fixedEncoding = string.Equals(encoding, "rgb8", StringComparison.Ordinal)
+                ? "rgb8"
+                : string.IsNullOrWhiteSpace(encoding) ? "rgb8" : encoding.Trim().ToLowerInvariant();
             if (!string.Equals(fixedEncoding, "rgb8", StringComparison.Ordinal))
                 throw new ArgumentException("Only rgb8 is supported in this phase.", nameof(encoding));
 

@@ -32,6 +32,12 @@ namespace Unity.FoxgloveSDK.Tests
             ManifestOpenRaceReturnsNotFoundInsteadOfServerError();
             RemoteHostDocumentsWindowsAclBoundary();
             DecodeRegistryResetsDiagnosticsForNoDomainReload();
+            DecodeRegistryAvoidsDiscardedRawPayload();
+            RemoteRangeCopyUsesPooledBuffer();
+            RemoteManifestCachesSerializedBytes();
+            DataLoaderUsesSharedEmptyArrays();
+            NoMatchQueriesUseSharedEmptyResults();
+            SchemaReferenceValidationReusesSchemaMap();
             PhaseWiringIsPresent();
 
             Console.WriteLine($"Phase 140-11: {_passed} checks passed.");
@@ -109,6 +115,71 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-11G-2: decoder registry documents the intentional one-AppDomain factory cache");
         }
 
+        private static void DecodeRegistryAvoidsDiscardedRawPayload()
+        {
+            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs");
+            var decode = SourceBetween(registry, "public McapDecodedMessage Decode(", "private IMcapMessageDecoder ResolveDecoder");
+            Check(!decode.Contains("Payload = McapDecodedPayload.Raw(raw.Data)", StringComparison.Ordinal),
+                "140-11I-1: Decode does not allocate a raw payload before resolving the decoder");
+        }
+
+        private static void RemoteRangeCopyUsesPooledBuffer()
+        {
+            var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs");
+            var copy = SourceBetween(router, "private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response, long maxBytes)", "private static Task WriteTextAsync");
+            Check(copy.Contains("ArrayPool<byte>.Shared.Rent", StringComparison.Ordinal)
+                  && copy.Contains("ArrayPool<byte>.Shared.Return", StringComparison.Ordinal)
+                  && !copy.Contains("new byte[81920]", StringComparison.Ordinal),
+                "140-11I-2: ranged HTTP copies reuse an ArrayPool buffer");
+        }
+
+        private static void RemoteManifestCachesSerializedBytes()
+        {
+            var dataSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapDataSourcePrototype.cs");
+            var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs");
+            Check(dataSource.Contains("_cachedManifestBytes", StringComparison.Ordinal)
+                  && dataSource.Contains("GetManifestBytes(", StringComparison.Ordinal)
+                  && router.Contains("_source.GetManifestBytes(", StringComparison.Ordinal)
+                  && !router.Contains("RemoteMcapOfficialManifestSerializer.Serialize(manifest.Manifest)", StringComparison.Ordinal),
+                "140-11I-3: HTTP manifest responses reuse serialized bytes from the data source cache");
+        }
+
+        private static void DataLoaderUsesSharedEmptyArrays()
+        {
+            var files = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoaderMessage.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoaderSchema.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodedDataLoaderTypes.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapManifestMapper.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapModels.cs"
+            };
+
+            for (var i = 0; i < files.Length; i++)
+                Check(!ReadRepoText(files[i]).Contains("new byte[0]", StringComparison.Ordinal),
+                    "140-11I-4: " + Path.GetFileName(files[i]) + " uses shared empty byte arrays");
+        }
+
+        private static void NoMatchQueriesUseSharedEmptyResults()
+        {
+            var loader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            Check(loader.Contains("return Array.Empty<McapDataLoaderMessage>();", StringComparison.Ordinal)
+                  && !loader.Contains("return new List<McapDataLoaderMessage>();", StringComparison.Ordinal),
+                "140-11I-5: no-match DataLoader queries return shared empty results");
+        }
+
+        private static void SchemaReferenceValidationReusesSchemaMap()
+        {
+            var loader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            var validation = SourceBetween(loader, "private void AddSchemaReferenceProblems", "private void AddFoxRunSchemaMetadataProblems");
+            Check(validation.Contains("_schemaMap.ContainsKey(channel.SchemaId)", StringComparison.Ordinal)
+                  && !validation.Contains("new HashSet<ushort>", StringComparison.Ordinal),
+                "140-11I-6: schema reference validation reuses the existing schema map");
+        }
+
         private static void PhaseWiringIsPresent()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
@@ -152,6 +223,15 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return Directory.GetCurrentDirectory();
+        }
+
+        private static string SourceBetween(string source, string startMarker, string endMarker)
+        {
+            var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+            var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+            if (start < 0 || end < 0)
+                throw new InvalidOperationException("Could not locate Phase140-11 source markers.");
+            return source.Substring(start, end - start);
         }
 
         private static void Check(bool condition, string message)

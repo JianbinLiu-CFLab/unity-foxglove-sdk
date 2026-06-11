@@ -33,7 +33,13 @@ namespace Unity.FoxgloveSDK.Tests
             FfmpegPresetValidationRejectsUnexpectedPresetValues();
             FfmpegOutputCountersUseLockOnlyArithmetic();
             VideoTimestampPairingRiskIsDocumentedAtTheFfmpegBoundary();
-            CameraVideoSubmitFrameFactoryNullCheckRemainsAtEntry();
+            CameraVideoSubmitUsesFrameByteSourceContract();
+            OpenH264I420ScratchIsReusedBeforeSidecarCopy();
+            FfmpegStdoutReadersAppendReadBufferRanges();
+            PacketizersCopyRangesWithoutManualByteLoop();
+            H264NormalizerAvoidsLinqHotPathPasses();
+            OpenH264StdoutReaderReusesLengthHeader();
+            SidecarsCacheQueueCapacitiesOnStart();
 
             Console.WriteLine($"Phase 140-15: {_passed} checks passed.");
         }
@@ -116,7 +122,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool OutputQueueBlockUsesPlainCounter(string source)
         {
             var method = Slice(source, "private void EnqueueAccessUnit", "private int RemainingMilliseconds");
-            return method.Contains("while (_outputCount >= capacity", StringComparison.Ordinal)
+            return (method.Contains("while (_outputCount >= capacity", StringComparison.Ordinal)
+                    || method.Contains("while (_outputCount >= _maxOutputQueue", StringComparison.Ordinal))
                    && method.Contains("_outputCount--", StringComparison.Ordinal)
                    && method.Contains("_outputCount++", StringComparison.Ordinal)
                    && !method.Contains("Interlocked.Decrement(ref _outputCount)", StringComparison.Ordinal)
@@ -135,14 +142,109 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-15G-2: FFmpeg H.265 timestamp pairing documents the rawvideo PTS limitation");
         }
 
-        private static void CameraVideoSubmitFrameFactoryNullCheckRemainsAtEntry()
+        private static void CameraVideoSubmitUsesFrameByteSourceContract()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var method = Slice(source, "public CameraVideoSubmitResult SubmitVideoFrame", "private static double ElapsedMs");
-            var nullCheck = method.IndexOf("if (frameBytesFactory == null)", StringComparison.Ordinal);
-            var frameLengthCheck = method.IndexOf("if (frameByteLength <= 0)", StringComparison.Ordinal);
-            Check(nullCheck >= 0 && nullCheck < frameLengthCheck,
-                "140-15H-1: Camera video frame factory null check remains at method entry");
+            Check(method.Contains("where TFrameBytes : struct, ICameraVideoFrameBytesSource", StringComparison.Ordinal)
+                  && method.Contains("if (frameBytes.Length <= 0)", StringComparison.Ordinal)
+                  && method.Contains("var ownedFrameBytes = frameBytes.ToArray()", StringComparison.Ordinal)
+                  && !method.Contains("Func<byte[]>", StringComparison.Ordinal),
+                "140-15H-1: Camera video submit keeps the frame byte source contract and avoids per-frame factory closures");
+        }
+
+        private static void OpenH264I420ScratchIsReusedBeforeSidecarCopy()
+        {
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
+            var openH264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
+            Check(pipeline.Contains("private byte[] _i420Scratch", StringComparison.Ordinal)
+                  && pipeline.Contains("EnsureI420Scratch(captureWidth, captureHeight)", StringComparison.Ordinal)
+                  && !pipeline.Contains("new byte[captureWidth * captureHeight * 3 / 2]", StringComparison.Ordinal)
+                  && openH264.Contains("Buffer.BlockCopy(frame, 0, copy, 0, frame.Length)", StringComparison.Ordinal),
+                "140-15I-1: OpenH264 pipeline reuses I420 scratch while sidecar keeps the defensive queued-frame copy");
+        }
+
+        private static void FfmpegStdoutReadersAppendReadBufferRanges()
+        {
+            Check(FfmpegReaderAppendsRanges(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs")),
+                "140-15J-1: FFmpeg H.264 stdout reader appends read buffer ranges without chunk arrays");
+            Check(FfmpegReaderAppendsRanges(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs")),
+                "140-15J-2: FFmpeg H.265 stdout reader appends read buffer ranges without chunk arrays");
+        }
+
+        private static bool FfmpegReaderAppendsRanges(string source)
+        {
+            var method = Slice(source, "private async Task RunStdoutReader", "private async Task RunStderrReader");
+            return method.Contains("_packetizer.Append(buffer, 0, read)", StringComparison.Ordinal)
+                   && !method.Contains("new byte[read]", StringComparison.Ordinal)
+                   && !method.Contains("Buffer.BlockCopy(buffer, 0, chunk, 0, read)", StringComparison.Ordinal);
+        }
+
+        private static void PacketizersCopyRangesWithoutManualByteLoop()
+        {
+            Check(PacketizerUsesRangeAppendAndCopyTo(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AnnexBAccessUnitPacketizer.cs")),
+                "140-15K-1: H.264 packetizer supports range append and uses List.CopyTo for buffer ranges");
+            Check(PacketizerUsesRangeAppendAndCopyTo(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H265AnnexBAccessUnitPacketizer.cs")),
+                "140-15K-2: H.265 packetizer supports range append and uses List.CopyTo for buffer ranges");
+        }
+
+        private static bool PacketizerUsesRangeAppendAndCopyTo(string source)
+        {
+            var copyMethod = Slice(source, "private byte[] CopyBufferRange", "private void CompactBufferIfNeeded");
+            return source.Contains("public void Append(byte[] data, int offset, int count)", StringComparison.Ordinal)
+                   && copyMethod.Contains("_buffer.CopyTo(offset, copy, 0, copy.Length)", StringComparison.Ordinal)
+                   && !copyMethod.Contains("copy[i] = _buffer[offset + i]", StringComparison.Ordinal);
+        }
+
+        private static void H264NormalizerAvoidsLinqHotPathPasses()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AccessUnitNormalizer.cs");
+            var normalize = Slice(source, "public bool TryNormalizeSample", "private void CacheParameterSets");
+            var build = Slice(source, "private static byte[] BuildAnnexB", "private static byte NalType");
+            Check(!source.Contains("using System.Linq;", StringComparison.Ordinal)
+                  && !normalize.Contains(".Any(", StringComparison.Ordinal)
+                  && !build.Contains(".Sum(", StringComparison.Ordinal)
+                  && normalize.Contains("foreach (var nal in nals)", StringComparison.Ordinal)
+                  && build.Contains("foreach (var nal in nals)", StringComparison.Ordinal),
+                "140-15L-1: H.264 normalizer computes hot-path flags and output length without LINQ passes");
+        }
+
+        private static void OpenH264StdoutReaderReusesLengthHeader()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
+            var reader = Slice(source, "private async Task RunStdoutReader", "private async Task RunStderrReader");
+            var lengthReader = Slice(source, "private static async Task<LengthReadResult> ReadLittleEndianLength", "private static async Task<bool> ReadExact");
+            Check(reader.Contains("var header = new byte[4]", StringComparison.Ordinal)
+                  && reader.Contains("ReadLittleEndianLength(stream, header, token)", StringComparison.Ordinal)
+                  && !lengthReader.Contains("new byte[4]", StringComparison.Ordinal),
+                "140-15M-1: OpenH264 stdout reader reuses one length header buffer");
+        }
+
+        private static void SidecarsCacheQueueCapacitiesOnStart()
+        {
+            Check(SidecarCachesQueueCapacities(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs")),
+                "140-15N-1: FFmpeg H.264 sidecar caches queue capacities after option validation");
+            Check(SidecarCachesQueueCapacities(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs")),
+                "140-15N-2: FFmpeg H.265 sidecar caches queue capacities after option validation");
+            Check(SidecarCachesQueueCapacities(
+                    Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs")),
+                "140-15N-3: OpenH264 sidecar caches queue capacities after option validation");
+        }
+
+        private static bool SidecarCachesQueueCapacities(string source)
+        {
+            return source.Contains("private int _maxInputQueue = 2", StringComparison.Ordinal)
+                   && source.Contains("private int _maxOutputQueue = 4", StringComparison.Ordinal)
+                   && source.Contains("_maxInputQueue = Math.Max(1, _options.MaxInputQueue)", StringComparison.Ordinal)
+                   && source.Contains("_maxOutputQueue = Math.Max(1, _options.MaxOutputQueue)", StringComparison.Ordinal)
+                   && source.Contains("while (_inputCount >= _maxInputQueue", StringComparison.Ordinal)
+                   && source.Contains("_maxOutputQueue", StringComparison.Ordinal);
         }
 
         private static string Read(string path)

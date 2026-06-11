@@ -115,12 +115,21 @@ namespace Unity.FoxgloveSDK.Schemas
 
         private static string MakeKey(string name, string encoding)
         {
-            return (name ?? string.Empty) + "\n" + NormalizeEncoding(encoding);
+            return (name ?? string.Empty) + "\n" + (encoding ?? string.Empty);
         }
 
         private static string NormalizeEncoding(string encoding)
         {
-            return (encoding ?? string.Empty).ToLowerInvariant();
+            if (string.IsNullOrEmpty(encoding))
+                return string.Empty;
+            if (string.Equals(encoding, JsonSchemaEncoding, StringComparison.Ordinal)
+                || string.Equals(encoding, "protobuf", StringComparison.Ordinal)
+                || string.Equals(encoding, "ros2msg", StringComparison.Ordinal))
+            {
+                return encoding;
+            }
+
+            return encoding.ToLowerInvariant();
         }
 
         private static bool ShouldReplaceNameDefault(string existingEncoding, string newEncoding)

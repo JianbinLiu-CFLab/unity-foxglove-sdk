@@ -38,9 +38,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadCameraPublisherPartials();
 
-            Check(source.Contains("SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight)", StringComparison.Ordinal),
+            Check(source.Contains("SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight)", StringComparison.Ordinal),
                 "138K-1A: video readback path carries captured dimensions into submission");
-            Check(source.Contains("private void SubmitVideoFrame(AsyncGPUReadbackRequest req, ulong renderUnixNs, int captureWidth, int captureHeight)", StringComparison.Ordinal),
+            Check(source.Contains("private void SubmitVideoFrame(", StringComparison.Ordinal)
+                  && source.Contains("CameraVideoOutputProfile profile", StringComparison.Ordinal)
+                  && source.Contains("ulong renderUnixNs", StringComparison.Ordinal)
+                  && source.Contains("int captureWidth", StringComparison.Ordinal)
+                  && source.Contains("int captureHeight", StringComparison.Ordinal),
                 "138K-1B: video submission accepts captured dimensions");
         }
 

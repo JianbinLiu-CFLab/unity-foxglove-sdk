@@ -34,6 +34,9 @@ namespace Unity.FoxgloveSDK.Tests
             LegacyVideoPublisherIsObsolete();
             DeadJpegQueueMethodIsRemoved();
             LaserScanWrappedAnglesAreDocumented();
+            PointCloudPackedDataAvoidsMemoryStreamCopy();
+            LaserScanProtobufAvoidsListMaterialization();
+            CameraCalibrationProtobufAvoidsListMaterialization();
             ProtobufDecoderFactoryCachesParsers();
             ImuBuilderComputesNestedMessageLengths();
             PhaseWiringIsPresent();
@@ -114,6 +117,39 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-13H-1: LaserScan builder documents reverse or wrapped angle ranges");
         }
 
+        private static void PointCloudPackedDataAvoidsMemoryStreamCopy()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+            var pack = SourceBetween(source, "private static byte[] Pack", "internal static uint TimeOffsetSecondsToNanoseconds");
+
+            Check(pack.Contains("new byte[capacity]", StringComparison.Ordinal)
+                  && pack.Contains("new MemoryStream(data, 0, data.Length, true, true)", StringComparison.Ordinal)
+                  && !pack.Contains("ToArray()", StringComparison.Ordinal),
+                "140-13H-2: point-cloud packed data writes into its final byte array without MemoryStream copy");
+        }
+
+        private static void LaserScanProtobufAvoidsListMaterialization()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/LaserScanMessageBuilder.cs");
+            var createProtobuf = SourceBetween(source, "public static Foxglove.LaserScan CreateProtobuf", "public static byte[] SerializeProtobuf");
+
+            Check(createProtobuf.Contains("ToRequiredReadOnlyList", StringComparison.Ordinal)
+                  && createProtobuf.Contains("ToReadOnlyListOrEmpty", StringComparison.Ordinal)
+                  && !createProtobuf.Contains("ToRequiredList", StringComparison.Ordinal)
+                  && !createProtobuf.Contains("ToListOrEmpty", StringComparison.Ordinal),
+                "140-13H-3: LaserScan protobuf path avoids extra List materialization before RepeatedField copy");
+        }
+
+        private static void CameraCalibrationProtobufAvoidsListMaterialization()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/CameraCalibrationMessageBuilder.cs");
+            var createProtobuf = SourceBetween(source, "public static Foxglove.CameraCalibration CreateProtobuf", "public static byte[] SerializeProtobuf");
+
+            Check(createProtobuf.Contains("ToReadOnlyListOrEmpty", StringComparison.Ordinal)
+                  && !createProtobuf.Contains("ToListOrEmpty", StringComparison.Ordinal),
+                "140-13H-4: CameraCalibration protobuf path avoids extra List materialization before RepeatedField copy");
+        }
+
         private static void ProtobufDecoderFactoryCachesParsers()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/DataLoader/McapFoxgloveProtobufDecoderFactory.cs");
@@ -170,6 +206,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var root = FindRepoRoot();
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private static string SourceBetween(string source, string startMarker, string endMarker)
+        {
+            var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+            var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+            if (start < 0 || end < 0)
+                throw new InvalidOperationException("Could not locate Phase140-13 source markers.");
+
+            return source.Substring(start, end - start);
         }
 
         private static string FindRepoRoot()

@@ -90,10 +90,11 @@ namespace Unity.FoxgloveSDK.Tests
             var cameraSession = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             Check(camera.Contains("var renderUnixNs = CurrentLogTimeNs;") && camera.Contains("OnReadbackComplete(req, generation, renderUnixNs"),
                 "134-12C-1: primary camera captures timestamp at render and passes it into readback callback");
-            Check(camera.Contains("PublishJpegFrame(req, renderUnixNs") && camera.Contains("SubmitVideoFrame(req, renderUnixNs, captureWidth, captureHeight)"),
+            Check(camera.Contains("PublishJpegFrame(req, renderUnixNs")
+                  && camera.Contains("SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight)"),
                 "134-12C-2: primary camera uses render timestamp for JPEG and video frame submission");
             Check(camera.Contains("_videoPublishPipeline.SubmitVideoFrame")
-                  && cameraPipeline.Contains("_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs)")
+                  && cameraPipeline.Contains("_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, renderUnixNs)")
                   && cameraSession.Contains("ITimestampedCameraVideoEncoderSidecar timestampedSidecar")
                   && cameraSession.Contains("timestampedSidecar.TrySubmitFrame(frameBytes, timestampNs)"),
                 "134-12C-3: primary camera submits video frames with render timestamps when sidecar supports it");

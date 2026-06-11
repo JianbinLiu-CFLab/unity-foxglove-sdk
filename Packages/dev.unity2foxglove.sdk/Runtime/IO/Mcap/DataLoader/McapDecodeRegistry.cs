@@ -70,8 +70,7 @@ namespace Unity.FoxgloveSDK.IO
             raw = raw ?? new McapDataLoaderMessage();
             var decoded = new McapDecodedMessage
             {
-                Raw = raw,
-                Payload = McapDecodedPayload.Raw(raw.Data)
+                Raw = raw
             };
 
             var decoder = ResolveDecoder(raw);
@@ -80,7 +79,7 @@ namespace Unity.FoxgloveSDK.IO
                 decoded.Payload = new McapDecodedPayload
                 {
                     Kind = McapDecodedPayloadKind.Unsupported,
-                    RawData = raw.Data ?? new byte[0],
+                    RawData = raw.Data ?? Array.Empty<byte>(),
                     Text = "No decoder supports message_encoding '" + (raw.MessageEncoding ?? string.Empty) + "'."
                 };
                 decoded.Problems.Add(CreateProblem(
@@ -96,7 +95,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 decoded.Payload = decoder.Decode(raw) ?? McapDecodedPayload.Raw(raw.Data);
                 if (decoded.Payload.RawData == null || decoded.Payload.RawData.Length == 0)
-                    decoded.Payload.RawData = raw.Data ?? new byte[0];
+                    decoded.Payload.RawData = raw.Data ?? Array.Empty<byte>();
                 return decoded;
             }
             catch (Exception ex)
@@ -119,7 +118,7 @@ namespace Unity.FoxgloveSDK.IO
                 decoded.Payload = new McapDecodedPayload
                 {
                     Kind = McapDecodedPayloadKind.Failed,
-                    RawData = raw.Data ?? new byte[0],
+                    RawData = raw.Data ?? Array.Empty<byte>(),
                     Text = ex.Message ?? string.Empty
                 };
                 decoded.Problems.Add(CreateProblem(
@@ -321,7 +320,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         public McapDecodedPayload Decode(McapDataLoaderMessage message)
         {
-            var raw = message?.Data ?? new byte[0];
+            var raw = message?.Data ?? Array.Empty<byte>();
             if (raw.Length == 0)
                 throw new InvalidDataException("JSON payload is empty.");
             var json = Encoding.UTF8.GetString(raw);
@@ -361,7 +360,7 @@ namespace Unity.FoxgloveSDK.IO
 
         public McapDecodedPayload Decode(McapDataLoaderMessage message)
         {
-            var raw = message?.Data ?? new byte[0];
+            var raw = message?.Data ?? Array.Empty<byte>();
             if (raw.Length < 4)
                 throw new InvalidDataException("ROS2 CDR payload is shorter than the four-byte encapsulation header.");
 

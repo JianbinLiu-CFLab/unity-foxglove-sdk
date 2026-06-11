@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             Authorization = RemoteMcapAuthorizationResult.Deny(string.Empty);
             SourceId = string.Empty;
-            Data = new byte[0];
+            Data = Array.Empty<byte>();
             Problems = new List<RemoteMcapProblem>();
         }
     }

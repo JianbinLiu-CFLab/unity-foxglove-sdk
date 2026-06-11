@@ -36,6 +36,8 @@ namespace Foxglove.Schemas.Video
         private Task _stdoutTask;
         private Task _stderrTask;
         private OpenH264EncoderOptions _options;
+        private int _maxInputQueue = 2;
+        private int _maxOutputQueue = 4;
         private int _inputCount;
         private int _outputCount;
         private long _framesSubmitted;
@@ -93,6 +95,9 @@ namespace Foxglove.Schemas.Video
                 LastError = error;
                 return false;
             }
+
+            _maxInputQueue = Math.Max(1, _options.MaxInputQueue);
+            _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
 
             try
             {
@@ -157,8 +162,7 @@ namespace Foxglove.Schemas.Video
 
             lock (_inputLock)
             {
-                var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
-                while (_inputCount >= capacity && _inputFrames.TryDequeue(out _))
+                while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out _))
                 {
                     _inputCount--;
                     Interlocked.Increment(ref _droppedInputFrames);
@@ -289,12 +293,13 @@ namespace Foxglove.Schemas.Video
 
         private async Task RunStdoutReader(Process process, CancellationToken token)
         {
+            var header = new byte[4];
             try
             {
                 var stream = process.StandardOutput.BaseStream;
                 while (!token.IsCancellationRequested)
                 {
-                    var readLength = await ReadLittleEndianLength(stream, token).ConfigureAwait(false);
+                    var readLength = await ReadLittleEndianLength(stream, header, token).ConfigureAwait(false);
                     if (!readLength.Success)
                         break;
 
@@ -397,10 +402,9 @@ namespace Foxglove.Schemas.Video
 
         private void EnqueueAccessUnit(byte[] accessUnit)
         {
-            var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
             lock (_outputLock)
             {
-                while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
+                while (Volatile.Read(ref _outputCount) >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
                     Interlocked.Decrement(ref _outputCount);
 
                 var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
@@ -421,9 +425,8 @@ namespace Foxglove.Schemas.Video
             EnqueueAccessUnit(accessUnit);
         }
 
-        private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, CancellationToken token)
+        private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, byte[] header, CancellationToken token)
         {
-            var header = new byte[4];
             if (!await ReadExact(stream, header, token).ConfigureAwait(false))
                 return new LengthReadResult(false, 0);
 

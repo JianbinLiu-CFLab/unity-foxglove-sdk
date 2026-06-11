@@ -50,8 +50,8 @@ namespace Foxglove.Schemas
             IEnumerable<double> ranges,
             IEnumerable<double> intensities = null)
         {
-            var rangeList = ToRequiredList(ranges, nameof(ranges));
-            var intensityList = ToListOrEmpty(intensities);
+            var rangeList = ToRequiredReadOnlyList(ranges, nameof(ranges));
+            var intensityList = ToReadOnlyListOrEmpty(intensities);
             ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
@@ -78,19 +78,6 @@ namespace Foxglove.Schemas
             IEnumerable<double> intensities = null)
         {
             return CreateProtobuf(unixNs, frameId, startAngle, endAngle, ranges, intensities).ToByteArray();
-        }
-
-        private static List<double> ToListOrEmpty(IEnumerable<double> values)
-        {
-            return values == null ? new List<double>() : values.ToList();
-        }
-
-        private static List<double> ToRequiredList(IEnumerable<double> values, string parameterName)
-        {
-            if (values == null)
-                throw new ArgumentNullException(parameterName);
-
-            return values.ToList();
         }
 
         private static IReadOnlyList<double> ToReadOnlyListOrEmpty(IEnumerable<double> values)
