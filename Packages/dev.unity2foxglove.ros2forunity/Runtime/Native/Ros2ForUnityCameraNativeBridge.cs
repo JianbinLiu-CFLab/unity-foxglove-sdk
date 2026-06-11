@@ -29,6 +29,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Dictionary<int, ImageBinding> _imageBindings = new Dictionary<int, ImageBinding>();
         private readonly Dictionary<int, RawImageBinding> _rawImageBindings = new Dictionary<int, RawImageBinding>();
         private readonly Dictionary<int, InfoBinding> _infoBindings = new Dictionary<int, InfoBinding>();
+        private readonly HashSet<int> _imageSeen = new HashSet<int>();
+        private readonly HashSet<int> _rawImageSeen = new HashSet<int>();
+        private readonly HashSet<int> _infoSeen = new HashSet<int>();
+        private readonly List<int> _staleBindings = new List<int>();
         private ROS2UnityComponent _ros2Unity;
         private float _nextScanAt;
         private int _ros2FailureCount;
@@ -105,17 +109,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void RefreshBindings()
         {
-            RefreshImageBindings();
-            RefreshRawImageBindings();
+            var cameraPublishers = FindObjectsByType<FoxgloveCameraPublisher>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+
+            RefreshImageBindings(cameraPublishers);
+            RefreshRawImageBindings(cameraPublishers);
             RefreshInfoBindings();
         }
 
-        private void RefreshRawImageBindings()
+        private void RefreshRawImageBindings(FoxgloveCameraPublisher[] publishers)
         {
-            var seen = new HashSet<int>();
-            var publishers = FindObjectsByType<FoxgloveCameraPublisher>(
-                FindObjectsInactive.Exclude,
-                FindObjectsSortMode.None);
+            _rawImageSeen.Clear();
 
             foreach (var publisher in publishers)
             {
@@ -123,7 +128,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     continue;
 
                 var instanceId = publisher.GetInstanceID();
-                seen.Add(instanceId);
+                _rawImageSeen.Add(instanceId);
                 var topic = NormalizeTopic(publisher.SensorCameraRawImageTopic);
                 if (_rawImageBindings.TryGetValue(instanceId, out var existing))
                 {
@@ -139,15 +144,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _rawImageBindings.Add(instanceId, binding);
             }
 
-            RemoveStale(_rawImageBindings, seen);
+            RemoveStale(_rawImageBindings, _rawImageSeen);
         }
 
-        private void RefreshImageBindings()
+        private void RefreshImageBindings(FoxgloveCameraPublisher[] publishers)
         {
-            var seen = new HashSet<int>();
-            var publishers = FindObjectsByType<FoxgloveCameraPublisher>(
-                FindObjectsInactive.Exclude,
-                FindObjectsSortMode.None);
+            _imageSeen.Clear();
 
             foreach (var publisher in publishers)
             {
@@ -155,7 +157,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     continue;
 
                 var instanceId = publisher.GetInstanceID();
-                seen.Add(instanceId);
+                _imageSeen.Add(instanceId);
                 var topic = NormalizeTopic(publisher.SensorCameraImageTopic);
                 if (_imageBindings.TryGetValue(instanceId, out var existing))
                 {
@@ -171,12 +173,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _imageBindings.Add(instanceId, binding);
             }
 
-            RemoveStale(_imageBindings, seen);
+            RemoveStale(_imageBindings, _imageSeen);
         }
 
         private void RefreshInfoBindings()
         {
-            var seen = new HashSet<int>();
+            _infoSeen.Clear();
             var publishers = FindObjectsByType<FoxgloveCameraInfoPublisher>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
@@ -187,7 +189,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     continue;
 
                 var instanceId = publisher.GetInstanceID();
-                seen.Add(instanceId);
+                _infoSeen.Add(instanceId);
                 var topic = NormalizeTopic(publisher.SensorCameraInfoTopic);
                 if (_infoBindings.TryGetValue(instanceId, out var existing))
                 {
@@ -203,20 +205,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _infoBindings.Add(instanceId, binding);
             }
 
-            RemoveStale(_infoBindings, seen);
+            RemoveStale(_infoBindings, _infoSeen);
         }
 
-        private static void RemoveStale<TBinding>(Dictionary<int, TBinding> bindings, HashSet<int> seen)
+        private void RemoveStale<TBinding>(Dictionary<int, TBinding> bindings, HashSet<int> seen)
             where TBinding : BindingBase
         {
-            var stale = new List<int>();
+            _staleBindings.Clear();
             foreach (var pair in bindings)
             {
                 if (!seen.Contains(pair.Key) || !pair.Value.IsStillEligible())
-                    stale.Add(pair.Key);
+                    _staleBindings.Add(pair.Key);
             }
 
-            foreach (var key in stale)
+            foreach (var key in _staleBindings)
             {
                 bindings[key].Dispose();
                 bindings.Remove(key);

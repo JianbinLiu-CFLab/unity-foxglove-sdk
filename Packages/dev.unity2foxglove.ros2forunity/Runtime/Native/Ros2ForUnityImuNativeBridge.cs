@@ -26,6 +26,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static bool _runtimeShuttingDown;
 
         private readonly Dictionary<int, ImuBinding> _bindings = new Dictionary<int, ImuBinding>();
+        private readonly HashSet<int> _seen = new HashSet<int>();
+        private readonly List<int> _stale = new List<int>();
         private ROS2UnityComponent _ros2Unity;
         private float _nextScanAt;
         private int _ros2FailureCount;
@@ -102,7 +104,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void RefreshBindings()
         {
-            var seen = new HashSet<int>();
+            _seen.Clear();
             var sources = FindObjectsByType<VirtualImu>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
@@ -113,7 +115,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     continue;
 
                 var instanceId = source.GetInstanceID();
-                seen.Add(instanceId);
+                _seen.Add(instanceId);
                 var topic = NormalizeTopic(source.ImuNativeTopic);
                 if (_bindings.TryGetValue(instanceId, out var existing))
                 {
@@ -129,14 +131,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _bindings.Add(instanceId, binding);
             }
 
-            var stale = new List<int>();
+            _stale.Clear();
             foreach (var pair in _bindings)
             {
-                if (!seen.Contains(pair.Key) || !pair.Value.IsStillEligible())
-                    stale.Add(pair.Key);
+                if (!_seen.Contains(pair.Key) || !pair.Value.IsStillEligible())
+                    _stale.Add(pair.Key);
             }
 
-            foreach (var key in stale)
+            foreach (var key in _stale)
             {
                 _bindings[key].Dispose();
                 _bindings.Remove(key);
