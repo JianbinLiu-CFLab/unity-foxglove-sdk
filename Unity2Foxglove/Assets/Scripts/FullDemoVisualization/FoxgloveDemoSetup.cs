@@ -120,6 +120,9 @@ public class FoxgloveDemoSetup : MonoBehaviour
         if (TryReadColor(initialColor, out var color))
             ApplySceneColorFromParameter(color);
 
+        var initialScale = rt.Parameters.GetWireParameter("/cube/scale")?.Value;
+        ApplyScaleFromParameter(initialScale);
+
         _initialized = true;
         return true;
     }
@@ -158,10 +161,7 @@ public class FoxgloveDemoSetup : MonoBehaviour
         _initialized = false;
     }
 
-    /// <summary>
-    /// Each frame, reads <c>/cube/scale</c> from the parameter store and
-    /// applies it to the cube's local scale when changed.
-    /// </summary>
+    /// <summary>Keeps runtime wiring alive while parameter changes drive cube state.</summary>
     private void Update()
     {
         if (!TryInitializeDemo())
@@ -173,35 +173,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
             if (_initialized)
                 ClearRuntimeWiring();
             return;
-        }
-
-        // Scale still mirrors the existing manual demo behavior.
-        var scaleParam = runtime.Parameters.GetWireParameter("/cube/scale");
-        if (scaleParam?.Value != null)
-        {
-            try
-            {
-                float s = (float)scaleParam.Value.Value<double>();
-                if (!float.IsNaN(s) && !float.IsInfinity(s))
-                {
-                    var clamped = Mathf.Clamp(s, ScaleMinimum, ScaleMaximum);
-                    if (Mathf.Abs(clamped - _lastAppliedScale) > 0.001f)
-                    {
-                        _lastAppliedScale = clamped;
-                        var cube = FindCube();
-                        if (cube != null)
-                            cube.transform.localScale = new Vector3(clamped, clamped, clamped);
-                    }
-                }
-                else
-                {
-                    WarnInvalidScaleOnce("non-finite scale value");
-                }
-            }
-            catch (System.Exception ex)
-            {
-                WarnInvalidScaleOnce(ex.Message);
-            }
         }
     }
 
@@ -240,19 +211,28 @@ public class FoxgloveDemoSetup : MonoBehaviour
     }
 
     /// <summary>
-    /// Handles Foxglove parameter changes for <c>/cube/color</c> by
-    /// delegating to the main thread via <c>SynchronizationContext</c>
-    /// and applying the scene color.
+    /// Handles Foxglove parameter changes by delegating Unity-object updates to
+    /// the main thread via <c>SynchronizationContext</c>.
     /// </summary>
     private void OnParameterChanged(string name, JToken value, string type)
     {
-        if (name != "/cube/color" || !TryReadColor(value, out var color))
+        if (name == "/cube/color" && TryReadColor(value, out var color))
+        {
+            if (_unityContext != null && SynchronizationContext.Current != _unityContext)
+                _unityContext.Post(_ => ApplySceneColorFromParameter(color), null);
+            else
+                ApplySceneColorFromParameter(color);
             return;
+        }
 
-        if (_unityContext != null && SynchronizationContext.Current != _unityContext)
-            _unityContext.Post(_ => ApplySceneColorFromParameter(color), null);
-        else
-            ApplySceneColorFromParameter(color);
+        if (name == "/cube/scale")
+        {
+            var scaleValue = value?.DeepClone();
+            if (_unityContext != null && SynchronizationContext.Current != _unityContext)
+                _unityContext.Post(_ => ApplyScaleFromParameter(scaleValue), null);
+            else
+                ApplyScaleFromParameter(scaleValue);
+        }
     }
 
     /// <summary>
@@ -292,6 +272,23 @@ public class FoxgloveDemoSetup : MonoBehaviour
         finally { _syncingColor = false; }
     }
 
+    private void ApplyScaleFromParameter(JToken value)
+    {
+        if (!TryReadScale(value, out var clamped, out var reason))
+        {
+            WarnInvalidScaleOnce(reason);
+            return;
+        }
+
+        if (Mathf.Abs(clamped - _lastAppliedScale) <= 0.001f)
+            return;
+
+        _lastAppliedScale = clamped;
+        var cube = FindCube();
+        if (cube != null)
+            cube.transform.localScale = new Vector3(clamped, clamped, clamped);
+    }
+
     /// <summary>
     /// Attempts to parse a Foxglove parameter value as a Unity Color
     /// from a JArray with 3 or 4 components.
@@ -312,6 +309,35 @@ public class FoxgloveDemoSetup : MonoBehaviour
         }
         catch (System.Exception)
         {
+            return false;
+        }
+    }
+
+    private static bool TryReadScale(JToken value, out float clamped, out string reason)
+    {
+        clamped = 1f;
+        reason = null;
+        if (value == null)
+        {
+            reason = "missing scale value";
+            return false;
+        }
+
+        try
+        {
+            var scale = (float)value.Value<double>();
+            if (float.IsNaN(scale) || float.IsInfinity(scale))
+            {
+                reason = "non-finite scale value";
+                return false;
+            }
+
+            clamped = Mathf.Clamp(scale, ScaleMinimum, ScaleMaximum);
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            reason = ex.Message;
             return false;
         }
     }
