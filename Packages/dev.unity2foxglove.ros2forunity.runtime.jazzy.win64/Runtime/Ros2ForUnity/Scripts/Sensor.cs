@@ -86,6 +86,9 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     private ROS2UnityComponent ros2UnityComponent;
     private ROS2Node ros2Node;
     private string ownerAgentName;
+    private string cachedFrameName;
+    private string cachedFrameNameOwner;
+    private string cachedFrameNameFrameId;
     private double lastTimestamp;
     private double timeSinceLastFixedUpdate;
 
@@ -94,7 +97,16 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
 
     public override string frameName()
     {
-        return ownerAgentName + "/" + frameID;
+        if (cachedFrameName == null
+            || cachedFrameNameOwner != ownerAgentName
+            || cachedFrameNameFrameId != frameID)
+        {
+            cachedFrameNameOwner = ownerAgentName;
+            cachedFrameNameFrameId = frameID;
+            cachedFrameName = ownerAgentName + "/" + frameID;
+        }
+
+        return cachedFrameName;
     }
 
     /// <summary>

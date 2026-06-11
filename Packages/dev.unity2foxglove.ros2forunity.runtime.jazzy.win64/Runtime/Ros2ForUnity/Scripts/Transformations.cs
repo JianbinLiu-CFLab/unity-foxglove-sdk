@@ -21,6 +21,13 @@ namespace ROS2
 /// </summary>
 public static class Transformations
 {
+    private static readonly Matrix4x4 Unity2RosMatrix = new Matrix4x4(
+        new Vector4( 0.0f, -1.0f, 0.0f, 0.0f),
+        new Vector4( 0.0f,  0.0f, 1.0f, 0.0f),
+        new Vector4( 1.0f,  0.0f, 0.0f, 0.0f),
+        new Vector4( 0.0f,  0.0f, 0.0f, 1.0f)
+    );
+
     public static Vector3 Ros2Unity(this Vector3 vector3)
     {
         return new Vector3(-vector3.y, vector3.z, vector3.x);
@@ -73,14 +80,7 @@ public static class Transformations
 
     public static Matrix4x4 Unity2RosMatrix4x4()
     {
-        // Note: The matrix here is written as-if on paper,
-        // but Unity's Matrix4x4 is constructed from column-vectors, hence the transpose.
-        return new Matrix4x4(
-            new Vector4( 0.0f, 0.0f, 1.0f, 0.0f),
-            new Vector4(-1.0f, 0.0f, 0.0f, 0.0f),
-            new Vector4( 0.0f, 1.0f, 0.0f, 0.0f),
-            new Vector4( 0.0f, 0.0f, 0.0f, 1.0f)
-        ).transpose;
+        return Unity2RosMatrix;
     }
 }
 

@@ -39,6 +39,8 @@ internal class ROS2ForUnity
     private const string unity2FoxgloveRuntimePackageAssetPath =
         "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
     private const string expectedRmwImplementation = "rmw_fastrtps_cpp";
+    private static readonly string[] SupportedRosVersions = { "foxy", "galactic", "humble", "jazzy", "rolling" };
+    private static readonly string SupportedRosVersionsString = String.Join(", ", SupportedRosVersions);
     private XmlDocument ros2csMetadata = new XmlDocument();
     private XmlDocument ros2ForUnityMetadata = new XmlDocument();
     private bool ownsLifecycle;
@@ -302,11 +304,9 @@ internal class ROS2ForUnity
     /// </summary>
     private void CheckROSSupport(string ros2Codename)
     {
-        List<string> supportedVersions = new List<string>() { "foxy", "galactic", "humble", "jazzy", "rolling" };
-        var supportedVersionsString = String.Join(", ", supportedVersions);
         if (string.IsNullOrEmpty(ros2Codename))
         {
-            string errMessage = "No ROS environment sourced. You need to source your ROS2 " + supportedVersionsString
+            string errMessage = "No ROS environment sourced. You need to source your ROS2 " + SupportedRosVersionsString
               + " environment before launching Unity (ROS_DISTRO env variable not found)";
             Debug.LogError(errMessage);
 #if UNITY_EDITOR
@@ -318,10 +318,10 @@ internal class ROS2ForUnity
 #endif
         }
 
-        if (!supportedVersions.Contains(ros2Codename))
+        if (Array.IndexOf(SupportedRosVersions, ros2Codename) < 0)
         {
             string errMessage = "Currently sourced ROS version differs from supported one. Sourced: " + ros2Codename
-              + ", supported: " + supportedVersionsString + ".";
+              + ", supported: " + SupportedRosVersionsString + ".";
             Debug.LogError(errMessage);
 #if UNITY_EDITOR
             EditorApplication.isPlaying = false;
