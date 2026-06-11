@@ -231,11 +231,11 @@ async def measure_pointcloud(
         if opcode != MESSAGE_DATA_OPCODE:
             continue
 
-        sub_id = struct.unpack("<I", frame[SUBSCRIPTION_ID_START:SUBSCRIPTION_ID_END])[0]
+        sub_id = struct.unpack_from("<I", frame, SUBSCRIPTION_ID_START)[0]
         if sub_id != subscription_id:
             continue
 
-        log_ns = struct.unpack("<Q", frame[LOG_TIME_START:LOG_TIME_END])[0]
+        log_ns = struct.unpack_from("<Q", frame, LOG_TIME_START)[0]
         payload = frame[MESSAGE_PAYLOAD_START:]
         receive_times.append(time.perf_counter())
         log_times_ns.append(log_ns)
@@ -331,7 +331,7 @@ def decode_protobuf_pointcloud_payload(payload: bytes) -> PointCloudPayloadInfo 
             if tag == POINT_STRIDE_TAG or (field_number == POINT_STRIDE_FIELD and wire_type == WIRE_FIXED32):
                 if index + 4 > len(payload):
                     return None
-                point_stride = struct.unpack("<I", payload[index:index + 4])[0]
+                point_stride = struct.unpack_from("<I", payload, index)[0]
                 index += 4
             elif tag == POINT_DATA_TAG or (field_number == POINT_DATA_FIELD and wire_type == WIRE_LENGTH_DELIMITED):
                 index, length = read_varint(payload, index)
