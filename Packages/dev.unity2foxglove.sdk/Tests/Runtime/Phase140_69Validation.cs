@@ -65,15 +65,21 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyEditorGeneratorHotPaths()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var collectTypes = Slice(source, "public static List<(string AsmName, string Ns, string ClassName)> CollectFoxRunTypes()", "        /// <summary>\r\n        /// Generate an IL2CPP link.xml snippet");
+            var scanMembers = Slice(source, "private static FoxRunScanResult ScanFoxRunMembers", "        /// <summary>\r\n        /// Checks whether a type was declared");
             Check(source.Contains("AppDomain.CurrentDomain.GetAssemblies()", StringComparison.Ordinal)
                   && source.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", StringComparison.Ordinal)
                   && source.Contains("ReflectionTypeLoadException", StringComparison.Ordinal)
                   && !source.Contains("TypeCache.GetTypesDerivedFrom<MonoBehaviour>()", StringComparison.Ordinal),
                 "140-69B-1: Editor FoxRun scans preserve reliable AppDomain discovery for live topics");
+            Check(collectTypes.Contains("AppDomain.CurrentDomain.GetAssemblies()", StringComparison.Ordinal)
+                  && collectTypes.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", StringComparison.Ordinal)
+                  && scanMembers.Contains("AppDomain.CurrentDomain.GetAssemblies()", StringComparison.Ordinal)
+                  && scanMembers.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", StringComparison.Ordinal),
+                "140-69B-1b: both FoxRun type and member discovery use loaded-assembly semantics, not Unity TypeCache semantics");
 
-            var scan = Slice(source, "private static FoxRunScanResult ScanFoxRunMembers", "        /// <summary>\r\n        /// Checks whether a type was declared");
-            Check(!scan.Contains("members.Select(member => member.ToManifestMember())", StringComparison.Ordinal)
-                  && !scan.Contains("members.Select(member => member.ToReflectionMember())", StringComparison.Ordinal),
+            Check(!scanMembers.Contains("members.Select(member => member.ToManifestMember())", StringComparison.Ordinal)
+                  && !scanMembers.Contains("members.Select(member => member.ToReflectionMember())", StringComparison.Ordinal),
                 "140-69B-2: Editor scan projects manifest and reflection members in the main member loop");
 
             var validate = Slice(source, "private static void ValidateGenerationModel", "private static string GetManifestOutputDirectory");

@@ -143,13 +143,14 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Resolved Current Evidence Root", Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
+            var resolvedRoot = Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot();
+            EditorGUILayout.LabelField("Resolved Current Evidence Root", resolvedRoot);
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Open Current Evidence"))
                 {
-                    System.IO.Directory.CreateDirectory(Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
-                    EditorUtility.RevealInFinder(Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot());
+                    System.IO.Directory.CreateDirectory(resolvedRoot);
+                    EditorUtility.RevealInFinder(resolvedRoot);
                 }
 
                 if (GUILayout.Button("Reset Defaults"))
