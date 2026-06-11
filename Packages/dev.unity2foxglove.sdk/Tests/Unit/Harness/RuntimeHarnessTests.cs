@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var repoRoot = FindRepoRoot();
             var project = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "FoxgloveSdk.Tests.csproj");
             await EnsureHarnessBuiltAsync(repoRoot, project);
-            var harnessDll = Path.Combine(repoRoot, "build", "Tests", "Debug", "net9.0", "FoxgloveSdk.Tests.dll");
+            var harnessDll = Path.Combine(repoRoot, "build", "Tests", "Debug", "net10.0", "FoxgloveSdk.Tests.dll");
             if (!File.Exists(harnessDll))
                 throw new FileNotFoundException("Runtime harness build did not produce the expected DLL.", harnessDll);
 

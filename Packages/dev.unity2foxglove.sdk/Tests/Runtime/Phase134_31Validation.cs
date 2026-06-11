@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-31B-1: MCAP conformance overlay asserts runner injection success");
             Check(source.Contains("def read_target_framework()", StringComparison.Ordinal)
                   && source.Contains("def resolve_conformance_dll_path()", StringComparison.Ordinal)
-                  && !source.Contains("build/McapConformance/Release/net9.0", StringComparison.Ordinal),
+                  && !source.Contains("build/McapConformance/Release/net10.0", StringComparison.Ordinal),
                 "134-31B-2: MCAP conformance DLL path is resolved from the C# project target framework");
             Check(source.Contains("r\"(?m)^(Error:|FAIL\\b|\\w+Error:)\"", StringComparison.Ordinal)
                   && !source.Contains("fail\\s+", StringComparison.Ordinal),
