@@ -27,7 +27,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     public class FoxgloveLogSourceGenerator : IIncrementalGenerator
     {
         private const string AttrShortName = "FoxRun";
+        private const string AttrAttributeName = "FoxRunAttribute";
         private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxRunAttribute";
+        private const string AttrQualifiedNameSuffix = ".FoxRun";
+        private const string AttrQualifiedAttributeNameSuffix = ".FoxRunAttribute";
 
         /// <summary>
         /// Registers a syntax-based pipeline that filters candidate members,
@@ -69,8 +72,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 foreach (var a in al.Attributes)
                 {
                     var name = a.Name.ToString();
-                    if (name == AttrShortName || name == AttrShortName + "Attribute"
-                        || name.EndsWith("." + AttrShortName) || name.EndsWith("." + AttrShortName + "Attribute"))
+                    if (name == AttrShortName || name == AttrAttributeName
+                        || name.EndsWith(AttrQualifiedNameSuffix, StringComparison.Ordinal)
+                        || name.EndsWith(AttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
                         return true;
                 }
             return false;
@@ -101,11 +105,30 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
             if (symbol == null) return null;
 
-            // Verify attribute is actually FoxRunAttribute
-            var attrs = symbol.GetAttributes()
-                .Where(a => a.AttributeClass?.ToDisplayString() == AttrFullName)
-                .ToList();
-            if (attrs.Count == 0) return null;
+            var topics = new List<TopicEntry>();
+            foreach (var attr in symbol.GetAttributes())
+            {
+                if (attr.AttributeClass?.ToDisplayString() != AttrFullName)
+                    continue;
+
+                string topic = attr.ConstructorArguments.Length > 0
+                    ? attr.ConstructorArguments[0].Value as string ?? "" : "";
+                float rateHz = 10f;
+                string schemaName = "";
+                int publishMode = 0;
+                float changeEpsilon = 0f;
+                float forceIntervalSeconds = 0f;
+                foreach (var named in attr.NamedArguments)
+                {
+                    if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
+                    if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
+                    if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
+                    if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
+                    if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
+                }
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds));
+            }
+            if (topics.Count == 0) return null;
 
             var containingType = symbol.ContainingType;
             if (containingType == null) return null;
@@ -141,27 +164,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var rawMemberOrder = symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start ?? 0;
             var memberLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource) ?? Location.None;
 
-            var topics = new List<TopicEntry>();
-            foreach (var attr in attrs)
-            {
-                string topic = attr.ConstructorArguments.Length > 0
-                    ? attr.ConstructorArguments[0].Value as string ?? "" : "";
-                float rateHz = 10f;
-                string schemaName = "";
-                int publishMode = 0;
-                float changeEpsilon = 0f;
-                float forceIntervalSeconds = 0f;
-                foreach (var named in attr.NamedArguments)
-                {
-                    if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
-                    if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
-                    if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
-                    if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
-                }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds));
-            }
-
             string ns = containingType.ContainingNamespace != null
                 && !containingType.ContainingNamespace.IsGlobalNamespace
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
@@ -192,27 +194,40 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// </summary>
         private static void Generate(SourceProductionContext spc, ImmutableArray<MemberData> items)
         {
-            foreach (var item in items.Where(m => m?.DiagnosticLocation != null))
-                spc.ReportDiagnostic(Diagnostic.Create(Diags.MultiVariableDeclaration, item.DiagnosticLocation));
+            var roslynMembers = new List<FoxRunRoslynGenerationMember>(items.Length);
+            var memberLocations = new Dictionary<string, Location>(items.Length);
+            var firstMemberByClass = new Dictionary<(string Ns, string ClassName), MemberData>();
+            foreach (var item in items)
+            {
+                if (item == null)
+                    continue;
 
-            var valid = items.Where(m => m != null && m.DiagnosticLocation == null).ToList();
-            if (valid.Count == 0) return;
+                if (item.DiagnosticLocation != null)
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(Diags.MultiVariableDeclaration, item.DiagnosticLocation));
+                    continue;
+                }
 
-            var model = FoxRunRoslynGenerationModelLowerer.Lower(valid.SelectMany(m => m.ToRoslynMembers()).ToList());
-            var memberLocations = valid.ToDictionary(
-                m => MemberLocationKey(m.Ns, m.ClassName, m.MemberName),
-                m => m.MemberLocation);
+                item.AppendRoslynMembers(roslynMembers);
+                memberLocations[MemberLocationKey(item.Ns, item.ClassName, item.MemberName)] = item.MemberLocation;
+
+                var key = (item.Ns, item.ClassName);
+                if (!firstMemberByClass.ContainsKey(key))
+                    firstMemberByClass.Add(key, item);
+            }
+
+            if (roslynMembers.Count == 0) return;
+
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(roslynMembers);
             foreach (var diagnostic in FoxRunGenerationModelValidator.Validate(model))
                 spc.ReportDiagnostic(Diagnostic.Create(Diags.Shared(diagnostic.Id), LocationFor(diagnostic, memberLocations), diagnostic.Target));
 
             var emittedTypes = new List<FoxRunGenerationType>();
-            var validByClass = valid
-                .GroupBy(m => (m.Ns, m.ClassName))
-                .ToDictionary(g => g.Key, g => g.ToList());
             foreach (var type in model.Types)
             {
                 var key = (type.Namespace, type.ClassName);
-                var first = validByClass[key].First();
+                if (!firstMemberByClass.TryGetValue(key, out var first))
+                    continue;
                 if (!first.IsPartial)
                 {
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.NotPartial, Location.None, first.ClassName));
@@ -403,7 +418,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers()
             {
-                return Topics.Select(t => new FoxRunRoslynGenerationMember(
+                var members = new List<FoxRunRoslynGenerationMember>(Topics.Length);
+                AppendRoslynMembers(members);
+                return members;
+            }
+
+            public void AppendRoslynMembers(List<FoxRunRoslynGenerationMember> members)
+            {
+                if (members == null)
+                    throw new ArgumentNullException(nameof(members));
+
+                foreach (var topic in Topics)
+                    members.Add(ToRoslynMember(topic));
+            }
+
+            private FoxRunRoslynGenerationMember ToRoslynMember(TopicEntry topic)
+            {
+                return new FoxRunRoslynGenerationMember(
                     Ns,
                     ClassName,
                     MemberName,
@@ -413,14 +444,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     IsValueType,
                     IsArray,
                     ElementTypeName,
-                    t.Topic,
-                    t.SchemaName,
-                    t.RateHz,
-                    t.PublishMode,
-                    t.ChangeEpsilon,
-                    t.ForceIntervalSeconds,
+                    topic.Topic,
+                    topic.SchemaName,
+                    topic.RateHz,
+                    topic.PublishMode,
+                    topic.ChangeEpsilon,
+                    topic.ForceIntervalSeconds,
                     RawMemberOrder,
-                    string.Empty)).ToList();
+                    string.Empty);
             }
         }
 

@@ -219,15 +219,17 @@ namespace Unity.FoxgloveSDK.Editor
         private static void ValidateGenerationModel(FoxRunGenerationModel model)
         {
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
-            var errors = diagnostics
-                .Where(diagnostic => string.Equals(diagnostic.Severity, "Error", StringComparison.Ordinal))
-                .Select(diagnostic => diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message)
-                .ToList();
+            var errors = new List<string>();
+            foreach (var diagnostic in diagnostics)
+            {
+                if (string.Equals(diagnostic.Severity, "Error", StringComparison.Ordinal))
+                    errors.Add(diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message);
+                else if (string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal))
+                    Debug.LogWarning("[FoxrunCodeGenerator] " + diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message);
+            }
+
             if (errors.Count > 0)
                 throw new InvalidOperationException(string.Join("; ", errors));
-
-            foreach (var warning in diagnostics.Where(diagnostic => string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal)))
-                Debug.LogWarning("[FoxrunCodeGenerator] " + warning.Id + ": " + warning.Target + ": " + warning.Message);
         }
 
         private static string GetManifestOutputDirectory()
@@ -258,9 +260,13 @@ namespace Unity.FoxgloveSDK.Editor
                         var key = (ns, type.Name);
                         if (!byClass.TryGetValue(key, out var list))
                             byClass[key] = list = new List<MemberData>();
-                        list.AddRange(members);
-                        manifestMembers.AddRange(members.Select(member => member.ToManifestMember()));
-                        reflectionMembers.AddRange(members.Select(member => member.ToReflectionMember()));
+
+                        foreach (var member in members)
+                        {
+                            list.Add(member);
+                            manifestMembers.Add(member.ToManifestMember());
+                            reflectionMembers.Add(member.ToReflectionMember());
+                        }
                     }
                 }
                 catch (ReflectionTypeLoadException ex)
@@ -342,7 +348,11 @@ namespace Unity.FoxgloveSDK.Editor
             if (members.Length == 0)
                 throw new ArgumentException("At least one FoxRun member is required to emit a source file.", nameof(members));
 
-            var model = LowerReflectionMembers(members.Select(member => member.ToReflectionMember()).ToList());
+            var reflectionMembers = new FoxRunReflectionGenerationMember[members.Length];
+            for (var i = 0; i < members.Length; i++)
+                reflectionMembers[i] = members[i].ToReflectionMember();
+
+            var model = LowerReflectionMembers(reflectionMembers);
             ValidateGenerationModel(model);
             if (model.Types.Count != 1)
                 throw new ArgumentException("Members must describe exactly one FoxRun declaring type.", nameof(members));

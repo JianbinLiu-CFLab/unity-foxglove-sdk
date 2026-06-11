@@ -155,8 +155,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCameraEditorIsNullSafeAndLabelChecked()
         {
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
-            Check(editor.Contains("publishRateSource == null", StringComparison.Ordinal)
-                  && editor.Contains("if (publishRateHz != null)", StringComparison.Ordinal),
+            Check((editor.Contains("publishRateSource == null", StringComparison.Ordinal)
+                   || editor.Contains("_publishRateSource == null", StringComparison.Ordinal))
+                  && (editor.Contains("if (publishRateHz != null)", StringComparison.Ordinal)
+                      || editor.Contains("if (_publishRateHz != null)", StringComparison.Ordinal)),
                 "134-19-G1: camera publish-rate inspector tolerates missing serialized fields");
             Check(editor.Contains("BuildCameraOutputModeLabels", StringComparison.Ordinal)
                   && editor.Contains("Enum.GetValues(typeof(CameraOutputMode))", StringComparison.Ordinal)

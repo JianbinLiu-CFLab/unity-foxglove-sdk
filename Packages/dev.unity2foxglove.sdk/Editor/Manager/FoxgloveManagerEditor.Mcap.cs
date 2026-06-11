@@ -80,19 +80,20 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            if (GetBool("_enableRemoteMcapFileServer") && replayAutoPlay.boolValue)
+            var remoteFileServerEnabled = GetBool("_enableRemoteMcapFileServer");
+            if (remoteFileServerEnabled && replayAutoPlay.boolValue)
             {
                 Undo.RecordObject(target, "Disable Replay Auto Play");
                 replayAutoPlay.boolValue = false;
                 EditorUtility.SetDirty(target);
             }
 
-            using (new EditorGUI.DisabledScope(GetBool("_enableRemoteMcapFileServer")))
+            using (new EditorGUI.DisabledScope(remoteFileServerEnabled))
             {
                 EditorGUILayout.PropertyField(replayAutoPlay, true);
             }
 
-            if (GetBool("_enableRemoteMcapFileServer"))
+            if (remoteFileServerEnabled)
             {
                 EditorGUILayout.HelpBox(
                     "Foxglove as Replay Timeline is on. Replay Auto Play is unavailable because Foxglove owns replay time.",

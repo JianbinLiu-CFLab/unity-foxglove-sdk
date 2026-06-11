@@ -17,6 +17,29 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(Components.FoxglovePublisherBase), true)]
     public class FoxglovePublisherBaseEditor : UnityEditor.Editor
     {
+        private static readonly System.Collections.Generic.Dictionary<string, GUIContent> GuiContentCache =
+            new System.Collections.Generic.Dictionary<string, GUIContent>(System.StringComparer.Ordinal);
+
+        private readonly System.Collections.Generic.List<SerializedProperty> _defaultProperties =
+            new System.Collections.Generic.List<SerializedProperty>();
+        private SerializedProperty _publishRateSource;
+        private SerializedProperty _publishRateHz;
+        private SerializedProperty _encodingOverride;
+        private SerializedProperty _bridgeOverride;
+        private SerializedProperty _bridgeTopicOverride;
+        private SerializedProperty _topic;
+
+        private void OnEnable()
+        {
+            _publishRateSource = serializedObject.FindProperty("_publishRateSource");
+            _publishRateHz = serializedObject.FindProperty("_publishRateHz");
+            _encodingOverride = serializedObject.FindProperty("_encodingOverride");
+            _bridgeOverride = serializedObject.FindProperty("_ros2BridgeOutput");
+            _bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
+            _topic = serializedObject.FindProperty("_topic");
+            CacheDefaultProperties();
+        }
+
         /// <summary>
         /// Draws the shared publisher inspector, including encoding override
         /// controls and inherited serialized fields.
@@ -25,60 +48,38 @@ namespace Unity.FoxgloveSDK.Editor
         {
             serializedObject.Update();
 
-            var publishRateSource = serializedObject.FindProperty("_publishRateSource");
-            var publishRateHz = serializedObject.FindProperty("_publishRateHz");
-            var encodingOverride = serializedObject.FindProperty("_encodingOverride");
-            var bridgeOverride = serializedObject.FindProperty("_ros2BridgeOutput");
-            var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
-            var topic = serializedObject.FindProperty("_topic");
-            var prop = serializedObject.GetIterator();
-            if (prop.NextVisible(true))
+            foreach (var prop in _defaultProperties)
             {
-                do
+                using (new EditorGUI.DisabledScope(prop.propertyPath == "m_Script"))
                 {
-                    if (prop.name == "_publishRateSource")
-                        continue;
-                    if (prop.name == "_publishRateHz")
-                        continue;
-                    if (prop.name == "_encodingOverride")
-                        continue;
-                    if (prop.name == "_ros2BridgeOutput")
-                        continue;
-                    if (prop.name == "_ros2BridgeTopicOverride")
-                        continue;
-
-                    using (new EditorGUI.DisabledScope(prop.propertyPath == "m_Script"))
-                    {
-                        EditorGUILayout.PropertyField(prop, true);
-                    }
+                    EditorGUILayout.PropertyField(prop, true);
                 }
-                while (prop.NextVisible(false));
             }
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
-            if (publishRateSource != null)
-                EditorGUILayout.PropertyField(publishRateSource, new GUIContent("Publish Rate Source"));
+            if (_publishRateSource != null)
+                EditorGUILayout.PropertyField(_publishRateSource, Label("Publish Rate Source"));
 
-            var usesLocalRate = publishRateSource == null
-                || publishRateSource.enumValueIndex == (int)Components.PublisherRateSource.OverrideLocal;
+            var usesLocalRate = _publishRateSource == null
+                || _publishRateSource.enumValueIndex == (int)Components.PublisherRateSource.OverrideLocal;
             using (new EditorGUI.DisabledScope(!usesLocalRate))
             {
-                if (publishRateHz != null)
-                    EditorGUILayout.PropertyField(publishRateHz, new GUIContent("Publish Rate Hz"));
+                if (_publishRateHz != null)
+                    EditorGUILayout.PropertyField(_publishRateHz, Label("Publish Rate Hz"));
             }
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
-            if (encodingOverride != null)
-                PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
+            if (_encodingOverride != null)
+                PublisherEncodingEditorLabels.DrawPublisherOverride(_encodingOverride, "Encoding Override");
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
-            if (bridgeOverride != null)
-                PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOverride, "Bridge Output");
-            if (bridgeTopicOverride != null)
-                EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
+            if (_bridgeOverride != null)
+                PublisherEncodingEditorLabels.DrawRos2BridgeOverride(_bridgeOverride, "Bridge Output");
+            if (_bridgeTopicOverride != null)
+                EditorGUILayout.PropertyField(_bridgeTopicOverride, Label("Bridge Topic Override"));
 
             serializedObject.ApplyModifiedProperties();
 
@@ -86,7 +87,7 @@ namespace Unity.FoxgloveSDK.Editor
             var resolution = publisher.EncodingResolution;
             var bridgeResolution = publisher.BridgeOutputResolution;
 
-            if (topic != null && !Components.FoxglovePublisherBase.HasValidPublisherTopic(topic.stringValue))
+            if (_topic != null && !Components.FoxglovePublisherBase.HasValidPublisherTopic(_topic.stringValue))
             {
                 EditorGUILayout.HelpBox(
                     "Topic is required. Blank publisher topics are not advertised or published.",
@@ -136,6 +137,43 @@ namespace Unity.FoxgloveSDK.Editor
                     "Requested ROS2 Bridge output, but this publisher cannot mirror a ROS2 payload.",
                     MessageType.Warning);
             }
+        }
+
+        private void CacheDefaultProperties()
+        {
+            _defaultProperties.Clear();
+            var prop = serializedObject.GetIterator();
+            if (!prop.NextVisible(true))
+                return;
+
+            do
+            {
+                if (ShouldSkipDefaultProperty(prop.name))
+                    continue;
+
+                _defaultProperties.Add(prop.Copy());
+            }
+            while (prop.NextVisible(false));
+        }
+
+        private static bool ShouldSkipDefaultProperty(string propertyName)
+        {
+            return propertyName == "_publishRateSource"
+                || propertyName == "_publishRateHz"
+                || propertyName == "_encodingOverride"
+                || propertyName == "_ros2BridgeOutput"
+                || propertyName == "_ros2BridgeTopicOverride";
+        }
+
+        private static GUIContent Label(string text)
+        {
+            if (!GuiContentCache.TryGetValue(text, out var content))
+            {
+                content = new GUIContent(text);
+                GuiContentCache.Add(text, content);
+            }
+
+            return content;
         }
     }
 }

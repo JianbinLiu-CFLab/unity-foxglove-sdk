@@ -107,10 +107,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPublisherInspectorUx()
         {
             var editorClass = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs");
+            var skipDefaultProperty = Slice(editorClass, "private static bool ShouldSkipDefaultProperty", "        private static GUIContent Label");
 
-            Check(editorClass.Contains("prop.name == \"_publishRateSource\""),
+            Check(editorClass.Contains("prop.name == \"_publishRateSource\"")
+                  || skipDefaultProperty.Contains("propertyName == \"_publishRateSource\"", StringComparison.Ordinal),
                 "71D-1: publisher Inspector hides raw rate source from generic loop");
-            Check(editorClass.Contains("prop.name == \"_publishRateHz\""),
+            Check(editorClass.Contains("prop.name == \"_publishRateHz\"")
+                  || skipDefaultProperty.Contains("propertyName == \"_publishRateHz\"", StringComparison.Ordinal),
                 "71D-2: publisher Inspector hides raw local rate from generic loop");
             Check(editorClass.Contains("Publish Rate"),
                 "71D-3: publisher Inspector has a Publish Rate section");

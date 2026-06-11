@@ -17,6 +17,9 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public static class Unity2FoxgloveSchemaManifestBuilder
     {
+        private const string LowerHexDigits = "0123456789abcdef";
+        private static readonly IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> SortedSdkTypedPublisherEntries = BuildSortedSdkTypedPublisherEntries();
+
         public const int ManifestVersion = 1;
         public const string PackageName = "Unity2Foxglove";
         public const string GeneratorName = "Unity2FoxgloveSchemaManifest";
@@ -119,8 +122,15 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var types = manifest.Sections.FoxRun.Types ?? Array.Empty<FoxRunManifestType>();
-            var contracts = types.Sum(type => type.Contracts.Count);
-            var fields = types.Sum(type => type.Contracts.Sum(contract => contract.Fields.Count));
+            var contracts = 0;
+            var fields = 0;
+            foreach (var type in types)
+            {
+                contracts += type.Contracts.Count;
+                foreach (var contract in type.Contracts)
+                    fields += contract.Fields.Count;
+            }
+
             return new Unity2FoxgloveFoxRunSummarySection(
                 true,
                 manifest.ManifestVersion,
@@ -194,6 +204,11 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()
         {
+            return new Unity2FoxgloveSdkTypedPublishersSection(SortedSdkTypedPublisherEntries.Count, SortedSdkTypedPublisherEntries);
+        }
+
+        private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()
+        {
             var entries = FoxgloveSdkPublisherCatalog.Entries
                 .OrderBy(entry => entry.PublisherTypeFullName, StringComparer.Ordinal)
                 .ThenBy(entry => entry.EntryKind, StringComparer.Ordinal)
@@ -203,7 +218,7 @@ namespace Unity.FoxgloveSDK.Editor
                 .AsReadOnly();
 
             ValidatePublisherCatalog(entries);
-            return new Unity2FoxgloveSdkTypedPublishersSection(entries.Count, entries);
+            return entries;
         }
 
         private static void ValidatePublisherCatalog(IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> entries)
@@ -252,7 +267,11 @@ namespace Unity.FoxgloveSDK.Editor
             var hash = sha.ComputeHash(bytes ?? Array.Empty<byte>());
             var sb = new StringBuilder(hash.Length * 2);
             foreach (var b in hash)
-                sb.Append(b.ToString("x2"));
+            {
+                sb.Append(LowerHexDigits[b >> 4]);
+                sb.Append(LowerHexDigits[b & 0x0F]);
+            }
+
             return sb.ToString();
         }
     }
