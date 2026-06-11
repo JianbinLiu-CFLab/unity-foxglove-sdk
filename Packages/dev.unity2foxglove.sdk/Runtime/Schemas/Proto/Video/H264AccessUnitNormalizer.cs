@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Foxglove.Schemas.Video
 {
@@ -48,13 +47,21 @@ namespace Foxglove.Schemas.Video
 
             CacheParameterSets(nals);
 
-            var hasVcl = nals.Any(IsVcl);
+            var hasVcl = false;
+            var hasIdr = false;
+            var hasSps = false;
+            var hasPps = false;
+            foreach (var nal in nals)
+            {
+                var type = NalType(nal);
+                hasVcl |= type == NonIdrSlice || type == IdrSlice;
+                hasIdr |= type == IdrSlice;
+                hasSps |= type == Sps;
+                hasPps |= type == Pps;
+            }
+
             if (!hasVcl)
                 return false;
-
-            var hasIdr = nals.Any(n => NalType(n) == IdrSlice);
-            var hasSps = nals.Any(n => NalType(n) == Sps);
-            var hasPps = nals.Any(n => NalType(n) == Pps);
 
             var outputNals = new List<byte[]>();
             if (hasIdr && (!hasSps || !hasPps))
@@ -161,7 +168,12 @@ namespace Foxglove.Schemas.Video
 
         private static byte[] BuildAnnexB(IReadOnlyList<byte[]> nals)
         {
-            var length = nals.Sum(nal => nal != null && nal.Length > 0 ? 4 + nal.Length : 0);
+            var length = 0;
+            foreach (var nal in nals)
+            {
+                if (nal != null && nal.Length > 0)
+                    length += 4 + nal.Length;
+            }
             var result = new byte[length];
             var offset = 0;
             foreach (var nal in nals)

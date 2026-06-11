@@ -52,6 +52,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
+        private byte[] _i420Scratch;
 
         public CameraVideoPublishPipeline(CameraPublishDiagnostics diagnostics, Action<string> logWarning = null)
         {
@@ -161,7 +162,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_videoSidecarSession.IsOpenH264Mode)
             {
-                var i420 = new byte[captureWidth * captureHeight * 3 / 2];
+                var i420 = EnsureI420Scratch(captureWidth, captureHeight);
                 if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(
                     ownedFrameBytes,
                     captureWidth,
@@ -197,6 +198,15 @@ namespace Unity.FoxgloveSDK.Components
             var submitted = new CameraVideoSubmitResult(CameraVideoSubmitOutcome.Submitted, "", ElapsedMs(submitStart));
             _diagnostics.RecordVideoSubmitMs(submitted.SubmitMs);
             return submitted;
+        }
+
+        private byte[] EnsureI420Scratch(int width, int height)
+        {
+            var length = width * height * 3 / 2;
+            if (_i420Scratch == null || _i420Scratch.Length != length)
+                _i420Scratch = new byte[length];
+
+            return _i420Scratch;
         }
 
         public bool TryDrainEncodedAccessUnits(

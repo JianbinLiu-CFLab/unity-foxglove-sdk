@@ -295,7 +295,8 @@ namespace Unity.FoxgloveSDK.Tests
             ContainsAll(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AccessUnitNormalizer.cs",
                 "134-13J-1: H.264 normalizer only counts non-empty NALs when preallocating Annex B output",
-                "nal != null && nal.Length > 0 ? 4 + nal.Length : 0");
+                "if (nal != null && nal.Length > 0)",
+                "length += 4 + nal.Length");
             ContainsAll(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/H264AccessUnitNormalizer.cs",
                 "134-13J-2: H.264 normalizer documents single SPS/PPS cache boundary",

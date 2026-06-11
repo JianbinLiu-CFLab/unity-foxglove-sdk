@@ -46,9 +46,10 @@ namespace Foxglove.Schemas.Video
 
             for (var y = 0; y < height; y++)
             {
+                var rowBase = GetRgbRowBase(y, width, height, flipVertical);
                 for (var x = 0; x < width; x++)
                 {
-                    var rgbIndex = GetRgbIndex(x, y, width, height, flipVertical);
+                    var rgbIndex = rowBase + x * 3;
                     var r = rgb24[rgbIndex];
                     var g = rgb24[rgbIndex + 1];
                     var b = rgb24[rgbIndex + 2];
@@ -59,21 +60,32 @@ namespace Foxglove.Schemas.Video
             // I420 stores one U and V sample for each 2x2 RGB block.
             for (var y = 0; y < height; y += 2)
             {
+                var rowBase0 = GetRgbRowBase(y, width, height, flipVertical);
+                var rowBase1 = GetRgbRowBase(y + 1, width, height, flipVertical);
                 for (var x = 0; x < width; x += 2)
                 {
                     var rSum = 0;
                     var gSum = 0;
                     var bSum = 0;
-                    for (var dy = 0; dy < 2; dy++)
-                    {
-                        for (var dx = 0; dx < 2; dx++)
-                        {
-                            var rgbIndex = GetRgbIndex(x + dx, y + dy, width, height, flipVertical);
-                            rSum += rgb24[rgbIndex];
-                            gSum += rgb24[rgbIndex + 1];
-                            bSum += rgb24[rgbIndex + 2];
-                        }
-                    }
+                    var rgbIndex = rowBase0 + x * 3;
+                    rSum += rgb24[rgbIndex];
+                    gSum += rgb24[rgbIndex + 1];
+                    bSum += rgb24[rgbIndex + 2];
+
+                    rgbIndex += 3;
+                    rSum += rgb24[rgbIndex];
+                    gSum += rgb24[rgbIndex + 1];
+                    bSum += rgb24[rgbIndex + 2];
+
+                    rgbIndex = rowBase1 + x * 3;
+                    rSum += rgb24[rgbIndex];
+                    gSum += rgb24[rgbIndex + 1];
+                    bSum += rgb24[rgbIndex + 2];
+
+                    rgbIndex += 3;
+                    rSum += rgb24[rgbIndex];
+                    gSum += rgb24[rgbIndex + 1];
+                    bSum += rgb24[rgbIndex + 2];
 
                     var rAvg = rSum / 4;
                     var gAvg = gSum / 4;
@@ -87,10 +99,10 @@ namespace Foxglove.Schemas.Video
             return true;
         }
 
-        private static int GetRgbIndex(int x, int y, int width, int height, bool flipVertical)
+        private static int GetRgbRowBase(int y, int width, int height, bool flipVertical)
         {
             var sourceY = flipVertical ? height - 1 - y : y;
-            return ((sourceY * width) + x) * 3;
+            return sourceY * width * 3;
         }
 
         private static byte ComputeY(int r, int g, int b)
