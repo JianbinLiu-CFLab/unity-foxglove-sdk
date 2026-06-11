@@ -64,7 +64,8 @@ class GeneratorBuildPerformanceScriptTests(unittest.TestCase):
 
         self.assertIn("if (value == null)", generated)
         self.assertIn("throw new ArgumentNullException(nameof(value));", generated)
-        self.assertIn("writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());", generated)
+        self.assertIn("var writer = new Ros2CdrWriter(256);", generated)
+        self.assertIn("writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);", generated)
 
     def test_full_demo_scene_sanitizes_portable_fields_with_variable_indentation(self) -> None:
         """Sample sync should sanitize local-only fields even if Unity changes indentation."""

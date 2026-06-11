@@ -5,6 +5,7 @@
 // Purpose: Minimal XCDR1 little-endian writer for ROS 2 .msg smoke payloads.
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 
@@ -18,7 +19,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     public sealed class Ros2CdrWriter
     {
         private const int AlignmentOrigin = 4;
-        private readonly List<byte> _buffer;
+        private byte[] _buffer;
+        private int _position;
 
         /// <summary>Create a writer initialized with a little-endian CDR encapsulation header.</summary>
         public Ros2CdrWriter()
@@ -29,15 +31,16 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Create a writer with an approximate output capacity hint.</summary>
         public Ros2CdrWriter(int capacityBytes)
         {
-            _buffer = new List<byte>(Math.Max(AlignmentOrigin, capacityBytes));
-            _buffer.Add(0x00);
-            _buffer.Add(0x01);
-            _buffer.Add(0x00);
-            _buffer.Add(0x00);
+            _buffer = new byte[Math.Max(AlignmentOrigin, capacityBytes)];
+            _buffer[0] = 0x00;
+            _buffer[1] = 0x01;
+            _buffer[2] = 0x00;
+            _buffer[3] = 0x00;
+            _position = AlignmentOrigin;
         }
 
         /// <summary>Current write offset in bytes from the start of the payload.</summary>
-        public int Position => _buffer.Count;
+        public int Position => _position;
 
         /// <summary>Write a ROS 2 bool as one byte.</summary>
         public void WriteBool(bool value)
@@ -48,66 +51,88 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Write an unsigned 8-bit integer.</summary>
         public void WriteUInt8(byte value)
         {
-            _buffer.Add(value);
+            EnsureCapacity(1);
+            _buffer[_position++] = value;
         }
 
         /// <summary>Write a signed 32-bit integer.</summary>
         public void WriteInt32(int value)
         {
             Align(4);
-            WriteLittleEndian(BitConverter.GetBytes(value));
+            EnsureCapacity(4);
+            BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(_position, 4), value);
+            _position += 4;
         }
 
         /// <summary>Write an unsigned 32-bit integer.</summary>
         public void WriteUInt32(uint value)
         {
             Align(4);
-            WriteLittleEndian(BitConverter.GetBytes(value));
+            EnsureCapacity(4);
+            BinaryPrimitives.WriteUInt32LittleEndian(_buffer.AsSpan(_position, 4), value);
+            _position += 4;
         }
 
         /// <summary>Write a signed 64-bit integer.</summary>
         public void WriteInt64(long value)
         {
             Align(8);
-            WriteLittleEndian(BitConverter.GetBytes(value));
+            EnsureCapacity(8);
+            BinaryPrimitives.WriteInt64LittleEndian(_buffer.AsSpan(_position, 8), value);
+            _position += 8;
         }
 
         /// <summary>Write an unsigned 64-bit integer.</summary>
         public void WriteUInt64(ulong value)
         {
             Align(8);
-            WriteLittleEndian(BitConverter.GetBytes(value));
+            EnsureCapacity(8);
+            BinaryPrimitives.WriteUInt64LittleEndian(_buffer.AsSpan(_position, 8), value);
+            _position += 8;
         }
 
         /// <summary>Write a 32-bit floating-point value.</summary>
         public void WriteFloat32(float value)
         {
             Align(4);
-            WriteLittleEndian(BitConverter.GetBytes(value));
+            EnsureCapacity(4);
+            BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(_position, 4), BitConverter.SingleToInt32Bits(value));
+            _position += 4;
         }
 
         /// <summary>Write a 64-bit floating-point value.</summary>
         public void WriteFloat64(double value)
         {
             Align(8);
-            WriteLittleEndian(BitConverter.GetBytes(value));
+            EnsureCapacity(8);
+            BinaryPrimitives.WriteInt64LittleEndian(_buffer.AsSpan(_position, 8), BitConverter.DoubleToInt64Bits(value));
+            _position += 8;
         }
 
         /// <summary>Write a ROS 2 string, encoded as uint32 length including trailing NUL. Null strings are encoded as empty strings.</summary>
         public void WriteString(string value)
         {
-            var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
-            WriteUInt32(checked((uint)bytes.Length + 1U));
-            _buffer.AddRange(bytes);
-            _buffer.Add(0x00);
+            value ??= string.Empty;
+            var byteCount = Encoding.UTF8.GetByteCount(value);
+            WriteUInt32(checked((uint)byteCount + 1U));
+            EnsureCapacity(byteCount + 1);
+            _position += Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position);
+            _buffer[_position++] = 0x00;
         }
 
         /// <summary>Write a uint8 sequence. Null arrays are encoded as empty sequences; builders must reject null when the field is required.</summary>
         public void WriteByteArray(byte[] value)
         {
-            value ??= Array.Empty<byte>();
+            WriteByteArray(value == null ? ReadOnlySpan<byte>.Empty : value.AsSpan());
+        }
+
+        /// <summary>Write a uint8 sequence from a span without requiring an intermediate array.</summary>
+        public void WriteByteArray(ReadOnlySpan<byte> value)
+        {
             WriteUInt32(checked((uint)value.Length));
-            _buffer.AddRange(value);
+            EnsureCapacity(value.Length);
+            value.CopyTo(_buffer.AsSpan(_position, value.Length));
+            _position += value.Length;
         }
 
         /// <summary>Write a float64 sequence. Null lists are encoded as empty sequences; builders must reject null when the field is required.</summary>
@@ -151,25 +176,34 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Return the completed payload bytes.</summary>
         public byte[] ToArray()
         {
-            return _buffer.ToArray();
+            var result = new byte[_position];
+            Buffer.BlockCopy(_buffer, 0, result, 0, _position);
+            return result;
         }
 
         private void Align(int alignment)
         {
-            var relative = (_buffer.Count - AlignmentOrigin) % alignment;
+            var relative = (_position - AlignmentOrigin) % alignment;
             if (relative == 0)
                 return;
 
             var padding = alignment - relative;
-            for (var i = 0; i < padding; i++)
-                _buffer.Add(0x00);
+            EnsureCapacity(padding);
+            Array.Clear(_buffer, _position, padding);
+            _position += padding;
         }
 
-        private void WriteLittleEndian(byte[] bytes)
+        private void EnsureCapacity(int additionalBytes)
         {
-            if (!BitConverter.IsLittleEndian)
-                Array.Reverse(bytes);
-            _buffer.AddRange(bytes);
+            var required = checked(_position + additionalBytes);
+            if (required <= _buffer.Length)
+                return;
+
+            var newLength = _buffer.Length;
+            while (newLength < required)
+                newLength = checked(newLength * 2);
+
+            Array.Resize(ref _buffer, newLength);
         }
     }
 }

@@ -314,7 +314,7 @@ def writer_for_field(field: Field) -> list[str]:
     if field.array_kind == "scalar":
         return writer_for_scalar(field, "message")
     if field.base_type == "uint8":
-        return [f"writer.WriteByteArray({access}?.ToByteArray() ?? Array.Empty<byte>());"]
+        return [f"writer.WriteByteArray({access} == null ? ReadOnlySpan<byte>.Empty : {access}.Span);"]
     if field.array_kind == "fixed":
         return [f"writer.WriteFloat64Fixed({access}, {field.fixed_length}, {csharp_string(field.name)});"]
     if field.base_type == "float64":
@@ -480,7 +480,7 @@ def generate_serializers(schemas: list[Schema]) -> str:
                 "        {",
                 "            if (message == null)",
                 "                throw new ArgumentNullException(nameof(message));",
-                "            var writer = new Ros2CdrWriter();",
+                "            var writer = new Ros2CdrWriter(256);",
                 f"            Write{schema.name}(writer, message);",
                 "            return writer.ToArray();",
                 "        }",
