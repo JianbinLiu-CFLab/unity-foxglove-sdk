@@ -12,6 +12,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
+using UnityEditor;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -34,25 +35,13 @@ namespace Unity.FoxgloveSDK.Editor
         public static List<(string AsmName, string Ns, string ClassName)> CollectFoxRunTypes()
         {
             var types = new List<(string, string, string)>();
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var type in TypeCache.GetTypesDerivedFrom<MonoBehaviour>())
             {
-                try
-                {
-                    foreach (var type in asm.GetTypes())
-                    {
-                        if (!type.IsClass || type.IsAbstract) continue;
-                        if (!IsPartial(type)) continue;
-                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
-                        var members = ScanType(type);
-                        if (members.Count == 0) continue;
-                        types.Add((asm.GetName().Name, type.Namespace ?? "", type.Name));
-                    }
-                }
-                catch (ReflectionTypeLoadException ex)
-                {
-                    throw new InvalidOperationException(
-                        $"Failed to scan assembly '{asm.GetName().Name}' for [FoxRun] types.", ex);
-                }
+                if (!type.IsClass || type.IsAbstract) continue;
+                if (!IsPartial(type)) continue;
+                var members = ScanType(type);
+                if (members.Count == 0) continue;
+                types.Add((type.Assembly.GetName().Name, type.Namespace ?? "", type.Name));
             }
             return types;
         }
@@ -219,15 +208,17 @@ namespace Unity.FoxgloveSDK.Editor
         private static void ValidateGenerationModel(FoxRunGenerationModel model)
         {
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
-            var errors = diagnostics
-                .Where(diagnostic => string.Equals(diagnostic.Severity, "Error", StringComparison.Ordinal))
-                .Select(diagnostic => diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message)
-                .ToList();
+            var errors = new List<string>();
+            foreach (var diagnostic in diagnostics)
+            {
+                if (string.Equals(diagnostic.Severity, "Error", StringComparison.Ordinal))
+                    errors.Add(diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message);
+                else if (string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal))
+                    Debug.LogWarning("[FoxrunCodeGenerator] " + diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message);
+            }
+
             if (errors.Count > 0)
                 throw new InvalidOperationException(string.Join("; ", errors));
-
-            foreach (var warning in diagnostics.Where(diagnostic => string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal)))
-                Debug.LogWarning("[FoxrunCodeGenerator] " + warning.Id + ": " + warning.Target + ": " + warning.Message);
         }
 
         private static string GetManifestOutputDirectory()
@@ -241,36 +232,24 @@ namespace Unity.FoxgloveSDK.Editor
             var manifestMembers = new List<FoxRunManifestMember>();
             var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
 
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var type in TypeCache.GetTypesDerivedFrom<MonoBehaviour>())
             {
-                try
-                {
-                    foreach (var type in asm.GetTypes())
-                    {
-                        if (!type.IsClass || type.IsAbstract) continue;
-                        if (!IsPartial(type)) continue;
-                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
+                if (!type.IsClass || type.IsAbstract) continue;
+                if (!IsPartial(type)) continue;
 
-                        var members = ScanType(type);
-                        if (members.Count == 0) continue;
+                var members = ScanType(type);
+                if (members.Count == 0) continue;
 
-                        var ns = type.Namespace ?? "";
-                        var key = (ns, type.Name);
-                        if (!byClass.TryGetValue(key, out var list))
-                            byClass[key] = list = new List<MemberData>();
-                        list.AddRange(members);
-                        manifestMembers.AddRange(members.Select(member => member.ToManifestMember()));
-                        reflectionMembers.AddRange(members.Select(member => member.ToReflectionMember()));
-                    }
-                }
-                catch (ReflectionTypeLoadException ex)
+                var ns = type.Namespace ?? "";
+                var key = (ns, type.Name);
+                if (!byClass.TryGetValue(key, out var list))
+                    byClass[key] = list = new List<MemberData>();
+
+                foreach (var member in members)
                 {
-                    if (!ignoreReflectionTypeLoadExceptions)
-                        throw;
-                    WarnSkippedAssembly(asm, ex);
-                    // Source fallback generation is best-effort because the Roslyn
-                    // path already reports authoring errors in the Editor. The
-                    // link.xml scan is fail-fast and catches preservation risk.
+                    list.Add(member);
+                    manifestMembers.Add(member.ToManifestMember());
+                    reflectionMembers.Add(member.ToReflectionMember());
                 }
             }
 
@@ -342,7 +321,11 @@ namespace Unity.FoxgloveSDK.Editor
             if (members.Length == 0)
                 throw new ArgumentException("At least one FoxRun member is required to emit a source file.", nameof(members));
 
-            var model = LowerReflectionMembers(members.Select(member => member.ToReflectionMember()).ToList());
+            var reflectionMembers = new FoxRunReflectionGenerationMember[members.Length];
+            for (var i = 0; i < members.Length; i++)
+                reflectionMembers[i] = members[i].ToReflectionMember();
+
+            var model = LowerReflectionMembers(reflectionMembers);
             ValidateGenerationModel(model);
             if (model.Types.Count != 1)
                 throw new ArgumentException("Members must describe exactly one FoxRun declaring type.", nameof(members));
