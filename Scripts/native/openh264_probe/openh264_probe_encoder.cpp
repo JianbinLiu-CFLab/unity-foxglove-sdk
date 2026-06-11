@@ -275,8 +275,10 @@ namespace
         }
     }
 
-    void WriteAccessUnit(const SFrameBSInfo& info)
+    void WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)
     {
+        accessUnit.clear();
+
         if (info.eFrameType == videoFrameTypeSkip)
         {
             std::cerr << "OpenH264 skipped frame." << std::endl;
@@ -290,7 +292,6 @@ namespace
             return;
         }
 
-        std::vector<uint8_t> accessUnit;
         for (int layer = 0; layer < info.iLayerNum; ++layer)
             AppendLayerNalUnits(info.sLayerInfo[layer], accessUnit);
 
@@ -374,6 +375,7 @@ int main(int argc, char** argv)
 
     const size_t frameBytes = static_cast<size_t>(options.width) * static_cast<size_t>(options.height) * 3 / 2;
     std::vector<uint8_t> frame(frameBytes);
+    std::vector<uint8_t> accessUnit;
     uint64_t framesEncoded = 0;
     int exitCode = 0;
 
@@ -411,7 +413,7 @@ int main(int argc, char** argv)
             return 6;
         }
 
-        WriteAccessUnit(info);
+        WriteAccessUnit(info, accessUnit);
         ++framesEncoded;
     }
 

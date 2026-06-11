@@ -172,15 +172,20 @@ def merged_schema(root_text: str, local_sources: dict[str, str]) -> str:
     return result
 
 
-def source_tree_sha(files: list[Path]) -> str:
+def source_tree_sha(files: list[Path], file_bytes: dict[Path, bytes]) -> str:
     """Compute a deterministic SHA-256 over sorted root filenames and bytes."""
     sha = hashlib.sha256()
     for path in files:
         sha.update(path.name.encode("utf-8"))
         sha.update(b"\0")
-        sha.update(path.read_bytes())
+        sha.update(file_bytes[path])
         sha.update(b"\0")
     return sha.hexdigest()
+
+
+def decode_schema_text(data: bytes) -> str:
+    """Decode source bytes with the same newline normalization as Path.read_text."""
+    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def try_source_commit(input_dir: Path) -> str:
@@ -227,8 +232,9 @@ def generate(input_dir: Path, output: Path) -> str:
             f"Expected {EXPECTED_FILE_COUNT} ROS 2 .msg files in {input_dir}, found {len(files)}"
         )
 
-    local_sources = {path.stem: path.read_text(encoding="utf-8") for path in files}
-    tree_sha = source_tree_sha(files)
+    file_bytes = {path: path.read_bytes() for path in files}
+    local_sources = {path.stem: decode_schema_text(file_bytes[path]) for path in files}
+    tree_sha = source_tree_sha(files, file_bytes)
     source_commit = try_source_commit(input_dir)
 
     entry_blocks: list[str] = []
@@ -236,7 +242,7 @@ def generate(input_dir: Path, output: Path) -> str:
         name = path.stem
         schema_name = f"foxglove_msgs/msg/{name}"
         content = merged_schema(local_sources[name], local_sources)
-        source_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+        source_sha = hashlib.sha256(file_bytes[path]).hexdigest()
         category = CATEGORIES.get(name, "")
         has_publisher = "true" if name in DEDICATED_JSON_OR_PROTOBUF_PUBLISHERS else "false"
         content_literal = csharp_base64_literal(content, "                    ")
