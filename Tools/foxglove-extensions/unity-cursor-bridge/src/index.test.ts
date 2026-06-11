@@ -85,9 +85,9 @@ describe("Unity Replay Sync panel helpers", () => {
   });
 
   test("shouldSendCursor rate-limits duplicate and too-fast cursor updates", () => {
-    expect(shouldSendCursor(true, { sec: 1, nsec: 2 }, "1.2", 100, 110, 16)).toBe(false);
-    expect(shouldSendCursor(true, { sec: 1, nsec: 3 }, "1.2", 100, 110, 16)).toBe(false);
-    expect(shouldSendCursor(true, { sec: 1, nsec: 3 }, "1.2", 100, 120, 16)).toBe(true);
+    expect(shouldSendCursor(true, { sec: 1, nsec: 2 }, 1, 2, 100, 110, 16)).toBe(false);
+    expect(shouldSendCursor(true, { sec: 1, nsec: 3 }, 1, 2, 100, 110, 16)).toBe(false);
+    expect(shouldSendCursor(true, { sec: 1, nsec: 3 }, 1, 2, 100, 120, 16)).toBe(true);
   });
 });
 
