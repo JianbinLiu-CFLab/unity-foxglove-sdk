@@ -225,11 +225,11 @@ namespace Unity.FoxgloveSDK.Tests
             public void BroadcastText(string json) => BroadcastTexts.Add(json);
             public void BroadcastBinary(byte[] data) { }
 
-            public List<string> SentTexts(uint clientId) =>
-                _sentTexts.TryGetValue(clientId, out var list) ? list : new List<string>();
+            public IReadOnlyList<string> SentTexts(uint clientId) =>
+                _sentTexts.TryGetValue(clientId, out var list) ? list : Array.Empty<string>();
 
-            public List<byte[]> SentBinaries(uint clientId) =>
-                _sentBinaries.TryGetValue(clientId, out var list) ? list : new List<byte[]>();
+            public IReadOnlyList<byte[]> SentBinaries(uint clientId) =>
+                _sentBinaries.TryGetValue(clientId, out var list) ? list : Array.Empty<byte[]>();
 
             public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void SimulateDisconnect(uint clientId) => OnClientDisconnected?.Invoke(clientId);
