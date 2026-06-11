@@ -32,6 +32,22 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 throw new ArgumentNullException(nameof(frame));
 
             var packed = PointCloudPackedDataBuilder.Build(frame);
+            return Serialize(frame, packed);
+        }
+
+        internal static byte[] Serialize(
+            PointCloudFrame frame,
+            PointCloudPackedDataBuilder.PointCloudLayout layout)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            var packed = PointCloudPackedDataBuilder.Build(frame, layout);
+            return Serialize(frame, packed);
+        }
+
+        private static byte[] Serialize(PointCloudFrame frame, PointCloudPackedData packed)
+        {
             var width = checked((uint)frame.GetPointCount());
             return Serialize(
                 frame.UnixNs,

@@ -82,6 +82,8 @@ namespace Unity.FoxgloveSDK.Components
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private readonly SensorMotionPoseHistory _motionPoseHistory = new SensorMotionPoseHistory();
         private ulong _lastNativeDracoPublishUnixNs;
+        private float _cachedNativeDracoMaxPublishRateHz = float.NaN;
+        private ulong _cachedNativeDracoPublishIntervalNs;
         private int _unityThreadId;
         private int _motionCompensationWarningCount;
 
@@ -284,12 +286,12 @@ namespace Unity.FoxgloveSDK.Components
             var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
             if (!publishWebSocket && !publishBridge && !publishNativeFrame) return;
 
-            var prepared = PrepareFrameForQoS(frame, logTimeNs);
+            var prepared = PrepareFrameForQoS(frame, logTimeNs, out var packedLayout);
             if (prepared == null || prepared.GetPointCount() == 0) return;
             SetPreparedPublishDemand(publishWebSocket, publishBridge);
             try
             {
-                PublishPreparedFrame(prepared, logTimeNs);
+                PublishPreparedFrame(prepared, logTimeNs, packedLayout);
                 _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
             }
             finally
@@ -399,7 +401,7 @@ namespace Unity.FoxgloveSDK.Components
             if (rateHz <= 0f)
                 return true;
 
-            var intervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
+            var intervalNs = ResolveNativeDracoPublishIntervalNs(rateHz);
             var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
 
             if (_lastNativeDracoPublishUnixNs != 0UL
@@ -414,6 +416,17 @@ namespace Unity.FoxgloveSDK.Components
             // intentionally resets the native Draco rate baseline and lets one frame through.
             _lastNativeDracoPublishUnixNs = timestampNs;
             return true;
+        }
+
+        private ulong ResolveNativeDracoPublishIntervalNs(float rateHz)
+        {
+            if (!rateHz.Equals(_cachedNativeDracoMaxPublishRateHz))
+            {
+                _cachedNativeDracoMaxPublishRateHz = rateHz;
+                _cachedNativeDracoPublishIntervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
+            }
+
+            return _cachedNativeDracoPublishIntervalNs;
         }
 
         protected virtual void Update()
@@ -455,8 +468,9 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            PointCloudPackedDataBuilder.PointCloudLayout packedLayout;
             var frame = pendingFrame != null
-                ? PrepareFrameForQoS(pendingFrame, unixNs)
+                ? PrepareFrameForQoS(pendingFrame, unixNs, out packedLayout)
                 : PrepareFrameForQoS(_transformPointCloudSource.CreateFrameFromTransforms(
                     unixNs,
                     SanitizeFrameId(_frameId, "unity_world"),
@@ -467,14 +481,15 @@ namespace Unity.FoxgloveSDK.Components
                     _includeSyntheticIntensity,
                     _maxPoints,
                     Manager != null ? Manager.ActiveCoordinateMode : CoordinateMode.LeftHand),
-                    unixNs);
+                    unixNs,
+                    out packedLayout);
             _pendingFrameSlot.ResetReplacementWarning();
             if (frame == null || frame.GetPointCount() == 0) return;
 
             SetPreparedPublishDemand(publishWebSocket, publishBridge);
             try
             {
-                PublishPreparedFrame(frame, unixNs);
+                PublishPreparedFrame(frame, unixNs, packedLayout);
                 _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
             }
             finally
@@ -484,6 +499,14 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         protected virtual void PublishPreparedFrame(PointCloudFrame frame, ulong unixNs)
+        {
+            PublishPreparedFrame(frame, unixNs, null);
+        }
+
+        protected virtual void PublishPreparedFrame(
+            PointCloudFrame frame,
+            ulong unixNs,
+            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
             _diagnostics.RecordPrepared(_logPerformanceDiagnostics, frame);
 
@@ -495,14 +518,17 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_outputMode == PointCloudOutputMode.PointCloud2Native)
             {
-                PublishPointCloud2NativeFrame(frame, unixNs);
+                PublishPointCloud2NativeFrame(frame, unixNs, packedLayout);
                 return;
             }
 
-            PublishRawFrame(frame, unixNs);
+            PublishRawFrame(frame, unixNs, packedLayout);
         }
 
-        private void PublishRawFrame(PointCloudFrame frame, ulong unixNs)
+        private void PublishRawFrame(
+            PointCloudFrame frame,
+            ulong unixNs,
+            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
             if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
             {
@@ -513,26 +539,37 @@ namespace Unity.FoxgloveSDK.Components
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProto(PointCloudMessageBuilder.SerializeProtobuf(frame), unixNs);
+                PublishProto(packedLayout == null
+                    ? PointCloudMessageBuilder.SerializeProtobuf(frame)
+                    : PointCloudMessageBuilder.SerializeProtobuf(frame, packedLayout), unixNs);
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                ros2Payload = Ros2CdrPointCloudBuilder.Serialize(frame);
+                ros2Payload = packedLayout == null
+                    ? Ros2CdrPointCloudBuilder.Serialize(frame)
+                    : Ros2CdrPointCloudBuilder.Serialize(frame, packedLayout);
                 PublishRos2(ros2Payload, unixNs);
             }
             else if (publishWebSocket)
             {
-                Publish(PointCloudMessageBuilder.CreateJson(frame), unixNs);
+                Publish(packedLayout == null
+                    ? PointCloudMessageBuilder.CreateJson(frame)
+                    : PointCloudMessageBuilder.CreateJson(frame, packedLayout), unixNs);
             }
 
             if (publishBridge)
             {
-                ros2Payload ??= Ros2CdrPointCloudBuilder.Serialize(frame);
+                ros2Payload ??= packedLayout == null
+                    ? Ros2CdrPointCloudBuilder.Serialize(frame)
+                    : Ros2CdrPointCloudBuilder.Serialize(frame, packedLayout);
                 PublishRos2Bridge(ros2Payload, unixNs);
             }
         }
 
-        private void PublishPointCloud2NativeFrame(PointCloudFrame frame, ulong unixNs)
+        private void PublishPointCloud2NativeFrame(
+            PointCloudFrame frame,
+            ulong unixNs,
+            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
             if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
             {
@@ -543,25 +580,32 @@ namespace Unity.FoxgloveSDK.Components
             byte[] ros2Payload = null;
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
             {
-                ros2Payload = Ros2CdrSensorPointCloud2Builder.Serialize(frame);
+                ros2Payload = packedLayout == null
+                    ? Ros2CdrSensorPointCloud2Builder.Serialize(frame)
+                    : Ros2CdrSensorPointCloud2Builder.Serialize(frame, packedLayout);
                 PublishRos2(ros2Payload, unixNs);
             }
 
             if (publishBridge)
             {
-                ros2Payload ??= Ros2CdrSensorPointCloud2Builder.Serialize(frame);
+                ros2Payload ??= packedLayout == null
+                    ? Ros2CdrSensorPointCloud2Builder.Serialize(frame)
+                    : Ros2CdrSensorPointCloud2Builder.Serialize(frame, packedLayout);
                 PublishRos2Bridge(ros2Payload, unixNs);
             }
 
             if (ShouldPreparePointCloud2NativeFrame())
-                PublishPreparedPointCloud2NativeFrame(frame, unixNs);
+                PublishPreparedPointCloud2NativeFrame(frame, unixNs, packedLayout);
         }
 
         private bool ShouldPreparePointCloud2NativeFrame()
             => _outputMode == PointCloudOutputMode.PointCloud2Native
                && PointCloud2NativeFrameReady != null;
 
-        private void PublishPreparedPointCloud2NativeFrame(PointCloudFrame frame, ulong unixNs)
+        private void PublishPreparedPointCloud2NativeFrame(
+            PointCloudFrame frame,
+            ulong unixNs,
+            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
         {
             var handler = PointCloud2NativeFrameReady;
             if (handler == null || frame == null)
@@ -569,7 +613,9 @@ namespace Unity.FoxgloveSDK.Components
 
             try
             {
-                var packed = PointCloudPackedDataBuilder.Build(frame);
+                var packed = packedLayout == null
+                    ? PointCloudPackedDataBuilder.Build(frame)
+                    : PointCloudPackedDataBuilder.Build(frame, packedLayout);
                 var nativeFrame = new PointCloud2NativeFrame(
                     unixNs,
                     string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId,
@@ -922,6 +968,14 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
         {
+            return PrepareFrameForQoS(frame, unixNs, out _);
+        }
+
+        private PointCloudFrame PrepareFrameForQoS(
+            PointCloudFrame frame,
+            ulong unixNs,
+            out PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
+        {
             return _qosReducer.PrepareFrameForQoS(
                 frame,
                 unixNs,
@@ -930,7 +984,8 @@ namespace Unity.FoxgloveSDK.Components
                 _maxPackedBytes,
                 _samplingMode,
                 _voxelSizeMeters,
-                _logQosDrops);
+                _logQosDrops,
+                out packedLayout);
         }
     }
 }

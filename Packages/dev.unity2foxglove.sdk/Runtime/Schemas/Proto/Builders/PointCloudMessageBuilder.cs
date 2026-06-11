@@ -54,6 +54,19 @@ namespace Foxglove.Schemas
             return new PointCloudBuildResult(json, proto, packed.Data);
         }
 
+        internal static PointCloudBuildResult Build(
+            PointCloudFrame frame,
+            PointCloudPackedDataBuilder.PointCloudLayout layout)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            var packed = PointCloudPackedDataBuilder.Build(frame, layout);
+            var json = CreateJson(frame, packed);
+            var proto = CreateProtobuf(frame, packed);
+            return new PointCloudBuildResult(json, proto, packed.Data);
+        }
+
         /// <summary>Create a JSON PointCloud DTO.</summary>
         public static PointCloudMessage CreateJson(PointCloudFrame frame)
         {
@@ -61,6 +74,16 @@ namespace Foxglove.Schemas
                 throw new ArgumentNullException(nameof(frame));
 
             return CreateJson(frame, PointCloudPackedDataBuilder.Build(frame));
+        }
+
+        internal static PointCloudMessage CreateJson(
+            PointCloudFrame frame,
+            PointCloudPackedDataBuilder.PointCloudLayout layout)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            return CreateJson(frame, PointCloudPackedDataBuilder.Build(frame, layout));
         }
 
         /// <summary>Create an official protobuf PointCloud message.</summary>
@@ -72,10 +95,27 @@ namespace Foxglove.Schemas
             return CreateProtobuf(frame, PointCloudPackedDataBuilder.Build(frame));
         }
 
+        internal static Foxglove.PointCloud CreateProtobuf(
+            PointCloudFrame frame,
+            PointCloudPackedDataBuilder.PointCloudLayout layout)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            return CreateProtobuf(frame, PointCloudPackedDataBuilder.Build(frame, layout));
+        }
+
         /// <summary>Create and serialize an official protobuf PointCloud payload.</summary>
         public static byte[] SerializeProtobuf(PointCloudFrame frame)
         {
             return CreateProtobuf(frame).ToByteArray();
+        }
+
+        internal static byte[] SerializeProtobuf(
+            PointCloudFrame frame,
+            PointCloudPackedDataBuilder.PointCloudLayout layout)
+        {
+            return CreateProtobuf(frame, layout).ToByteArray();
         }
 
         private static PointCloudMessage CreateJson(PointCloudFrame frame, PointCloudPackedData packed)

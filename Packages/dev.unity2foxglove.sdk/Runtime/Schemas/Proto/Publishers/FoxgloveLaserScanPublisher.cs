@@ -44,6 +44,10 @@ namespace Unity.FoxgloveSDK.Components
         private int _queuedOffMainThreadPublishFrameCount;
         private int _droppedQueuedPublishFrameCount;
         private int _unityThreadId;
+        private double _cachedStartAngleDegrees = double.NaN;
+        private double _cachedEndAngleDegrees = double.NaN;
+        private double _cachedStartAngleRadians;
+        private double _cachedEndAngleRadians;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.LaserScanSchemaName;
         public override bool SupportsProtobufEncoding => true;
@@ -54,6 +58,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/unity/laser_scan";
             _unityThreadId = Thread.CurrentThread.ManagedThreadId;
+            RefreshCachedAngles();
         }
 
         protected override void OnEnable()
@@ -141,9 +146,23 @@ namespace Unity.FoxgloveSDK.Components
             _warnedIntensityMismatch = false;
 
             var unixNs = CurrentLogTimeNs;
-            var startRad = _startAngleDegrees * Math.PI / 180.0;
-            var endRad = _endAngleDegrees * Math.PI / 180.0;
-            TryPublishScan(unixNs, _frameId, startRad, endRad, ranges, intensities, publishWebSocket, publishBridge);
+            RefreshCachedAngles();
+            TryPublishScan(unixNs, _frameId, _cachedStartAngleRadians, _cachedEndAngleRadians, ranges, intensities, publishWebSocket, publishBridge);
+        }
+
+        private void RefreshCachedAngles()
+        {
+            if (!_startAngleDegrees.Equals(_cachedStartAngleDegrees))
+            {
+                _cachedStartAngleDegrees = _startAngleDegrees;
+                _cachedStartAngleRadians = _startAngleDegrees * Math.PI / 180.0;
+            }
+
+            if (!_endAngleDegrees.Equals(_cachedEndAngleDegrees))
+            {
+                _cachedEndAngleDegrees = _endAngleDegrees;
+                _cachedEndAngleRadians = _endAngleDegrees * Math.PI / 180.0;
+            }
         }
 
         private bool TryPublishScan(
