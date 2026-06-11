@@ -14,6 +14,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     public sealed class Ros2BridgeTcpClient : IRos2BridgeSink
     {
         private TcpClient _client;
+        private int _sendTimeoutMs;
 
         public bool IsConnected
         {
@@ -76,6 +77,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
 
             client.NoDelay = true;
+            client.Client.SendTimeout = timeoutMs;
+            _sendTimeoutMs = timeoutMs;
             _client = client;
         }
 
@@ -88,17 +91,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS 2 bridge send timeout must be positive.");
 
-            var bytes = Ros2BridgeFrameWriter.Write(frame);
             var socket = _client.Client;
-            socket.SendTimeout = timeoutMs;
-            var offset = 0;
-            while (offset < bytes.Length)
+            if (_sendTimeoutMs != timeoutMs)
             {
-                var sent = socket.Send(bytes, offset, bytes.Length - offset, SocketFlags.None);
-                if (sent <= 0)
-                    throw new InvalidOperationException("ROS 2 bridge socket closed during send.");
-                offset += sent;
+                socket.SendTimeout = timeoutMs;
+                _sendTimeoutMs = timeoutMs;
             }
+
+            var stream = _client.GetStream();
+            Ros2BridgeFrameWriter.Write(frame, stream);
+            stream.Flush();
         }
 
         public void Disconnect()
@@ -114,6 +116,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 _client.Dispose();
                 _client = null;
+                _sendTimeoutMs = 0;
             }
         }
 

@@ -79,8 +79,26 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 throw new ArgumentNullException(nameof(frame));
 
             var layout = PointCloudLayout.From(frame);
+            return Build(frame, layout);
+        }
+
+        internal static PointCloudPackedData Build(PointCloudFrame frame, PointCloudLayout layout)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+            if (layout == null)
+                throw new ArgumentNullException(nameof(layout));
+
             var data = Pack(frame, layout);
             return new PointCloudPackedData(layout.Stride, layout.Fields, data);
+        }
+
+        internal static PointCloudLayout BuildLayout(PointCloudFrame frame)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
+            return PointCloudLayout.From(frame);
         }
 
         private static byte[] Pack(PointCloudFrame frame, PointCloudLayout layout)
@@ -136,7 +154,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return (int)packedBytes;
         }
 
-        private sealed class PointCloudLayout
+        public sealed class PointCloudLayout
         {
             public bool HasIntensity { get; private set; }
             public bool HasReflectivity { get; private set; }

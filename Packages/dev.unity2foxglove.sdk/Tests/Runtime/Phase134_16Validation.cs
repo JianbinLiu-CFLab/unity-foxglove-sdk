@@ -80,11 +80,14 @@ namespace Unity.FoxgloveSDK.Tests
             var runtimeSource = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
 
             Check(frameSource.Contains("private readonly byte[] _payload", StringComparison.Ordinal)
-                  && frameSource.Contains("_payload = (byte[])payload.Clone()", StringComparison.Ordinal)
+                  && frameSource.Contains("clonePayload: true", StringComparison.Ordinal)
+                  && frameSource.Contains("Ros2BridgeFrame CreateOwned", StringComparison.Ordinal)
+                  && frameSource.Contains("clonePayload: false", StringComparison.Ordinal)
+                  && frameSource.Contains("_payload = clonePayload ? (byte[])payload.Clone() : payload", StringComparison.Ordinal)
                   && frameSource.Contains("public byte[] Payload => (byte[])_payload.Clone()", StringComparison.Ordinal),
-                "134-16C-1: bridge frame owns a private cloned payload and exposes defensive copies");
+                "134-16C-1: bridge frame public constructors clone payloads while the internal owned path is explicit");
             Check(writerSource.Contains("frame.PayloadLength", StringComparison.Ordinal)
-                  && writerSource.Contains("frame.WritePayloadTo(stream)", StringComparison.Ordinal)
+                  && writerSource.Contains("frame.WritePayloadTo(destination)", StringComparison.Ordinal)
                   && !writerSource.Contains("stream.Write(frame.Payload", StringComparison.Ordinal),
                 "134-16C-2: bridge writer consumes the owned snapshot instead of the public copy");
             Check(runtimeSource.Contains("frame.PayloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes", StringComparison.Ordinal)

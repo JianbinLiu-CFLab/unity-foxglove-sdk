@@ -165,8 +165,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "96D-5: Publisher base exposes bridge topic override and effective topic");
             Check(publisherBase.Contains("PublishRos2BridgeCdr(_topic, _ros2BridgeTopicOverride"),
                 "96D-6: Publisher base passes override to Manager bridge publish path");
-            Check(wrapper.Contains("new Ros2BridgeFrame(topic, schemaName, Ros2BridgeFrame.CdrEncoding"),
-                "96D-7: Phase94/95 wrapper remains on legacy frame constructor");
+            Check(wrapper.Contains("Ros2BridgeFrame.CreateOwned(topic, schemaName, Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal)
+                  && !wrapper.Contains("new Ros2BridgeFrame(topic, schemaName, Ros2BridgeFrame.CdrEncoding", StringComparison.Ordinal),
+                "96D-7: Phase94/95 wrapper uses owned-payload frame construction");
         }
 
         private static void VerifySidecarSourceExpectations()

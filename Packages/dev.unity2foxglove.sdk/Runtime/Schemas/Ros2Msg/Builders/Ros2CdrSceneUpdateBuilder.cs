@@ -21,10 +21,17 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(EstimateCapacity(message));
             WriteDeletions(writer, message.Deletions);
             WriteEntities(writer, message.Entities);
             return writer.ToArray();
+        }
+
+        private static int EstimateCapacity(SceneUpdateMessage message)
+        {
+            var deletionCount = message.Deletions?.Count ?? 0;
+            var entityCount = message.Entities?.Count ?? 0;
+            return 64 + (deletionCount * 32) + (entityCount * 256);
         }
 
         private static void WriteDeletions(Ros2CdrWriter writer, IList<SceneEntityDeletion> deletions)

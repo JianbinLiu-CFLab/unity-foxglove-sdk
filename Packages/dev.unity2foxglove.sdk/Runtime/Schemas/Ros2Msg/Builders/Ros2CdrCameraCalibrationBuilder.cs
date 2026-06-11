@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 {
@@ -46,12 +45,15 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             return writer.ToArray();
         }
 
-        private static List<double> ToListOrEmpty(IEnumerable<double> values)
+        private static IReadOnlyList<double> ToListOrEmpty(IEnumerable<double> values)
         {
-            return values == null ? new List<double>() : values.ToList();
+            if (values == null)
+                return Array.Empty<double>();
+
+            return values as IReadOnlyList<double> ?? new List<double>(values);
         }
 
-        private static void ValidateMatrices(ICollection<double> k, ICollection<double> r, ICollection<double> p)
+        private static void ValidateMatrices(IReadOnlyCollection<double> k, IReadOnlyCollection<double> r, IReadOnlyCollection<double> p)
         {
             if (k.Count != 9)
                 throw new ArgumentException("CameraCalibration K must contain exactly 9 values.", nameof(k));

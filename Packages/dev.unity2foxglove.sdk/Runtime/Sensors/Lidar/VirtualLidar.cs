@@ -197,6 +197,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
         private readonly VirtualLidarScanBuffers _scanBuffers = new VirtualLidarScanBuffers();
         private readonly VirtualLidarScanFramePublisher _scanFramePublisher = new VirtualLidarScanFramePublisher();
+        private Action _onScanBoundary;
         private VirtualLidarScanScheduler _scanScheduler;
 
         // Stream state.
@@ -212,6 +213,14 @@ namespace Unity.FoxgloveSDK.Components
         private float4x4 _activeScanWorldToLocal;
 
         private VirtualLidarScanScheduler ScanScheduler => _scanScheduler ??= new VirtualLidarScanScheduler(this);
+
+        private Action OnScanBoundaryAction => _onScanBoundary ??= new Action(OnScanBoundary);
+
+        private void OnScanBoundary()
+        {
+            PublishActiveScan();
+            StartNewScan(Time.fixedTimeAsDouble);
+        }
 
         private void Start()
         {
@@ -363,11 +372,7 @@ namespace Unity.FoxgloveSDK.Components
                 ref _activeScanPointSnapshot,
                 ref _activeScanPointSnapshotCount,
                 ref _activeScanValidPoints,
-                () =>
-                {
-                    PublishActiveScan();
-                    StartNewScan(Time.fixedTimeAsDouble);
-                });
+                OnScanBoundaryAction);
 
             if (_activeScanFrame == null)
                 StartNewScan(Time.fixedTimeAsDouble);

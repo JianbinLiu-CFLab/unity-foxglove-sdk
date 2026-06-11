@@ -149,11 +149,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             Check(source.Contains("private readonly byte[] _payload")
-                  && source.Contains("_payload = (byte[])payload.Clone()")
+                  && source.Contains("clonePayload ? (byte[])payload.Clone() : payload")
+                  && source.Contains("internal static Ros2BridgeFrame CreateOwned")
                   && source.Contains("public byte[] Payload => (byte[])_payload.Clone()"),
-                "100F-1: bridge frame keeps a private immutable payload snapshot and returns defensive copies");
+                "100F-1: bridge frame keeps public defensive payload copies while allowing internal owned payload transfer");
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            Check(writer.Contains("frame.PayloadLength") && writer.Contains("frame.WritePayloadTo(stream)")
+            Check(writer.Contains("frame.PayloadLength") && writer.Contains("frame.WritePayloadTo(destination)")
                   && !writer.Contains("stream.Write(frame.Payload"),
                 "100F-2: bridge writer serializes the owned payload snapshot without using the public clone");
         }

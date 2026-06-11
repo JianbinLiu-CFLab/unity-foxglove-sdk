@@ -9,6 +9,7 @@ using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -48,6 +49,14 @@ namespace Unity.FoxgloveSDK.Components
             _warnedDracoFailure = false;
             var payload = CompressedPointCloudMessageBuilder.SerializeProtobuf(frame, dracoPayload);
             PublishProto(payload, unixNs);
+        }
+
+        protected override void PublishPreparedFrame(
+            PointCloudFrame frame,
+            ulong unixNs,
+            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
+        {
+            PublishPreparedFrame(frame, unixNs);
         }
 
         private void LogDracoFailure(string message)

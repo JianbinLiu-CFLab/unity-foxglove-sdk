@@ -147,15 +147,42 @@ namespace Unity.FoxgloveSDK.Util
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
+            var indices = new List<int>();
+            BuildVoxelSampleIndices(frame, voxelSizeMeters, indices, null);
+            return indices.Count == 0 ? Array.Empty<int>() : indices.ToArray();
+        }
+
+        internal static void BuildVoxelSampleIndices(
+            PointCloudFrame frame,
+            float voxelSizeMeters,
+            List<int> indices,
+            HashSet<VoxelKey> seen)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+            if (indices == null)
+                throw new ArgumentNullException(nameof(indices));
+
+            indices.Clear();
             var pointCount = frame.GetPointCount();
             if (pointCount == 0)
-                return Array.Empty<int>();
+            {
+                seen?.Clear();
+                return;
+            }
 
             if (voxelSizeMeters <= 0f)
-                return BuildNonNullPointIndices(frame);
+            {
+                seen?.Clear();
+                AppendNonNullPointIndices(frame, indices);
+                return;
+            }
 
-            var seen = new HashSet<VoxelKey>();
-            var indices = new List<int>();
+            if (seen == null)
+                seen = new HashSet<VoxelKey>();
+            else
+                seen.Clear();
+
             for (var i = 0; i < pointCount; i++)
             {
                 var point = frame.Points[i];
@@ -163,24 +190,16 @@ namespace Unity.FoxgloveSDK.Util
                 if (seen.Add(key))
                     indices.Add(i);
             }
-
-            return indices.ToArray();
         }
 
-        private static int[] BuildNonNullPointIndices(PointCloudFrame frame)
+        private static void AppendNonNullPointIndices(PointCloudFrame frame, List<int> indices)
         {
             var pointCount = frame.GetPointCount();
-            if (pointCount <= 0)
-                return Array.Empty<int>();
-
-            var indices = new int[pointCount];
             for (var i = 0; i < pointCount; i++)
-                indices[i] = i;
-
-            return indices;
+                indices.Add(i);
         }
 
-        private readonly struct VoxelKey : IEquatable<VoxelKey>
+        internal readonly struct VoxelKey : IEquatable<VoxelKey>
         {
             private readonly long _x;
             private readonly long _y;

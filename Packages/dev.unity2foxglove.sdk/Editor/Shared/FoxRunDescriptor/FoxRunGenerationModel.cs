@@ -257,7 +257,7 @@ namespace Unity.FoxgloveSDK.Editor
         private string SelectCanonicalSourceType()
         {
             if (IsArray && !string.IsNullOrEmpty(ElementTypeName))
-                return FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(ElementTypeName);
+                return ElementTypeName;
 
             return EmissionTypeName;
         }

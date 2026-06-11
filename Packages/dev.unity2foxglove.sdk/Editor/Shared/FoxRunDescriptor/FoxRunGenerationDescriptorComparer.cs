@@ -23,17 +23,76 @@ namespace Unity.FoxgloveSDK.Editor
             var leftKeys = leftMembers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
             var rightKeys = rightMembers.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
 
-            foreach (var missing in leftKeys.Except(rightKeys, StringComparer.Ordinal))
-                semantic.Add("Missing right member: " + missing);
-            foreach (var extra in rightKeys.Except(leftKeys, StringComparer.Ordinal))
-                semantic.Add("Extra right member: " + extra);
+            CompareSortedMemberKeys(leftKeys, rightKeys, leftMembers, rightMembers, semantic, provenance);
 
-            foreach (var key in leftKeys.Intersect(rightKeys, StringComparer.Ordinal))
+            return new FoxRunGenerationDescriptorComparison(semantic, provenance, copyInputs: false);
+        }
+
+        private static void CompareSortedMemberKeys(
+            List<string> leftKeys,
+            List<string> rightKeys,
+            Dictionary<string, FoxRunGenerationMember> leftMembers,
+            Dictionary<string, FoxRunGenerationMember> rightMembers,
+            List<string> semantic,
+            List<string> provenance)
+        {
+            var extraRight = new List<string>();
+            var leftIndex = 0;
+            var rightIndex = 0;
+            while (leftIndex < leftKeys.Count || rightIndex < rightKeys.Count)
             {
-                CompareMember(key, leftMembers[key], rightMembers[key], semantic, provenance);
+                if (leftIndex >= leftKeys.Count)
+                {
+                    extraRight.Add(rightKeys[rightIndex++]);
+                    continue;
+                }
+
+                if (rightIndex >= rightKeys.Count)
+                {
+                    semantic.Add("Missing right member: " + leftKeys[leftIndex++]);
+                    continue;
+                }
+
+                var comparison = StringComparer.Ordinal.Compare(leftKeys[leftIndex], rightKeys[rightIndex]);
+                if (comparison < 0)
+                {
+                    semantic.Add("Missing right member: " + leftKeys[leftIndex++]);
+                }
+                else if (comparison > 0)
+                {
+                    extraRight.Add(rightKeys[rightIndex++]);
+                }
+                else
+                {
+                    leftIndex++;
+                    rightIndex++;
+                }
             }
 
-            return new FoxRunGenerationDescriptorComparison(semantic, provenance);
+            foreach (var extra in extraRight)
+                semantic.Add("Extra right member: " + extra);
+
+            leftIndex = 0;
+            rightIndex = 0;
+            while (leftIndex < leftKeys.Count && rightIndex < rightKeys.Count)
+            {
+                var comparison = StringComparer.Ordinal.Compare(leftKeys[leftIndex], rightKeys[rightIndex]);
+                if (comparison < 0)
+                {
+                    leftIndex++;
+                }
+                else if (comparison > 0)
+                {
+                    rightIndex++;
+                }
+                else
+                {
+                    var key = leftKeys[leftIndex];
+                    CompareMember(key, leftMembers[key], rightMembers[key], semantic, provenance);
+                    leftIndex++;
+                    rightIndex++;
+                }
+            }
         }
 
         private static Dictionary<string, FoxRunGenerationMember> Flatten(
@@ -112,9 +171,26 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly IReadOnlyList<string> ProvenanceDifferences;
 
         public FoxRunGenerationDescriptorComparison(IReadOnlyList<string> semanticDifferences, IReadOnlyList<string> provenanceDifferences)
+            : this(semanticDifferences, provenanceDifferences, copyInputs: true)
         {
-            SemanticDifferences = (semanticDifferences ?? Array.Empty<string>()).ToList().AsReadOnly();
-            ProvenanceDifferences = (provenanceDifferences ?? Array.Empty<string>()).ToList().AsReadOnly();
+        }
+
+        internal FoxRunGenerationDescriptorComparison(
+            IReadOnlyList<string> semanticDifferences,
+            IReadOnlyList<string> provenanceDifferences,
+            bool copyInputs)
+        {
+            SemanticDifferences = ToReadOnly(semanticDifferences, copyInputs);
+            ProvenanceDifferences = ToReadOnly(provenanceDifferences, copyInputs);
+        }
+
+        private static IReadOnlyList<string> ToReadOnly(IReadOnlyList<string> values, bool copyInputs)
+        {
+            if (values == null)
+                return Array.Empty<string>();
+            if (!copyInputs && values is List<string> list)
+                return list.AsReadOnly();
+            return values.ToList().AsReadOnly();
         }
 
         public bool IsSemanticEqual => SemanticDifferences.Count == 0;

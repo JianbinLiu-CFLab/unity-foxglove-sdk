@@ -31,6 +31,29 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong sequence,
             byte[] payload,
             Ros2BridgeQosProfile? qos)
+            : this(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: true)
+        {
+        }
+
+        internal static Ros2BridgeFrame CreateOwned(
+            string topic,
+            string schemaName,
+            string encoding,
+            ulong logTimeNs,
+            ulong sequence,
+            byte[] payload,
+            Ros2BridgeQosProfile? qos = null)
+            => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: false);
+
+        private Ros2BridgeFrame(
+            string topic,
+            string schemaName,
+            string encoding,
+            ulong logTimeNs,
+            ulong sequence,
+            byte[] payload,
+            Ros2BridgeQosProfile? qos,
+            bool clonePayload)
         {
             if (string.IsNullOrWhiteSpace(topic) || !topic.StartsWith("/", StringComparison.Ordinal))
                 throw new ArgumentException("ROS 2 bridge topic must be non-empty and start with '/'.", nameof(topic));
@@ -52,7 +75,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             Encoding = encoding;
             LogTimeNs = logTimeNs;
             Sequence = sequence;
-            _payload = (byte[])payload.Clone();
+            _payload = clonePayload ? (byte[])payload.Clone() : payload;
             Qos = qos;
             ProfileName = qos.HasValue ? qos.Value.PresetName : null;
         }

@@ -4,8 +4,8 @@
 // Module: Runtime/Sensors/Lidar
 // Purpose: Centralizes built-in LiDAR model presets and lookup helpers.
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
@@ -79,28 +79,59 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             LidarModelSpec.Livox("Tele-15", 14.5, 16.2, 48000),
         };
 
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        private static readonly IReadOnlyList<LidarModelSpec> _allReadOnly = _all.AsReadOnly();
+        private static readonly IReadOnlyDictionary<LidarVendor, IReadOnlyList<LidarModelSpec>> _byVendor = BuildVendorLookup();
+        private static readonly IReadOnlyDictionary<(LidarVendor Vendor, string Model), LidarModelSpec> _byModel = BuildModelLookup();
 
-/// <summary>Public/member behavior description.</summary>
-        public static IReadOnlyList<LidarModelSpec> All => _all.AsReadOnly();
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>All built-in LiDAR model presets in stable display order.</summary>
+        public static IReadOnlyList<LidarModelSpec> All => _allReadOnly;
 
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Return built-in model presets for one vendor in stable display order.</summary>
         public static IEnumerable<LidarModelSpec> ForVendor(LidarVendor v)
-            => _all.Where(s => s.Vendor == v);
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+            => _byVendor.TryGetValue(v, out var specs) ? specs : Array.Empty<LidarModelSpec>();
 
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Resolve one built-in model preset by vendor and model name.</summary>
         public static bool TryGet(LidarVendor v, string model, out LidarModelSpec spec)
         {
-            spec = _all.FirstOrDefault(s => s.Vendor == v && s.Model == model);
-            return spec != null;
+            if (!string.IsNullOrEmpty(model))
+                return _byModel.TryGetValue((v, model), out spec);
+
+            spec = null;
+            return false;
+        }
+
+        private static IReadOnlyDictionary<LidarVendor, IReadOnlyList<LidarModelSpec>> BuildVendorLookup()
+        {
+            var mutable = new Dictionary<LidarVendor, List<LidarModelSpec>>();
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var spec = _all[i];
+                if (!mutable.TryGetValue(spec.Vendor, out var specs))
+                {
+                    specs = new List<LidarModelSpec>();
+                    mutable.Add(spec.Vendor, specs);
+                }
+
+                specs.Add(spec);
+            }
+
+            var result = new Dictionary<LidarVendor, IReadOnlyList<LidarModelSpec>>();
+            foreach (var pair in mutable)
+                result.Add(pair.Key, pair.Value.AsReadOnly());
+
+            return result;
+        }
+
+        private static IReadOnlyDictionary<(LidarVendor Vendor, string Model), LidarModelSpec> BuildModelLookup()
+        {
+            var result = new Dictionary<(LidarVendor Vendor, string Model), LidarModelSpec>();
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var spec = _all[i];
+                result[(spec.Vendor, spec.Model)] = spec;
+            }
+
+            return result;
         }
 
         private static string[] M(params string[] modes) => modes;
@@ -118,5 +149,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
     }
 }
-
 

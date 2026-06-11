@@ -62,7 +62,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteArrowPrimitive(writer, message);
             return writer.ToArray();
         }
@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCameraCalibration(writer, message);
             return writer.ToArray();
         }
@@ -80,7 +80,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCircleAnnotation(writer, message);
             return writer.ToArray();
         }
@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteColor(writer, message);
             return writer.ToArray();
         }
@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCompressedImage(writer, message);
             return writer.ToArray();
         }
@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCompressedPointCloud(writer, message);
             return writer.ToArray();
         }
@@ -116,7 +116,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCompressedVideo(writer, message);
             return writer.ToArray();
         }
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCubePrimitive(writer, message);
             return writer.ToArray();
         }
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteCylinderPrimitive(writer, message);
             return writer.ToArray();
         }
@@ -143,7 +143,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteFrameTransform(writer, message);
             return writer.ToArray();
         }
@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteFrameTransforms(writer, message);
             return writer.ToArray();
         }
@@ -161,7 +161,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteGeoJSON(writer, message);
             return writer.ToArray();
         }
@@ -170,7 +170,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteGrid(writer, message);
             return writer.ToArray();
         }
@@ -179,7 +179,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteImageAnnotations(writer, message);
             return writer.ToArray();
         }
@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteJointState(writer, message);
             return writer.ToArray();
         }
@@ -197,7 +197,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteJointStates(writer, message);
             return writer.ToArray();
         }
@@ -206,7 +206,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteKeyValuePair(writer, message);
             return writer.ToArray();
         }
@@ -215,7 +215,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteLaserScan(writer, message);
             return writer.ToArray();
         }
@@ -224,7 +224,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteLinePrimitive(writer, message);
             return writer.ToArray();
         }
@@ -233,7 +233,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteLocationFix(writer, message);
             return writer.ToArray();
         }
@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteLocationFixes(writer, message);
             return writer.ToArray();
         }
@@ -251,7 +251,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteLog(writer, message);
             return writer.ToArray();
         }
@@ -260,7 +260,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteModelPrimitive(writer, message);
             return writer.ToArray();
         }
@@ -269,7 +269,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteOdometry(writer, message);
             return writer.ToArray();
         }
@@ -278,7 +278,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WritePackedElementField(writer, message);
             return writer.ToArray();
         }
@@ -287,7 +287,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WritePoint2(writer, message);
             return writer.ToArray();
         }
@@ -296,7 +296,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WritePointCloud(writer, message);
             return writer.ToArray();
         }
@@ -305,7 +305,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WritePointsAnnotation(writer, message);
             return writer.ToArray();
         }
@@ -314,7 +314,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WritePoseInFrame(writer, message);
             return writer.ToArray();
         }
@@ -323,7 +323,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WritePosesInFrame(writer, message);
             return writer.ToArray();
         }
@@ -332,7 +332,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteRawAudio(writer, message);
             return writer.ToArray();
         }
@@ -341,7 +341,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteRawImage(writer, message);
             return writer.ToArray();
         }
@@ -350,7 +350,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteSceneEntity(writer, message);
             return writer.ToArray();
         }
@@ -359,7 +359,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteSceneEntityDeletion(writer, message);
             return writer.ToArray();
         }
@@ -368,7 +368,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteSceneUpdate(writer, message);
             return writer.ToArray();
         }
@@ -377,7 +377,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteSpherePrimitive(writer, message);
             return writer.ToArray();
         }
@@ -386,7 +386,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteTextAnnotation(writer, message);
             return writer.ToArray();
         }
@@ -395,7 +395,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteTextPrimitive(writer, message);
             return writer.ToArray();
         }
@@ -404,7 +404,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteTriangleListPrimitive(writer, message);
             return writer.ToArray();
         }
@@ -413,7 +413,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteVector2(writer, message);
             return writer.ToArray();
         }
@@ -422,7 +422,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(256);
             WriteVoxelGrid(writer, message);
             return writer.ToArray();
         }
@@ -498,7 +498,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.FrameId);
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
             writer.WriteString(message.Format);
         }
 
@@ -511,7 +511,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.FrameId);
             WriteProtoPose(writer, message.Pose);
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
             writer.WriteString(message.Format);
         }
 
@@ -523,7 +523,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.FrameId);
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
             writer.WriteString(message.Format);
         }
 
@@ -606,7 +606,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 foreach (var item in message.Fields)
                     WritePackedElementField(writer, item);
             }
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
         }
 
         internal static void WriteImageAnnotations(Ros2CdrWriter writer, global::Foxglove.ImageAnnotations message)
@@ -785,7 +785,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             writer.WriteBool(message.OverrideColor);
             writer.WriteString(message.Url);
             writer.WriteString(message.MediaType);
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
         }
 
         internal static void WriteOdometry(Ros2CdrWriter writer, global::Foxglove.Odometry message)
@@ -847,7 +847,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 foreach (var item in message.Fields)
                     WritePackedElementField(writer, item);
             }
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
         }
 
         internal static void WritePointsAnnotation(Ros2CdrWriter writer, global::Foxglove.PointsAnnotation message)
@@ -915,7 +915,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             message ??= new global::Foxglove.RawAudio();
 
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
             writer.WriteString(message.Format);
             writer.WriteUInt32(message.SampleRate);
             writer.WriteUInt32(message.NumberOfChannels);
@@ -933,7 +933,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             writer.WriteUInt32(message.Height);
             writer.WriteString(message.Encoding);
             writer.WriteUInt32(message.Step);
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
         }
 
         internal static void WriteSceneEntity(Ros2CdrWriter writer, global::Foxglove.SceneEntity message)
@@ -1133,7 +1133,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 foreach (var item in message.Fields)
                     WritePackedElementField(writer, item);
             }
-            writer.WriteByteArray(message.Data?.ToByteArray() ?? Array.Empty<byte>());
+            writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span);
         }
 
     }

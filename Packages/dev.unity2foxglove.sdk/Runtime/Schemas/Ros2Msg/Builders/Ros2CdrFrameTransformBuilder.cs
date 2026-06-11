@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            var writer = new Ros2CdrWriter();
+            var writer = new Ros2CdrWriter(128);
             Ros2CdrGeometryWriter.WriteTime(writer, message.Timestamp);
             writer.WriteString(message.ParentFrameId);
             writer.WriteString(message.ChildFrameId);

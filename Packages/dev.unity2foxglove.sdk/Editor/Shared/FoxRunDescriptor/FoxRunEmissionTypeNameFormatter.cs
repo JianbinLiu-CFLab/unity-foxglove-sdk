@@ -93,8 +93,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (name.Length == 0)
                 return "<empty-type>";
 
-            name = name.Replace("global::", string.Empty);
-            name = name.Replace("+", ".");
+            if (name.IndexOf("global::", StringComparison.Ordinal) >= 0)
+                name = name.Replace("global::", string.Empty);
+            if (name.IndexOf('+') >= 0)
+                name = name.Replace('+', '.');
 
             if (Aliases.TryGetValue(name, out var alias))
                 return alias;

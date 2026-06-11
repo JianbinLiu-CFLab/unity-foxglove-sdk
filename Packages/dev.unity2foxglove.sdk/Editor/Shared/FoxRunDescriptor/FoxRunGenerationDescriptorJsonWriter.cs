@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (model == null)
                 throw new ArgumentNullException(nameof(model));
 
-            var sb = new StringBuilder();
+            var sb = new StringBuilder(EstimateCapacity(model));
             sb.Append('{');
             WriteName(sb, "descriptorVersion");
             sb.Append(model.DescriptorVersion.ToString(CultureInfo.InvariantCulture));
@@ -58,6 +58,15 @@ namespace Unity.FoxgloveSDK.Editor
             }
             sb.Append(']');
             sb.Append('}');
+        }
+
+        private static int EstimateCapacity(FoxRunGenerationModel model)
+        {
+            var typeCount = model.Types.Count;
+            var memberCount = 0;
+            foreach (var type in model.Types)
+                memberCount += type.Members.Count;
+            return 64 + typeCount * 96 + memberCount * 256;
         }
 
         private static void WriteMember(StringBuilder sb, FoxRunGenerationMember member)

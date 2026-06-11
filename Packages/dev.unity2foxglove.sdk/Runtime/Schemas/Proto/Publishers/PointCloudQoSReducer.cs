@@ -5,7 +5,9 @@
 // Purpose: Shared QoS reduction for point-cloud payload preparation.
 
 using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
@@ -13,6 +15,8 @@ namespace Unity.FoxgloveSDK.Components
     internal sealed class PointCloudQoSReducer
     {
         private readonly Action<string> _logWarning;
+        private readonly List<int> _voxelSampleIndices = new List<int>();
+        private readonly HashSet<PointCloudQoS.VoxelKey> _voxelKeys = new HashSet<PointCloudQoS.VoxelKey>();
         private bool _warnedPointCloudBudget;
 
         public PointCloudQoSReducer(Action<string> logWarning = null)
@@ -35,11 +39,38 @@ namespace Unity.FoxgloveSDK.Components
             float voxelSizeMeters,
             bool logQosDrops)
         {
+            return PrepareFrameForQoS(
+                frame,
+                unixNs,
+                frameId,
+                maxPoints,
+                maxPackedBytes,
+                samplingMode,
+                voxelSizeMeters,
+                logQosDrops,
+                out _);
+        }
+
+        internal PointCloudFrame PrepareFrameForQoS(
+            PointCloudFrame frame,
+            ulong unixNs,
+            string frameId,
+            int maxPoints,
+            int maxPackedBytes,
+            PointCloudSamplingMode samplingMode,
+            float voxelSizeMeters,
+            bool logQosDrops,
+            out PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
+        {
             if (frame == null)
+            {
+                packedLayout = null;
                 return null;
+            }
 
             var pointCount = frame.GetPointCount();
-            var stride = PointCloudQoS.ComputePackedStride(frame);
+            var sourceLayout = PointCloudPackedDataBuilder.BuildLayout(frame);
+            var stride = checked((int)sourceLayout.Stride);
             var pointBudget = PointCloudQoS.ComputeEffectivePointBudget(
                 pointCount,
                 maxPoints,
@@ -48,6 +79,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (pointBudget <= 0)
             {
+                packedLayout = null;
                 WarnPointCloudReduced(pointCount, pointBudget, logQosDrops);
                 return null;
             }
@@ -58,6 +90,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && pointCount <= pointBudget)
             {
                 _warnedPointCloudBudget = false;
+                packedLayout = sourceLayout;
                 return frame;
             }
 
@@ -69,17 +102,17 @@ namespace Unity.FoxgloveSDK.Components
 
             if (useVoxelGrid)
             {
-                var voxelIndices = PointCloudQoS.BuildVoxelSampleIndices(frame, voxelSizeMeters);
-                if (voxelIndices.Length <= pointBudget)
+                PointCloudQoS.BuildVoxelSampleIndices(frame, voxelSizeMeters, _voxelSampleIndices, _voxelKeys);
+                if (_voxelSampleIndices.Count <= pointBudget)
                 {
-                    foreach (var index in voxelIndices)
+                    foreach (var index in _voxelSampleIndices)
                         copy.Points.Add(frame.Points[index]);
                 }
                 else
                 {
-                    var indices = PointCloudQoS.BuildUniformSampleIndices(voxelIndices.Length, pointBudget);
+                    var indices = PointCloudQoS.BuildUniformSampleIndices(_voxelSampleIndices.Count, pointBudget);
                     foreach (var index in indices)
-                        copy.Points.Add(frame.Points[voxelIndices[index]]);
+                        copy.Points.Add(frame.Points[_voxelSampleIndices[index]]);
                 }
             }
             else if (pointCount <= pointBudget && !forceUniformFallback)
@@ -108,6 +141,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             copy.ValidCount = copy.Points.Count;
+            packedLayout = PointCloudPackedDataBuilder.BuildLayout(copy);
 
             return copy;
         }

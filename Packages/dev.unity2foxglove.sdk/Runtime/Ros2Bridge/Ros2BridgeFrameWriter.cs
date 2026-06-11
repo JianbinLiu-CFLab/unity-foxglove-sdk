@@ -21,6 +21,19 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public static byte[] Write(Ros2BridgeFrame frame)
         {
+            var headerBytes = BuildHeaderBytes(frame);
+            using var stream = new MemoryStream(16 + headerBytes.Length + frame.PayloadLength);
+            Write(frame, stream, headerBytes);
+            return stream.ToArray();
+        }
+
+        internal static void Write(Ros2BridgeFrame frame, Stream destination)
+        {
+            Write(frame, destination, BuildHeaderBytes(frame));
+        }
+
+        private static byte[] BuildHeaderBytes(Ros2BridgeFrame frame)
+        {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
             if (frame.PayloadLength > MaxPayloadBytes)
@@ -60,18 +73,24 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     nameof(frame));
             }
 
-            using var stream = new MemoryStream(16 + headerBytes.Length + frame.PayloadLength);
-            stream.WriteByte((byte)'U');
-            stream.WriteByte((byte)'2');
-            stream.WriteByte((byte)'R');
-            stream.WriteByte((byte)'2');
-            WriteUInt16LE(stream, 1);
-            WriteUInt16LE(stream, 0);
-            WriteUInt32LE(stream, checked((uint)headerBytes.Length));
-            WriteUInt32LE(stream, checked((uint)frame.PayloadLength));
-            stream.Write(headerBytes, 0, headerBytes.Length);
-            frame.WritePayloadTo(stream);
-            return stream.ToArray();
+            return headerBytes;
+        }
+
+        private static void Write(Ros2BridgeFrame frame, Stream destination, byte[] headerBytes)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
+            destination.WriteByte((byte)'U');
+            destination.WriteByte((byte)'2');
+            destination.WriteByte((byte)'R');
+            destination.WriteByte((byte)'2');
+            WriteUInt16LE(destination, 1);
+            WriteUInt16LE(destination, 0);
+            WriteUInt32LE(destination, checked((uint)headerBytes.Length));
+            WriteUInt32LE(destination, checked((uint)frame.PayloadLength));
+            destination.Write(headerBytes, 0, headerBytes.Length);
+            frame.WritePayloadTo(destination);
         }
 
         private static void WriteUInt16LE(Stream stream, ushort value)
