@@ -87,7 +87,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         {
             var pointCount = frame.GetPointCount();
             var capacity = ValidatePackedDataBudget(pointCount, layout);
-            using (var stream = new MemoryStream(capacity))
+            var data = new byte[capacity];
+            using (var stream = new MemoryStream(data, 0, data.Length, true, true))
             using (var writer = new BinaryWriter(stream))
             {
                 for (var i = 0; i < pointCount; i++)
@@ -105,7 +106,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                         writer.Write(point.HasTimeOffset ? TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds) : 0u);
                 }
 
-                return stream.ToArray();
+                return data;
             }
         }
 

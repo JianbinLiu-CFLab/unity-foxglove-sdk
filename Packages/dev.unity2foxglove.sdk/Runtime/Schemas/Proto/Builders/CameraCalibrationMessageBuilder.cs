@@ -59,10 +59,10 @@ namespace Foxglove.Schemas
             IEnumerable<double> r,
             IEnumerable<double> p)
         {
-            var dList = ToListOrEmpty(d);
-            var kList = ToListOrEmpty(k);
-            var rList = ToListOrEmpty(r);
-            var pList = ToListOrEmpty(p);
+            var dList = ToReadOnlyListOrEmpty(d);
+            var kList = ToReadOnlyListOrEmpty(k);
+            var rList = ToReadOnlyListOrEmpty(r);
+            var pList = ToReadOnlyListOrEmpty(p);
             ValidateMatrices(kList, rList, pList);
 
             var message = new Foxglove.CameraCalibration
@@ -126,7 +126,14 @@ namespace Foxglove.Schemas
             return values == null ? new List<double>() : values.ToList();
         }
 
-        private static void ValidateMatrices(ICollection<double> k, ICollection<double> r, ICollection<double> p)
+        private static IReadOnlyList<double> ToReadOnlyListOrEmpty(IEnumerable<double> values)
+        {
+            if (values == null)
+                return Array.Empty<double>();
+            return values as IReadOnlyList<double> ?? values.ToArray();
+        }
+
+        private static void ValidateMatrices(IReadOnlyCollection<double> k, IReadOnlyCollection<double> r, IReadOnlyCollection<double> p)
         {
             if (k.Count != 9)
                 throw new ArgumentException("CameraCalibration K must contain exactly 9 values.", nameof(k));
