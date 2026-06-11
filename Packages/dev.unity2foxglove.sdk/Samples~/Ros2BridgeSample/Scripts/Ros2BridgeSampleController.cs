@@ -5,6 +5,7 @@
 // Purpose: Small sample-only controller for visible ROS2 Bridge motion and status.
 
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Ros2Bridge;
 using UnityEngine;
 
 /// <summary>Drives visible motion and status text for the ROS2 Bridge sample scene.</summary>
@@ -17,6 +18,11 @@ public sealed class Ros2BridgeSampleController : MonoBehaviour
     [SerializeField] private bool _showStatusOverlay = true;
 
     private string _status = "ROS2 Bridge sample";
+    private bool _lastRos2BridgeEnabled;
+    private bool _lastConnected;
+    private long _lastSentFrames;
+    private long _lastDroppedFrames;
+    private bool _hasStatusSnapshot;
 
     private void Awake()
     {
@@ -39,8 +45,27 @@ public sealed class Ros2BridgeSampleController : MonoBehaviour
         if (_manager != null)
         {
             var stats = _manager.GetRos2BridgeStatsSnapshot();
-            _status = $"ROS2 Bridge {(_manager.Ros2BridgeEnabled ? "enabled" : "disabled")} | connected={stats.Connected} | sent={stats.SentFrames} | dropped={stats.DroppedFrames}";
+            UpdateStatusIfChanged(stats, _manager.Ros2BridgeEnabled);
         }
+    }
+
+    private void UpdateStatusIfChanged(Ros2BridgeStatsSnapshot stats, bool ros2BridgeEnabled)
+    {
+        if (_hasStatusSnapshot
+            && _lastRos2BridgeEnabled == ros2BridgeEnabled
+            && _lastConnected == stats.Connected
+            && _lastSentFrames == stats.SentFrames
+            && _lastDroppedFrames == stats.DroppedFrames)
+        {
+            return;
+        }
+
+        _hasStatusSnapshot = true;
+        _lastRos2BridgeEnabled = ros2BridgeEnabled;
+        _lastConnected = stats.Connected;
+        _lastSentFrames = stats.SentFrames;
+        _lastDroppedFrames = stats.DroppedFrames;
+        _status = $"ROS2 Bridge {(ros2BridgeEnabled ? "enabled" : "disabled")} | connected={stats.Connected} | sent={stats.SentFrames} | dropped={stats.DroppedFrames}";
     }
 
     private void OnGUI()
