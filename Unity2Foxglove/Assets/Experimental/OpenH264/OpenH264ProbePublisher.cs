@@ -65,6 +65,15 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     private int _lastCaptureCullingMask;
     private CameraClearFlags _lastCaptureClearFlags;
     private Color _lastCaptureBackgroundColor;
+    private byte[] _rgbBuffer;
+    private byte[] _i420Buffer;
+    private bool _cachedProbeLayoutValid;
+    private int _cachedProbeLayoutSourceWidth;
+    private int _cachedProbeLayoutSourceHeight;
+    private int _cachedProbeWidth;
+    private int _cachedProbeHeight;
+    private int _cachedProbeI420Bytes;
+    private string _cachedProbeLayoutError = "";
 
     protected override string SchemaName => ProbeSchema;
     public override bool SupportsJsonEncoding => false;
@@ -172,9 +181,10 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return;
         }
 
-        var rgb = request.GetData<byte>().ToArray();
-        var i420 = new byte[i420Bytes];
-        if (!TryConvertRgb24ToI420(rgb, width, height, i420, out var error))
+        var rgbData = request.GetData<byte>();
+        EnsureFrameBuffers(rgbData.Length, i420Bytes);
+        rgbData.CopyTo(_rgbBuffer);
+        if (!TryConvertRgb24ToI420(_rgbBuffer, width, height, _i420Buffer, out var error))
         {
             LogConversionFailure(error);
             return;
@@ -188,7 +198,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return;
         }
 
-        if (!sidecar.TrySubmitFrame(i420))
+        if (!sidecar.TrySubmitFrame(_i420Buffer))
         {
             LogUnavailable(sidecar.LastError ?? "OpenH264 helper refused the frame.");
             return;
@@ -277,6 +287,14 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             i420,
             flipVertical: true,
             out error);
+
+    private void EnsureFrameBuffers(int rgbBytes, int i420Bytes)
+    {
+        if (_rgbBuffer == null || _rgbBuffer.Length != rgbBytes)
+            _rgbBuffer = new byte[rgbBytes];
+        if (_i420Buffer == null || _i420Buffer.Length != i420Bytes)
+            _i420Buffer = new byte[i420Bytes];
+    }
 
     private void EnsureCaptureResources(int width, int height)
     {
@@ -425,9 +443,26 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
 
     private bool TryGetProbeFrameLayout(out int width, out int height, out int i420Bytes, out string error)
     {
+        if (_cachedProbeLayoutSourceWidth == _width && _cachedProbeLayoutSourceHeight == _height)
+        {
+            width = _cachedProbeWidth;
+            height = _cachedProbeHeight;
+            i420Bytes = _cachedProbeI420Bytes;
+            error = _cachedProbeLayoutError;
+            return _cachedProbeLayoutValid;
+        }
+
         width = PositiveDimension(_width);
         height = PositiveDimension(_height);
-        return OpenH264ProbeSidecarOptions.TryComputeFrameByteCount(width, height, out i420Bytes, out error);
+        _cachedProbeLayoutSourceWidth = _width;
+        _cachedProbeLayoutSourceHeight = _height;
+        _cachedProbeWidth = width;
+        _cachedProbeHeight = height;
+        _cachedProbeLayoutValid =
+            OpenH264ProbeSidecarOptions.TryComputeFrameByteCount(width, height, out i420Bytes, out error);
+        _cachedProbeI420Bytes = i420Bytes;
+        _cachedProbeLayoutError = error ?? "";
+        return _cachedProbeLayoutValid;
     }
 
     private static int PositiveDimension(int value)
