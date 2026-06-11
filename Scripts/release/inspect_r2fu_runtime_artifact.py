@@ -66,15 +66,19 @@ def parse_args(argv: list[str]) -> ArtifactPaths:
     return ArtifactPaths(args.zip.resolve(), args.sha256_file.resolve(), args.out.resolve())
 
 
-def sha256_bytes(data: bytes) -> str:
-    """Return the hexadecimal SHA-256 digest for a byte string."""
-    return hashlib.sha256(data).hexdigest()
-
-
 def sha256_file(path: Path) -> str:
     """Return the hexadecimal SHA-256 digest for a local file."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_zip_entry(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> str:
+    """Return the hexadecimal SHA-256 digest for one zip entry."""
+    digest = hashlib.sha256()
+    with archive.open(info) as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -112,6 +116,7 @@ def classify_file(name: str) -> str:
 def summarize_components(file_names: Iterable[str]) -> list[dict[str, object]]:
     """Summarize recognizable runtime component families from file names."""
     names = list(file_names)
+    lower_names = [(name, name.lower()) for name in names]
     component_patterns = [
         ("RobotecAI ROS2 For Unity", ("ros2forunity/", "ros2forunity/")),
         ("ros2cs", ("ros2cs",)),
@@ -124,7 +129,7 @@ def summarize_components(file_names: Iterable[str]) -> list[dict[str, object]]:
 
     components: list[dict[str, object]] = []
     for label, patterns in component_patterns:
-        matches = [name for name in names if any(pattern in name.lower() for pattern in patterns)]
+        matches = [name for name, lower in lower_names if any(pattern in lower for pattern in patterns)]
         if matches:
             components.append(
                 {
@@ -150,14 +155,13 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
     with zipfile.ZipFile(paths.artifact) as archive:
         infos = sorted((info for info in archive.infolist() if not info.is_dir()), key=lambda item: item.filename)
         for info in infos:
-            data = archive.read(info.filename)
             files.append(
                 {
                     "path": info.filename,
                     "category": classify_file(info.filename),
                     "size": info.file_size,
                     "compressedSize": info.compress_size,
-                    "sha256": sha256_bytes(data),
+                    "sha256": sha256_zip_entry(archive, info),
                 }
             )
 

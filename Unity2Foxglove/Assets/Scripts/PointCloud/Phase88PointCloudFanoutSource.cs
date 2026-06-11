@@ -83,6 +83,7 @@ public class Phase88PointCloudFanoutSource : MonoBehaviour
         {
             FrameId = string.IsNullOrEmpty(_frameId) ? "unity_world" : _frameId
         };
+        frame.Points.Capacity = count;
 
         for (var index = 0; index < count; index++)
         {

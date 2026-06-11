@@ -305,7 +305,7 @@ def check_package_build_artifacts(results: list[CheckResult]) -> None:
     forbidden_dirs = {"bin", "obj", "__pycache__"}
     offenders: list[str] = []
     for path in PACKAGE.rglob("*"):
-        if path.is_dir() and path.name in forbidden_dirs:
+        if path.name in forbidden_dirs and path.is_dir():
             offenders.append(rel(path))
     add(
         results,

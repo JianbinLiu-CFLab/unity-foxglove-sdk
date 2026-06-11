@@ -436,9 +436,12 @@ def ensure_generated_meta(package: Path, target: Path, is_dir: bool) -> None:
 
 def write_generated_metas(package: Path) -> None:
     """Generate metadata for package-owned files and directories lacking upstream metadata."""
-    for directory in sorted((path for path in package.rglob("*") if path.is_dir()), key=lambda item: item.as_posix()):
+    paths = list(package.rglob("*"))
+    directories = sorted((path for path in paths if path.is_dir()), key=lambda item: item.as_posix())
+    files = sorted((path for path in paths if path.is_file()), key=lambda item: item.as_posix())
+    for directory in directories:
         ensure_generated_meta(package, directory, is_dir=True)
-    for path in sorted((path for path in package.rglob("*") if path.is_file()), key=lambda item: item.as_posix()):
+    for path in files:
         if path.name.endswith(".meta") or path.name == ".gitkeep":
             continue
         ensure_generated_meta(package, path, is_dir=False)

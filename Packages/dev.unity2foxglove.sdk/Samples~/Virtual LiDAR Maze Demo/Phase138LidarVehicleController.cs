@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         private void Start()
         {
             _rb = GetComponent<Rigidbody>();
+            SetWanderDirection(Vector3.forward);
             if (_rb != null)
             {
                 _rb.constraints =
@@ -86,7 +87,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 if (hitForward)
                 {
                     var angle = (Random.value > 0.5f ? 90f : -90f) * (1f + Random.value * 0.3f);
-                    _wanderDirection = Quaternion.Euler(0f, angle, 0f) * _wanderDirection;
+                    SetWanderDirection(Quaternion.Euler(0f, angle, 0f) * _wanderDirection);
                     _nextWanderChange = Time.time + 1.5f;
                 }
             }
@@ -94,12 +95,17 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             if (Time.time >= _nextWanderChange - 1.0f)
             {
                 var jitter = Random.Range(-15f, 15f);
-                _wanderDirection = Quaternion.Euler(0f, jitter, 0f) * _wanderDirection;
+                SetWanderDirection(Quaternion.Euler(0f, jitter, 0f) * _wanderDirection);
                 _nextWanderChange = Time.time + 3f + Random.value * 2f;
             }
 
-            worldVelocity = _wanderDirection.normalized * _moveSpeed;
+            worldVelocity = _wanderDirection * _moveSpeed;
             turnDeg = 0f;
+        }
+
+        private void SetWanderDirection(Vector3 direction)
+        {
+            _wanderDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
         }
 
         /// <summary>True while the given key is held, using whichever input backend is active.</summary>
