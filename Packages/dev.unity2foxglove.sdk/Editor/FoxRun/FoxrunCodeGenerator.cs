@@ -12,7 +12,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
-using UnityEditor;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -35,13 +34,25 @@ namespace Unity.FoxgloveSDK.Editor
         public static List<(string AsmName, string Ns, string ClassName)> CollectFoxRunTypes()
         {
             var types = new List<(string, string, string)>();
-            foreach (var type in TypeCache.GetTypesDerivedFrom<MonoBehaviour>())
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
-                if (!type.IsClass || type.IsAbstract) continue;
-                if (!IsPartial(type)) continue;
-                var members = ScanType(type);
-                if (members.Count == 0) continue;
-                types.Add((type.Assembly.GetName().Name, type.Namespace ?? "", type.Name));
+                try
+                {
+                    foreach (var type in asm.GetTypes())
+                    {
+                        if (!type.IsClass || type.IsAbstract) continue;
+                        if (!IsPartial(type)) continue;
+                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
+                        var members = ScanType(type);
+                        if (members.Count == 0) continue;
+                        types.Add((asm.GetName().Name, type.Namespace ?? "", type.Name));
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to scan assembly '{asm.GetName().Name}' for [FoxRun] types.", ex);
+                }
             }
             return types;
         }
@@ -232,24 +243,40 @@ namespace Unity.FoxgloveSDK.Editor
             var manifestMembers = new List<FoxRunManifestMember>();
             var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
 
-            foreach (var type in TypeCache.GetTypesDerivedFrom<MonoBehaviour>())
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
-                if (!type.IsClass || type.IsAbstract) continue;
-                if (!IsPartial(type)) continue;
-
-                var members = ScanType(type);
-                if (members.Count == 0) continue;
-
-                var ns = type.Namespace ?? "";
-                var key = (ns, type.Name);
-                if (!byClass.TryGetValue(key, out var list))
-                    byClass[key] = list = new List<MemberData>();
-
-                foreach (var member in members)
+                try
                 {
-                    list.Add(member);
-                    manifestMembers.Add(member.ToManifestMember());
-                    reflectionMembers.Add(member.ToReflectionMember());
+                    foreach (var type in asm.GetTypes())
+                    {
+                        if (!type.IsClass || type.IsAbstract) continue;
+                        if (!IsPartial(type)) continue;
+                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
+
+                        var members = ScanType(type);
+                        if (members.Count == 0) continue;
+
+                        var ns = type.Namespace ?? "";
+                        var key = (ns, type.Name);
+                        if (!byClass.TryGetValue(key, out var list))
+                            byClass[key] = list = new List<MemberData>();
+
+                        foreach (var member in members)
+                        {
+                            list.Add(member);
+                            manifestMembers.Add(member.ToManifestMember());
+                            reflectionMembers.Add(member.ToReflectionMember());
+                        }
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    if (!ignoreReflectionTypeLoadExceptions)
+                        throw;
+                    WarnSkippedAssembly(asm, ex);
+                    // Source fallback generation is best-effort because the Roslyn
+                    // path already reports authoring errors in the Editor. The
+                    // link.xml scan is fail-fast and catches preservation risk.
                 }
             }
 

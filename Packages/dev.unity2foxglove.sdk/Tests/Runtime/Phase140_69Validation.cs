@@ -65,10 +65,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyEditorGeneratorHotPaths()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
-            Check(source.Contains("using UnityEditor;", StringComparison.Ordinal)
-                  && source.Contains("TypeCache.GetTypesDerivedFrom<MonoBehaviour>()", StringComparison.Ordinal)
-                  && !source.Contains("AppDomain.CurrentDomain.GetAssemblies()", StringComparison.Ordinal),
-                "140-69B-1: Editor FoxRun scans use Unity TypeCache instead of full AppDomain assembly walks");
+            Check(source.Contains("AppDomain.CurrentDomain.GetAssemblies()", StringComparison.Ordinal)
+                  && source.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", StringComparison.Ordinal)
+                  && source.Contains("ReflectionTypeLoadException", StringComparison.Ordinal)
+                  && !source.Contains("TypeCache.GetTypesDerivedFrom<MonoBehaviour>()", StringComparison.Ordinal),
+                "140-69B-1: Editor FoxRun scans preserve reliable AppDomain discovery for live topics");
 
             var scan = Slice(source, "private static FoxRunScanResult ScanFoxRunMembers", "        /// <summary>\r\n        /// Checks whether a type was declared");
             Check(!scan.Contains("members.Select(member => member.ToManifestMember())", StringComparison.Ordinal)
