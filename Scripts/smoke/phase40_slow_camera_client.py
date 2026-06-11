@@ -77,9 +77,9 @@ SOCKET_POLL_TIMEOUT_SECONDS = 1.0
 IDLE_HOLD_SLEEP_SECONDS = 10
 NO_HOLD_SECONDS = 0.0
 
-# Socket reads one byte at a time while waiting for the HTTP header terminator.
+# Socket reads bounded chunks while waiting for the HTTP header terminator.
 HTTP_HEADER_TERMINATOR = b"\r\n\r\n"
-HANDSHAKE_READ_BYTES = 1
+HANDSHAKE_READ_CHUNK_BYTES = 256
 MAX_HANDSHAKE_RESPONSE_BYTES = 8192
 
 
@@ -191,10 +191,11 @@ def read_handshake_response(sock: socket.socket) -> str:
     while HTTP_HEADER_TERMINATOR not in response:
         if len(response) >= MAX_HANDSHAKE_RESPONSE_BYTES:
             raise ValueError(f"Handshake response exceeded {MAX_HANDSHAKE_RESPONSE_BYTES} bytes.")
-        byte = sock.recv(HANDSHAKE_READ_BYTES)
-        if not byte:
+        to_read = min(HANDSHAKE_READ_CHUNK_BYTES, MAX_HANDSHAKE_RESPONSE_BYTES - len(response))
+        chunk = sock.recv(to_read)
+        if not chunk:
             raise ConnectionError("Socket closed during handshake.")
-        response.extend(byte)
+        response.extend(chunk)
     return response.decode("ascii", errors="replace")
 
 
