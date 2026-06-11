@@ -34,6 +34,11 @@ namespace Unity.FoxgloveSDK.Editor
         private const string LocalRootCaPageUrl = "http://127.0.0.1:8766/";
         private const string CertificateBackendEditorPrefKey = "Unity2Foxglove.LocalDevCertificate.Backend";
         private const string OpenSslPathEditorPrefKey = "Unity2Foxglove.LocalDevCertificate.OpenSslPath";
+        private static readonly string[] TransportModeLabels =
+        {
+            "Web Socket",
+            "Secure Web Socket"
+        };
         private static FoxgloveCertificateDistributor _editorRootCaDistributor;
         private static string _lastRootCaDistributorPath;
         private static string _lastRootCaDistributorHost;
@@ -322,6 +327,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawTransportModeProperty()
         {
+            // TransportModeLabels exposes only "Web Socket" and "Secure Web Socket";
+            // the internal None sentinel stays hidden from the Inspector.
             var prop = serializedObject.FindProperty("_transportMode");
             if (prop == null)
             {
@@ -332,11 +339,10 @@ namespace Unity.FoxgloveSDK.Editor
             var current = prop.enumValueIndex == (int)FoxgloveTransportMode.SecureWebSocket
                 ? FoxgloveTransportMode.SecureWebSocket
                 : FoxgloveTransportMode.WebSocket;
-            var labels = new[] { "Web Socket", "Secure Web Socket" };
             var selected = EditorGUILayout.Popup(
                 "Transport Mode",
                 current == FoxgloveTransportMode.SecureWebSocket ? 1 : 0,
-                labels);
+                TransportModeLabels);
 
             prop.enumValueIndex = selected == 1
                 ? (int)FoxgloveTransportMode.SecureWebSocket

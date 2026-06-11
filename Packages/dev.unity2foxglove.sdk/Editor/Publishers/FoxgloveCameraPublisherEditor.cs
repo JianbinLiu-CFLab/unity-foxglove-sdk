@@ -5,6 +5,7 @@
 // Purpose: Dedicated Inspector for the unified camera publisher.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
@@ -30,142 +31,192 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _showDiagnostics;
 
         private static readonly string[] CameraOutputModeLabels = BuildCameraOutputModeLabels();
+        private static readonly Dictionary<string, GUIContent> GuiContentCache =
+            new Dictionary<string, GUIContent>(StringComparer.Ordinal);
 
         private FfmpegExecutableCheckResult _ffmpegCheck =
             new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
         private OpenH264ExecutableCheckResult _openH264Check =
             new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
         private Task<OpenH264ExecutableCheckResult> _openH264CheckTask;
+        private SerializedProperty _script;
+        private SerializedProperty _manager;
+        private SerializedProperty _topic;
+        private SerializedProperty _outputMode;
+        private SerializedProperty _publishOnEnable;
+        private SerializedProperty _warnIfManagerMissing;
+        private SerializedProperty _frameId;
+        private SerializedProperty _width;
+        private SerializedProperty _height;
+        private SerializedProperty _jpegQuality;
+        private SerializedProperty _maxPendingReadbacks;
+        private SerializedProperty _useAsyncJpeg;
+        private SerializedProperty _maxJpegEncodeQueue;
+        private SerializedProperty _maxCompletedJpegQueue;
+        private SerializedProperty _maxCompletedJpegPublishesPerFrame;
+        private SerializedProperty _maxPixelsPerFrame;
+        private SerializedProperty _logCameraDiagnostics;
+        private SerializedProperty _cameraDiagnosticsIntervalSeconds;
+        private SerializedProperty _sensorUnitProfile;
+        private SerializedProperty _useSharedSensorClock;
+        private SerializedProperty _publishStandardRos2CompressedImage;
+        private SerializedProperty _publishStandardRos2RawImage;
+        private SerializedProperty _sensorCameraRawImageTopic;
+        private SerializedProperty _encodingOverride;
+        private SerializedProperty _publishRateSource;
+        private SerializedProperty _publishRateHz;
+        private SerializedProperty _bridgeOutput;
+        private SerializedProperty _bridgeTopicOverride;
+        private SerializedProperty _ffmpegPath;
+        private SerializedProperty _openH264HelperPath;
+        private SerializedProperty _openH264DllPath;
+        private SerializedProperty _openH264MaxInputQueue;
+        private SerializedProperty _videoBitrateKbps;
+        private SerializedProperty _videoKeyframeInterval;
+        private SerializedProperty _videoMaxOutputQueue;
+        private SerializedProperty _logVideoDiagnostics;
+        private SerializedProperty _logEncoderStderr;
+        private SerializedProperty _enableBackpressure;
+        private SerializedProperty _backpressureCooldown;
+        private SerializedProperty _maxEncodedBytes;
+        private SerializedProperty _logBackpressureSkips;
+
+        private void OnEnable()
+        {
+            _script = serializedObject.FindProperty("m_Script");
+            _manager = serializedObject.FindProperty("_manager");
+            _topic = serializedObject.FindProperty("_topic");
+            _outputMode = serializedObject.FindProperty("_outputMode");
+            _publishOnEnable = serializedObject.FindProperty("_publishOnEnable");
+            _warnIfManagerMissing = serializedObject.FindProperty("_warnIfManagerMissing");
+            _frameId = serializedObject.FindProperty("_frameId");
+            _width = serializedObject.FindProperty("_width");
+            _height = serializedObject.FindProperty("_height");
+            _jpegQuality = serializedObject.FindProperty("_jpegQuality");
+            _maxPendingReadbacks = serializedObject.FindProperty("_maxPendingReadbacks");
+            _useAsyncJpeg = serializedObject.FindProperty("_useAsyncJpeg");
+            _maxJpegEncodeQueue = serializedObject.FindProperty("_maxJpegEncodeQueue");
+            _maxCompletedJpegQueue = serializedObject.FindProperty("_maxCompletedJpegQueue");
+            _maxCompletedJpegPublishesPerFrame = serializedObject.FindProperty("_maxCompletedJpegPublishesPerFrame");
+            _maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
+            _logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
+            _cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
+            _sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
+            _useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
+            _publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
+            _publishStandardRos2RawImage = serializedObject.FindProperty("_publishStandardRos2RawImage");
+            _sensorCameraRawImageTopic = serializedObject.FindProperty("_sensorCameraRawImageTopic");
+            _encodingOverride = serializedObject.FindProperty("_encodingOverride");
+            _publishRateSource = serializedObject.FindProperty("_publishRateSource");
+            _publishRateHz = serializedObject.FindProperty("_publishRateHz");
+            _bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
+            _bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
+            _ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
+            _openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
+            _openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
+            _openH264MaxInputQueue = serializedObject.FindProperty("_openH264MaxInputQueue");
+            _videoBitrateKbps = serializedObject.FindProperty("_videoBitrateKbps");
+            _videoKeyframeInterval = serializedObject.FindProperty("_videoKeyframeInterval");
+            _videoMaxOutputQueue = serializedObject.FindProperty("_videoMaxOutputQueue");
+            _logVideoDiagnostics = serializedObject.FindProperty("_logVideoDiagnostics");
+            _logEncoderStderr = serializedObject.FindProperty("_logEncoderStderr");
+            _enableBackpressure = serializedObject.FindProperty("_enableBackpressureAdaptation");
+            _backpressureCooldown = serializedObject.FindProperty("_backpressureCooldownSeconds");
+            _maxEncodedBytes = serializedObject.FindProperty("_maxEncodedBytes");
+            _logBackpressureSkips = serializedObject.FindProperty("_logBackpressureSkips");
+        }
 
         public override void OnInspectorGUI()
         {
             CompleteOpenH264CheckIfReady();
             serializedObject.Update();
 
-            var manager = serializedObject.FindProperty("_manager");
-            var topic = serializedObject.FindProperty("_topic");
-            var outputMode = serializedObject.FindProperty("_outputMode");
-            var publishOnEnable = serializedObject.FindProperty("_publishOnEnable");
-            var warnIfManagerMissing = serializedObject.FindProperty("_warnIfManagerMissing");
-            var frameId = serializedObject.FindProperty("_frameId");
-            var width = serializedObject.FindProperty("_width");
-            var height = serializedObject.FindProperty("_height");
-            var jpegQuality = serializedObject.FindProperty("_jpegQuality");
-            var maxPendingReadbacks = serializedObject.FindProperty("_maxPendingReadbacks");
-            var useAsyncJpeg = serializedObject.FindProperty("_useAsyncJpeg");
-            var maxJpegEncodeQueue = serializedObject.FindProperty("_maxJpegEncodeQueue");
-            var maxCompletedJpegQueue = serializedObject.FindProperty("_maxCompletedJpegQueue");
-            var maxCompletedJpegPublishesPerFrame = serializedObject.FindProperty("_maxCompletedJpegPublishesPerFrame");
-            var maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
-            var logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
-            var cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
-            var sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
-            var useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
-            var publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
-            var publishStandardRos2RawImage = serializedObject.FindProperty("_publishStandardRos2RawImage");
-            var sensorCameraRawImageTopic = serializedObject.FindProperty("_sensorCameraRawImageTopic");
-            var encodingOverride = serializedObject.FindProperty("_encodingOverride");
-            var ffmpegPath = serializedObject.FindProperty("_ffmpegPath");
-            var openH264HelperPath = serializedObject.FindProperty("_openH264HelperPath");
-            var openH264DllPath = serializedObject.FindProperty("_openH264DllPath");
-            var openH264MaxInputQueue = serializedObject.FindProperty("_openH264MaxInputQueue");
-            var videoBitrateKbps = serializedObject.FindProperty("_videoBitrateKbps");
-            var videoKeyframeInterval = serializedObject.FindProperty("_videoKeyframeInterval");
-            var videoMaxOutputQueue = serializedObject.FindProperty("_videoMaxOutputQueue");
-            // Video diagnostics is a per-backend toggle for submit/drain evidence.
-            var logVideoDiagnostics = serializedObject.FindProperty("_logVideoDiagnostics");
-            var logEncoderStderr = serializedObject.FindProperty("_logEncoderStderr");
-            var enableBackpressure = serializedObject.FindProperty("_enableBackpressureAdaptation");
-            var backpressureCooldown = serializedObject.FindProperty("_backpressureCooldownSeconds");
-            var maxEncodedBytes = serializedObject.FindProperty("_maxEncodedBytes");
-            var logBackpressureSkips = serializedObject.FindProperty("_logBackpressureSkips");
-
             EditorGUILayout.LabelField("Camera Output", EditorStyles.boldLabel);
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_Script"));
+                EditorGUILayout.PropertyField(_script);
             }
 
-            var oldMode = GetMode(outputMode);
+            var oldMode = GetMode(_outputMode);
             EditorGUI.BeginChangeCheck();
-            DrawCameraOutputMode(outputMode);
+            DrawCameraOutputMode(_outputMode);
             if (EditorGUI.EndChangeCheck())
             {
-                var newMode = GetMode(outputMode);
-                ApplyTopicForModeChange(topic, oldMode, newMode);
+                var newMode = GetMode(_outputMode);
+                ApplyTopicForModeChange(_topic, oldMode, newMode);
                 _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
                 _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
             }
 
-            EditorGUILayout.PropertyField(manager);
-            EditorGUILayout.PropertyField(topic);
-            EditorGUILayout.PropertyField(publishOnEnable, new GUIContent("Publish On Enable"));
-            EditorGUILayout.PropertyField(warnIfManagerMissing, new GUIContent("Warn If Manager Missing"));
-            EditorGUILayout.PropertyField(frameId, new GUIContent("Frame Id"));
-            EditorGUILayout.PropertyField(width);
-            EditorGUILayout.PropertyField(height);
+            EditorGUILayout.PropertyField(_manager);
+            EditorGUILayout.PropertyField(_topic);
+            EditorGUILayout.PropertyField(_publishOnEnable, Label("Publish On Enable"));
+            EditorGUILayout.PropertyField(_warnIfManagerMissing, Label("Warn If Manager Missing"));
+            EditorGUILayout.PropertyField(_frameId, Label("Frame Id"));
+            EditorGUILayout.PropertyField(_width);
+            EditorGUILayout.PropertyField(_height);
 
             if (IsRos2CameraUiRelevant(
-                manager,
-                encodingOverride,
-                publishStandardRos2CompressedImage,
-                publishStandardRos2RawImage))
+                _manager,
+                _encodingOverride,
+                _publishStandardRos2CompressedImage,
+                _publishStandardRos2RawImage))
             {
                 DrawRos2OutputsSection(
-                    sensorUnitProfile,
-                    useSharedSensorClock,
-                    publishStandardRos2CompressedImage,
-                    publishStandardRos2RawImage,
-                    sensorCameraRawImageTopic);
+                    _sensorUnitProfile,
+                    _useSharedSensorClock,
+                    _publishStandardRos2CompressedImage,
+                    _publishStandardRos2RawImage,
+                    _sensorCameraRawImageTopic);
             }
 
-            var mode = GetMode(outputMode);
+            var mode = GetMode(_outputMode);
             var profile = CameraVideoOutputProfile.ForMode(mode);
             if (mode == CameraOutputMode.H264OpenH264)
             {
                 DrawOpenH264VideoSection(
                     profile.DisplayName,
-                    openH264HelperPath,
-                    openH264DllPath,
-                    videoBitrateKbps,
-                    videoKeyframeInterval,
-                    maxPendingReadbacks,
-                    openH264MaxInputQueue,
-                    videoMaxOutputQueue,
-                    logVideoDiagnostics,
-                    logEncoderStderr);
+                    _openH264HelperPath,
+                    _openH264DllPath,
+                    _videoBitrateKbps,
+                    _videoKeyframeInterval,
+                    _maxPendingReadbacks,
+                    _openH264MaxInputQueue,
+                    _videoMaxOutputQueue,
+                    _logVideoDiagnostics,
+                    _logEncoderStderr);
             }
             else if (mode == CameraOutputMode.H264MediaFoundationExperimental)
             {
                 DrawNativeH264Section(
                     profile.DisplayName,
-                    videoBitrateKbps,
-                    videoKeyframeInterval,
-                    maxPendingReadbacks,
-                    videoMaxOutputQueue,
-                    logVideoDiagnostics,
-                    logEncoderStderr);
+                    _videoBitrateKbps,
+                    _videoKeyframeInterval,
+                    _maxPendingReadbacks,
+                    _videoMaxOutputQueue,
+                    _logVideoDiagnostics,
+                    _logEncoderStderr);
             }
             else if (profile.IsVideo)
             {
-                DrawVideoSection(mode, profile.DisplayName, ffmpegPath, videoBitrateKbps, videoKeyframeInterval, maxPendingReadbacks, videoMaxOutputQueue, logVideoDiagnostics, logEncoderStderr);
+                DrawVideoSection(mode, profile.DisplayName, _ffmpegPath, _videoBitrateKbps, _videoKeyframeInterval, _maxPendingReadbacks, _videoMaxOutputQueue, _logVideoDiagnostics, _logEncoderStderr);
             }
             else
             {
                 DrawJpegSection(
-                    jpegQuality,
-                    maxPendingReadbacks,
-                    useAsyncJpeg,
-                    maxJpegEncodeQueue,
-                    maxCompletedJpegQueue,
-                    maxCompletedJpegPublishesPerFrame,
-                    maxPixelsPerFrame,
-                    enableBackpressure,
-                    backpressureCooldown,
-                    maxEncodedBytes,
-                    logBackpressureSkips,
-                    logCameraDiagnostics,
-                    cameraDiagnosticsIntervalSeconds);
+                    _jpegQuality,
+                    _maxPendingReadbacks,
+                    _useAsyncJpeg,
+                    _maxJpegEncodeQueue,
+                    _maxCompletedJpegQueue,
+                    _maxCompletedJpegPublishesPerFrame,
+                    _maxPixelsPerFrame,
+                    _enableBackpressure,
+                    _backpressureCooldown,
+                    _maxEncodedBytes,
+                    _logBackpressureSkips,
+                    _logCameraDiagnostics,
+                    _cameraDiagnosticsIntervalSeconds);
             }
 
             DrawPublishRateSection();
@@ -181,6 +232,17 @@ namespace Unity.FoxgloveSDK.Editor
         private void OnDisable()
         {
             EditorApplication.update -= CompleteOpenH264CheckIfReady;
+        }
+
+        private static GUIContent Label(string text)
+        {
+            if (!GuiContentCache.TryGetValue(text, out var content))
+            {
+                content = new GUIContent(text);
+                GuiContentCache.Add(text, content);
+            }
+
+            return content;
         }
 
         private void DrawJpegSection(
@@ -200,29 +262,29 @@ namespace Unity.FoxgloveSDK.Editor
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(jpegQuality, new GUIContent("JPEG Quality"));
-            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(jpegQuality, Label("JPEG Quality"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, Label("Max Pending Readbacks"));
 
             _showAdvancedJpeg = EditorGUILayout.Foldout(_showAdvancedJpeg, "Advanced JPEG", true);
             if (_showAdvancedJpeg)
             {
                 using (new EditorGUI.IndentLevelScope())
                 {
-                    EditorGUILayout.PropertyField(useAsyncJpeg, new GUIContent("Use Async JPEG"));
+                    EditorGUILayout.PropertyField(useAsyncJpeg, Label("Use Async JPEG"));
                     using (new EditorGUI.DisabledScope(!useAsyncJpeg.boolValue))
                     {
-                        EditorGUILayout.PropertyField(maxJpegEncodeQueue, new GUIContent("Max Encode Queue"));
-                        EditorGUILayout.PropertyField(maxCompletedJpegQueue, new GUIContent("Max Completed Queue"));
-                        EditorGUILayout.PropertyField(maxCompletedJpegPublishesPerFrame, new GUIContent("Max Completed Publishes / Frame"));
+                        EditorGUILayout.PropertyField(maxJpegEncodeQueue, Label("Max Encode Queue"));
+                        EditorGUILayout.PropertyField(maxCompletedJpegQueue, Label("Max Completed Queue"));
+                        EditorGUILayout.PropertyField(maxCompletedJpegPublishesPerFrame, Label("Max Completed Publishes / Frame"));
                     }
 
-                    EditorGUILayout.PropertyField(maxPixelsPerFrame, new GUIContent("Max Pixels / Frame"));
-                    EditorGUILayout.PropertyField(enableBackpressure, new GUIContent("Enable Backpressure Adaptation"));
+                    EditorGUILayout.PropertyField(maxPixelsPerFrame, Label("Max Pixels / Frame"));
+                    EditorGUILayout.PropertyField(enableBackpressure, Label("Enable Backpressure Adaptation"));
                     using (new EditorGUI.DisabledScope(!enableBackpressure.boolValue))
                     {
-                        EditorGUILayout.PropertyField(backpressureCooldown, new GUIContent("Backpressure Cooldown"));
-                        EditorGUILayout.PropertyField(maxEncodedBytes, new GUIContent("Max Encoded Bytes"));
-                        EditorGUILayout.PropertyField(logBackpressureSkips, new GUIContent("Log Backpressure Skips"));
+                        EditorGUILayout.PropertyField(backpressureCooldown, Label("Backpressure Cooldown"));
+                        EditorGUILayout.PropertyField(maxEncodedBytes, Label("Max Encoded Bytes"));
+                        EditorGUILayout.PropertyField(logBackpressureSkips, Label("Log Backpressure Skips"));
                     }
                 }
             }
@@ -232,10 +294,10 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 using (new EditorGUI.IndentLevelScope())
                 {
-                    EditorGUILayout.PropertyField(logCameraDiagnostics, new GUIContent("Log Camera Diagnostics"));
+                    EditorGUILayout.PropertyField(logCameraDiagnostics, Label("Log Camera Diagnostics"));
                     using (new EditorGUI.DisabledScope(!logCameraDiagnostics.boolValue))
                     {
-                        EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, new GUIContent("Diagnostics Interval"));
+                        EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, Label("Diagnostics Interval"));
                     }
                 }
             }
@@ -255,24 +317,24 @@ namespace Unity.FoxgloveSDK.Editor
 
             using (new EditorGUI.IndentLevelScope())
             {
-                EditorGUILayout.PropertyField(sensorUnitProfile, new GUIContent("Sensor Unit Profile"));
-                EditorGUILayout.PropertyField(useSharedSensorClock, new GUIContent("Use Shared Sensor Clock"));
+                EditorGUILayout.PropertyField(sensorUnitProfile, Label("Sensor Unit Profile"));
+                EditorGUILayout.PropertyField(useSharedSensorClock, Label("Use Shared Sensor Clock"));
                 EditorGUILayout.PropertyField(
                     publishStandardRos2CompressedImage,
-                    new GUIContent("Publish CompressedImage DDS"));
+                    Label("Publish CompressedImage DDS"));
                 EditorGUILayout.PropertyField(
                     publishStandardRos2RawImage,
-                    new GUIContent("Publish Raw Image DDS"));
+                    Label("Publish Raw Image DDS"));
                 if (publishStandardRos2RawImage.boolValue)
                 {
                     EditorGUILayout.PropertyField(
                         sensorCameraRawImageTopic,
-                        new GUIContent("Raw Image Topic"));
+                        Label("Raw Image Topic"));
                 }
 
                 using (new EditorGUI.DisabledScope(true))
                 {
-                    EditorGUILayout.Toggle(new GUIContent("Publish CameraInfo DDS"), false);
+                    EditorGUILayout.Toggle(Label("Publish CameraInfo DDS"), false);
                 }
 
                 EditorGUILayout.HelpBox(
@@ -353,12 +415,12 @@ namespace Unity.FoxgloveSDK.Editor
             if (helpRequested)
                 FfmpegHelpWindow.ShowWindow();
 
-            EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
-            EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
-            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
-            EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
-            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
-            EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Stderr"));
+            EditorGUILayout.PropertyField(videoBitrateKbps, Label("Video Bitrate Kbps"));
+            EditorGUILayout.PropertyField(videoKeyframeInterval, Label("Keyframe Interval"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, Label("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(videoMaxOutputQueue, Label("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, Label("Log Video Diagnostics"));
+            EditorGUILayout.PropertyField(logEncoderStderr, Label("Log Encoder Stderr"));
         }
 
         /// <summary>
@@ -451,13 +513,13 @@ namespace Unity.FoxgloveSDK.Editor
             DrawOpenH264Status(openH264HelperPath.stringValue, openH264DllPath.stringValue);
             EditorGUILayout.HelpBox(OpenH264Attribution, MessageType.None);
 
-            EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
-            EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
-            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
-            EditorGUILayout.PropertyField(openH264MaxInputQueue, new GUIContent("Max Input Queue"));
-            EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
-            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
-            EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
+            EditorGUILayout.PropertyField(videoBitrateKbps, Label("Video Bitrate Kbps"));
+            EditorGUILayout.PropertyField(videoKeyframeInterval, Label("Keyframe Interval"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, Label("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(openH264MaxInputQueue, Label("Max Input Queue"));
+            EditorGUILayout.PropertyField(videoMaxOutputQueue, Label("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, Label("Log Video Diagnostics"));
+            EditorGUILayout.PropertyField(logEncoderStderr, Label("Log Encoder Diagnostics"));
         }
 
         /// <summary>
@@ -481,52 +543,44 @@ namespace Unity.FoxgloveSDK.Editor
                 "This backend depends on Windows encoder availability and driver behavior. Prefer OpenH264 for predictable cross-platform behavior.",
                 MessageType.Info);
 
-            EditorGUILayout.PropertyField(videoBitrateKbps, new GUIContent("Video Bitrate Kbps"));
-            EditorGUILayout.PropertyField(videoKeyframeInterval, new GUIContent("Keyframe Interval"));
-            EditorGUILayout.PropertyField(maxPendingReadbacks, new GUIContent("Max Pending Readbacks"));
-            EditorGUILayout.PropertyField(videoMaxOutputQueue, new GUIContent("Max Output Queue"));
-            EditorGUILayout.PropertyField(logVideoDiagnostics, new GUIContent("Log Video Diagnostics"));
-            EditorGUILayout.PropertyField(logEncoderStderr, new GUIContent("Log Encoder Diagnostics"));
+            EditorGUILayout.PropertyField(videoBitrateKbps, Label("Video Bitrate Kbps"));
+            EditorGUILayout.PropertyField(videoKeyframeInterval, Label("Keyframe Interval"));
+            EditorGUILayout.PropertyField(maxPendingReadbacks, Label("Max Pending Readbacks"));
+            EditorGUILayout.PropertyField(videoMaxOutputQueue, Label("Max Output Queue"));
+            EditorGUILayout.PropertyField(logVideoDiagnostics, Label("Log Video Diagnostics"));
+            EditorGUILayout.PropertyField(logEncoderStderr, Label("Log Encoder Diagnostics"));
         }
 
         private void DrawPublishRateSection()
         {
-            var publishRateSource = serializedObject.FindProperty("_publishRateSource");
-            var publishRateHz = serializedObject.FindProperty("_publishRateHz");
-
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
-            if (publishRateSource != null)
-                EditorGUILayout.PropertyField(publishRateSource, new GUIContent("Publish Rate Source"));
+            if (_publishRateSource != null)
+                EditorGUILayout.PropertyField(_publishRateSource, Label("Publish Rate Source"));
 
-            var usesLocalRate = publishRateSource == null
-                                || publishRateSource.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
+            var usesLocalRate = _publishRateSource == null
+                                || _publishRateSource.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
             using (new EditorGUI.DisabledScope(!usesLocalRate))
             {
-                if (publishRateHz != null)
-                    EditorGUILayout.PropertyField(publishRateHz, new GUIContent("Publish Rate Hz"));
+                if (_publishRateHz != null)
+                    EditorGUILayout.PropertyField(_publishRateHz, Label("Publish Rate Hz"));
             }
         }
 
         private void DrawEncodingPolicySection()
         {
-            var encodingOverride = serializedObject.FindProperty("_encodingOverride");
-
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Encoding Policy", EditorStyles.boldLabel);
-            PublisherEncodingEditorLabels.DrawPublisherOverride(encodingOverride, "Encoding Override");
+            PublisherEncodingEditorLabels.DrawPublisherOverride(_encodingOverride, "Encoding Override");
         }
 
         private void DrawRos2BridgeSection()
         {
-            var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
-            var bridgeTopicOverride = serializedObject.FindProperty("_ros2BridgeTopicOverride");
-
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("ROS2 Bridge", EditorStyles.boldLabel);
-            PublisherEncodingEditorLabels.DrawRos2BridgeOverride(bridgeOutput, "Bridge Output");
-            if (bridgeTopicOverride != null)
-                EditorGUILayout.PropertyField(bridgeTopicOverride, new GUIContent("Bridge Topic Override"));
+            PublisherEncodingEditorLabels.DrawRos2BridgeOverride(_bridgeOutput, "Bridge Output");
+            if (_bridgeTopicOverride != null)
+                EditorGUILayout.PropertyField(_bridgeTopicOverride, Label("Bridge Topic Override"));
             EditorGUILayout.HelpBox(
                 "JPEG mode can mirror the same ROS2 CDR image payload to the optional local bridge. Video modes keep using WebSocket output only.",
                 MessageType.Info);
@@ -540,9 +594,8 @@ namespace Unity.FoxgloveSDK.Editor
             if (publisher.ConfiguredManager != null && publisher.ConfiguredManager.Ros2BridgeEnabled)
                 return true;
 
-            var bridgeOutput = serializedObject.FindProperty("_ros2BridgeOutput");
-            return bridgeOutput != null
-                   && bridgeOutput.enumValueIndex == (int)Ros2BridgeOutputOverride.Enabled;
+            return _bridgeOutput != null
+                   && _bridgeOutput.enumValueIndex == (int)Ros2BridgeOutputOverride.Enabled;
         }
 
         private void DrawResolvedSummaries()
