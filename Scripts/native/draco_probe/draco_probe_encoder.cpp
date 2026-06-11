@@ -87,7 +87,7 @@ bool EncodePointCloud(const std::vector<float>& xyz, uint32_t point_count,
   return true;
 }
 
-bool ProcessOneFrame() {
+bool ProcessOneFrame(std::vector<float>* xyz) {
   uint32_t point_count = 0;
   if (!ReadUint32(&point_count)) {
     return false;
@@ -106,15 +106,15 @@ bool ProcessOneFrame() {
   }
 
   const size_t float_count = static_cast<size_t>(point_count) * 3;
-  std::vector<float> xyz(float_count);
-  if (!ReadExact(reinterpret_cast<char*>(xyz.data()),
+  xyz->resize(float_count);
+  if (!ReadExact(reinterpret_cast<char*>(xyz->data()),
                  float_count * sizeof(float))) {
     std::cerr << "stdin ended mid XYZ payload" << std::endl;
     return false;
   }
 
   draco::EncoderBuffer buffer;
-  if (!EncodePointCloud(xyz, point_count, &buffer)) {
+  if (!EncodePointCloud(*xyz, point_count, &buffer)) {
     return false;
   }
 
@@ -136,8 +136,9 @@ bool ProcessOneFrame() {
 int main() {
   std::ios::sync_with_stdio(false);
 
+  std::vector<float> xyz;
   while (std::cin.good()) {
-    if (!ProcessOneFrame()) {
+    if (!ProcessOneFrame(&xyz)) {
       return std::cin.eof() ? 0 : 1;
     }
   }

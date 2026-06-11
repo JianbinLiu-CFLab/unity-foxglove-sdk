@@ -222,19 +222,25 @@ def find_asmdef_cycles(metrics: list[AsmdefMetric]) -> list[list[str]]:
         best = min(rotations)
         return tuple(best + [best[0]])
 
+    def visit(node: str, stack: list[str]) -> None:
+        """Depth-first cycle walk for one asmdef node."""
+        if node in stack:
+            cycle = stack[stack.index(node) :] + [node]
+            key = canonical_cycle(cycle)
+            if key not in seen:
+                seen.add(key)
+                cycles.append(list(key))
+            return
+
+        stack.append(node)
+        try:
+            for child in graph.get(node, []):
+                visit(child, stack)
+        finally:
+            stack.pop()
+
     for node in graph:
-        stack: list[tuple[str, list[str]]] = [(node, [])]
-        while stack:
-            current, path = stack.pop()
-            if current in path:
-                cycle = path[path.index(current) :] + [current]
-                key = canonical_cycle(cycle)
-                if key not in seen:
-                    seen.add(key)
-                    cycles.append(list(key))
-                continue
-            for child in reversed(graph.get(current, [])):
-                stack.append((child, path + [current]))
+        visit(node, [])
     return cycles
 
 

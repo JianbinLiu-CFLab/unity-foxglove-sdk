@@ -369,6 +369,7 @@ async def collect_advertisements(
     """Collect channel advertisements until all targets are known or timeout expires."""
 
     channels: dict[int, dict[str, Any]] = {}
+    advertised_topics: set[str] = set()
     deadline = time.monotonic() + advertise_timeout
     while time.monotonic() < deadline:
         try:
@@ -386,7 +387,7 @@ async def collect_advertisements(
         for channel in message.get("channels", []):
             channel_id = int(channel.get("id"))
             channels[channel_id] = channel
-        advertised_topics = {channel.get("topic") for channel in channels.values()}
+            advertised_topics.add(channel.get("topic"))
         if target_topics.issubset(advertised_topics):
             break
     return channels
@@ -409,7 +410,7 @@ async def collect_messages(
             continue
         if not isinstance(frame, (bytes, bytearray)):
             continue
-        data = bytes(frame)
+        data = frame if isinstance(frame, bytes) else bytes(frame)
         if len(data) < 13 or data[0] != MESSAGE_DATA_OPCODE:
             continue
         subscription_id = struct.unpack_from("<I", data, 1)[0]

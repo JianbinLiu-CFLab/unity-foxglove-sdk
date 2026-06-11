@@ -19,6 +19,18 @@ from datetime import datetime
 
 DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows")
 
+if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
+
+    _USER32 = ctypes.windll.user32
+    _ENUM_WINDOWS_PROC_TYPE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+else:
+    ctypes = None
+    wintypes = None
+    _USER32 = None
+    _ENUM_WINDOWS_PROC_TYPE = None
+
 
 def timestamp() -> str:
     """Return a local wall-clock timestamp for acceptance diagnostics."""
@@ -289,34 +301,28 @@ def echo_once(
 def visible_windows_for_pid(pid: int) -> list[str]:
     """Return visible top-level Windows titles owned by a process id."""
 
-    if os.name != "nt":
+    if _USER32 is None or _ENUM_WINDOWS_PROC_TYPE is None:
         return []
 
-    import ctypes
-    from ctypes import wintypes
-
-    user32 = ctypes.windll.user32
     titles: list[str] = []
-
-    enum_windows_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     def callback(hwnd: wintypes.HWND, _lparam: wintypes.LPARAM) -> bool:
         """Collect visible window titles owned by the target process."""
-        if not user32.IsWindowVisible(hwnd):
+        if not _USER32.IsWindowVisible(hwnd):
             return True
 
         process_id = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+        _USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
         if process_id.value != pid:
             return True
 
-        length = user32.GetWindowTextLengthW(hwnd)
+        length = _USER32.GetWindowTextLengthW(hwnd)
         buffer = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buffer, length + 1)
+        _USER32.GetWindowTextW(hwnd, buffer, length + 1)
         titles.append(buffer.value or "<untitled>")
         return True
 
-    user32.EnumWindows(enum_windows_proc(callback), 0)
+    _USER32.EnumWindows(_ENUM_WINDOWS_PROC_TYPE(callback), 0)
     return titles
 
 

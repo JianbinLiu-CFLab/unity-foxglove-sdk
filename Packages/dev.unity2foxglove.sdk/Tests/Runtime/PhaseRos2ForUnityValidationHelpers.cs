@@ -87,11 +87,10 @@ namespace Unity.FoxgloveSDK.Tests
         public static bool AllR2fuReferencesAreGuarded(
             string text,
             string define,
-            IEnumerable<string> tokens,
+            IReadOnlyList<string> tokens,
             out string error)
         {
             error = string.Empty;
-            var tokenList = tokens.ToArray();
             var stack = new Stack<GuardFrame>();
             var lines = text.Replace("\r\n", "\n").Split('\n');
 
@@ -103,7 +102,7 @@ namespace Unity.FoxgloveSDK.Tests
                 if (trimmed.StartsWith("#if ", StringComparison.Ordinal))
                 {
                     var condition = ClassifyCondition(trimmed.Substring(4), define);
-                    var parentGuarded = stack.Any(frame => frame.CurrentGuarded);
+                    var parentGuarded = CurrentGuarded(stack);
                     stack.Push(new GuardFrame(
                         parentGuarded,
                         CurrentBranchGuarded(parentGuarded, condition, priorRequiresNotDefine: false),
@@ -151,8 +150,8 @@ namespace Unity.FoxgloveSDK.Tests
                 if (trimmed.StartsWith("//", StringComparison.Ordinal))
                     continue;
 
-                var token = tokenList.FirstOrDefault(candidate => line.Contains(candidate, StringComparison.Ordinal));
-                if (token != null && !stack.Any(frame => frame.CurrentGuarded))
+                var token = FindToken(line, tokens);
+                if (token != null && !CurrentGuarded(stack))
                 {
                     error = " Unguarded R2FU reference on line " + (i + 1) + ": " + trimmed;
                     return false;
@@ -166,6 +165,21 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return true;
+        }
+
+        private static bool CurrentGuarded(Stack<GuardFrame> stack)
+            => stack.Count > 0 && stack.Peek().CurrentGuarded;
+
+        private static string FindToken(string line, IReadOnlyList<string> tokens)
+        {
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                var token = tokens[i];
+                if (line.Contains(token, StringComparison.Ordinal))
+                    return token;
+            }
+
+            return null;
         }
 
         private static bool CurrentBranchGuarded(

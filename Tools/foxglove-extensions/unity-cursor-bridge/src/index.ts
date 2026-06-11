@@ -18,6 +18,8 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:8892/v1/replay-cursor";
 // This is a clock-sync cadence, not a data-sampling rate: Unity still processes
 // every replay message in (lastCursor, currentCursor], so 100 Hz+ topics stay intact.
 const DEFAULT_MAX_HZ = 60;
+const MIN_INTERVAL_MS = 1000 / DEFAULT_MAX_HZ;
+const WAITING_REPLAY_TIME_TEXT = "Waiting for Foxglove playback";
 
 type CursorPayload = {
   source: "foxglove-unity-cursor-bridge";
@@ -47,16 +49,18 @@ type CursorRenderState = {
   readonly endTime?: Time;
 };
 
+type ReplayTimeDisplayCache = {
+  lastSec: number | undefined;
+  lastNsec: number | undefined;
+  text: string;
+};
+
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
   if (time == undefined) {
     return undefined;
   }
 
   return { sec: time.sec, nsec: time.nsec };
-}
-
-function cursorKey(time: Time): string {
-  return `${time.sec}.${time.nsec}`;
 }
 
 export function escapeHtml(value: string): string {
@@ -76,13 +80,26 @@ export function summarizeResponseText(responseText: string, maxLength = 200): st
   return `${responseText.slice(0, maxLength)}…`;
 }
 
-function formatReplayTimeUtc(time: Time | undefined): string {
+function formatReplayTimeUtc(time: Time | undefined, cache: ReplayTimeDisplayCache): string {
   if (time == undefined) {
-    return "Waiting for Foxglove playback";
+    if (cache.lastSec !== undefined || cache.lastNsec !== undefined || cache.text.length === 0) {
+      cache.lastSec = undefined;
+      cache.lastNsec = undefined;
+      cache.text = WAITING_REPLAY_TIME_TEXT;
+    }
+    return cache.text;
+  }
+
+  if (cache.lastSec === time.sec && cache.lastNsec === time.nsec) {
+    return cache.text;
   }
 
   const milliseconds = (time.sec * 1000) + Math.floor(time.nsec / 1_000_000);
-  return new Date(milliseconds).toISOString().replace("T", " ").replace("Z", " UTC");
+  const iso = new Date(milliseconds).toISOString();
+  cache.lastSec = time.sec;
+  cache.lastNsec = time.nsec;
+  cache.text = `${iso.slice(0, 10)} ${iso.slice(11, iso.length - 1)} UTC`;
+  return cache.text;
 }
 
 async function sendCursor(
@@ -158,7 +175,8 @@ function savePanelState(context: PanelExtensionContext, state: PanelState): void
 export function shouldSendCursor(
   enabled: boolean,
   currentTime: Time | undefined,
-  lastKey: string,
+  lastSec: number,
+  lastNsec: number,
   lastSentAtMs: number,
   nowMs: number,
   minIntervalMs: number,
@@ -167,7 +185,7 @@ export function shouldSendCursor(
     return false;
   }
 
-  return cursorKey(currentTime) !== lastKey && nowMs - lastSentAtMs >= minIntervalMs;
+  return (currentTime.sec !== lastSec || currentTime.nsec !== lastNsec) && nowMs - lastSentAtMs >= minIntervalMs;
 }
 
 function buildPanelDom(state: PanelState): {
@@ -325,11 +343,17 @@ function buildPanelDom(state: PanelState): {
 export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let state = readPanelState(context.initialState);
   let sequence = 0;
-  let lastCursorKey = "";
+  let lastCursorSec = -1;
+  let lastCursorNsec = -1;
   let lastSentAtMs = 0;
   let mounted = true;
   let activeCursorController: AbortController | undefined;
   let requestGeneration = 0;
+  const replayTimeCache: ReplayTimeDisplayCache = {
+    lastSec: undefined,
+    lastNsec: undefined,
+    text: "",
+  };
   let status: SendStatus = {
     ok: true,
     message: "Waiting for Foxglove replay time. Keep Unity in Play Mode.",
@@ -362,18 +386,18 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     try {
       const currentTime = renderState.currentTime;
       panel.enabledInput.checked = state.enabled;
-      panel.replayTime.textContent = formatReplayTimeUtc(currentTime);
+      panel.replayTime.textContent = formatReplayTimeUtc(currentTime, replayTimeCache);
       panel.unityStatus.textContent = status.message;
       panel.unityStatus.classList.toggle("ok", status.ok);
       panel.unityStatus.classList.toggle("error", !status.ok);
 
       const nowMs = Date.now();
-      const minIntervalMs = 1000 / DEFAULT_MAX_HZ;
-      if (shouldSendCursor(state.enabled, currentTime, lastCursorKey, lastSentAtMs, nowMs, minIntervalMs)) {
+      if (shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, MIN_INTERVAL_MS)) {
         const payload = buildPayload(renderState, sequence + 1);
         if (payload != undefined && currentTime != undefined) {
           sequence = payload.sequence;
-          lastCursorKey = cursorKey(currentTime);
+          lastCursorSec = currentTime.sec;
+          lastCursorNsec = currentTime.nsec;
           lastSentAtMs = nowMs;
 
           activeCursorController?.abort();
