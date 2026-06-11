@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var payload = Ros2CdrSerializerRegistry.Serialize(schemaName, message);
             Ros2CdrPayloadValidator.Validate(payload);
             var sequence = unchecked((ulong)Interlocked.Increment(ref _sequence));
-            var frame = new Ros2BridgeFrame(topic, schemaName, Ros2BridgeFrame.CdrEncoding, logTimeNs, sequence, payload);
+            var frame = Ros2BridgeFrame.CreateOwned(topic, schemaName, Ros2BridgeFrame.CdrEncoding, logTimeNs, sequence, payload);
             _sink.Send(frame, DefaultSendTimeoutMs);
         }
     }

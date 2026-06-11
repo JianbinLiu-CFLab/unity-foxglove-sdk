@@ -72,6 +72,12 @@ struct RawFrame
   std::vector<uint8_t> payload;
 };
 
+struct PayloadView
+{
+  const uint8_t * data = nullptr;
+  size_t size = 0;
+};
+
 class ScopedFd
 {
 public:
@@ -442,13 +448,6 @@ RawFrame read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)
 
 BridgeFrame parse_publish_frame(const RawFrame & raw)
 {
-  if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
-    throw std::runtime_error("reject frame: missing or invalid op");
-  }
-  const auto op = raw.header.at("op").get<std::string>();
-  if (op != "publish") {
-    throw std::runtime_error("reject frame: unsupported op '" + op + "'");
-  }
   if (raw.payload.empty()) {
     throw std::runtime_error("reject frame: invalid payload length");
   }
@@ -548,10 +547,10 @@ void handle_health_ping(int fd, const RawFrame & raw)
   write_health_pong_ok(fd, request_id);
 }
 
-std::vector<uint8_t> payload_for_publish(const BridgeFrame & frame, PayloadFormat format)
+PayloadView payload_for_publish(const BridgeFrame & frame, PayloadFormat format)
 {
   if (format == PayloadFormat::CdrWithEncapsulation) {
-    return frame.payload;
+    return PayloadView{frame.payload.data(), frame.payload.size()};
   }
 
   if (frame.payload.size() < 4 ||
@@ -559,7 +558,7 @@ std::vector<uint8_t> payload_for_publish(const BridgeFrame & frame, PayloadForma
   {
     throw std::runtime_error("reject frame: cdr-body-only requires 00 01 00 00 encapsulation header");
   }
-  return std::vector<uint8_t>(frame.payload.begin() + 4, frame.payload.end());
+  return PayloadView{frame.payload.data() + 4, frame.payload.size() - 4};
 }
 
 class BridgeNode
@@ -573,18 +572,22 @@ public:
   void publish(const BridgeFrame & frame)
   {
     const auto signature = qos_signature(frame);
-    auto topic_signature = topic_signature_.find(frame.topic);
-    if (topic_signature != topic_signature_.end() && topic_signature->second != signature) {
+    auto topic_signature = topic_signature_.emplace(frame.topic, signature);
+    if (!topic_signature.second && topic_signature.first->second != signature) {
       throw std::runtime_error("reject frame: topic reused with different schemaName or QoS");
     }
-    topic_signature_[frame.topic] = signature;
 
-    const std::string key = frame.topic + "\n" + signature;
-    auto publisher = publishers_[key];
-    if (!publisher) {
+    auto topic_key = topic_keys_.find(frame.topic);
+    if (topic_key == topic_keys_.end()) {
+      topic_key = topic_keys_.emplace(frame.topic, frame.topic + "\n" + signature).first;
+    }
+    const auto & key = topic_key->second;
+
+    auto publisher_it = publishers_.find(key);
+    if (publisher_it == publishers_.end()) {
       auto qos = make_qos(frame);
-      publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
-      publishers_[key] = publisher;
+      auto publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
+      publisher_it = publishers_.emplace(key, publisher).first;
       RCLCPP_INFO(
         node_->get_logger(),
         "[unity2foxglove_ros2_bridge] publisher %s %s reliability=%s durability=%s depth=%d",
@@ -596,14 +599,14 @@ public:
     }
 
     const auto payload = payload_for_publish(frame, payload_format_);
-    rclcpp::SerializedMessage serialized(payload.size());
+    rclcpp::SerializedMessage serialized(payload.size);
     auto & ros_message = serialized.get_rcl_serialized_message();
-    if (ros_message.buffer_capacity < payload.size()) {
+    if (ros_message.buffer_capacity < payload.size) {
       throw std::runtime_error("serialized message buffer capacity is too small");
     }
-    std::memcpy(ros_message.buffer, payload.data(), payload.size());
-    ros_message.buffer_length = payload.size();
-    publisher->publish(serialized);
+    std::memcpy(ros_message.buffer, payload.data, payload.size);
+    ros_message.buffer_length = payload.size;
+    publisher_it->second->publish(serialized);
 
     const auto count = ++counts_[key];
     if (count == 1 || count % 20 == 0) {
@@ -619,6 +622,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
   std::unordered_map<std::string, std::string> topic_signature_;
+  std::unordered_map<std::string, std::string> topic_keys_;
   std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers_;
   std::unordered_map<std::string, size_t> counts_;
 };
