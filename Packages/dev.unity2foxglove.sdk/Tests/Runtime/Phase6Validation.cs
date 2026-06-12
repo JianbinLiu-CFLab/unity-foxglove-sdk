@@ -76,11 +76,12 @@ namespace Unity.FoxgloveSDK.Tests
             var info = JObject.Parse(json);
             var caps = info["capabilities"] as JArray;
             Assert(caps != null, "capabilities present");
-            Assert(caps.ToString().Contains("parameters"), "capabilities includes parameters");
-            Assert(caps.ToString().Contains("services"), "capabilities includes services");
-            Assert(caps.ToString().Contains("parametersSubscribe"), "capabilities includes parametersSubscribe (Phase 7)");
-            Assert(!caps.ToString().Contains("assets"), "capabilities excludes assets");
-            Assert(!caps.ToString().Contains("playbackControl"), "capabilities excludes playbackControl");
+            var capsText = caps.ToString();
+            Assert(capsText.Contains("parameters"), "capabilities includes parameters");
+            Assert(capsText.Contains("services"), "capabilities includes services");
+            Assert(capsText.Contains("parametersSubscribe"), "capabilities includes parametersSubscribe (Phase 7)");
+            Assert(!capsText.Contains("assets"), "capabilities excludes assets");
+            Assert(!capsText.Contains("playbackControl"), "capabilities excludes playbackControl");
             Assert(info["supportedEncodings"]?[0]?.ToString() == "json", "supportedEncodings includes json");
         }
 

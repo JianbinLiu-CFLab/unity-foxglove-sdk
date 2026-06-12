@@ -51,13 +51,15 @@ namespace Unity.FoxgloveSDK.Tests
             transport.Binary(DesktopClientId, BuildPlaybackControlFrame("desktop-1", hasSeek: true));
             session.DrainPlaybackControls();
 
-            Check(PlaybackStateFramesFor(transport, DesktopClientId).Count == 1,
+            var desktopFrames = PlaybackStateFramesFor(transport, DesktopClientId);
+            var webFrames = PlaybackStateFramesFor(transport, WebClientId);
+            Check(desktopFrames.Count == 1,
                 "65A-1: requesting client receives one PlaybackState response");
-            Check(PlaybackStateFramesFor(transport, WebClientId).Count == 0,
+            Check(webFrames.Count == 0,
                 "65A-2: non-requesting client receives no request-correlated PlaybackState");
             Check(transport.BroadcastPlaybackStateCount == 0,
                 "65A-3: PlaybackControl responses are not broadcast");
-            Check(DecodePlaybackStateRequestId(PlaybackStateFramesFor(transport, DesktopClientId)[0]) == "desktop-1",
+            Check(DecodePlaybackStateRequestId(desktopFrames[0]) == "desktop-1",
                 "65A-4: targeted PlaybackState preserves the requestId");
         }
 
