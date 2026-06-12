@@ -64,3 +64,14 @@ subset migrated (remainder noted).
   Phase 0 triage manifest.
 - **Repo hygiene / file existence** (stay in console permanently): the `hygiene`
   bucket.
+
+## Phase 5 Audit
+
+- CI runs both the runtime validation runner and the xUnit unit test project.
+- Fully migrated Phase140B rows above now have xUnit coverage plus removal guards
+  that assert their old console entries are absent.
+- Partial rows keep their remaining console coverage until their unmigrated
+  socket, source-shape, or hygiene checks have an equivalent target.
+- Runtime runner ownership remains limited to repository hygiene, true
+  integration/socket checks, Unity/ROS2/Foxglove Desktop acceptance boundaries,
+  and not-yet-migrated partial coverage.
