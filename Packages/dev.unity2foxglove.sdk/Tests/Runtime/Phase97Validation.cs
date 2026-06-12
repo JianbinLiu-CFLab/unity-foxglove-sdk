@@ -313,32 +313,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static bool SourceMethodContains(string source, string methodName, string needle)
-            => SourceMethod(source, methodName).Contains(needle);
+            => PhaseValidationSourceHelpers.SourceMethodContains(source, methodName, needle);
 
         private static string SourceMethod(string source, string methodName)
-        {
-            var start = source.IndexOf(methodName, StringComparison.Ordinal);
-            if (start < 0)
-                return string.Empty;
-            var braceStart = source.IndexOf('{', start);
-            if (braceStart < 0)
-                return string.Empty;
-
-            var depth = 0;
-            for (var i = braceStart; i < source.Length; i++)
-            {
-                if (source[i] == '{')
-                    depth++;
-                else if (source[i] == '}')
-                {
-                    depth--;
-                    if (depth == 0)
-                        return source.Substring(start, i - start + 1);
-                }
-            }
-
-            return source.Substring(start);
-        }
+            => PhaseValidationSourceHelpers.SourceMethod(source, methodName);
 
         private sealed class RecordingCommandRunner : IRos2BridgeCommandRunner
         {

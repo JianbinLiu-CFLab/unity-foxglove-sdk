@@ -35,15 +35,16 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 93: ROS2 Full Schema Payload Parity ===");
             _passed = 0;
+            var samples = BuildSamples();
 
             VerifySchemaSnapshot();
             VerifyGeneratedRegistrySurface();
-            VerifyAllSamplesSerialize();
+            VerifyAllSamplesSerialize(samples);
             VerifyFixedArrayValidation();
             VerifyPhase91Compatibility();
-            VerifyWebSocketAllSchemaSmoke();
-            VerifyMcapAllSchemaSmoke();
-            VerifyReplayPassThroughAllSchemaSmoke();
+            VerifyWebSocketAllSchemaSmoke(samples);
+            VerifyMcapAllSchemaSmoke(samples);
+            VerifyReplayPassThroughAllSchemaSmoke(samples);
             VerifyBoundary();
 
             Console.WriteLine($"Phase 93: {_passed} checks passed.");
@@ -144,15 +145,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "93B-9: Serialize throws on schema/CLR mismatch");
         }
 
-        private static void VerifyAllSamplesSerialize()
+        private static void VerifyAllSamplesSerialize(IReadOnlyList<Phase93Sample> samples)
         {
-            foreach (var entry in Ros2CdrSerializerRegistry.Entries)
+            for (var i = 0; i < samples.Count; i++)
             {
+                var entry = Ros2CdrSerializerRegistry.Entries[i];
+                var payload = samples[i].Payload;
                 var sample = entry.CreateSample();
                 Check(sample != null && entry.ClrType.IsInstanceOfType(sample),
                     "93C-1: sample CLR type matches " + entry.SchemaName);
 
-                var payload = entry.Serialize(sample);
                 Check(HasCdrHeader(payload) && payload.Length > 4,
                     "93C-2: sample payload has CDR header for " + entry.SchemaName);
 
@@ -190,9 +192,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "93E-2: Phase91 SceneUpdate compatibility builder remains available");
         }
 
-        private static void VerifyWebSocketAllSchemaSmoke()
+        private static void VerifyWebSocketAllSchemaSmoke(IReadOnlyList<Phase93Sample> samples)
         {
-            var samples = BuildSamples();
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
 
@@ -230,12 +231,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "93F-3: WebSocket publishes one binary frame per full-schema sample");
         }
 
-        private static void VerifyMcapAllSchemaSmoke()
+        private static void VerifyMcapAllSchemaSmoke(IReadOnlyList<Phase93Sample> samples)
         {
             var registry = new DefaultSchemaRegistry();
             Ros2MsgSchemasSetup.RegisterSchemas(registry);
             using var stream = new MemoryStream();
-            WriteAllSchemaMcap(stream, registry);
+            WriteAllSchemaMcap(stream, registry, samples);
             stream.Position = 0;
 
             using var indexed = new McapIndexedReader(stream, leaveOpen: true);
@@ -247,12 +248,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "93G-1: MCAP stores all 41 ros2msg schemas, CDR channels, and messages");
         }
 
-        private static void VerifyReplayPassThroughAllSchemaSmoke()
+        private static void VerifyReplayPassThroughAllSchemaSmoke(IReadOnlyList<Phase93Sample> samples)
         {
             var tempPath = Path.Combine(Path.GetTempPath(), "phase93_ros2_full_" + Guid.NewGuid().ToString("N") + ".mcap");
             try
             {
-                GenerateRos2FullSchemaMcap(tempPath);
+                var registry = new DefaultSchemaRegistry();
+                Ros2MsgSchemasSetup.RegisterSchemas(registry);
+                using (var stream = File.Create(tempPath))
+                {
+                    WriteAllSchemaMcap(stream, registry, samples);
+                }
+
                 var replayTransport = new Phase93FakeTransport();
                 using var runtime = new FoxgloveRuntime(replayTransport, new SystemClock(), new DefaultSchemaRegistry());
                 runtime.EnableReplay(tempPath);
@@ -297,11 +304,13 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static void WriteAllSchemaMcap(Stream stream, DefaultSchemaRegistry registry)
+            => WriteAllSchemaMcap(stream, registry, BuildSamples());
+
+        private static void WriteAllSchemaMcap(Stream stream, DefaultSchemaRegistry registry, IReadOnlyList<Phase93Sample> samples)
         {
             using var recorder = new McapRecorder(stream, leaveOpen: true);
             using var session = new FoxgloveSession("phase93-mcap", new Phase93FakeTransport(), schemaRegistry: registry);
             session.SetRecorder(recorder);
-            var samples = BuildSamples();
             for (var i = 0; i < samples.Count; i++)
             {
                 var channelId = (uint)(i + 1);

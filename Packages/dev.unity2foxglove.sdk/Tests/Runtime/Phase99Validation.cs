@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase99Validation
     {
         public const int ReportSchemaVersion = 1;
+        private static readonly Lazy<string> PackageVersion = new Lazy<string>(ReadPackageVersionCore);
 
         private static readonly string[] PhaseCommands =
         {
@@ -429,6 +430,9 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadPackageVersion()
+            => PackageVersion.Value;
+
+        private static string ReadPackageVersionCore()
         {
             var packageJson = JObject.Parse(ReadRepoText("Packages/dev.unity2foxglove.sdk/package.json"));
             var version = packageJson["version"]?.ToString();

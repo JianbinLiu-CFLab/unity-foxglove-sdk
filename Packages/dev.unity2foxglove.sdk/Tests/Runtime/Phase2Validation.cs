@@ -225,11 +225,11 @@ namespace Unity.FoxgloveSDK.Tests
             public void BroadcastText(string json) => BroadcastTexts.Add(json);
             public void BroadcastBinary(byte[] data) { }
 
-            public List<string> SentTexts(uint clientId) =>
-                _sentTexts.TryGetValue(clientId, out var list) ? list : new List<string>();
+            public IReadOnlyList<string> SentTexts(uint clientId) =>
+                _sentTexts.TryGetValue(clientId, out var list) ? list : Array.Empty<string>();
 
-            public List<byte[]> SentBinaries(uint clientId) =>
-                _sentBinaries.TryGetValue(clientId, out var list) ? list : new List<byte[]>();
+            public IReadOnlyList<byte[]> SentBinaries(uint clientId) =>
+                _sentBinaries.TryGetValue(clientId, out var list) ? list : Array.Empty<byte[]>();
 
             public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void SimulateDisconnect(uint clientId) => OnClientDisconnected?.Invoke(clientId);
@@ -697,11 +697,9 @@ namespace Unity.FoxgloveSDK.Tests
                 Assert(r3.MessageType == WebSocketMessageType.Binary, "Integration: received binary MessageData");
 
                 // Decode frame: opcode(1) + subscriptionId(4 LE) + logTime(8 LE) + payload
-                var frame = new byte[r3.Count];
-                Array.Copy(buf, 0, frame, 0, r3.Count);
-                var subId = BitConverter.ToUInt32(frame, 1);
+                var subId = BitConverter.ToUInt32(buf, 1);
                 AssertEqual(100u, subId, "Integration: subscriptionId=100 in binary frame");
-                var payloadText = Encoding.UTF8.GetString(frame, 13, frame.Length - 13);
+                var payloadText = Encoding.UTF8.GetString(buf, 13, r3.Count - 13);
                 Assert(payloadText == "{\"x\":1}", "Integration: payload roundtrips");
 
                 // Send unsubscribe

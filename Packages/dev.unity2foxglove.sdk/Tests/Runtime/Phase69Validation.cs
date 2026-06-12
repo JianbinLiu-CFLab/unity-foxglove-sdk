@@ -25,36 +25,34 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 69: MCAP Inspector Preflight ===");
             _passed = 0;
+            var sources = Phase69Sources.Load();
 
-            VerifyReplayInspectorExposesPreflightActions();
-            VerifyPreflightUsesIndexedReaderSurface();
-            VerifyLatestRecordingPickerUsesRecordingsDirectory();
-            VerifyPreflightDrawerIsSeparateModule();
+            VerifyReplayInspectorExposesPreflightActions(sources);
+            VerifyPreflightUsesIndexedReaderSurface(sources.DrawerSource);
+            VerifyLatestRecordingPickerUsesRecordingsDirectory(sources.DrawerSource);
+            VerifyPreflightDrawerIsSeparateModule(sources);
 
             Console.WriteLine($"Phase 69: {_passed} checks passed.");
         }
 
-        private static void VerifyReplayInspectorExposesPreflightActions()
+        private static void VerifyReplayInspectorExposesPreflightActions(Phase69Sources sources)
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
-            var drawerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
-            Check(managerSource.Contains("_mcapReplayPreflight.Draw(serializedObject, target, replayPath)"),
+            Check(sources.ManagerSource.Contains("_mcapReplayPreflight.Draw(serializedObject, target, replayPath)"),
                 "69A-1: replay Inspector delegates to MCAP preflight drawer");
-            Check(drawerSource.Contains("Analyze Replay File"),
+            Check(sources.DrawerSource.Contains("Analyze Replay File"),
                 "69A-2: replay Inspector exposes Analyze Replay File action");
-            Check(drawerSource.Contains("Use Latest Recording"),
+            Check(sources.DrawerSource.Contains("Use Latest Recording"),
                 "69A-3: replay Inspector exposes Use Latest Recording action");
-            Check(drawerSource.Contains("MCAP Indexed Reader Summary"),
+            Check(sources.DrawerSource.Contains("MCAP Indexed Reader Summary"),
                 "69A-4: replay Inspector renders indexed summary label");
-            Check(drawerSource.Contains("Copy Topics"),
+            Check(sources.DrawerSource.Contains("Copy Topics"),
                 "69A-5: replay Inspector exposes Copy Topics action");
-            Check(drawerSource.Contains("EditorGUILayout.Foldout(_mcapTopicsExpanded"),
+            Check(sources.DrawerSource.Contains("EditorGUILayout.Foldout(_mcapTopicsExpanded"),
                 "69A-6: replay Inspector exposes a collapsible topic list");
         }
 
-        private static void VerifyPreflightUsesIndexedReaderSurface()
+        private static void VerifyPreflightUsesIndexedReaderSurface(string source)
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
             Check(source.Contains("using Unity.FoxgloveSDK.IO;"),
                 "69B-1: editor references runtime MCAP IO namespace");
             Check(source.Contains("McapIndexedReader.OpenRead"),
@@ -75,9 +73,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "69B-9: Copy Topics writes the analyzed topic list to clipboard");
         }
 
-        private static void VerifyLatestRecordingPickerUsesRecordingsDirectory()
+        private static void VerifyLatestRecordingPickerUsesRecordingsDirectory(string source)
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
             Check(source.Contains("FindLatestReadableRecording"),
                 "69C-1: Inspector has latest readable recording helper");
             Check(source.Contains("Path.Combine(GetDefaultDir(), \"Recordings\")"),
@@ -90,16 +87,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "69C-5: Use Latest Recording writes a project-relative replay path");
         }
 
-        private static void VerifyPreflightDrawerIsSeparateModule()
+        private static void VerifyPreflightDrawerIsSeparateModule(Phase69Sources sources)
         {
-            var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
-            var drawerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
-            Check(drawerSource.Contains("internal sealed class McapReplayPreflightDrawer"),
+            Check(sources.DrawerSource.Contains("internal sealed class McapReplayPreflightDrawer"),
                 "69D-1: MCAP replay preflight lives in a separate Editor module");
-            Check(managerSource.Contains("_mcapReplayPreflight.Draw(serializedObject, target, replayPath)"),
+            Check(sources.ManagerSource.Contains("_mcapReplayPreflight.Draw(serializedObject, target, replayPath)"),
                 "69D-2: FoxgloveManagerEditor delegates replay preflight drawing");
-            Check(!managerSource.Contains("private void AnalyzeReplayMcap")
-                  && !managerSource.Contains("private static bool FindLatestReadableRecording"),
+            Check(!sources.ManagerSource.Contains("private void AnalyzeReplayMcap")
+                  && !sources.ManagerSource.Contains("private static bool FindLatestReadableRecording"),
                 "69D-3: FoxgloveManagerEditor does not own preflight IO implementation");
         }
 
@@ -119,6 +114,23 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private sealed class Phase69Sources
+        {
+            public string ManagerSource { get; }
+            public string DrawerSource { get; }
+
+            private Phase69Sources(string managerSource, string drawerSource)
+            {
+                ManagerSource = managerSource;
+                DrawerSource = drawerSource;
+            }
+
+            public static Phase69Sources Load()
+                => new Phase69Sources(
+                    ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs"),
+                    ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs"));
         }
 
         private static string FindRepoRoot()

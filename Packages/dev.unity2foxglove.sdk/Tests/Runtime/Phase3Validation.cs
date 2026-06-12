@@ -132,8 +132,8 @@ namespace Unity.FoxgloveSDK.Tests
             public void SendBinary(uint clientId, byte[] data) { if (!_sentBinaries.ContainsKey(clientId)) _sentBinaries[clientId] = new(); _sentBinaries[clientId].Add(data); }
             public void BroadcastText(string json) => BroadcastTexts.Add(json);
             public void BroadcastBinary(byte[] data) { }
-            public List<string> SentTexts(uint clientId) => _sentTexts.TryGetValue(clientId, out var l) ? l : new();
-            public List<byte[]> SentBinaries(uint clientId) => _sentBinaries.TryGetValue(clientId, out var l) ? l : new();
+            public IReadOnlyList<string> SentTexts(uint clientId) => _sentTexts.TryGetValue(clientId, out var l) ? l : Array.Empty<string>();
+            public IReadOnlyList<byte[]> SentBinaries(uint clientId) => _sentBinaries.TryGetValue(clientId, out var l) ? l : Array.Empty<byte[]>();
             public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         }

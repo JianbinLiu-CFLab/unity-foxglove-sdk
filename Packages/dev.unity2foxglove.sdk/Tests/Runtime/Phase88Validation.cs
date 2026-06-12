@@ -5,6 +5,7 @@
 // Purpose: Phase 88 validation for Draco CompressedPointCloud evidence tooling.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -130,8 +131,12 @@ namespace Unity.FoxgloveSDK.Tests
             if (root == null)
                 throw new InvalidOperationException("Could not find repository root.");
 
-            var forbiddenBinaryExtensions = new[] { ".exe", ".lib", ".a", ".so", ".dylib" };
-            var forbiddenSourceExtensions = new[] { ".h", ".hpp", ".cc", ".cpp", ".c" };
+            var forbiddenBinaryExtensions = new HashSet<string>(
+                new[] { ".exe", ".lib", ".a", ".so", ".dylib" },
+                StringComparer.OrdinalIgnoreCase);
+            var forbiddenSourceExtensions = new HashSet<string>(
+                new[] { ".h", ".hpp", ".cc", ".cpp", ".c" },
+                StringComparer.OrdinalIgnoreCase);
             var checkedRoots = new[]
             {
                 Path.Combine(root, "Packages"),
@@ -145,8 +150,8 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(path => !path.EndsWith(
                     Path.Combine("Runtime", "Plugins", "Windows", "x86_64", "Unity2FoxgloveDracoNative.dll"),
                     StringComparison.OrdinalIgnoreCase))
-                .Where(path => forbiddenBinaryExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
-                               || forbiddenSourceExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                .Where(path => forbiddenBinaryExtensions.Contains(Path.GetExtension(path))
+                               || forbiddenSourceExtensions.Contains(Path.GetExtension(path)))
                 .ToArray();
 
             Check(forbidden.Length == 0,

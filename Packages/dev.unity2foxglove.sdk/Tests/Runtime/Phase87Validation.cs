@@ -5,6 +5,7 @@
 // Purpose: Phase 87 validation for CompressedPointCloud / Draco spike scaffolding.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -174,7 +175,9 @@ namespace Unity.FoxgloveSDK.Tests
             if (root == null)
                 throw new InvalidOperationException("Could not find repository root.");
 
-            var forbiddenExtensions = new[] { ".dll", ".exe", ".lib", ".a", ".so", ".dylib" };
+            var forbiddenExtensions = new HashSet<string>(
+                new[] { ".dll", ".exe", ".lib", ".a", ".so", ".dylib" },
+                StringComparer.OrdinalIgnoreCase);
             var checkedRoots = new[]
             {
                 Path.Combine(root, "Packages"),
@@ -188,7 +191,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(path => !path.EndsWith(
                     Path.Combine("Runtime", "Plugins", "Windows", "x86_64", "Unity2FoxgloveDracoNative.dll"),
                     StringComparison.OrdinalIgnoreCase))
-                .Where(path => forbiddenExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                .Where(path => forbiddenExtensions.Contains(Path.GetExtension(path)))
                 .ToArray();
 
             Check(forbidden.Length == 0,
@@ -196,11 +199,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static Type FindType(string fullName)
-        {
-            return AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType(fullName, throwOnError: false))
-                .FirstOrDefault(type => type != null);
-        }
+            => PhaseValidationReflectionHelpers.FindType(fullName);
 
         private static void Check(bool condition, string name)
         {
