@@ -4,6 +4,8 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Point-cloud output mode and profile metadata for point-cloud publishers.
 
+using Unity.FoxgloveSDK.Schemas.Ros2Msg;
+
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
@@ -32,6 +34,7 @@ namespace Unity.FoxgloveSDK.Components
             string displayName,
             string defaultTopic,
             string schemaName,
+            string ros2SchemaName,
             bool supportsJson,
             bool supportsProtobuf)
         {
@@ -39,6 +42,7 @@ namespace Unity.FoxgloveSDK.Components
             DisplayName = displayName ?? "";
             DefaultTopic = defaultTopic ?? "";
             SchemaName = schemaName ?? "";
+            Ros2SchemaName = ros2SchemaName ?? "";
             SupportsJson = supportsJson;
             SupportsProtobuf = supportsProtobuf;
         }
@@ -51,6 +55,8 @@ namespace Unity.FoxgloveSDK.Components
         public string DefaultTopic { get; }
         /// <summary>Schema advertised for the selected profile.</summary>
         public string SchemaName { get; }
+        /// <summary>ROS2 schema advertised for the selected profile.</summary>
+        public string Ros2SchemaName { get; }
         /// <summary>Whether JSON publishing is supported for the selected profile.</summary>
         public bool SupportsJson { get; }
         /// <summary>Whether protobuf publishing is supported for the selected profile.</summary>
@@ -69,6 +75,7 @@ namespace Unity.FoxgloveSDK.Components
                         "Draco",
                         PointCloudOutputModeDefaults.DracoTopic,
                         PointCloudOutputModeDefaults.DracoSchema,
+                        Ros2PublisherSchemaNames.CompressedPointCloud,
                         supportsJson: false,
                         supportsProtobuf: true);
 
@@ -78,6 +85,7 @@ namespace Unity.FoxgloveSDK.Components
                         "PointCloud2 Native",
                         PointCloudOutputModeDefaults.PointCloud2NativeTopic,
                         PointCloudOutputModeDefaults.PointCloud2NativeSchema,
+                        Ros2PublisherSchemaNames.SensorPointCloud2,
                         supportsJson: false,
                         supportsProtobuf: false);
 
@@ -88,6 +96,7 @@ namespace Unity.FoxgloveSDK.Components
                         "Raw",
                         PointCloudOutputModeDefaults.RawTopic,
                         PointCloudOutputModeDefaults.RawSchema,
+                        Ros2PublisherSchemaNames.PointCloud,
                         supportsJson: true,
                         supportsProtobuf: true);
             }
