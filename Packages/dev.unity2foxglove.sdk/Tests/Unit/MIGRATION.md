@@ -25,6 +25,11 @@ subset migrated (remainder noted).
 | Phase7 | Protocol | `Protocol/ServiceAndCapabilityTests` | partial | Pure-logic migrated (capabilities, logger, service registry/call, param subscription, time-frame). Real-server `TestStopStartPreservesParameters` + `TestHandlerDelegateSuccessAndFailure` (bind fixed ports 18795/18796) stay in console. |
 | Phase6 | Protocol | `Protocol/ParameterAndServiceTests` | full | All checks are fake-transport pure logic (capabilities, parameter store/subscriptions, service advertise, binary codec, call timeout/sweep). |
 | Phase140_83 | Harness | `Harness/R2fuGuardHelperOptimizationTests` | full | Source-shape checks migrated to Roslyn/xUnit; console checks retained until Phase 4. |
+| Phase140_89 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_90 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_91 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_92 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_94 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_95 | Harness | `Harness/RemoteTimelineOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_96 | Harness | `Harness/ConformancePerformanceOptimizationTests` | full | Source-shape and hygiene-scope checks migrated to Roslyn/xUnit; console checks retained until Phase 4. |
 
