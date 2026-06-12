@@ -244,8 +244,9 @@ namespace Unity.FoxgloveSDK.Tests
                 if (!allowed)
                     continue;
 
-                sb.AppendLine(File.ReadAllText(file));
-                bytes += File.ReadAllText(file).Length;
+                var content = File.ReadAllText(file);
+                sb.AppendLine(content);
+                bytes += content.Length;
                 if (bytes > 8_000_000)
                     throw new InvalidOperationException("Phase138S validation reading too much source in single pass.");
             }

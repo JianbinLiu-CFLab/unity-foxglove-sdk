@@ -108,9 +108,9 @@ namespace Unity.FoxgloveSDK.Tests
                     {
                         if (!gen1.TryGetRay(c, r, out var dir, out _))
                             continue;
-                        var mag = dir.Length();
-                        if (float.IsNaN(mag) || float.IsInfinity(mag)
-                            || mag < 0.9999f || mag > 1.0001f)
+                        var magSq = dir.LengthSquared();
+                        if (float.IsNaN(magSq) || float.IsInfinity(magSq)
+                            || magSq < 0.9998f || magSq > 1.0002f)
                         {
                             allValid = false;
                         }

@@ -465,7 +465,9 @@ namespace Unity.FoxgloveSDK.Tests
             var ctor = type.GetConstructor(new[] { typeof(int) });
             Check(ctor != null, label + " constructor exists");
             var packetizer = ctor.Invoke(new object[] { 16 });
-            type.GetMethod("Append")?.Invoke(packetizer, new object[] { oversizedStream });
+            var append = type.GetMethod("Append", new[] { typeof(byte[]) });
+            Check(append != null, label + " byte-array Append overload exists");
+            append.Invoke(packetizer, new object[] { oversizedStream });
 
             var dropped = Convert.ToInt64(type.GetProperty("DroppedAccessUnits")?.GetValue(packetizer) ?? 0L);
             var lastError = Convert.ToString(type.GetProperty("LastError")?.GetValue(packetizer) ?? "");
@@ -474,6 +476,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool TrackedSourceHasUtf8Bom()
         {
+            Span<byte> header = stackalloc byte[3];
             foreach (var root in new[] { "Packages", "Scripts", "Unity2Foxglove/Assets/Samples" })
             {
                 if (!Directory.Exists(root))
@@ -489,9 +492,12 @@ namespace Unity.FoxgloveSDK.Tests
                         continue;
                     }
 
-                    var bytes = File.ReadAllBytes(path);
-                    if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    if (stream.Read(header) == header.Length
+                        && header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)
+                    {
                         return true;
+                    }
                 }
             }
 
@@ -711,10 +717,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadCameraPublisherSources()
         {
             const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
-            var output = "";
+            var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
-                output += File.ReadAllText(file) + "\n";
-            return output;
+                output.AppendLine(File.ReadAllText(file));
+            return output.ToString();
         }
 
         private static void Check(bool condition, string label)

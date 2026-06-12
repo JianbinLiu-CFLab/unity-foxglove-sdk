@@ -5,6 +5,7 @@
 // Purpose: Phase 138J validation for async JPEG camera budget and payload rules.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -17,6 +18,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138JValidation
     {
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
+
         private static int _passed;
 
         /// <summary>
@@ -286,7 +289,15 @@ namespace Unity.FoxgloveSDK.Tests
         /// <summary>
         /// Reads a file as plain text for source-level assertions.
         /// </summary>
-        private static string Read(string path) => File.ReadAllText(path);
+        private static string Read(string path)
+        {
+            if (SourceCache.TryGetValue(path, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(path);
+            SourceCache[path] = text;
+            return text;
+        }
 
         /// <summary>
         /// Increments pass count when condition is true, otherwise throws.

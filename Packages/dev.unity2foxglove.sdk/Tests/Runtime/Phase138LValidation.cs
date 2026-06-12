@@ -376,11 +376,19 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool HasField(PointFieldRecord[] fields, string name, uint offset, byte datatype)
         {
-            return fields.Any(field =>
-                field.Name == name
-                && field.Offset == offset
-                && field.Datatype == datatype
-                && field.Count == 1U);
+            for (var i = 0; i < fields.Length; i++)
+            {
+                var field = fields[i];
+                if (field.Name == name
+                    && field.Offset == offset
+                    && field.Datatype == datatype
+                    && field.Count == 1U)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string Read(string path) => File.ReadAllText(path);
