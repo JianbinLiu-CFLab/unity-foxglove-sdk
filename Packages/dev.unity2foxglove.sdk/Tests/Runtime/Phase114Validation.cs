@@ -34,7 +34,10 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ManagerRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string ManagerServerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
         private const string ManagerSetupPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs";
+        private static readonly Lazy<FoxRunCanonicalManifest> FixtureManifestCache =
+            new Lazy<FoxRunCanonicalManifest>(CreateFixtureManifest);
         private static int _passed;
+        private static string _repoRoot;
 
         /// <summary>
         /// Validation method for Validate.
@@ -390,7 +393,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static FoxRunSchemaManifestInfo MismatchedRuntimeInfo()
             => ToRuntimeInfo(FixtureManifest(), MismatchedHash);
 
-        private static FoxRunCanonicalManifest FixtureManifest()
+        private static FoxRunCanonicalManifest FixtureManifest() => FixtureManifestCache.Value;
+
+        private static FoxRunCanonicalManifest CreateFixtureManifest()
         {
             return FoxRunManifestBuilder.Build(new[]
             {
@@ -463,10 +468,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
+            if (_repoRoot != null)
+                return _repoRoot;
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for Phase114 validation.");
-            return root;
+            _repoRoot = root;
+            return _repoRoot;
         }
 
         private static void TryDelete(string path)

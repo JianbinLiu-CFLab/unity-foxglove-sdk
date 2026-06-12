@@ -25,7 +25,10 @@ namespace Unity.FoxgloveSDK.Tests
         private const string MismatchedHash = "2222222222222222222222222222222222222222222222222222222222222222";
         private const string CurrentFoxRunHash = "3333333333333333333333333333333333333333333333333333333333333333";
         private const string MismatchedFoxRunHash = "4444444444444444444444444444444444444444444444444444444444444444";
+        private static readonly Dictionary<string, MethodInfo> MethodCache = new Dictionary<string, MethodInfo>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, MemberInfo> MemberCache = new Dictionary<string, MemberInfo>(StringComparer.Ordinal);
         private static int _passed;
+        private static string _repoRoot;
 
         /// <summary>
         /// Validation method for Validate.
@@ -313,14 +316,37 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static object Invoke(object target, string method, params object[] args)
         {
-            var candidates = target.GetType()
-                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Where(candidate => candidate.Name == method && candidate.GetParameters().Length == args.Length)
-                .ToList();
-            var methodInfo = candidates.SingleOrDefault(candidate => ParametersAssignable(candidate.GetParameters(), args));
+            var type = target.GetType();
+            var cacheKey = MethodKey(type, method, args);
+            if (!MethodCache.TryGetValue(cacheKey, out var methodInfo))
+            {
+                methodInfo = type
+                    .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(candidate => candidate.Name == method && candidate.GetParameters().Length == args.Length)
+                    .SingleOrDefault(candidate => ParametersAssignable(candidate.GetParameters(), args));
+                if (methodInfo != null)
+                    MethodCache[cacheKey] = methodInfo;
+            }
+
             if (methodInfo == null)
-                throw new MissingMethodException(target.GetType().FullName, method + "(" + args.Length + " args)");
+                throw new MissingMethodException(type.FullName, method + "(" + args.Length + " args)");
             return methodInfo.Invoke(target, args);
+        }
+
+        private static string MethodKey(Type type, string method, object[] args)
+        {
+            var key = new StringBuilder(type.AssemblyQualifiedName)
+                .Append('|')
+                .Append(method)
+                .Append('|')
+                .Append(args.Length);
+            foreach (var arg in args)
+            {
+                key.Append('|');
+                key.Append(arg?.GetType().AssemblyQualifiedName ?? "<null>");
+            }
+
+            return key.ToString();
         }
 
         private static bool ParametersAssignable(ParameterInfo[] parameters, object[] args)
@@ -352,12 +378,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static object Member(object target, string name)
         {
             var type = target.GetType();
-            var field = type.GetField(name);
-            if (field != null)
-                return field.GetValue(target);
+            var cacheKey = type.AssemblyQualifiedName + "|" + name;
+            if (!MemberCache.TryGetValue(cacheKey, out var member))
+            {
+                member = (MemberInfo)type.GetField(name) ?? type.GetProperty(name);
+                if (member != null)
+                    MemberCache[cacheKey] = member;
+            }
 
-            var property = type.GetProperty(name);
-            if (property != null)
+            if (member is FieldInfo field)
+                return field.GetValue(target);
+            if (member is PropertyInfo property)
                 return property.GetValue(target);
 
             throw new MissingMemberException(type.FullName, name);
@@ -457,12 +488,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
+            if (_repoRoot != null)
+                return _repoRoot;
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
                 if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
                     || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
+                {
+                    _repoRoot = dir.FullName;
+                    return _repoRoot;
+                }
 
                 dir = dir.Parent;
             }

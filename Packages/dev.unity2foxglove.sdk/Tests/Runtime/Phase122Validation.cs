@@ -5,6 +5,7 @@
 // Purpose: Phase 122 validation for MCAP writer option parity.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,7 +18,10 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase122Validation
     {
+        private static readonly Dictionary<McapRecordReader.McapRecord[], Dictionary<byte, int>> OpcodeCountCache =
+            new Dictionary<McapRecordReader.McapRecord[], Dictionary<byte, int>>();
         private static int _passed;
+        private static string _repoRoot;
 
         /// <summary>
         /// Validation method for Validate.
@@ -29,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Console.WriteLine();
                 Console.WriteLine("=== Phase 122: MCAP Writer Options Parity ===");
                 _passed = 0;
+                OpcodeCountCache.Clear();
 
                 VerifyOptionSurface();
                 VerifyDefaultLayout();
@@ -242,8 +247,27 @@ namespace Unity.FoxgloveSDK.Tests
             return parsed.records.ToArray();
         }
 
+        private static Dictionary<byte, int> OpcodeCounts(McapRecordReader.McapRecord[] records)
+        {
+            if (OpcodeCountCache.TryGetValue(records, out var counts))
+                return counts;
+
+            counts = new Dictionary<byte, int>();
+            foreach (var record in records)
+            {
+                counts.TryGetValue(record.Opcode, out var count);
+                counts[record.Opcode] = count + 1;
+            }
+
+            OpcodeCountCache[records] = counts;
+            return counts;
+        }
+
         private static int Count(McapRecordReader.McapRecord[] records, byte opcode)
-            => records.Count(r => r.Opcode == opcode);
+        {
+            var counts = OpcodeCounts(records);
+            return counts.TryGetValue(opcode, out var count) ? count : 0;
+        }
 
         private static uint ReadDataEndCrc(McapRecordReader.McapRecord[] records)
         {
@@ -271,10 +295,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
+            if (_repoRoot != null)
+                return _repoRoot;
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
                 throw new InvalidOperationException("Could not find repository root.");
-            return root;
+            _repoRoot = root;
+            return _repoRoot;
         }
 
         private static void Check(bool condition, string name)
