@@ -62,11 +62,12 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 98: ROS2 Bridge Samples And Launch Kit ===");
             _passed = 0;
+            var allSchemaFrames = BuildAllSchemaFrames();
 
             VerifyPackageSample();
             VerifyDocsAndLayout();
             VerifyLaunchKit();
-            VerifyAllSchemaFrameGeneration();
+            VerifyAllSchemaFrameGeneration(allSchemaFrames);
             VerifyProductSampleFrameGeneration();
             VerifyLegacySampleAndReleaseChecks();
             VerifyCliWiring();
@@ -82,7 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
         /// <returns>The value produced by the validation helper.</returns>
         public static Phase98SendSummary SendAllSchemaSamples(string host, int port)
         {
-            var frames = BuildAllSchemaFrames().ToList();
+            var frames = BuildAllSchemaFrames();
             using var client = new Ros2BridgeTcpClient();
             client.Connect(host, port, timeoutMs: 5000);
 
@@ -164,7 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
             evidence.ProductTopics = SendProductFrames(client, productFrames).ToArray();
             evidence.OptionalDracoTopic = TrySendDracoTopic(client);
 
-            var allSchemaFrames = BuildAllSchemaFrames().ToList();
+            var allSchemaFrames = BuildAllSchemaFrames();
             var totalWireBytes = 0L;
             foreach (var frame in allSchemaFrames)
             {
@@ -328,9 +329,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "98C-8: sidecar README documents launch and topic verification commands");
         }
 
-        private static void VerifyAllSchemaFrameGeneration()
+        private static void VerifyAllSchemaFrameGeneration(IReadOnlyList<Ros2BridgeFrame> frames)
         {
-            var frames = BuildAllSchemaFrames().ToList();
             Check(frames.Count == 41, "98D-1: all-schema sender builds 41 frames");
             Check(frames.Select(f => f.SchemaName).Distinct(StringComparer.Ordinal).Count() == 41,
                 "98D-2: all-schema sender covers unique schemas");
@@ -399,7 +399,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "98G-5: Phase98 validation is included in test project");
         }
 
-        private static IEnumerable<Ros2BridgeFrame> BuildAllSchemaFrames()
+        private static List<Ros2BridgeFrame> BuildAllSchemaFrames()
         {
             return Ros2CdrSerializerRegistry.Entries.Select((entry, index) =>
             {
@@ -413,7 +413,7 @@ namespace Unity.FoxgloveSDK.Tests
                     (ulong)(index + 1),
                     payload,
                     Ros2BridgeQosProfile.ReliableDefault);
-            });
+            }).ToList();
         }
 
         private static IEnumerable<Ros2BridgeFrame> BuildRequiredProductFrames()

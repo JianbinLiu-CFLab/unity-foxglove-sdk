@@ -528,42 +528,13 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadCameraPublisherSources()
-        {
-            var root = FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root.");
-
-            var dir = Path.Combine(
-                root,
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Runtime",
-                "Schemas",
-                "Proto",
-                "Publishers");
-            if (!Directory.Exists(dir))
-                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
-
-            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
-            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
-        }
+            => PhaseValidationSourceHelpers.ReadCameraPublisherSources();
 
         private static string FindRepoRoot()
             => Phase16Validation.FindRepoRoot();
 
         private static Type FindType(string fullName)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var type = assembly.GetType(fullName, throwOnError: false);
-                if (type != null)
-                    return type;
-            }
-
-            return null;
-        }
+            => PhaseValidationReflectionHelpers.FindType(fullName);
 
         private static void Check(bool condition, string name)
         {

@@ -18,6 +18,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase16Validation
     {
+        private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRootCore);
+
         /// <summary>
         /// Validation method for Validate.
         /// </summary>
@@ -562,6 +564,9 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         /// <returns>The value produced by the validation helper.</returns>
         internal static string FindRepoRoot()
+            => RepoRoot.Value;
+
+        private static string FindRepoRootCore()
         {
             var dir = AppDomain.CurrentDomain.BaseDirectory;
             while (dir != null)

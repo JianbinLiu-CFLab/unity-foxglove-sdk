@@ -301,29 +301,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static bool SourceMethodContains(string source, string methodName, string needle)
-        {
-            var idx = source.IndexOf(methodName, StringComparison.Ordinal);
-            if (idx < 0)
-                return false;
-            var braceStart = source.IndexOf('{', idx);
-            if (braceStart < 0)
-                return false;
-
-            var depth = 0;
-            for (var i = braceStart; i < source.Length; i++)
-            {
-                if (source[i] == '{')
-                    depth++;
-                else if (source[i] == '}')
-                {
-                    depth--;
-                    if (depth == 0)
-                        return source.Substring(idx, i - idx + 1).Contains(needle);
-                }
-            }
-
-            return source.Substring(idx).Contains(needle);
-        }
+            => PhaseValidationSourceHelpers.SourceMethodContains(source, methodName, needle);
 
         private static bool WaitUntil(Func<bool> condition, int timeoutMs)
         {
@@ -382,27 +360,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadCameraPublisherSources()
-        {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new InvalidOperationException("Could not find repository root.");
-
-            var dir = Path.Combine(
-                root,
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Runtime",
-                "Schemas",
-                "Proto",
-                "Publishers");
-            if (!Directory.Exists(dir))
-                throw new DirectoryNotFoundException("Camera publisher directory was not found.");
-
-            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
-            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
-        }
+            => PhaseValidationSourceHelpers.ReadCameraPublisherSources();
 
         private sealed class FakeSinkFactory
         {

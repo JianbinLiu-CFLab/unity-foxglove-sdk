@@ -5,6 +5,7 @@
 // Purpose: Phase 89 validation for Draco CompressedPointCloud productization.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -249,8 +250,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(File.Exists(plugin + ".meta"),
                 "89H-2: Windows Draco native plugin has Unity metadata");
 
-            var forbiddenBinaryExtensions = new[] { ".exe", ".lib", ".a", ".so", ".dylib" };
-            var forbiddenNativeSourceExtensions = new[] { ".h", ".hpp", ".cc", ".cpp", ".c" };
+            var forbiddenBinaryExtensions = new HashSet<string>(
+                new[] { ".exe", ".lib", ".a", ".so", ".dylib" },
+                StringComparer.OrdinalIgnoreCase);
+            var forbiddenNativeSourceExtensions = new HashSet<string>(
+                new[] { ".h", ".hpp", ".cc", ".cpp", ".c" },
+                StringComparer.OrdinalIgnoreCase);
             var checkedRoots = new[]
             {
                 Path.Combine(root, "Packages", "dev.unity2foxglove.sdk"),
@@ -261,8 +266,8 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(Directory.Exists)
                 .SelectMany(checkedRoot => Directory.EnumerateFiles(checkedRoot, "*", SearchOption.AllDirectories))
                 .Where(path => Path.GetFileName(path).IndexOf("draco", StringComparison.OrdinalIgnoreCase) >= 0)
-                .Where(path => forbiddenBinaryExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
-                               || forbiddenNativeSourceExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                .Where(path => forbiddenBinaryExtensions.Contains(Path.GetExtension(path))
+                               || forbiddenNativeSourceExtensions.Contains(Path.GetExtension(path)))
                 .ToArray();
 
             Check(forbidden.Length == 0,
@@ -291,15 +296,6 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static Type FindType(string fullName)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var type = assembly.GetType(fullName, throwOnError: false);
-                if (type != null)
-                    return type;
-            }
-
-            return null;
-        }
+            => PhaseValidationReflectionHelpers.FindType(fullName);
     }
 }
