@@ -24,6 +24,11 @@ subset migrated (remainder noted).
 | Phase36 | Transport | `Transport/TransportStatsSnapshotTests` | partial | Pure-logic 36A / 36B-1..6 migrated. Real-socket `TestDisconnectedClientDropsRetained` + `TestRuntimeAccessorLifecycle` stay in console (integration, handled later). |
 | Phase7 | Protocol | `Protocol/ServiceAndCapabilityTests` | partial | Pure-logic migrated (capabilities, logger, service registry/call, param subscription, time-frame). Real-server `TestStopStartPreservesParameters` + `TestHandlerDelegateSuccessAndFailure` (bind fixed ports 18795/18796) stay in console. |
 | Phase6 | Protocol | `Protocol/ParameterAndServiceTests` | full | All checks are fake-transport pure logic (capabilities, parameter store/subscriptions, service advertise, binary codec, call timeout/sweep). |
+| Phase140_21 | Harness | `Harness/LegacyPhaseOptimizationTests` | full | Source-shape and pure validator checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_22 | Harness | `Harness/LegacyPhaseOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_23 | Harness | `Harness/LegacyPhaseOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_24 | Harness | `Harness/LegacyPhaseOptimizationTests` | full | Source-shape and manifest-format checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_27 | Harness | `Harness/LegacyPhaseOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_64 | Harness | `Harness/SensorRos2OptimizationTests` | full | Source-shape and pure behavior checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_65 | Harness | `Harness/SensorRos2OptimizationTests` | full | Source-shape and pure behavior checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_66 | Harness | `Harness/SensorRos2OptimizationTests` | full | Source-shape and pure behavior checks migrated to xUnit; console checks retained until Phase 4. |
