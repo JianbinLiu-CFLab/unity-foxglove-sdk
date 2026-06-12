@@ -15,6 +15,7 @@
 
    ```bash
    dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+   dotnet test Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
    ```
    
 4. Ensure the Source Generator project builds:
@@ -27,8 +28,10 @@ dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLog
 
 ## Testing
 
-- New features must include dotnet runtime tests (Phase validation pattern)
-- Tests are in `Packages/dev.unity2foxglove.sdk/Tests/Runtime/`
+- New pure behavior/unit checks should use xUnit in `Packages/dev.unity2foxglove.sdk/Tests/Unit/`
+- Source-shape and architecture checks should use Roslyn-backed xUnit tests when practical
+- Repository hygiene, true socket/integration, Unity, ROS2, and Foxglove Desktop checks stay in the runtime validation runner
+- Keep migrated checks mapped in `Packages/dev.unity2foxglove.sdk/Tests/Unit/MIGRATION.md`
 - Manual Unity Editor smoke tests are required for Unity-specific changes (Play Mode, IL2CPP build)
 
 ## License
