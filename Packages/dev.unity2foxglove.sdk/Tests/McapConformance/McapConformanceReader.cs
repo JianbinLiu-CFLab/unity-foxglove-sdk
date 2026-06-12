@@ -17,9 +17,10 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
     {
         public static List<SerializableMcapRecord> ReadStreamed(string filePath)
         {
+            var data = File.ReadAllBytes(filePath);
             McapStreamingReadResult streamingResult;
-            using (var file = File.OpenRead(filePath))
-            using (var nonSeekable = new NonSeekableReadStream(file))
+            using (var stream = new MemoryStream(data, writable: false))
+            using (var nonSeekable = new NonSeekableReadStream(stream))
             using (var streaming = new McapStreamingReader(nonSeekable, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests))
             {
                 streamingResult = streaming.Read(new McapReadOptions
@@ -30,7 +31,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 });
             }
 
-            var scanner = new Scanner(File.ReadAllBytes(filePath));
+            var scanner = new Scanner(data);
             var records = scanner.ReadStreamed();
             ValidateStreamingResult(streamingResult, records);
             return records;

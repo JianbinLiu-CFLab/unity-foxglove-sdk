@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Newtonsoft.Json;
 
 namespace Unity.FoxgloveSDK.Tests.McapConformance
@@ -30,13 +29,18 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
 
         public static SerializableMcapRecord Record(string type, params Field[] fields)
         {
+            Array.Sort(fields, (left, right) => string.Compare(left.Name, right.Name, StringComparison.Ordinal));
+            var sortedFields = new List<object[]>(fields.Length);
+            for (var i = 0; i < fields.Length; i++)
+            {
+                var field = fields[i];
+                sortedFields.Add(new object[] { field.Name, field.Value });
+            }
+
             return new SerializableMcapRecord
             {
                 Type = type,
-                Fields = fields
-                    .OrderBy(field => field.Name, StringComparer.Ordinal)
-                    .Select(field => new object[] { field.Name, field.Value })
-                    .ToList()
+                Fields = sortedFields
             };
         }
 
