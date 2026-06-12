@@ -301,6 +301,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(1, TestSources.Count(generate, "path.read_bytes()"));
             Assert.Contains("void WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", openh264, StringComparison.Ordinal);
             Assert.Contains("void WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", packageOpenh264, StringComparison.Ordinal);
+            AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(openh264);
+            AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(packageOpenh264);
             Assert.Contains("accessUnit.clear();", writeAccessUnit, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t> accessUnit;", writeAccessUnit, StringComparison.Ordinal);
             Assert.Contains("std::vector<uint8_t> accessUnit;", openh264Main, StringComparison.Ordinal);
@@ -322,6 +324,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Phase14081MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_81Validation.cs", "--phase140-81", "Phase140_81Validation.Validate");
+
+        private static void AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(string source)
+        {
+            var nomInMax = source.IndexOf("#define NOMINMAX", StringComparison.Ordinal);
+            var windows = source.IndexOf("#include <windows.h>", StringComparison.Ordinal);
+
+            Assert.True(nomInMax >= 0, "OpenH264 helper sources must define NOMINMAX before including windows.h.");
+            Assert.True(windows >= 0, "OpenH264 helper sources must include windows.h through the guarded Windows block.");
+            Assert.True(nomInMax < windows, "NOMINMAX must be defined before windows.h so std::numeric_limits<T>::min/max compile on MSVC.");
+        }
     }
 
     [Trait("Phase", "140-82")]

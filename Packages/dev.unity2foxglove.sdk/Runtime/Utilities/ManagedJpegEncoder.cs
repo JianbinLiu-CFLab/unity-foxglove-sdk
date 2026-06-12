@@ -5,6 +5,7 @@
 // Purpose: Unity-free JPEG encoder wrapper for async camera publishing.
 
 using System;
+using System.Buffers;
 using System.IO;
 using StbImageWriteSharp;
 
@@ -37,17 +38,33 @@ namespace Unity.FoxgloveSDK.Util
             if (rgb24.Length < expectedBytes)
                 throw new ArgumentException("RGB24 buffer is smaller than width * height * 3.", nameof(rgb24));
 
-            var source = flipVertical ? FlipRgb24Rows(rgb24, width, height) : rgb24;
+            byte[] rentedFlipBuffer = null;
+            var source = rgb24;
+            if (flipVertical)
+            {
+                rentedFlipBuffer = ArrayPool<byte>.Shared.Rent(expectedBytes);
+                FlipRgb24Rows(rgb24, rentedFlipBuffer, width, height);
+                source = rentedFlipBuffer;
+            }
+
             using var stream = new MemoryStream(Math.Max(1024, expectedBytes / 8));
-            var writer = new ImageWriter();
-            writer.WriteJpg(
-                source,
-                width,
-                height,
-                ColorComponents.RedGreenBlue,
-                stream,
-                ClampQuality(quality));
-            return stream.ToArray();
+            try
+            {
+                var writer = new ImageWriter();
+                writer.WriteJpg(
+                    source,
+                    width,
+                    height,
+                    ColorComponents.RedGreenBlue,
+                    stream,
+                    ClampQuality(quality));
+                return stream.ToArray();
+            }
+            finally
+            {
+                if (rentedFlipBuffer != null)
+                    ArrayPool<byte>.Shared.Return(rentedFlipBuffer);
+            }
         }
 
         /// <summary>
@@ -57,24 +74,20 @@ namespace Unity.FoxgloveSDK.Util
             => quality < 1 ? 1 : quality > 100 ? 100 : quality;
 
         /// <summary>
-        /// Returns a copy of the RGB24 buffer with row order reversed.
+        /// Writes the RGB24 buffer with row order reversed into the destination buffer.
         /// </summary>
-        private static byte[] FlipRgb24Rows(byte[] source, int width, int height)
+        private static void FlipRgb24Rows(byte[] source, byte[] destination, int width, int height)
         {
             var stride = checked(width * 3);
-            var expectedBytes = checked(stride * height);
-            var flipped = new byte[expectedBytes];
             for (var y = 0; y < height; y++)
             {
                 Buffer.BlockCopy(
                     source,
                     y * stride,
-                    flipped,
+                    destination,
                     (height - 1 - y) * stride,
                     stride);
             }
-
-            return flipped;
         }
     }
 }

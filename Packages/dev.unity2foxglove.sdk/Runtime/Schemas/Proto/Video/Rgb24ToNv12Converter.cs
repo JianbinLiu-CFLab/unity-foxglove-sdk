@@ -2,54 +2,52 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Schemas/Proto/Video
-// Purpose: Unity-free RGB24 to I420 conversion for OpenH264 camera video.
+// Purpose: Unity-free RGB24 to NV12 conversion for Media Foundation camera video.
 
 namespace Foxglove.Schemas.Video
 {
     /// <summary>
-    /// Converts packed RGB24 frames to planar I420/YUV420p.
+    /// Converts packed RGB24 frames to NV12/YUV420sp.
     /// </summary>
-    public static class Rgb24ToI420Converter
+    public static class Rgb24ToNv12Converter
     {
-        public static bool TryConvertRgb24ToI420(
+        public static bool TryConvertRgb24ToNv12(
             byte[] rgb24,
             int width,
             int height,
-            byte[] i420,
+            byte[] nv12,
             bool flipVertical,
             out string error)
         {
             error = "";
             if (width <= 0 || height <= 0 || (width % 2) != 0 || (height % 2) != 0)
             {
-                error = "RGB24-to-I420 conversion requires positive even dimensions.";
+                error = "RGB24-to-NV12 conversion requires positive even dimensions.";
                 return false;
             }
 
-            var rgbBytes = width * height * 3;
-            var i420Bytes = width * height * 3 / 2;
+            var rgbBytes = checked(width * height * 3);
+            var nv12Bytes = checked(width * height * 3 / 2);
             if (rgb24 == null || rgb24.Length != rgbBytes)
             {
                 error = "RGB24 input buffer length does not match width * height * 3.";
                 return false;
             }
 
-            if (i420 == null || i420.Length != i420Bytes)
+            if (nv12 == null || nv12.Length < nv12Bytes)
             {
-                error = "I420 output buffer length does not match width * height * 3 / 2.";
+                error = "NV12 output buffer length is smaller than width * height * 3 / 2.";
                 return false;
             }
 
-            var yOffset = 0;
-            var uOffset = width * height;
-            var vOffset = uOffset + (width * height / 4);
+            var yPlaneLength = checked(width * height);
+            var uvOffset = yPlaneLength;
 
-            // I420 stores one U and V sample for each 2x2 RGB block.
             for (var y = 0; y < height; y += 2)
             {
                 var rowBase0 = GetRgbRowBase(y, width, height, flipVertical);
                 var rowBase1 = GetRgbRowBase(y + 1, width, height, flipVertical);
-                var yRow0 = yOffset + y * width;
+                var yRow0 = y * width;
                 var yRow1 = yRow0 + width;
                 for (var x = 0; x < width; x += 2)
                 {
@@ -73,17 +71,22 @@ namespace Foxglove.Schemas.Video
                     var g11 = rgb24[rgbIndex11 + 1];
                     var b11 = rgb24[rgbIndex11 + 2];
 
-                    i420[yRow0 + x] = ComputeY(r00, g00, b00);
-                    i420[yRow0 + x + 1] = ComputeY(r01, g01, b01);
-                    i420[yRow1 + x] = ComputeY(r10, g10, b10);
-                    i420[yRow1 + x + 1] = ComputeY(r11, g11, b11);
+                    nv12[yRow0 + x] = ComputeY(r00, g00, b00);
+                    nv12[yRow0 + x + 1] = ComputeY(r01, g01, b01);
+                    nv12[yRow1 + x] = ComputeY(r10, g10, b10);
+                    nv12[yRow1 + x + 1] = ComputeY(r11, g11, b11);
 
-                    var rAvg = (r00 + r01 + r10 + r11) / 4;
-                    var gAvg = (g00 + g01 + g10 + g11) / 4;
-                    var bAvg = (b00 + b01 + b10 + b11) / 4;
-                    var chromaIndex = (y / 2) * (width / 2) + (x / 2);
-                    i420[uOffset + chromaIndex] = ComputeU(rAvg, gAvg, bAvg);
-                    i420[vOffset + chromaIndex] = ComputeV(rAvg, gAvg, bAvg);
+                    var u = ComputeU(r00, g00, b00)
+                        + ComputeU(r01, g01, b01)
+                        + ComputeU(r10, g10, b10)
+                        + ComputeU(r11, g11, b11);
+                    var v = ComputeV(r00, g00, b00)
+                        + ComputeV(r01, g01, b01)
+                        + ComputeV(r10, g10, b10)
+                        + ComputeV(r11, g11, b11);
+                    var uv = uvOffset + (y / 2) * width + x;
+                    nv12[uv] = ClampByte(u / 4);
+                    nv12[uv + 1] = ClampByte(v / 4);
                 }
             }
 
@@ -97,21 +100,15 @@ namespace Foxglove.Schemas.Video
         }
 
         private static byte ComputeY(int r, int g, int b)
-            => ClampToByte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
+            => ClampByte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
 
-        private static byte ComputeU(int r, int g, int b)
-            => ClampToByte(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+        private static int ComputeU(int r, int g, int b)
+            => ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
 
-        private static byte ComputeV(int r, int g, int b)
-            => ClampToByte(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+        private static int ComputeV(int r, int g, int b)
+            => ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
 
-        private static byte ClampToByte(int value)
-        {
-            if (value < 0)
-                return 0;
-            if (value > 255)
-                return 255;
-            return (byte)value;
-        }
+        private static byte ClampByte(int value)
+            => value < 0 ? (byte)0 : value > 255 ? (byte)255 : (byte)value;
     }
 }
