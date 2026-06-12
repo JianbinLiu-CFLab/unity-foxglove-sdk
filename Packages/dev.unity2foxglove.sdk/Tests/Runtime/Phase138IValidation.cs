@@ -5,6 +5,7 @@
 // Purpose: Phase 138I validation for full-fidelity OS-2-128 10Hz point-cloud throughput.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using Foxglove.Schemas.PointCloud;
@@ -18,6 +19,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138IValidation
     {
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
+
         private const int FullFidelityPointCount = 128 * 2048;
         private const string VirtualLidarRelativePath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs";
@@ -414,6 +417,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
                 throw new InvalidOperationException(
@@ -421,7 +427,9 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new InvalidOperationException($"Phase 138I cannot find expected file: {path}");
-            return File.ReadAllText(path);
+            var text = File.ReadAllText(path);
+            SourceCache[relativePath] = text;
+            return text;
         }
 
         private static void Check(bool condition, string label)

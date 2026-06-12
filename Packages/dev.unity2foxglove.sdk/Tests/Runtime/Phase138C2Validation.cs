@@ -19,6 +19,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138C2Validation
     {
+        private static readonly byte[] OkPayload = Encoding.UTF8.GetBytes("{\"ok\":true}");
+
         private static int _passed;
 
         /// <summary>
@@ -62,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }));
 
-            session.Publish(77, Encoding.UTF8.GetBytes("{\"ok\":true}"), 1);
+            session.Publish(77, OkPayload, 1);
             var frames = transport.BinariesFor(11);
             Check(frames.Count == 1,
                 "138C2-1: subscription id 0 is routed like any other id");
@@ -103,7 +105,7 @@ namespace Unity.FoxgloveSDK.Tests
             transport.Text(22, subscribe);
             transport.Text(22, subscribe);
 
-            session.Publish(78, Encoding.UTF8.GetBytes("{\"ok\":true}"), 2);
+            session.Publish(78, OkPayload, 2);
             Check(transport.BinariesFor(22).Count == 1,
                 "138C2-4: duplicate subscribe routes the publish exactly once");
         }
@@ -136,7 +138,7 @@ namespace Unity.FoxgloveSDK.Tests
                 SubscriptionIds = new List<uint> { 0 }
             }));
 
-            session.Publish(79, Encoding.UTF8.GetBytes("{\"ok\":true}"), 3);
+            session.Publish(79, OkPayload, 3);
             Check(transport.BinariesFor(33).Count == 0,
                 "138C2-5: unsubscribe (id 0) fully removes the subscriber");
         }

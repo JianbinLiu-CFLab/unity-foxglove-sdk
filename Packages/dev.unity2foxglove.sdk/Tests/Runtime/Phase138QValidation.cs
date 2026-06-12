@@ -5,7 +5,9 @@
 // Purpose: Phase 138Q architecture decomposition regression coverage.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -14,6 +16,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138QValidation
     {
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
+
         private static int _passed;
 
         /// <summary>Runs all Phase 138Q validation checks.</summary>
@@ -667,18 +671,29 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string Read(string relativePath)
         {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
             if (!File.Exists(relativePath))
                 throw new InvalidOperationException("Phase 138Q cannot find expected file: " + Path.GetFullPath(relativePath));
-            return File.ReadAllText(relativePath);
+            var text = File.ReadAllText(relativePath);
+            SourceCache[relativePath] = text;
+            return text;
         }
 
         private static string ReadCameraPublisherSources()
         {
             const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
-            var output = "";
+            const string cacheKey = "FoxgloveCameraPublisher*.cs";
+            if (SourceCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+            var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
-                output += File.ReadAllText(file) + "\n";
-            return output;
+                output.AppendLine(File.ReadAllText(file));
+            var text = output.ToString();
+            SourceCache[cacheKey] = text;
+            return text;
         }
 
         private static int IndexOf(string text, string pattern)

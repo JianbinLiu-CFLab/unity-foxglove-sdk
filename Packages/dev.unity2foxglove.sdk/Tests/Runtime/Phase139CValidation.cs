@@ -5,6 +5,7 @@
 // Purpose: Phase 139C validation for Remote Data Loader workflow documentation and smoke tooling.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -16,6 +17,9 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase139CValidation
     {
+        private static readonly string CachedRepoRoot = ResolveRepoRoot();
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
+
         private static int _passed;
 
         /// <summary>Runs all Phase 139C validation checks.</summary>
@@ -104,7 +108,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("Foxglove can load it and control replay time", StringComparison.OrdinalIgnoreCase)
                   && editor.Contains("Replay Auto Play is disabled", StringComparison.OrdinalIgnoreCase),
                 "139C-3C2: manager Inspector states Foxglove owns replay time in timeline replay mode");
-            Check(editor.Contains("DisabledScope(GetBool(\"_enableRemoteMcapFileServer\"))", StringComparison.Ordinal)
+            Check(editor.Contains("remoteFileServerEnabled = GetBool(\"_enableRemoteMcapFileServer\")", StringComparison.Ordinal)
+                  && editor.Contains("DisabledScope(remoteFileServerEnabled)", StringComparison.Ordinal)
                   && editor.Contains("Foxglove as Replay Timeline is on", StringComparison.Ordinal)
                   && editor.Contains("Replay Auto Play is unavailable", StringComparison.Ordinal),
                 "139C-3C4: manager Inspector disables Replay Auto Play while Foxglove owns the timeline");
@@ -141,12 +146,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "139C-4C: test project compiles Phase139CValidation");
         }
 
-        private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+        private static string Read(string relativePath)
+        {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(RepoPath(relativePath));
+            SourceCache[relativePath] = text;
+            return text;
+        }
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-        private static string RepoRoot()
+        private static string RepoRoot() => CachedRepoRoot;
+
+        private static string ResolveRepoRoot()
         {
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))

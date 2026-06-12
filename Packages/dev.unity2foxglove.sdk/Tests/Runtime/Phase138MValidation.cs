@@ -348,10 +348,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadCameraPublisherSources()
         {
             const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
-            var output = "";
+            var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
-                output += File.ReadAllText(file) + "\n";
-            return output;
+                output.AppendLine(File.ReadAllText(file));
+            return output.ToString();
         }
 
         private static void Check(bool condition, string label)
