@@ -24,6 +24,12 @@ subset migrated (remainder noted).
 | Phase36 | Transport | `Transport/TransportStatsSnapshotTests` | partial | Pure-logic 36A / 36B-1..6 migrated. Real-socket `TestDisconnectedClientDropsRetained` + `TestRuntimeAccessorLifecycle` stay in console (integration, handled later). |
 | Phase7 | Protocol | `Protocol/ServiceAndCapabilityTests` | partial | Pure-logic migrated (capabilities, logger, service registry/call, param subscription, time-frame). Real-server `TestStopStartPreservesParameters` + `TestHandlerDelegateSuccessAndFailure` (bind fixed ports 18795/18796) stay in console. |
 | Phase6 | Protocol | `Protocol/ParameterAndServiceTests` | full | All checks are fake-transport pure logic (capabilities, parameter store/subscriptions, service advertise, binary codec, call timeout/sweep). |
+| Phase140_68 | Harness | `Harness/GenerationEditorOptimizationTests` | full | Source-shape and pure API checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_69 | Harness | `Harness/GenerationEditorOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_70 | Harness | `Harness/GenerationEditorOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_71 | Harness | `Harness/GenerationEditorOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_72 | Harness | `Harness/GenerationEditorOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
+| Phase140_73 | Harness | `Harness/GenerationEditorOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_83 | Harness | `Harness/R2fuGuardHelperOptimizationTests` | full | Source-shape checks migrated to Roslyn/xUnit; console checks retained until Phase 4. |
 | Phase140_89 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
 | Phase140_90 | Harness | `Harness/RuntimeValidationOptimizationTests` | full | Source-shape checks migrated to xUnit; console checks retained until Phase 4. |
