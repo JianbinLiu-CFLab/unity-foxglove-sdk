@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
 
@@ -50,10 +51,19 @@ namespace Unity.FoxgloveSDK.Tests
         static ulong WriteRecord(Stream s, byte opcode, MemoryStream content)
         {
             s.WriteByte(opcode);
-            var data = content.ToArray();
-            McapWriter.WriteU64(s, (ulong)data.Length);
-            s.Write(data, 0, data.Length);
-            return 1UL + 8UL + (ulong)data.Length;
+            var length = (int)content.Length;
+            McapWriter.WriteU64(s, (ulong)length);
+            if (content.TryGetBuffer(out var segment))
+            {
+                s.Write(segment.Array, segment.Offset, length);
+            }
+            else
+            {
+                var data = content.ToArray();
+                s.Write(data, 0, data.Length);
+            }
+
+            return 1UL + 8UL + (ulong)length;
         }
 
         static MemoryStream BuildMinimalHeader(Stream ms)
@@ -94,11 +104,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var lz4Comp = McapCompression.Compress("lz4", raw);
             var lz4Result = McapCompression.Decompress("lz4", lz4Comp, raw.Length);
-            Assert(Encoding.UTF8.GetString(raw) == Encoding.UTF8.GetString(lz4Result), "LZ4 compress-decompress roundtrip");
+            Assert(raw.SequenceEqual(lz4Result), "LZ4 compress-decompress roundtrip");
 
             var zstdComp = McapCompression.Compress("zstd", raw);
             var zstdResult = McapCompression.Decompress("zstd", zstdComp, raw.Length);
-            Assert(Encoding.UTF8.GetString(raw) == Encoding.UTF8.GetString(zstdResult), "Zstd compress-decompress roundtrip");
+            Assert(raw.SequenceEqual(zstdResult), "Zstd compress-decompress roundtrip");
 
             // No compression currently returns the original buffer so callers can avoid a needless copy.
             var noneComp = McapCompression.Compress("", raw);

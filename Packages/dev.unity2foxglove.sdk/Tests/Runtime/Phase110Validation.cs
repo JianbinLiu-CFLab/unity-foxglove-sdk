@@ -36,8 +36,39 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
         private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
+        private static readonly string[] OptionalRuntimeForbiddenTokenList =
+        {
+            "UnityEngine",
+            "GameObject",
+            "using ROS2;",
+            "namespace ROS2",
+            "ROS2UnityComponent",
+            "ROS2Node",
+            "IPublisher<",
+            "ISubscription<",
+            "std_msgs",
+            "ros2cs"
+        };
+        private static readonly string[] CoreProductionForbiddenTokenList =
+        {
+            "using ROS2;",
+            "ROS2UnityComponent",
+            "ROS2Node",
+            "std_msgs.msg",
+            "Ros2ForUnity"
+        };
+        private static readonly string[] R2fuReferenceTokens =
+        {
+            "using ROS2;",
+            "ROS2UnityComponent",
+            "ROS2Node",
+            "IPublisher<",
+            "ISubscription<",
+            "std_msgs"
+        };
 
         private static int _passed;
+        private static string _repoRoot;
 
         /// <summary>
         /// Validation method for Validate.
@@ -203,7 +234,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .SelectMany(path =>
                 {
                     var text = File.ReadAllText(path);
-                    return OptionalRuntimeForbiddenTokens()
+                    return OptionalRuntimeForbiddenTokenList
                         .Where(token => text.Contains(token, StringComparison.Ordinal))
                         .Select(token => Rel(path) + " -> " + token);
                 })
@@ -229,7 +260,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .SelectMany(path =>
                 {
                     var text = File.ReadAllText(path);
-                    return CoreProductionForbiddenTokens()
+                    return CoreProductionForbiddenTokenList
                         .Where(token => text.Contains(token, StringComparison.Ordinal))
                         .Select(token => Rel(path) + " -> " + token);
                 })
@@ -374,48 +405,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-L2: test project compiles Phase110Validation");
         }
 
-        private static IEnumerable<string> OptionalRuntimeForbiddenTokens()
-        {
-            return new[]
-            {
-                "UnityEngine",
-                "GameObject",
-                "using ROS2;",
-                "namespace ROS2",
-                "ROS2UnityComponent",
-                "ROS2Node",
-                "IPublisher<",
-                "ISubscription<",
-                "std_msgs",
-                "ros2cs"
-            };
-        }
-
-        private static IEnumerable<string> CoreProductionForbiddenTokens()
-        {
-            return new[]
-            {
-                "using ROS2;",
-                "ROS2UnityComponent",
-                "ROS2Node",
-                "std_msgs.msg",
-                "Ros2ForUnity"
-            };
-        }
-
         private static bool AllR2fuReferencesAreGuarded(string text, out string error)
         {
-            var tokens = new[]
-            {
-                "using ROS2;",
-                "ROS2UnityComponent",
-                "ROS2Node",
-                "IPublisher<",
-                "ISubscription<",
-                "std_msgs"
-            };
-
-            return PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(text, Define, tokens, out error);
+            return PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(text, Define, R2fuReferenceTokens, out error);
         }
 
         private static string FirstGuardError(params string[] errors)
@@ -519,10 +511,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
+            if (_repoRoot != null)
+                return _repoRoot;
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for Phase110 validation.");
-            return root;
+            _repoRoot = root;
+            return _repoRoot;
         }
     }
 }

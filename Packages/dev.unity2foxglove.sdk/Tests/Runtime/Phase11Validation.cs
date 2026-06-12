@@ -139,10 +139,19 @@ namespace Unity.FoxgloveSDK.Tests
         static ulong WriteRecord(Stream s, byte opcode, MemoryStream content)
         {
             s.WriteByte(opcode);
-            var data = content.ToArray();
-            McapWriter.WriteU64(s, (ulong)data.Length);
-            s.Write(data, 0, data.Length);
-            return 1UL + 8UL + (ulong)data.Length;
+            var length = (int)content.Length;
+            McapWriter.WriteU64(s, (ulong)length);
+            if (content.TryGetBuffer(out var segment))
+            {
+                s.Write(segment.Array, segment.Offset, length);
+            }
+            else
+            {
+                var data = content.ToArray();
+                s.Write(data, 0, data.Length);
+            }
+
+            return 1UL + 8UL + (ulong)length;
         }
 
         static void WriteMcapMessage(Stream s, ushort ch, uint seq, ulong log, ulong pub, byte[] d)

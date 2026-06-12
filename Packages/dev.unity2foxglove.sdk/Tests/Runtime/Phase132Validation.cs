@@ -374,9 +374,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var coreHits = coreProductionRoots
                 .SelectMany(ExistingTextFilesOrSingleFile)
-                .SelectMany(path => CoreProductionForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return CoreProductionForbiddenTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Rel(path) + " -> " + token);
+                })
                 .ToList();
 
             Check(coreHits.Count == 0,
@@ -384,9 +388,13 @@ namespace Unity.FoxgloveSDK.Tests
                 + (coreHits.Count == 0 ? string.Empty : " (" + string.Join(", ", coreHits) + ")"));
 
             var optionalRuntimeHits = ExistingTextFilesOrSingleFile(OptionalPackage + "/Runtime")
-                .SelectMany(path => OptionalRuntimeForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return OptionalRuntimeForbiddenTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Rel(path) + " -> " + token);
+                })
                 .ToList();
 
             Check(optionalRuntimeHits.Count == 0,

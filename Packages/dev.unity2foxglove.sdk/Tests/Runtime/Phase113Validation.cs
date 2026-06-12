@@ -25,7 +25,10 @@ namespace Unity.FoxgloveSDK.Tests
         private const string CodeGeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs";
         private const string BuildPreprocessPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs";
         private const string PlayModeHookPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs";
+        private static readonly Lazy<FoxRunCanonicalManifest> FixtureManifestCache =
+            new Lazy<FoxRunCanonicalManifest>(CreateFixtureManifest);
         private static int _passed;
+        private static string _repoRoot;
 
         /// <summary>
         /// Validation method for Validate.
@@ -257,7 +260,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        private static FoxRunCanonicalManifest FixtureManifest()
+        private static FoxRunCanonicalManifest FixtureManifest() => FixtureManifestCache.Value;
+
+        private static FoxRunCanonicalManifest CreateFixtureManifest()
         {
             return FoxRunManifestBuilder.Build(new[]
             {
@@ -485,10 +490,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoRoot()
         {
+            if (_repoRoot != null)
+                return _repoRoot;
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for Phase113 validation.");
-            return root;
+            _repoRoot = root;
+            return _repoRoot;
         }
 
         private static void Check(bool condition, string message)

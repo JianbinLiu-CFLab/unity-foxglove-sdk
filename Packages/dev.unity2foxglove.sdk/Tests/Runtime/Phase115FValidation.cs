@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string FixtureRelativePath = "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Fixtures/FoxRunGenerationModelFixture.cs";
 
         private static int _passed;
+        private static readonly Lazy<MetadataReference[]> CachedReferences = new Lazy<MetadataReference[]>(CreateReferences);
 
         /// <summary>
         /// Validation method for Validate.
@@ -499,7 +500,9 @@ namespace Unity.FoxgloveSDK.Tests
                 .WithLanguageVersion(LanguageVersion.CSharp9)
                 .WithPreprocessorSymbols("FOXRUN_FIXTURE_EXTRA");
 
-        private static MetadataReference[] References()
+        private static MetadataReference[] References() => CachedReferences.Value;
+
+        private static MetadataReference[] CreateReferences()
         {
             var trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
             if (string.IsNullOrWhiteSpace(trustedPlatformAssemblies))

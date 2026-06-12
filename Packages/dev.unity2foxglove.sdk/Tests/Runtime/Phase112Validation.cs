@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -162,9 +163,9 @@ namespace Unity.FoxgloveSDK.Tests
                 var rewritten = File.ReadAllText(manifestPath);
                 Check(File.Exists(hashPath),
                     "112-D4a: manifest hash sidecar is written before content validation");
-                var hashText = File.ReadAllText(hashPath);
                 var hashBytes = File.ReadAllBytes(hashPath);
-                var expectedHashBytes = System.Text.Encoding.ASCII.GetBytes(empty.GlobalManifestHash + "\n");
+                var hashText = Encoding.ASCII.GetString(hashBytes);
+                var expectedHashBytes = Encoding.ASCII.GetBytes(empty.GlobalManifestHash + "\n");
                 Check(rewritten == emptyJson,
                     "112-D3: empty manifest generation overwrites stale non-empty content");
                 Check(hashText == empty.GlobalManifestHash + "\n"

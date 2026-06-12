@@ -306,9 +306,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var coreHits = coreProductionRoots
                 .SelectMany(ExistingTextFilesOrSingleFile)
-                .SelectMany(path => CoreProductionForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return CoreProductionForbiddenTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Rel(path) + " -> " + token);
+                })
                 .ToList();
 
             Check(coreHits.Count == 0,

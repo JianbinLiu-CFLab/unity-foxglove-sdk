@@ -262,13 +262,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ComputeSourceTreeSha256(string sourceRoot)
         {
             using var sha = SHA256.Create();
-            foreach (var path in Directory.GetFiles(sourceRoot, "*.msg", SearchOption.AllDirectories)
-                         .OrderBy(path => ToStableRelativePath(sourceRoot, path), StringComparer.Ordinal))
+            foreach (var file in Directory.GetFiles(sourceRoot, "*.msg", SearchOption.AllDirectories)
+                         .Select(path => new SourceFilePath(path, ToStableRelativePath(sourceRoot, path)))
+                         .OrderBy(file => file.RelativePath, StringComparer.Ordinal))
             {
-                var nameBytes = Encoding.UTF8.GetBytes(ToStableRelativePath(sourceRoot, path));
+                var nameBytes = Encoding.UTF8.GetBytes(file.RelativePath);
                 sha.TransformBlock(nameBytes, 0, nameBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
-                var fileBytes = File.ReadAllBytes(path);
+                var fileBytes = File.ReadAllBytes(file.Path);
                 sha.TransformBlock(fileBytes, 0, fileBytes.Length, null, 0);
                 sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
             }
@@ -280,6 +281,19 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var relative = Path.GetRelativePath(root, path);
             return relative.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
+        }
+
+        private readonly struct SourceFilePath
+        {
+            public SourceFilePath(string path, string relativePath)
+            {
+                Path = path;
+                RelativePath = relativePath;
+            }
+
+            public string Path { get; }
+
+            public string RelativePath { get; }
         }
 
         private sealed class Phase90FakeTransport : IFoxgloveTransport

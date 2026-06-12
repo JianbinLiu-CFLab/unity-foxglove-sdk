@@ -75,9 +75,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var offenders = productionRoots
                 .SelectMany(TextFiles)
-                .SelectMany(path => CoreForbiddenTokens()
-                    .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
-                    .Select(token => Rel(path) + " -> " + token))
+                .SelectMany(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return CoreForbiddenTokens()
+                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                        .Select(token => Rel(path) + " -> " + token);
+                })
                 .ToList();
 
             Check(offenders.Count == 0,

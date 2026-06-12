@@ -88,13 +88,14 @@ namespace Unity.FoxgloveSDK.Tests
                 return;
             }
 
-            var invalidFiles = Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories)
+            var editorFiles = Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories);
+            var invalidFiles = editorFiles
                 .Where(path => !HasTextExtension(path)
                                && !Path.GetExtension(path).Equals(".meta", StringComparison.OrdinalIgnoreCase))
                 .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
                 .ToList();
             var tokenHits = new List<string>();
-            foreach (var path in Directory.GetFiles(editorRoot, "*.*", SearchOption.AllDirectories).Where(HasTextExtension))
+            foreach (var path in editorFiles.Where(HasTextExtension))
             {
                 var text = File.ReadAllText(path);
                 tokenHits.AddRange(OptionalEditorForbiddenTokens()

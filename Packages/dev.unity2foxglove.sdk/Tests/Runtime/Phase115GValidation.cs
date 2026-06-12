@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase115GValidation
     {
         private static int _passed;
+        private static readonly Lazy<MetadataReference[]> CachedReferences = new Lazy<MetadataReference[]>(CreateReferences);
 
         /// <summary>
         /// Validation method for Validate.
@@ -314,15 +315,7 @@ namespace Unity.FoxgloveSDK.Tests
             var syntaxTree = CSharpSyntaxTree.ParseText(
                 source,
                 CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9));
-            var trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-            if (string.IsNullOrWhiteSpace(trustedPlatformAssemblies))
-                throw new InvalidOperationException("TRUSTED_PLATFORM_ASSEMBLIES host data is required for Phase115G Roslyn reference resolution.");
-
-            var references = trustedPlatformAssemblies
-                .Split(Path.PathSeparator)
-                .Select(path => MetadataReference.CreateFromFile(path))
-                .Concat(new[] { MetadataReference.CreateFromFile(typeof(FoxRunAttribute).Assembly.Location) })
-                .ToArray();
+            var references = CachedReferences.Value;
             var compilation = CSharpCompilation.Create(
                 assemblyName,
                 new[] { syntaxTree },
@@ -335,6 +328,19 @@ namespace Unity.FoxgloveSDK.Tests
             driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var driverDiagnostics);
             diagnostics = driverDiagnostics.ToArray();
             return driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources).ToArray();
+        }
+
+        private static MetadataReference[] CreateReferences()
+        {
+            var trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+            if (string.IsNullOrWhiteSpace(trustedPlatformAssemblies))
+                throw new InvalidOperationException("TRUSTED_PLATFORM_ASSEMBLIES host data is required for Phase115G Roslyn reference resolution.");
+
+            return trustedPlatformAssemblies
+                .Split(Path.PathSeparator)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .Concat(new[] { MetadataReference.CreateFromFile(typeof(FoxRunAttribute).Assembly.Location) })
+                .ToArray();
         }
 
         private static string EpsilonPolicyFixtureSource()

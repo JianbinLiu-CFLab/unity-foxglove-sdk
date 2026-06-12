@@ -41,7 +41,6 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyWriterPrimitives();
             VerifyPayloadValidation();
             VerifyMessageBuilders();
-            VerifyPointCloudSharedPacking();
             VerifyWebSocketAndMcap();
             VerifyBoundary();
 
@@ -177,13 +176,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMessageBuilders()
         {
+            var pointFrame = BuildPointCloudFrame();
             VerifyFrameTransformBuilder();
             VerifyCompressedImageBuilder();
             VerifyCameraCalibrationBuilder();
             VerifyLaserScanBuilder();
-            VerifyPointCloudBuilder();
-            VerifyCompressedPointCloudBuilder();
+            VerifyPointCloudBuilder(pointFrame);
+            VerifyCompressedPointCloudBuilder(pointFrame);
             VerifySceneUpdateBuilder();
+            VerifyPointCloudSharedPacking(pointFrame);
         }
 
         private static void VerifyFrameTransformBuilder()
@@ -258,9 +259,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "91D-6: LaserScan rejects mismatched intensities");
         }
 
-        private static void VerifyPointCloudBuilder()
+        private static void VerifyPointCloudBuilder(PointCloudFrame frame)
         {
-            var frame = BuildPointCloudFrame();
             var payload = Ros2CdrPointCloudBuilder.Serialize(frame);
             var reader = new Ros2CdrTestReader(payload);
             var time = ReadTime(reader);
@@ -281,9 +281,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "91D-8: PointCloud fields and packed bytes match shared packing");
         }
 
-        private static void VerifyCompressedPointCloudBuilder()
+        private static void VerifyCompressedPointCloudBuilder(PointCloudFrame frame)
         {
-            var frame = BuildPointCloudFrame();
             var payload = Ros2CdrCompressedPointCloudBuilder.Serialize(frame, new byte[] { 9, 8, 7 });
             var reader = new Ros2CdrTestReader(payload);
             ReadTime(reader);
@@ -360,9 +359,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "91D-12: SceneUpdate builder rejects unsupported primitive arrays when non-empty");
         }
 
-        private static void VerifyPointCloudSharedPacking()
+        private static void VerifyPointCloudSharedPacking(PointCloudFrame frame)
         {
-            var frame = BuildPointCloudFrame();
             var packed = PointCloudPackedDataBuilder.Build(frame);
             var legacy = PointCloudMessageBuilder.Build(frame);
             var reader = new Ros2CdrTestReader(Ros2CdrPointCloudBuilder.Serialize(frame));
