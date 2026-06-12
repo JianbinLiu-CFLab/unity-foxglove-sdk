@@ -5,6 +5,7 @@
 // Purpose: Phase 105 Phase100 cleanup and comment governance validation.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -19,6 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase105Validation
     {
         private static int _passed;
+        private static readonly Dictionary<string, string[]> SummaryLineCache = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
         /// <summary>
         /// Runs the Phase105 validation suite and throws when any cleanup,
@@ -29,6 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 105: Phase100 Cleanup Comment Governance ===");
             _passed = 0;
+            SummaryLineCache.Clear();
 
             VerifyScriptHeaders();
             VerifyDiagnosticsCommentTargets();
@@ -254,8 +257,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CheckSummaryBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
-            var text = ReadRepoText(relativePath);
-            var window = WindowBefore(text, declaration, 16, message);
+            var lines = ReadRepoLines(relativePath);
+            var window = WindowBefore(lines, declaration, 16, message);
             var ok = window.Contains("/// <summary>", StringComparison.Ordinal)
                      && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
             Check(ok, message);
@@ -263,23 +266,32 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CheckGroupCommentBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
-            var text = ReadRepoText(relativePath);
-            var window = WindowBefore(text, declaration, 10, message);
+            var lines = ReadRepoLines(relativePath);
+            var window = WindowBefore(lines, declaration, 10, message);
             var ok = (window.Contains("//", StringComparison.Ordinal) || window.Contains("///", StringComparison.Ordinal))
                      && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
             Check(ok, message);
         }
 
-        private static string WindowBefore(string text, string declaration, int lookbackLines, string checkMessage)
+        private static string WindowBefore(string[] lines, string declaration, int lookbackLines, string checkMessage)
         {
-            var normalized = text.Replace("\r\n", "\n");
-            var lines = normalized.Split('\n');
             var index = Array.FindIndex(lines, line => line.Contains(declaration, StringComparison.Ordinal));
             if (index < 0)
                 throw new InvalidOperationException(checkMessage + " (missing declaration: " + declaration + ")");
 
             var start = Math.Max(0, index - lookbackLines);
             return string.Join("\n", lines.Skip(start).Take(index - start));
+        }
+
+        private static string[] ReadRepoLines(string relativePath)
+        {
+            if (SummaryLineCache.TryGetValue(relativePath, out var lines))
+                return lines;
+
+            var text = ReadRepoText(relativePath);
+            lines = text.Replace("\r\n", "\n").Split('\n');
+            SummaryLineCache.Add(relativePath, lines);
+            return lines;
         }
 
         private static string ReadRepoText(string relativePath)

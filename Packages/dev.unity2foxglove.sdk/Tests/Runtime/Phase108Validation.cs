@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string OptionalPackageValidator = "Scripts/release/validate_ros2forunity_package.py";
 
         private static int _passed;
+        private static IReadOnlyList<string> _runtimeTextFiles;
 
         /// <summary>
         /// Validation method for Validate.
@@ -33,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 108: Unity2Foxglove ROS2 Facade Boundary ===");
             _passed = 0;
+            _runtimeTextFiles = null;
 
             VerifyRuntimeSurface();
             VerifyUnavailableBehavior();
@@ -254,14 +256,22 @@ namespace Unity.FoxgloveSDK.Tests
             };
         }
 
-        private static IEnumerable<string> RuntimeTextFiles()
+        private static IReadOnlyList<string> RuntimeTextFiles()
         {
+            if (_runtimeTextFiles != null)
+                return _runtimeTextFiles;
+
             var root = Path.Combine(RepoRoot(), Runtime.Replace('/', Path.DirectorySeparatorChar));
             if (!Directory.Exists(root))
-                return Array.Empty<string>();
+            {
+                _runtimeTextFiles = Array.Empty<string>();
+                return _runtimeTextFiles;
+            }
 
-            return Directory.GetFiles(root, "*.*", SearchOption.AllDirectories)
-                .Where(HasTextExtension);
+            _runtimeTextFiles = Directory.GetFiles(root, "*.*", SearchOption.AllDirectories)
+                .Where(HasTextExtension)
+                .ToArray();
+            return _runtimeTextFiles;
         }
 
         private static bool IsAllowedRuntimeTokenSource(string path)

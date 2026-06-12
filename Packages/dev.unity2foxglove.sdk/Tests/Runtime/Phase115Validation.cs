@@ -218,8 +218,8 @@ namespace Unity.FoxgloveSDK.Tests
                     "115-E1: writer emits aggregate manifest, hash sidecar, and report artifacts");
 
                 var manifestJson = File.ReadAllText(manifestPath);
-                var hashText = File.ReadAllText(hashPath);
                 var hashBytes = File.ReadAllBytes(hashPath);
+                var hashText = Encoding.ASCII.GetString(hashBytes);
                 Check(manifestJson == Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(aggregate)
                       && hashText == aggregate.SdkSchemaManifestHash + "\n"
                       && !hashText.Contains("\r", StringComparison.Ordinal)
@@ -238,7 +238,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "2026-05-21T00:00:00.0000000Z",
                     new[] { "report-only warning" });
                 Check(File.ReadAllText(manifestPath) == manifestJson
-                      && File.ReadAllText(hashPath) == hashText,
+                      && Encoding.ASCII.GetString(File.ReadAllBytes(hashPath)) == hashText,
                     "115-E4: repeated writes are deterministic for canonical artifacts");
             }
             finally
