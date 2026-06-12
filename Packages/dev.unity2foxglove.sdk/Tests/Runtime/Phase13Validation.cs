@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase13Validation
     {
         private static int _passCount;
+        private static readonly byte[] PlaybackControlRequestIdBytes = Encoding.UTF8.GetBytes("phase13-paused-seek");
 
         private static void Assert(bool condition, string label)
         {
@@ -682,7 +683,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "Paused replay seek queues playback state until runtime Tick");
                 Assert(immediateMessageFrames == 0, "Paused replay seek defers snapshot publication until runtime Tick");
 
-                var deferredStartIndex = transport.SentBinaryFrames(7).Count;
+                var deferredStartIndex = transport.SentBinaryFrameCount(7);
                 rt.Tick();
 
                 var deferredPlaybackStateFrames = 0;
@@ -1055,6 +1056,8 @@ namespace Unity.FoxgloveSDK.Tests
             string result = null;
             for (var i = startIndex; i < texts.Count; i++)
             {
+                if (!texts[i].Contains("\"serverInfo\"", StringComparison.Ordinal))
+                    continue;
                 var obj = JObject.Parse(texts[i]);
                 if ((string)obj["op"] != "serverInfo")
                     continue;
@@ -1071,6 +1074,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             for (var i = startIndex; i < texts.Count; i++)
             {
+                if (!texts[i].Contains("\"advertise\"", StringComparison.Ordinal))
+                    continue;
                 var obj = JObject.Parse(texts[i]);
                 if ((string)obj["op"] != "advertise")
                     continue;
@@ -1087,7 +1092,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static byte[] BuildPlaybackControlRequest(byte command, bool hasSeek, ulong seekNs)
         {
-            var requestIdBytes = Encoding.UTF8.GetBytes("phase13-paused-seek");
+            var requestIdBytes = PlaybackControlRequestIdBytes;
             var frame = new byte[19 + requestIdBytes.Length];
             frame[0] = ClientOpcode.PlaybackControlRequest;
             frame[1] = command;
@@ -1345,6 +1350,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             lock (_gate)
                 return _sentBinary.TryGetValue(clientId, out var frames) ? frames.ToArray() : Array.Empty<byte[]>();
+        }
+        public int SentBinaryFrameCount(uint clientId)
+        {
+            lock (_gate)
+                return _sentBinary.TryGetValue(clientId, out var frames) ? frames.Count : 0;
         }
         public void ClearBinary(uint clientId)
         {

@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase134_1Validation
     {
+        private static readonly string[] SerializedSecretFields = { "_certificatePassword", "_sharedToken" };
         private static int _passed;
 
         /// <summary>
@@ -235,11 +236,13 @@ namespace Unity.FoxgloveSDK.Tests
 
                     checkedAny = true;
                     var text = File.ReadAllText(file);
-                    foreach (var field in new[] { "_certificatePassword", "_sharedToken" })
+                    using var reader = new StringReader(text);
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
                     {
-                        foreach (var line in text.Split('\n'))
+                        var trimmed = line.Trim();
+                        foreach (var field in SerializedSecretFields)
                         {
-                            var trimmed = line.Trim();
                             if (!trimmed.StartsWith(field + ":", StringComparison.Ordinal))
                                 continue;
 
