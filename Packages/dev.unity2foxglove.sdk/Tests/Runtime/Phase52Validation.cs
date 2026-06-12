@@ -782,7 +782,7 @@ namespace Unity.FoxgloveSDK.Tests
                     break;
             }
 
-            return Encoding.ASCII.GetString(bytes.ToArray());
+            return GetString(bytes, Encoding.ASCII);
         }
 
         private static string ReadToEnd(Stream stream)
@@ -797,7 +797,15 @@ namespace Unity.FoxgloveSDK.Tests
                 output.Write(buffer, 0, read);
             }
 
-            return Encoding.UTF8.GetString(output.ToArray());
+            return GetString(output, Encoding.UTF8);
+        }
+
+        private static string GetString(MemoryStream stream, Encoding encoding)
+        {
+            if (!stream.TryGetBuffer(out var buffer))
+                return encoding.GetString(stream.ToArray());
+
+            return encoding.GetString(buffer.Array, buffer.Offset, buffer.Count);
         }
 
         private static string ReadServerTextFrame(Stream stream)
