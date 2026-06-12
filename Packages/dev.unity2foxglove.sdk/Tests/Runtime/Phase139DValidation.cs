@@ -5,6 +5,7 @@
 // Purpose: Phase 139D validation for the Unity cursor bridge feasibility surface.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -21,6 +22,12 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase139DValidation
     {
+        private const string ManagerServerSourcePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
+
+        private static readonly string CachedRepoRoot = ResolveRepoRoot();
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
+
         private static int _passed;
 
         /// <summary>Runs all Phase 139D validation checks.</summary>
@@ -135,7 +142,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && endpointSource.Contains("GET", StringComparison.Ordinal),
                 "139D-4F: cursor endpoint exposes Unity replay state for Foxglove follow mode");
 
-            var managerSource = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var managerSource = Read(ManagerServerSourcePath);
             Check(managerSource.Contains("Replay cursor bridge disabled", StringComparison.Ordinal)
                   && managerSource.Contains("SetExternalReplayCursorEnabled(false)", StringComparison.Ordinal),
                 "139D-4G: cursor endpoint startup failure does not fail the main server");
@@ -309,7 +316,7 @@ namespace Unity.FoxgloveSDK.Tests
             var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var coordinator = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var server = Read(ManagerServerSourcePath);
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
 
             Check(runtime.Contains("ExternalReplayCursorController", StringComparison.Ordinal)
@@ -368,7 +375,15 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>Read a repository-relative text file for structural validation checks.</summary>
-        private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+        private static string Read(string relativePath)
+        {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(RepoPath(relativePath));
+            SourceCache[relativePath] = text;
+            return text;
+        }
 
         /// <summary>Extract a method body so validation can inspect one implementation boundary.</summary>
         private static string ExtractMethodBody(string source, string signature)
@@ -399,7 +414,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-        private static string RepoRoot()
+        private static string RepoRoot() => CachedRepoRoot;
+
+        private static string ResolveRepoRoot()
         {
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))

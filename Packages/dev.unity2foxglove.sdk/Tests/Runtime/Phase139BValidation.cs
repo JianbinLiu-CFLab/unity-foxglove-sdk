@@ -5,6 +5,7 @@
 // Purpose: Phase 139B validation for the official Remote Data Loader HTTP backend contract.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -24,6 +25,9 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase139BValidation
     {
+        private static readonly string CachedRepoRoot = ResolveRepoRoot();
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
+
         private static int _passed;
 
         /// <summary>Runs all Phase 139B validation checks.</summary>
@@ -443,12 +447,22 @@ namespace Unity.FoxgloveSDK.Tests
                    && (listener.ErrorCode == 183 || listener.ErrorCode == 10_048);
         }
 
-        private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+        private static string Read(string relativePath)
+        {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(RepoPath(relativePath));
+            SourceCache[relativePath] = text;
+            return text;
+        }
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-        private static string RepoRoot()
+        private static string RepoRoot() => CachedRepoRoot;
+
+        private static string ResolveRepoRoot()
         {
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))

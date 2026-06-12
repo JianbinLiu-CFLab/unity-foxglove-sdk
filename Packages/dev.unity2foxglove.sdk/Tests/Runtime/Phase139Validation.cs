@@ -5,6 +5,7 @@
 // Purpose: Phase 139 validation for end-to-end smoke harness contracts.
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -21,6 +22,9 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string ScriptPath = "Scripts/smoke/phase139_e2e_integration_smoke.py";
         private const string ForbiddenPowerShellWrapper = "Scripts/smoke/phase139_e2e_integration_smoke.ps1";
+
+        private static readonly string CachedRepoRoot = ResolveRepoRoot();
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
 
         private static int _passed;
 
@@ -202,12 +206,22 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 
-        private static string Read(string relativePath) => File.ReadAllText(RepoPath(relativePath));
+        private static string Read(string relativePath)
+        {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(RepoPath(relativePath));
+            SourceCache[relativePath] = text;
+            return text;
+        }
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-        private static string RepoRoot()
+        private static string RepoRoot() => CachedRepoRoot;
+
+        private static string ResolveRepoRoot()
         {
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))
