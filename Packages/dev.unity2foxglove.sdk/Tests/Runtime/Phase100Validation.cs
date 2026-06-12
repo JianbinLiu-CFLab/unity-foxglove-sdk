@@ -5,6 +5,7 @@
 // Purpose: Phase 100 runtime hardening closure validation.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -20,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase100Validation
     {
         private static int _passed;
+        private static readonly Dictionary<string, Regex> MethodSignatureRegexes = new Dictionary<string, Regex>(StringComparer.Ordinal);
 
         /// <summary>
         /// Validation method for Validate.
@@ -247,10 +249,20 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int FindMethodSignature(string source, string methodName)
         {
-            var pattern = @"(?:private|protected|public|internal)\s+(?:static\s+)?[\w<>\[\],\s]+\s+"
-                          + Regex.Escape(methodName)
-                          + @"\s*\(";
-            var match = Regex.Match(source, pattern);
+            Regex regex;
+            lock (MethodSignatureRegexes)
+            {
+                if (!MethodSignatureRegexes.TryGetValue(methodName, out regex))
+                {
+                    var pattern = @"(?:private|protected|public|internal)\s+(?:static\s+)?[\w<>\[\],\s]+\s+"
+                                  + Regex.Escape(methodName)
+                                  + @"\s*\(";
+                    regex = new Regex(pattern);
+                    MethodSignatureRegexes.Add(methodName, regex);
+                }
+            }
+
+            var match = regex.Match(source);
             return match.Success ? match.Index : -1;
         }
 
