@@ -124,8 +124,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14068RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_68Validation.cs", "--phase140-68", "Phase140_68Validation.Validate");
+        public void Phase14068MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_68Validation.cs", "--phase140-68", "Phase140_68Validation.Validate");
     }
 
     [Trait("Phase", "140-69")]
@@ -180,8 +180,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14069RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_69Validation.cs", "--phase140-69", "Phase140_69Validation.Validate");
+        public void Phase14069MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_69Validation.cs", "--phase140-69", "Phase140_69Validation.Validate");
     }
 
     [Trait("Phase", "140-70")]
@@ -233,8 +233,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14070RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_70Validation.cs", "--phase140-70", "Phase140_70Validation.Validate");
+        public void Phase14070MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_70Validation.cs", "--phase140-70", "Phase140_70Validation.Validate");
     }
 
     [Trait("Phase", "140-71")]
@@ -283,8 +283,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14071RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_71Validation.cs", "--phase140-71", "Phase140_71Validation.Validate");
+        public void Phase14071MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_71Validation.cs", "--phase140-71", "Phase140_71Validation.Validate");
     }
 
     [Trait("Phase", "140-72")]
@@ -332,8 +332,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14072RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_72Validation.cs", "--phase140-72", "Phase140_72Validation.Validate");
+        public void Phase14072MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_72Validation.cs", "--phase140-72", "Phase140_72Validation.Validate");
     }
 
     [Trait("Phase", "140-73")]
@@ -381,7 +381,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14073RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_73Validation.cs", "--phase140-73", "Phase140_73Validation.Validate");
+        public void Phase14073MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_73Validation.cs", "--phase140-73", "Phase140_73Validation.Validate");
     }
 }

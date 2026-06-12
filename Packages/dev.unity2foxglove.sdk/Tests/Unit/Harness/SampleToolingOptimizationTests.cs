@@ -55,8 +55,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14074RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_74Validation.cs", "--phase140-74", "Phase140_74Validation.Validate");
+        public void Phase14074MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_74Validation.cs", "--phase140-74", "Phase140_74Validation.Validate");
     }
 
     [Trait("Phase", "140-75")]
@@ -71,8 +71,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14075RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_75Validation.cs", "--phase140-75", "Phase140_75Validation.Validate");
+        public void Phase14075MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_75Validation.cs", "--phase140-75", "Phase140_75Validation.Validate");
 
         private static void VerifyScaleEventShape(string source)
         {
@@ -141,8 +141,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14076RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_76Validation.cs", "--phase140-76", "Phase140_76Validation.Validate");
+        public void Phase14076MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_76Validation.cs", "--phase140-76", "Phase140_76Validation.Validate");
     }
 
     [Trait("Phase", "140-78")]
@@ -179,8 +179,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14078RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_78Validation.cs", "--phase140-78", "Phase140_78Validation.Validate");
+        public void Phase14078MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_78Validation.cs", "--phase140-78", "Phase140_78Validation.Validate");
     }
 
     [Trait("Phase", "140-79")]
@@ -214,8 +214,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14079RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_79Validation.cs", "--phase140-79", "Phase140_79Validation.Validate");
+        public void Phase14079MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_79Validation.cs", "--phase140-79", "Phase140_79Validation.Validate");
     }
 
     [Trait("Phase", "140-80")]
@@ -252,8 +252,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14080RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_80Validation.cs", "--phase140-80", "Phase140_80Validation.Validate");
+        public void Phase14080MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_80Validation.cs", "--phase140-80", "Phase140_80Validation.Validate");
 
         private static void VerifyProbe(string relativePath, bool removePayloadLengthSlice)
         {
@@ -320,8 +320,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14081RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_81Validation.cs", "--phase140-81", "Phase140_81Validation.Validate");
+        public void Phase14081MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_81Validation.cs", "--phase140-81", "Phase140_81Validation.Validate");
     }
 
     [Trait("Phase", "140-82")]
@@ -368,7 +368,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14082RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_82Validation.cs", "--phase140-82", "Phase140_82Validation.Validate");
+        public void Phase14082MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_82Validation.cs", "--phase140-82", "Phase140_82Validation.Validate");
     }
 }

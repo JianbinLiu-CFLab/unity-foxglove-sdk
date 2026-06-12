@@ -51,14 +51,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14095RemainsRegisteredInConsoleRunner()
+        public void Phase14095MigratedConsolePhaseIsRemoved()
         {
             var registry = RuntimeText("PhaseValidationRegistry.cs");
-            Assert.Contains("\"--phase140-95\"", registry, StringComparison.Ordinal);
-            Assert.Contains("Phase140_95Validation.Validate", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"--phase140-95\"", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase140_95Validation.Validate", registry, StringComparison.Ordinal);
 
             var project = RuntimeText("FoxgloveSdk.Tests.csproj");
-            Assert.Contains("Phase140_95Validation.cs", project, StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase140_95Validation.cs", project, StringComparison.Ordinal);
         }
 
         private static string RuntimeText(string fileName)

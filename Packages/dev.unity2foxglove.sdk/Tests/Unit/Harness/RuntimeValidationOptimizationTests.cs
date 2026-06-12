@@ -49,8 +49,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14089RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
+        public void Phase14089MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
     }
 
     [Trait("Phase", "140-90")]
@@ -111,8 +111,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14090RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_90Validation.cs", "--phase140-90", "Phase140_90Validation.Validate");
+        public void Phase14090MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_90Validation.cs", "--phase140-90", "Phase140_90Validation.Validate");
     }
 
     [Trait("Phase", "140-91")]
@@ -161,8 +161,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14091RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_91Validation.cs", "--phase140-91", "Phase140_91Validation.Validate");
+        public void Phase14091MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_91Validation.cs", "--phase140-91", "Phase140_91Validation.Validate");
     }
 
     [Trait("Phase", "140-92")]
@@ -220,8 +220,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14092RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_92Validation.cs", "--phase140-92", "Phase140_92Validation.Validate");
+        public void Phase14092MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_92Validation.cs", "--phase140-92", "Phase140_92Validation.Validate");
     }
 
     [Trait("Phase", "140-94")]
@@ -285,8 +285,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14094RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_94Validation.cs", "--phase140-94", "Phase140_94Validation.Validate");
+        public void Phase14094MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_94Validation.cs", "--phase140-94", "Phase140_94Validation.Validate");
     }
 
     internal static class TestSources
@@ -297,12 +297,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public static string Text(string relativePath)
             => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
-        public static void AssertRegistered(string validationFile, string flag, string entryPoint)
+        public static void AssertConsolePhaseRemoved(string validationFile, string flag, string entryPoint)
         {
-            Assert.Contains(validationFile, Runtime("FoxgloveSdk.Tests.csproj"), StringComparison.Ordinal);
+            Assert.DoesNotContain(validationFile, Runtime("FoxgloveSdk.Tests.csproj"), StringComparison.Ordinal);
             var registry = Runtime("PhaseValidationRegistry.cs");
-            Assert.Contains("\"" + flag + "\"", registry, StringComparison.Ordinal);
-            Assert.Contains(entryPoint, registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"" + flag + "\"", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain(entryPoint, registry, StringComparison.Ordinal);
         }
 
         public static string Slice(string source, string startText, string endText)

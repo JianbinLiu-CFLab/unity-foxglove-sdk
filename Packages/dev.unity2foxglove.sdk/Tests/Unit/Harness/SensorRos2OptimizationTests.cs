@@ -85,8 +85,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14064RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_64Validation.cs", "--phase140-64", "Phase140_64Validation.Validate");
+        public void Phase14064MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_64Validation.cs", "--phase140-64", "Phase140_64Validation.Validate");
     }
 
     [Trait("Phase", "140-65")]
@@ -139,8 +139,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14065RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_65Validation.cs", "--phase140-65", "Phase140_65Validation.Validate");
+        public void Phase14065MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_65Validation.cs", "--phase140-65", "Phase140_65Validation.Validate");
     }
 
     [Trait("Phase", "140-66")]
@@ -223,8 +223,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14066RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_66Validation.cs", "--phase140-66", "Phase140_66Validation.Validate");
+        public void Phase14066MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_66Validation.cs", "--phase140-66", "Phase140_66Validation.Validate");
     }
 
     [Trait("Phase", "140-67")]
@@ -295,8 +295,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14067RemainsRegisteredInConsoleRunner()
-            => TestSources.AssertRegistered("Phase140_67Validation.cs", "--phase140-67", "Phase140_67Validation.Validate");
+        public void Phase14067MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_67Validation.cs", "--phase140-67", "Phase140_67Validation.Validate");
 
         private static bool SourceMethodContains(string source, string signature, string text)
         {

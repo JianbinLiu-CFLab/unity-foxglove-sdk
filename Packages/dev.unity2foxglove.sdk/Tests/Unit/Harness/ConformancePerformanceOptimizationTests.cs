@@ -65,14 +65,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14096RemainsRegisteredInConsoleRunner()
+        public void Phase14096MigratedConsolePhaseIsRemoved()
         {
             var registry = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Assert.Contains("\"--phase140-96\"", registry, StringComparison.Ordinal);
-            Assert.Contains("Phase140_96Validation.Validate", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"--phase140-96\"", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase140_96Validation.Validate", registry, StringComparison.Ordinal);
 
             var project = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Assert.Contains("Phase140_96Validation.cs", project, StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase140_96Validation.cs", project, StringComparison.Ordinal);
         }
 
         private static MethodDeclarationSyntax Method(string relativePath, string methodName, string parameterName = null)

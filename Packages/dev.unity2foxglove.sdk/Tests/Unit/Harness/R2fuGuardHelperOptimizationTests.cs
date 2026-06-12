@@ -61,14 +61,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase14083RemainsRegisteredInConsoleRunner()
+        public void Phase14083MigratedConsolePhaseIsRemoved()
         {
             var registry = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Assert.Contains("\"--phase140-83\"", registry, StringComparison.Ordinal);
-            Assert.Contains("Phase140_83Validation.Validate", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"--phase140-83\"", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase140_83Validation.Validate", registry, StringComparison.Ordinal);
 
             var project = Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Assert.Contains("Phase140_83Validation.cs", project, StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase140_83Validation.cs", project, StringComparison.Ordinal);
         }
 
         private static MethodDeclarationSyntax AllR2fuReferencesAreGuardedMethod()
