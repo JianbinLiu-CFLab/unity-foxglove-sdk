@@ -129,7 +129,15 @@ namespace Foxglove.Schemas.Video
             try
             {
                 var nv12Frame = EnsureNv12Scratch();
-                ConvertRgb24ToNv12(rgb24Frame, _options.Width, _options.Height, nv12Frame);
+                if (!Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
+                    rgb24Frame,
+                    _options.Width,
+                    _options.Height,
+                    nv12Frame,
+                    flipVertical: true,
+                    out var conversionError))
+                    throw new InvalidOperationException(conversionError);
+
                 ProcessInputFrame(nv12Frame, timestampNs);
                 DrainEncoderOutput();
                 return true;
@@ -659,64 +667,6 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static void ConvertRgb24ToNv12(byte[] rgb24Frame, int width, int height, byte[] nv12)
-        {
-            if (!CameraVideoFrameGeometry.TryGetYuv420FrameByteCount(width, height, out var nv12Length))
-                throw new InvalidOperationException("Media Foundation H.264 NV12 frame byte count is invalid.");
-            if (nv12 == null || nv12.Length < nv12Length)
-                throw new ArgumentException("NV12 scratch buffer is too small.", nameof(nv12));
-
-            var yPlaneLength = checked(width * height);
-
-            for (var y = 0; y < height; y++)
-            {
-                var sourceY = height - 1 - y;
-                for (var x = 0; x < width; x++)
-                {
-                    var rgb = (sourceY * width + x) * 3;
-                    var r = rgb24Frame[rgb];
-                    var g = rgb24Frame[rgb + 1];
-                    var b = rgb24Frame[rgb + 2];
-                    nv12[y * width + x] = ToLuma(r, g, b);
-                }
-            }
-
-            var uvOffset = yPlaneLength;
-            for (var y = 0; y < height; y += 2)
-            {
-                var sourceY0 = height - 1 - y;
-                var sourceY1 = Math.Max(0, sourceY0 - 1);
-                for (var x = 0; x < width; x += 2)
-                {
-                    var u = 0;
-                    var v = 0;
-                    AccumulateChroma(rgb24Frame, width, sourceY0, x, ref u, ref v);
-                    AccumulateChroma(rgb24Frame, width, sourceY0, Math.Min(x + 1, width - 1), ref u, ref v);
-                    AccumulateChroma(rgb24Frame, width, sourceY1, x, ref u, ref v);
-                    AccumulateChroma(rgb24Frame, width, sourceY1, Math.Min(x + 1, width - 1), ref u, ref v);
-                    var uv = uvOffset + (y / 2) * width + x;
-                    nv12[uv] = ClampByte(u / 4);
-                    nv12[uv + 1] = ClampByte(v / 4);
-                }
-            }
-        }
-
-        private static void AccumulateChroma(byte[] rgb24Frame, int width, int y, int x, ref int u, ref int v)
-        {
-            var rgb = (y * width + x) * 3;
-            var r = rgb24Frame[rgb];
-            var g = rgb24Frame[rgb + 1];
-            var b = rgb24Frame[rgb + 2];
-            u += ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-            v += ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-        }
-
-        private static byte ToLuma(byte r, byte g, byte b)
-            => ClampByte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
-
-        private static byte ClampByte(int value)
-            => value < 0 ? (byte)0 : value > 255 ? (byte)255 : (byte)value;
-        
         private static void WriteBuffer(IMFMediaBuffer buffer, byte[] data)
         {
             IntPtr ptr = IntPtr.Zero;
