@@ -44,52 +44,43 @@ namespace Foxglove.Schemas.Video
             var uOffset = width * height;
             var vOffset = uOffset + (width * height / 4);
 
-            for (var y = 0; y < height; y++)
-            {
-                var rowBase = GetRgbRowBase(y, width, height, flipVertical);
-                for (var x = 0; x < width; x++)
-                {
-                    var rgbIndex = rowBase + x * 3;
-                    var r = rgb24[rgbIndex];
-                    var g = rgb24[rgbIndex + 1];
-                    var b = rgb24[rgbIndex + 2];
-                    i420[yOffset + y * width + x] = ComputeY(r, g, b);
-                }
-            }
-
             // I420 stores one U and V sample for each 2x2 RGB block.
             for (var y = 0; y < height; y += 2)
             {
                 var rowBase0 = GetRgbRowBase(y, width, height, flipVertical);
                 var rowBase1 = GetRgbRowBase(y + 1, width, height, flipVertical);
+                var yRow0 = yOffset + y * width;
+                var yRow1 = yRow0 + width;
                 for (var x = 0; x < width; x += 2)
                 {
-                    var rSum = 0;
-                    var gSum = 0;
-                    var bSum = 0;
-                    var rgbIndex = rowBase0 + x * 3;
-                    rSum += rgb24[rgbIndex];
-                    gSum += rgb24[rgbIndex + 1];
-                    bSum += rgb24[rgbIndex + 2];
+                    var rgbIndex00 = rowBase0 + x * 3;
+                    var r00 = rgb24[rgbIndex00];
+                    var g00 = rgb24[rgbIndex00 + 1];
+                    var b00 = rgb24[rgbIndex00 + 2];
 
-                    rgbIndex += 3;
-                    rSum += rgb24[rgbIndex];
-                    gSum += rgb24[rgbIndex + 1];
-                    bSum += rgb24[rgbIndex + 2];
+                    var rgbIndex01 = rgbIndex00 + 3;
+                    var r01 = rgb24[rgbIndex01];
+                    var g01 = rgb24[rgbIndex01 + 1];
+                    var b01 = rgb24[rgbIndex01 + 2];
 
-                    rgbIndex = rowBase1 + x * 3;
-                    rSum += rgb24[rgbIndex];
-                    gSum += rgb24[rgbIndex + 1];
-                    bSum += rgb24[rgbIndex + 2];
+                    var rgbIndex10 = rowBase1 + x * 3;
+                    var r10 = rgb24[rgbIndex10];
+                    var g10 = rgb24[rgbIndex10 + 1];
+                    var b10 = rgb24[rgbIndex10 + 2];
 
-                    rgbIndex += 3;
-                    rSum += rgb24[rgbIndex];
-                    gSum += rgb24[rgbIndex + 1];
-                    bSum += rgb24[rgbIndex + 2];
+                    var rgbIndex11 = rgbIndex10 + 3;
+                    var r11 = rgb24[rgbIndex11];
+                    var g11 = rgb24[rgbIndex11 + 1];
+                    var b11 = rgb24[rgbIndex11 + 2];
 
-                    var rAvg = rSum / 4;
-                    var gAvg = gSum / 4;
-                    var bAvg = bSum / 4;
+                    i420[yRow0 + x] = ComputeY(r00, g00, b00);
+                    i420[yRow0 + x + 1] = ComputeY(r01, g01, b01);
+                    i420[yRow1 + x] = ComputeY(r10, g10, b10);
+                    i420[yRow1 + x + 1] = ComputeY(r11, g11, b11);
+
+                    var rAvg = (r00 + r01 + r10 + r11) / 4;
+                    var gAvg = (g00 + g01 + g10 + g11) / 4;
+                    var bAvg = (b00 + b01 + b10 + b11) / 4;
                     var chromaIndex = (y / 2) * (width / 2) + (x / 2);
                     i420[uOffset + chromaIndex] = ComputeU(rAvg, gAvg, bAvg);
                     i420[vOffset + chromaIndex] = ComputeV(rAvg, gAvg, bAvg);
