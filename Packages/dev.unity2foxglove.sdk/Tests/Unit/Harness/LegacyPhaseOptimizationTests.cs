@@ -135,6 +135,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("StartOpenH264Check(", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("Task.Run(() => OpenH264ExecutableCheck.Check", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("EditorApplication.update += CompleteOpenH264CheckIfReady", cameraEditor, StringComparison.Ordinal);
+            Assert.Contains("EditorApplication.delayCall += () =>", cameraEditor, StringComparison.Ordinal);
+            Assert.Contains("ScheduleBrowsePath(", cameraEditor, StringComparison.Ordinal);
+            Assert.DoesNotContain("BrowseOpenH264Path(property, dialogTitle, extension);", cameraEditor, StringComparison.Ordinal);
+            Assert.DoesNotContain("BrowseFfmpeg(ffmpegPath);", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("serializedObject.targetObject == null", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("StartOpenH264Check(installedHelperPath, installedDllPath)", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("Task.Run(() => AnalyzeReplayMcapWorker", preflight, StringComparison.Ordinal);

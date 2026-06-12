@@ -705,25 +705,17 @@ namespace Unity.FoxgloveSDK.Editor
 
                 if (GUILayout.Button("...", GUILayout.Width(30)))
                 {
-                    BrowseFfmpeg(ffmpegPath);
-                    _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
+                    ScheduleBrowsePath(
+                        ffmpegPath,
+                        "Select FFmpeg Executable",
+                        Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "",
+                        () => _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", ""));
                 }
             }
 
             EditorGUILayout.HelpBox(
                 "Empty path uses system PATH (ffmpeg). Use ... to choose an explicit executable.",
                 MessageType.None);
-        }
-
-        private static void BrowseFfmpeg(SerializedProperty ffmpegPath)
-        {
-            var current = ffmpegPath.stringValue;
-            var defaultDir = ResolveBrowseDefaultDirectory(current);
-
-            var extension = Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "";
-            var selected = EditorUtility.OpenFilePanel("Select FFmpeg Executable", defaultDir, extension);
-            if (!string.IsNullOrEmpty(selected))
-                ffmpegPath.stringValue = selected;
         }
 
         private static void DrawOpenH264PathField(
@@ -746,20 +738,33 @@ namespace Unity.FoxgloveSDK.Editor
 
                 if (GUILayout.Button("...", GUILayout.Width(30)))
                 {
-                    BrowseOpenH264Path(property, dialogTitle, extension);
-                    onChanged?.Invoke();
+                    ScheduleBrowsePath(property, dialogTitle, extension, onChanged);
                 }
             }
         }
 
-        private static void BrowseOpenH264Path(SerializedProperty property, string dialogTitle, string extension)
+        private static void ScheduleBrowsePath(
+            SerializedProperty property,
+            string dialogTitle,
+            string extension,
+            Action onChanged)
         {
-            var current = property.stringValue;
-            var defaultDir = ResolveBrowseDefaultDirectory(current);
+            var capturedProperty = property.Copy();
+            var defaultDir = ResolveBrowseDefaultDirectory(property.stringValue);
+            EditorApplication.delayCall += () =>
+            {
+                if (capturedProperty.serializedObject == null || capturedProperty.serializedObject.targetObject == null)
+                    return;
 
-            var selected = EditorUtility.OpenFilePanel(dialogTitle, defaultDir, extension);
-            if (!string.IsNullOrEmpty(selected))
-                property.stringValue = selected;
+                var selected = EditorUtility.OpenFilePanel(dialogTitle, defaultDir, extension);
+                if (string.IsNullOrEmpty(selected))
+                    return;
+
+                capturedProperty.serializedObject.Update();
+                capturedProperty.stringValue = selected;
+                capturedProperty.serializedObject.ApplyModifiedProperties();
+                onChanged?.Invoke();
+            };
         }
 
         private static string ResolveBrowseDefaultDirectory(string current)
