@@ -25,7 +25,6 @@ namespace Unity.FoxgloveSDK.Components
         private const string DefaultTopic = "/imu/data";
         private const string DefaultImuNativeTopic = "/imu/data";
         private const string DefaultFrameId = "imu_link";
-        private const int MinQueueSamples = 8;
         private const int MaxQueueSamples = 512;
         private const int DefaultTargetRateHz = 200;
         private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
@@ -128,7 +127,7 @@ namespace Unity.FoxgloveSDK.Components
                 ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
 
             _maxQueuedSamples = ComputeMaxQueuedSamples();
-            _queue.Resize(_maxQueuedSamples, MinQueueSamples);
+            _queue.Resize(_maxQueuedSamples, ImuSampleQueue.MinCapacity);
             _lastWorldVelocity = _rigidbody.linearVelocity;
             _lastBodyAcceleration = Vector3.zero;
             _lastBodyAngularVelocity = Vector3.zero;
@@ -308,7 +307,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private int ComputeMaxQueuedSamples()
         {
-            return ImuSubStep.ComputeQueueCapacity(ResolveTargetRateHz(), MinQueueSamples, MaxQueueSamples);
+            return ImuSubStep.ComputeQueueCapacity(ResolveTargetRateHz(), ImuSampleQueue.MinCapacity, MaxQueueSamples);
         }
 
         private int ResolveTargetRateHz()
@@ -423,90 +422,5 @@ namespace Unity.FoxgloveSDK.Components
             return normalized;
         }
 
-        /// <summary>One queued IMU sample in Foxglove coordinates.</summary>
-        private readonly struct ImuSample
-        {
-            /// <summary>Create one queued IMU sample.</summary>
-            public ImuSample(ulong timestampNs, Vector3 linearAcceleration, Vector3 angularVelocity, Quaternion orientation)
-            {
-                TimestampNs = timestampNs;
-                LinearAcceleration = linearAcceleration;
-                AngularVelocity = angularVelocity;
-                Orientation = orientation;
-            }
-
-            /// <summary>Sample timestamp in Unix nanoseconds.</summary>
-            public ulong TimestampNs { get; }
-
-            /// <summary>Linear acceleration in the IMU body frame.</summary>
-            public Vector3 LinearAcceleration { get; }
-
-            /// <summary>Angular velocity in the IMU body frame.</summary>
-            public Vector3 AngularVelocity { get; }
-
-            /// <summary>Orientation in the IMU body frame.</summary>
-            public Quaternion Orientation { get; }
-        }
-
-        /// <summary>
-        /// Bounded sample queue that drops oldest samples under back-pressure.
-        /// </summary>
-        private sealed class ImuSampleQueue
-        {
-            private ImuSample[] _items = new ImuSample[MinQueueSamples];
-            private int _head;
-            private int _count;
-
-            /// <summary>Number of samples currently queued.</summary>
-            public int Count => _count;
-
-            /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
-            public void Resize(int capacity, int minCapacity)
-            {
-                if (capacity < minCapacity)
-                    capacity = minCapacity;
-                if (_items.Length == capacity)
-                    return;
-
-                var next = new ImuSample[capacity];
-                var copyCount = Math.Min(_count, capacity);
-                for (var i = 0; i < copyCount; i++)
-                {
-                    next[i] = Dequeue();
-                }
-
-                _items = next;
-                _count = copyCount;
-                _head = 0;
-            }
-
-            /// <summary>Add a sample, dropping the oldest sample when the queue is full.</summary>
-            public void Enqueue(ImuSample sample)
-            {
-                if (_count < _items.Length)
-                {
-                    var tail = (_head + _count) % _items.Length;
-                    _items[tail] = sample;
-                    _count++;
-                    return;
-                }
-
-                _items[_head] = sample;
-                _head = (_head + 1) % _items.Length;
-            }
-
-            /// <summary>Remove and return the oldest queued sample.</summary>
-            public ImuSample Dequeue()
-            {
-                if (_count == 0)
-                    return default;
-
-                var index = _head;
-                var sample = _items[index];
-                _head = (_head + 1) % _items.Length;
-                _count--;
-                return sample;
-            }
-        }
     }
 }

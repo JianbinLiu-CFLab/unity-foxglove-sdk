@@ -54,6 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
             LegacySerializeOverloadPreservesDefaultCovarianceBehavior();
             InvalidCovarianceLengthsThrowClearErrors();
             SerializerUsesExactByteBuffer();
+            VirtualImuQueueIsExtractedWithValidMeta();
 
             Console.WriteLine($"Phase 140G: {_passed} checks passed.");
         }
@@ -170,6 +171,30 @@ namespace Unity.FoxgloveSDK.Tests
                 "140G-5D: VirtualImu WebSocket path passes configured covariance to serializer");
         }
 
+        private static void VirtualImuQueueIsExtractedWithValidMeta()
+        {
+            const string queuePath = "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/ImuSampleQueue.cs";
+            const string queueMetaPath = "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/ImuSampleQueue.cs.meta";
+
+            Check(File.Exists(RepoPath(queuePath)),
+                "140G-6A: VirtualImu queue lives in standalone runtime source file");
+            var queueMeta = File.Exists(RepoPath(queueMetaPath)) ? File.ReadAllText(RepoPath(queueMetaPath)) : string.Empty;
+            Check(HasValidUnityGuid(queueMeta) && queueMeta.Contains("MonoImporter:", StringComparison.Ordinal),
+                "140G-6B: extracted IMU queue has a valid Unity script meta");
+
+            var queue = Read(queuePath);
+            var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            Check(queue.Contains("internal readonly struct ImuSample", StringComparison.Ordinal)
+                  && queue.Contains("internal sealed class ImuSampleQueue", StringComparison.Ordinal),
+                "140G-6C: extracted IMU queue types are internal runtime types");
+            Check(queue.Contains("internal const int MinCapacity = 8", StringComparison.Ordinal)
+                  && virtualImu.Contains("ImuSampleQueue.MinCapacity", StringComparison.Ordinal),
+                "140G-6D: IMU queue owns its minimum capacity after extraction");
+            Check(!virtualImu.Contains("private readonly struct ImuSample", StringComparison.Ordinal)
+                  && !virtualImu.Contains("private sealed class ImuSampleQueue", StringComparison.Ordinal),
+                "140G-6E: VirtualImu no longer contains nested queue types");
+        }
+
         private static byte[] SerializeWithConfiguredCovariance(bool includeOrientation)
             => ImuMessageBuilder.Serialize(
                 1_234_567_890UL,
@@ -230,6 +255,43 @@ namespace Unity.FoxgloveSDK.Tests
             if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for Phase140G validation.");
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase140G validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static bool HasValidUnityGuid(string meta)
+        {
+            const string prefix = "guid:";
+            foreach (var rawLine in meta.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var line = rawLine.Trim();
+                if (!line.StartsWith(prefix, StringComparison.Ordinal))
+                    continue;
+
+                var guid = line.Substring(prefix.Length).Trim();
+                if (guid.Length != 32)
+                    return false;
+
+                for (var i = 0; i < guid.Length; i++)
+                {
+                    var c = guid[i];
+                    var hex = (c >= '0' && c <= '9')
+                              || (c >= 'a' && c <= 'f')
+                              || (c >= 'A' && c <= 'F');
+                    if (!hex)
+                        return false;
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         private static void CheckThrowsArgumentException(Action action, string label)
