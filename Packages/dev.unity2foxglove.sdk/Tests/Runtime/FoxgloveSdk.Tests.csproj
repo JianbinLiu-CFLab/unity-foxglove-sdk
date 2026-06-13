@@ -169,6 +169,7 @@
     <Compile Include="Phase140_16Validation.cs" />
     <Compile Include="Phase140_17Validation.cs" />
     <Compile Include="Phase140GValidation.cs" />
+    <Compile Include="Phase140HValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
     <Compile Include="Phase138QValidation.cs" />
     <!-- 138S: validate VirtualImu native DDS output contracts. -->

@@ -16,11 +16,27 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private void DrawDiagnosticsSection()
         {
+            DrawPublishCadenceDiagnostics();
+            EditorGUILayout.Space();
             DrawTransportHealth();
+        }
+
+        private void DrawPublishCadenceDiagnostics()
+        {
+            FoxgloveManagerInspectorLayout.Subheader("Publish Cadence");
+            DrawProperty("_publishCadenceDiagnosticsEnabled", "Publish Cadence Diagnostics");
+            using (new EditorGUI.DisabledScope(!GetBool("_publishCadenceDiagnosticsEnabled")))
+            {
+                DrawFloatProperty(
+                    "_publishCadenceDiagnosticsSummaryIntervalSeconds",
+                    "Summary Interval Seconds",
+                    "Seconds between per-topic publish cadence diagnostic summaries.");
+            }
         }
 
         private void DrawTransportHealth()
         {
+            FoxgloveManagerInspectorLayout.Subheader("Transport");
             var manager = (Components.FoxgloveManager)target;
             if (manager == null) return;
 

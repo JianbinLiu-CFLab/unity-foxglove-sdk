@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] protected string _ros2BridgeTopicOverride = "";
 
         private FixedRatePublishState _publishRateState;
+        private FixedRatePublishState _publishRateStateFixed;
         private bool _warnedManagerMissing;
         private string _lastEncodingWarningKey;
         private string _lastBridgeWarningKey;
@@ -189,6 +190,7 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual void OnEnable()
         {
             _publishRateState = default;
+            _publishRateStateFixed = default;
             _warnedManagerMissing = false;
             _lastEncodingWarningKey = null;
             _lastBridgeWarningKey = null;
@@ -218,6 +220,20 @@ namespace Unity.FoxgloveSDK.Components
                 Time.unscaledTimeAsDouble,
                 EffectivePublishRateHz,
                 ref _publishRateState,
+                nonPositivePublishesEveryFrame: true);
+        }
+
+        /// <summary>
+        /// True if enough fixed-time scheduler time has elapsed since last publish.
+        /// This is drift-only for physics-clock publishers; WebSocket arrival cadence
+        /// still follows when the publisher enqueues payloads.
+        /// </summary>
+        protected bool ShouldPublishNowFixed()
+        {
+            return FixedRatePublishScheduler.ShouldPublish(
+                Time.fixedTimeAsDouble,
+                EffectivePublishRateHz,
+                ref _publishRateStateFixed,
                 nonPositivePublishesEveryFrame: true);
         }
 
