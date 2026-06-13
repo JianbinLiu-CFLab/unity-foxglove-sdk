@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -18,10 +19,20 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _publishCadenceDiagnosticsEnabled;
         [Tooltip("Seconds between publish cadence diagnostic summaries.")]
         [SerializeField, Min(0.5f)] private float _publishCadenceDiagnosticsSummaryIntervalSeconds = 5f;
+        [Tooltip("When enabled, logs main-thread frame stalls so cadence gaps can be correlated with Unity Editor state.")]
+        [SerializeField] private bool _frameStallDiagnosticsEnabled;
+        [Tooltip("Main-thread frame time threshold, in milliseconds, before a frame-stall diagnostic is logged.")]
+        [SerializeField, Min(10f)] private float _frameStallDiagnosticsThresholdMs = 200f;
 
         private readonly PublishCadenceDiagnostics _publishCadenceDiagnostics = new();
         private double _nextPublishCadenceDiagnosticsSummaryTime;
+        private double _lastFrameStallDiagnosticsTime;
+        private long _lastFrameStallGcBytes;
+        private int _lastFrameStallGcCount0;
+        private int _lastFrameStallGcCount1;
+        private int _lastFrameStallGcCount2;
         private bool _publishCadenceDiagnosticsWasEnabled;
+        private bool _frameStallDiagnosticsWasEnabled;
 
         /// <summary>Whether per-topic publish cadence diagnostics are currently enabled.</summary>
         public bool PublishCadenceDiagnosticsEnabled
@@ -84,13 +95,131 @@ namespace Unity.FoxgloveSDK.Components
                 LogPublishCadenceSummary(summary);
         }
 
+        private void RecordFrameStallDiagnosticsIfNeeded()
+        {
+            if (!_frameStallDiagnosticsEnabled)
+            {
+                _lastFrameStallDiagnosticsTime = 0d;
+                _lastFrameStallGcBytes = 0L;
+                _lastFrameStallGcCount0 = 0;
+                _lastFrameStallGcCount1 = 0;
+                _lastFrameStallGcCount2 = 0;
+                _frameStallDiagnosticsWasEnabled = false;
+                return;
+            }
+
+            var now = Time.realtimeSinceStartupAsDouble;
+            var gcBytes = GC.GetTotalMemory(forceFullCollection: false);
+            var gcCount0 = GC.CollectionCount(0);
+            var gcCount1 = GC.CollectionCount(1);
+            var gcCount2 = GC.CollectionCount(2);
+            var frameCount = Time.frameCount;
+            var deltaTimeMs = Time.deltaTime * 1000f;
+            var unscaledDeltaTimeMs = Time.unscaledDeltaTime * 1000f;
+            var fixedDeltaTimeMs = Time.fixedDeltaTime * 1000f;
+            var timeScale = Time.timeScale;
+            var monoUsedBytes = Profiler.GetMonoUsedSizeLong();
+            var totalAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong();
+            if (!_frameStallDiagnosticsWasEnabled || _lastFrameStallDiagnosticsTime <= 0d)
+            {
+                _lastFrameStallDiagnosticsTime = now;
+                _lastFrameStallGcBytes = gcBytes;
+                _lastFrameStallGcCount0 = gcCount0;
+                _lastFrameStallGcCount1 = gcCount1;
+                _lastFrameStallGcCount2 = gcCount2;
+                _frameStallDiagnosticsWasEnabled = true;
+                return;
+            }
+
+            var deltaMs = (now - _lastFrameStallDiagnosticsTime) * 1000d;
+            var gcBytesDelta = gcBytes - _lastFrameStallGcBytes;
+            var gcCount0Delta = gcCount0 - _lastFrameStallGcCount0;
+            var gcCount1Delta = gcCount1 - _lastFrameStallGcCount1;
+            var gcCount2Delta = gcCount2 - _lastFrameStallGcCount2;
+            _lastFrameStallDiagnosticsTime = now;
+            _lastFrameStallGcBytes = gcBytes;
+            _lastFrameStallGcCount0 = gcCount0;
+            _lastFrameStallGcCount1 = gcCount1;
+            _lastFrameStallGcCount2 = gcCount2;
+
+            var thresholdMs = Mathf.Max(10f, _frameStallDiagnosticsThresholdMs);
+            if (deltaMs + 1e-9d < thresholdMs)
+                return;
+
+            LogFrameStallDiagnostics(
+                frameCount,
+                deltaMs,
+                thresholdMs,
+                deltaTimeMs,
+                unscaledDeltaTimeMs,
+                fixedDeltaTimeMs,
+                timeScale,
+                gcBytesDelta,
+                gcCount0Delta,
+                gcCount1Delta,
+                gcCount2Delta,
+                monoUsedBytes,
+                totalAllocatedBytes);
+        }
+
+        private static void LogFrameStallDiagnostics(
+            int frameCount,
+            double deltaMs,
+            float thresholdMs,
+            float deltaTimeMs,
+            float unscaledDeltaTimeMs,
+            float fixedDeltaTimeMs,
+            float timeScale,
+            long gcBytesDelta,
+            int gcCount0Delta,
+            int gcCount1Delta,
+            int gcCount2Delta,
+            long monoUsedBytes,
+            long totalAllocatedBytes)
+        {
+#if UNITY_EDITOR
+            var editorState = string.Format(
+                CultureInfo.InvariantCulture,
+                "compiling={0} updating={1}",
+                UnityEditor.EditorApplication.isCompiling,
+                UnityEditor.EditorApplication.isUpdating);
+#else
+            const string editorState = "compiling=n/a updating=n/a";
+#endif
+            var message = string.Format(
+                CultureInfo.InvariantCulture,
+                "[Foxglove] Frame stall diagnostics: frame={0} realDeltaMs={1:F2} thresholdMs={2:F2} deltaTimeMs={3:F2} unscaledDeltaTimeMs={4:F2} fixedDeltaMs={5:F2} timeScale={6:F2} focused={7} playing={8} {9} gcBytesDelta={10} gcCountDelta={11}/{12}/{13} monoUsedBytes={14} totalAllocatedBytes={15}",
+                frameCount,
+                deltaMs,
+                thresholdMs,
+                deltaTimeMs,
+                unscaledDeltaTimeMs,
+                fixedDeltaTimeMs,
+                timeScale,
+                Application.isFocused,
+                Application.isPlaying,
+                editorState,
+                gcBytesDelta,
+                gcCount0Delta,
+                gcCount1Delta,
+                gcCount2Delta,
+                monoUsedBytes,
+                totalAllocatedBytes);
+            LogDiagnosticsWithoutStackTrace(message);
+        }
+
         private static void LogPublishCadenceSummary(string summary)
+        {
+            LogDiagnosticsWithoutStackTrace(summary);
+        }
+
+        private static void LogDiagnosticsWithoutStackTrace(string message)
         {
             var previousStackTraceMode = Application.GetStackTraceLogType(LogType.Log);
             try
             {
                 Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
-                Debug.Log(summary);
+                Debug.Log(message);
             }
             finally
             {

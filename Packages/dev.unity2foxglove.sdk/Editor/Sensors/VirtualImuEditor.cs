@@ -65,6 +65,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var source = serializedObject.FindProperty("_publishRateSource");
             var targetRateHz = serializedObject.FindProperty("_targetRateHz");
+            var maxWebSocketSamplesPerFrame = serializedObject.FindProperty("_maxWebSocketSamplesPerFrame");
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
@@ -85,8 +86,15 @@ namespace Unity.FoxgloveSDK.Editor
                     EditorGUILayout.PropertyField(targetRateHz, new GUIContent("Sample Rate Hz"));
             }
 
+            if (maxWebSocketSamplesPerFrame != null)
+            {
+                EditorGUILayout.PropertyField(
+                    maxWebSocketSamplesPerFrame,
+                    new GUIContent("WebSocket Max Samples / Frame"));
+            }
+
             EditorGUILayout.HelpBox(
-                "IMU defaults to a local 200Hz sample rate. Manager defaults are usually tuned for lower-rate visual topics.",
+                "Set WebSocket Max Samples / Frame high enough for the sample rate and lowest expected Game view FPS. Example: 640Hz needs at least 16 at 40 FPS, or 32 at 20 FPS. 0 disables the WebSocket cap.",
                 MessageType.Info);
         }
 

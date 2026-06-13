@@ -449,6 +449,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime?.Tick();
             DrainClientEventQueue(_clientLifecycleEvents);
             DrainClientEventQueue(_clientMessageEvents);
+            RecordFrameStallDiagnosticsIfNeeded();
             FlushPublishCadenceDiagnosticsIfNeeded();
             ApplyLiveOutputModeWatchers();
             RefreshRemoteMcapFileServerIfNeeded();

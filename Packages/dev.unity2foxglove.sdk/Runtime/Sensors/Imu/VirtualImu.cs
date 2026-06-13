@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         private const string DefaultFrameId = "imu_link";
         private const int MaxQueueSamples = 512;
         private const int DefaultTargetRateHz = 200;
+        private const int DefaultMaxWebSocketSamplesPerFrame = 32;
         private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
@@ -58,6 +59,10 @@ namespace Unity.FoxgloveSDK.Components
             + "0 = one sample per physics tick (138D behavior).\n"
             + "> 0 up-samples/down-samples with interpolation across tick interval.")]
         [SerializeField, Min(0)] private int _targetRateHz = DefaultTargetRateHz;
+        [SerializeField, Min(0), Tooltip(
+            "Maximum IMU WebSocket visualization catch-up samples published per render frame.\n"
+            + "Use at least sample rate / expected lowest FPS. 0 = legacy unlimited draining. Native IMU handoff is never capped.")]
+        private int _maxWebSocketSamplesPerFrame = DefaultMaxWebSocketSamplesPerFrame;
 
         private bool _publishing;
         private int _maxQueuedSamples;
@@ -248,6 +253,11 @@ namespace Unity.FoxgloveSDK.Components
             if (_queue.Count == 0)
                 return;
 
+            var queuedAtFrameStart = _queue.Count;
+            var webSocketBudget = ResolveWebSocketSamplesPerFrame(queuedAtFrameStart);
+            var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;
+            var webSocketPublished = 0;
+
             while (_queue.Count > 0)
             {
                 var sample = _queue.Dequeue();
@@ -264,18 +274,15 @@ namespace Unity.FoxgloveSDK.Components
                         _includeOrientation);
                 }
 
-                var bytes = ImuMessageBuilder.Serialize(
-                    sample.TimestampNs,
-                    _frameId,
-                    sample.LinearAcceleration,
-                    sample.AngularVelocity,
-                    sample.Orientation,
-                    _includeOrientation,
-                    ImuOrientationCovariance,
-                    ImuAngularVelocityCovariance,
-                    ImuLinearAccelerationCovariance);
-
-                _manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);
+                if (webSocketSkipCount > 0)
+                {
+                    webSocketSkipCount--;
+                }
+                else if (webSocketPublished < webSocketBudget)
+                {
+                    PublishWebSocketSample(sample);
+                    webSocketPublished++;
+                }
 
                 if (nativeFrame != null)
                     nativeFrameHandler.Invoke(nativeFrame);
@@ -293,6 +300,8 @@ namespace Unity.FoxgloveSDK.Components
                 _globalPhysicsRateHzOverride = 0;
             if (_targetRateHz < 0)
                 _targetRateHz = 0;
+            if (_maxWebSocketSamplesPerFrame < 0)
+                _maxWebSocketSamplesPerFrame = 0;
             if (string.IsNullOrWhiteSpace(_topic))
                 _topic = DefaultTopic;
             if (string.IsNullOrWhiteSpace(_frameId))
@@ -308,6 +317,30 @@ namespace Unity.FoxgloveSDK.Components
         private int ComputeMaxQueuedSamples()
         {
             return ImuSubStep.ComputeQueueCapacity(ResolveTargetRateHz(), ImuSampleQueue.MinCapacity, MaxQueueSamples);
+        }
+
+        private int ResolveWebSocketSamplesPerFrame(int queuedAtFrameStart)
+        {
+            if (_maxWebSocketSamplesPerFrame <= 0)
+                return queuedAtFrameStart;
+
+            return Math.Min(_maxWebSocketSamplesPerFrame, queuedAtFrameStart);
+        }
+
+        private void PublishWebSocketSample(ImuSample sample)
+        {
+            var bytes = ImuMessageBuilder.Serialize(
+                sample.TimestampNs,
+                _frameId,
+                sample.LinearAcceleration,
+                sample.AngularVelocity,
+                sample.Orientation,
+                _includeOrientation,
+                ImuOrientationCovariance,
+                ImuAngularVelocityCovariance,
+                ImuLinearAccelerationCovariance);
+
+            _manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);
         }
 
         private int ResolveTargetRateHz()
