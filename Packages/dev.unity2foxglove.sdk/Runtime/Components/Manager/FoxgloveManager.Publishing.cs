@@ -294,6 +294,7 @@ namespace Unity.FoxgloveSDK.Components
                 ? GetOrRegisterChannel(topic, JsonEncoding)
                 : GetOrRegisterSchemaChannel(topic, schemaName, JsonEncoding);
             _runtime.PublishJson(channelId, message, logTimeNs);
+            RecordPublishCadence(topic, JsonEncoding);
         }
 
         /// <summary>
@@ -326,6 +327,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName, ProtobufEncoding);
             _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
+            RecordPublishCadence(topic, ProtobufEncoding);
         }
 
         /// <summary>
@@ -368,6 +370,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
+            RecordPublishCadence(topic, CdrEncoding);
         }
 
         private static bool IsValidPublishTopic(string topic)

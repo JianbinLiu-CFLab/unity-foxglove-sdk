@@ -449,6 +449,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime?.Tick();
             DrainClientEventQueue(_clientLifecycleEvents);
             DrainClientEventQueue(_clientMessageEvents);
+            FlushPublishCadenceDiagnosticsIfNeeded();
             ApplyLiveOutputModeWatchers();
             RefreshRemoteMcapFileServerIfNeeded();
             RefreshReplayCursorEndpointIfNeeded();
@@ -581,6 +582,7 @@ namespace Unity.FoxgloveSDK.Components
             _lastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
             _lastRos2BridgeEnabled = _ros2BridgeEnabled;
         }
+
     }
 
     /// <summary>
