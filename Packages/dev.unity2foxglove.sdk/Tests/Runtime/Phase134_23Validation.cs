@@ -170,9 +170,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && mouseDrag.Contains("var cam = _camera;", StringComparison.Ordinal),
                 "134-23-F13: MouseDragCube caches the main camera instead of resolving it every frame");
 
-            var manager = ReadRepoFile(PackageRoot + "/Runtime/Components/Manager/FoxgloveManager.cs");
-            Check(manager.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler", StringComparison.Ordinal)
-                  && manager.Contains("_runtime?.RegisterService(descriptor, handler)", StringComparison.Ordinal),
+            var managerServices = ReadRepoFile(PackageRoot + "/Runtime/Components/Manager/FoxgloveManager.Services.cs");
+            Check(managerServices.Contains("System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler", StringComparison.Ordinal)
+                  && managerServices.Contains("_runtime?.RegisterService(descriptor, handler)", StringComparison.Ordinal),
                 "134-23-F7: FoxgloveManager exposes handler-based service registration facade");
 
             var testLog = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/TestLog.cs");
