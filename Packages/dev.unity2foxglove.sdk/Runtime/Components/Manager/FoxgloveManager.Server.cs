@@ -444,6 +444,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 _replayCursorEndpointLoggedFirstCursor = false;
+                _replayCursorEndpointLoggedUnavailable = false;
                 _replayCursorEndpoint.Start(options, QueueExternalReplayCursor, GetExternalReplayCursorState);
                 Debug.Log("[Foxglove] Replay cursor endpoint ready: http://"
                           + options.Host
@@ -519,6 +520,14 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var result = _runtime.TryEnqueueExternalReplayCursor(request, out var message);
+            if (!_replayCursorEndpointLoggedUnavailable
+                && result == ExternalReplayCursorEnqueueResult.ReplayUnavailable)
+            {
+                _replayCursorEndpointLoggedUnavailable = true;
+                Debug.LogWarning("[Foxglove] Foxglove timeline sync is on but external cursor control is unavailable. "
+                                 + message);
+            }
+
             if (!_replayCursorEndpointLoggedFirstCursor
                 && (result == ExternalReplayCursorEnqueueResult.Accepted
                     || result == ExternalReplayCursorEnqueueResult.Duplicate))
@@ -545,6 +554,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _runtime?.SetExternalReplayCursorEnabled(false);
             _replayCursorEndpointLoggedFirstCursor = false;
+            _replayCursorEndpointLoggedUnavailable = false;
             _replayCursorEndpoint?.Stop();
         }
     }

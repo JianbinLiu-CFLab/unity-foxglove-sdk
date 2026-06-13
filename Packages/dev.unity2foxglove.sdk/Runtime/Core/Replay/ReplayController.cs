@@ -258,7 +258,9 @@ namespace Unity.FoxgloveSDK.Core
 
                 if (recordingEnabled)
                 {
-                    _logger.LogWarning("Recording and Replay cannot both be enabled. Replay disabled.");
+                    const string message = "Recording and Replay cannot both be enabled. Replay disabled.";
+                    Volatile.Write(ref _lastEnableFailureMessage, message);
+                    _logger.LogWarning(message);
                     return;
                 }
                 try
