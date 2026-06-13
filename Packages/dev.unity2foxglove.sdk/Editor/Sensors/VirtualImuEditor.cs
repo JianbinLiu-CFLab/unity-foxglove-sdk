@@ -23,6 +23,8 @@ namespace Unity.FoxgloveSDK.Editor
             "Override Local"
         };
 
+        private const int CovarianceMatrixSize = 3;
+        private const int CovarianceElementCount = CovarianceMatrixSize * CovarianceMatrixSize;
         private static bool _showAdvancedImuModel;
 
         /// <summary>
@@ -96,9 +98,9 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
 
             DrawProperty("_includeOrientation", "Publish Orientation");
-            DrawProperty("_imuOrientationCovariance", "Orientation Covariance");
-            DrawProperty("_imuAngularVelocityCovariance", "Angular Velocity Covariance");
-            DrawProperty("_imuLinearAccelerationCovariance", "Linear Acceleration Covariance");
+            DrawCovarianceMatrix("_imuOrientationCovariance", "Orientation Covariance");
+            DrawCovarianceMatrix("_imuAngularVelocityCovariance", "Angular Velocity Covariance");
+            DrawCovarianceMatrix("_imuLinearAccelerationCovariance", "Linear Acceleration Covariance");
 
             EditorGUILayout.Space();
             DrawProperty("_globalPhysicsRateHzOverride", "Override Unity Physics Rate Hz");
@@ -112,6 +114,46 @@ namespace Unity.FoxgloveSDK.Editor
             var property = serializedObject.FindProperty(propertyName);
             if (property != null)
                 EditorGUILayout.PropertyField(property, new GUIContent(label));
+        }
+
+        private void DrawCovarianceMatrix(string propertyName, string label)
+        {
+            var property = serializedObject.FindProperty(propertyName);
+            if (property == null)
+                return;
+
+            if (!property.isArray || property.arraySize != CovarianceElementCount)
+                property.arraySize = CovarianceElementCount;
+
+            EditorGUILayout.Space(2f);
+            EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+
+            EditorGUI.indentLevel++;
+            for (var row = 0; row < CovarianceMatrixSize; row++)
+            {
+                var rowRect = EditorGUILayout.GetControlRect();
+                var matrixRect = new Rect(
+                    rowRect.x + EditorGUIUtility.labelWidth,
+                    rowRect.y,
+                    rowRect.width - EditorGUIUtility.labelWidth,
+                    rowRect.height);
+                var spacing = EditorGUIUtility.standardVerticalSpacing;
+                var cellWidth = (matrixRect.width - spacing * (CovarianceMatrixSize - 1)) / CovarianceMatrixSize;
+
+                for (var column = 0; column < CovarianceMatrixSize; column++)
+                {
+                    var index = row * CovarianceMatrixSize + column;
+                    var element = property.GetArrayElementAtIndex(index);
+                    var cellRect = new Rect(
+                        matrixRect.x + column * (cellWidth + spacing),
+                        matrixRect.y,
+                        cellWidth,
+                        matrixRect.height);
+                    element.doubleValue = EditorGUI.DoubleField(cellRect, element.doubleValue);
+                }
+            }
+
+            EditorGUI.indentLevel--;
         }
     }
 }
