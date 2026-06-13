@@ -89,7 +89,8 @@ namespace Unity.FoxgloveSDK.Core
             ulong startNs,
             ulong endNs)
         {
-            var available = replayEnabled && playbackEnabled;
+            var validRange = endNs >= startNs;
+            var available = replayEnabled && playbackEnabled && validRange;
             return new ReplayCursorState(
                 available,
                 replayEnabled,
@@ -100,7 +101,36 @@ namespace Unity.FoxgloveSDK.Core
                 startNs,
                 endNs,
                 snapshot.Speed,
-                available ? "Replay cursor state available." : "Replay cursor state is unavailable.");
+                CreateAvailabilityMessage(available, replayEnabled, playbackEnabled, validRange));
+        }
+
+        private static string CreateAvailabilityMessage(
+            bool available,
+            bool replayEnabled,
+            bool playbackEnabled,
+            bool validRange)
+        {
+            if (available)
+            {
+                return "Replay cursor state available.";
+            }
+
+            if (!replayEnabled)
+            {
+                return "Replay is not loaded; external cursor control is unavailable.";
+            }
+
+            if (!playbackEnabled)
+            {
+                return "Playback control is not enabled; external cursor control is unavailable.";
+            }
+
+            if (!validRange)
+            {
+                return "Replay playback range is invalid; external cursor control is unavailable.";
+            }
+
+            return "Replay cursor state is unavailable.";
         }
 
         /// <summary>Serialize this state as the loopback endpoint JSON contract.</summary>

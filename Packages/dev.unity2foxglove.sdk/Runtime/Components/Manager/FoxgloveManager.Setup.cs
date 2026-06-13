@@ -240,6 +240,7 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
                 }
 
+                Debug.LogWarning(CreateReplayFallbackWarning(ResolveProjectPath(_replayFilePath)));
                 RestoreLivePublishers();
                 return true;
             }
@@ -266,6 +267,21 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return true;
+        }
+
+        private string CreateReplayFallbackWarning(string resolvedReplayPath)
+        {
+            var failure = _runtime?.ReplayStartFailureMessage;
+            if (string.IsNullOrWhiteSpace(failure))
+            {
+                failure = "No replay failure details were reported.";
+            }
+
+            return "[Foxglove] Replay was requested but did not enable; restoring live publishers. "
+                   + "Replay file: "
+                   + (string.IsNullOrWhiteSpace(resolvedReplayPath) ? "<empty>" : resolvedReplayPath)
+                   + ". Cause: "
+                   + failure;
         }
 
         /// <summary>
