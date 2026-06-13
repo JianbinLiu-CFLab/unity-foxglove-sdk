@@ -113,6 +113,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("Linear Acceleration Covariance", StringComparison.Ordinal)
                   && editor.Contains("Override Unity Physics Rate Hz", StringComparison.Ordinal),
                 "138S-2M: VirtualImu Inspector keeps covariance and physics-rate override in Advanced IMU Model");
+            Check(editor.Contains("DrawCovarianceMatrix", StringComparison.Ordinal)
+                  && editor.Contains("CovarianceMatrixSize = 3", StringComparison.Ordinal)
+                  && editor.Contains("row < CovarianceMatrixSize", StringComparison.Ordinal)
+                  && editor.Contains("column < CovarianceMatrixSize", StringComparison.Ordinal),
+                "138S-2M2: VirtualImu Inspector renders covariance as a 3x3 matrix");
+            Check(editor.Contains("EditorGUILayout.GetControlRect()", StringComparison.Ordinal)
+                  && editor.Contains("EditorGUI.DoubleField(cellRect", StringComparison.Ordinal)
+                  && !editor.Contains("EditorGUI.LabelField(labelRect", StringComparison.Ordinal)
+                  && !editor.Contains("EditorGUILayout.PrefixLabel", StringComparison.Ordinal),
+                "138S-2M3: VirtualImu covariance matrix uses fixed row rects to keep columns aligned");
             Check(editor.Contains("Publish Orientation", StringComparison.Ordinal)
                   && !editor.Contains("Publish On Start", StringComparison.Ordinal)
                   && !editor.Contains("Enable Noise", StringComparison.Ordinal)
@@ -128,14 +138,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "138S-3A: VirtualImu still drains the IMU queue on Update");
             Check(update.Contains("var sample = _queue.Dequeue();", StringComparison.Ordinal),
                 "138S-3B: VirtualImu dequeue path remains single source sample");
-            Check(update.Contains("ImuNativeFrame nativeFrame = null;", StringComparison.Ordinal)
+            Check(update.Contains("var nativeFrameHandler = ImuNativeFrameReady;", StringComparison.Ordinal)
+                  && update.Contains("ImuNativeFrame nativeFrame = null;", StringComparison.Ordinal)
+                  && update.Contains("if (nativeFrameHandler != null)", StringComparison.Ordinal)
                   && update.Contains("CreateNativeFrame(", StringComparison.Ordinal)
-                  && update.Contains("ImuNativeFrameReady?.Invoke(nativeFrame);", StringComparison.Ordinal),
+                  && update.Contains("nativeFrameHandler.Invoke(nativeFrame);", StringComparison.Ordinal),
                 "138S-3C: VirtualImu creates and emits native frame from dequeued sample");
             Check(!update.Contains("_publishImuNative", StringComparison.Ordinal),
                 "138S-3C2: VirtualImu native frame emission is subscriber-driven, not gated by a second Inspector toggle");
             Check(update.IndexOf("ImuNativeFrame nativeFrame", StringComparison.Ordinal)
-                      < update.IndexOf("ImuNativeFrameReady?.Invoke(nativeFrame);", StringComparison.Ordinal),
+                      < update.IndexOf("nativeFrameHandler.Invoke(nativeFrame);", StringComparison.Ordinal),
                 "138S-3D: IMU native frame is created before publish invocation");
             Check(!update.Contains("return; //", StringComparison.Ordinal),
                 "138S-3E: VirtualImu update path contains no accidental early native-frame bypass");

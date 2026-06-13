@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Components
                 ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
 
             _maxQueuedSamples = ComputeMaxQueuedSamples();
-            _queue.Resize(_maxQueuedSamples);
+            _queue.Resize(_maxQueuedSamples, MinQueueSamples);
             _lastWorldVelocity = _rigidbody.linearVelocity;
             _lastBodyAcceleration = Vector3.zero;
             _lastBodyAngularVelocity = Vector3.zero;
@@ -252,8 +252,9 @@ namespace Unity.FoxgloveSDK.Components
             while (_queue.Count > 0)
             {
                 var sample = _queue.Dequeue();
+                var nativeFrameHandler = ImuNativeFrameReady;
                 ImuNativeFrame nativeFrame = null;
-                if (ImuNativeFrameReady != null)
+                if (nativeFrameHandler != null)
                 {
                     nativeFrame = CreateNativeFrame(
                         sample.TimestampNs,
@@ -270,12 +271,15 @@ namespace Unity.FoxgloveSDK.Components
                     sample.LinearAcceleration,
                     sample.AngularVelocity,
                     sample.Orientation,
-                    _includeOrientation);
+                    _includeOrientation,
+                    ImuOrientationCovariance,
+                    ImuAngularVelocityCovariance,
+                    ImuLinearAccelerationCovariance);
 
                 _manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);
 
                 if (nativeFrame != null)
-                    ImuNativeFrameReady?.Invoke(nativeFrame);
+                    nativeFrameHandler.Invoke(nativeFrame);
             }
         }
 
@@ -457,10 +461,10 @@ namespace Unity.FoxgloveSDK.Components
             public int Count => _count;
 
             /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
-            public void Resize(int capacity)
+            public void Resize(int capacity, int minCapacity)
             {
-                if (capacity <= 0)
-                    capacity = MinQueueSamples;
+                if (capacity < minCapacity)
+                    capacity = minCapacity;
                 if (_items.Length == capacity)
                     return;
 

@@ -15,6 +15,14 @@ namespace UnityEngine
         public float y;
         public float z;
     }
+
+    public struct Quaternion
+    {
+        public float x;
+        public float y;
+        public float z;
+        public float w;
+    }
 }
 
 namespace Unity.FoxgloveSDK.Tests.Fixtures
