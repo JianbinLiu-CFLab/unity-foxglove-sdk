@@ -14,8 +14,8 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232` |
-| Inventory file count | `1053` |
+| SHA-256 | `709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a` |
+| Inventory file count | `1063` |
 
 ## Known Upstream Components
 
@@ -46,6 +46,6 @@ If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.d
 - This package is a prototype until fresh-project acceptance passes.
 - The inventory is an engineering inventory generated from the local runtime artifact, not a complete legal audit.
 - Public release should refresh transitive license attribution before registry or binary distribution.
-- DDS acceptance should use Windows ROS2 Jazzy or a properly firewalled WSL2/remote Linux topology; Windows Firewall may block inbound Fast DDS UDP discovery unless allow rules are configured.
+- WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Jazzy or a real remote Linux topology for final external-graph acceptance.
 
 RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware users and that the Robotec team cannot support and maintain the project for the general community. Unity2Foxglove must preserve that caveat and must not imply upstream community support for Unity2Foxglove-specific packaging.

@@ -356,6 +356,14 @@ namespace Unity.FoxgloveSDK.Tests
             if (relativePath.EndsWith("FoxgloveCameraPublisher.cs", StringComparison.Ordinal))
                 return ReadCameraPublisherSources();
 
+            if (relativePath.EndsWith("FoxglovePointCloudPublisher.cs", StringComparison.Ordinal))
+            {
+                return ReadRepoText(relativePath)
+                    + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs")
+                    + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs")
+                    + "\n" + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            }
+
             return ReadRepoText(relativePath);
         }
 

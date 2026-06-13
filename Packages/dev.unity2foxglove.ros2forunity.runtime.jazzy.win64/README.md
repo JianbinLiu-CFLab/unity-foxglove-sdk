@@ -28,7 +28,7 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-jazzy-win64`
 - Artifact source: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`
-- SHA-256: `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232`
+- SHA-256: `709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
 
@@ -42,14 +42,12 @@ Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnit
 
 This patch is limited to locating runtime files from a Unity package. It does not change ROS2 For Unity node, publisher, subscriber, or DDS behavior.
 
+## Network Acceptance Notes
+
+WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Jazzy or a real remote Linux topology for final external-graph acceptance.
+
 ## Support Boundary
 
 This is a prototype runtime package. Fresh-project install acceptance and public release readiness are separate gates. Linux, macOS, Humble, and Lyrical runtime packages are not included here.
 
 RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware users and that the Robotec team cannot support and maintain the project for the general community. Unity2Foxglove-specific packaging and support belong to Unity2Foxglove, not RobotecAI.
-
-## Known Topology Limits
-
-This package is validated for the bundled FastRTPS RMW path (`rmw_fastrtps_cpp`). CycloneDDS DLLs can appear in the copied Jazzy runtime artifact as transitive ROS2 distribution files, but this package does not treat CycloneDDS as a supported runtime path. Leave `RMW_IMPLEMENTATION` unset or set it to `rmw_fastrtps_cpp`.
-
-WSL2 NAT discovery remains diagnostic-only. Use Windows ROS2 Jazzy on the same host, or a properly firewalled real remote Linux topology, for acceptance evidence. Windows Defender Firewall can block inbound Fast DDS UDP discovery unless allow rules are configured.

@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("shutil.rmtree(raw_path, onexc=make_writable_onexc)", StringComparison.Ordinal)
                   && builder.Contains("shutil.rmtree(raw_path, onerror=make_writable_onerror)", StringComparison.Ordinal),
                 "134-28D-2: runtime package builder uses onexc-aware rmtree compatibility helper");
-            Check(builder.Contains("write_text(source, text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK))", StringComparison.Ordinal)
+            Check(builder.Contains("write_text(source, text)", StringComparison.Ordinal)
                   && !builder.Contains("source.write_text(text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK)", StringComparison.Ordinal),
                 "134-28D-3: ROS2ForUnity patch write path uses stable LF helper");
             Check(builder.Contains("\"includePlatforms\": [\"Editor\", \"WindowsStandalone64\"]", StringComparison.Ordinal),

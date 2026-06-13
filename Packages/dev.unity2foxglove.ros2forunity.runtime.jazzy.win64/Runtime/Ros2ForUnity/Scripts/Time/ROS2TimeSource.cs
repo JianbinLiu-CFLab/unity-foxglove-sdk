@@ -26,14 +26,15 @@ public class ROS2TimeSource : ITimeSource, IDisposable
 {
   private ROS2.Clock clock;
 
-  public void GetTime(out int seconds, out uint nanoseconds)
+  public bool GetTime(out int seconds, out uint nanoseconds)
   {
+    // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
     if (!ROS2.Ros2cs.Ok())
     {
       seconds = 0;
       nanoseconds = 0;
       Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
-      return;
+      return false;
     }
 
     if (clock == null)
@@ -42,6 +43,7 @@ public class ROS2TimeSource : ITimeSource, IDisposable
     }
   
     TimeUtils.TimeFromTotalSeconds(clock.Now.Seconds, out seconds, out nanoseconds);
+    return true;
   }
 
   public void Dispose()

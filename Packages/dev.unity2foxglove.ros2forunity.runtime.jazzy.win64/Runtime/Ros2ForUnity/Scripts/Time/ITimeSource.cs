@@ -1,4 +1,7 @@
 // Copyright 2022 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,11 +18,12 @@ namespace ROS2
 {
 
 /// <summary>
-/// Interface for acquiring time
+/// Interface for acquiring time.
 /// </summary>
 public interface ITimeSource
 {
-  void GetTime(out int seconds, out uint nanoseconds);
+  /// <returns>True when a valid timestamp was acquired; false when the source is not currently usable.</returns>
+  bool GetTime(out int seconds, out uint nanoseconds);
 }
 
 }  // namespace ROS2

@@ -51,11 +51,11 @@ public class DotnetTimeSource : ITimeSource
         UpdateSystemTime();
     }
 
-    public void GetTime(out int seconds, out uint nanoseconds)
+    public bool GetTime(out int seconds, out uint nanoseconds)
     {
         lock(mutex) // Threading
         {
-            var durationInSeconds = stopwatch.Elapsed.TotalSeconds;
+            var durationInSeconds = stopwatch.ElapsedTicks / (double)Stopwatch.Frequency;
             double timeOffset = 0;
             if (durationInSeconds >= maxUnsyncedSeconds)
             {   // acquire DateTime to sync
@@ -68,6 +68,7 @@ public class DotnetTimeSource : ITimeSource
             
             TimeUtils.TimeFromTotalSeconds(systemTimeIntervalStart + timeOffset, out seconds, out nanoseconds);
         }
+        return true;
     }
 }
 

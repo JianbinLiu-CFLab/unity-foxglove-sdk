@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Components
     /// Publishes decoded point frames or child transforms as foxglove.PointCloud.
     /// Programmatic frames are intended for later Ouster/ROS input bridges.
     /// </summary>
-    public class FoxglovePointCloudPublisher : FoxglovePublisherBase
+    public partial class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
         private const int DracoFailureWarningIntervalFrames = 120;
         private const int MaxCompletedDracoEncodeResults = 8;
@@ -167,22 +167,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        protected override string Ros2SchemaName
-        {
-            get
-            {
-                switch (_outputMode)
-                {
-                    case PointCloudOutputMode.Draco:
-                        return Ros2PublisherSchemaNames.CompressedPointCloud;
-                    case PointCloudOutputMode.PointCloud2Native:
-                        return Ros2PublisherSchemaNames.SensorPointCloud2;
-                    case PointCloudOutputMode.Raw:
-                    default:
-                        return Ros2PublisherSchemaNames.PointCloud;
-                }
-            }
-        }
+        protected override string Ros2SchemaName => ActiveProfile.Ros2SchemaName;
 
         protected virtual void Awake()
         {
@@ -304,130 +289,12 @@ namespace Unity.FoxgloveSDK.Components
         /// Queues a source VirtualLidar snapshot into the Draco worker when the
         /// selected mode is compatible.
         /// </summary>
-        internal bool TryQueueVirtualLidarDracoFrame(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            string frameId,
-            bool emitAbsoluteTimeNs)
-        {
-            if (!CanQueueVirtualLidarDracoFrame)
-                return false;
-
-            if (points != null && pointCount > 0)
-                MarkSourceDrivenPointCloud();
-
-            ResolveManager();
-            if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
-                return true;
-
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            if (!publishWebSocket && !publishBridge)
-                return true;
-
-            if (!ShouldQueueVirtualLidarDracoFrame(unixNs))
-                return true;
-
-            QueueVirtualLidarDracoEncode(
-                points,
-                pointCount,
-                unixNs,
-                frameId,
-                emitAbsoluteTimeNs,
-                publishWebSocket,
-                publishBridge,
-                EffectiveEncoding);
-            return true;
-        }
 
         /// <summary>
         /// Queues a source VirtualLidar snapshot into the PointCloud2 Native
         /// worker when the selected mode is compatible.
         /// </summary>
-        internal bool TryQueueVirtualLidarPointCloud2NativeFrame(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            string frameId,
-            bool emitAbsoluteTimeNs)
-        {
-            if (!CanQueueVirtualLidarPointCloud2NativeFrame)
-                return false;
 
-            if (points != null && pointCount > 0)
-                MarkSourceDrivenPointCloud();
-
-            ResolveManager();
-            if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
-                return true;
-
-            var publishWebSocket = ShouldPreparePublishPayload();
-            var publishBridge = ShouldPrepareRos2BridgePayload();
-            var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
-            var motionSettings = ResolveMotionCompensationSettings();
-            var publishRaw = motionSettings.PreserveRawOutput;
-            var motionCompensation = TryCreateMotionCompensationRequest(
-                points,
-                pointCount,
-                unixNs,
-                motionSettings,
-                publishNativeFrame);
-
-            if (!publishRaw && motionCompensation == null)
-                return true;
-
-            if (publishRaw && !publishWebSocket && !publishBridge && !publishNativeFrame && motionCompensation == null)
-                return true;
-
-            QueueVirtualLidarPointCloud2Native(
-                points,
-                pointCount,
-                unixNs,
-                frameId,
-                emitAbsoluteTimeNs,
-                publishRaw && publishWebSocket,
-                publishRaw && publishBridge,
-                publishRaw && publishNativeFrame,
-                EffectiveEncoding,
-                publishRaw ? PointCloud2NativeTopic : null,
-                motionCompensation);
-            return true;
-        }
-
-        private bool ShouldQueueVirtualLidarDracoFrame(ulong unixNs)
-        {
-            var rateHz = _nativeDracoMaxPublishRateHz;
-            if (rateHz <= 0f)
-                return true;
-
-            var intervalNs = ResolveNativeDracoPublishIntervalNs(rateHz);
-            var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
-
-            if (_lastNativeDracoPublishUnixNs != 0UL
-                && timestampNs >= _lastNativeDracoPublishUnixNs
-                && timestampNs - _lastNativeDracoPublishUnixNs < intervalNs)
-            {
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
-                return false;
-            }
-
-            // A backward clock jump, usually from replay seek or sensor clock reset,
-            // intentionally resets the native Draco rate baseline and lets one frame through.
-            _lastNativeDracoPublishUnixNs = timestampNs;
-            return true;
-        }
-
-        private ulong ResolveNativeDracoPublishIntervalNs(float rateHz)
-        {
-            if (!rateHz.Equals(_cachedNativeDracoMaxPublishRateHz))
-            {
-                _cachedNativeDracoMaxPublishRateHz = rateHz;
-                _cachedNativeDracoPublishIntervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
-            }
-
-            return _cachedNativeDracoPublishIntervalNs;
-        }
 
         protected virtual void Update()
         {
@@ -525,295 +392,14 @@ namespace Unity.FoxgloveSDK.Components
             PublishRawFrame(frame, unixNs, packedLayout);
         }
 
-        private void PublishRawFrame(
-            PointCloudFrame frame,
-            ulong unixNs,
-            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
-        {
-            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
-            {
-                publishWebSocket = ShouldPreparePublishPayload();
-                publishBridge = ShouldPrepareRos2BridgePayload();
-            }
-            byte[] ros2Payload = null;
 
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
-            {
-                PublishProto(packedLayout == null
-                    ? PointCloudMessageBuilder.SerializeProtobuf(frame)
-                    : PointCloudMessageBuilder.SerializeProtobuf(frame, packedLayout), unixNs);
-            }
-            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = packedLayout == null
-                    ? Ros2CdrPointCloudBuilder.Serialize(frame)
-                    : Ros2CdrPointCloudBuilder.Serialize(frame, packedLayout);
-                PublishRos2(ros2Payload, unixNs);
-            }
-            else if (publishWebSocket)
-            {
-                Publish(packedLayout == null
-                    ? PointCloudMessageBuilder.CreateJson(frame)
-                    : PointCloudMessageBuilder.CreateJson(frame, packedLayout), unixNs);
-            }
 
-            if (publishBridge)
-            {
-                ros2Payload ??= packedLayout == null
-                    ? Ros2CdrPointCloudBuilder.Serialize(frame)
-                    : Ros2CdrPointCloudBuilder.Serialize(frame, packedLayout);
-                PublishRos2Bridge(ros2Payload, unixNs);
-            }
-        }
 
-        private void PublishPointCloud2NativeFrame(
-            PointCloudFrame frame,
-            ulong unixNs,
-            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
-        {
-            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
-            {
-                publishWebSocket = ShouldPreparePublishPayload();
-                publishBridge = ShouldPrepareRos2BridgePayload();
-            }
 
-            byte[] ros2Payload = null;
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                ros2Payload = packedLayout == null
-                    ? Ros2CdrSensorPointCloud2Builder.Serialize(frame)
-                    : Ros2CdrSensorPointCloud2Builder.Serialize(frame, packedLayout);
-                PublishRos2(ros2Payload, unixNs);
-            }
-
-            if (publishBridge)
-            {
-                ros2Payload ??= packedLayout == null
-                    ? Ros2CdrSensorPointCloud2Builder.Serialize(frame)
-                    : Ros2CdrSensorPointCloud2Builder.Serialize(frame, packedLayout);
-                PublishRos2Bridge(ros2Payload, unixNs);
-            }
-
-            if (ShouldPreparePointCloud2NativeFrame())
-                PublishPreparedPointCloud2NativeFrame(frame, unixNs, packedLayout);
-        }
-
-        private bool ShouldPreparePointCloud2NativeFrame()
-            => _outputMode == PointCloudOutputMode.PointCloud2Native
-               && PointCloud2NativeFrameReady != null;
-
-        private void PublishPreparedPointCloud2NativeFrame(
-            PointCloudFrame frame,
-            ulong unixNs,
-            PointCloudPackedDataBuilder.PointCloudLayout packedLayout)
-        {
-            var handler = PointCloud2NativeFrameReady;
-            if (handler == null || frame == null)
-                return;
-
-            try
-            {
-                var packed = packedLayout == null
-                    ? PointCloudPackedDataBuilder.Build(frame)
-                    : PointCloudPackedDataBuilder.Build(frame, packedLayout);
-                var nativeFrame = new PointCloud2NativeFrame(
-                    unixNs,
-                    string.IsNullOrEmpty(frame.FrameId) ? _frameId : frame.FrameId,
-                    height: 1U,
-                    width: checked((uint)frame.GetPointCount()),
-                    fields: packed.Fields,
-                    pointStep: packed.PointStride,
-                    data: packed.Data,
-                    isDense: true,
-                    topic: PointCloud2NativeTopic);
-                handler(nativeFrame);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
-            }
-        }
-
-        private void PublishDracoFrame(PointCloudFrame frame, ulong unixNs)
-        {
-            if (frame == null || frame.GetPointCount() == 0)
-                return;
-
-            QueueDracoEncode(frame, unixNs);
-        }
-
-        private void QueueDracoEncode(PointCloudFrame frame, ulong unixNs)
-        {
-            if (!TryGetPreparedPublishDemand(out var publishWebSocket, out var publishBridge))
-            {
-                publishWebSocket = ShouldPreparePublishPayload();
-                publishBridge = ShouldPrepareRos2BridgePayload();
-            }
-
-            // No main-thread clone. VirtualLidar allocates a fresh PointCloudFrame for every
-            // scan (StartNewScan) and never mutates a frame after handing it to SetFrame, so
-            // the background worker can read this frame directly. Cloning 262144 points on the
-            // Update thread was the dominant per-frame main-thread spike that stalled the loop.
-            var request = new DracoEncodeRequest(
-                frame,
-                unixNs,
-                publishWebSocket,
-                publishBridge,
-                EffectiveEncoding,
-                0d);
-            EnqueueDracoEncodeRequest(request);
-        }
-
-        private void QueueVirtualLidarDracoEncode(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            string frameId,
-            bool emitAbsoluteTimeNs,
-            bool publishWebSocket,
-            bool publishBridge,
-            PublisherEffectiveEncoding webSocketEncoding)
-        {
-            if (points == null || pointCount <= 0)
-                return;
-
-            _diagnostics.RecordPrepared(_logPerformanceDiagnostics, pointCount);
-            var request = new DracoEncodeRequest(
-                points,
-                pointCount,
-                unixNs,
-                string.IsNullOrEmpty(frameId) ? _frameId : frameId,
-                emitAbsoluteTimeNs,
-                publishWebSocket,
-                publishBridge,
-                webSocketEncoding,
-                0d);
-            EnqueueDracoEncodeRequest(request);
-        }
-
-        private void QueueVirtualLidarPointCloud2Native(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            string frameId,
-            bool emitAbsoluteTimeNs,
-            bool publishWebSocket,
-            bool publishBridge,
-            bool publishNativeFrame,
-            PublisherEffectiveEncoding webSocketEncoding,
-            string nativeTopic = null,
-            PointCloudMotionCompensationRequest motionCompensation = null)
-        {
-            if (points == null || pointCount <= 0)
-                return;
-
-            _diagnostics.RecordPrepared(_logPerformanceDiagnostics, pointCount);
-            var request = new PointCloud2NativeRequest(
-                points,
-                pointCount,
-                unixNs,
-                string.IsNullOrEmpty(frameId) ? _frameId : frameId,
-                emitAbsoluteTimeNs,
-                publishWebSocket,
-                publishBridge,
-                publishNativeFrame,
-                webSocketEncoding,
-                nativeTopic,
-                motionCompensation);
-            EnqueuePointCloud2NativeRequest(request);
-        }
-
-        private PointCloudMotionCompensationSettings ResolveMotionCompensationSettings()
-        {
-            return new PointCloudMotionCompensationSettings(
-                _enableMotionCompensation,
-                _motionCompensationOutputPolicy,
-                _deskewedPointCloud2NativeTopic,
-                _motionCompensationReferenceTime,
-                _motionCompensationSource);
-        }
-
-        private PointCloudMotionCompensationRequest TryCreateMotionCompensationRequest(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            PointCloudMotionCompensationSettings settings,
-            bool publishNativeFrame)
-        {
-            if (!settings.EmitDeskewedOutput || !publishNativeFrame)
-                return null;
-
-            if (points == null || pointCount <= 0)
-                return null;
-
-            if (!TryGetPointTimeRange(points, pointCount, unixNs, out var firstUnixNs, out var lastUnixNs))
-            {
-                WarnMotionCompensation("skipped: valid point time offsets are absent");
-                return null;
-            }
-
-            if (settings.IsLikelySlamReplacementTopic(PointCloud2NativeTopic))
-            {
-                WarnMotionCompensation(
-                    "ReplaceOutput is publishing deskewed visualization data on a likely SLAM topic; FAST-LIO2/LIVO2 should subscribe to raw output instead.");
-            }
-
-            return new PointCloudMotionCompensationRequest(
-                settings.ResolveDeskewedTopic(PointCloud2NativeTopic),
-                settings.ReferenceTime,
-                PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame,
-                _motionPoseHistory.Snapshot());
-        }
-
-        private void WarnMotionCompensation(string reason)
-        {
-            if (_motionCompensationWarningCount < int.MaxValue)
-                _motionCompensationWarningCount++;
-            if (_motionCompensationWarningCount != 1 && _motionCompensationWarningCount % PointCloud2NativeFailureWarningIntervalFrames != 0)
-                return;
-
-            Debug.LogWarning("[Foxglove] PointCloud2 motion compensation " + reason);
-        }
 
         private bool IsUnityMainThread()
         {
             return _unityThreadId != 0 && Thread.CurrentThread.ManagedThreadId == _unityThreadId;
-        }
-
-        private static bool TryGetPointTimeRange(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            out ulong firstUnixNs,
-            out ulong lastUnixNs)
-        {
-            firstUnixNs = unixNs;
-            lastUnixNs = unixNs;
-            var found = false;
-            var count = Math.Min(pointCount, points.Length);
-            for (var i = 0; i < count; i++)
-            {
-                var point = points[i];
-                if (point.IsValid == 0)
-                    continue;
-
-                var offsetNs = PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds);
-                var pointUnixNs = checked(unixNs + offsetNs);
-                if (!found)
-                {
-                    firstUnixNs = pointUnixNs;
-                    lastUnixNs = pointUnixNs;
-                    found = true;
-                    continue;
-                }
-
-                if (pointUnixNs < firstUnixNs)
-                    firstUnixNs = pointUnixNs;
-                if (pointUnixNs > lastUnixNs)
-                    lastUnixNs = pointUnixNs;
-            }
-
-            return found;
         }
 
         /// <summary>
@@ -828,23 +414,22 @@ namespace Unity.FoxgloveSDK.Components
         private bool ShouldSuppressTransformFallback()
             => _publishState.ShouldSuppressTransformFallback(_suppressTransformFallbackAfterSourceFrames);
 
-        private void EnqueueDracoEncodeRequest(DracoEncodeRequest request)
+        private bool ShouldPreparePointCloud2NativeFrame()
+            => _outputMode == PointCloudOutputMode.PointCloud2Native
+               && PointCloud2NativeFrameReady != null;
+
+        private void LogPointCloudDiagnosticMessage(string format, object[] args)
         {
-            EnsureEncodePipelines();
-            _dracoEncodePipeline.Queue(
-                request,
-                _logQosDrops,
-                () => _diagnostics.RecordDrop(_logPerformanceDiagnostics));
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                this,
+                format,
+                args);
         }
 
-        private void EnqueuePointCloud2NativeRequest(PointCloud2NativeRequest request)
-        {
-            EnsureEncodePipelines();
-            _pointCloud2NativePipeline.Queue(
-                request,
-                _logQosDrops,
-                () => _diagnostics.RecordDrop(_logPerformanceDiagnostics));
-        }
+
+
 
         private void EnsureEncodePipelines()
         {
@@ -887,59 +472,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void PublishCompletedDracoPayload(DracoEncodeResult result)
-        {
-            _diagnostics.RecordEncodeResult(_logPerformanceDiagnostics, result);
 
-            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-            {
-                PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
-            }
-            else if (result.Request.PublishWebSocket)
-            {
-                PublishProto(result.WebSocketPayload, result.Request.UnixNs);
-            }
-
-            if (result.Request.PublishBridge)
-                PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
-        }
-
-        private void PublishCompletedPointCloud2NativePayload(PointCloud2NativeResult result)
-        {
-            _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
-            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
-                PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
-
-            if (result.Request.PublishBridge)
-                PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
-
-            if (result.Request.PublishNativeFrame && result.NativeFrame != null)
-                PublishPointCloud2NativeFrameReady(result.NativeFrame);
-
-            if (result.MotionCompensatedNativeFrame != null)
-                PublishPointCloud2NativeFrameReady(result.MotionCompensatedNativeFrame);
-            else if (result.Request.HasMotionCompensation && !string.IsNullOrWhiteSpace(result.Error))
-                WarnMotionCompensation("skipped: " + result.Error);
-        }
-
-        private void PublishPointCloud2NativeFrameReady(PointCloud2NativeFrame frame)
-        {
-            if (frame == null)
-                return;
-
-            var handler = PointCloud2NativeFrameReady;
-            if (handler == null)
-                return;
-
-            try
-            {
-                handler(frame);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
-            }
-        }
 
         private void SetPreparedPublishDemand(bool publishWebSocket, bool publishBridge)
         {
@@ -956,15 +489,6 @@ namespace Unity.FoxgloveSDK.Components
             return _publishState.TryGetPreparedDemand(out publishWebSocket, out publishBridge);
         }
 
-        private void LogPointCloudDiagnosticMessage(string format, object[] args)
-        {
-            Debug.LogFormat(
-                LogType.Log,
-                LogOption.NoStacktrace,
-                this,
-                format,
-                args);
-        }
 
         protected virtual PointCloudFrame PrepareFrameForQoS(PointCloudFrame frame, ulong unixNs)
         {

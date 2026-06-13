@@ -88,6 +88,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPublisherSourceIntegration()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var rawSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs");
+            var dracoSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs");
+            var publisherSource = source + "\n" + rawSource + "\n" + dracoSource;
             var reducer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudQoSReducer.cs");
 
             Check(source.Contains("_voxelSizeMeters"),
@@ -112,11 +115,11 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(publishFrame, "ShouldPreparePublishPayload()", "PrepareFrameForQoS",
                 "84D-7: PublishFrame preflights demand before voxel/QoS preparation");
 
-            Check(source.Contains("PublishRawFrame")
-                  && source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
-                  && source.Contains("PointCloudMessageBuilder.CreateJson(frame)")
-                  && source.Contains("if (_outputMode == PointCloudOutputMode.Draco)")
-                  && source.Contains("PublishDracoFrame(frame, unixNs)"),
+            Check(publisherSource.Contains("PublishRawFrame")
+                  && publisherSource.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
+                  && publisherSource.Contains("PointCloudMessageBuilder.CreateJson(frame)")
+                  && publisherSource.Contains("if (_outputMode == PointCloudOutputMode.Draco)")
+                  && publisherSource.Contains("PublishDracoFrame(frame, unixNs)"),
                 "84D-8: Phase 84 raw PointCloud path remains explicit while later Draco output is mode-gated");
         }
 

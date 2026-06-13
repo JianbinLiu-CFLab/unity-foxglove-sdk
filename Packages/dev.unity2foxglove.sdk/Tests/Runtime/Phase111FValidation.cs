@@ -205,6 +205,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var dotnetTime = ReadRepoText(RuntimeScripts + "/Time/DotnetTimeSource.cs");
             Check(dotnetTime.Contains("/ Stopwatch.Frequency", StringComparison.Ordinal)
+                  || dotnetTime.Contains("/ (double)Stopwatch.Frequency", StringComparison.Ordinal)
                   || dotnetTime.Contains("stopwatch.Elapsed.TotalSeconds", StringComparison.Ordinal),
                 "111F-E6: DotnetTimeSource converts Stopwatch ticks to seconds");
 
@@ -321,11 +322,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "ROS2UnityComponent.cs",
                 "ROS2UnityCore.cs",
                 "Sensor.cs",
+                "Transformations.cs",
                 "Time/DotnetTimeSource.cs",
+                "Time/ITimeSource.cs",
                 "Time/ROS2Clock.cs",
                 "Time/ROS2ScalableTimeSource.cs",
                 "Time/ROS2TimeSource.cs",
-                "Time/TimeUtils.cs"
+                "Time/TimeUtils.cs",
+                "Time/UnityTimeSource.cs"
             };
         }
 

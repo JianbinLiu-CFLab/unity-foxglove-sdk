@@ -355,7 +355,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("cachedFrameNameFrameId != frameID", frameName, StringComparison.Ordinal);
             Assert.Contains("cachedFrameName = ownerAgentName + \"/\" + frameID;", frameName, StringComparison.Ordinal);
             Assert.Contains("return cachedFrameName;", frameName, StringComparison.Ordinal);
-            Assert.Contains("private static readonly Matrix4x4 Unity2RosMatrix", transformations, StringComparison.Ordinal);
+            Assert.Contains("static readonly Matrix4x4 Unity2RosMatrix", transformations, StringComparison.Ordinal);
             Assert.Contains("return Unity2RosMatrix;", method, StringComparison.Ordinal);
             Assert.DoesNotContain("new Matrix4x4", method, StringComparison.Ordinal);
             Assert.DoesNotContain(".transpose", method, StringComparison.Ordinal);

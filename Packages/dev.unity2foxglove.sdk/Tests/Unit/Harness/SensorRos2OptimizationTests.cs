@@ -56,7 +56,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var qos = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/PointCloudQoS.cs");
             var reducer = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudQoSReducer.cs");
-            var publisher = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var publisher = string.Concat(
+                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs"),
+                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs"),
+                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs"),
+                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs"));
             var shouldQueue = TestSources.Slice(publisher, "private bool ShouldQueueVirtualLidarDracoFrame", "private ulong ResolveNativeDracoPublishIntervalNs");
             var laser = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveLaserScanPublisher.cs");
             var update = TestSources.Slice(laser, "private void Update()", "private void RefreshCachedAngles()");

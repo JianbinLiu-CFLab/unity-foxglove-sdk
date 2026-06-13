@@ -102,12 +102,20 @@ namespace Foxglove.Schemas.PointCloud
             if (!ValidateInputBudget(pointCount, out error))
                 return false;
 
-            var xyz = BuildXyzArray(frame);
-            var initialCapacity = checked(Math.Min(
-                MaxPayloadBytes,
-                Math.Max(4096, xyz.Length * sizeof(float) + OutputOverheadBytes)));
+            var xyz = ArrayPool<float>.Shared.Rent(checked(pointCount * 3));
+            try
+            {
+                FillXyzArray(frame, xyz);
+                var initialCapacity = checked(Math.Min(
+                    MaxPayloadBytes,
+                    Math.Max(4096, pointCount * XyzBytesPerPoint + OutputOverheadBytes)));
 
-            return TryEncodeWithCapacity(xyz, pointCount, initialCapacity, out dracoPayload, out error);
+                return TryEncodeWithCapacity(xyz, pointCount, initialCapacity, out dracoPayload, out error);
+            }
+            finally
+            {
+                ArrayPool<float>.Shared.Return(xyz);
+            }
         }
 
         /// <summary>
@@ -132,34 +140,41 @@ namespace Foxglove.Schemas.PointCloud
             }
 
             pointCount = Math.Min(pointCount, points.Length);
-            var xyz = new float[checked(pointCount * 3)];
-            for (var i = 0; i < pointCount; i++)
+            var xyz = ArrayPool<float>.Shared.Rent(checked(pointCount * 3));
+            try
             {
-                var point = points[i];
-                if (point.IsValid == 0)
-                    continue;
+                for (var i = 0; i < pointCount; i++)
+                {
+                    var point = points[i];
+                    if (point.IsValid == 0)
+                        continue;
 
-                var offset = validCount * 3;
-                xyz[offset] = point.X;
-                xyz[offset + 1] = point.Y;
-                xyz[offset + 2] = point.Z;
-                validCount++;
+                    var offset = validCount * 3;
+                    xyz[offset] = point.X;
+                    xyz[offset + 1] = point.Y;
+                    xyz[offset + 2] = point.Z;
+                    validCount++;
+                }
+
+                if (validCount == 0)
+                {
+                    error = "Draco virtual LiDAR point snapshot has no valid points.";
+                    return false;
+                }
+
+                if (!ValidateInputBudget(validCount, out error))
+                    return false;
+
+                var initialCapacity = checked(Math.Min(
+                    MaxPayloadBytes,
+                    Math.Max(4096, validCount * XyzBytesPerPoint + OutputOverheadBytes)));
+
+                return TryEncodeWithCapacity(xyz, validCount, initialCapacity, out dracoPayload, out error);
             }
-
-            if (validCount == 0)
+            finally
             {
-                error = "Draco virtual LiDAR point snapshot has no valid points.";
-                return false;
+                ArrayPool<float>.Shared.Return(xyz);
             }
-
-            if (!ValidateInputBudget(validCount, out error))
-                return false;
-
-            var initialCapacity = checked(Math.Min(
-                MaxPayloadBytes,
-                Math.Max(4096, validCount * XyzBytesPerPoint + OutputOverheadBytes)));
-
-            return TryEncodeWithCapacity(xyz, validCount, initialCapacity, out dracoPayload, out error);
         }
 
         /// <summary>Validate point-count / byte-size limits before invoking native encode.</summary>
@@ -266,10 +281,9 @@ namespace Foxglove.Schemas.PointCloud
             return false;
         }
 
-        private static float[] BuildXyzArray(PointCloudFrame frame)
+        private static void FillXyzArray(PointCloudFrame frame, float[] xyz)
         {
             var pointCount = frame.GetPointCount();
-            var xyz = new float[checked(pointCount * 3)];
             var index = 0;
             for (var i = 0; i < pointCount; i++)
             {
@@ -278,8 +292,6 @@ namespace Foxglove.Schemas.PointCloud
                 xyz[index++] = point.Y;
                 xyz[index++] = point.Z;
             }
-
-            return xyz;
         }
 
         private static string DescribeResult(int result)

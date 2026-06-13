@@ -36,9 +36,6 @@ MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json"
 
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-ARTIFACT_SHA256 = "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232"
-ARTIFACT_SIZE = 17472174
-INVENTORY_FILE_COUNT = 1053
 EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 
 CRITICAL_DLLS = (
@@ -64,11 +61,14 @@ PATCHED_VENDOR_FILES = (
     "ROS2UnityComponent.cs",
     "ROS2UnityCore.cs",
     "Sensor.cs",
+    "Transformations.cs",
     "Time/DotnetTimeSource.cs",
+    "Time/ITimeSource.cs",
     "Time/ROS2Clock.cs",
     "Time/ROS2ScalableTimeSource.cs",
     "Time/ROS2TimeSource.cs",
     "Time/TimeUtils.cs",
+    "Time/UnityTimeSource.cs",
 )
 
 PUBLIC_DOCS = (
@@ -210,10 +210,7 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
         "buildType": "standalone",
         "rmwImplementation": EXPECTED_RMW_IMPLEMENTATION,
         "artifactName": ARTIFACT_NAME,
-        "artifactSha256": ARTIFACT_SHA256,
-        "artifactSize": ARTIFACT_SIZE,
         "inventoryFile": "RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json",
-        "inventoryFileCount": INVENTORY_FILE_COUNT,
         "runtimeRoot": "Runtime/Ros2ForUnity",
         "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
         "supportLevel": "Recommended",
@@ -223,6 +220,23 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     }
     for key, value in expected.items():
         add(results, f"runtime manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    artifact_sha = data.get("artifactSha256")
+    artifact_size = data.get("artifactSize")
+    inventory_file_count = data.get("inventoryFileCount")
+    add(
+        results,
+        "runtime manifest artifactSha256",
+        isinstance(artifact_sha, str) and len(artifact_sha) == 64 and re.fullmatch(r"[0-9a-f]+", artifact_sha) is not None,
+        f"artifactSha256={artifact_sha!r}",
+    )
+    add(results, "runtime manifest artifactSize", isinstance(artifact_size, int) and artifact_size > 0, f"artifactSize={artifact_size!r}")
+    add(
+        results,
+        "runtime manifest inventoryFileCount",
+        isinstance(inventory_file_count, int) and inventory_file_count > 0,
+        f"inventoryFileCount={inventory_file_count!r}",
+    )
 
     source_basis = str(data.get("sourceBasis", ""))
     add(
@@ -256,21 +270,38 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
     data = load_json(INVENTORY, results, "runtime inventory parses")
     if not data:
         return
+    manifest = load_json(MANIFEST, results, "runtime manifest parses for inventory cross-check")
 
     expected = {
         "schemaVersion": 1,
         "runtimeId": "r2fu-jazzy-win64",
         "artifactName": ARTIFACT_NAME,
-        "artifactSize": ARTIFACT_SIZE,
-        "sha256": ARTIFACT_SHA256,
         "rosDistro": "jazzy",
         "rmw": EXPECTED_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",
-        "fileCount": INVENTORY_FILE_COUNT,
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    add(
+        results,
+        "runtime inventory sha256 matches manifest",
+        data.get("sha256") == manifest.get("artifactSha256"),
+        f"inventory={data.get('sha256')!r}, manifest={manifest.get('artifactSha256')!r}",
+    )
+    add(
+        results,
+        "runtime inventory artifactSize matches manifest",
+        data.get("artifactSize") == manifest.get("artifactSize"),
+        f"inventory={data.get('artifactSize')!r}, manifest={manifest.get('artifactSize')!r}",
+    )
+    add(
+        results,
+        "runtime inventory fileCount matches manifest",
+        data.get("fileCount") == manifest.get("inventoryFileCount"),
+        f"inventory={data.get('fileCount')!r}, manifest={manifest.get('inventoryFileCount')!r}",
+    )
 
     redistribution_status = str(data.get("redistributionStatus", ""))
     add(
@@ -502,10 +533,32 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(
         results,
         "DotnetTimeSource converts Stopwatch duration to seconds",
-        ("Stopwatch.Frequency" in dotnet_time and "/ Stopwatch.Frequency" in dotnet_time)
+        ("Stopwatch.Frequency" in dotnet_time and "ElapsedTicks" in dotnet_time)
         or "stopwatch.Elapsed.TotalSeconds" in dotnet_time,
         "DotnetTimeSource.cs",
     )
+
+    for relative in ("Time/ROS2TimeSource.cs", "Time/ROS2ScalableTimeSource.cs"):
+        source = read_optional_text(scripts / relative)
+        add(
+            results,
+            f"{relative} implements bool ITimeSource.GetTime",
+            "public bool GetTime(out int seconds, out uint nanoseconds)" in source
+            and "public void GetTime(out int seconds, out uint nanoseconds)" not in source,
+            relative,
+        )
+        add(
+            results,
+            f"{relative} reports unavailable ROS time",
+            "return false;" in source and "return true;" in source,
+            relative,
+        )
+        add(
+            results,
+            f"{relative} bool contract patch is marked",
+            "bool-returning ITimeSource contract" in source,
+            relative,
+        )
 
     time_utils = read_optional_text(scripts / "Time" / "TimeUtils.cs")
     add(
@@ -545,6 +598,7 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         "collect_meta_overlays",
         "apply_meta_overlays",
         "LOCAL_PATCH_OVERLAY_FILES",
+        "patch_ros_time_source_contract",
         "LEAKY_UPSTREAM_EXAMPLES",
         "runtime_asmdef",
         "make_writable",
@@ -580,14 +634,14 @@ def check_public_docs(results: list[CheckResult]) -> None:
     add(
         results,
         "README documents artifact SHA-256",
-        ARTIFACT_SHA256 in readme,
+        str(load_json(MANIFEST, results, "runtime manifest parses for docs cross-check").get("artifactSha256", "")) in readme,
         "README.md",
     )
     notices = (PACKAGE / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists() else ""
     add(
         results,
         "THIRD_PARTY_NOTICES documents artifact SHA-256",
-        ARTIFACT_SHA256 in notices,
+        str(load_json(MANIFEST, results, "runtime manifest parses for notices cross-check").get("artifactSha256", "")) in notices,
         "THIRD_PARTY_NOTICES.md",
     )
     add(

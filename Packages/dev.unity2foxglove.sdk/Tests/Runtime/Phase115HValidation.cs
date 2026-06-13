@@ -204,11 +204,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "ROS2UnityComponent.cs",
                 "ROS2UnityCore.cs",
                 "Sensor.cs",
+                "Transformations.cs",
                 "Time/DotnetTimeSource.cs",
+                "Time/ITimeSource.cs",
                 "Time/ROS2Clock.cs",
                 "Time/ROS2ScalableTimeSource.cs",
                 "Time/ROS2TimeSource.cs",
-                "Time/TimeUtils.cs"
+                "Time/TimeUtils.cs",
+                "Time/UnityTimeSource.cs"
             };
         }
 
@@ -219,21 +222,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "ROS2ForUnity.cs",
                 "ROS2Node.cs",
                 "Sensor.cs",
+                "Transformations.cs",
+                "Time/ITimeSource.cs",
                 "Time/ROS2Clock.cs",
                 "Time/ROS2ScalableTimeSource.cs",
                 "Time/ROS2TimeSource.cs",
-                "Time/TimeUtils.cs"
+                "Time/TimeUtils.cs",
+                "Time/UnityTimeSource.cs"
             };
         }
 
         private static IEnumerable<string> UnmodifiedVendoredExamples()
         {
-            return new[]
-            {
-                "Time/ITimeSource.cs",
-                "Time/UnityTimeSource.cs",
-                "Transformations.cs"
-            };
+            return Array.Empty<string>();
         }
 
         private static void CheckContainsAll(string text, string message, params string[] requiredTerms)
