@@ -22,6 +22,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs";
         private const string ManagerPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
+        private const string ManagerServicesPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Services.cs";
         private const string PublisherEditorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxglovePublisherBaseEditor.cs";
 
@@ -117,14 +119,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyParameterLifecycleFacadesAndComponentUnregister()
         {
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var managerServices = ReadRepoText(ManagerServicesPath);
             var component = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Parameters/FoxgloveParameterComponent.cs");
 
             Check(runtime.Contains("public bool UnregisterParameter(string name)", StringComparison.Ordinal)
                   && runtime.Contains("_parameters.Unregister(name)", StringComparison.Ordinal),
                 "134-4E-1: runtime exposes parameter unregister facade");
-            Check(manager.Contains("public bool UnregisterParameter(string name)", StringComparison.Ordinal)
-                  && manager.Contains("_runtime?.UnregisterParameter(name) ?? false", StringComparison.Ordinal),
+            Check(managerServices.Contains("public bool UnregisterParameter(string name)", StringComparison.Ordinal)
+                  && managerServices.Contains("_runtime?.UnregisterParameter(name) ?? false", StringComparison.Ordinal),
                 "134-4E-2: manager exposes parameter unregister facade");
             Check(component.Contains("private void OnDisable()", StringComparison.Ordinal)
                   && component.Contains("private void OnDestroy()", StringComparison.Ordinal)

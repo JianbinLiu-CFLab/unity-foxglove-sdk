@@ -53,10 +53,6 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private const int FirstAutoChannelId = 1;
         private const int MaxRecordingChunkSizeKB = int.MaxValue / 1024;
-        private const int MaxQueuedClientLifecycleEvents = 4096;
-        private const int MaxQueuedClientEvents = 4096;
-        private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
-        private const long ClientEventOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
 
         [Header("General")]
         [SerializeField] private string _serverName = "Unity Foxglove SDK";
@@ -171,13 +167,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastRos2BridgePublishWarningKey;
         private long _lastRos2BridgePublishWarningTicks;
         private readonly object _ros2BridgePublishWarningGate = new();
-        private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
-        private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =
-            new(MaxQueuedClientLifecycleEvents, 0, MeasureClientEventPayloadBytes);
-        private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
-            new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
-        private readonly List<ClientEvent> _clientEventDrainScratch = new();
 
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
@@ -398,82 +388,6 @@ namespace Unity.FoxgloveSDK.Components
             _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
         }
 
-        /// <summary>
-        /// Queues a transport connect event for main-thread delivery.
-        /// </summary>
-        /// <param name="id">Connected Foxglove client identifier.</param>
-        private void EnqueueConnect(uint id) =>
-            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = true });
-
-        /// <summary>
-        /// Queues a transport disconnect event for main-thread delivery.
-        /// </summary>
-        /// <param name="id">Disconnected Foxglove client identifier.</param>
-        private void EnqueueDisconnect(uint id) =>
-            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = false });
-
-        private void EnqueueClientLifecycleEvent(ClientEvent evt)
-        {
-            if (_clientLifecycleEvents.TryEnqueue(evt, out var overflow))
-            {
-                return;
-            }
-
-            WarnClientEventQueueOverflow(evt, overflow);
-        }
-
-        private void EnqueueClientMessageEvent(ClientEvent evt)
-        {
-            if (_clientMessageEvents.TryEnqueue(evt, out var overflow))
-            {
-                return;
-            }
-
-            WarnClientEventQueueOverflow(evt, overflow);
-        }
-
-        private void WarnClientEventQueueOverflow(ClientEvent evt, BoundedEventQueueOverflow overflow)
-        {
-            var nowTicks = System.DateTime.UtcNow.Ticks;
-            var previousTicks = System.Threading.Interlocked.Read(ref _lastClientEventOverflowWarningTicks);
-            if (nowTicks - previousTicks < ClientEventOverflowWarningIntervalTicks)
-            {
-                return;
-            }
-
-            if (System.Threading.Interlocked.CompareExchange(
-                    ref _lastClientEventOverflowWarningTicks,
-                    nowTicks,
-                    previousTicks) != previousTicks)
-            {
-                return;
-            }
-
-            var eventKind = evt.IsMessage ? "message" : evt.IsConnect ? "connect" : "disconnect";
-            Debug.LogWarning(
-                "[Foxglove] Dropped client " + eventKind
-                + " event because the Unity main-thread event queue is full. queuedEvents="
-                + overflow.QueuedFrames
-                + " queuedPayloadBytes="
-                + overflow.QueuedBytes
-                + " rejectedPayloadBytes="
-                + overflow.RejectedBytes
-                + " droppedEvents="
-                + overflow.DroppedCount
-                + " droppedPayloadBytes="
-                + overflow.DroppedBytes
-                + " limits="
-                + (evt.IsMessage ? MaxQueuedClientEvents : MaxQueuedClientLifecycleEvents)
-                + "/"
-                + (evt.IsMessage ? MaxQueuedClientEventPayloadBytes : 0)
-                + " bytes.");
-        }
-
-        private static int MeasureClientEventPayloadBytes(ClientEvent evt)
-        {
-            return evt.IsMessage ? evt.Payload?.Length ?? 0 : 0;
-        }
-
         private void OnValidate()
         {
             InvalidateRos2BridgeNamespaceCache();
@@ -540,33 +454,6 @@ namespace Unity.FoxgloveSDK.Components
             RefreshReplayCursorEndpointIfNeeded();
         }
 
-        private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
-        {
-            queue.DrainTo(_clientEventDrainScratch);
-            try
-            {
-                foreach (var evt in _clientEventDrainScratch)
-                {
-                    if (evt.IsMessage)
-                    {
-                        OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
-                    }
-                    else if (evt.IsConnect)
-                    {
-                        OnClientConnected?.Invoke(evt.ClientId);
-                    }
-                    else
-                    {
-                        OnClientDisconnected?.Invoke(evt.ClientId);
-                    }
-                }
-            }
-            finally
-            {
-                _clientEventDrainScratch.Clear();
-            }
-        }
-
         /// <summary>
         /// Stops the server when the component is disabled without restoring replay-disabled publishers.
         /// </summary>
@@ -611,61 +498,6 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectRoot, path));
-        }
-
-        /// <summary>
-        /// Registers a runtime parameter.
-        /// </summary>
-        /// <param name="name">Parameter path, for example "/cube/color".</param>
-        /// <param name="value">Initial value as a JToken.</param>
-        /// <param name="type">Foxglove type string, for example "number[]".</param>
-        /// <param name="writable">Whether Foxglove clients can modify this parameter.</param>
-        public void RegisterParameter(string name, Newtonsoft.Json.Linq.JToken value, string type, bool writable)
-        {
-            _runtime?.RegisterParameter(name, value, type, writable);
-        }
-
-        /// <summary>
-        /// Unregisters a runtime parameter.
-        /// </summary>
-        /// <param name="name">Parameter path, for example "/cube/color".</param>
-        /// <returns>True when a parameter was removed.</returns>
-        public bool UnregisterParameter(string name)
-        {
-            return _runtime?.UnregisterParameter(name) ?? false;
-        }
-
-        /// <summary>
-        /// Registers a service.
-        /// </summary>
-        /// <param name="descriptor">Service descriptor with name, type, request schemas, and response schemas.</param>
-        /// <returns>The service identifier, or 0 when the runtime is not available.</returns>
-        public uint RegisterService(Unity.FoxgloveSDK.Protocol.ServiceDescriptor descriptor)
-        {
-            return _runtime?.RegisterService(descriptor) ?? 0;
-        }
-
-        /// <summary>
-        /// Registers a service with a JSON request handler.
-        /// </summary>
-        /// <param name="descriptor">Service descriptor with name, type, request schemas, and response schemas.</param>
-        /// <param name="handler">Handler invoked from the runtime tick on the Unity main thread.</param>
-        /// <returns>The service identifier, or 0 when the runtime is not available.</returns>
-        public uint RegisterService(
-            Unity.FoxgloveSDK.Protocol.ServiceDescriptor descriptor,
-            System.Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken> handler)
-        {
-            return _runtime?.RegisterService(descriptor, handler) ?? 0;
-        }
-
-        /// <summary>
-        /// Unregisters a service.
-        /// </summary>
-        /// <param name="serviceId">Service identifier returned by <see cref="RegisterService"/>.</param>
-        /// <returns>True when the service was registered and removed.</returns>
-        public bool UnregisterService(uint serviceId)
-        {
-            return _runtime?.UnregisterService(serviceId) == true;
         }
 
         private void CreateRos2BridgeRuntime()
@@ -807,39 +639,4 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 
-    /// <summary>
-    /// Transport event queued for main-thread delivery.
-    /// </summary>
-    internal struct ClientEvent
-    {
-        /// <summary>
-        /// Foxglove client identifier associated with the event.
-        /// </summary>
-        public uint ClientId;
-
-        /// <summary>
-        /// Client-advertised channel identifier for message events.
-        /// </summary>
-        public uint ChannelId;
-
-        /// <summary>
-        /// Client-advertised topic name for message events.
-        /// </summary>
-        public string Topic;
-
-        /// <summary>
-        /// Client-published payload bytes for message events.
-        /// </summary>
-        public byte[] Payload;
-
-        /// <summary>
-        /// True when the event represents a client connection.
-        /// </summary>
-        public bool IsConnect;
-
-        /// <summary>
-        /// True when the event represents a client-published message.
-        /// </summary>
-        public bool IsMessage;
-    }
 }

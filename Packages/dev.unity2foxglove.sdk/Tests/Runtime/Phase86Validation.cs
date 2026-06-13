@@ -145,10 +145,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagerStopCleanup()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            Check(source.Contains("ClearClientEvents()")
-                  && source.Contains("_clientLifecycleEvents.Clear()")
-                  && source.Contains("_clientMessageEvents.Clear()"),
+            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            Check(server.Contains("ClearClientEvents()")
+                  && clientEvents.Contains("private void ClearClientEvents()")
+                  && clientEvents.Contains("_clientLifecycleEvents.Clear()")
+                  && clientEvents.Contains("_clientMessageEvents.Clear()"),
                 "86H-1: manager StopServer clears stale queued client events");
         }
 
