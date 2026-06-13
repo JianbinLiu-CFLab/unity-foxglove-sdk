@@ -53,10 +53,6 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private const int FirstAutoChannelId = 1;
         private const int MaxRecordingChunkSizeKB = int.MaxValue / 1024;
-        private const int MaxQueuedClientLifecycleEvents = 4096;
-        private const int MaxQueuedClientEvents = 4096;
-        private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
-        private const long ClientEventOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
 
         [Header("General")]
         [SerializeField] private string _serverName = "Unity Foxglove SDK";
@@ -171,13 +167,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastRos2BridgePublishWarningKey;
         private long _lastRos2BridgePublishWarningTicks;
         private readonly object _ros2BridgePublishWarningGate = new();
-        private long _lastClientEventOverflowWarningTicks;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
-        private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =
-            new(MaxQueuedClientLifecycleEvents, 0, MeasureClientEventPayloadBytes);
-        private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
-            new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
-        private readonly List<ClientEvent> _clientEventDrainScratch = new();
 
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
@@ -398,82 +388,6 @@ namespace Unity.FoxgloveSDK.Components
             _runtime = new Core.FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry(), logger);
         }
 
-        /// <summary>
-        /// Queues a transport connect event for main-thread delivery.
-        /// </summary>
-        /// <param name="id">Connected Foxglove client identifier.</param>
-        private void EnqueueConnect(uint id) =>
-            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = true });
-
-        /// <summary>
-        /// Queues a transport disconnect event for main-thread delivery.
-        /// </summary>
-        /// <param name="id">Disconnected Foxglove client identifier.</param>
-        private void EnqueueDisconnect(uint id) =>
-            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = false });
-
-        private void EnqueueClientLifecycleEvent(ClientEvent evt)
-        {
-            if (_clientLifecycleEvents.TryEnqueue(evt, out var overflow))
-            {
-                return;
-            }
-
-            WarnClientEventQueueOverflow(evt, overflow);
-        }
-
-        private void EnqueueClientMessageEvent(ClientEvent evt)
-        {
-            if (_clientMessageEvents.TryEnqueue(evt, out var overflow))
-            {
-                return;
-            }
-
-            WarnClientEventQueueOverflow(evt, overflow);
-        }
-
-        private void WarnClientEventQueueOverflow(ClientEvent evt, BoundedEventQueueOverflow overflow)
-        {
-            var nowTicks = System.DateTime.UtcNow.Ticks;
-            var previousTicks = System.Threading.Interlocked.Read(ref _lastClientEventOverflowWarningTicks);
-            if (nowTicks - previousTicks < ClientEventOverflowWarningIntervalTicks)
-            {
-                return;
-            }
-
-            if (System.Threading.Interlocked.CompareExchange(
-                    ref _lastClientEventOverflowWarningTicks,
-                    nowTicks,
-                    previousTicks) != previousTicks)
-            {
-                return;
-            }
-
-            var eventKind = evt.IsMessage ? "message" : evt.IsConnect ? "connect" : "disconnect";
-            Debug.LogWarning(
-                "[Foxglove] Dropped client " + eventKind
-                + " event because the Unity main-thread event queue is full. queuedEvents="
-                + overflow.QueuedFrames
-                + " queuedPayloadBytes="
-                + overflow.QueuedBytes
-                + " rejectedPayloadBytes="
-                + overflow.RejectedBytes
-                + " droppedEvents="
-                + overflow.DroppedCount
-                + " droppedPayloadBytes="
-                + overflow.DroppedBytes
-                + " limits="
-                + (evt.IsMessage ? MaxQueuedClientEvents : MaxQueuedClientLifecycleEvents)
-                + "/"
-                + (evt.IsMessage ? MaxQueuedClientEventPayloadBytes : 0)
-                + " bytes.");
-        }
-
-        private static int MeasureClientEventPayloadBytes(ClientEvent evt)
-        {
-            return evt.IsMessage ? evt.Payload?.Length ?? 0 : 0;
-        }
-
         private void OnValidate()
         {
             InvalidateRos2BridgeNamespaceCache();
@@ -538,33 +452,6 @@ namespace Unity.FoxgloveSDK.Components
             ApplyLiveOutputModeWatchers();
             RefreshRemoteMcapFileServerIfNeeded();
             RefreshReplayCursorEndpointIfNeeded();
-        }
-
-        private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
-        {
-            queue.DrainTo(_clientEventDrainScratch);
-            try
-            {
-                foreach (var evt in _clientEventDrainScratch)
-                {
-                    if (evt.IsMessage)
-                    {
-                        OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
-                    }
-                    else if (evt.IsConnect)
-                    {
-                        OnClientConnected?.Invoke(evt.ClientId);
-                    }
-                    else
-                    {
-                        OnClientDisconnected?.Invoke(evt.ClientId);
-                    }
-                }
-            }
-            finally
-            {
-                _clientEventDrainScratch.Clear();
-            }
         }
 
         /// <summary>
@@ -752,39 +639,4 @@ namespace Unity.FoxgloveSDK.Components
         }
     }
 
-    /// <summary>
-    /// Transport event queued for main-thread delivery.
-    /// </summary>
-    internal struct ClientEvent
-    {
-        /// <summary>
-        /// Foxglove client identifier associated with the event.
-        /// </summary>
-        public uint ClientId;
-
-        /// <summary>
-        /// Client-advertised channel identifier for message events.
-        /// </summary>
-        public uint ChannelId;
-
-        /// <summary>
-        /// Client-advertised topic name for message events.
-        /// </summary>
-        public string Topic;
-
-        /// <summary>
-        /// Client-published payload bytes for message events.
-        /// </summary>
-        public byte[] Payload;
-
-        /// <summary>
-        /// True when the event represents a client connection.
-        /// </summary>
-        public bool IsConnect;
-
-        /// <summary>
-        /// True when the event represents a client-published message.
-        /// </summary>
-        public bool IsMessage;
-    }
 }

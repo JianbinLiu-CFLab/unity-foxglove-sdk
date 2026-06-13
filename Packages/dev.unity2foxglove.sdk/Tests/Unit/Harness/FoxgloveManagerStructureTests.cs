@@ -45,6 +45,43 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("MonoImporter:", meta, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void ClientEventQueueLivesInFocusedPartial()
+        {
+            const string managerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
+            const string clientEventsPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs";
+            const string clientEventsMetaPath = clientEventsPath + ".meta";
+
+            Assert.True(File.Exists(PathOf(clientEventsPath)), clientEventsPath + " should exist.");
+            Assert.True(File.Exists(PathOf(clientEventsMetaPath)), clientEventsMetaPath + " should exist.");
+
+            var manager = Text(managerPath);
+            var clientEvents = Text(clientEventsPath);
+            var meta = Text(clientEventsMetaPath);
+
+            Assert.Contains("public partial class FoxgloveManager", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("// Module: Runtime/Components/Manager", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("// Purpose:", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("using Unity.FoxgloveSDK.Core;", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private void EnqueueConnect(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private void EnqueueDisconnect(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private void EnqueueClientLifecycleEvent(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private void EnqueueClientMessageEvent(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private void DrainClientEventQueue(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private void ClearClientEvents(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("internal struct ClientEvent", clientEvents, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("private void EnqueueConnect(", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private void EnqueueDisconnect(", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private void EnqueueClientLifecycleEvent(", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private void EnqueueClientMessageEvent(", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private void DrainClientEventQueue(", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("internal struct ClientEvent", manager, StringComparison.Ordinal);
+
+            Assert.True(HasValidUnityGuid(meta), clientEventsMetaPath + " should have a valid Unity GUID.");
+            Assert.Contains("MonoImporter:", meta, StringComparison.Ordinal);
+        }
+
         private static string Text(string relativePath)
             => File.ReadAllText(PathOf(relativePath));
 

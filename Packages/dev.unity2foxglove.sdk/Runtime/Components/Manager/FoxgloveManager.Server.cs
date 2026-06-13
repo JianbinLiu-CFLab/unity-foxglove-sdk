@@ -295,12 +295,6 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void ClearClientEvents()
-        {
-            _clientLifecycleEvents.Clear();
-            _clientMessageEvents.Clear();
-        }
-
         private void StartRemoteMcapFileServerIfNeeded()
         {
             if (!_enableRemoteMcapFileServer || !_enableReplay || string.IsNullOrWhiteSpace(_replayFilePath))
