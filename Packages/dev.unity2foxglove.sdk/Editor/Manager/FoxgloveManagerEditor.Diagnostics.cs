@@ -18,6 +18,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             DrawPublishCadenceDiagnostics();
             EditorGUILayout.Space();
+            DrawFrameStallDiagnostics();
+            EditorGUILayout.Space();
             DrawTransportHealth();
         }
 
@@ -32,6 +34,23 @@ namespace Unity.FoxgloveSDK.Editor
                     "Summary Interval Seconds",
                     "Seconds between per-topic publish cadence diagnostic summaries.");
             }
+        }
+
+        private void DrawFrameStallDiagnostics()
+        {
+            FoxgloveManagerInspectorLayout.Subheader("Frame Stalls");
+            DrawProperty("_frameStallDiagnosticsEnabled", "Frame Stall Diagnostics");
+            using (new EditorGUI.DisabledScope(!GetBool("_frameStallDiagnosticsEnabled")))
+            {
+                DrawFloatProperty(
+                    "_frameStallDiagnosticsThresholdMs",
+                    "Stall Threshold Ms",
+                    "Main-thread frame time threshold before a frame-stall diagnostic is logged.");
+            }
+
+            EditorGUILayout.HelpBox(
+                "Logs long Play Mode frame gaps with focus, Play Mode, Editor compile/update, and GC-memory delta state.",
+                MessageType.Info);
         }
 
         private void DrawTransportHealth()

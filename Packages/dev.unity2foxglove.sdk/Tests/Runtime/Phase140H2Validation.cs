@@ -1,0 +1,230 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Phase 140H2 IMU WebSocket visualization burst boundary validation.
+
+using System;
+using System.IO;
+
+namespace Unity.FoxgloveSDK.Tests
+{
+    /// <summary>
+    /// Validates that Phase 140H2 smooths only the IMU WebSocket visualization lane.
+    /// </summary>
+    public static class Phase140H2Validation
+    {
+        private static int _passed;
+
+        /// <summary>Runs all Phase 140H2 validation checks.</summary>
+        public static void Validate()
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== Phase 140H2: IMU WebSocket visualization burst boundary ===");
+            _passed = 0;
+
+            VirtualImuHasExplicitWebSocketVisualizationCap();
+            VirtualImuEditorExposesWebSocketVisualizationCap();
+            VirtualImuKeepsNativeHandoffOutsideWebSocketCap();
+            VirtualImuCoalescesToLatestWebSocketSamples();
+            ManagerExposesOptInFrameStallDiagnostics();
+            TransportAndBaseSchedulersRemainOutOfScope();
+            ValidationRegistryExposesPhase140H2();
+
+            Console.WriteLine($"Phase 140H2: {_passed} checks passed.");
+        }
+
+        private static void VirtualImuHasExplicitWebSocketVisualizationCap()
+        {
+            var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            Check(virtualImu.Contains("DefaultMaxWebSocketSamplesPerFrame = 32", StringComparison.Ordinal)
+                  && virtualImu.Contains("_maxWebSocketSamplesPerFrame = DefaultMaxWebSocketSamplesPerFrame", StringComparison.Ordinal)
+                  && virtualImu.Contains("Maximum IMU WebSocket visualization catch-up samples published per render frame", StringComparison.Ordinal),
+                "140H2-1A: VirtualImu exposes an explicit WebSocket visualization cap");
+            Check(!virtualImu.Contains("_maxWebSocketSamplesPerFrame = 1", StringComparison.Ordinal),
+                "140H2-1B: default WebSocket cap does not clamp IMU to render-frame cadence");
+            Check(MethodContains(virtualImu, "private void NormalizeSerializedConfiguration()", "_maxWebSocketSamplesPerFrame = 0;"),
+                "140H2-1C: VirtualImu normalizes negative WebSocket cap values");
+            Check(MethodContains(virtualImu, "private int ResolveWebSocketSamplesPerFrame", "_maxWebSocketSamplesPerFrame <= 0")
+                  && MethodContains(virtualImu, "private int ResolveWebSocketSamplesPerFrame", "return queuedAtFrameStart;")
+                  && MethodContains(virtualImu, "private int ResolveWebSocketSamplesPerFrame", "Math.Min(_maxWebSocketSamplesPerFrame, queuedAtFrameStart)"),
+                "140H2-1D: zero cap preserves legacy unlimited WebSocket draining");
+        }
+
+        private static void VirtualImuEditorExposesWebSocketVisualizationCap()
+        {
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Sensors/VirtualImuEditor.cs");
+            Check(editor.Contains("serializedObject.FindProperty(\"_maxWebSocketSamplesPerFrame\")", StringComparison.Ordinal)
+                  && editor.Contains("WebSocket Max Samples / Frame", StringComparison.Ordinal),
+                "140H2-1E: VirtualImu Inspector exposes the WebSocket sample cap");
+            Check(editor.Contains("640Hz needs at least 16 at 40 FPS", StringComparison.Ordinal)
+                  && editor.Contains("32 at 20 FPS", StringComparison.Ordinal),
+                "140H2-1F: VirtualImu Inspector documents the 640Hz cap sizing");
+        }
+
+        private static void VirtualImuKeepsNativeHandoffOutsideWebSocketCap()
+        {
+            var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var update = ExtractMethod(virtualImu, "private void Update()");
+            var nativeInvoke = update.IndexOf("nativeFrameHandler.Invoke(nativeFrame);", StringComparison.Ordinal);
+            var publish = update.IndexOf("PublishWebSocketSample(sample);", StringComparison.Ordinal);
+            Check(nativeInvoke > publish && publish >= 0,
+                "140H2-2A: native handoff remains in the drain loop after WebSocket selection");
+            Check(update.Contains("while (_queue.Count > 0)", StringComparison.Ordinal)
+                  && update.Contains("var sample = _queue.Dequeue();", StringComparison.Ordinal)
+                  && update.Contains("var nativeFrameHandler = ImuNativeFrameReady;", StringComparison.Ordinal),
+                "140H2-2B: VirtualImu still drains every queued sample each frame");
+            Check(!IsNestedInside(update, "nativeFrameHandler.Invoke(nativeFrame);", "else if (webSocketPublished < webSocketBudget)"),
+                "140H2-2C: native handoff is not gated by the WebSocket publish budget");
+        }
+
+        private static void VirtualImuCoalescesToLatestWebSocketSamples()
+        {
+            var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var update = ExtractMethod(virtualImu, "private void Update()");
+            Check(update.Contains("var queuedAtFrameStart = _queue.Count;", StringComparison.Ordinal)
+                  && update.Contains("var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;", StringComparison.Ordinal),
+                "140H2-3A: WebSocket cap is computed from the frame-start backlog");
+            Check(update.Contains("if (webSocketSkipCount > 0)", StringComparison.Ordinal)
+                  && update.Contains("webSocketSkipCount--;", StringComparison.Ordinal)
+                  && update.Contains("else if (webSocketPublished < webSocketBudget)", StringComparison.Ordinal),
+                "140H2-3B: older WebSocket visualization samples are skipped before latest samples publish");
+            Check(MethodContains(virtualImu, "private void PublishWebSocketSample", "ImuMessageBuilder.Serialize")
+                  && MethodContains(virtualImu, "private void PublishWebSocketSample", "_manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);"),
+                "140H2-3C: WebSocket serialization/publish is isolated in a helper");
+        }
+
+        private static void TransportAndBaseSchedulersRemainOutOfScope()
+        {
+            var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var queue = Read("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs");
+            Check(!virtualImu.Contains("ShouldPublishNow()", StringComparison.Ordinal)
+                  && !virtualImu.Contains("ShouldPublishNowFixed()", StringComparison.Ordinal),
+                "140H2-4A: VirtualImu remains outside FoxglovePublisherBase scheduler helpers");
+            Check(!queue.Contains("public string Topic", StringComparison.Ordinal)
+                  && !queue.Contains("public uint ChannelId", StringComparison.Ordinal)
+                  && !queue.Contains("PublishCadence", StringComparison.Ordinal),
+                "140H2-4B: transport queue remains topic-agnostic and unpaced by this phase");
+        }
+
+        private static void ManagerExposesOptInFrameStallDiagnostics()
+        {
+            var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Diagnostics.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
+            Check(diagnostics.Contains("_frameStallDiagnosticsEnabled", StringComparison.Ordinal)
+                  && diagnostics.Contains("_frameStallDiagnosticsThresholdMs = 200f", StringComparison.Ordinal)
+                  && diagnostics.Contains("Frame stall diagnostics", StringComparison.Ordinal),
+                "140H2-5A: manager has opt-in frame stall diagnostics");
+            Check(MethodContains(manager, "private void Update()", "RecordFrameStallDiagnosticsIfNeeded();")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Time.realtimeSinceStartupAsDouble")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "GC.GetTotalMemory")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Time.frameCount")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Time.deltaTime")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Time.unscaledDeltaTime")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Time.fixedDeltaTime")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Time.timeScale")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "GC.CollectionCount")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Profiler.GetMonoUsedSizeLong")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Profiler.GetTotalAllocatedMemoryLong"),
+                "140H2-5B: manager samples frame stalls once per main-thread Update");
+            Check(MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "UnityEditor.EditorApplication.isCompiling")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "Application.isFocused")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "frameCount")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "deltaTimeMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "unscaledDeltaTimeMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "fixedDeltaTimeMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "timeScale")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "gcBytesDelta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "gcCount0Delta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "monoUsedBytes")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "totalAllocatedBytes"),
+                "140H2-5C: frame stall log includes frame timing, editor, focus, play, GC, and memory state");
+            Check(editor.Contains("DrawFrameStallDiagnostics", StringComparison.Ordinal)
+                  && editor.Contains("Frame Stall Diagnostics", StringComparison.Ordinal)
+                  && editor.Contains("Stall Threshold Ms", StringComparison.Ordinal),
+                "140H2-5D: manager Inspector exposes frame stall diagnostics under Diagnostics");
+        }
+
+        private static void ValidationRegistryExposesPhase140H2()
+        {
+            var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            Check(registry.Contains("Ci(\"--phase140h2\", \"Phase 140H2\", Phase140H2Validation.Validate", StringComparison.Ordinal),
+                "140H2-6A: validation registry exposes --phase140h2");
+        }
+
+        private static bool IsNestedInside(string method, string expectedInner, string enclosingStart)
+        {
+            var inner = method.IndexOf(expectedInner, StringComparison.Ordinal);
+            var start = method.IndexOf(enclosingStart, StringComparison.Ordinal);
+            if (inner < 0 || start < 0 || inner < start)
+                return false;
+
+            var brace = method.IndexOf('{', start);
+            if (brace < 0 || inner < brace)
+                return false;
+
+            var depth = 0;
+            for (var i = brace; i < method.Length; i++)
+            {
+                if (method[i] == '{')
+                    depth++;
+                else if (method[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return inner < i;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool MethodContains(string source, string signature, string expected)
+        {
+            return ExtractMethod(source, signature).Contains(expected, StringComparison.Ordinal);
+        }
+
+        private static string ExtractMethod(string source, string signature)
+        {
+            var start = source.IndexOf(signature, StringComparison.Ordinal);
+            if (start < 0)
+                return string.Empty;
+
+            var brace = source.IndexOf('{', start);
+            if (brace < 0)
+                return string.Empty;
+
+            var depth = 0;
+            for (var i = brace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(start, i - start + 1);
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static string Read(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase140H2 validation.");
+            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        private static void Check(bool condition, string label)
+        {
+            if (!condition)
+                throw new Exception("[FAIL] " + label);
+            _passed++;
+            Console.WriteLine("[PASS] " + label);
+        }
+    }
+}
