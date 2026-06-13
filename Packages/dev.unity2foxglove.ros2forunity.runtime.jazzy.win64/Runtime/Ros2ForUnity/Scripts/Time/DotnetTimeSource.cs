@@ -1,5 +1,5 @@
 // Copyright 2022 Robotec.ai.
-// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Modifications Copyright (c) 2026 Jianbin Liu.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,11 +51,11 @@ public class DotnetTimeSource : ITimeSource
         UpdateSystemTime();
     }
 
-    public void GetTime(out int seconds, out uint nanoseconds)
+    public bool GetTime(out int seconds, out uint nanoseconds)
     {
         lock(mutex) // Threading
         {
-            var durationInSeconds = stopwatch.Elapsed.TotalSeconds;
+            var durationInSeconds = stopwatch.ElapsedTicks / (double)Stopwatch.Frequency;
             double timeOffset = 0;
             if (durationInSeconds >= maxUnsyncedSeconds)
             {   // acquire DateTime to sync
@@ -68,6 +68,7 @@ public class DotnetTimeSource : ITimeSource
             
             TimeUtils.TimeFromTotalSeconds(systemTimeIntervalStart + timeOffset, out seconds, out nanoseconds);
         }
+        return true;
     }
 }
 

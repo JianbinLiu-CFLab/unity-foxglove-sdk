@@ -1,4 +1,5 @@
 // Copyright 2019-2021 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +14,7 @@
 // limitations under the License.
 
 using UnityEngine;
+using System.Runtime.CompilerServices;
 
 namespace ROS2
 {
@@ -21,12 +23,16 @@ namespace ROS2
 /// </summary>
 public static class Transformations
 {
-    private static readonly Matrix4x4 Unity2RosMatrix = new Matrix4x4(
-        new Vector4( 0.0f, -1.0f, 0.0f, 0.0f),
-        new Vector4( 0.0f,  0.0f, 1.0f, 0.0f),
-        new Vector4( 1.0f,  0.0f, 0.0f, 0.0f),
-        new Vector4( 0.0f,  0.0f, 0.0f, 1.0f)
-    );
+    /// <summary>
+    /// Constant Unity-to-ROS coordinate transform matrix.
+    /// Unity uses x-right, y-up, z-forward; ROS uses x-forward, y-left, z-up.
+    /// </summary>
+    public static readonly Matrix4x4 Unity2RosMatrix = new Matrix4x4(
+        new Vector4( 0.0f, 0.0f, 1.0f, 0.0f),
+        new Vector4(-1.0f, 0.0f, 0.0f, 0.0f),
+        new Vector4( 0.0f, 1.0f, 0.0f, 0.0f),
+        new Vector4( 0.0f, 0.0f, 0.0f, 1.0f)
+    ).transpose;
 
     public static Vector3 Ros2Unity(this Vector3 vector3)
     {
@@ -78,6 +84,7 @@ public static class Transformations
         vector.z = y;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Matrix4x4 Unity2RosMatrix4x4()
     {
         return Unity2RosMatrix;

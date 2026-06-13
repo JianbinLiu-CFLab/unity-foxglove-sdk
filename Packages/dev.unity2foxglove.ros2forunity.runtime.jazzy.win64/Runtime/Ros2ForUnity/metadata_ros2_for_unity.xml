@@ -2,8 +2,8 @@
 <ros2_for_unity>
    <ros2>jazzy</ros2>
    <version>
-      <sha>3080be995a5dd67b82212b2ec9d885ab85ca573b</sha>
-      <desc>v0.5.0-jazzy-win64-preview.1-2-g3080be9</desc>
-      <date>2026-05-26 16:23:14 +0200</date>
+      <sha>7dc9fd61cf2f6f2da621e4bad49ab8389459c0d4</sha>
+      <desc>v0.6.0-jazzy-win64-preview.1-1-g7dc9fd6</desc>
+      <date>2026-06-13 13:28:59 +0200</date>
    </version>
 </ros2_for_unity>

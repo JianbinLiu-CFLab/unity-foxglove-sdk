@@ -32,9 +32,6 @@ PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-jazzy-win64"
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-ARTIFACT_SHA256 = "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232"
-ARTIFACT_SIZE = 17472174
-INVENTORY_FILE_COUNT = 1053
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "build" / "dist" / ARTIFACT_NAME
@@ -54,6 +51,8 @@ MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unit
 LOCAL_PATCH_OVERLAY_FILES = {
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs",
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs",
+    "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
+    "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }
 LEAKY_UPSTREAM_EXAMPLES = (
     "ROS2TalkerExample.cs",
@@ -124,6 +123,67 @@ PACKAGE_PATH_BLOCK = """    public static string GetRos2ForUnityPath()
     }
 """
 
+UPSTREAM_COMPUTE_PATH_BLOCK = """    private static string ComputeRos2ForUnityPath()
+    {
+        char separator = Path.DirectorySeparatorChar;
+        string appDataPath = Application.dataPath;
+        string path = appDataPath;
+
+        if (InEditor()) {
+            path += separator + ros2ForUnityAssetFolderName;
+        }
+        return path;
+    }
+"""
+
+PACKAGE_COMPUTE_PATH_BLOCK = """    private static string ComputeRos2ForUnityPath()
+    {
+        char separator = Path.DirectorySeparatorChar;
+        string appDataPath = Application.dataPath;
+        string path = appDataPath;
+
+        if (InEditor()) {
+            string assetPath = path + separator + ros2ForUnityAssetFolderName;
+            if (Directory.Exists(assetPath)) {
+                return assetPath;
+            }
+
+            // Unity2Foxglove package path support for local packages installed with
+            // Package Manager's "Add package from disk..." flow.
+#if UNITY_EDITOR
+            UnityEditor.PackageManager.PackageInfo runtimePackage =
+                UnityEditor.PackageManager.PackageInfo.FindForAssetPath(unity2FoxgloveRuntimePackageAssetPath);
+            if (runtimePackage != null && !string.IsNullOrEmpty(runtimePackage.resolvedPath)) {
+                string resolvedPackagePath = Path.Combine(
+                    runtimePackage.resolvedPath,
+                    "Runtime",
+                    ros2ForUnityAssetFolderName);
+                if (Directory.Exists(resolvedPackagePath)) {
+                    return resolvedPackagePath;
+                }
+            }
+#endif
+
+            DirectoryInfo dataDirectory = Directory.GetParent(appDataPath);
+            if (dataDirectory != null) {
+                string packagePath = Path.Combine(
+                    dataDirectory.FullName,
+                    "Packages",
+                    unity2FoxgloveRuntimePackageName,
+                    "Runtime",
+                    ros2ForUnityAssetFolderName);
+                if (Directory.Exists(packagePath)) {
+                    return packagePath;
+                }
+            }
+
+            // Unity2Foxglove package path support: keep upstream asset-folder fallback.
+            return assetPath;
+        }
+        return path;
+    }
+"""
+
 PACKAGE_CONSTANTS_BLOCK = """    private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
     private const string unity2FoxgloveRuntimePackageAssetPath =
         "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity";
@@ -137,6 +197,16 @@ class BuildPaths:
     artifact: Path
     inventory: Path
     package: Path
+
+
+@dataclass(frozen=True)
+class RuntimeArtifact:
+    """Identity of the vetted runtime artifact being packaged."""
+
+    name: str
+    sha256: str
+    size: int
+    inventory_file_count: int
 
 
 def parse_args(argv: list[str]) -> BuildPaths:
@@ -166,29 +236,35 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def require_inputs(paths: BuildPaths) -> dict[str, object]:
-    """Validate inputs and return the parsed runtime inventory."""
+def require_inputs(paths: BuildPaths) -> tuple[dict[str, object], RuntimeArtifact]:
+    """Validate inputs and return the parsed runtime inventory and artifact identity."""
     if not paths.artifact.exists():
         raise FileNotFoundError(f"Missing runtime artifact: {paths.artifact}")
     if paths.artifact.name != ARTIFACT_NAME:
         raise ValueError(f"Unexpected artifact name: {paths.artifact.name}")
-    if paths.artifact.stat().st_size != ARTIFACT_SIZE:
-        raise ValueError(f"Unexpected artifact size: {paths.artifact.stat().st_size}")
 
     artifact_hash = sha256_file(paths.artifact)
-    if artifact_hash != ARTIFACT_SHA256:
-        raise ValueError(f"Unexpected artifact sha256: {artifact_hash}")
+    artifact_size = paths.artifact.stat().st_size
 
     if not paths.inventory.exists():
         raise FileNotFoundError(f"Missing runtime inventory: {paths.inventory}")
     inventory = json.loads(paths.inventory.read_text(encoding="utf-8"))
     if inventory.get("runtimeId") != RUNTIME_ID:
         raise ValueError(f"Unexpected inventory runtimeId: {inventory.get('runtimeId')!r}")
-    if inventory.get("sha256") != ARTIFACT_SHA256:
+    if inventory.get("sha256") != artifact_hash:
         raise ValueError("Inventory sha256 does not match the runtime artifact.")
-    if inventory.get("fileCount") != INVENTORY_FILE_COUNT:
+    if inventory.get("artifactSize") not in (None, artifact_size) and inventory.get("artifactSize") != artifact_size:
+        raise ValueError(f"Inventory artifactSize does not match the runtime artifact: {inventory.get('artifactSize')!r}")
+    inventory_file_count = int(inventory.get("fileCount") or 0)
+    if inventory_file_count <= 0:
         raise ValueError(f"Unexpected inventory fileCount: {inventory.get('fileCount')!r}")
-    return inventory
+    artifact = RuntimeArtifact(
+        name=paths.artifact.name,
+        sha256=artifact_hash,
+        size=artifact_size,
+        inventory_file_count=inventory_file_count,
+    )
+    return inventory, artifact
 
 
 def reset_package_dir(package: Path) -> None:
@@ -467,7 +543,7 @@ def package_json() -> dict[str, object]:
     }
 
 
-def runtime_manifest() -> dict[str, object]:
+def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
     """Return the runtime package manifest."""
     return {
         "schemaVersion": 1,
@@ -480,11 +556,11 @@ def runtime_manifest() -> dict[str, object]:
         "architecture": "x86_64",
         "buildType": "standalone",
         "rmwImplementation": "rmw_fastrtps_cpp",
-        "artifactName": ARTIFACT_NAME,
-        "artifactSha256": ARTIFACT_SHA256,
-        "artifactSize": ARTIFACT_SIZE,
+        "artifactName": artifact.name,
+        "artifactSha256": artifact.sha256,
+        "artifactSize": artifact.size,
         "inventoryFile": "RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json",
-        "inventoryFileCount": INVENTORY_FILE_COUNT,
+        "inventoryFileCount": artifact.inventory_file_count,
         "runtimeRoot": "Runtime/Ros2ForUnity",
         "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
         "sourceBasis": "Local Jazzy rebuild from RobotecAI ROS2 For Unity and ros2cs sources with Windows ROS2 Jazzy dependency closure",
@@ -506,9 +582,9 @@ def runtime_manifest() -> dict[str, object]:
     }
 
 
-def readme_text() -> str:
+def readme_text(artifact: RuntimeArtifact) -> str:
     """Return the runtime package README."""
-    return """# Unity2Foxglove ROS2 For Unity Runtime - Jazzy Win64
+    return f"""# Unity2Foxglove ROS2 For Unity Runtime - Jazzy Win64
 
 This package is an optional Windows x64 runtime for the Unity2Foxglove ROS2 For Unity integration. It carries the ROS2 For Unity runtime files, generated message assemblies, native ROS2 Jazzy DLLs, Fast DDS/RMW files, ros2cs files, metadata, inventory, and notices.
 
@@ -537,8 +613,8 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - Build type: standalone
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-jazzy-win64`
-- Artifact source: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`
-- SHA-256: `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232`
+- Artifact source: `{artifact.name}`
+- SHA-256: `{artifact.sha256}`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
 
@@ -552,6 +628,10 @@ Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnit
 
 This patch is limited to locating runtime files from a Unity package. It does not change ROS2 For Unity node, publisher, subscriber, or DDS behavior.
 
+## Network Acceptance Notes
+
+WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Jazzy or a real remote Linux topology for final external-graph acceptance.
+
 ## Support Boundary
 
 This is a prototype runtime package. Fresh-project install acceptance and public release readiness are separate gates. Linux, macOS, Humble, and Lyrical runtime packages are not included here.
@@ -560,9 +640,9 @@ RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware 
 """
 
 
-def notices_text(inventory: dict[str, object]) -> str:
+def notices_text(inventory: dict[str, object], artifact: RuntimeArtifact) -> str:
     """Return third-party notices for the runtime package."""
-    file_count = inventory.get("fileCount", INVENTORY_FILE_COUNT)
+    file_count = inventory.get("fileCount", artifact.inventory_file_count)
     return f"""# Third-Party Notices
 
 This runtime package redistributes a locally rebuilt ROS2 For Unity Jazzy Windows x64 runtime payload.
@@ -573,13 +653,13 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 
 | Field | Value |
 |---|---|
-| Artifact | `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip` |
+| Artifact | `{artifact.name}` |
 | Runtime id | `r2fu-jazzy-win64` |
 | ROS distro | `jazzy` |
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232` |
+| SHA-256 | `{artifact.sha256}` |
 | Inventory file count | `{file_count}` |
 
 ## Known Upstream Components
@@ -611,7 +691,7 @@ If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.d
 - This package is a prototype until fresh-project acceptance passes.
 - The inventory is an engineering inventory generated from the local runtime artifact, not a complete legal audit.
 - Public release should refresh transitive license attribution before registry or binary distribution.
-- Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports. Windows ROS2 Jazzy, properly firewalled WSL2, or a real remote Linux topology should be used for acceptance.
+- WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Jazzy or a real remote Linux topology for final external-graph acceptance.
 
 RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware users and that the Robotec team cannot support and maintain the project for the general community. Unity2Foxglove must preserve that caveat and must not imply upstream community support for Unity2Foxglove-specific packaging.
 """
@@ -670,8 +750,6 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = source.read_text(encoding="utf-8")
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         return
-    if UPSTREAM_PATH_BLOCK not in text:
-        raise ValueError("Could not find upstream GetRos2ForUnityPath block to patch.")
     if "unity2FoxgloveRuntimePackageName" not in text:
         text = text.replace(
             '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n',
@@ -682,16 +760,86 @@ def patch_ros2_for_unity(package: Path) -> None:
     if old_copyright not in text:
         raise ValueError("Could not find upstream modifications copyright line to patch.")
     text = text.replace(old_copyright, new_copyright, 1)
-    write_text(source, text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK))
+    if UPSTREAM_PATH_BLOCK in text:
+        text = text.replace(UPSTREAM_PATH_BLOCK, PACKAGE_PATH_BLOCK)
+    elif UPSTREAM_COMPUTE_PATH_BLOCK in text:
+        text = text.replace(UPSTREAM_COMPUTE_PATH_BLOCK, PACKAGE_COMPUTE_PATH_BLOCK)
+    else:
+        raise ValueError("Could not find upstream ROS2ForUnity path block to patch.")
+    write_text(source, text)
 
 
-def write_package_files(paths: BuildPaths, inventory: dict[str, object]) -> None:
+def patch_ros_time_source_contract(package: Path) -> None:
+    """Patch ROS2 time sources for the bool-returning ITimeSource contract."""
+    time_dir = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Time"
+    dotnet_time = time_dir / "DotnetTimeSource.cs"
+    write_text(dotnet_time, dotnet_time.read_text(encoding="utf-8"))
+
+    for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
+        source = time_dir / name
+        text = source.read_text(encoding="utf-8")
+        if "public void GetTime(out int seconds, out uint nanoseconds)" in text:
+            text = text.replace(
+                "  public void GetTime(out int seconds, out uint nanoseconds)\n  {\n",
+                "  public bool GetTime(out int seconds, out uint nanoseconds)\n  {\n"
+                "    // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.\n",
+                1,
+            )
+            text = text.replace(
+                '      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");\n'
+                "      return;\n",
+                '      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");\n'
+                "      return false;\n",
+                1,
+            )
+
+        if "public bool GetTime(out int seconds, out uint nanoseconds)" not in text:
+            raise ValueError(f"{name} does not expose the bool-returning ITimeSource contract.")
+        if "bool-returning ITimeSource contract" not in text:
+            text = text.replace(
+                "  public bool GetTime(out int seconds, out uint nanoseconds)\n  {\n",
+                "  public bool GetTime(out int seconds, out uint nanoseconds)\n  {\n"
+                "    // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.\n",
+                1,
+            )
+
+        if name == "ROS2TimeSource.cs" and "return true;" not in text:
+            text = text.replace(
+                "    TimeUtils.TimeFromTotalSeconds(clock.Now.Seconds, out seconds, out nanoseconds);\n"
+                "  }\n\n"
+                "  public void Dispose()",
+                "    TimeUtils.TimeFromTotalSeconds(clock.Now.Seconds, out seconds, out nanoseconds);\n"
+                "    return true;\n"
+                "  }\n\n"
+                "  public void Dispose()",
+                1,
+            )
+        elif name == "ROS2ScalableTimeSource.cs" and "return true;" not in text:
+            text = text.replace(
+                "      TimeUtils.TimeFromTotalSeconds(lastReadingSecs + initialTime, out seconds, out nanoseconds);\n"
+                "    }\n"
+                "  }\n\n"
+                "  private void RefreshUnityTimeCache()",
+                "      TimeUtils.TimeFromTotalSeconds(lastReadingSecs + initialTime, out seconds, out nanoseconds);\n"
+                "    }\n"
+                "    return true;\n"
+                "  }\n\n"
+                "  private void RefreshUnityTimeCache()",
+                1,
+            )
+
+        if "return false;" not in text or "return true;" not in text:
+            raise ValueError(f"{name} time-source bool contract patch did not apply.")
+        write_text(source, text)
+
+
+def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifact: RuntimeArtifact) -> None:
     """Write package metadata, docs, notices, and support manifests."""
     write_json(paths.package / "package.json", package_json())
-    write_text(paths.package / "README.md", readme_text())
+    write_text(paths.package / "README.md", readme_text(artifact))
     shutil.copyfile(UPSTREAM_LICENSE, paths.package / "LICENSE")
-    write_text(paths.package / "THIRD_PARTY_NOTICES.md", notices_text(inventory))
-    write_json(paths.package / "RuntimeSupport" / "runtime-manifest.json", runtime_manifest())
+    write_text(paths.package / "THIRD_PARTY_NOTICES.md", notices_text(inventory, artifact))
+    write_json(paths.package / "RuntimeSupport" / "runtime-manifest.json", runtime_manifest(artifact))
     shutil.copyfile(paths.inventory, paths.package / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json")
     write_json(
         paths.package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef",
@@ -701,7 +849,7 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object]) -> None
 
 def build_package(paths: BuildPaths) -> None:
     """Build the runtime package from the runtime artifact."""
-    inventory = require_inputs(paths)
+    inventory, artifact = require_inputs(paths)
     snapshot = snapshot_package_dir(paths.package)
     overlays = collect_local_patch_overlays(paths.package)
     meta_overlays = collect_meta_overlays(paths.package)
@@ -711,7 +859,8 @@ def build_package(paths: BuildPaths) -> None:
         prune_non_contract_examples(paths.package)
         patch_ros2_for_unity(paths.package)
         apply_local_patch_overlays(paths.package, overlays)
-        write_package_files(paths, inventory)
+        patch_ros_time_source_contract(paths.package)
+        write_package_files(paths, inventory, artifact)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)
     except Exception:
@@ -730,7 +879,8 @@ def main(argv: list[str]) -> int:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return EXIT_FAILURE
     print(f"[PASS] built {rel(paths.package)}")
-    print(f"[PASS] artifact={ARTIFACT_NAME} sha256={ARTIFACT_SHA256}")
+    artifact_hash = sha256_file(paths.artifact)
+    print(f"[PASS] artifact={paths.artifact.name} sha256={artifact_hash}")
     return EXIT_SUCCESS
 
 
