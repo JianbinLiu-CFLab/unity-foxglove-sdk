@@ -1,5 +1,6 @@
 // Copyright 2022 Robotec.ai.
-// Modifications Copyright (c) 2026 Jianbin Liu.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,7 +36,15 @@ public class UnityTimeSource : ITimeSource
   public UnityTimeSource()
   {
     mainThreadId = Thread.CurrentThread.ManagedThreadId;
-    lastReadingSecs = Time.timeAsDouble;
+    try
+    {
+      lastReadingSecs = Time.timeAsDouble;
+    }
+    catch (UnityException exception)
+    {
+      throw new InvalidOperationException(
+        "UnityTimeSource must be constructed on the Unity main thread.", exception);
+    }
   }
 
   public bool GetTime(out int seconds, out uint nanoseconds)

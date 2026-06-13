@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Components;
@@ -77,12 +78,19 @@ namespace Unity.FoxgloveSDK.Tests
                 Math.Max(
                     source.IndexOf("ValidateInputBudget(frame.GetPointCount", tryEncodeIndex, StringComparison.Ordinal),
                     source.IndexOf("ValidateInputBudget(pointCount", tryEncodeIndex, StringComparison.Ordinal)));
-            var buildIndex = source.IndexOf("BuildXyzArray(frame)", tryEncodeIndex, StringComparison.Ordinal);
+            var buildIndex = Math.Min(
+                PositiveOrMax(source.IndexOf("ArrayPool<float>.Shared.Rent", tryEncodeIndex, StringComparison.Ordinal)),
+                PositiveOrMax(source.IndexOf("FillXyzArray(frame", tryEncodeIndex, StringComparison.Ordinal)));
 
-            Check(tryEncodeIndex >= 0 && validateIndex > tryEncodeIndex && buildIndex > validateIndex,
+            Check(tryEncodeIndex >= 0 && validateIndex > tryEncodeIndex && buildIndex != int.MaxValue && buildIndex > validateIndex,
                 "134-14C-1: TryEncode validates input budget before allocating XYZ scratch");
             Check(source.Contains("PointCloudPackedDataBuilder.MaxPackedDataBytes"),
                 "134-14C-2: native Draco source reuses packed point-cloud byte boundary");
+        }
+
+        private static int PositiveOrMax(int index)
+        {
+            return index >= 0 ? index : int.MaxValue;
         }
 
         private static void PointCloudBuildersAvoidUnnecessaryDualPayloads()
@@ -187,8 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherQueuesDracoEncodingOffMainThread()
         {
-            var source = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var source = ReadPointCloudPublisherSources();
             var pointCloudPipelineSource = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             var pipelineSource = File.ReadAllText(
@@ -223,6 +230,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipelineSource.Contains("_worker.Idle.Wait(_stopWaitMs)")
                   && lifecycleSource.Contains("ManualResetEventSlim"),
                 "134-14J-8: Draco worker has an explicit disable/destroy shutdown path");
+        }
+
+        private static string ReadPointCloudPublisherSources()
+        {
+            const string publisherDirectory =
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            return string.Join(
+                Environment.NewLine,
+                Directory.GetFiles(publisherDirectory, "FoxglovePointCloudPublisher*.cs")
+                    .OrderBy(path => path, StringComparer.Ordinal)
+                    .Select(File.ReadAllText));
         }
 
         private static void LaserScanPublisherExposesProgrammaticPublishPath()

@@ -224,7 +224,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(camera.Contains("SupportsRos2Encoding => ActiveProfile.Mode == CameraOutputMode.Jpeg"),
                 "92D-2: camera ROS2 support is limited to JPEG mode");
 
-            var pointCloud = ReadPublisher("FoxglovePointCloudPublisher.cs");
+            var pointCloud = ReadPublisher("FoxglovePointCloudPublisher.cs")
+                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.Raw.cs")
+                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.Draco.cs")
+                + "\n" + ReadPublisher("FoxglovePointCloudPublisher.PointCloud2Native.cs")
+                + "\n" + ReadPublisher("PointCloudOutputMode.cs");
             var pointCloudWorkers = ReadPublisher("PointCloudWorkerEncoders.cs");
             Check(pointCloud.Contains("Ros2PublisherSchemaNames.PointCloud")
                   && pointCloud.Contains("Ros2PublisherSchemaNames.CompressedPointCloud")

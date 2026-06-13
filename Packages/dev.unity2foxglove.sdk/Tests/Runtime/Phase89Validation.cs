@@ -75,11 +75,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyUnifiedPointCloudPublisher()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var rawSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs");
+            var dracoSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs");
+            var publisherSource = source + "\n" + rawSource + "\n" + dracoSource;
             var encodePipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             Check(source.Contains("[Header(\"Point Cloud Output\")]")
                   && source.Contains("_outputMode = PointCloudOutputMode.Draco")
-                  && source.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
-                  && !source.Contains("_helperExecutablePath"),
+                  && publisherSource.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
+                  && !publisherSource.Contains("_helperExecutablePath"),
                 "89B-1: point-cloud publisher exposes Raw/Draco output fields without a helper path");
             Check(source.Contains("ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode)")
                   && source.Contains("SchemaNameOverride => ActiveProfile.SchemaName")
@@ -95,28 +98,28 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("PublishRawFrame(frame, unixNs, packedLayout)"),
                 "89B-4: PublishPreparedFrame branches raw, Draco, and PointCloud2Native inside the unified publisher");
             var worker = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
-            Check(source.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
+            Check(publisherSource.Contains("PointCloudWorkerEncoders.EncodeDracoRequest")
                   && worker.Contains("DracoPointCloudNativeEncoder")
                   && worker.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf")
                   && worker.Contains(".TryEncode(")
-                  && source.Contains("PublishProto("),
+                  && publisherSource.Contains("PublishProto("),
                 "89B-5: Draco mode encodes through bundled native DLL and publishes CompressedPointCloud protobuf");
-            Check(source.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
-                  && source.Contains("PointCloudMessageBuilder.CreateJson(frame)"),
+            Check(publisherSource.Contains("PointCloudMessageBuilder.SerializeProtobuf(frame)")
+                  && publisherSource.Contains("PointCloudMessageBuilder.CreateJson(frame)"),
                 "89B-6: raw mode preserves existing PointCloud protobuf and JSON builders");
-            Check(source.Contains("publishes nothing")
-                  && source.Contains("Draco point-cloud mode disabled")
+            Check(publisherSource.Contains("publishes nothing")
+                  && publisherSource.Contains("Draco point-cloud mode disabled")
                   && encodePipeline.Contains("formatFailureWarning"),
                 "89B-7: Draco failures log and do not fall back to raw");
             var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
-            Check(source.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
-                  && source.Contains("_dracoEncodePipeline.Queue(")
+            Check(publisherSource.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline")
+                  && publisherSource.Contains("_dracoEncodePipeline.Queue(")
                   && encodePipeline.Contains("BackgroundEncodePipeline<TRequest, TResult> _pipeline")
                   && encodePipeline.Contains("_pipeline.Enqueue(request,")
                   && pipeline.Contains("Last-value-wins background encode pipeline")
                   && pipeline.Contains("Priority = ThreadPriority.BelowNormal")
-                  && !source.Contains("Task.Run")
-                  && !source.Contains("BlockingCollection"),
+                  && !publisherSource.Contains("Task.Run")
+                  && !publisherSource.Contains("BlockingCollection"),
                 "89B-8: Draco encode uses a last-value background worker without unbounded async queues");
         }
 
@@ -128,9 +131,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("DllImport"),
                 "89C-1: native Draco encoder wraps the bundled Windows DLL through P/Invoke");
             Check(source.Contains("TryEncode(PointCloudFrame frame, out byte[] dracoPayload, out string error)")
-                  && source.Contains("BuildXyzArray")
+                  && source.Contains("ArrayPool<float>.Shared.Rent")
+                  && source.Contains("FillXyzArray")
                   && source.Contains("GCHandle.Alloc"),
-                "89C-2: native Draco encoder accepts PointCloudFrame and pins XYZ/output buffers");
+                "89C-2: native Draco encoder accepts PointCloudFrame, pools XYZ scratch, and pins XYZ/output buffers");
             Check(source.Contains("TryGetAvailability")
                   && source.Contains("DllNotFoundException")
                   && source.Contains("EntryPointNotFoundException")

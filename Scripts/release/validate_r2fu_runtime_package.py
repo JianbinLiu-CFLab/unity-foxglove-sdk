@@ -61,11 +61,14 @@ PATCHED_VENDOR_FILES = (
     "ROS2UnityComponent.cs",
     "ROS2UnityCore.cs",
     "Sensor.cs",
+    "Transformations.cs",
     "Time/DotnetTimeSource.cs",
+    "Time/ITimeSource.cs",
     "Time/ROS2Clock.cs",
     "Time/ROS2ScalableTimeSource.cs",
     "Time/ROS2TimeSource.cs",
     "Time/TimeUtils.cs",
+    "Time/UnityTimeSource.cs",
 )
 
 PUBLIC_DOCS = (

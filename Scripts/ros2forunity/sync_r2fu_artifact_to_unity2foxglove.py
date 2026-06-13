@@ -35,6 +35,7 @@ DEFAULT_UNITY_EXE = Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\
 
 
 def sha256_file(path: Path) -> str:
+    """Return the SHA-256 digest for a file without loading it all at once."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -43,10 +44,12 @@ def sha256_file(path: Path) -> str:
 
 
 def manifest_for_artifact(path: Path) -> Path:
+    """Return the default sidecar manifest path for an artifact zip."""
     return path.with_name(path.stem + ".manifest.json")
 
 
 def run(command: list[str], *, cwd: Path = ROOT, log: Path | None = None, env: dict[str, str] | None = None) -> None:
+    """Run a command, optionally teeing combined output to a log file."""
     print(f"==> {' '.join(command)}")
     if log is None:
         subprocess.run(command, cwd=cwd, check=True, env=env)
@@ -67,6 +70,7 @@ def run(command: list[str], *, cwd: Path = ROOT, log: Path | None = None, env: d
 
 
 def run_text(command: list[str], *, cwd: Path = ROOT) -> str:
+    """Run a command and return stripped UTF-8 stdout."""
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -81,7 +85,10 @@ def run_text(command: list[str], *, cwd: Path = ROOT) -> str:
 
 
 def git_info(repo: Path) -> dict[str, object]:
+    """Return branch, commit, and dirty-state metadata for a repository."""
+
     def git(*args: str) -> str:
+        """Run git in the target repository and return stdout."""
         return run_text(["git", *args], cwd=repo)
 
     status = git("status", "--short")
@@ -95,15 +102,18 @@ def git_info(repo: Path) -> dict[str, object]:
 
 
 def read_json(path: Path) -> dict[str, object]:
+    """Read a UTF-8 JSON object from disk."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def write_json(path: Path, data: dict[str, object]) -> None:
+    """Write a UTF-8 JSON object with stable indentation."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> dict[str, object]:
+    """Validate an artifact against its optional sidecar manifest."""
     if not artifact.exists():
         raise FileNotFoundError(f"Missing artifact zip: {artifact}")
     digest = sha256_file(artifact)
@@ -120,6 +130,7 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
 
 
 def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> dict[str, object]:
+    """Validate or update the Unity project runtime package dependency."""
     manifest_path = project_root / "Unity2Foxglove" / "Packages" / "manifest.json"
     lock_path = project_root / "Unity2Foxglove" / "Packages" / "packages-lock.json"
     direct_asset = project_root / "Unity2Foxglove" / "Assets" / "Ros2ForUnity"
@@ -156,6 +167,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
 
 
 def run_unity_import(unity_exe: Path, project_path: Path, log_path: Path) -> None:
+    """Run a clean Unity batch import for the runtime package."""
     if not unity_exe.exists():
         raise FileNotFoundError(f"Unity editor not found: {unity_exe}")
     clean_env = os.environ.copy()
@@ -185,6 +197,7 @@ def run_unity_import(unity_exe: Path, project_path: Path, log_path: Path) -> Non
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact-zip", type=Path, default=DEFAULT_ARTIFACT)
     parser.add_argument("--artifact-manifest", type=Path, default=None)
@@ -199,6 +212,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the R2FU artifact sync workflow."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
     project_root = args.project_root.resolve()
     artifact = args.artifact_zip.resolve()

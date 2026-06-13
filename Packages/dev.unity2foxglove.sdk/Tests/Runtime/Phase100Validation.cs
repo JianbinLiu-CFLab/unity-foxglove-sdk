@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudDemandCaching()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var source = ReadPointCloudPublisherSources();
             var state = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishState.cs");
             Check(source.Contains("PointCloudPublishState _publishState")
                   && source.Contains("SetPreparedPublishDemand")
@@ -286,6 +286,18 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Camera publisher directory was not found.");
 
             var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
+        }
+
+        private static string ReadPointCloudPublisherSources()
+        {
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Point-cloud publisher directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxglovePointCloudPublisher*.cs")
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
             return string.Join(Environment.NewLine, files.Select(File.ReadAllText));

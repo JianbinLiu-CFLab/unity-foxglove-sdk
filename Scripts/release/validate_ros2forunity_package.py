@@ -351,11 +351,8 @@ def check_manifest(results: list[CheckResult]) -> None:
             "supportLevel": "Recommended",
             "distributionLevel": "BundleCandidate",
             "artifact": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
-            "artifactSha256": "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232",
-            "artifactSize": 17472174,
             "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
             "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
-            "inventoryFileCount": 1053,
         }
         for key, value in current_expected.items():
             add(
@@ -364,6 +361,27 @@ def check_manifest(results: list[CheckResult]) -> None:
                 current.get(key) == value,
                 f"expected {value!r}, got {current.get(key)!r}",
             )
+        artifact_sha = current.get("artifactSha256")
+        artifact_size = current.get("artifactSize")
+        inventory_file_count = current.get("inventoryFileCount")
+        add(
+            results,
+            "manifest current runtime artifactSha256",
+            isinstance(artifact_sha, str) and len(artifact_sha) == 64 and all(ch in "0123456789abcdef" for ch in artifact_sha),
+            f"artifactSha256={artifact_sha!r}",
+        )
+        add(
+            results,
+            "manifest current runtime artifactSize",
+            isinstance(artifact_size, int) and artifact_size > 0,
+            f"artifactSize={artifact_size!r}",
+        )
+        add(
+            results,
+            "manifest current runtime inventoryFileCount",
+            isinstance(inventory_file_count, int) and inventory_file_count >= 1000,
+            f"inventoryFileCount={inventory_file_count!r}",
+        )
         caveats = " ".join(str(item) for item in current.get("knownCaveats", []))
         add(
             results,
@@ -515,17 +533,30 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         "schemaVersion": 1,
         "runtimeId": "r2fu-jazzy-win64",
         "artifactName": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
-        "artifactSize": 17472174,
-        "sha256": "f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232",
         "rosDistro": "jazzy",
         "rmw": "rmw_fastrtps_cpp",
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",
-        "fileCount": 1053,
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    manifest_data = load_json(MANIFEST, results, "runtime inventory manifest cross-check parses")
+    current = manifest_data.get("currentRecommendedRuntime", {}) if isinstance(manifest_data, dict) else {}
+    current = current if isinstance(current, dict) else {}
+    cross_checks = {
+        "artifactSize": current.get("artifactSize"),
+        "sha256": current.get("artifactSha256"),
+        "fileCount": current.get("inventoryFileCount"),
+    }
+    for key, value in cross_checks.items():
+        add(
+            results,
+            f"runtime inventory {key}",
+            data.get(key) == value,
+            f"expected manifest value {value!r}, got {data.get(key)!r}",
+        )
 
     counts = data.get("categoryCounts", {})
     add(
