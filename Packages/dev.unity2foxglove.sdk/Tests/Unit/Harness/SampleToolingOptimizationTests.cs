@@ -314,9 +314,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("std::vector<float> xyz(float_count);", processOneFrame, StringComparison.Ordinal);
             Assert.Contains("std::vector<float> xyz;", dracoMain, StringComparison.Ordinal);
             Assert.Contains("ProcessOneFrame(&xyz)", dracoMain, StringComparison.Ordinal);
-            Assert.Contains("stack.append(node)", cycles, StringComparison.Ordinal);
+            Assert.Contains("completed: set[str] = set()", cycles, StringComparison.Ordinal);
+            Assert.Contains("path_index: dict[str, int] = {}", cycles, StringComparison.Ordinal);
+            Assert.Contains("while stack:", cycles, StringComparison.Ordinal);
+            Assert.Contains("stack.append((child, 0))", cycles, StringComparison.Ordinal);
             Assert.Contains("stack.pop()", cycles, StringComparison.Ordinal);
-            Assert.Contains("visit(child, stack)", cycles, StringComparison.Ordinal);
+            Assert.DoesNotContain("def visit", cycles, StringComparison.Ordinal);
             Assert.DoesNotContain("path + [current]", cycles, StringComparison.Ordinal);
             Assert.DoesNotContain("stack + [node]", cycles, StringComparison.Ordinal);
         }
