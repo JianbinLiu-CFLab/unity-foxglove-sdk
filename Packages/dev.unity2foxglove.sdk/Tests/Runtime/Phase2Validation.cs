@@ -236,6 +236,13 @@ namespace Unity.FoxgloveSDK.Tests
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         }
 
+        private sealed class Phase2CaptureLogger : IFoxgloveLogger
+        {
+            public readonly List<string> Warnings = new();
+            public void LogWarning(string message) => Warnings.Add(message ?? string.Empty);
+            public void LogError(string message) { }
+        }
+
         /// <summary>
         /// Verifies that <c>RegisterChannel</c> broadcasts an advertise
         /// message with the correct channel id to all connected clients.
@@ -485,10 +492,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestMalformedJsonDoesNotDisconnect()
         {
             var fake = new Phase2FakeTransport();
-            var session = new FoxgloveSession("Test", fake);
+            var logger = new Phase2CaptureLogger();
+            var session = new FoxgloveSession("Test", fake, logger: logger);
             fake.SimulateConnect(1);
 
             fake.SimulateText(1, "not json at all");
+            Assert(logger.Warnings.Any(w => w.Contains("Malformed JSON from client 1", StringComparison.Ordinal)
+                                            && w.Contains("JsonReaderException", StringComparison.Ordinal)),
+                "Malformed JSON warning includes client id and parser exception type");
             AssertClientCanStillSubscribeAndReceive(session, fake, "Malformed JSON leaves client usable");
         }
 

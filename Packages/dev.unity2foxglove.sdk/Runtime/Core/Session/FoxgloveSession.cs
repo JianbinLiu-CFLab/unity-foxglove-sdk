@@ -760,9 +760,9 @@ namespace Unity.FoxgloveSDK.Core
             {
                 op = TryReadOpField(json);
             }
-            catch
+            catch (JsonException ex)
             {
-                _logger.LogWarning($"Malformed JSON from client {clientId}");
+                _logger.LogWarning($"Malformed JSON from client {clientId}: {ex.GetType().Name}");
                 return;
             }
 

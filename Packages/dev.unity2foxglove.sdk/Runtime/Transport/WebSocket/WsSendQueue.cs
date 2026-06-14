@@ -226,11 +226,6 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        public long DroppedDataFrames
-        {
-            get { lock (_lock) return _droppedDataFrames; }
-        }
-
         public long DroppedDataFramesSnapshot
         {
             get { lock (_lock) return _droppedDataFrames; }
