@@ -260,12 +260,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("Sync Foxglove timeline to Unity", StringComparison.Ordinal)
                   && source.Contains("enabled: true", StringComparison.Ordinal)
                   && source.Contains("name: \"Unity Replay Sync\"", StringComparison.Ordinal)
-                  && !source.Contains("Follow Unity replay", StringComparison.Ordinal)
-                  && !source.Contains("seekPlayback", StringComparison.Ordinal),
-                "139D-1H: extension exposes only the Foxglove-to-Unity product direction and names it for replay sync");
+                  && source.Contains("Follow Unity replay", StringComparison.Ordinal)
+                  && source.Contains("seekPlayback", StringComparison.Ordinal)
+                  && source.Contains("followUnity: false", StringComparison.Ordinal),
+                "139D-1H: extension keeps the Foxglove-to-Unity sync default and adds an opt-in Follow Unity replay toggle (default off, Phase 140K Stage 3)");
             Check(!source.Contains("fetchUnityState", StringComparison.Ordinal)
                   && !source.Contains("suppressForwardUntilMs", StringComparison.Ordinal),
-                "139D-1I: extension does not poll Unity state for reverse follow mode");
+                "139D-1I: follow mode is forward-only ACK-paced via seekPlayback; it does not poll Unity state for reverse follow");
         }
 
         private static void VerifySmokeScript()

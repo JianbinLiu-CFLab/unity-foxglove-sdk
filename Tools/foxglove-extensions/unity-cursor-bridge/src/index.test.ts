@@ -81,7 +81,19 @@ describe("Unity Replay Sync panel helpers", () => {
       endpoint: "http://127.0.0.1:9999/custom",
       enabled: false,
       token: "",
+      maxHz: 60,
+      followUnity: false,
     });
+  });
+
+  test("readPanelState restores a valid persisted cursor rate and follow flag", () => {
+    const state = readPanelState({ maxHz: 30, followUnity: true });
+    expect(state.maxHz).toBe(30);
+    expect(state.followUnity).toBe(true);
+
+    const fallback = readPanelState({ maxHz: 0, followUnity: "yes" });
+    expect(fallback.maxHz).toBe(60);
+    expect(fallback.followUnity).toBe(false);
   });
 
   test("shouldSendCursor rate-limits duplicate and too-fast cursor updates", () => {
@@ -128,10 +140,14 @@ describe("Unity Replay Sync panel lifecycle", () => {
     expect(context.saveState).toHaveBeenCalledWith({
       endpoint: "http://127.0.0.1:9000/custom",
       enabled: true,
+      maxHz: 60,
+      followUnity: false,
     });
     expect(context.saveState).toHaveBeenLastCalledWith({
       endpoint: "http://127.0.0.1:9000/custom",
       enabled: false,
+      maxHz: 60,
+      followUnity: false,
     });
     for (const call of vi.mocked(context.saveState).mock.calls) {
       expect(call[0]).not.toHaveProperty("token");
@@ -156,5 +172,40 @@ describe("Unity Replay Sync panel lifecycle", () => {
     expect(typeof cleanup).toBe("function");
     cleanup?.();
     expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  test("forward path keeps at most one cursor POST in flight until Unity ACKs", () => {
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    let now = 1_000_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const context = makeContext();
+    initPanel(context);
+
+    context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+    now += 1000; // well past the rate-limit interval, so only in-flight backpressure can gate
+    context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    nowSpy.mockRestore();
+  });
+
+  test("follow mode steps Foxglove forward-only after Unity ACKs the cursor", async () => {
+    const seekPlayback = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 202 })));
+    const context = makeContext({ followUnity: true });
+    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+    initPanel(context);
+
+    context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+    await vi.waitFor(() => {
+      expect(seekPlayback).toHaveBeenCalledTimes(1);
+    });
+
+    const target = seekPlayback.mock.calls[0]?.[0] as { sec: number; nsec: number };
+    expect(target.sec).toBe(5);
+    expect(target.nsec).toBeGreaterThan(0);
+    // One rate step (1/60 s) stays well under the 500 ms Unity seek-jump threshold.
+    expect(target.nsec).toBeLessThan(500_000_000);
   });
 });

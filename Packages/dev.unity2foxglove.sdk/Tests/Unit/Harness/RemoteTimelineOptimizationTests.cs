@@ -44,7 +44,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts");
             var render = ExtractFunction(source, "context.onRender =");
 
-            Assert.Contains("const MIN_INTERVAL_MS = 1000 / DEFAULT_MAX_HZ;", source, StringComparison.Ordinal);
+            // Phase 140K Stage 1 promoted the cursor rate to a panel setting: the module keeps the
+            // default const and the render loop derives the interval from state.maxHz (a cheap
+            // arithmetic op, not DOM work).
+            Assert.Contains("const DEFAULT_MAX_HZ = 60;", source, StringComparison.Ordinal);
+            Assert.Contains("const minIntervalMs = 1000 / state.maxHz;", render, StringComparison.Ordinal);
             Assert.Contains("function buildPanelDom", source, StringComparison.Ordinal);
             Assert.Contains("panel.replayTime.textContent", render, StringComparison.Ordinal);
             Assert.DoesNotContain("replaceChildren", render, StringComparison.Ordinal);

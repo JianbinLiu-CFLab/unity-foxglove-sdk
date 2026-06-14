@@ -95,6 +95,37 @@ Unity should follow the Foxglove playhead. Normal playback advances replay
 incrementally; explicit seeks or scrubs refresh the scene from a latest-at
 snapshot.
 
+## Cursor Rate
+
+The `Cursor rate (Hz)` field sets how often the panel POSTs a fresh playback
+cursor to Unity (default 60). Lower it when Unity runs a heavy scene: fewer
+cursors per second means Unity is forced to drain less often, which reduces the
+chance it falls behind and has to take the expensive latest-at snapshot path.
+The setting persists with the panel.
+
+The forward path now waits for Unity to acknowledge (HTTP 202) each cursor
+before sending the next one. At most one cursor POST is in flight at a time, so
+Foxglove's send cadence adapts to Unity's processing speed instead of flooding
+it. While waiting, only the latest cursor is sent next.
+
+## Follow Unity Replay (Experimental)
+
+When the installed Foxglove build exposes a programmatic `seekPlayback`, the
+panel shows an extra `Follow Unity replay` toggle (default off). With it on, the
+panel advances the Foxglove timeline **forward only**, one rate step at a time,
+and only after Unity acknowledges the previous cursor. Unity's acknowledgement
+latency then paces both timelines so neither side outruns the other.
+
+This mode never seeks backward and never steps more than `1 / cursor-rate`
+seconds, so Unity always stays on its cheap forward-advance path. The single
+in-flight token coordinates the outbound POST and the next timeline step so the
+two directions never fight, and the echo of each programmatic step is relabeled
+as an advance (not a seek) so Unity is not pushed onto the expensive path.
+
+`seekPlayback` is an undocumented panel API reached via a type cast; it may
+change or disappear on Foxglove upgrades. If it is absent the toggle is hidden
+and the panel behaves exactly as the default Foxglove-to-Unity sync.
+
 ## Endpoint And Security
 
 The default endpoint is loopback-only:

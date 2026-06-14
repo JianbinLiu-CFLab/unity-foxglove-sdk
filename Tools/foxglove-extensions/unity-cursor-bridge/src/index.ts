@@ -11,15 +11,21 @@ import {
 } from "@foxglove/extension";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8892/v1/replay-cursor";
-// Forward cursor sync rate. Matched to the typical render rate so Unity receives a
+// Default forward cursor sync rate. Matched to the typical render rate so Unity receives a
 // fresh playback cursor (and advances its scene) roughly every frame instead of
 // every 50 ms. 20 Hz made Unity look choppy while Foxglove played smoothly; the
 // per-cursor work is cheap scene-only advance, so render-rate sync is affordable.
 // This is a clock-sync cadence, not a data-sampling rate: Unity still processes
 // every replay message in (lastCursor, currentCursor], so 100 Hz+ topics stay intact.
+// Stage 1 (140K): this is the default for the user-configurable panel rate; the effective
+// interval is derived per-render from state.maxHz.
 const DEFAULT_MAX_HZ = 60;
-const MIN_INTERVAL_MS = 1000 / DEFAULT_MAX_HZ;
 const WAITING_REPLAY_TIME_TEXT = "Waiting for Foxglove playback";
+
+// Stage 3 (140K): seekPlayback is an undocumented PanelExtensionContext method reached via
+// cast. When present it lets the panel advance the Foxglove timeline forward-only at Unity's
+// ACK pace ("Follow Unity replay"). Its presence is feature-detected, not assumed.
+type MaybeSeekable = { seekPlayback?: (time: Time) => void };
 
 type CursorPayload = {
   source: "foxglove-unity-cursor-bridge";
@@ -35,6 +41,10 @@ type PanelState = {
   endpoint: string;
   token: string;
   enabled: boolean;
+  // Stage 1 (140K): user-configurable cursor rate (persisted), default DEFAULT_MAX_HZ.
+  maxHz: number;
+  // Stage 3 (140K): opt-in forward-only ACK-paced follow (persisted), default off.
+  followUnity: boolean;
 };
 
 type SendStatus = {
@@ -128,18 +138,27 @@ async function sendCursor(
   };
 }
 
-export function buildPayload(renderState: CursorRenderState, sequence: number): CursorPayload | undefined {
+export function buildPayload(
+  renderState: CursorRenderState,
+  sequence: number,
+  suppressSeekEcho = false,
+): CursorPayload | undefined {
   const currentTime = renderState.currentTime;
   if (currentTime == undefined) {
     return undefined;
   }
 
+  // Stage 3 echo suppression (140K): a programmatic forward seekPlayback step shows up on the
+  // next render as didSeek=true. Relabel that single echo as "advance" so Unity stays on its
+  // cheap forward path instead of taking the expensive latest-at snapshot. Real user seeks are
+  // not echoes and keep mode "seek".
+  const mode = renderState.didSeek === true ? "seek" : "advance";
   return {
     source: "foxglove-unity-cursor-bridge",
     sequence,
     time: { sec: currentTime.sec, nsec: currentTime.nsec },
-    mode: renderState.didSeek === true ? "seek" : "advance",
-    didSeek: renderState.didSeek === true,
+    mode: suppressSeekEcho ? "advance" : mode,
+    didSeek: suppressSeekEcho ? false : renderState.didSeek === true,
     startTime: cloneTime(renderState.startTime),
     endTime: cloneTime(renderState.endTime),
   };
@@ -150,6 +169,8 @@ export function readPanelState(initialState: unknown): PanelState {
     endpoint: DEFAULT_ENDPOINT,
     token: "",
     enabled: true,
+    maxHz: DEFAULT_MAX_HZ,
+    followUnity: false,
   };
 
   if (initialState == undefined || typeof initialState !== "object") {
@@ -162,13 +183,21 @@ export function readPanelState(initialState: unknown): PanelState {
       ? stored.endpoint.trim()
       : DEFAULT_ENDPOINT;
   const enabled = typeof stored.enabled === "boolean" ? stored.enabled : defaults.enabled;
-  return { endpoint, token: "", enabled };
+  const maxHz =
+    typeof stored.maxHz === "number" && isFinite(stored.maxHz) && stored.maxHz > 0
+      ? stored.maxHz
+      : defaults.maxHz;
+  const followUnity =
+    typeof stored.followUnity === "boolean" ? stored.followUnity : defaults.followUnity;
+  return { endpoint, token: "", enabled, maxHz, followUnity };
 }
 
 function savePanelState(context: PanelExtensionContext, state: PanelState): void {
   context.saveState({
     endpoint: state.endpoint,
     enabled: state.enabled,
+    maxHz: state.maxHz,
+    followUnity: state.followUnity,
   });
 }
 
@@ -188,11 +217,13 @@ export function shouldSendCursor(
   return (currentTime.sec !== lastSec || currentTime.nsec !== lastNsec) && nowMs - lastSentAtMs >= minIntervalMs;
 }
 
-function buildPanelDom(state: PanelState): {
+function buildPanelDom(state: PanelState, canFollow: boolean): {
   root: HTMLDivElement;
   enabledInput: HTMLInputElement;
   endpointInput: HTMLInputElement;
   tokenInput: HTMLInputElement;
+  maxHzInput: HTMLInputElement;
+  followInput: HTMLInputElement | undefined;
   replayTime: HTMLSpanElement;
   unityStatus: HTMLSpanElement;
 } {
@@ -306,6 +337,15 @@ function buildPanelDom(state: PanelState): {
         <label for="token">Access token (optional)</label>
         <input id="token" type="password" />
       </div>
+      <div class="bridge-field">
+        <label for="maxhz">Cursor rate (Hz)</label>
+        <input id="maxhz" type="number" min="1" max="120" step="1" />
+      </div>
+      ${canFollow ? `
+      <label class="bridge-sync">
+        <input id="follow" type="checkbox" />
+        <span>Follow Unity replay</span>
+      </label>` : ""}
       <div class="bridge-readout">
         <div class="bridge-row">
           <span class="bridge-label">Replay time (UTC)</span>
@@ -322,14 +362,18 @@ function buildPanelDom(state: PanelState): {
   const enabledInput = root.querySelector<HTMLInputElement>("#enabled");
   const endpointInput = root.querySelector<HTMLInputElement>("#endpoint");
   const tokenInput = root.querySelector<HTMLInputElement>("#token");
+  const maxHzInput = root.querySelector<HTMLInputElement>("#maxhz");
+  const followInput = canFollow ? root.querySelector<HTMLInputElement>("#follow") ?? undefined : undefined;
   const replayTime = root.querySelector<HTMLSpanElement>("#replay-time");
   const unityStatus = root.querySelector<HTMLSpanElement>("#unity-status");
   if (
     enabledInput == undefined ||
     endpointInput == undefined ||
     tokenInput == undefined ||
+    maxHzInput == undefined ||
     replayTime == undefined ||
-    unityStatus == undefined
+    unityStatus == undefined ||
+    (canFollow && followInput == undefined)
   ) {
     throw new Error("Unity Replay Sync panel template is missing required elements.");
   }
@@ -337,7 +381,11 @@ function buildPanelDom(state: PanelState): {
   enabledInput.checked = state.enabled;
   endpointInput.value = state.endpoint;
   tokenInput.value = state.token;
-  return { root, enabledInput, endpointInput, tokenInput, replayTime, unityStatus };
+  maxHzInput.value = String(state.maxHz);
+  if (followInput != undefined) {
+    followInput.checked = state.followUnity;
+  }
+  return { root, enabledInput, endpointInput, tokenInput, maxHzInput, followInput, replayTime, unityStatus };
 }
 
 export function initPanel(context: PanelExtensionContext): void | (() => void) {
@@ -347,8 +395,25 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let lastCursorNsec = -1;
   let lastSentAtMs = 0;
   let mounted = true;
-  let activeCursorController: AbortController | undefined;
-  let requestGeneration = 0;
+  // Stage 2 (140K): at most one cursor POST outstanding. The forward path waits for Unity's
+  // 202 ACK before sending the next cursor, so Foxglove's POST cadence adapts to Unity's
+  // processing speed instead of aborting and re-flooding.
+  let inFlight = false;
+  // Retained only so cleanup can abort an outstanding request on unmount.
+  let cursorController: AbortController | undefined;
+  // Stage 3 (140K): time of the last programmatic seekPlayback step, used to recognize and
+  // suppress its didSeek echo. -1/-1 means "no echo pending".
+  let pendingSeekEchoSec = -1;
+  let pendingSeekEchoNsec = -1;
+
+  const seekPlayback = (context as unknown as MaybeSeekable).seekPlayback;
+  const canFollow = typeof seekPlayback === "function";
+  if (!canFollow && state.followUnity) {
+    // seekPlayback unavailable in this Foxglove build: force follow off so the toggle never
+    // claims a capability the host does not expose.
+    state = { ...state, followUnity: false };
+  }
+
   const replayTimeCache: ReplayTimeDisplayCache = {
     lastSec: undefined,
     lastNsec: undefined,
@@ -358,7 +423,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     ok: true,
     message: "Waiting for Foxglove replay time. Keep Unity in Play Mode.",
   };
-  const panel = buildPanelDom(state);
+  const panel = buildPanelDom(state, canFollow);
 
   panel.enabledInput.addEventListener("change", () => {
     state = { ...state, enabled: panel.enabledInput.checked };
@@ -373,6 +438,22 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   panel.tokenInput.addEventListener("change", () => {
     state = { ...state, token: panel.tokenInput.value };
+  });
+
+  panel.maxHzInput.addEventListener("change", () => {
+    const parsed = Number.parseFloat(panel.maxHzInput.value);
+    const maxHz = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_HZ;
+    state = { ...state, maxHz };
+    panel.maxHzInput.value = String(state.maxHz);
+    savePanelState(context, state);
+  });
+
+  panel.followInput?.addEventListener("change", () => {
+    const follow = panel.followInput;
+    if (follow != undefined) {
+      state = { ...state, followUnity: follow.checked };
+      savePanelState(context, state);
+    }
   });
 
   context.panelElement.replaceChildren(panel.root);
@@ -392,32 +473,64 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       panel.unityStatus.classList.toggle("error", !status.ok);
 
       const nowMs = Date.now();
-      if (shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, MIN_INTERVAL_MS)) {
-        const payload = buildPayload(renderState, sequence + 1);
+      const minIntervalMs = 1000 / state.maxHz;
+      if (
+        !inFlight &&
+        shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)
+      ) {
+        const isSeekEcho =
+          currentTime != undefined &&
+          currentTime.sec === pendingSeekEchoSec &&
+          currentTime.nsec === pendingSeekEchoNsec;
+        const payload = buildPayload(renderState, sequence + 1, isSeekEcho);
         if (payload != undefined && currentTime != undefined) {
           sequence = payload.sequence;
           lastCursorSec = currentTime.sec;
           lastCursorNsec = currentTime.nsec;
           lastSentAtMs = nowMs;
+          if (isSeekEcho) {
+            pendingSeekEchoSec = -1;
+            pendingSeekEchoNsec = -1;
+          }
 
-          activeCursorController?.abort();
+          inFlight = true;
           const controller = new AbortController();
-          activeCursorController = controller;
-          const generation = ++requestGeneration;
+          cursorController = controller;
+          const sentSec = payload.time.sec;
+          const sentNsec = payload.time.nsec;
 
           void sendCursor(state.endpoint, state.token, payload, controller.signal).then(
             (result) => {
-              if (mounted && requestGeneration === generation && !controller.signal.aborted) {
-                status = result;
+              if (!mounted || controller.signal.aborted) {
+                return;
+              }
+              inFlight = false;
+              status = result;
+              // Stage 3: ACK-paced forward step. Only after Unity accepts the cursor do we
+              // advance Foxglove forward by one rate step (< 500 ms => Unity's cheap forward
+              // path, never backward). The resulting render sends the next cursor, so Unity's
+              // ACK latency sets the pace and Foxglove can never outrun it.
+              if (state.followUnity && result.ok && seekPlayback != undefined) {
+                const stepMs = 1000 / state.maxHz;
+                const totalNsec = sentNsec + Math.round(stepMs * 1_000_000);
+                const target: Time = {
+                  sec: sentSec + Math.floor(totalNsec / 1_000_000_000),
+                  nsec: totalNsec % 1_000_000_000,
+                };
+                pendingSeekEchoSec = target.sec;
+                pendingSeekEchoNsec = target.nsec;
+                seekPlayback(target);
               }
             },
             (error: unknown) => {
-              if (mounted && requestGeneration === generation && !controller.signal.aborted) {
-                status = {
-                  ok: false,
-                  message: `Cannot reach Unity. Check Play Mode and endpoint. ${String(error)}`,
-                };
+              if (!mounted || controller.signal.aborted) {
+                return;
               }
+              inFlight = false;
+              status = {
+                ok: false,
+                message: `Cannot reach Unity. Check Play Mode and endpoint. ${String(error)}`,
+              };
             },
           );
         }
@@ -429,7 +542,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   return () => {
     mounted = false;
-    activeCursorController?.abort();
+    cursorController?.abort();
   };
 }
 
