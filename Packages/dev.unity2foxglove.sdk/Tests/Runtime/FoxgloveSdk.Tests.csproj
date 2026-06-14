@@ -176,6 +176,7 @@
     <Compile Include="Phase140JValidation.cs" />
     <Compile Include="FoxRunConditionalPublishGateValidation.cs" />
     <Compile Include="FoxServiceDeclarativeRpcValidation.cs" />
+    <Compile Include="FoxServiceDtoSerializationAnalyzerValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
     <Compile Include="Phase138QValidation.cs" />
     <!-- 138S: validate VirtualImu native DDS output contracts. -->
@@ -254,6 +255,7 @@
     <Compile Include="TempMcapHelper.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
     <Compile Include="../../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
+    <Compile Include="../../Editor/Shared/FoxServiceDtoValidation/**/*.cs" LinkBase="Shared/FoxServiceDtoValidation" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs" Link="SourceGenerators/FoxgloveLogSourceGenerator.cs" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs" Link="SourceGenerators/FoxRunRoslynGenerationModelLowerer.cs" />
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />

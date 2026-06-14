@@ -83,6 +83,17 @@ public partial class CubeControls : MonoBehaviour
 - `Task` 返回值；
 - 重复服务名。
 
+DTO 校验会递归检查成员。推荐 DTO 只包含 public 字段或 get/set 属性，以及适合 JSON 的类型：基础类型、enum、`DateTime`、`DateTimeOffset`、`Guid`、`TimeSpan`、nullable、单维数组、`List<T>` / `IReadOnlyList<T>`，以及 key 为 `string` 的 dictionary。
+
+当 DTO 成员不能安全序列化时，生成器会带成员路径报诊断：
+
+- `FOXSERVICE003`：request DTO 中有不支持的成员；
+- `FOXSERVICE004`：response DTO 中有不支持的成员；
+- `FOXSERVICE007`：get-only 或被忽略的成员，warning；
+- `FOXSERVICE008`：DTO 图里有递归引用。
+
+不要把 `GameObject`、`Transform`、`MonoBehaviour` 等 `UnityEngine.Object` 类型放进服务 DTO。请改成稳定数据，例如对象 id 字符串，或只包含数字字段的小型 pose DTO。也应避免 delegate、`object`、不在支持范围内的 interface、多维数组、非 string key dictionary，以及自引用 DTO。
+
 Editor 中由 Roslyn source generator 生成 wrapper。Player 构建前，SDK 会写出物理 `*_FoxService.g.cs` fallback 文件，所以 IL2CPP 不需要运行时反射调用。
 
 ## 5. 在 Foxglove 调用服务

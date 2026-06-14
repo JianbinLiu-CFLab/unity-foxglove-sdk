@@ -21,3 +21,5 @@ FOXSERVICE003 | FoxService | Error | FoxService request type is unsupported.
 FOXSERVICE004 | FoxService | Error | FoxService response type is unsupported.
 FOXSERVICE005 | FoxService | Error | FoxService name is duplicated.
 FOXSERVICE006 | FoxService | Warning | FoxService schema metadata is omitted and generated defaults are used.
+FOXSERVICE007 | FoxService | Warning | FoxService DTO member is ignored or only partially serializable.
+FOXSERVICE008 | FoxService | Error | FoxService DTO graph is recursive.

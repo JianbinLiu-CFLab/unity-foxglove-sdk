@@ -95,6 +95,17 @@ Supported method shapes:
 
 Rejected shapes include static, generic, async, `ref`/`out`/`in`, more than one parameter, open generic DTOs, pointer/by-ref/ref-like DTOs, and `Task` responses.
 
+DTO validation is recursive. The generator accepts JSON-friendly DTOs made from public fields or get/set properties, primitives, enums, `DateTime`, `DateTimeOffset`, `Guid`, `TimeSpan`, nullable values, single-dimensional arrays, `List<T>`/`IReadOnlyList<T>`, and dictionaries with `string` keys.
+
+The generator reports a diagnostic with the member path when it finds a DTO member that cannot be serialized safely:
+
+- `FOXSERVICE003` for unsupported request DTO members;
+- `FOXSERVICE004` for unsupported response DTO members;
+- `FOXSERVICE007` warning for get-only or ignored members;
+- `FOXSERVICE008` for recursive DTO graphs.
+
+Avoid `UnityEngine.Object` types such as `GameObject`, `Transform`, and `MonoBehaviour` in service DTOs. Send stable data instead, for example a string object id or a small pose DTO with numeric fields. Avoid delegates, `object`, interfaces outside the supported collection contracts, multidimensional arrays, non-string dictionary keys, and self-referencing DTO graphs.
+
 The generated wrapper deserializes the request from `JToken`, calls the method directly, and serializes the response back to `JToken`. In the Unity Editor this comes from the Roslyn source generator. Before Player builds, the SDK writes physical `*_FoxService.g.cs` fallback files so IL2CPP builds do not need runtime reflection invocation.
 
 ## 7. Use the Service Call Panel
