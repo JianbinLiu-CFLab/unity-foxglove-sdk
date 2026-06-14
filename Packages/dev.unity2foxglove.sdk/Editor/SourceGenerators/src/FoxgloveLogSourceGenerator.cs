@@ -118,6 +118,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 int publishMode = 0;
                 float changeEpsilon = 0f;
                 float forceIntervalSeconds = 0f;
+                string when = "";
+                string unless = "";
                 foreach (var named in attr.NamedArguments)
                 {
                     if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
@@ -125,8 +127,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
+                    if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
+                    if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds));
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless));
             }
             if (topics.Count == 0) return null;
 
@@ -451,7 +455,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     topic.ChangeEpsilon,
                     topic.ForceIntervalSeconds,
                     RawMemberOrder,
-                    string.Empty);
+                    string.Empty,
+                    topic.When,
+                    topic.Unless);
             }
         }
 
@@ -473,6 +479,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval.</summary>
             public readonly float ForceIntervalSeconds;
+            public readonly string When;
+            public readonly string Unless;
 
             /// <summary>
             /// Creates a topic entry with the given topic, rate, and schema (backward compat).
@@ -484,12 +492,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// Creates a topic entry with publish policy.
             /// </summary>
             public TopicEntry(string topic, float rate, string schema,
-                int publishMode, float changeEpsilon, float forceIntervalSeconds)
+                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "")
             {
                 Topic = topic; RateHz = rate; SchemaName = schema;
                 PublishMode = publishMode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
+                When = when ?? string.Empty;
+                Unless = unless ?? string.Empty;
             }
         }
 
@@ -573,6 +583,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "{0}: FoxRun member kind must be field or property",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor ConditionMissing = new DiagnosticDescriptor(
+                "FOXRUN015", "FoxRun condition member missing",
+                "{0}: FoxRun condition member could not be resolved",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor ConditionNotBool = new DiagnosticDescriptor(
+                "FOXRUN016", "FoxRun condition member must be bool",
+                "{0}: FoxRun condition member must be bool",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor MixedTopicConditions = new DiagnosticDescriptor(
+                "FOXRUN017", "Mixed same-topic conditional gates",
+                "Topic '{0}' has mixed When or Unless values across FoxRun members",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
             public static DiagnosticDescriptor Shared(string id)
             {
                 switch (id)
@@ -589,6 +614,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN012": return MissingMemberName;
                     case "FOXRUN013": return InvalidPublishMode;
                     case "FOXRUN014": return InvalidMemberKind;
+                    case "FOXRUN015": return ConditionMissing;
+                    case "FOXRUN016": return ConditionNotBool;
+                    case "FOXRUN017": return MixedTopicConditions;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
                 }

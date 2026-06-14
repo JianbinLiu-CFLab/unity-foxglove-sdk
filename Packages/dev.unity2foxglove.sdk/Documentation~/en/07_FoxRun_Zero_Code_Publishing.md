@@ -66,7 +66,7 @@ Think of a FoxRun attribute as:
 [FoxRun("topic path", options...)]
 ```
 
-The first argument is the Foxglove topic path. Options are named C# attribute properties such as `RateHz`, `SchemaName`, `PublishMode`, `ChangeEpsilon`, and `ForceIntervalSeconds`.
+The first argument is the Foxglove topic path. Options are named C# attribute properties such as `RateHz`, `SchemaName`, `PublishMode`, `ChangeEpsilon`, `ForceIntervalSeconds`, `When`, and `Unless`.
 
 | Field | Default | What it does | When to change it | Common mistakes |
 |---|---:|---|---|---|
@@ -76,6 +76,8 @@ The first argument is the Foxglove topic path. Options are named C# attribute pr
 | `PublishMode` | `FixedRate` | Controls when generated code publishes. | Use `OnChange`, `OnChangeOrInterval`, or `OnTrigger` for non-fixed-rate telemetry. | Expecting `OnTrigger` to publish without calling the generated trigger method. |
 | `ChangeEpsilon` | `0` | Numeric tolerance for change-driven modes. | Suppress tiny float jitter. | Expecting it to affect `FixedRate` or `OnTrigger`. |
 | `ForceIntervalSeconds` | `0` | Heartbeat interval for `OnChangeOrInterval`. | Publish an occasional heartbeat even when unchanged. | Expecting it to affect `OnTrigger`. |
+| `When` | `""` | Bool field, property, or zero-argument method that must be true before publishing. | Gate optional telemetry behind runtime state. | Referencing a non-bool or side-effect-heavy member. |
+| `Unless` | `""` | Bool field, property, or zero-argument method that must be false before publishing. | Suppress telemetry during pause or replay states. | Using different gates on members sharing one topic. |
 
 ## 7. Publish Modes
 

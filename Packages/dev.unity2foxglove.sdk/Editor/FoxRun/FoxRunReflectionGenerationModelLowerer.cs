@@ -33,7 +33,9 @@ namespace Unity.FoxgloveSDK.Editor
                     member.ForceIntervalSeconds,
                     "Reflection",
                     member.RawMemberOrder >= 0 ? member.RawMemberOrder : index,
-                    member.ConditionalSymbols))
+                    member.ConditionalSymbols,
+                    member.When,
+                    member.Unless))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -58,6 +60,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly float ForceIntervalSeconds;
         public readonly int RawMemberOrder;
         public readonly string ConditionalSymbols;
+        public readonly string When;
+        public readonly string Unless;
 
         public FoxRunReflectionGenerationMember(
             string ns,
@@ -76,7 +80,9 @@ namespace Unity.FoxgloveSDK.Editor
             float changeEpsilon,
             float forceIntervalSeconds,
             int rawMemberOrder,
-            string conditionalSymbols)
+            string conditionalSymbols,
+            string when = "",
+            string unless = "")
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -97,6 +103,8 @@ namespace Unity.FoxgloveSDK.Editor
             ForceIntervalSeconds = forceIntervalSeconds;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
+            When = when ?? string.Empty;
+            Unless = unless ?? string.Empty;
         }
 
         public FoxRunReflectionGenerationMember(
@@ -115,7 +123,9 @@ namespace Unity.FoxgloveSDK.Editor
             float changeEpsilon,
             float forceIntervalSeconds,
             int rawMemberOrder,
-            string conditionalSymbols)
+            string conditionalSymbols,
+            string when = "",
+            string unless = "")
             : this(
                 ns,
                 className,
@@ -133,7 +143,9 @@ namespace Unity.FoxgloveSDK.Editor
                 changeEpsilon,
                 forceIntervalSeconds,
                 rawMemberOrder,
-                conditionalSymbols)
+                conditionalSymbols,
+                when,
+                unless)
         {
         }
     }

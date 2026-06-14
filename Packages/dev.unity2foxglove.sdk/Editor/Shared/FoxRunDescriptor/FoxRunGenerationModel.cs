@@ -118,6 +118,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string HostKind;
         public readonly int RawMemberOrder;
         public readonly string ConditionalSymbols;
+        public readonly string When;
+        public readonly string Unless;
 
         public FoxRunGenerationMember(
             string ns,
@@ -136,7 +138,9 @@ namespace Unity.FoxgloveSDK.Editor
             float forceIntervalSeconds,
             string hostKind,
             int rawMemberOrder,
-            string conditionalSymbols)
+            string conditionalSymbols,
+            string when = "",
+            string unless = "")
             : this(
                 ns,
                 className,
@@ -155,7 +159,9 @@ namespace Unity.FoxgloveSDK.Editor
                 forceIntervalSeconds,
                 hostKind,
                 rawMemberOrder,
-                conditionalSymbols)
+                conditionalSymbols,
+                when,
+                unless)
         {
         }
 
@@ -177,7 +183,9 @@ namespace Unity.FoxgloveSDK.Editor
             float forceIntervalSeconds,
             string hostKind,
             int rawMemberOrder,
-            string conditionalSymbols)
+            string conditionalSymbols,
+            string when = "",
+            string unless = "")
             : this(
                 ns,
                 className,
@@ -197,7 +205,9 @@ namespace Unity.FoxgloveSDK.Editor
                 forceIntervalSeconds,
                 hostKind,
                 rawMemberOrder,
-                conditionalSymbols)
+                conditionalSymbols,
+                when,
+                unless)
         {
         }
 
@@ -220,7 +230,9 @@ namespace Unity.FoxgloveSDK.Editor
             float forceIntervalSeconds,
             string hostKind,
             int rawMemberOrder,
-            string conditionalSymbols)
+            string conditionalSymbols,
+            string when = "",
+            string unless = "")
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -249,6 +261,8 @@ namespace Unity.FoxgloveSDK.Editor
             HostKind = hostKind ?? string.Empty;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
+            When = when ?? string.Empty;
+            Unless = unless ?? string.Empty;
             CanonicalType = string.IsNullOrEmpty(canonicalType)
                 ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(SelectCanonicalSourceType())
                 : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
@@ -272,7 +286,9 @@ namespace Unity.FoxgloveSDK.Editor
                 SchemaName,
                 PublishMode,
                 ChangeEpsilon,
-                ForceIntervalSeconds);
+                ForceIntervalSeconds,
+                When,
+                Unless);
         }
 
         public static float NormalizeRateHz(float rateHz)

@@ -51,6 +51,10 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval for OnChangeOrInterval.</summary>
             public readonly float ForceIntervalSeconds;
+            /// <summary>Optional bool member that must be true to publish.</summary>
+            public readonly string When;
+            /// <summary>Optional bool member that must be false to publish.</summary>
+            public readonly string Unless;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -62,7 +66,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// Creates a topic-member descriptor with publish policy.
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
-                int publishMode, float changeEpsilon, float forceIntervalSeconds)
+                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "")
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -72,6 +76,8 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishMode = publishMode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
+                When = when ?? string.Empty;
+                Unless = unless ?? string.Empty;
             }
         }
 
@@ -140,12 +146,14 @@ namespace Unity.FoxgloveSDK.Editor
             var topics = topicMap.Keys.ToList();
             var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPublishMode(kvp.Value));
             var hasPolicy = members.Any(m => m.PublishMode != 0);
+            var hasConditions = members.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
 
-            ClassFrameEmitter.EmitClassFrame(sb, ns, className, topics.Count, hasPolicy, pad);
+            ClassFrameEmitter.EmitClassFrame(sb, ns, className, topics.Count, hasPolicy, hasConditions, pad);
             TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
             PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
+            ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(members, topics, topicModes);
             TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);

@@ -65,9 +65,9 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
     [FoxRun("/events/state", PublishMode = OnTrigger)]
     public string eventName = "idle";
 
-    // This value changes every frame, but it does not auto-publish because it
-    // shares /events/state with the OnTrigger member above.
-    [FoxRun("/events/state", RateHz = 5f)]
+    // This value changes every frame, but it does not auto-publish because this
+    // grouped topic is trigger-only.
+    [FoxRun("/events/state", PublishMode = OnTrigger)]
     public float groupedTimerValue;
 
     public string lastTriggerResult = "not triggered";

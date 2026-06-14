@@ -31,6 +31,21 @@ public partial class TestLog : MonoBehaviour
     [FoxRun("/debug/position2", RateHz = 10, PublishMode = FoxRunPublishMode.OnChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
     private Vector3 _position2;
 
+    // Conditional publish gates.
+    // Toggle this in the Inspector: false stops /debug/conditional_position,
+    // true allows it to publish again.
+    public bool telemetryEnabled = true;
+
+    // Toggle this in the Inspector: true suppresses /debug/unless_health,
+    // false allows it to publish again.
+    public bool isPaused = false;
+
+    [FoxRun("/debug/conditional_position", RateHz = 15, When = nameof(telemetryEnabled))]
+    public Vector3 conditionalPosition;
+
+    [FoxRun("/debug/unless_health", RateHz = 15, Unless = nameof(isPaused))]
+    public int conditionalHealth = 100;
+
     void Awake()
     {
         var cube = GameObject.Find("Cube");
@@ -47,5 +62,7 @@ public partial class TestLog : MonoBehaviour
         _pos = trackedPosition;
         _position2 = trackedPosition;
         _health = 95f + Mathf.Sin(Time.time * 0.75f) * 5f;
+        conditionalPosition = trackedPosition;
+        conditionalHealth = Mathf.RoundToInt(_health);
     }
 }
