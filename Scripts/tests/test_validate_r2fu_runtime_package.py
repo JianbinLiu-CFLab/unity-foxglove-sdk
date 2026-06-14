@@ -48,15 +48,16 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             notices = package / "THIRD_PARTY_NOTICES.md"
             package_json = package / "package.json"
             manifest = package / "runtime-manifest.json"
+            artifact_sha = "a" * 64
 
             readme.write_text(
                 "runtime.jazzy.win64 adapter combined Unity2Foxglove workflow\n"
                 "Install only one runtime.* package\n",
                 encoding="utf-8",
             )
-            notices.write_text(self.validator.ARTIFACT_SHA256, encoding="utf-8")
+            notices.write_text(artifact_sha, encoding="utf-8")
             package_json.write_text("{}", encoding="utf-8")
-            manifest.write_text("{}", encoding="utf-8")
+            manifest.write_text(f'{{"artifactSha256":"{artifact_sha}"}}', encoding="utf-8")
 
             self.validator.PACKAGE = package
             self.validator.PUBLIC_DOCS = (readme, notices, package_json, manifest)

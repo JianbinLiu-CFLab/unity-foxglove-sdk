@@ -214,6 +214,7 @@ def find_asmdef_cycles(metrics: list[AsmdefMetric]) -> list[list[str]]:
     graph = {metric.name: [ref for ref in metric.references if not ref.startswith("GUID:")] for metric in metrics if metric.name}
     cycles: list[list[str]] = []
     seen: set[tuple[str, ...]] = set()
+    completed: set[str] = set()
 
     def canonical_cycle(cycle: list[str]) -> tuple[str, ...]:
         """Return a rotation-stable key for a closed cycle."""
@@ -222,25 +223,40 @@ def find_asmdef_cycles(metrics: list[AsmdefMetric]) -> list[list[str]]:
         best = min(rotations)
         return tuple(best + [best[0]])
 
-    def visit(node: str, stack: list[str]) -> None:
-        """Depth-first cycle walk for one asmdef node."""
-        if node in stack:
-            cycle = stack[stack.index(node) :] + [node]
-            key = canonical_cycle(cycle)
-            if key not in seen:
-                seen.add(key)
-                cycles.append(list(key))
-            return
-
-        stack.append(node)
-        try:
-            for child in graph.get(node, []):
-                visit(child, stack)
-        finally:
-            stack.pop()
-
     for node in graph:
-        visit(node, [])
+        if node in completed:
+            continue
+
+        stack: list[tuple[str, int]] = [(node, 0)]
+        path: list[str] = []
+        path_index: dict[str, int] = {}
+
+        while stack:
+            current, child_index = stack[-1]
+            if current not in path_index:
+                path_index[current] = len(path)
+                path.append(current)
+
+            children = graph.get(current, [])
+            if child_index >= len(children):
+                stack.pop()
+                path_index.pop(current, None)
+                if path and path[-1] == current:
+                    path.pop()
+                completed.add(current)
+                continue
+
+            child = children[child_index]
+            stack[-1] = (current, child_index + 1)
+            if child in path_index:
+                cycle = path[path_index[child] :] + [child]
+                key = canonical_cycle(cycle)
+                if key not in seen:
+                    seen.add(key)
+                    cycles.append(list(key))
+                continue
+            if child not in completed:
+                stack.append((child, 0))
     return cycles
 
 

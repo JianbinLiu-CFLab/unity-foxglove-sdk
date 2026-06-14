@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 1.9.5 - 2026-06-14
+
+### Added
+
+- Virtual sensor workflows now include the LiDAR maze demo path, multi-vendor LiDAR profiles, high-rate Virtual IMU, native DDS IMU/camera/TF/PointCloud2 outputs, LiDAR deskew output, and updated sample scene assets.
+- Remote replay workflows now include Remote DataLoader HTTP support, remote MCAP file playback, Foxglove deep-link/file URL handling, and a Unity replay cursor endpoint.
+- Unity Replay Sync now includes an optional Foxglove extension panel with cursor-rate control, ACK backpressure, timeout recovery, and experimental Unity-paced follow mode.
+- Publish cadence, frame-stall, replay enable, OpenH264 install, and cursor ownership diagnostics help explain visualization jitter, timeline ownership, and encoder setup failures.
+- The test migration added an xUnit unit-test track for pure behavior/source-shape checks while keeping integration and Unity/ROS2/Foxglove checks in the runtime and smoke runners.
+
+### Changed
+
+- Camera, video, point-cloud, IMU, WebSocket, MCAP, ROS2 bridge/CDR, schema, generator, release tooling, smoke script, and validation hot paths were optimized to reduce avoidable allocations and copy churn.
+- The optional ROS2 For Unity Jazzy Windows runtime package, runtime inventory, validators, and synchronization tooling were refreshed.
+- FoxgloveManager, VirtualImu, point-cloud publisher, sensor publisher helper, camera, lidar, and replay internals were split into smaller structure units without changing user-facing serialized Inspector behavior.
+- Replay enable failures and remote cursor-follow behavior now surface clearer diagnostics and avoid silent multi-owner timeline fights.
+- Package metadata, README version references, changelog, and release notes are synchronized for v1.9.5.
+
+### Verified
+
+- The release content was reviewed against git history since v1.9.4 before drafting release notes.
+- `python Scripts/release/run_ci.py`, `python -m pytest Scripts/tests -p no:cacheprovider`, `python -m compileall -q Scripts`, Unity Replay Sync extension tests/build, and git whitespace checks were run before tagging this release.
+- Manual Unity/Foxglove/RViz2 acceptance covered camera JPEG GC allocation, OpenH264 video, point-cloud hot paths, IMU covariance publishing, R2FU Jazzy runtime import, native DDS PointCloud2/TF visualization, and Unity Replay Sync follow behavior.
+
 ## Unreleased
 
 ## 1.9.4 - 2026-05-27

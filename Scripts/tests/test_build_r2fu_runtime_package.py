@@ -92,9 +92,15 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             sentinel = package / "sentinel.txt"
             sentinel.write_text("keep", encoding="utf-8")
             paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+            artifact = self.builder.RuntimeArtifact(
+                name=self.builder.ARTIFACT_NAME,
+                sha256="0" * 64,
+                size=1,
+                inventory_file_count=1,
+            )
 
             with mock.patch.object(self.builder, "ROOT", root):
-                with mock.patch.object(self.builder, "require_inputs", return_value={}):
+                with mock.patch.object(self.builder, "require_inputs", return_value=({}, artifact)):
                     with mock.patch.object(self.builder, "extract_runtime", side_effect=RuntimeError("boom")):
                         with self.assertRaises(RuntimeError):
                             self.builder.build_package(paths)
@@ -111,9 +117,15 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             sentinel = package / "sentinel.txt"
             sentinel.write_text("keep", encoding="utf-8")
             paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+            artifact = self.builder.RuntimeArtifact(
+                name=self.builder.ARTIFACT_NAME,
+                sha256="0" * 64,
+                size=1,
+                inventory_file_count=1,
+            )
 
             with mock.patch.object(self.builder, "ROOT", root):
-                with mock.patch.object(self.builder, "require_inputs", return_value={}):
+                with mock.patch.object(self.builder, "require_inputs", return_value=({}, artifact)):
                     with self.assertRaises(ValueError):
                         self.builder.build_package(paths)
 
