@@ -16,17 +16,19 @@ using UnityEngine.Scripting;
 using Unity.FoxgloveSDK.Components;
 
 [Preserve]
-partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
+partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource
 {
-    int IFoxgloveLogSource.FoxgloveLog_TopicCount => 3;
+    int IFoxgloveLogSource.FoxgloveLog_TopicCount => 5;
 
     FoxgloveLogTopicInfo IFoxgloveLogSource.FoxgloveLog_GetTopic(int index)
     {
         switch (index)
         {
-            case 0: return new FoxgloveLogTopicInfo("/debug/health", 5f, FoxRunPublishMode.FixedRate, 0f, 0f);
-            case 1: return new FoxgloveLogTopicInfo("/debug/position", 10f, FoxRunPublishMode.FixedRate, 0f, 0f);
-            case 2: return new FoxgloveLogTopicInfo("/debug/position2", 10f, FoxRunPublishMode.OnChangeOrInterval, 0.01f, 1f);
+            case 0: return new FoxgloveLogTopicInfo("/debug/conditional_position", 15f, FoxRunPublishMode.FixedRate, 0f, 0f);
+            case 1: return new FoxgloveLogTopicInfo("/debug/health", 5f, FoxRunPublishMode.FixedRate, 0f, 0f);
+            case 2: return new FoxgloveLogTopicInfo("/debug/position", 10f, FoxRunPublishMode.FixedRate, 0f, 0f);
+            case 3: return new FoxgloveLogTopicInfo("/debug/position2", 10f, FoxRunPublishMode.OnChangeOrInterval, 0.01f, 1f);
+            case 4: return new FoxgloveLogTopicInfo("/debug/unless_health", 15f, FoxRunPublishMode.FixedRate, 0f, 0f);
             default: return default;
         }
     }
@@ -36,15 +38,17 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
     {
         switch (topicIndex)
         {
-            case 0: mgr.PublishJson("/debug/health", "", new Dictionary<string, object> { ["health"] = this._health }, nowNs); break;
-            case 1: mgr.PublishJson("/debug/position", "", new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = this._pos.x, ["y"] = this._pos.y, ["z"] = this._pos.z } }, nowNs); break;
-            case 2: mgr.PublishJson("/debug/position2", "", new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = this._position2.x, ["y"] = this._position2.y, ["z"] = this._position2.z } }, nowNs); break;
+            case 0: mgr.PublishJson("/debug/conditional_position", "", new Dictionary<string, object> { ["conditionalPosition"] = new Dictionary<string, object> { ["x"] = this.conditionalPosition.x, ["y"] = this.conditionalPosition.y, ["z"] = this.conditionalPosition.z } }, nowNs); break;
+            case 1: mgr.PublishJson("/debug/health", "", new Dictionary<string, object> { ["health"] = this._health }, nowNs); break;
+            case 2: mgr.PublishJson("/debug/position", "", new Dictionary<string, object> { ["pos"] = new Dictionary<string, object> { ["x"] = this._pos.x, ["y"] = this._pos.y, ["z"] = this._pos.z } }, nowNs); break;
+            case 3: mgr.PublishJson("/debug/position2", "", new Dictionary<string, object> { ["position2"] = new Dictionary<string, object> { ["x"] = this._position2.x, ["y"] = this._position2.y, ["z"] = this._position2.z } }, nowNs); break;
+            case 4: mgr.PublishJson("/debug/unless_health", "", new Dictionary<string, object> { ["conditionalHealth"] = this.conditionalHealth }, nowNs); break;
         }
     }
 
-    private bool __hasLast_2;
-    private double __lastPublishSec_2;
-    private UnityEngine.Vector3 __last_2_0;
+    private bool __hasLast_3;
+    private double __lastPublishSec_3;
+    private UnityEngine.Vector3 __last_3_0;
 
     private static bool __foxrun_float_changed(float current, float last, float epsilon)
     {
@@ -65,10 +69,12 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
         {
             case 0: return true;
             case 1: return true;
-            case 2:
-                changed = !__hasLast_2;
-                if (!changed) changed = __foxrun_float_changed(this._position2.x, __last_2_0.x, 0.00999999978f) || __foxrun_float_changed(this._position2.y, __last_2_0.y, 0.00999999978f) || __foxrun_float_changed(this._position2.z, __last_2_0.z, 0.00999999978f);
-                return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChangeOrInterval, nowSec, __hasLast_2, changed, __lastPublishSec_2, 1f);
+            case 2: return true;
+            case 3:
+                changed = !__hasLast_3;
+                if (!changed) changed = __foxrun_float_changed(this._position2.x, __last_3_0.x, 0.00999999978f) || __foxrun_float_changed(this._position2.y, __last_3_0.y, 0.00999999978f) || __foxrun_float_changed(this._position2.z, __last_3_0.z, 0.00999999978f);
+                return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChangeOrInterval, nowSec, __hasLast_3, changed, __lastPublishSec_3, 1f);
+            case 4: return true;
             default: return true;
         }
     }
@@ -77,11 +83,24 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource
     {
         switch (topicIndex)
         {
-            case 2:
-                __last_2_0 = this._position2;
-                __hasLast_2 = true;
-                __lastPublishSec_2 = nowSec;
+            case 3:
+                __last_3_0 = this._position2;
+                __hasLast_3 = true;
+                __lastPublishSec_3 = nowSec;
                 break;
+        }
+    }
+
+    bool IFoxgloveLogConditionSource.FoxgloveLog_CanPublish(int topicIndex)
+    {
+        switch (topicIndex)
+        {
+            case 0: return telemetryEnabled;
+            case 1: return true;
+            case 2: return true;
+            case 3: return true;
+            case 4: return !isPaused;
+            default: return true;
         }
     }
 }
