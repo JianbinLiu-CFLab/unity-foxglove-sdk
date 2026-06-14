@@ -110,8 +110,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-1B-1: FoxgloveManager declares bounded message and lifecycle event queue budgets");
             Check(!manager.Contains("ConcurrentQueue<ClientEvent>", StringComparison.Ordinal),
                 "134-1B-2: FoxgloveManager no longer uses an unbounded ConcurrentQueue for client events");
-            Check(clientEvents.Contains("EnqueueClientLifecycleEvent(new ClientEvent", StringComparison.Ordinal)
-                  && server.Contains("EnqueueClientMessageEvent(new ClientEvent", StringComparison.Ordinal),
+            Check(clientEvents.Contains("EnqueueClientLifecycleEvent(ClientEvent.Connect", StringComparison.Ordinal)
+                  && clientEvents.Contains("EnqueueClientLifecycleEvent(ClientEvent.Disconnect", StringComparison.Ordinal)
+                  && server.Contains("EnqueueClientMessageEvent(ClientEvent.Message", StringComparison.Ordinal),
                 "134-1B-3: connect/disconnect use a lifecycle queue separate from payload message events");
             Check(clientEvents.Contains("evt.IsMessage ? evt.Payload?.Length ?? 0 : 0", StringComparison.Ordinal),
                 "134-1B-4: only message payload bytes count against the byte budget");

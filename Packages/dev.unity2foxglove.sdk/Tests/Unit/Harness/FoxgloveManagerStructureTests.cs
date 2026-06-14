@@ -69,14 +69,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private void EnqueueClientMessageEvent(", clientEvents, StringComparison.Ordinal);
             Assert.Contains("private void DrainClientEventQueue(", clientEvents, StringComparison.Ordinal);
             Assert.Contains("private void ClearClientEvents(", clientEvents, StringComparison.Ordinal);
-            Assert.Contains("internal struct ClientEvent", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("internal readonly struct ClientEvent", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("private ClientEvent(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("public static ClientEvent Connect(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("public static ClientEvent Disconnect(", clientEvents, StringComparison.Ordinal);
+            Assert.Contains("public static ClientEvent Message(", clientEvents, StringComparison.Ordinal);
+            Assert.DoesNotContain("public uint ClientId;", clientEvents, StringComparison.Ordinal);
+            Assert.DoesNotContain("public bool IsMessage;", clientEvents, StringComparison.Ordinal);
 
             Assert.DoesNotContain("private void EnqueueConnect(", manager, StringComparison.Ordinal);
             Assert.DoesNotContain("private void EnqueueDisconnect(", manager, StringComparison.Ordinal);
             Assert.DoesNotContain("private void EnqueueClientLifecycleEvent(", manager, StringComparison.Ordinal);
             Assert.DoesNotContain("private void EnqueueClientMessageEvent(", manager, StringComparison.Ordinal);
             Assert.DoesNotContain("private void DrainClientEventQueue(", manager, StringComparison.Ordinal);
-            Assert.DoesNotContain("internal struct ClientEvent", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("internal readonly struct ClientEvent", manager, StringComparison.Ordinal);
 
             Assert.True(HasValidUnityGuid(meta), clientEventsMetaPath + " should have a valid Unity GUID.");
             Assert.Contains("MonoImporter:", meta, StringComparison.Ordinal);

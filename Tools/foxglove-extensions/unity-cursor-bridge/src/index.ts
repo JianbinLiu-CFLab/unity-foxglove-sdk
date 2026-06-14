@@ -80,12 +80,21 @@ type ReplayTimeDisplayCache = {
   text: string;
 };
 
+type ReplayTime = {
+  sec: number;
+  nsec: number;
+};
+
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
   if (time == undefined) {
     return undefined;
   }
 
   return { sec: time.sec, nsec: time.nsec };
+}
+
+export function isBeforeTime(left: ReplayTime, right: ReplayTime): boolean {
+  return left.sec < right.sec || (left.sec === right.sec && left.nsec < right.nsec);
 }
 
 export function escapeHtml(value: string): string {
@@ -423,8 +432,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let followPumpHandle: ReturnType<typeof setTimeout> | undefined;
   // Throttle bookkeeping for the best-effort UI seek.
   let lastSeekWallMs = -1;
-  // Set once follow advances to the end of the replay. The loop parks and the panel falls back to
-  // plain currentTime-driven sync, so the user can scrub freely; re-checking Follow resumes it.
+  // Set once follow advances to the end of the replay. The loop parks until the user scrubs back
+  // before the end, at which point follow resumes from the new position.
   let followReachedEnd = false;
   // Some hosts reject a programmatic seek while paused (it throws). seekPlayback is best-effort UI
   // only; after the first failure we stop calling it but keep pumping the cursor stream to Unity.
@@ -550,6 +559,67 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     }, delay);
   }
 
+  function buildFollowPayload(sentSec: number, sentNsec: number): CursorPayload {
+    sequence += 1;
+    return {
+      source: "foxglove-unity-cursor-bridge",
+      sequence,
+      time: { sec: sentSec, nsec: sentNsec },
+      mode: "advance",
+      didSeek: false,
+      startTime: lastStartTime != undefined ? { ...lastStartTime } : undefined,
+      endTime: lastEndTime != undefined ? { ...lastEndTime } : undefined,
+    };
+  }
+
+  function advanceFollowClockAfterAck(sentSec: number, sentNsec: number): ReplayTime {
+    const nowWall = Date.now();
+    let deltaMs = followLastAckWallMs >= 0 ? nowWall - followLastAckWallMs : 0;
+    if (deltaMs < 0) {
+      deltaMs = 0;
+    }
+    if (deltaMs > MAX_FOLLOW_STEP_MS) {
+      deltaMs = MAX_FOLLOW_STEP_MS;
+    }
+    followLastAckWallMs = nowWall;
+
+    const totalNsec = sentNsec + Math.round(deltaMs * 1_000_000);
+    return {
+      sec: sentSec + Math.floor(totalNsec / 1_000_000_000),
+      nsec: totalNsec % 1_000_000_000,
+    };
+  }
+
+  function parkFollowAtEnd(endTime: ReplayTime): void {
+    followClockSec = endTime.sec;
+    followClockNsec = endTime.nsec;
+    seekUi(endTime.sec, endTime.nsec, true);
+    followReachedEnd = true;
+    stopFollow();
+    status = { ok: true, message: "Reached end of replay. Scrub earlier to follow from there." };
+  }
+
+  function resumeFollowFromScrubIfNeeded(renderState: CursorRenderState, currentTime: Time | undefined): void {
+    if (
+      !state.followUnity ||
+      !canFollow ||
+      !followReachedEnd ||
+      renderState.didSeek !== true ||
+      currentTime == undefined ||
+      lastEndTime == undefined ||
+      !isBeforeTime(currentTime, lastEndTime)
+    ) {
+      return;
+    }
+
+    followReachedEnd = false;
+    followActive = false;
+    followLastAckWallMs = -1;
+    lastCursorSec = -1;
+    lastCursorNsec = -1;
+    status = { ok: true, message: "Following Unity replay from scrubbed time." };
+  }
+
   function pumpFollow(): void {
     if (!mounted || !state.followUnity || seekPlayback == undefined) {
       stopFollow();
@@ -562,16 +632,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
     const sentSec = followClockSec;
     const sentNsec = followClockNsec;
-    sequence += 1;
-    const payload: CursorPayload = {
-      source: "foxglove-unity-cursor-bridge",
-      sequence,
-      time: { sec: sentSec, nsec: sentNsec },
-      mode: "advance",
-      didSeek: false,
-      startTime: lastStartTime != undefined ? { ...lastStartTime } : undefined,
-      endTime: lastEndTime != undefined ? { ...lastEndTime } : undefined,
-    };
+    const payload = buildFollowPayload(sentSec, sentNsec);
 
     dispatchCursor(payload, (ok, delivered) => {
       if (!mounted || !state.followUnity) {
@@ -586,37 +647,16 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
         // clamped under Unity's seek threshold. Real-time mapping keeps playback at normal speed
         // even when ACK latency exceeds one rate step; without it, each ACK advanced only a fixed
         // 1/maxHz, so a slow ACK made playback crawl and stutter.
-        const nowWall = Date.now();
-        let deltaMs = followLastAckWallMs >= 0 ? nowWall - followLastAckWallMs : 0;
-        if (deltaMs < 0) {
-          deltaMs = 0;
-        }
-        if (deltaMs > MAX_FOLLOW_STEP_MS) {
-          deltaMs = MAX_FOLLOW_STEP_MS;
-        }
-        followLastAckWallMs = nowWall;
-        const totalNsec = sentNsec + Math.round(deltaMs * 1_000_000);
-        let nextSec = sentSec + Math.floor(totalNsec / 1_000_000_000);
-        let nextNsec = totalNsec % 1_000_000_000;
+        const nextTime = advanceFollowClockAfterAck(sentSec, sentNsec);
 
         // Stop at the end of the replay so the user can scrub the timeline again. Park the loop
         // (no more seeks) and do one final seek to the exact end.
-        if (lastEndTime != undefined) {
-          const endNs = lastEndTime.sec * 1_000_000_000 + lastEndTime.nsec;
-          if (nextSec * 1_000_000_000 + nextNsec >= endNs) {
-            nextSec = lastEndTime.sec;
-            nextNsec = lastEndTime.nsec;
-            followClockSec = nextSec;
-            followClockNsec = nextNsec;
-            seekUi(nextSec, nextNsec, true);
-            followReachedEnd = true;
-            stopFollow();
-            status = { ok: true, message: "Reached end of replay. Re-check Follow Unity replay to follow again." };
-            return;
-          }
+        if (lastEndTime != undefined && !isBeforeTime(nextTime, lastEndTime)) {
+          parkFollowAtEnd(lastEndTime);
+          return;
         }
-        followClockSec = nextSec;
-        followClockNsec = nextNsec;
+        followClockSec = nextTime.sec;
+        followClockNsec = nextTime.nsec;
 
         // Keep the loop alive FIRST, so a throwing/slow seekPlayback cannot stall the cursor stream.
         scheduleFollowPump();
@@ -711,6 +751,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       }
       lastStartTime = cloneTime(renderState.startTime);
       lastEndTime = cloneTime(renderState.endTime);
+
+      resumeFollowFromScrubIfNeeded(renderState, currentTime);
 
       if (state.followUnity && canFollow && !followReachedEnd) {
         // Stage 3: the self-clocked pump owns sending while following; just keep it running.
