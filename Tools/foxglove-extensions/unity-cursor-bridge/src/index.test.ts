@@ -268,7 +268,7 @@ describe("Unity Replay Sync panel lifecycle", () => {
     }
   });
 
-  test("follow parks at the end and does not run away; scrubbing does a one-shot sync", async () => {
+  test("follow parks at the end and does not run away", async () => {
     const seekPlayback = vi.fn();
     const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -291,14 +291,37 @@ describe("Unity Replay Sync panel lifecycle", () => {
       }
     });
 
-    // A scrub well before the end issues exactly one sync cursor (plain currentTime-driven path),
-    // not a runaway self-driving loop.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(fetchMock.mock.calls.length).toBe(parkedCount);
+    cleanup?.();
+  });
+
+  test("scrubbing before the end resumes follow after the loop parked", async () => {
+    const seekPlayback = vi.fn();
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ followUnity: true });
+    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+    const cleanup = initPanel(context);
+
+    const bounds = { startTime: { sec: 0, nsec: 0 }, endTime: { sec: 10, nsec: 120_000_000 } };
+    context.onRender?.({ currentTime: { sec: 10, nsec: 0 }, ...bounds }, vi.fn());
+
+    let parkedCount = 0;
+    await vi.waitFor(() => {
+      const n = fetchMock.mock.calls.length;
+      expect(n).toBeGreaterThan(0);
+      if (n !== parkedCount) {
+        parkedCount = n;
+        throw new Error("still streaming");
+      }
+    });
+
     context.onRender?.({ currentTime: { sec: 2, nsec: 0 }, didSeek: true, ...bounds }, vi.fn());
     await vi.waitFor(() => {
-      expect(fetchMock.mock.calls.length).toBe(parkedCount + 1);
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(parkedCount + 1);
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(fetchMock.mock.calls.length).toBe(parkedCount + 1);
+
     cleanup?.();
   });
 

@@ -423,8 +423,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let followPumpHandle: ReturnType<typeof setTimeout> | undefined;
   // Throttle bookkeeping for the best-effort UI seek.
   let lastSeekWallMs = -1;
-  // Set once follow advances to the end of the replay. The loop parks and the panel falls back to
-  // plain currentTime-driven sync, so the user can scrub freely; re-checking Follow resumes it.
+  // Set once follow advances to the end of the replay. The loop parks until the user scrubs back
+  // before the end, at which point follow resumes from the new position.
   let followReachedEnd = false;
   // Some hosts reject a programmatic seek while paused (it throws). seekPlayback is best-effort UI
   // only; after the first failure we stop calling it but keep pumping the cursor stream to Unity.
@@ -611,7 +611,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
             seekUi(nextSec, nextNsec, true);
             followReachedEnd = true;
             stopFollow();
-            status = { ok: true, message: "Reached end of replay. Re-check Follow Unity replay to follow again." };
+            status = { ok: true, message: "Reached end of replay. Scrub earlier to follow from there." };
             return;
           }
         }
@@ -711,6 +711,24 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       }
       lastStartTime = cloneTime(renderState.startTime);
       lastEndTime = cloneTime(renderState.endTime);
+
+      if (
+        state.followUnity &&
+        canFollow &&
+        followReachedEnd &&
+        renderState.didSeek === true &&
+        currentTime != undefined &&
+        lastEndTime != undefined &&
+        currentTime.sec * 1_000_000_000 + currentTime.nsec <
+          lastEndTime.sec * 1_000_000_000 + lastEndTime.nsec
+      ) {
+        followReachedEnd = false;
+        followActive = false;
+        followLastAckWallMs = -1;
+        lastCursorSec = -1;
+        lastCursorNsec = -1;
+        status = { ok: true, message: "Following Unity replay from scrubbed time." };
+      }
 
       if (state.followUnity && canFollow && !followReachedEnd) {
         // Stage 3: the self-clocked pump owns sending while following; just keep it running.

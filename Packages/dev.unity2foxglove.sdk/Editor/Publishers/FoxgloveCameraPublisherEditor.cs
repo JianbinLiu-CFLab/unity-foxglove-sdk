@@ -753,18 +753,62 @@ namespace Unity.FoxgloveSDK.Editor
             var defaultDir = ResolveBrowseDefaultDirectory(property.stringValue);
             EditorApplication.delayCall += () =>
             {
-                if (capturedProperty.serializedObject == null || capturedProperty.serializedObject.targetObject == null)
+                var serializedObject = TryGetSerializedObject(capturedProperty);
+                if (serializedObject == null || serializedObject.targetObject == null)
                     return;
 
                 var selected = EditorUtility.OpenFilePanel(dialogTitle, defaultDir, extension);
                 if (string.IsNullOrEmpty(selected))
                     return;
 
-                capturedProperty.serializedObject.Update();
-                capturedProperty.stringValue = selected;
-                capturedProperty.serializedObject.ApplyModifiedProperties();
+                if (!TryApplyBrowsePath(serializedObject, capturedProperty, selected))
+                    return;
+
                 onChanged?.Invoke();
             };
+        }
+
+        private static SerializedObject TryGetSerializedObject(SerializedProperty property)
+        {
+            try
+            {
+                return property.serializedObject;
+            }
+            catch (MissingReferenceException)
+            {
+                return null;
+            }
+            catch (NullReferenceException)
+            {
+                return null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+
+        private static bool TryApplyBrowsePath(SerializedObject serializedObject, SerializedProperty property, string selected)
+        {
+            try
+            {
+                serializedObject.Update();
+                property.stringValue = selected;
+                serializedObject.ApplyModifiedProperties();
+                return true;
+            }
+            catch (MissingReferenceException)
+            {
+                return false;
+            }
+            catch (NullReferenceException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         private static string ResolveBrowseDefaultDirectory(string current)

@@ -29,14 +29,14 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         /// <param name="id">Connected Foxglove client identifier.</param>
         private void EnqueueConnect(uint id) =>
-            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = true });
+            EnqueueClientLifecycleEvent(ClientEvent.Connect(id));
 
         /// <summary>
         /// Queues a transport disconnect event for main-thread delivery.
         /// </summary>
         /// <param name="id">Disconnected Foxglove client identifier.</param>
         private void EnqueueDisconnect(uint id) =>
-            EnqueueClientLifecycleEvent(new ClientEvent { ClientId = id, IsConnect = false });
+            EnqueueClientLifecycleEvent(ClientEvent.Disconnect(id));
 
         private void EnqueueClientLifecycleEvent(ClientEvent evt)
         {
@@ -137,36 +137,55 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>
     /// Transport event queued for main-thread delivery.
     /// </summary>
-    internal struct ClientEvent
+    internal readonly struct ClientEvent
     {
+        private ClientEvent(uint clientId, uint channelId, string topic, byte[] payload, bool isConnect, bool isMessage)
+        {
+            ClientId = clientId;
+            ChannelId = channelId;
+            Topic = topic;
+            Payload = payload;
+            IsConnect = isConnect;
+            IsMessage = isMessage;
+        }
+
+        public static ClientEvent Connect(uint clientId) =>
+            new(clientId, 0, null, null, isConnect: true, isMessage: false);
+
+        public static ClientEvent Disconnect(uint clientId) =>
+            new(clientId, 0, null, null, isConnect: false, isMessage: false);
+
+        public static ClientEvent Message(uint clientId, uint channelId, string topic, byte[] payload) =>
+            new(clientId, channelId, topic, payload, isConnect: false, isMessage: true);
+
         /// <summary>
         /// Foxglove client identifier associated with the event.
         /// </summary>
-        public uint ClientId;
+        public readonly uint ClientId;
 
         /// <summary>
         /// Client-advertised channel identifier for message events.
         /// </summary>
-        public uint ChannelId;
+        public readonly uint ChannelId;
 
         /// <summary>
         /// Client-advertised topic name for message events.
         /// </summary>
-        public string Topic;
+        public readonly string Topic;
 
         /// <summary>
         /// Client-published payload bytes for message events.
         /// </summary>
-        public byte[] Payload;
+        public readonly byte[] Payload;
 
         /// <summary>
         /// True when the event represents a client connection.
         /// </summary>
-        public bool IsConnect;
+        public readonly bool IsConnect;
 
         /// <summary>
         /// True when the event represents a client-published message.
         /// </summary>
-        public bool IsMessage;
+        public readonly bool IsMessage;
     }
 }
