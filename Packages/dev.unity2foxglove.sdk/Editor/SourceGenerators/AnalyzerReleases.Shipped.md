@@ -15,3 +15,9 @@ FOXRUN005 | FoxRun | Warning | Same-topic FoxRun members mix PublishMode, Change
 FOXRUN015 | FoxRun | Error | FoxRun conditional gate member is missing or invalid.
 FOXRUN016 | FoxRun | Error | FoxRun conditional gate member must be bool.
 FOXRUN017 | FoxRun | Error | Same-topic FoxRun members mix When or Unless conditional gates.
+FOXSERVICE001 | FoxService | Error | FoxService name must be non-empty and absolute.
+FOXSERVICE002 | FoxService | Error | FoxService method signature is unsupported.
+FOXSERVICE003 | FoxService | Error | FoxService request type is unsupported.
+FOXSERVICE004 | FoxService | Error | FoxService response type is unsupported.
+FOXSERVICE005 | FoxService | Error | FoxService name is duplicated.
+FOXSERVICE006 | FoxService | Warning | FoxService schema metadata is omitted and generated defaults are used.

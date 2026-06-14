@@ -16,7 +16,7 @@ using Unity.FoxgloveSDK.Schemas;
 /// Registers demo Parameters and Services for Phase 7 manual verification.
 /// Attach to the Foxglove GameObject (same one with FoxgloveManager).
 /// </summary>
-public class FoxgloveDemoSetup : MonoBehaviour
+public partial class FoxgloveDemoSetup : MonoBehaviour
 {
     internal const float ScaleMinimum = 0.2f;
     internal const float ScaleMaximum = 5f;
@@ -26,7 +26,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
     [SerializeField] private FoxgloveManager _manager;
     [SerializeField] private GameObject _cube;
 
-    private uint _resetSvcId;
     private float _lastAppliedScale = -1f;
     private Color _lastAppliedColor = Color.clear;
     private bool _syncingColor;
@@ -75,31 +74,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
         rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
         rt.RegisterParameter("/cube/scale", 1.0, "number", true);
 
-        _resetSvcId = _manager.RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor
-        {
-            Name = "/cube/reset_pose",
-            Type = "/cube/reset_pose",
-            Request = new Unity.FoxgloveSDK.Protocol.ServiceSchemaDescriptor { SchemaName = "/cube/ResetPoseRequest" },
-            Response = new Unity.FoxgloveSDK.Protocol.ServiceSchemaDescriptor { SchemaName = "/cube/ResetPoseResponse" }
-        }, req =>
-        {
-            var cube = FindCube();
-            if (cube == null)
-                return JToken.Parse("{\"status\":\"error\",\"reason\":\"cube not found\"}");
-
-            if (cube != null)
-            {
-                cube.transform.position = Vector3.zero;
-                cube.transform.rotation = Quaternion.identity;
-                cube.transform.localScale = Vector3.one;
-                _lastAppliedScale = 1f;
-
-                _manager.Runtime?.TrySetParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0));
-                _manager.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(1.0));
-            }
-            return JToken.Parse("{\"status\":\"ok\"}");
-        });
-
         // Phase 8: log client-published messages to Unity Console.
         _manager.OnClientMessage += OnClientMessageReceived;
 
@@ -142,11 +116,6 @@ public class FoxgloveDemoSetup : MonoBehaviour
         if (runtime != null)
         {
             runtime.Parameters.OnParameterChanged -= OnParameterChanged;
-            if (_resetSvcId != 0)
-            {
-                runtime.UnregisterService(_resetSvcId);
-                _resetSvcId = 0;
-            }
         }
 
         if (_manager != null)
@@ -159,6 +128,28 @@ public class FoxgloveDemoSetup : MonoBehaviour
         }
 
         _initialized = false;
+    }
+
+    [FoxService(
+        "/cube/reset_pose",
+        Type = "Unity2Foxglove.Demo.ResetPose",
+        Description = "Reset the demo cube pose.",
+        RequestSchemaName = "Unity2Foxglove.Demo.ResetPoseRequest",
+        ResponseSchemaName = "Unity2Foxglove.Demo.ResetPoseResponse")]
+    private ResetPoseResponse ResetPose(ResetPoseRequest request)
+    {
+        var cube = FindCube();
+        if (cube == null)
+            return new ResetPoseResponse { status = "error", reason = "cube not found" };
+
+        cube.transform.position = Vector3.zero;
+        cube.transform.rotation = Quaternion.identity;
+        cube.transform.localScale = Vector3.one;
+        _lastAppliedScale = 1f;
+
+        _manager?.Runtime?.TrySetParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0));
+        _manager?.Runtime?.TrySetParameter("/cube/scale", JToken.FromObject(1.0));
+        return new ResetPoseResponse { status = "ok" };
     }
 
     /// <summary>Keeps runtime wiring alive while parameter changes drive cube state.</summary>
@@ -372,5 +363,15 @@ public class FoxgloveDemoSetup : MonoBehaviour
                 builder.Append(" ...");
             return "hex:" + builder;
         }
+    }
+
+    public sealed class ResetPoseRequest
+    {
+    }
+
+    public sealed class ResetPoseResponse
+    {
+        public string status;
+        public string reason;
     }
 }

@@ -108,8 +108,9 @@ namespace Unity.FoxgloveSDK.Tests
             var demoSetup = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs");
             Check(demoSetup.Contains("private void OnDestroy()", StringComparison.Ordinal)
                   && demoSetup.Contains("runtime.Parameters.OnParameterChanged -= OnParameterChanged", StringComparison.Ordinal)
-                  && demoSetup.Contains("runtime.UnregisterService(_resetSvcId)", StringComparison.Ordinal),
-                "134-23-E1: Full demo setup unregisters runtime callbacks and services on destroy");
+                  && demoSetup.Contains("[FoxService(", StringComparison.Ordinal)
+                  && !demoSetup.Contains("_resetSvcId", StringComparison.Ordinal),
+                "134-23-E1: Full demo setup unregisters runtime callbacks and uses declarative reset service ownership");
             Check(demoSetup.Contains("SynchronizationContext.Current", StringComparison.Ordinal)
                   && demoSetup.Contains("_unityContext.Post", StringComparison.Ordinal),
                 "134-23-E2: Full demo setup marshals parameter callbacks back to Unity context");
@@ -141,8 +142,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && demoSetup.Contains("bytes={payload.Length}", StringComparison.Ordinal)
                   && !demoSetup.Contains("Encoding.UTF8.GetString(payload)", StringComparison.Ordinal),
                 "134-23-F2: Full demo client-message payload logging is bounded and binary-aware");
-            Check(demoSetup.Contains("_manager.RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor", StringComparison.Ordinal),
-                "134-23-F3: Full demo service handler registration uses the FoxgloveManager facade");
+            Check(demoSetup.Contains("public partial class FoxgloveDemoSetup", StringComparison.Ordinal)
+                  && demoSetup.Contains("[FoxService(", StringComparison.Ordinal)
+                  && demoSetup.Contains("private ResetPoseResponse ResetPose(ResetPoseRequest request)", StringComparison.Ordinal),
+                "134-23-F3: Full demo reset_pose uses declarative FoxService generation");
             Check(demoSetup.Contains("WarnInvalidScaleOnce", StringComparison.Ordinal)
                   && demoSetup.Contains("Debug.LogWarning(\"[FoxgloveDemo] Ignoring invalid /cube/scale parameter", StringComparison.Ordinal),
                 "134-23-F4: Full demo reports invalid scale parameters instead of silently swallowing them");
@@ -154,7 +157,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && demoSetup.Contains("private bool _initialized;", StringComparison.Ordinal)
                   && demoSetup.Contains("if (!TryInitializeDemo())", StringComparison.Ordinal),
                 "134-23-F10: Full demo retries setup until FoxgloveManager session is ready");
-            Check(demoSetup.Contains("return JToken.Parse(\"{\\\"status\\\":\\\"error\\\",\\\"reason\\\":\\\"cube not found\\\"}\");", StringComparison.Ordinal),
+            Check(demoSetup.Contains("return new ResetPoseResponse { status = \"error\", reason = \"cube not found\" };", StringComparison.Ordinal),
                 "134-23-F11: Full demo reset_pose reports missing cube as an error");
             Check(demoSetup.Contains("private static readonly UTF8Encoding StrictUtf8", StringComparison.Ordinal)
                   && demoSetup.Contains("new UTF8Encoding(false, true)", StringComparison.Ordinal),

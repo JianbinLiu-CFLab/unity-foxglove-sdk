@@ -276,7 +276,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("_initialized = false;", fullDemo, StringComparison.Ordinal);
             Assert.DoesNotContain("FindGameObjectWithTag(\"Player\")", fullDemo, StringComparison.Ordinal);
             Assert.DoesNotContain("using Player-tagged fallback object", fullDemo, StringComparison.Ordinal);
-            Assert.Contains("return JToken.Parse(\"{\\\"status\\\":\\\"error\\\",\\\"reason\\\":\\\"cube not found\\\"}\");", fullDemo, StringComparison.Ordinal);
+            Assert.Contains("[FoxService(", fullDemo, StringComparison.Ordinal);
+            Assert.Contains("private ResetPoseResponse ResetPose(ResetPoseRequest request)", fullDemo, StringComparison.Ordinal);
+            Assert.Contains("return new ResetPoseResponse { status = \"error\", reason = \"cube not found\" };", fullDemo, StringComparison.Ordinal);
             Assert.Contains("private static readonly UTF8Encoding StrictUtf8", fullDemo, StringComparison.Ordinal);
             Assert.Contains("new UTF8Encoding(false, true)", fullDemo, StringComparison.Ordinal);
             Assert.Contains("#if ENABLE_INPUT_SYSTEM", mouseDrag, StringComparison.Ordinal);

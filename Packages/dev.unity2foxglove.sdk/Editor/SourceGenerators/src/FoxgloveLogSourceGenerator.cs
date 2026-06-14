@@ -31,6 +31,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxRunAttribute";
         private const string AttrQualifiedNameSuffix = ".FoxRun";
         private const string AttrQualifiedAttributeNameSuffix = ".FoxRunAttribute";
+        private const string ServiceAttrShortName = "FoxService";
+        private const string ServiceAttrAttributeName = "FoxServiceAttribute";
+        private const string ServiceAttrFullName = "Unity.FoxgloveSDK.Components.FoxServiceAttribute";
+        private const string ServiceAttrQualifiedNameSuffix = ".FoxService";
+        private const string ServiceAttrQualifiedAttributeNameSuffix = ".FoxServiceAttribute";
 
         /// <summary>
         /// Registers a syntax-based pipeline that filters candidate members,
@@ -47,6 +52,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             context.RegisterSourceOutput(
                 members.Collect(),
                 static (spc, items) => Generate(spc, items));
+
+            var services = context.SyntaxProvider.CreateSyntaxProvider(
+                predicate: static (node, _) => IsServiceCandidate(node),
+                transform: static (ctx, ct) => ExtractServiceMethod(ctx, ct))
+                .Where(static m => m != null);
+
+            context.RegisterSourceOutput(
+                services.Collect(),
+                static (spc, items) => GenerateServices(spc, items));
         }
 
         /// <summary>
@@ -75,6 +89,27 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (name == AttrShortName || name == AttrAttributeName
                         || name.EndsWith(AttrQualifiedNameSuffix, StringComparison.Ordinal)
                         || name.EndsWith(AttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
+                        return true;
+                }
+            return false;
+        }
+
+        private static bool IsServiceCandidate(SyntaxNode node)
+        {
+            return node is MethodDeclarationSyntax method
+                   && method.AttributeLists.Count > 0
+                   && HasFoxServiceAttr(method.AttributeLists);
+        }
+
+        private static bool HasFoxServiceAttr(SyntaxList<AttributeListSyntax> lists)
+        {
+            foreach (var al in lists)
+                foreach (var a in al.Attributes)
+                {
+                    var name = a.Name.ToString();
+                    if (name == ServiceAttrShortName || name == ServiceAttrAttributeName
+                        || name.EndsWith(ServiceAttrQualifiedNameSuffix, StringComparison.Ordinal)
+                        || name.EndsWith(ServiceAttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
                         return true;
                 }
             return false;
@@ -175,6 +210,144 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray());
         }
 
+        private static ServiceMethodData ExtractServiceMethod(GeneratorSyntaxContext ctx, System.Threading.CancellationToken ct)
+        {
+            if (!(ctx.Node is MethodDeclarationSyntax methodDecl))
+                return null;
+
+            var symbol = ctx.SemanticModel.GetDeclaredSymbol(methodDecl, ct);
+            if (symbol == null)
+                return null;
+
+            AttributeData serviceAttr = null;
+            foreach (var attr in symbol.GetAttributes())
+            {
+                if (attr.AttributeClass?.ToDisplayString() == ServiceAttrFullName)
+                {
+                    serviceAttr = attr;
+                    break;
+                }
+            }
+            if (serviceAttr == null)
+                return null;
+
+            var containingType = symbol.ContainingType;
+            if (containingType == null)
+                return null;
+
+            string ns = containingType.ContainingNamespace != null
+                        && !containingType.ContainingNamespace.IsGlobalNamespace
+                ? containingType.ContainingNamespace.ToDisplayString()
+                : string.Empty;
+            var declaringTypeName = containingType.ToDisplayString();
+            var className = containingType.Name;
+            var location = symbol.Locations.FirstOrDefault(candidate => candidate.IsInSource) ?? Location.None;
+            var diagnostics = new List<ServiceDiagnostic>();
+
+            var isPartial = containingType.DeclaringSyntaxReferences
+                .Any(r => r.GetSyntax(ct) is TypeDeclarationSyntax tds &&
+                          tds.Modifiers.Any(SyntaxKind.PartialKeyword));
+            if (!isPartial)
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, className));
+
+            var serviceName = serviceAttr.ConstructorArguments.Length > 0
+                ? serviceAttr.ConstructorArguments[0].Value as string ?? string.Empty
+                : string.Empty;
+            var serviceType = string.Empty;
+            var description = string.Empty;
+            var requestSchemaName = string.Empty;
+            var responseSchemaName = string.Empty;
+            foreach (var named in serviceAttr.NamedArguments)
+            {
+                if (named.Key == "Type" && named.Value.Value is string typeValue) serviceType = typeValue;
+                if (named.Key == "Description" && named.Value.Value is string descValue) description = descValue;
+                if (named.Key == "RequestSchemaName" && named.Value.Value is string reqValue) requestSchemaName = reqValue;
+                if (named.Key == "ResponseSchemaName" && named.Value.Value is string respValue) responseSchemaName = respValue;
+            }
+
+            if (string.IsNullOrWhiteSpace(serviceName) || !serviceName.StartsWith("/", StringComparison.Ordinal))
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE001", location, serviceName));
+
+            if (symbol.IsStatic || symbol.IsGenericMethod || methodDecl.Modifiers.Any(SyntaxKind.AsyncKeyword))
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
+
+            if (symbol.Parameters.Length > 1)
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
+
+            ITypeSymbol requestType = null;
+            if (symbol.Parameters.Length == 1)
+            {
+                var parameter = symbol.Parameters[0];
+                if (parameter.RefKind != RefKind.None || parameter.IsParams)
+                    diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
+                requestType = parameter.Type;
+                if (IsUnsupportedServiceDtoType(requestType))
+                    diagnostics.Add(new ServiceDiagnostic("FOXSERVICE003", location, requestType.ToDisplayString()));
+            }
+
+            var hasResponse = !symbol.ReturnsVoid;
+            var responseType = hasResponse ? symbol.ReturnType : null;
+            if (hasResponse && IsUnsupportedServiceDtoType(responseType))
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE004", location, responseType.ToDisplayString()));
+
+            var hasExplicitMetadata = !string.IsNullOrWhiteSpace(serviceType)
+                                      && !string.IsNullOrWhiteSpace(requestSchemaName)
+                                      && !string.IsNullOrWhiteSpace(responseSchemaName);
+            if (!hasExplicitMetadata)
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE006", location, serviceName));
+
+            if (string.IsNullOrWhiteSpace(serviceType))
+                serviceType = declaringTypeName + "." + symbol.Name;
+            if (string.IsNullOrWhiteSpace(requestSchemaName))
+                requestSchemaName = requestType == null
+                    ? serviceType + ".Request"
+                    : requestType.ToDisplayString();
+            if (string.IsNullOrWhiteSpace(responseSchemaName))
+                responseSchemaName = responseType == null
+                    ? serviceType + ".Response"
+                    : responseType.ToDisplayString();
+
+            return new ServiceMethodData(
+                ns,
+                className,
+                symbol.Name,
+                serviceName,
+                serviceType,
+                description,
+                requestSchemaName,
+                responseSchemaName,
+                TypeNameForEmission(requestType),
+                TypeNameForEmission(responseType),
+                requestType != null,
+                hasResponse,
+                location,
+                diagnostics.ToArray());
+        }
+
+        private static string TypeNameForEmission(ITypeSymbol type)
+            => type == null
+                ? string.Empty
+                : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        private static bool IsUnsupportedServiceDtoType(ITypeSymbol type)
+        {
+            if (type == null)
+                return false;
+            if (type.TypeKind == TypeKind.Pointer || type.TypeKind == TypeKind.TypeParameter)
+                return true;
+            if (type is INamedTypeSymbol named)
+            {
+                if (named.IsUnboundGenericType
+                    || named.TypeArguments.Any(argument => argument.TypeKind == TypeKind.TypeParameter)
+                    || named.IsRefLikeType)
+                    return true;
+                var fullName = named.ToDisplayString();
+                if (fullName == "System.Void" || fullName.StartsWith("System.Threading.Tasks.Task", StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
         private static bool TryReadFloatConstant(TypedConstant constant, out float value)
         {
             value = 0f;
@@ -244,6 +417,58 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(
                 new FoxRunGenerationModel(emittedTypes, model.DescriptorVersion, model.GeneratorVersion));
             spc.AddSource("FoxRunGeneratedDescriptorInfo.g.cs", DescriptorCarrierSource(descriptor));
+        }
+
+        private static void GenerateServices(SourceProductionContext spc, ImmutableArray<ServiceMethodData> items)
+        {
+            if (items.IsDefaultOrEmpty)
+                return;
+
+            var valid = new List<ServiceMethodData>(items.Length);
+            foreach (var item in items)
+            {
+                if (item == null)
+                    continue;
+
+                var hasError = false;
+                foreach (var diagnostic in item.Diagnostics)
+                {
+                    var descriptor = Diags.Service(diagnostic.Id);
+                    spc.ReportDiagnostic(Diagnostic.Create(descriptor, diagnostic.Location, diagnostic.Target));
+                    if (descriptor.DefaultSeverity == DiagnosticSeverity.Error)
+                        hasError = true;
+                }
+
+                if (!hasError)
+                    valid.Add(item);
+            }
+
+            var duplicateServices = valid
+                .GroupBy(item => item.ServiceName, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .ToList();
+            var duplicateNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var duplicate in duplicateServices)
+            {
+                duplicateNames.Add(duplicate.Key);
+                foreach (var item in duplicate)
+                    spc.ReportDiagnostic(Diagnostic.Create(Diags.DuplicateServiceName, item.Location, item.ServiceName));
+            }
+
+            foreach (var group in valid
+                         .Where(item => !duplicateNames.Contains(item.ServiceName))
+                         .GroupBy(item => (item.Ns, item.ClassName)))
+            {
+                var methods = group
+                    .OrderBy(item => item.ServiceName, StringComparer.Ordinal)
+                    .Select(item => item.ToEmitterMethod())
+                    .ToList();
+                if (methods.Count == 0)
+                    continue;
+
+                var source = FoxServiceSourceEmitter.EmitClass(group.Key.Ns, group.Key.ClassName, methods);
+                spc.AddSource(FoxServiceSourceEmitter.GeneratedSourceName(group.Key.Ns, group.Key.ClassName), source);
+            }
         }
 
         /// <summary>
@@ -353,6 +578,85 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 }
             }
             return sb.ToString();
+        }
+
+        private sealed class ServiceDiagnostic
+        {
+            public ServiceDiagnostic(string id, Location location, string target)
+            {
+                Id = id;
+                Location = location ?? Location.None;
+                Target = target ?? string.Empty;
+            }
+
+            public string Id { get; }
+            public Location Location { get; }
+            public string Target { get; }
+        }
+
+        private sealed class ServiceMethodData
+        {
+            public ServiceMethodData(
+                string ns,
+                string className,
+                string methodName,
+                string serviceName,
+                string serviceType,
+                string description,
+                string requestSchemaName,
+                string responseSchemaName,
+                string requestTypeName,
+                string responseTypeName,
+                bool hasRequest,
+                bool hasResponse,
+                Location location,
+                ServiceDiagnostic[] diagnostics)
+            {
+                Ns = ns ?? string.Empty;
+                ClassName = className ?? string.Empty;
+                MethodName = methodName ?? string.Empty;
+                ServiceName = serviceName ?? string.Empty;
+                ServiceType = serviceType ?? string.Empty;
+                Description = description ?? string.Empty;
+                RequestSchemaName = requestSchemaName ?? string.Empty;
+                ResponseSchemaName = responseSchemaName ?? string.Empty;
+                RequestTypeName = requestTypeName ?? string.Empty;
+                ResponseTypeName = responseTypeName ?? string.Empty;
+                HasRequest = hasRequest;
+                HasResponse = hasResponse;
+                Location = location ?? Location.None;
+                Diagnostics = diagnostics ?? Array.Empty<ServiceDiagnostic>();
+            }
+
+            public string Ns { get; }
+            public string ClassName { get; }
+            public string MethodName { get; }
+            public string ServiceName { get; }
+            public string ServiceType { get; }
+            public string Description { get; }
+            public string RequestSchemaName { get; }
+            public string ResponseSchemaName { get; }
+            public string RequestTypeName { get; }
+            public string ResponseTypeName { get; }
+            public bool HasRequest { get; }
+            public bool HasResponse { get; }
+            public Location Location { get; }
+            public ServiceDiagnostic[] Diagnostics { get; }
+
+            public FoxServiceSourceEmitter.ServiceMethod ToEmitterMethod()
+            {
+                return new FoxServiceSourceEmitter.ServiceMethod(
+                    MethodName,
+                    ServiceName,
+                    ServiceType,
+                    Description,
+                    RequestSchemaName,
+                    ResponseSchemaName,
+                    RequestTypeName,
+                    ResponseTypeName,
+                    HasRequest,
+                    HasResponse);
+            }
         }
 
         /// <summary>
@@ -598,6 +902,36 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "Topic '{0}' has mixed When or Unless values across FoxRun members",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor InvalidServiceName = new DiagnosticDescriptor(
+                "FOXSERVICE001", "FoxService name must be absolute",
+                "FoxService '{0}' must be non-empty and start with '/'",
+                "FoxService", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor InvalidServiceSignature = new DiagnosticDescriptor(
+                "FOXSERVICE002", "Unsupported FoxService method signature",
+                "{0}: FoxService methods must be non-static, non-generic, synchronous, partial-class instance methods with zero or one by-value parameter",
+                "FoxService", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor UnsupportedServiceRequestType = new DiagnosticDescriptor(
+                "FOXSERVICE003", "Unsupported FoxService request type",
+                "{0}: FoxService request type is not supported by the declarative RPC generator",
+                "FoxService", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor UnsupportedServiceResponseType = new DiagnosticDescriptor(
+                "FOXSERVICE004", "Unsupported FoxService response type",
+                "{0}: FoxService response type is not supported by the declarative RPC generator",
+                "FoxService", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor DuplicateServiceName = new DiagnosticDescriptor(
+                "FOXSERVICE005", "Duplicate FoxService name",
+                "FoxService name '{0}' is declared more than once in the generated service graph",
+                "FoxService", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor MissingExplicitServiceSchemaMetadata = new DiagnosticDescriptor(
+                "FOXSERVICE006", "FoxService schema metadata omitted",
+                "FoxService '{0}' omits Type, RequestSchemaName, or ResponseSchemaName; generated stable defaults will be used",
+                "FoxService", DiagnosticSeverity.Warning, true);
+
             public static DiagnosticDescriptor Shared(string id)
             {
                 switch (id)
@@ -619,6 +953,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN017": return MixedTopicConditions;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
+                }
+            }
+
+            public static DiagnosticDescriptor Service(string id)
+            {
+                switch (id)
+                {
+                    case "FOXSERVICE001": return InvalidServiceName;
+                    case "FOXSERVICE002": return InvalidServiceSignature;
+                    case "FOXSERVICE003": return UnsupportedServiceRequestType;
+                    case "FOXSERVICE004": return UnsupportedServiceResponseType;
+                    case "FOXSERVICE005": return DuplicateServiceName;
+                    case "FOXSERVICE006": return MissingExplicitServiceSchemaMetadata;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped FoxService diagnostic id.");
                 }
             }
         }

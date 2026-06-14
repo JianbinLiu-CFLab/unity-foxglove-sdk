@@ -18,6 +18,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../Runtime/Components/Attributes/*.cs" />
+    <Compile Include="../../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
+    <Compile Include="../../Runtime/Components/FoxService/IFoxgloveServiceSource.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxRunSchema*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
@@ -173,6 +175,7 @@
     <Compile Include="Phase140H2Validation.cs" />
     <Compile Include="Phase140JValidation.cs" />
     <Compile Include="FoxRunConditionalPublishGateValidation.cs" />
+    <Compile Include="FoxServiceDeclarativeRpcValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
     <Compile Include="Phase138QValidation.cs" />
     <!-- 138S: validate VirtualImu native DDS output contracts. -->
@@ -250,6 +253,7 @@
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="TempMcapHelper.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
+    <Compile Include="../../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs" Link="SourceGenerators/FoxgloveLogSourceGenerator.cs" />
     <Compile Include="../../Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs" Link="SourceGenerators/FoxRunRoslynGenerationModelLowerer.cs" />
     <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />

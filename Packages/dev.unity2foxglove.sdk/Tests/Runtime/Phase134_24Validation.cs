@@ -135,8 +135,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-24-F2: Full Demo exposes an explicit cube reference");
             Check(source.Contains("private bool TryInitializeDemo()", StringComparison.Ordinal),
                 "134-24-F3: Full Demo retries registration until manager runtime is ready");
-            Check(source.Contains("_resetSvcId = _manager.RegisterService", StringComparison.Ordinal),
-                "134-24-F4: Full Demo registers services through the manager facade");
+            Check(source.Contains("[FoxService(", StringComparison.Ordinal)
+                  && source.Contains("private ResetPoseResponse ResetPose(ResetPoseRequest request)", StringComparison.Ordinal)
+                  && !source.Contains("_resetSvcId", StringComparison.Ordinal)
+                  && !source.Contains("RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor", StringComparison.Ordinal),
+                "134-24-F4: Full Demo reset service uses declarative FoxService registration");
             Check(source.Contains("_manager.OnClientMessage += OnClientMessageReceived;", StringComparison.Ordinal)
                   && source.Contains("_manager.OnClientMessage -= OnClientMessageReceived;", StringComparison.Ordinal),
                 "134-24-F5: Full Demo uses manager-level client-message events");
