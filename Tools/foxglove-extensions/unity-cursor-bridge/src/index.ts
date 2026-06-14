@@ -20,6 +20,20 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:8892/v1/replay-cursor";
 // Stage 1 (140K): this is the default for the user-configurable panel rate; the effective
 // interval is derived per-render from state.maxHz.
 const DEFAULT_MAX_HZ = 60;
+// Stage 2 (140K): if a cursor POST neither resolves nor rejects within this window (Unity
+// stalled, half-open port, browser network-stack hiccup), abort it so in-flight backpressure
+// cannot wedge the panel into a permanent "no more cursors" state. The next render retries.
+const REQUEST_TIMEOUT_MS = 2000;
+// Stage 3 (140K): max replay time a single follow step may advance. Kept under Unity's 500 ms
+// external-cursor seek threshold so every step stays on the cheap forward-advance path. It also
+// bounds catch-up after a stall: instead of one huge jump, follow advances at most this much per
+// step and lets real time re-accumulate.
+const MAX_FOLLOW_STEP_MS = 400;
+// Stage 3 (140K): the cursor stream to Unity runs at the full cursor rate, but seekPlayback is a
+// "jump" (Foxglove reloads the frame at the target time), so calling it every cursor strobes the
+// Foxglove panels (point clouds flicker). Throttle the UI catch-up seek to this interval; Unity
+// stays smooth, the Foxglove UI just refreshes a few times per second.
+const SEEK_UI_INTERVAL_MS = 200;
 const WAITING_REPLAY_TIME_TEXT = "Waiting for Foxglove playback";
 
 // Stage 3 (140K): seekPlayback is an undocumented PanelExtensionContext method reached via
@@ -138,27 +152,18 @@ async function sendCursor(
   };
 }
 
-export function buildPayload(
-  renderState: CursorRenderState,
-  sequence: number,
-  suppressSeekEcho = false,
-): CursorPayload | undefined {
+export function buildPayload(renderState: CursorRenderState, sequence: number): CursorPayload | undefined {
   const currentTime = renderState.currentTime;
   if (currentTime == undefined) {
     return undefined;
   }
 
-  // Stage 3 echo suppression (140K): a programmatic forward seekPlayback step shows up on the
-  // next render as didSeek=true. Relabel that single echo as "advance" so Unity stays on its
-  // cheap forward path instead of taking the expensive latest-at snapshot. Real user seeks are
-  // not echoes and keep mode "seek".
-  const mode = renderState.didSeek === true ? "seek" : "advance";
   return {
     source: "foxglove-unity-cursor-bridge",
     sequence,
     time: { sec: currentTime.sec, nsec: currentTime.nsec },
-    mode: suppressSeekEcho ? "advance" : mode,
-    didSeek: suppressSeekEcho ? false : renderState.didSeek === true,
+    mode: renderState.didSeek === true ? "seek" : "advance",
+    didSeek: renderState.didSeek === true,
     startTime: cloneTime(renderState.startTime),
     endTime: cloneTime(renderState.endTime),
   };
@@ -395,16 +400,38 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let lastCursorNsec = -1;
   let lastSentAtMs = 0;
   let mounted = true;
-  // Stage 2 (140K): at most one cursor POST outstanding. The forward path waits for Unity's
-  // 202 ACK before sending the next cursor, so Foxglove's POST cadence adapts to Unity's
-  // processing speed instead of aborting and re-flooding.
+  // Stage 2 (140K): at most one cursor POST outstanding (ACK backpressure). The next cursor is
+  // not sent until Unity acknowledges (or the stall guard fires), so cadence tracks Unity.
   let inFlight = false;
-  // Retained only so cleanup can abort an outstanding request on unmount.
+  // Retained so cleanup can abort an outstanding request, and so handlers can tell whether they
+  // still own the active request (identity guard against late callbacks).
   let cursorController: AbortController | undefined;
-  // Stage 3 (140K): time of the last programmatic seekPlayback step, used to recognize and
-  // suppress its didSeek echo. -1/-1 means "no echo pending".
-  let pendingSeekEchoSec = -1;
-  let pendingSeekEchoNsec = -1;
+  let cursorTimeout: ReturnType<typeof setTimeout> | undefined;
+  // Stage 3 (140K): "Follow Unity replay" is self-clocked. The panel API exposes no play/pause
+  // control (only seekPlayback), so follow cannot wait for Foxglove's own currentTime to advance:
+  // paused it never moves, playing it fights free-run. Instead the panel owns an internal clock —
+  // each Unity ACK advances followClock by one rate step, sends that as a forward "advance"
+  // cursor, and calls seekPlayback best-effort to drag the Foxglove UI along. Use follow INSTEAD
+  // of pressing Foxglove's play button.
+  let followActive = false;
+  let followClockSec = -1;
+  let followClockNsec = -1;
+  // Wall-clock time of the previous follow step, used to advance the internal clock by real
+  // elapsed time (so playback runs at ~1x regardless of ACK latency). -1 means "not started".
+  let followLastAckWallMs = -1;
+  let followPumpHandle: ReturnType<typeof setTimeout> | undefined;
+  // Throttle bookkeeping for the best-effort UI seek.
+  let lastSeekWallMs = -1;
+  // Set once follow advances to the end of the replay. The loop parks and the panel falls back to
+  // plain currentTime-driven sync, so the user can scrub freely; re-checking Follow resumes it.
+  let followReachedEnd = false;
+  // Some hosts reject a programmatic seek while paused (it throws). seekPlayback is best-effort UI
+  // only; after the first failure we stop calling it but keep pumping the cursor stream to Unity.
+  let seekUsable = true;
+  let lastRenderSec = -1;
+  let lastRenderNsec = -1;
+  let lastStartTime: { sec: number; nsec: number } | undefined;
+  let lastEndTime: { sec: number; nsec: number } | undefined;
 
   const seekPlayback = (context as unknown as MaybeSeekable).seekPlayback;
   const canFollow = typeof seekPlayback === "function";
@@ -424,6 +451,199 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     message: "Waiting for Foxglove replay time. Keep Unity in Play Mode.",
   };
   const panel = buildPanelDom(state, canFollow);
+
+  function stopFollow(): void {
+    followActive = false;
+    followLastAckWallMs = -1;
+    if (followPumpHandle != undefined) {
+      clearTimeout(followPumpHandle);
+      followPumpHandle = undefined;
+    }
+  }
+
+  // Best-effort, throttled UI catch-up. force=true bypasses the throttle (used for the final seek
+  // to the end).
+  function seekUi(sec: number, nsec: number, force: boolean): void {
+    if (!seekUsable || seekPlayback == undefined) {
+      return;
+    }
+    const nowWall = Date.now();
+    if (!force && lastSeekWallMs >= 0 && nowWall - lastSeekWallMs < SEEK_UI_INTERVAL_MS) {
+      return;
+    }
+    lastSeekWallMs = nowWall;
+    try {
+      seekPlayback({ sec, nsec });
+    } catch {
+      seekUsable = false;
+    }
+  }
+
+  // Send one cursor and route every terminal outcome through onSettled(ok, delivered):
+  //   ok=true        -> Unity accepted the cursor (HTTP 2xx)
+  //   delivered=true -> an HTTP response came back (2xx or not); the cursor reached Unity
+  //   delivered=false -> stall-timeout or network failure; the cursor never landed (safe to retry)
+  function dispatchCursor(payload: CursorPayload, onSettled: (ok: boolean, delivered: boolean) => void): void {
+    inFlight = true;
+    lastSentAtMs = Date.now();
+    const controller = new AbortController();
+    cursorController = controller;
+
+    // Stage 2 stall guard: if neither handler fires within REQUEST_TIMEOUT_MS, abort and release
+    // in-flight so the panel keeps trying instead of wedging forever.
+    cursorTimeout = setTimeout(() => {
+      cursorTimeout = undefined;
+      if (!mounted || cursorController !== controller) {
+        return;
+      }
+      controller.abort();
+      inFlight = false;
+      status = { ok: false, message: `Unity did not respond within ${REQUEST_TIMEOUT_MS} ms. Retrying.` };
+      onSettled(false, false);
+    }, REQUEST_TIMEOUT_MS);
+
+    void sendCursor(state.endpoint, state.token, payload, controller.signal).then(
+      (result) => {
+        // Ignore callbacks from a request a newer send or cleanup has superseded.
+        if (cursorController !== controller) {
+          return;
+        }
+        if (cursorTimeout != undefined) {
+          clearTimeout(cursorTimeout);
+          cursorTimeout = undefined;
+        }
+        // Timed-out/aborted request: the timeout handler already settled it.
+        if (!mounted || controller.signal.aborted) {
+          return;
+        }
+        inFlight = false;
+        status = result;
+        onSettled(result.ok, true);
+      },
+      (error: unknown) => {
+        if (cursorController !== controller) {
+          return;
+        }
+        if (cursorTimeout != undefined) {
+          clearTimeout(cursorTimeout);
+          cursorTimeout = undefined;
+        }
+        if (!mounted || controller.signal.aborted) {
+          return;
+        }
+        inFlight = false;
+        status = { ok: false, message: `Cannot reach Unity. Check Play Mode and endpoint. ${String(error)}` };
+        onSettled(false, false);
+      },
+    );
+  }
+
+  function scheduleFollowPump(): void {
+    if (followPumpHandle != undefined) {
+      return;
+    }
+    const delay = Math.max(0, 1000 / state.maxHz - (Date.now() - lastSentAtMs));
+    followPumpHandle = setTimeout(() => {
+      followPumpHandle = undefined;
+      pumpFollow();
+    }, delay);
+  }
+
+  function pumpFollow(): void {
+    if (!mounted || !state.followUnity || seekPlayback == undefined) {
+      stopFollow();
+      return;
+    }
+    if (inFlight) {
+      scheduleFollowPump();
+      return;
+    }
+
+    const sentSec = followClockSec;
+    const sentNsec = followClockNsec;
+    sequence += 1;
+    const payload: CursorPayload = {
+      source: "foxglove-unity-cursor-bridge",
+      sequence,
+      time: { sec: sentSec, nsec: sentNsec },
+      mode: "advance",
+      didSeek: false,
+      startTime: lastStartTime != undefined ? { ...lastStartTime } : undefined,
+      endTime: lastEndTime != undefined ? { ...lastEndTime } : undefined,
+    };
+
+    dispatchCursor(payload, (ok, delivered) => {
+      if (!mounted || !state.followUnity) {
+        stopFollow();
+        return;
+      }
+      if (ok) {
+        lastCursorSec = sentSec;
+        lastCursorNsec = sentNsec;
+
+        // Advance the internal clock by the real wall time elapsed since the previous step (1x),
+        // clamped under Unity's seek threshold. Real-time mapping keeps playback at normal speed
+        // even when ACK latency exceeds one rate step; without it, each ACK advanced only a fixed
+        // 1/maxHz, so a slow ACK made playback crawl and stutter.
+        const nowWall = Date.now();
+        let deltaMs = followLastAckWallMs >= 0 ? nowWall - followLastAckWallMs : 0;
+        if (deltaMs < 0) {
+          deltaMs = 0;
+        }
+        if (deltaMs > MAX_FOLLOW_STEP_MS) {
+          deltaMs = MAX_FOLLOW_STEP_MS;
+        }
+        followLastAckWallMs = nowWall;
+        const totalNsec = sentNsec + Math.round(deltaMs * 1_000_000);
+        let nextSec = sentSec + Math.floor(totalNsec / 1_000_000_000);
+        let nextNsec = totalNsec % 1_000_000_000;
+
+        // Stop at the end of the replay so the user can scrub the timeline again. Park the loop
+        // (no more seeks) and do one final seek to the exact end.
+        if (lastEndTime != undefined) {
+          const endNs = lastEndTime.sec * 1_000_000_000 + lastEndTime.nsec;
+          if (nextSec * 1_000_000_000 + nextNsec >= endNs) {
+            nextSec = lastEndTime.sec;
+            nextNsec = lastEndTime.nsec;
+            followClockSec = nextSec;
+            followClockNsec = nextNsec;
+            seekUi(nextSec, nextNsec, true);
+            followReachedEnd = true;
+            stopFollow();
+            status = { ok: true, message: "Reached end of replay. Re-check Follow Unity replay to follow again." };
+            return;
+          }
+        }
+        followClockSec = nextSec;
+        followClockNsec = nextNsec;
+
+        // Keep the loop alive FIRST, so a throwing/slow seekPlayback cannot stall the cursor stream.
+        scheduleFollowPump();
+        // Throttled best-effort UI catch-up to the position Unity just received.
+        seekUi(sentSec, sentNsec, false);
+        return;
+      }
+      if (delivered) {
+        // Unity rejected the cursor (auth/validation). Retrying the same step would just spam, so
+        // stop and surface the status until the user fixes it or toggles follow off and on.
+        stopFollow();
+        return;
+      }
+      // Stall or network failure: retry the same followClock step.
+      scheduleFollowPump();
+    });
+  }
+
+  function maybeStartFollow(): void {
+    if (!mounted || !state.followUnity || !canFollow || followActive || followReachedEnd || lastRenderSec < 0) {
+      return;
+    }
+    followActive = true;
+    followClockSec = lastRenderSec;
+    followClockNsec = lastRenderNsec;
+    followLastAckWallMs = Date.now();
+    pumpFollow();
+  }
 
   panel.enabledInput.addEventListener("change", () => {
     state = { ...state, enabled: panel.enabledInput.checked };
@@ -450,9 +670,16 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   panel.followInput?.addEventListener("change", () => {
     const follow = panel.followInput;
-    if (follow != undefined) {
-      state = { ...state, followUnity: follow.checked };
-      savePanelState(context, state);
+    if (follow == undefined) {
+      return;
+    }
+    state = { ...state, followUnity: follow.checked };
+    savePanelState(context, state);
+    if (state.followUnity) {
+      followReachedEnd = false; // a fresh enable should follow from the current position again
+      maybeStartFollow();
+    } else {
+      stopFollow();
     }
   });
 
@@ -467,72 +694,50 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     try {
       const currentTime = renderState.currentTime;
       panel.enabledInput.checked = state.enabled;
-      panel.replayTime.textContent = formatReplayTimeUtc(currentTime, replayTimeCache);
+      // While following, the panel-owned clock is the source of truth (the Foxglove playhead may
+      // stay frozen if the host ignores programmatic seeks), so show that instead — it lets the
+      // user confirm the loop is actually advancing without reading the Unity console.
+      const displayTime =
+        followActive && followClockSec >= 0 ? { sec: followClockSec, nsec: followClockNsec } : currentTime;
+      panel.replayTime.textContent = formatReplayTimeUtc(displayTime, replayTimeCache);
       panel.unityStatus.textContent = status.message;
       panel.unityStatus.classList.toggle("ok", status.ok);
       panel.unityStatus.classList.toggle("error", !status.ok);
 
-      const nowMs = Date.now();
-      const minIntervalMs = 1000 / state.maxHz;
-      if (
-        !inFlight &&
-        shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)
-      ) {
-        const isSeekEcho =
-          currentTime != undefined &&
-          currentTime.sec === pendingSeekEchoSec &&
-          currentTime.nsec === pendingSeekEchoNsec;
-        const payload = buildPayload(renderState, sequence + 1, isSeekEcho);
-        if (payload != undefined && currentTime != undefined) {
-          sequence = payload.sequence;
-          lastCursorSec = currentTime.sec;
-          lastCursorNsec = currentTime.nsec;
-          lastSentAtMs = nowMs;
-          if (isSeekEcho) {
-            pendingSeekEchoSec = -1;
-            pendingSeekEchoNsec = -1;
+      if (currentTime != undefined) {
+        lastRenderSec = currentTime.sec;
+        lastRenderNsec = currentTime.nsec;
+      }
+      lastStartTime = cloneTime(renderState.startTime);
+      lastEndTime = cloneTime(renderState.endTime);
+
+      if (state.followUnity && canFollow && !followReachedEnd) {
+        // Stage 3: the self-clocked pump owns sending while following; just keep it running.
+        maybeStartFollow();
+      } else {
+        // Follow off, unavailable, or parked at the end: plain currentTime-driven sync. While
+        // parked this lets the user scrub freely (each scrub syncs Unity once) without the loop
+        // running away — re-check Follow to resume Unity-paced playback.
+        const nowMs = Date.now();
+        const minIntervalMs = 1000 / state.maxHz;
+        if (
+          !inFlight &&
+          shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)
+        ) {
+          const payload = buildPayload(renderState, sequence + 1);
+          if (payload != undefined && currentTime != undefined) {
+            sequence = payload.sequence;
+            const sentSec = currentTime.sec;
+            const sentNsec = currentTime.nsec;
+            dispatchCursor(payload, (_ok, delivered) => {
+              // De-dupe on any delivered response (2xx or 4xx) so a rejection does not resend at
+              // full rate; only a stall/network failure leaves the cursor so the next render retries.
+              if (delivered) {
+                lastCursorSec = sentSec;
+                lastCursorNsec = sentNsec;
+              }
+            });
           }
-
-          inFlight = true;
-          const controller = new AbortController();
-          cursorController = controller;
-          const sentSec = payload.time.sec;
-          const sentNsec = payload.time.nsec;
-
-          void sendCursor(state.endpoint, state.token, payload, controller.signal).then(
-            (result) => {
-              if (!mounted || controller.signal.aborted) {
-                return;
-              }
-              inFlight = false;
-              status = result;
-              // Stage 3: ACK-paced forward step. Only after Unity accepts the cursor do we
-              // advance Foxglove forward by one rate step (< 500 ms => Unity's cheap forward
-              // path, never backward). The resulting render sends the next cursor, so Unity's
-              // ACK latency sets the pace and Foxglove can never outrun it.
-              if (state.followUnity && result.ok && seekPlayback != undefined) {
-                const stepMs = 1000 / state.maxHz;
-                const totalNsec = sentNsec + Math.round(stepMs * 1_000_000);
-                const target: Time = {
-                  sec: sentSec + Math.floor(totalNsec / 1_000_000_000),
-                  nsec: totalNsec % 1_000_000_000,
-                };
-                pendingSeekEchoSec = target.sec;
-                pendingSeekEchoNsec = target.nsec;
-                seekPlayback(target);
-              }
-            },
-            (error: unknown) => {
-              if (!mounted || controller.signal.aborted) {
-                return;
-              }
-              inFlight = false;
-              status = {
-                ok: false,
-                message: `Cannot reach Unity. Check Play Mode and endpoint. ${String(error)}`,
-              };
-            },
-          );
         }
       }
     } finally {
@@ -542,6 +747,11 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   return () => {
     mounted = false;
+    stopFollow();
+    if (cursorTimeout != undefined) {
+      clearTimeout(cursorTimeout);
+      cursorTimeout = undefined;
+    }
     cursorController?.abort();
   };
 }

@@ -180,32 +180,148 @@ describe("Unity Replay Sync panel lifecycle", () => {
     let now = 1_000_000;
     const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
     const context = makeContext();
-    initPanel(context);
+    const cleanup = initPanel(context);
 
     context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
     now += 1000; // well past the rate-limit interval, so only in-flight backpressure can gate
     context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    cleanup?.();
     nowSpy.mockRestore();
   });
 
-  test("follow mode steps Foxglove forward-only after Unity ACKs the cursor", async () => {
+  test("a stalled cursor request times out, aborts, and the panel resumes sending", () => {
+    vi.useFakeTimers();
+    let capturedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_endpoint: string, init?: RequestInit) => {
+      capturedSignal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext();
+    const cleanup = initPanel(context);
+
+    context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Request never resolves; the stall guard fires.
+    vi.advanceTimersByTime(2000);
+    expect(capturedSignal?.aborted).toBe(true);
+
+    // In-flight is released, so the next render sends again instead of wedging.
+    context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    cleanup?.();
+    vi.useRealTimers();
+  });
+
+  test("a timed-out cursor can retry the same replay time", () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_endpoint: string, _init?: RequestInit) => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext();
+    const cleanup = initPanel(context);
+
+    context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(2000);
+    context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    cleanup?.();
+    vi.useRealTimers();
+  });
+
+  test("follow mode self-clocks forward via seekPlayback without waiting for currentTime to change", async () => {
     const seekPlayback = vi.fn();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 202 })));
     const context = makeContext({ followUnity: true });
     (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
-    initPanel(context);
+    const cleanup = initPanel(context);
 
+    // A single render seeds the internal clock; the ACK-paced loop then advances on its own,
+    // even though currentTime never changes again.
     context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+
     await vi.waitFor(() => {
-      expect(seekPlayback).toHaveBeenCalledTimes(1);
+      expect(seekPlayback.mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+    cleanup?.();
+
+    const targetsNs = seekPlayback.mock.calls.map((call) => {
+      const t = call[0] as { sec: number; nsec: number };
+      return t.sec * 1_000_000_000 + t.nsec;
+    });
+    const seedNs = 5 * 1_000_000_000;
+    // First step seeks to the seed position; the loop then advances forward only, and every step
+    // stays under the 500 ms Unity seek-jump threshold (cheap forward-advance path).
+    expect(targetsNs[0]).toBe(seedNs);
+    expect(targetsNs[targetsNs.length - 1]).toBeGreaterThan(seedNs);
+    for (let i = 1; i < targetsNs.length; i++) {
+      const stepNs = targetsNs[i]! - targetsNs[i - 1]!;
+      expect(stepNs).toBeGreaterThanOrEqual(0);
+      expect(stepNs).toBeLessThan(500_000_000);
+    }
+  });
+
+  test("follow parks at the end and does not run away; scrubbing does a one-shot sync", async () => {
+    const seekPlayback = vi.fn();
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ followUnity: true });
+    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+    const cleanup = initPanel(context);
+
+    // Seed just shy of the end so the loop reaches it within a few steps.
+    const bounds = { startTime: { sec: 0, nsec: 0 }, endTime: { sec: 10, nsec: 120_000_000 } };
+    context.onRender?.({ currentTime: { sec: 10, nsec: 0 }, ...bounds }, vi.fn());
+
+    // It advances to the end, then parks (fetch count stops growing across polls).
+    let parkedCount = 0;
+    await vi.waitFor(() => {
+      const n = fetchMock.mock.calls.length;
+      expect(n).toBeGreaterThan(0);
+      if (n !== parkedCount) {
+        parkedCount = n;
+        throw new Error("still streaming");
+      }
     });
 
-    const target = seekPlayback.mock.calls[0]?.[0] as { sec: number; nsec: number };
-    expect(target.sec).toBe(5);
-    expect(target.nsec).toBeGreaterThan(0);
-    // One rate step (1/60 s) stays well under the 500 ms Unity seek-jump threshold.
-    expect(target.nsec).toBeLessThan(500_000_000);
+    // A scrub well before the end issues exactly one sync cursor (plain currentTime-driven path),
+    // not a runaway self-driving loop.
+    context.onRender?.({ currentTime: { sec: 2, nsec: 0 }, didSeek: true, ...bounds }, vi.fn());
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBe(parkedCount + 1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(fetchMock.mock.calls.length).toBe(parkedCount + 1);
+    cleanup?.();
+  });
+
+  test("follow loop survives a host that throws on seekPlayback (keeps streaming cursors)", async () => {
+    // Some Foxglove builds reject a programmatic seek while paused. The cursor stream must keep
+    // advancing regardless, so Unity still receives forward cursors even if the UI cannot move.
+    const seekPlayback = vi.fn(() => {
+      throw new Error("seek rejected while paused");
+    });
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ followUnity: true });
+    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+    const cleanup = initPanel(context);
+
+    context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+    cleanup?.();
+
+    // seekPlayback was attempted but is no longer hammered after the first throw.
+    expect(seekPlayback).toHaveBeenCalled();
   });
 });

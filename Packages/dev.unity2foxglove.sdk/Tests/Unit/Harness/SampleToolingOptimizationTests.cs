@@ -378,7 +378,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("iso.slice(11, iso.length - 1)", formatter, StringComparison.Ordinal);
             Assert.DoesNotContain(".replace(\"T\"", formatter, StringComparison.Ordinal);
             Assert.DoesNotContain(".replace(\"Z\"", formatter, StringComparison.Ordinal);
-            Assert.Contains("formatReplayTimeUtc(currentTime, replayTimeCache)", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("formatReplayTimeUtc(displayTime, replayTimeCache)", renderLoop, StringComparison.Ordinal);
         }
 
         [Fact]
