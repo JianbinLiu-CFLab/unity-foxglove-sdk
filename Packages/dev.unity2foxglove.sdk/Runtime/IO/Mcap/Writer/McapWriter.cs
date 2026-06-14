@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.IO
                 WriteU16(m, id);
                 WriteString(m, name);
                 WriteString(m, encoding);
-                WriteLengthPrefixedBytes(m, data ?? new byte[0]);
+                WriteLengthPrefixedBytes(m, data ?? Array.Empty<byte>());
             });
         /// <summary>Write a Channel record (opcode <c>0x04</c>).</summary>
         public void WriteChannel(ushort channelId, ushort schemaId, string topic, string encoding, Dictionary<string,string> meta) =>

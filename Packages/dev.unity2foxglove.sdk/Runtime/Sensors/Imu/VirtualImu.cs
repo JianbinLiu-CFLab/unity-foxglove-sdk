@@ -23,7 +23,6 @@ namespace Unity.FoxgloveSDK.Components
     public class VirtualImu : MonoBehaviour
     {
         private const string DefaultTopic = "/imu/data";
-        private const string DefaultImuNativeTopic = "/imu/data";
         private const string DefaultFrameId = "imu_link";
         private const int MaxQueueSamples = 512;
         private const int DefaultTargetRateHz = 200;
@@ -42,7 +41,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Tooltip("Topic for imu data. Default: /imu/data.")] private string _topic = DefaultTopic;
         [SerializeField, Tooltip("Reference frame id for each IMU sample.")] private string _frameId = DefaultFrameId;
         [SerializeField, HideInInspector] private bool _publishImuNative;
-        [SerializeField, HideInInspector] private string _imuNativeTopic = DefaultImuNativeTopic;
+        [SerializeField, HideInInspector] private string _imuNativeTopic = DefaultTopic;
         [SerializeField, Tooltip("IMU orientation covariance (9 values, diagonal default).")] private double[] _imuOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         [SerializeField, Tooltip("IMU angular velocity covariance (9 values, diagonal default).")] private double[] _imuAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         [SerializeField, Tooltip("IMU linear acceleration covariance (9 values, diagonal default).")] private double[] _imuLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
@@ -87,7 +86,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                var topic = string.IsNullOrWhiteSpace(_topic) ? DefaultImuNativeTopic : _topic.Trim();
+                var topic = string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic.Trim();
                 return topic.StartsWith("/", StringComparison.Ordinal) ? topic : "/" + topic;
             }
         }
@@ -141,9 +140,7 @@ namespace Unity.FoxgloveSDK.Components
             _hasEpoch = false;
             _nextSampleIndex = 0;
             _publishing = true;
-
-            if (_publishing)
-                EnsureSchemaRegistered();
+            EnsureSchemaRegistered();
         }
 
         private void OnEnable()
@@ -250,9 +247,6 @@ namespace Unity.FoxgloveSDK.Components
 
             EnsureSchemaRegistered();
 
-            if (_queue.Count == 0)
-                return;
-
             var queuedAtFrameStart = _queue.Count;
             var webSocketBudget = ResolveWebSocketSamplesPerFrame(queuedAtFrameStart);
             var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;
@@ -307,7 +301,7 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrWhiteSpace(_frameId))
                 _frameId = DefaultFrameId;
             if (string.IsNullOrWhiteSpace(_imuNativeTopic))
-                _imuNativeTopic = DefaultImuNativeTopic;
+                _imuNativeTopic = DefaultTopic;
 
             _imuOrientationCovariance = NormalizeCovariance(_imuOrientationCovariance, DefaultOrientationCovariance);
             _imuAngularVelocityCovariance = NormalizeCovariance(_imuAngularVelocityCovariance, DefaultAngularVelocityCovariance);

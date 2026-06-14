@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestRecorderMinimal();
             TestRecorderSingleChannel();
             TestRecorderMultipleMessages();
-            TestRecorderSchemaDedup();
+            TestRecorderSchemaContentIsStableAcrossChannels();
             TestDualWrite();
             TestCloseIdempotent();
 
@@ -261,10 +261,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Two channels using the same schema must produce at most one
-        /// schema record in the data section (dedup test).
+        /// Two channels using the same schema content must preserve stable
+        /// schema payloads even when the recorder assigns per-channel schema ids.
         /// </summary>
-        private static void TestRecorderSchemaDedup()
+        private static void TestRecorderSchemaContentIsStableAcrossChannels()
         {
             var ms = new MemoryStream();
             var r = new McapRecorder(ms);
@@ -273,11 +273,15 @@ namespace Unity.FoxgloveSDK.Tests
             r.Close();
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
-            // Summary section duplicates schema records — count unique by opcode 0x03 in data section only
             var schemas = records.Where(x => x.Opcode == 0x03).ToList();
-            // Accept 1 or 2 (data section + summary section copies)
-            Assert(schemas.Count == 1 || schemas.Count == 2,
-                $"Schema dedup: 1 or 2 schemas (got {schemas.Count})");
+            Assert(schemas.Count == 2, $"Schema records match current per-channel schema ids (got {schemas.Count})");
+
+            foreach (var schema in schemas.Select(x => McapRecordReader.DecodeSchema(x.Content)))
+            {
+                Assert(schema.name == "foxglove.FrameTransform", "Schema name is stable across channels");
+                Assert(schema.encoding == "jsonschema", "Schema encoding is stable across channels");
+                Assert(schema.data.SequenceEqual(Encoding.UTF8.GetBytes("{}")), "Schema data is stable across channels");
+            }
         }
 
         /// <summary>
@@ -296,15 +300,14 @@ namespace Unity.FoxgloveSDK.Tests
             r.Close();
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
-            // Messages are inside chunk records — scan all chunk content for opcode 0x05
             var found = 0;
             foreach (var rec in records)
             {
                 if (rec.Opcode == 0x06)
                 {
                     var (st, et, sz, crc, comp, _, inner) = McapRecordReader.DecodeChunk(rec.Content);
-                    for (int i = 0; i < inner.Length - 1; i++)
-                        if (inner[i] == 0x05) found++;
+                    var (_, innerRecords, _) = McapRecordReader.Parse(inner);
+                    found += innerRecords.Count(x => x.Opcode == 0x05);
                 }
             }
             Assert(found >= 1, $"Dual write: {found} messages in MCAP");
@@ -320,7 +323,7 @@ namespace Unity.FoxgloveSDK.Tests
             var r = new McapRecorder(ms);
             r.Close();
             r.Close(); // must not throw
-            Assert(true, "Close is idempotent");
+            Assert(ms.Length > 0, "Close is idempotent and writes a valid MCAP payload");
         }
 
         /// <summary>

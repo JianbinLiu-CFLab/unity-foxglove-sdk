@@ -34,8 +34,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             var w = new McapWriter(ms);
             w.WriteMagic();
             var data = ms.ToArray();
-            Assert.True(data.Length == 8, "Magic is 8 bytes");
-            Assert.True(data[0] == 0x89 && data[1] == (byte)'M', "Magic prefix correct");
+            Assert.Equal(8, data.Length);
+            Assert.Equal(0x89, data[0]);
+            Assert.Equal((byte)'M', data[1]);
         }
 
         [Fact]
@@ -68,10 +69,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
             var hdr = records[0];
-            Assert.True(hdr.Opcode == 0x01, "Header opcode");
+            Assert.Equal(0x01, hdr.Opcode);
             var (profile, lib) = McapRecordReader.DecodeHeader(hdr.Content);
-            Assert.True(profile == "test-profile", "profile roundtrip");
-            Assert.True(lib == "test-lib", "library roundtrip");
+            Assert.Equal("test-profile", profile);
+            Assert.Equal("test-lib", lib);
         }
 
         [Fact]
@@ -83,9 +84,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
             var (id, name, enc, d) = McapRecordReader.DecodeSchema(records[0].Content);
-            Assert.True(id == 1, "schema id");
-            Assert.True(name == "foxglove.Schema", "schema name");
-            Assert.True(enc == "jsonschema", "schema enc");
+            Assert.Equal((ushort)1, id);
+            Assert.Equal("foxglove.Schema", name);
+            Assert.Equal("jsonschema", enc);
+            Assert.Equal(Encoding.UTF8.GetBytes("{}"), d);
         }
 
         [Fact]
@@ -97,9 +99,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
             var (id, sid, topic, enc) = McapRecordReader.DecodeChannel(records[0].Content);
-            Assert.True(id == 1, "channel id");
-            Assert.True(sid == 0, "schema_id=0");
-            Assert.True(topic == "/topic", "topic roundtrip");
+            Assert.Equal((ushort)1, id);
+            Assert.Equal((ushort)0, sid);
+            Assert.Equal("/topic", topic);
+            Assert.Equal("json", enc);
         }
 
         [Fact]
@@ -111,9 +114,11 @@ namespace Unity.FoxgloveSDK.UnitTests
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
             var (chId, seq, log, pub, pl) = McapRecordReader.DecodeMessage(records[0].Content);
-            Assert.True(chId == 1, "chId");
-            Assert.True(seq == 10, "sequence");
-            Assert.True(Encoding.UTF8.GetString(pl) == "hello", "payload");
+            Assert.Equal((ushort)1, chId);
+            Assert.Equal(10u, seq);
+            Assert.Equal(123456789UL, log);
+            Assert.Equal(123456789UL, pub);
+            Assert.Equal("hello", Encoding.UTF8.GetString(pl));
         }
 
         [Fact]
@@ -191,7 +196,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void RecorderSchemaDedup()
+        public void RecorderSchemaContentIsStableAcrossChannels()
         {
             var ms = new MemoryStream();
             var r = new McapRecorder(ms);
@@ -201,8 +206,14 @@ namespace Unity.FoxgloveSDK.UnitTests
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
             var schemas = records.Where(x => x.Opcode == 0x03).ToList();
-            Assert.True(schemas.Count == 1 || schemas.Count == 2,
-                $"Schema dedup: 1 or 2 schemas (got {schemas.Count})");
+            Assert.Equal(2, schemas.Count);
+
+            foreach (var schema in schemas.Select(x => McapRecordReader.DecodeSchema(x.Content)))
+            {
+                Assert.Equal("foxglove.FrameTransform", schema.name);
+                Assert.Equal("jsonschema", schema.encoding);
+                Assert.Equal(Encoding.UTF8.GetBytes("{}"), schema.data);
+            }
         }
 
         [Fact]
@@ -218,16 +229,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             r.Close();
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
-            var found = 0;
-            foreach (var rec in records)
-            {
-                if (rec.Opcode == 0x06)
-                {
-                    var (st, et, sz, crc, comp, _, inner) = McapRecordReader.DecodeChunk(rec.Content);
-                    for (int i = 0; i < inner.Length - 1; i++)
-                        if (inner[i] == 0x05) found++;
-                }
-            }
+            var found = records
+                .Where(rec => rec.Opcode == 0x06)
+                .SelectMany(rec => McapRecordReader.Parse(McapRecordReader.DecodeChunk(rec.Content).records).records)
+                .Count(rec => rec.Opcode == 0x05);
             Assert.True(found >= 1, $"Dual write: {found} messages in MCAP");
         }
 
@@ -238,7 +243,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var r = new McapRecorder(ms);
             r.Close();
             r.Close(); // must not throw
-            Assert.True(true, "Close is idempotent");
+            Assert.True(ms.Length > 0, "Close writes a valid MCAP payload");
         }
 
         /// <summary>Minimal no-op transport for the dual-write test.</summary>
