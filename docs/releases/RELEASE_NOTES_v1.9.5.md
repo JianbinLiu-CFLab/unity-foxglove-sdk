@@ -2,13 +2,13 @@
 
 Release date: 2026-06-14
 
-Unity2Foxglove v1.9.5 is a substantial sensor, replay, ROS2, performance, and release-tooling upgrade over v1.9.4. The release spans 283 non-merge commits since v1.9.4 and touches the Phase138 virtual sensor stack, Phase139 Remote File/DataLoader/replay workflow, and Phase140 hardening and allocation-reduction work.
+Unity2Foxglove v1.9.5 is a substantial sensor, replay, ROS2, performance, and release-tooling upgrade over v1.9.4. It adds a richer virtual sensor stack, remote MCAP playback workflows, optional Foxglove replay synchronization controls, refreshed ROS2 For Unity packaging, and broad hot-path hardening across the SDK.
 
 The core SDK remains ROS-free by default. ROS2 For Unity support is still optional and package-based.
 
 ## Highlights
 
-- **Virtual sensor and demo stack:** Added the Phase138 virtual LiDAR maze demo path, multi-vendor LiDAR profiles, high-rate Virtual IMU, full-fidelity LiDAR scan scheduling, PointCloud2 mirror/native output, camera native DDS output, TF native publishing, LiDAR deskew/motion-compensated output, and updated sample scene assets.
+- **Virtual sensor and demo stack:** Added the virtual LiDAR maze demo path, multi-vendor LiDAR profiles, high-rate Virtual IMU, full-fidelity LiDAR scan scheduling, PointCloud2 mirror/native output, camera native DDS output, TF native publishing, LiDAR deskew/motion-compensated output, and updated sample scene assets.
 - **Remote MCAP and replay workflow:** Added Remote DataLoader HTTP support, remote MCAP file playback, Foxglove deep-link/file URL workflow, and a Unity cursor endpoint for Foxglove-driven replay control.
 - **Unity Replay Sync panel:** Added the optional Foxglove extension panel with endpoint/token state, cursor-rate control, ACK-paced cursor backpressure, timeout recovery, and an experimental `Follow Unity replay` mode for heavy Unity scenes where Foxglove should not outrun Unity.
 - **Hot-path performance reductions:** Reduced allocations and copy churn across camera JPEG publishing, H.264/OpenH264 sidecar conversion, point-cloud encoding, IMU covariance publishing, WebSocket transport, MCAP recording/replay/readers, protobuf builders, schema registries, ROS2 bridge/CDR paths, validation harnesses, and release/smoke scripts.
