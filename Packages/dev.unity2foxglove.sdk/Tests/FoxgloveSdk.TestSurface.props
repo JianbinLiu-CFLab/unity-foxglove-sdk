@@ -55,5 +55,6 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
   </ItemGroup>
 </Project>

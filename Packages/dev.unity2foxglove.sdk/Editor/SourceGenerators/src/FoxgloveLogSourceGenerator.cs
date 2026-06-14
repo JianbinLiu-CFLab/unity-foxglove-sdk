@@ -374,7 +374,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             if (depth > FoxServiceDtoRules.MaxDepth)
             {
-                AddDtoDiagnostic(FoxServiceDtoRules.CycleDiagnosticId, side, rootName, path, typeName, "DTO graph exceeds the supported traversal depth.", diagnostics);
+                AddDtoDiagnostic(FoxServiceDtoRules.DepthDiagnosticId, side, rootName, path, typeName, "DTO graph exceeds the supported traversal depth.", diagnostics);
                 return;
             }
 
@@ -420,6 +420,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             if (FoxServiceDtoTypeNames.IsTaskLike(fullName)
                 || FoxServiceDtoTypeNames.IsUnsafeRuntimeHandle(fullName)
+                || FoxServiceDtoTypeNames.IsFunctionPointerLike(fullName)
                 || IsDelegateType(named)
                 || IsUnityObjectType(named)
                 || named.SpecialType == SpecialType.System_Object)
@@ -440,7 +441,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return;
             }
 
-            if (TryGetListElementType(named, out var elementType))
+            if (TryGetListElementType(named, side, out var elementType))
             {
                 ValidateServiceDtoType(elementType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
@@ -473,6 +474,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.Type), "Member is ignored by serialization attributes.", diagnostics);
                         continue;
                     }
+                    if (field.IsReadOnly)
+                    {
+                        AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.Type), "Readonly fields may serialize but may not round-trip from request JSON.", diagnostics);
+                        continue;
+                    }
                     ValidateServiceDtoType(field.Type, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
                     continue;
                 }
@@ -490,6 +496,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     }
                     if (property.SetMethod == null)
                     {
+                        if (TryGetListElementType(property.Type, side, out var getOnlyElementType)
+                            && IsMutableCollectionContract(property.Type))
+                        {
+                            ValidateServiceDtoType(getOnlyElementType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
                         AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.Type), "Get-only properties are not populated during request deserialization.", diagnostics);
                         continue;
                     }
@@ -567,18 +579,34 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             => type != null && type.SpecialType == SpecialType.System_String;
 
         private static bool TryGetListElementType(INamedTypeSymbol named, out ITypeSymbol elementType)
+            => TryGetListElementType(named, FoxServiceDtoRules.RequestSide, out elementType);
+
+        private static bool TryGetListElementType(ITypeSymbol type, string side, out ITypeSymbol elementType)
+            => TryGetListElementType(type as INamedTypeSymbol, side, out elementType);
+
+        private static bool TryGetListElementType(INamedTypeSymbol named, string side, out ITypeSymbol elementType)
         {
             elementType = null;
-            if (named.TypeArguments.Length != 1)
+            if (named == null || named.TypeArguments.Length != 1)
                 return false;
 
             var contract = named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
                 .Replace("global::", string.Empty);
-            if (!FoxServiceDtoTypeNames.IsListContract(contract))
+            if (!FoxServiceDtoTypeNames.IsListContract(contract, side))
                 return false;
 
             elementType = named.TypeArguments[0];
             return true;
+        }
+
+        private static bool IsMutableCollectionContract(ITypeSymbol type)
+        {
+            if (!(type is INamedTypeSymbol named) || named.TypeArguments.Length != 1)
+                return false;
+
+            var contract = named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                .Replace("global::", string.Empty);
+            return FoxServiceDtoTypeNames.IsMutableCollectionContract(contract);
         }
 
         private static bool TryGetDictionaryValueType(INamedTypeSymbol named, out ITypeSymbol keyType, out ITypeSymbol valueType)
@@ -681,7 +709,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string offendingType,
             string reason,
             List<FoxServiceDtoDiagnostic> diagnostics)
-            => diagnostics.Add(new FoxServiceDtoDiagnostic(id, id == FoxServiceDtoRules.WarningDiagnosticId, side, rootType, path, offendingType, reason));
+            => diagnostics.Add(new FoxServiceDtoDiagnostic(
+                id,
+                id == FoxServiceDtoRules.WarningDiagnosticId || id == FoxServiceDtoRules.DepthDiagnosticId,
+                side,
+                rootType,
+                path,
+                offendingType,
+                reason));
 
         private static bool TryReadFloatConstant(TypedConstant constant, out float value)
         {
@@ -1277,6 +1312,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "{0}",
                 "FoxService", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor DeepServiceDto = new DiagnosticDescriptor(
+                "FOXSERVICE009", "FoxService DTO graph is too deep",
+                "{0}",
+                "FoxService", DiagnosticSeverity.Warning, true);
+
             public static DiagnosticDescriptor Shared(string id)
             {
                 switch (id)
@@ -1313,6 +1353,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXSERVICE006": return MissingExplicitServiceSchemaMetadata;
                     case "FOXSERVICE007": return ServiceDtoWarning;
                     case "FOXSERVICE008": return RecursiveServiceDto;
+                    case "FOXSERVICE009": return DeepServiceDto;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped FoxService diagnostic id.");
                 }

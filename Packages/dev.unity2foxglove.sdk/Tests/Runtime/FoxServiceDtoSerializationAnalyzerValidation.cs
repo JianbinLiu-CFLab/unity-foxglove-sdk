@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyUnsupportedDtoDiagnostics();
             VerifyWarningDtoDiagnostics();
             VerifySharedDtoTypeRules();
+            VerifyPhase141DPolicyMatrix();
             VerifyValidationWiringAndReleaseMetadata();
 
             Console.WriteLine("Phase 141C: " + _passCount + " checks passed.\n");
@@ -103,6 +104,49 @@ namespace Unity.FoxgloveSDK.Tests
                 "141C-13c: shared DTO rules reject reflection generic Task display names");
         }
 
+        private static void VerifyPhase141DPolicyMatrix()
+        {
+            var diagnostics = RunGenerator(Phase141DPolicyMatrixFixtureSource()).Diagnostics
+                .Where(diagnostic => diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
+                .ToArray();
+
+            Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "hashSet", "HashSet"),
+                "141D-1: Roslyn accepts HashSet<T> request DTO members");
+            Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "collection", "ICollection"),
+                "141D-2: Roslyn accepts ICollection<T> request DTO members");
+            Check(!HasDiagnostic(diagnostics, "FOXSERVICE004", "readOnlyNumbers", "IReadOnlyCollection"),
+                "141D-3: Roslyn accepts IReadOnlyCollection<T> response DTO members");
+            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.sequence", "IEnumerable"),
+                "141D-4: Roslyn rejects interface-only IEnumerable<T> request DTO members");
+            Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readOnlyScalar", "string"),
+                "141D-5: Roslyn warns for get-only scalar DTO properties");
+            Check(!HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.tags", "List"),
+                "141D-6: Roslyn does not warn for get-only mutable collection DTO properties");
+            Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readonlyValue", "int"),
+                "141D-7: Roslyn warns for public readonly DTO fields");
+            Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE009"
+                                                && diagnostic.GetMessage().Contains("Request.next", StringComparison.Ordinal)),
+                "141D-8: Roslyn reports deep non-recursive DTO graphs as FOXSERVICE009 warning");
+
+            var reflectionOk = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
+                typeof(Phase141DReflectionAcceptedRequest),
+                Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Request,
+                "/phase141d/reflection-ok");
+            Check(reflectionOk.Count == 0,
+                "141D-9: reflection validator accepts collection DTO matrix shapes");
+
+            var reflectionBad = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
+                typeof(Phase141DReflectionRejectedRequest),
+                Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Request,
+                "/phase141d/reflection-bad");
+            Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE003"
+                                                  && diagnostic.Path.Contains("sequence", StringComparison.Ordinal)),
+                "141D-10: reflection validator rejects interface-only IEnumerable<T> request members");
+            Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+                                                  && diagnostic.Path.Contains("readOnlyScalar", StringComparison.Ordinal)),
+                "141D-11: reflection validator reports structured warning diagnostics");
+        }
+
         private static void VerifyValidationWiringAndReleaseMetadata()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
@@ -119,14 +163,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(releases.Contains("FOXSERVICE007", StringComparison.Ordinal)
                   && releases.Contains("FOXSERVICE008", StringComparison.Ordinal),
                 "141C-16: analyzer release metadata lists DTO warning and cycle diagnostics");
+            Check(releases.Contains("FOXSERVICE009", StringComparison.Ordinal),
+                "141D-12: analyzer release metadata lists DTO depth-limit diagnostic");
             Check(generatorProject.Contains("FoxServiceDtoValidation", StringComparison.Ordinal),
                 "141C-17: source generator project includes shared DTO validation helpers");
             Check(playerGenerator.Contains("ValidateServiceDtoType", StringComparison.Ordinal)
-                  && playerGenerator.Contains("FOXSERVICE008", StringComparison.Ordinal),
+                  && playerGenerator.Contains("FoxServiceDtoReflectionValidator.Validate", StringComparison.Ordinal),
                 "141C-18: Player fallback validates service DTOs before source emission");
+            Check(playerGenerator.Contains("FoxServiceDtoReflectionValidator", StringComparison.Ordinal),
+                "141D-13: Player fallback uses structured reflection DTO validator");
             var generatorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var reflectionValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxServiceDtoReflectionValidator.cs");
             Check(generatorSource.Contains("validatedTypes", StringComparison.Ordinal)
-                  && playerGenerator.Contains("validatedTypes", StringComparison.Ordinal),
+                  && reflectionValidator.Contains("validatedTypes", StringComparison.Ordinal),
                 "141C-19: DTO walkers memoize already validated type graphs");
         }
 
@@ -239,6 +288,99 @@ namespace Phase141C
         {
             return new ValidResponse { Ok = request != null };
         }
+    }
+}
+";
+
+        private static string Phase141DPolicyMatrixFixtureSource()
+            => @"
+using System;
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine
+{
+    public class Object {}
+    public class GameObject : Object {}
+    public class Component : Object {}
+    public class MonoBehaviour : Component {}
+    public class Transform : Component {}
+}
+
+namespace Phase141D
+{
+    public sealed class CollectionRequest
+    {
+        public HashSet<string> hashSet { get; set; }
+        public ICollection<float> collection { get; set; }
+        public Queue<string> queue { get; set; }
+        public Stack<string> stack { get; set; }
+        public List<string> tags { get; } = new List<string>();
+        public string readOnlyScalar { get { return ""value""; } }
+        public readonly int readonlyValue;
+    }
+
+    public sealed class InterfaceOnlyRequest
+    {
+        public IEnumerable<int> sequence { get; set; }
+    }
+
+    public sealed class CollectionResponse
+    {
+        public IReadOnlyCollection<double> readOnlyNumbers { get; set; }
+        public SortedDictionary<string, int> sorted { get; set; }
+    }
+
+    public sealed class Deep00 { public Deep01 next { get; set; } }
+    public sealed class Deep01 { public Deep02 next { get; set; } }
+    public sealed class Deep02 { public Deep03 next { get; set; } }
+    public sealed class Deep03 { public Deep04 next { get; set; } }
+    public sealed class Deep04 { public Deep05 next { get; set; } }
+    public sealed class Deep05 { public Deep06 next { get; set; } }
+    public sealed class Deep06 { public Deep07 next { get; set; } }
+    public sealed class Deep07 { public Deep08 next { get; set; } }
+    public sealed class Deep08 { public Deep09 next { get; set; } }
+    public sealed class Deep09 { public Deep10 next { get; set; } }
+    public sealed class Deep10 { public Deep11 next { get; set; } }
+    public sealed class Deep11 { public Deep12 next { get; set; } }
+    public sealed class Deep12 { public Deep13 next { get; set; } }
+    public sealed class Deep13 { public Deep14 next { get; set; } }
+    public sealed class Deep14 { public Deep15 next { get; set; } }
+    public sealed class Deep15 { public Deep16 next { get; set; } }
+    public sealed class Deep16 { public Deep17 next { get; set; } }
+    public sealed class Deep17 { public Deep18 next { get; set; } }
+    public sealed class Deep18 { public Deep19 next { get; set; } }
+    public sealed class Deep19 { public Deep20 next { get; set; } }
+    public sealed class Deep20 { public Deep21 next { get; set; } }
+    public sealed class Deep21 { public Deep22 next { get; set; } }
+    public sealed class Deep22 { public Deep23 next { get; set; } }
+    public sealed class Deep23 { public Deep24 next { get; set; } }
+    public sealed class Deep24 { public Deep25 next { get; set; } }
+    public sealed class Deep25 { public Deep26 next { get; set; } }
+    public sealed class Deep26 { public Deep27 next { get; set; } }
+    public sealed class Deep27 { public Deep28 next { get; set; } }
+    public sealed class Deep28 { public Deep29 next { get; set; } }
+    public sealed class Deep29 { public Deep30 next { get; set; } }
+    public sealed class Deep30 { public Deep31 next { get; set; } }
+    public sealed class Deep31 { public Deep32 next { get; set; } }
+    public sealed class Deep32 { public Deep33 next { get; set; } }
+    public sealed class Deep33 { public string value { get; set; } }
+
+    public sealed class OkResponse
+    {
+        public bool ok { get; set; }
+    }
+
+    public partial class PolicyMatrixServices
+    {
+        [FoxService(""/phase141d/collections"")]
+        private CollectionResponse Collections(CollectionRequest request) => new CollectionResponse();
+
+        [FoxService(""/phase141d/interface_only"")]
+        private OkResponse InterfaceOnly(InterfaceOnlyRequest request) => new OkResponse();
+
+        [FoxService(""/phase141d/deep"")]
+        private OkResponse Deep(Deep00 request) => new OkResponse();
     }
 }
 ";
@@ -389,6 +531,21 @@ namespace Phase141C
 
             Console.WriteLine("[PASS] " + label);
             _passCount++;
+        }
+
+        private sealed class Phase141DReflectionAcceptedRequest
+        {
+            public HashSet<string> hashSet { get; set; }
+            public ICollection<float> collection { get; set; }
+            public Queue<string> queue { get; set; }
+            public Stack<string> stack { get; set; }
+            public List<string> tags { get; } = new List<string>();
+        }
+
+        private sealed class Phase141DReflectionRejectedRequest
+        {
+            public IEnumerable<int> sequence { get; set; }
+            public string readOnlyScalar { get { return "value"; } }
         }
 
         private static string ReadRepoText(string relativePath)

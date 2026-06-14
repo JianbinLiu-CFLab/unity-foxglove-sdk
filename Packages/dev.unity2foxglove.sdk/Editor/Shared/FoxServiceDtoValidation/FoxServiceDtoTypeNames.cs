@@ -38,7 +38,16 @@ namespace Unity.FoxgloveSDK.Editor
             "System.Collections.Generic.List<T>",
             "System.Collections.Generic.IList<T>",
             "System.Collections.Generic.IReadOnlyList<T>",
+            "System.Collections.Generic.HashSet<T>",
+            "System.Collections.Generic.ICollection<T>",
+            "System.Collections.Generic.Queue<T>",
+            "System.Collections.Generic.Stack<T>",
             "System.Collections.ObjectModel.Collection<T>",
+        };
+
+        private static readonly HashSet<string> ResponseOnlyListTypeNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "System.Collections.Generic.IReadOnlyCollection<T>",
         };
 
         private static readonly HashSet<string> DictionaryTypeNames = new HashSet<string>(StringComparer.Ordinal)
@@ -46,12 +55,23 @@ namespace Unity.FoxgloveSDK.Editor
             "System.Collections.Generic.Dictionary<TKey, TValue>",
             "System.Collections.Generic.IDictionary<TKey, TValue>",
             "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>",
+            "System.Collections.Generic.SortedDictionary<TKey, TValue>",
         };
 
         public static bool IsScalar(string fullName)
             => ScalarTypeNames.Contains(fullName ?? string.Empty);
 
         public static bool IsListContract(string constructedFrom)
+            => ListTypeNames.Contains(constructedFrom ?? string.Empty);
+
+        public static bool IsListContract(string constructedFrom, string side)
+        {
+            var name = constructedFrom ?? string.Empty;
+            return ListTypeNames.Contains(name)
+                   || (side == FoxServiceDtoRules.ResponseSide && ResponseOnlyListTypeNames.Contains(name));
+        }
+
+        public static bool IsMutableCollectionContract(string constructedFrom)
             => ListTypeNames.Contains(constructedFrom ?? string.Empty);
 
         public static bool IsDictionaryContract(string constructedFrom)
@@ -73,6 +93,9 @@ namespace Unity.FoxgloveSDK.Editor
             var name = fullName ?? string.Empty;
             return name == "System.IntPtr" || name == "System.UIntPtr";
         }
+
+        public static bool IsFunctionPointerLike(string fullName)
+            => (fullName ?? string.Empty).IndexOf("delegate*", StringComparison.Ordinal) >= 0;
 
         public static string Normalize(string fullName)
             => (fullName ?? string.Empty).Replace('+', '.');

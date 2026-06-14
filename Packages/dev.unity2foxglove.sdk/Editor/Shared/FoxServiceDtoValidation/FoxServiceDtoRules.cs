@@ -11,6 +11,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const int MaxDepth = 32;
         public const string WarningDiagnosticId = "FOXSERVICE007";
         public const string CycleDiagnosticId = "FOXSERVICE008";
+        public const string DepthDiagnosticId = "FOXSERVICE009";
 
         public const string RequestSide = "request";
         public const string ResponseSide = "response";

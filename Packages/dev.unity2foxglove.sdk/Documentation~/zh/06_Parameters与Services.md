@@ -83,14 +83,19 @@ public partial class CubeControls : MonoBehaviour
 - `Task` 返回值；
 - 重复服务名。
 
-DTO 校验会递归检查成员。推荐 DTO 只包含 public 字段或 get/set 属性，以及适合 JSON 的类型：基础类型、enum、`DateTime`、`DateTimeOffset`、`Guid`、`TimeSpan`、nullable、单维数组、`List<T>` / `IReadOnlyList<T>`，以及 key 为 `string` 的 dictionary。
+DTO 校验会递归检查成员。推荐 DTO 只包含 public 字段或 get/set 属性，以及适合 JSON 的类型：基础类型、enum、`DateTime`、`DateTimeOffset`、`Guid`、`TimeSpan`、nullable、单维数组、受支持的集合，以及 key 为 `string` 的 dictionary。
+
+支持的集合形态包括 `List<T>`、`IList<T>`、`IReadOnlyList<T>`、`HashSet<T>`、`ICollection<T>`、`Queue<T>`、`Stack<T>`、`Collection<T>` 和 `SortedDictionary<string, T>`。`IReadOnlyCollection<T>` 支持用于 response DTO。`IEnumerable<T>` 仍不支持，因为 request 反序列化无法可靠填充一个只有 interface 的 sequence。
+
+get-only 的可变集合属性可以使用，例如 `public List<string> Tags { get; } = new();`，Newtonsoft 可以填充已有集合。get-only 的标量属性和 `readonly` 字段会产生 warning，因为它们可能可以序列化，但不一定能从 request JSON 反序列化并 round-trip。
 
 当 DTO 成员不能安全序列化时，生成器会带成员路径报诊断：
 
 - `FOXSERVICE003`：request DTO 中有不支持的成员；
 - `FOXSERVICE004`：response DTO 中有不支持的成员；
 - `FOXSERVICE007`：get-only 或被忽略的成员，warning；
-- `FOXSERVICE008`：DTO 图里有递归引用。
+- `FOXSERVICE008`：DTO 图里有递归引用；
+- `FOXSERVICE009`：非递归 DTO 图超过保守校验深度限制，warning。
 
 不要把 `GameObject`、`Transform`、`MonoBehaviour` 等 `UnityEngine.Object` 类型放进服务 DTO。请改成稳定数据，例如对象 id 字符串，或只包含数字字段的小型 pose DTO。也应避免 delegate、`object`、不在支持范围内的 interface、多维数组、非 string key dictionary，以及自引用 DTO。
 
