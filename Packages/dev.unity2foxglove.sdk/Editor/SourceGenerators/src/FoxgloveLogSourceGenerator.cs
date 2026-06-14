@@ -347,7 +347,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
             var diagnostics = new List<FoxServiceDtoDiagnostic>();
             var stack = new HashSet<string>(StringComparer.Ordinal);
-            ValidateServiceDtoType(type, side, rootPath, type, diagnostics, stack, 0);
+            var validatedTypes = new HashSet<string>(StringComparer.Ordinal);
+            ValidateServiceDtoType(type, side, rootPath, type, diagnostics, stack, validatedTypes, 0);
             return diagnostics.Select(diagnostic => new ServiceDiagnostic(
                 diagnostic.Id,
                 location,
@@ -361,6 +362,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             ITypeSymbol rootType,
             List<FoxServiceDtoDiagnostic> diagnostics,
             HashSet<string> stack,
+            HashSet<string> validatedTypes,
             int depth)
         {
             if (type == null || type.SpecialType == SpecialType.System_Void)
@@ -390,7 +392,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     return;
                 }
 
-                ValidateServiceDtoType(array.ElementType, side, path, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(array.ElementType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
             }
 
@@ -412,6 +414,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return;
 
             var fullName = FullTypeName(named);
+            var stackKey = named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (validatedTypes.Contains(stackKey))
+                return;
+
             if (FoxServiceDtoTypeNames.IsTaskLike(fullName)
                 || FoxServiceDtoTypeNames.IsUnsafeRuntimeHandle(fullName)
                 || IsDelegateType(named)
@@ -430,13 +436,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     return;
                 }
 
-                ValidateServiceDtoType(valueType, side, path, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(valueType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
             }
 
             if (TryGetListElementType(named, out var elementType))
             {
-                ValidateServiceDtoType(elementType, side, path, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(elementType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
             }
 
@@ -446,14 +452,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return;
             }
 
-            var stackKey = named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             if (!stack.Add(stackKey))
             {
                 AddDtoDiagnostic(FoxServiceDtoRules.CycleDiagnosticId, side, rootName, path, typeName, "DTO graph contains a recursive reference.", diagnostics);
                 return;
             }
 
-            foreach (var member in named.GetMembers().OrderBy(MemberOrder))
+            var diagnosticCountBeforeMembers = diagnostics.Count;
+            foreach (var member in InheritedAndDeclaredMembers(named).OrderBy(MemberOrder))
             {
                 if (member.IsStatic)
                     continue;
@@ -467,7 +473,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.Type), "Member is ignored by serialization attributes.", diagnostics);
                         continue;
                     }
-                    ValidateServiceDtoType(field.Type, side, path + "." + field.Name, rootType, diagnostics, stack, depth + 1);
+                    ValidateServiceDtoType(field.Type, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
                     continue;
                 }
 
@@ -487,11 +493,38 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.Type), "Get-only properties are not populated during request deserialization.", diagnostics);
                         continue;
                     }
-                    ValidateServiceDtoType(property.Type, side, path + "." + property.Name, rootType, diagnostics, stack, depth + 1);
+                    ValidateServiceDtoType(property.Type, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 }
             }
 
             stack.Remove(stackKey);
+            if (diagnostics.Count == diagnosticCountBeforeMembers)
+                validatedTypes.Add(stackKey);
+        }
+
+        private static IEnumerable<ISymbol> InheritedAndDeclaredMembers(INamedTypeSymbol type)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var hierarchy = new Stack<INamedTypeSymbol>();
+            for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+                hierarchy.Push(current);
+
+            while (hierarchy.Count > 0)
+            {
+                foreach (var member in hierarchy.Pop().GetMembers())
+                {
+                    if (member is IFieldSymbol field)
+                    {
+                        if (seen.Add("F:" + field.Name))
+                            yield return field;
+                    }
+                    else if (member is IPropertySymbol property)
+                    {
+                        if (seen.Add("P:" + property.Name))
+                            yield return property;
+                    }
+                }
+            }
         }
 
         private static ITypeSymbol UnwrapNullable(ITypeSymbol type)

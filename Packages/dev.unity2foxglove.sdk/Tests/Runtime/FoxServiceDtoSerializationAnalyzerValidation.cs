@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyValidDtoShapesStillGenerate();
             VerifyUnsupportedDtoDiagnostics();
             VerifyWarningDtoDiagnostics();
+            VerifySharedDtoTypeRules();
             VerifyValidationWiringAndReleaseMetadata();
 
             Console.WriteLine("Phase 141C: " + _passCount + " checks passed.\n");
@@ -70,6 +71,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "141C-9: request DTO rejects dictionaries with non-string keys");
             Check(HasDiagnostic(diagnostics, "FOXSERVICE008", "Request.next.parent", "RecursiveNode"),
                 "141C-10: recursive DTO graphs report FOXSERVICE008 with nested path");
+            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.inheritedObject", "UnityEngine.GameObject"),
+                "141C-10a: request DTO rejects inherited Unity object members with path");
+            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.delayed", "Task<int>"),
+                "141C-10b: request DTO rejects task-like members with path");
         }
 
         private static void VerifyWarningDtoDiagnostics()
@@ -86,6 +91,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "141C-12: ignored DTO members produce FOXSERVICE007 warning");
             Check(diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error),
                 "141C-13: warning-only DTO fixture still emits no service-blocking errors");
+        }
+
+        private static void VerifySharedDtoTypeRules()
+        {
+            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task"),
+                "141C-13a: shared DTO rules reject non-generic Task");
+            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task<System.Int32>"),
+                "141C-13b: shared DTO rules reject Roslyn generic Task display names");
+            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task`1[[System.Int32, System.Private.CoreLib]]"),
+                "141C-13c: shared DTO rules reject reflection generic Task display names");
         }
 
         private static void VerifyValidationWiringAndReleaseMetadata()
@@ -109,6 +124,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(playerGenerator.Contains("ValidateServiceDtoType", StringComparison.Ordinal)
                   && playerGenerator.Contains("FOXSERVICE008", StringComparison.Ordinal),
                 "141C-18: Player fallback validates service DTOs before source emission");
+            var generatorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            Check(generatorSource.Contains("validatedTypes", StringComparison.Ordinal)
+                  && playerGenerator.Contains("validatedTypes", StringComparison.Ordinal),
+                "141C-19: DTO walkers memoize already validated type graphs");
         }
 
         private static bool HasDiagnostic(IEnumerable<Diagnostic> diagnostics, string id, string pathFragment, string typeFragment)
@@ -266,6 +285,21 @@ namespace Phase141C
         public Dictionary<int, string> lookup { get; set; }
     }
 
+    public class BadInheritedRequestBase
+    {
+        public UnityEngine.GameObject inheritedObject { get; set; }
+    }
+
+    public sealed class BadInheritedRequest : BadInheritedRequestBase
+    {
+        public string name { get; set; }
+    }
+
+    public sealed class BadTaskMemberRequest
+    {
+        public System.Threading.Tasks.Task<int> delayed { get; set; }
+    }
+
     public sealed class RecursiveNode
     {
         public RecursiveChild next { get; set; }
@@ -297,6 +331,12 @@ namespace Phase141C
 
         [FoxService(""/phase141c/bad_dictionary"")]
         private OkResponse BadDictionary(BadDictionaryRequest request) => new OkResponse();
+
+        [FoxService(""/phase141c/bad_inherited"")]
+        private OkResponse BadInherited(BadInheritedRequest request) => new OkResponse();
+
+        [FoxService(""/phase141c/bad_task_member"")]
+        private OkResponse BadTaskMember(BadTaskMemberRequest request) => new OkResponse();
 
         [FoxService(""/phase141c/recursive"")]
         private OkResponse Recursive(RecursiveNode request) => new OkResponse();

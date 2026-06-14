@@ -536,7 +536,8 @@ namespace Unity.FoxgloveSDK.Editor
             // Mirrors the Roslyn analyzer's FOXSERVICE008 recursive DTO gate for Player fallback generation.
             var diagnostics = new List<FoxServiceDtoDiagnostic>();
             var stack = new HashSet<string>(StringComparer.Ordinal);
-            ValidateServiceDtoType(type, side, rootPath, type, diagnostics, stack, 0);
+            var validatedTypes = new HashSet<string>(StringComparer.Ordinal);
+            ValidateServiceDtoType(type, side, rootPath, type, diagnostics, stack, validatedTypes, 0);
 
             foreach (var diagnostic in diagnostics)
             {
@@ -555,6 +556,7 @@ namespace Unity.FoxgloveSDK.Editor
             Type rootType,
             List<FoxServiceDtoDiagnostic> diagnostics,
             HashSet<string> stack,
+            HashSet<string> validatedTypes,
             int depth)
         {
             if (type == null || type == typeof(void))
@@ -584,7 +586,7 @@ namespace Unity.FoxgloveSDK.Editor
                     return;
                 }
 
-                ValidateServiceDtoType(type.GetElementType(), side, path, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(type.GetElementType(), side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
             }
 
@@ -592,6 +594,10 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
 
             var fullName = FullTypeName(type);
+            var stackKey = FullTypeName(type);
+            if (validatedTypes.Contains(stackKey))
+                return;
+
             if (FoxServiceDtoTypeNames.IsTaskLike(fullName)
                 || FoxServiceDtoTypeNames.IsUnsafeRuntimeHandle(fullName)
                 || typeof(Delegate).IsAssignableFrom(type)
@@ -611,13 +617,13 @@ namespace Unity.FoxgloveSDK.Editor
                     return;
                 }
 
-                ValidateServiceDtoType(valueType, side, path, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(valueType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
             }
 
             if (TryGetListElementType(type, out var elementType))
             {
-                ValidateServiceDtoType(elementType, side, path, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(elementType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 return;
             }
 
@@ -627,7 +633,6 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var stackKey = FullTypeName(type);
             if (!stack.Add(stackKey))
             {
                 AddDtoDiagnostic(FoxServiceDtoRules.CycleDiagnosticId, side, rootName, path, typeName, "DTO graph contains a recursive reference.", diagnostics);
@@ -635,6 +640,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var flags = BindingFlags.Instance | BindingFlags.Public;
+            var diagnosticCountBeforeMembers = diagnostics.Count;
             foreach (var field in type.GetFields(flags).OrderBy(field => field.MetadataToken))
             {
                 if (field.IsStatic || field.IsLiteral)
@@ -644,7 +650,7 @@ namespace Unity.FoxgloveSDK.Editor
                     AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.FieldType), "Member is ignored by serialization attributes.", diagnostics);
                     continue;
                 }
-                ValidateServiceDtoType(field.FieldType, side, path + "." + field.Name, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(field.FieldType, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
             }
 
             foreach (var property in type.GetProperties(flags).OrderBy(property => property.MetadataToken))
@@ -661,10 +667,12 @@ namespace Unity.FoxgloveSDK.Editor
                     AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.PropertyType), "Get-only properties are not populated during request deserialization.", diagnostics);
                     continue;
                 }
-                ValidateServiceDtoType(property.PropertyType, side, path + "." + property.Name, rootType, diagnostics, stack, depth + 1);
+                ValidateServiceDtoType(property.PropertyType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
             }
 
             stack.Remove(stackKey);
+            if (diagnostics.Count == diagnosticCountBeforeMembers)
+                validatedTypes.Add(stackKey);
         }
 
         private static bool IsScalarDtoType(Type type)

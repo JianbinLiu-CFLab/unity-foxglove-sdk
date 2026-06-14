@@ -62,8 +62,10 @@ namespace Unity.FoxgloveSDK.Editor
             var name = fullName ?? string.Empty;
             return name == "System.Threading.Tasks.Task"
                    || name.StartsWith("System.Threading.Tasks.Task<", StringComparison.Ordinal)
+                   || name.StartsWith("System.Threading.Tasks.Task`", StringComparison.Ordinal)
                    || name == "System.Threading.Tasks.ValueTask"
-                   || name.StartsWith("System.Threading.Tasks.ValueTask<", StringComparison.Ordinal);
+                   || name.StartsWith("System.Threading.Tasks.ValueTask<", StringComparison.Ordinal)
+                   || name.StartsWith("System.Threading.Tasks.ValueTask`", StringComparison.Ordinal);
         }
 
         public static bool IsUnsafeRuntimeHandle(string fullName)
