@@ -490,6 +490,12 @@ namespace Unity.FoxgloveSDK.Editor
                 || IsUnsupportedServiceType(method.ReturnType)
                 || parameters.Any(parameter => IsUnsupportedServiceType(parameter.ParameterType)))
                 throw new InvalidOperationException("FOXSERVICE002: " + target + ": service methods must be non-static, synchronous, non-generic, and accept zero or one serializable DTO parameter.");
+
+            if (parameters.Length == 1)
+                ValidateServiceDtoType(target, attr.Name, parameters[0].ParameterType, FoxServiceDtoRules.RequestSide, "Request");
+
+            if (method.ReturnType != typeof(void))
+                ValidateServiceDtoType(target, attr.Name, method.ReturnType, FoxServiceDtoRules.ResponseSide, "Response");
         }
 
         private static bool IsUnsupportedServiceType(Type type)
@@ -522,6 +528,19 @@ namespace Unity.FoxgloveSDK.Editor
                    && property.PropertyType == typeof(bool)
                    && type != null
                    && (bool)property.GetValue(type);
+        }
+
+        private static void ValidateServiceDtoType(string target, string serviceName, Type type, string side, string rootPath)
+        {
+            var dtoSide = side == FoxServiceDtoRules.RequestSide ? FoxServiceDtoSide.Request : FoxServiceDtoSide.Response;
+            foreach (var diagnostic in FoxServiceDtoReflectionValidator.Validate(type, dtoSide, serviceName))
+            {
+                var message = diagnostic.Id + ": " + target + ": " + diagnostic.FormatTarget(serviceName);
+                if (diagnostic.IsWarning)
+                    Debug.LogWarning("[FoxrunCodeGenerator] " + message);
+                else
+                    throw new InvalidOperationException(message);
+            }
         }
 
         /// <summary>

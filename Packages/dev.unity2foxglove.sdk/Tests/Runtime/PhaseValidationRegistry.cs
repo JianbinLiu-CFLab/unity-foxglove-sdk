@@ -220,6 +220,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase140j", "Phase 140J", Phase140JValidation.Validate, includeInDefault: false),
             Ci("--phase141a", "FoxRun conditional publish gates", FoxRunConditionalPublishGateValidation.Validate, includeInDefault: false),
             Ci("--phase141b", "FoxService declarative RPC", FoxServiceDeclarativeRpcValidation.Validate, includeInDefault: false),
+            Ci("--phase141c", "FoxService DTO serialization analyzer", FoxServiceDtoSerializationAnalyzerValidation.Validate, includeInDefault: false),
             Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 

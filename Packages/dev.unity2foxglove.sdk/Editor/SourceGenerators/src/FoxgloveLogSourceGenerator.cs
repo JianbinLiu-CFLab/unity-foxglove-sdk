@@ -281,14 +281,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 if (parameter.RefKind != RefKind.None || parameter.IsParams)
                     diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
                 requestType = parameter.Type;
-                if (IsUnsupportedServiceDtoType(requestType))
-                    diagnostics.Add(new ServiceDiagnostic("FOXSERVICE003", location, requestType.ToDisplayString()));
+                diagnostics.AddRange(ValidateServiceDtoType(
+                    requestType,
+                    FoxServiceDtoRules.RequestSide,
+                    "Request",
+                    serviceName,
+                    location));
             }
 
             var hasResponse = !symbol.ReturnsVoid;
             var responseType = hasResponse ? symbol.ReturnType : null;
-            if (hasResponse && IsUnsupportedServiceDtoType(responseType))
-                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE004", location, responseType.ToDisplayString()));
+            if (hasResponse)
+                diagnostics.AddRange(ValidateServiceDtoType(
+                    responseType,
+                    FoxServiceDtoRules.ResponseSide,
+                    "Response",
+                    serviceName,
+                    location));
 
             var hasExplicitMetadata = !string.IsNullOrWhiteSpace(serviceType)
                                       && !string.IsNullOrWhiteSpace(requestSchemaName)
@@ -329,24 +338,385 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ? string.Empty
                 : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        private static bool IsUnsupportedServiceDtoType(ITypeSymbol type)
+        private static IEnumerable<ServiceDiagnostic> ValidateServiceDtoType(
+            ITypeSymbol type,
+            string side,
+            string rootPath,
+            string serviceName,
+            Location location)
         {
-            if (type == null)
-                return false;
-            if (type.TypeKind == TypeKind.Pointer || type.TypeKind == TypeKind.TypeParameter)
-                return true;
-            if (type is INamedTypeSymbol named)
+            var diagnostics = new List<FoxServiceDtoDiagnostic>();
+            var stack = new HashSet<string>(StringComparer.Ordinal);
+            var validatedTypes = new HashSet<string>(StringComparer.Ordinal);
+            ValidateServiceDtoType(type, side, rootPath, type, diagnostics, stack, validatedTypes, 0);
+            return diagnostics.Select(diagnostic => new ServiceDiagnostic(
+                diagnostic.Id,
+                location,
+                diagnostic.FormatTarget(serviceName)));
+        }
+
+        private static void ValidateServiceDtoType(
+            ITypeSymbol type,
+            string side,
+            string path,
+            ITypeSymbol rootType,
+            List<FoxServiceDtoDiagnostic> diagnostics,
+            HashSet<string> stack,
+            HashSet<string> validatedTypes,
+            int depth)
+        {
+            if (type == null || type.SpecialType == SpecialType.System_Void)
+                return;
+
+            type = UnwrapNullable(type);
+            var typeName = DiagnosticTypeName(type);
+            var rootName = DisplayTypeName(rootType);
+
+            if (depth > FoxServiceDtoRules.MaxDepth)
             {
-                if (named.IsUnboundGenericType
-                    || named.TypeArguments.Any(argument => argument.TypeKind == TypeKind.TypeParameter)
-                    || named.IsRefLikeType)
+                AddDtoDiagnostic(FoxServiceDtoRules.DepthDiagnosticId, side, rootName, path, typeName, "DTO graph exceeds the supported traversal depth.", diagnostics);
+                return;
+            }
+
+            if (type.TypeKind == TypeKind.Pointer || type.TypeKind == TypeKind.TypeParameter)
+            {
+                AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "Pointer and open generic DTO members cannot be serialized safely.", diagnostics);
+                return;
+            }
+
+            if (type is IArrayTypeSymbol array)
+            {
+                if (array.Rank != 1)
+                {
+                    AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "Only single-dimensional arrays are supported.", diagnostics);
+                    return;
+                }
+
+                ValidateServiceDtoType(array.ElementType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                return;
+            }
+
+            if (!(type is INamedTypeSymbol named))
+            {
+                AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "DTO member type is not a supported named type.", diagnostics);
+                return;
+            }
+
+            if (named.IsUnboundGenericType
+                || named.TypeArguments.Any(argument => argument.TypeKind == TypeKind.TypeParameter)
+                || named.IsRefLikeType)
+            {
+                AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "Open generic and by-ref-like DTO members are unsupported.", diagnostics);
+                return;
+            }
+
+            if (IsScalarDtoType(named) || named.TypeKind == TypeKind.Enum)
+                return;
+
+            var fullName = FullTypeName(named);
+            var stackKey = named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (validatedTypes.Contains(stackKey))
+                return;
+
+            if (FoxServiceDtoTypeNames.IsTaskLike(fullName)
+                || FoxServiceDtoTypeNames.IsUnsafeRuntimeHandle(fullName)
+                || FoxServiceDtoTypeNames.IsFunctionPointerLike(fullName)
+                || IsDelegateType(named)
+                || IsUnityObjectType(named)
+                || named.SpecialType == SpecialType.System_Object)
+            {
+                AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "DTO member type is not JSON DTO serializable.", diagnostics);
+                return;
+            }
+
+            if (TryGetDictionaryValueType(named, out var keyType, out var valueType))
+            {
+                if (!IsStringDtoType(UnwrapNullable(keyType)))
+                {
+                    AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "Dictionary DTO members must use string keys.", diagnostics);
+                    return;
+                }
+
+                ValidateServiceDtoType(valueType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                return;
+            }
+
+            if (TryGetListElementType(named, side, out var elementType))
+            {
+                ValidateServiceDtoType(elementType, side, path, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                return;
+            }
+
+            if (named.TypeKind == TypeKind.Interface)
+            {
+                AddUnsupportedDtoDiagnostic(side, rootName, path, typeName, "Interface DTO members are unsupported unless they are a known collection contract.", diagnostics);
+                return;
+            }
+
+            if (!stack.Add(stackKey))
+            {
+                AddDtoDiagnostic(FoxServiceDtoRules.CycleDiagnosticId, side, rootName, path, typeName, "DTO graph contains a recursive reference.", diagnostics);
+                return;
+            }
+
+            var diagnosticCountBeforeMembers = diagnostics.Count;
+            foreach (var member in InheritedAndDeclaredMembers(named).OrderBy(MemberOrder))
+            {
+                if (member.IsStatic)
+                    continue;
+
+                if (member is IFieldSymbol field)
+                {
+                    if (field.IsConst || field.DeclaredAccessibility != Accessibility.Public)
+                        continue;
+                    if (HasIgnoredSerializationAttribute(field))
+                    {
+                        AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.Type), "Member is ignored by serialization attributes.", diagnostics);
+                        continue;
+                    }
+                    if (field.IsReadOnly)
+                    {
+                        AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.Type), "Readonly fields may serialize but may not round-trip from request JSON.", diagnostics);
+                        continue;
+                    }
+                    ValidateServiceDtoType(field.Type, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                    continue;
+                }
+
+                if (member is IPropertySymbol property)
+                {
+                    if (property.DeclaredAccessibility != Accessibility.Public
+                        || property.IsIndexer
+                        || property.GetMethod == null)
+                        continue;
+                    if (HasIgnoredSerializationAttribute(property))
+                    {
+                        AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.Type), "Member is ignored by serialization attributes.", diagnostics);
+                        continue;
+                    }
+                    if (property.SetMethod == null)
+                    {
+                        if (TryGetListElementType(property.Type, side, out var getOnlyElementType)
+                            && IsMutableCollectionContract(property.Type))
+                        {
+                            ValidateServiceDtoType(getOnlyElementType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
+                        AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.Type), "Get-only properties are not populated during request deserialization.", diagnostics);
+                        continue;
+                    }
+                    ValidateServiceDtoType(property.Type, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                }
+            }
+
+            stack.Remove(stackKey);
+            if (diagnostics.Count == diagnosticCountBeforeMembers)
+                validatedTypes.Add(stackKey);
+        }
+
+        private static IEnumerable<ISymbol> InheritedAndDeclaredMembers(INamedTypeSymbol type)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var hierarchy = new Stack<INamedTypeSymbol>();
+            for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+                hierarchy.Push(current);
+
+            while (hierarchy.Count > 0)
+            {
+                foreach (var member in hierarchy.Pop().GetMembers())
+                {
+                    if (member is IFieldSymbol field)
+                    {
+                        if (seen.Add("F:" + field.Name))
+                            yield return field;
+                    }
+                    else if (member is IPropertySymbol property)
+                    {
+                        if (seen.Add("P:" + property.Name))
+                            yield return property;
+                    }
+                }
+            }
+        }
+
+        private static ITypeSymbol UnwrapNullable(ITypeSymbol type)
+        {
+            if (type is INamedTypeSymbol named
+                && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+                && named.TypeArguments.Length == 1)
+                return named.TypeArguments[0];
+            return type;
+        }
+
+        private static bool IsScalarDtoType(INamedTypeSymbol named)
+            => IsPrimitiveDtoType(named) || FoxServiceDtoTypeNames.IsScalar(FullTypeName(named));
+
+        private static bool IsPrimitiveDtoType(ITypeSymbol type)
+        {
+            switch (type.SpecialType)
+            {
+                case SpecialType.System_Boolean:
+                case SpecialType.System_Byte:
+                case SpecialType.System_SByte:
+                case SpecialType.System_Int16:
+                case SpecialType.System_UInt16:
+                case SpecialType.System_Int32:
+                case SpecialType.System_UInt32:
+                case SpecialType.System_Int64:
+                case SpecialType.System_UInt64:
+                case SpecialType.System_Single:
+                case SpecialType.System_Double:
+                case SpecialType.System_Decimal:
+                case SpecialType.System_String:
+                case SpecialType.System_Char:
                     return true;
-                var fullName = named.ToDisplayString();
-                if (fullName == "System.Void" || fullName.StartsWith("System.Threading.Tasks.Task", StringComparison.Ordinal))
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsStringDtoType(ITypeSymbol type)
+            => type != null && type.SpecialType == SpecialType.System_String;
+
+        private static bool TryGetListElementType(INamedTypeSymbol named, out ITypeSymbol elementType)
+            => TryGetListElementType(named, FoxServiceDtoRules.RequestSide, out elementType);
+
+        private static bool TryGetListElementType(ITypeSymbol type, string side, out ITypeSymbol elementType)
+            => TryGetListElementType(type as INamedTypeSymbol, side, out elementType);
+
+        private static bool TryGetListElementType(INamedTypeSymbol named, string side, out ITypeSymbol elementType)
+        {
+            elementType = null;
+            if (named == null || named.TypeArguments.Length != 1)
+                return false;
+
+            var contract = named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                .Replace("global::", string.Empty);
+            if (!FoxServiceDtoTypeNames.IsListContract(contract, side))
+                return false;
+
+            elementType = named.TypeArguments[0];
+            return true;
+        }
+
+        private static bool IsMutableCollectionContract(ITypeSymbol type)
+        {
+            if (!(type is INamedTypeSymbol named) || named.TypeArguments.Length != 1)
+                return false;
+
+            var contract = named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                .Replace("global::", string.Empty);
+            return FoxServiceDtoTypeNames.IsMutableCollectionContract(contract);
+        }
+
+        private static bool TryGetDictionaryValueType(INamedTypeSymbol named, out ITypeSymbol keyType, out ITypeSymbol valueType)
+        {
+            keyType = null;
+            valueType = null;
+            if (named.TypeArguments.Length != 2)
+                return false;
+
+            var contract = named.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                .Replace("global::", string.Empty);
+            if (!FoxServiceDtoTypeNames.IsDictionaryContract(contract))
+                return false;
+
+            keyType = named.TypeArguments[0];
+            valueType = named.TypeArguments[1];
+            return true;
+        }
+
+        private static bool IsDelegateType(INamedTypeSymbol named)
+        {
+            for (var current = named; current != null; current = current.BaseType)
+            {
+                var fullName = FullTypeName(current);
+                if (fullName == "System.Delegate" || fullName == "System.MulticastDelegate")
                     return true;
             }
             return false;
         }
+
+        private static bool IsUnityObjectType(INamedTypeSymbol named)
+        {
+            for (var current = named; current != null; current = current.BaseType)
+            {
+                if (FullTypeName(current) == "UnityEngine.Object")
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool HasIgnoredSerializationAttribute(ISymbol symbol)
+            => symbol.GetAttributes().Any(attribute =>
+            {
+                var name = attribute.AttributeClass == null ? string.Empty : FullTypeName(attribute.AttributeClass);
+                return name == "Newtonsoft.Json.JsonIgnoreAttribute"
+                       || name == "System.Text.Json.Serialization.JsonIgnoreAttribute"
+                       || name == "System.NonSerializedAttribute";
+            });
+
+        private static int MemberOrder(ISymbol symbol)
+            => symbol.Locations.FirstOrDefault(candidate => candidate.IsInSource)?.SourceSpan.Start ?? int.MaxValue;
+
+        private static string FullTypeName(ITypeSymbol type)
+            => type == null
+                ? string.Empty
+                : FoxServiceDtoTypeNames.Normalize(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", string.Empty));
+
+        private static string DisplayTypeName(ITypeSymbol type)
+            => type == null
+                ? string.Empty
+                : FoxServiceDtoTypeNames.Normalize(type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+
+        private static string DiagnosticTypeName(ITypeSymbol type)
+        {
+            if (type == null)
+                return string.Empty;
+
+            if (type.SpecialType == SpecialType.System_Object)
+                return "object";
+
+            if (IsPrimitiveDtoType(type))
+                return DisplayTypeName(type);
+
+            return FullTypeName(type);
+        }
+
+        private static void AddUnsupportedDtoDiagnostic(
+            string side,
+            string rootType,
+            string path,
+            string offendingType,
+            string reason,
+            List<FoxServiceDtoDiagnostic> diagnostics)
+            => AddDtoDiagnostic(FoxServiceDtoRules.UnsupportedDiagnosticId(side), side, rootType, path, offendingType, reason, diagnostics);
+
+        private static void AddDtoWarning(
+            string side,
+            string rootType,
+            string path,
+            string offendingType,
+            string reason,
+            List<FoxServiceDtoDiagnostic> diagnostics)
+            => AddDtoDiagnostic(FoxServiceDtoRules.WarningDiagnosticId, side, rootType, path, offendingType, reason, diagnostics);
+
+        private static void AddDtoDiagnostic(
+            string id,
+            string side,
+            string rootType,
+            string path,
+            string offendingType,
+            string reason,
+            List<FoxServiceDtoDiagnostic> diagnostics)
+            => diagnostics.Add(new FoxServiceDtoDiagnostic(
+                id,
+                id == FoxServiceDtoRules.WarningDiagnosticId || id == FoxServiceDtoRules.DepthDiagnosticId,
+                side,
+                rootType,
+                path,
+                offendingType,
+                reason));
 
         private static bool TryReadFloatConstant(TypedConstant constant, out float value)
         {
@@ -932,6 +1302,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "FoxService '{0}' omits Type, RequestSchemaName, or ResponseSchemaName; generated stable defaults will be used",
                 "FoxService", DiagnosticSeverity.Warning, true);
 
+            public static readonly DiagnosticDescriptor ServiceDtoWarning = new DiagnosticDescriptor(
+                "FOXSERVICE007", "FoxService DTO member may not serialize",
+                "{0}",
+                "FoxService", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor RecursiveServiceDto = new DiagnosticDescriptor(
+                "FOXSERVICE008", "FoxService DTO graph is recursive",
+                "{0}",
+                "FoxService", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor DeepServiceDto = new DiagnosticDescriptor(
+                "FOXSERVICE009", "FoxService DTO graph is too deep",
+                "{0}",
+                "FoxService", DiagnosticSeverity.Warning, true);
+
             public static DiagnosticDescriptor Shared(string id)
             {
                 switch (id)
@@ -966,6 +1351,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXSERVICE004": return UnsupportedServiceResponseType;
                     case "FOXSERVICE005": return DuplicateServiceName;
                     case "FOXSERVICE006": return MissingExplicitServiceSchemaMetadata;
+                    case "FOXSERVICE007": return ServiceDtoWarning;
+                    case "FOXSERVICE008": return RecursiveServiceDto;
+                    case "FOXSERVICE009": return DeepServiceDto;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped FoxService diagnostic id.");
                 }
