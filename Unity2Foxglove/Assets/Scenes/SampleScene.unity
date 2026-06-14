@@ -284,10 +284,18 @@ MonoBehaviour:
   _height: 480
   _jpegQuality: 70
   _maxPendingReadbacks: 1
+  _useAsyncJpeg: 1
+  _maxJpegEncodeQueue: 2
+  _maxCompletedJpegQueue: 2
+  _maxCompletedJpegPublishesPerFrame: 1
+  _maxPixelsPerFrame: 0
+  _logCameraDiagnostics: 0
+  _cameraDiagnosticsIntervalSeconds: 2
   _ffmpegPath: 
   _videoBitrateKbps: 4000
   _videoKeyframeInterval: 30
   _videoMaxOutputQueue: 4
+  _logVideoDiagnostics: 0
   _logEncoderStderr: 0
   _openH264HelperPath: 
   _openH264DllPath: 
@@ -296,6 +304,11 @@ MonoBehaviour:
   _backpressureCooldownSeconds: 0.5
   _maxEncodedBytes: 0
   _logBackpressureSkips: 0
+  _sensorUnitProfile: {fileID: 0}
+  _useSharedSensorClock: 1
+  _publishStandardRos2CompressedImage: 0
+  _publishStandardRos2RawImage: 0
+  _sensorCameraRawImageTopic: /unity/sensor/camera/image
 --- !u!1 &346350280
 GameObject:
   m_ObjectHideFlags: 0
@@ -327,12 +340,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
+  _publishCadenceDiagnosticsEnabled: 0
+  _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
+  _frameStallDiagnosticsEnabled: 0
+  _frameStallDiagnosticsThresholdMs: 200
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
   _transportMode: 0
+  _transportModeBeforeOutputDisabled: 0
+  _foxgloveOutputEnabled: 1
+  _ros2NativeEnabled: 0
   _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
@@ -367,6 +387,14 @@ MonoBehaviour:
   _replayFilePath: 
   _replayAutoPlay: 0
   _disableLivePublishers: 0
+  _enableRemoteMcapFileServer: 0
+  _remoteMcapFileServerHost: 127.0.0.1
+  _remoteMcapFileServerPort: 8891
+  _remoteMcapFileServerSourceId: local-mcap
+  _enableReplayCursorBridge: 0
+  _replayCursorBridgeHost: 127.0.0.1
+  _replayCursorBridgePort: 8892
+  _replayCursorBridgeToken:
   _identityModeSource: 0
   _identityModeOverride: 2
   _projectSettingsIdentityMode: 0
@@ -702,7 +730,20 @@ MonoBehaviour:
   _samplingMode: 1
   _voxelSizeMeters: 0.1
   _logQosDrops: 0
+  _logPerformanceDiagnostics: 0
   _includeSyntheticIntensity: 0
+  _publishPointCloud2NativeTfAnchor: 0
+  _pointCloud2NativeTfParentFrame: map
+  _pointCloud2NativeTfChildFrame:
+  _pointCloud2NativeTfTranslation: {x: 0, y: 0, z: 0}
+  _pointCloud2NativeTfRotationEuler: {x: 0, y: 0, z: 0}
+  _enableMotionCompensation: 0
+  _motionCompensationOutputPolicy: 1
+  _deskewedPointCloud2NativeTopic: /unity/point_cloud2_deskewed
+  _motionCompensationReferenceTime: 0
+  _motionCompensationSource: 0
+  _nativeDracoMaxPublishRateHz: 0
+  _suppressTransformFallbackAfterSourceFrames: 1
 --- !u!4 &908391463
 Transform:
   m_ObjectHideFlags: 0
@@ -844,6 +885,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
+  telemetryEnabled: 1
+  isPaused: 0
+  conditionalPosition: {x: 0, y: 0, z: 0}
+  conditionalHealth: 100
 --- !u!1 &1691798670
 GameObject:
   m_ObjectHideFlags: 0
@@ -976,6 +1021,8 @@ MonoBehaviour:
   _ros2BridgeTopicOverride: 
   _parentFrameId: unity_world
   _childFrameId: 
+  _useLocalTransform: 0
+  _useSharedSensorClock: 1
 --- !u!65 &2004464834
 BoxCollider:
   m_ObjectHideFlags: 0
