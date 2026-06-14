@@ -173,7 +173,10 @@ namespace Unity.FoxgloveSDK.Protocol
                  | ((ulong)buf[offset + 6] << 48)
                  | ((ulong)buf[offset + 7] << 56);
         }
-        // ── Phase 9: fetchAssetResponse ──
+        private const byte FetchAssetStatusSuccess = 0;
+        private const byte FetchAssetStatusError = 1;
+
+        // fetchAssetResponse frames
 
         /// <summary>Encode a successful fetchAssetResponse.</summary>
         public static byte[] EncodeFetchAssetResponseSuccess(uint requestId, byte[] payload)
@@ -181,7 +184,7 @@ namespace Unity.FoxgloveSDK.Protocol
             var frame = new byte[1 + 4 + 1 + 4 + (payload?.Length ?? 0)];
             frame[0] = ServerOpcode.FetchAssetResponse;
             WriteU32LE(frame, 1, requestId);
-            frame[5] = 0; // status: success
+            frame[5] = FetchAssetStatusSuccess;
             WriteU32LE(frame, 6, 0u);
             if (payload != null && payload.Length > 0)
                 Buffer.BlockCopy(payload, 0, frame, 10, payload.Length);
@@ -195,13 +198,13 @@ namespace Unity.FoxgloveSDK.Protocol
             var frame = new byte[1 + 4 + 1 + 4 + errBytes.Length];
             frame[0] = ServerOpcode.FetchAssetResponse;
             WriteU32LE(frame, 1, requestId);
-            frame[5] = 1; // status: error
+            frame[5] = FetchAssetStatusError;
             WriteU32LE(frame, 6, (uint)errBytes.Length);
             Buffer.BlockCopy(errBytes, 0, frame, 10, errBytes.Length);
             return frame;
         }
 
-        // ── Phase 9: PlaybackControl ──
+        // PlaybackControl frames
 
         /// <summary>Maximum UTF-8 byte length accepted for PlaybackControl request ids.</summary>
         public const int MaxPlaybackRequestIdBytes = 256;

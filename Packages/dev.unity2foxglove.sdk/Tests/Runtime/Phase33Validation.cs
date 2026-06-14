@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!result.ShouldDisconnect, "33A-3k: oversized data rejection does not request disconnect");
             Check(result.DroppedDataFrames == 2, "33A-3l: stale queued data and oversized data are both counted dropped");
             Check(queue.Count == 0, "33A-3m: byte-limit rejection leaves queue empty");
-            Check(queue.DroppedDataFrames == 2, "33A-3n: cumulative byte-limit drop count is updated");
+            Check(queue.DroppedDataFramesSnapshot == 2, "33A-3n: cumulative byte-limit drop count is updated");
         }
 
         private static void TestWebSocketHeaderLengths()
