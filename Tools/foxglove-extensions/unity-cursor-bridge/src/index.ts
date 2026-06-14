@@ -24,16 +24,17 @@ const DEFAULT_MAX_HZ = 60;
 // stalled, half-open port, browser network-stack hiccup), abort it so in-flight backpressure
 // cannot wedge the panel into a permanent "no more cursors" state. The next render retries.
 const REQUEST_TIMEOUT_MS = 2000;
-// Stage 3 (140K): max replay time a single follow step may advance. Kept under Unity's 500 ms
+// Stage 3 (140K): max replay time a single follow step may advance. Kept well under Unity's 500 ms
 // external-cursor seek threshold so every step stays on the cheap forward-advance path. It also
-// bounds catch-up after a stall: instead of one huge jump, follow advances at most this much per
-// step and lets real time re-accumulate.
-const MAX_FOLLOW_STEP_MS = 400;
+// bounds catch-up after a stall (no one huge jump) and effectively caps playback speed relative to
+// ACK latency: when Unity is heavy (ACK period > this), follow slows gracefully instead of jumping.
+const MAX_FOLLOW_STEP_MS = 150;
 // Stage 3 (140K): the cursor stream to Unity runs at the full cursor rate, but seekPlayback is a
 // "jump" (Foxglove reloads the frame at the target time), so calling it every cursor strobes the
-// Foxglove panels (point clouds flicker). Throttle the UI catch-up seek to this interval; Unity
-// stays smooth, the Foxglove UI just refreshes a few times per second.
-const SEEK_UI_INTERVAL_MS = 200;
+// Foxglove panels (point clouds flicker). Throttle the UI catch-up seek to this interval (~10 Hz);
+// Unity stays smooth, the Foxglove UI refreshes a few times per second. This is the main knob for
+// the point-cloud flicker / continuity trade-off — lower = more continuous but more frame reloads.
+const SEEK_UI_INTERVAL_MS = 100;
 const WAITING_REPLAY_TIME_TEXT = "Waiting for Foxglove playback";
 
 // Stage 3 (140K): seekPlayback is an undocumented PanelExtensionContext method reached via

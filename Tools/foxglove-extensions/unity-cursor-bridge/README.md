@@ -126,13 +126,16 @@ seek threshold so Unity stays on its cheap forward-advance path. If Unity cannot
 keep up, the loop slows gracefully instead of jumping.
 
 The cursor stream to Unity runs at the full cursor rate, but the best-effort
-`seekPlayback` that drags the Foxglove UI along is throttled (~5 Hz). Because
-`seekPlayback` is a *jump* (Foxglove reloads the frame at the target time),
-calling it every cursor strobes the Foxglove panels — point clouds in particular
-flicker. Throttling reduces that, but some flicker is inherent to seek-driving:
-treat **Unity as the smooth view** and the Foxglove panels as a coarse follow.
-The panel's `Replay time` readout still advances smoothly because it shows the
-internal clock, not the (throttled) Foxglove playhead.
+`seekPlayback` that drags the Foxglove UI along is throttled (~10 Hz, the
+`SEEK_UI_INTERVAL_MS` constant). Because `seekPlayback` is a *jump* (Foxglove
+reloads the frame at the target time), calling it every cursor strobes the
+Foxglove panels — point clouds in particular flicker. Throttling reduces that,
+but some flicker is inherent to seek-driving: treat **Unity as the smooth view**
+and the Foxglove panels as a coarse follow. The panel's `Replay time` readout
+still advances smoothly because it shows the internal clock, not the (throttled)
+Foxglove playhead. `SEEK_UI_INTERVAL_MS` is the main tuning knob — lower it for a
+more continuous Foxglove UI at the cost of more frame reloads, raise it for fewer
+reloads.
 
 Because of this, Follow is mainly worth it when Unity is the bottleneck (heavy
 scenes that drop frames chasing Foxglove). For light scenes, leaving Follow
