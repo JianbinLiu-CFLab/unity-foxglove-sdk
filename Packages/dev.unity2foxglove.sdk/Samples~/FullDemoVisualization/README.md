@@ -8,7 +8,7 @@ It demonstrates the main package workflows together:
 
 - live transform, scene, and camera streaming;
 - Parameters;
-- Services;
+- declarative `[FoxService]` Services;
 - FoxRun auto-published debug topics;
 - MCAP recording/replay settings;
 - a preconfigured Foxglove Desktop layout.
@@ -60,7 +60,7 @@ Assets/Samples/Unity2Foxglove SDK/<version>/Full Demo Visualization/
 
 | GameObject | Components | Purpose |
 |------------|------------|---------|
-| Foxglove | `FoxgloveManager`, `FoxgloveDemoSetup` | Starts the server, registers parameters/services, and owns recording/replay settings |
+| Foxglove | `FoxgloveManager`, `FoxgloveDemoSetup` | Starts the server, registers parameters, exposes `/cube/reset_pose` with `[FoxService]`, and owns recording/replay settings |
 | Cube | `FoxgloveTransformPublisher`, `FoxgloveSceneCubePublisher`, `MouseDragCube` | Publishes transform/scene data and supports mouse-driven interaction |
 | Main Camera | `FoxgloveCameraPublisher` | Streams `/unity/camera` |
 | TestLog | `TestLog` with `[FoxRun]` fields | Publishes `/debug/position`, `/debug/position2`, and `/debug/health` |
@@ -98,7 +98,7 @@ Foxglove should show:
 | Image | The Unity camera stream appears on `/unity/camera` |
 | Plot | `/tf.translation.*` values update as the cube moves |
 | Parameters | `/cube/color` and `/cube/scale` are editable |
-| Service Call | `/cube/reset_pose` resets the cube with `{}` |
+| Service Call | Declarative `/cube/reset_pose` resets the cube with `{}` |
 | Raw Messages | FoxRun debug topics publish live values |
 
 ## Interaction Checks
@@ -108,7 +108,7 @@ Foxglove should show:
 - Scroll to scale the cube.
 - Change `/cube/color` in the Parameters panel and confirm the cube color changes.
 - Change `/cube/scale` and confirm the cube size changes.
-- Call `/cube/reset_pose` with `{}` and confirm the cube returns to its default pose.
+- Call `/cube/reset_pose` with `{}` and confirm the cube returns to its default pose and responds with `status: "ok"`.
 
 ## Notes
 

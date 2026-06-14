@@ -76,8 +76,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                     new ServiceDescriptor
                     {
                         Name = "/svc", Type = "/svc",
-                        Request = new ServiceSchemaDescriptor { SchemaName = "/req", Encoding = "jsonschema" },
-                        Response = new ServiceSchemaDescriptor { SchemaName = "/resp", Encoding = "jsonschema" }
+                        Request = new ServiceSchemaDescriptor { SchemaName = "/req", Encoding = "json" },
+                        Response = new ServiceSchemaDescriptor { SchemaName = "/resp", Encoding = "json" }
                     }
                 }
             };

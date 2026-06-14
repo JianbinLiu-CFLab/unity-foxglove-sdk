@@ -1,139 +1,153 @@
 # 1. Parameters 与 Services
 
-Foxglove WebSocket 协议中的 Parameters 和 Services 是两个独立的通信机制，与 Topic（话题）发布/订阅不同。本文档说明它们的用途、在 SDK 中的配置方式和在 Foxglove 中的操作步骤。
+Foxglove WebSocket 协议中的 Parameters 与 Services 是两种独立机制：
 
-## 1.1 目的
+- Parameters：运行时状态读写，适合颜色、缩放、速度、开关等可调值。
+- Services：请求/响应动作，适合 reset、capture、start、stop 等一次性操作。
 
-这份文档用于说明如何把 Unity 运行时参数和可触发动作暴露给 Foxglove。
+## 2. Parameters
 
-## 1.2 应用场景
+Full Demo 中常用参数：
 
-当你希望 Foxglove 修改 Unity 中的颜色、缩放、开关、速度等值，或触发 reset、capture、start、stop 等动作时，使用 Parameters 和 Services。
+| 参数 | 示例值 | 作用 |
+|---|---:|---|
+| `/cube/color` | `[0, 1, 0, 1]` | Cube RGBA 颜色 |
+| `/cube/scale` | `1` | Cube 统一缩放 |
 
-## 1.3 Parameters（参数）
+在 Foxglove 中：
 
-### 用途
+1. 打开 **Parameters** 面板。
+2. 连接 Unity：`ws://127.0.0.1:8765`。
+3. 修改 `/cube/color` 或 `/cube/scale`。
+4. 回到 Unity，确认 Cube 颜色或大小变化。
 
-Parameters 让 Foxglove 侧可以**读取和修改** Unity 中的运行时变量。典型场景：
-
-- 修改 Cube 颜色 `/cube/color`
-- 修改 Cube 缩放 `/cube/scale`
-- 读取或修改任何需要在运行时调整的数值
-
-### 在 Foxglove 中操作
-
-1. 打开 **Parameters 面板**（不是 Topics 面板！Parameters 有独立的面板）
-2. 面板中会列出所有已注册的参数，如 `/cube/color`、`/cube/scale`
-3. 点击参数旁的编辑图标修改值，Unity 侧实时响应
-4. 修改后可通过 `parametersSubscribe` 机制推送到所有已连接的 Foxglove 客户端
-
-### 在 Unity 中注册参数
-
-**方式一：拖拽式（推荐）**
-
-在需要暴露参数的 GameObject 上添加 `FoxgloveParameterComponent`：
-
-- **Parameter Name**：如 `/cube/color`
-- **Type**：如 `json`（支持 int、float、string、json）
-- **Writable**：勾选表示 Foxglove 侧可以修改
-- **Default Value**：初始值，如 `[0, 1, 0, 1]`
-
-**方式二：代码注册**
+代码注册示例：
 
 ```csharp
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 
-var mgr = FindFirstObjectByType<FoxgloveManager>();
-mgr.RegisterParameter("/my/param", JToken.FromObject(42), "int", writable: true);
+var manager = FindFirstObjectByType<FoxgloveManager>();
+manager.RegisterParameter("/my/param", JToken.FromObject(42), "int", writable: true);
 ```
 
-可以通过 `FoxgloveManager.Runtime.Parameters` 在运行时动态修改参数值。
+## 3. Services
 
-### 录制
+Services 是请求/响应动作。Foxglove 发起请求，Unity 在主线程执行 handler，然后返回响应。
 
-MCAP 录制时会自动记录：
-- 录制开始时的参数快照（`foxglove.parameters.snapshot` metadata）
-- 录制过程中每次参数变化的记录（`foxglove.parameters` metadata）
+Full Demo 中主要服务：
 
----
+| 服务 | 请求 | 响应 | 作用 |
+|---|---|---|---|
+| `/cube/reset_pose` | `{}` | `{"status":"ok"}` | 重置 Cube 位置、旋转和缩放 |
 
-## Services（服务）
+## 4. 使用 `[FoxService]`
 
-### 用途
+推荐用 `[FoxService]` 把 Unity 方法声明为服务。声明类必须是 `partial`，这样生成代码可以直接调用你的方法，不需要运行时反射。
 
-Services 提供 **请求-响应** 模式。Foxglove 侧发起一个调用请求，Unity 侧执行并返回结果。典型场景：
+```csharp
+using Unity.FoxgloveSDK.Components;
 
-- `/cube/reset_pose`：将 Cube 恢复到初始位置、旋转、缩放
-- 任何需要 Unity 执行动作并返回结果的场景
+public partial class CubeControls : MonoBehaviour
+{
+    [FoxService(
+        "/cube/reset_pose",
+        Type = "Unity2Foxglove.Demo.ResetPose",
+        RequestSchemaName = "Unity2Foxglove.Demo.ResetPoseRequest",
+        ResponseSchemaName = "Unity2Foxglove.Demo.ResetPoseResponse")]
+    private ResetPoseResponse ResetPose(ResetPoseRequest request)
+    {
+        transform.position = Vector3.zero;
+        return new ResetPoseResponse { status = "ok" };
+    }
 
-### 在 Foxglove 中操作
+    private sealed class ResetPoseRequest {}
+    private sealed class ResetPoseResponse { public string status; }
+}
+```
 
-1. 打开 **Service Call 面板**
-2. 从下拉列表中选择服务名，如 `/cube/reset_pose`
-3. Request 框中填入参数（大多数情况填 `{}` 即可——注意 `{}` 是合法 JSON）
-4. 点击 **Call service** 按钮
-5. 等待 Unity 执行并返回结果（默认 5 秒超时）
+支持的形态：
 
-> **常见误解**：Service name 是在下拉列表中选择的，**不要**把 service name 填进 request JSON。request 只需要填参数。
+- 实例方法；
+- 0 个或 1 个请求参数；
+- 可被 Newtonsoft JSON 序列化的 request/response DTO；
+- `void` 返回值，此时响应为 `{}`；
+- `partial` 类中的 `private` 方法。
 
-### 在 Unity 中注册服务
+会被拒绝的形态：
+
+- static、generic、async 方法；
+- `ref`、`out`、`in` 参数；
+- 超过 1 个请求参数；
+- open generic、pointer、by-ref、ref-like DTO；
+- `Task` 返回值；
+- 重复服务名。
+
+Editor 中由 Roslyn source generator 生成 wrapper。Player 构建前，SDK 会写出物理 `*_FoxService.g.cs` fallback 文件，所以 IL2CPP 不需要运行时反射调用。
+
+## 5. 在 Foxglove 调用服务
+
+1. 添加 **Service Call** 面板。
+2. 在面板设置里选择或输入 `/cube/reset_pose`。
+3. 请求体填写：
+
+```json
+{}
+```
+
+4. 点击调用按钮。
+5. 确认 Unity 中 Cube 回到默认位姿，并看到 `status: "ok"` 响应。
+
+> 不要把服务名写进 request JSON。服务名属于面板设置，请求体只写 JSON payload。
+
+## 6. 手动注册 API
+
+当服务需要动态创建或销毁时，可以继续使用手动 API。
 
 ```csharp
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Protocol;
 
-var descriptor = new ServiceDescriptor
+var manager = FindFirstObjectByType<FoxgloveManager>();
+uint serviceId = manager.RegisterService(new ServiceDescriptor
 {
-    Name = "/cube/reset_pose",
+    Name = "/my/reset",
     Type = "json",
-    RequestSchema = "{}",
-    ResponseSchema = "{}"
-};
-
-var mgr = FindFirstObjectByType<FoxgloveManager>();
-uint serviceId = mgr.RegisterService(descriptor, handler: (request) =>
+    Request = new ServiceSchemaDescriptor
+    {
+        Encoding = "json",
+        SchemaName = "MyResetRequest",
+        Schema = "{}"
+    },
+    Response = new ServiceSchemaDescriptor
+    {
+        Encoding = "json",
+        SchemaName = "MyResetResponse",
+        Schema = "{}"
+    }
+},
+request =>
 {
-    // request 是 JToken，即 Foxglove 侧发来的参数
-    // 执行你的业务逻辑
-    cube.transform.position = Vector3.zero;
-    // 返回结果
+    transform.position = Vector3.zero;
     return JToken.FromObject(new { status = "ok" });
 });
 ```
 
-Handler 在主线程执行（通过 `DrainServiceCalls()` 调度），可以直接访问 Unity API。
+静态服务优先使用 `[FoxService]`；动态服务再使用 `RegisterService`。
 
-### 超时与错误
+## 7. 常见排查
 
-- 默认超时时间：`FoxgloveServiceRegistry.DefaultTimeout`
-- 如果 handler 未在超时内完成，会自动发送 `serviceCallFailure`
-- Handler 内抛出的异常会被捕获并转换为 failure 响应
+参数列表为空时，确认：
 
-### 录制
+- Unity 正在 Play Mode；
+- Foxglove 已连接 `ws://127.0.0.1:8765`；
+- 使用的是 Full Demo，而不是 Basic sample；
+- Demo 里的 `FoxgloveDemoSetup` 组件处于启用状态。
 
-MCAP 录制时会记录每次 service call 的完成/失败状态（`foxglove.services` metadata）。
+服务调用超时时，确认：
 
----
-
-## FoxgloveDemoSetup 参考
-
-Demo 项目中的 `Unity2Foxglove/Assets/Scripts/FoxgloveDemoSetup.cs` 是一个完整的 Parameters + Services 示例，包含：
-
-- 注册 `/cube/color`（可写 json 参数）
-- 注册 `/cube/scale`（可写 float 参数）
-- 注册 `/cube/reset_pose`（服务，返回 `{"status":"ok"}`）
-- 监听参数变化事件，实时更新 Cube 的 Material.color 和 transform.localScale
-
-建议参考此脚本了解完整用法。
-
----
-
-## 与 Topics 的对比
-
-| 特性 | Topics（话题） | Parameters（参数） | Services（服务） |
-|------|---------------|-------------------|-----------------|
-| 通信模式 | 发布/订阅（单向流） | 读取/写入（双向状态同步） | 请求/响应（RPC） |
-| 面板 | Topics、3D、Plot、Image | Parameters | Service Call |
-| 典型用途 | 实时数据流（Transform、Camera） | 可调配置（颜色、缩放） | 动作触发（复位、切换模式） |
-| 录制支持 | 是（消息记录在 chunk 中） | 是（metadata） | 是（metadata） |
+- Service Call 面板选择的是 `/cube/reset_pose`；
+- 请求体是合法 JSON，通常是 `{}`；
+- Unity Console 没有服务 handler 错误；
+- Unity 仍在 Play Mode。

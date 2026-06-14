@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
@@ -100,12 +101,13 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var result = new List<string>();
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            var serviceScan = ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);
             var byClass = scan.ByClass;
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
             var outputDirectory = Path.Combine(Application.dataPath, "Scripts/Generated");
 
-            if (byClass.Count > 0)
+            if (byClass.Count > 0 || serviceScan.ByClass.Count > 0)
             {
                 Directory.CreateDirectory(outputDirectory);
 
@@ -114,6 +116,22 @@ namespace Unity.FoxgloveSDK.Editor
                     var kv = (Key: (Ns: type.Namespace, ClassName: type.ClassName), Value: type);
                     var source = EmitSourceFile(kv.Value);
                     var fileName = FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
+                    var absolutePath = Path.Combine(outputDirectory, fileName);
+                    var sourceBytes = Utf8NoBom.GetBytes(source);
+
+                    if (WriteSourceFileIfChanged(absolutePath, sourceBytes))
+                    {
+                        Debug.Log($"[FoxrunCodeGenerator] Generated {fileName}");
+                    }
+
+                    result.Add(fileName);
+                }
+
+                foreach (var kv in serviceScan.ByClass
+                             .OrderBy(item => string.IsNullOrEmpty(item.Key.Ns) ? item.Key.ClassName : item.Key.Ns + "." + item.Key.ClassName, StringComparer.Ordinal))
+                {
+                    var source = EmitServiceSourceFile(kv.Key.Ns, kv.Key.ClassName, kv.Value);
+                    var fileName = FoxServiceSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
                     var absolutePath = Path.Combine(outputDirectory, fileName);
                     var sourceBytes = Utf8NoBom.GetBytes(source);
 
@@ -338,6 +356,174 @@ namespace Unity.FoxgloveSDK.Editor
             return result;
         }
 
+        private static FoxServiceScanResult ScanFoxServiceMethods(bool ignoreReflectionTypeLoadExceptions)
+        {
+            var entries = new List<FoxServiceScanEntry>();
+
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var type in asm.GetTypes())
+                    {
+                        if (!type.IsClass || type.IsAbstract) continue;
+                        if (!IsPartial(type)) continue;
+                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
+
+                        var methods = ScanServiceType(type);
+                        if (methods.Count == 0) continue;
+
+                        var ns = type.Namespace ?? "";
+                        var key = (ns, type.Name);
+                        var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;
+
+                        foreach (var method in methods)
+                            entries.Add(new FoxServiceScanEntry(key, owner, method));
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    if (!ignoreReflectionTypeLoadExceptions)
+                        throw;
+                    WarnSkippedAssembly(asm, ex);
+                }
+            }
+
+            var duplicateNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var group in entries.GroupBy(entry => entry.Method.ServiceName, StringComparer.Ordinal))
+            {
+                if (group.Count() <= 1)
+                    continue;
+
+                duplicateNames.Add(group.Key);
+                var owners = string.Join(", ", group.Select(entry => entry.Owner).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray());
+                Debug.LogError("[FoxrunCodeGenerator] FOXSERVICE005: duplicate service name '" + group.Key + "' on " + owners + "; skipping duplicate generated service wrappers.");
+            }
+
+            var byClass = new Dictionary<(string Ns, string ClassName), List<FoxServiceSourceEmitter.ServiceMethod>>();
+            foreach (var entry in entries
+                         .Where(entry => !duplicateNames.Contains(entry.Method.ServiceName))
+                         .OrderBy(entry => entry.Method.ServiceName, StringComparer.Ordinal))
+            {
+                if (!byClass.TryGetValue(entry.Key, out var list))
+                    byClass[entry.Key] = list = new List<FoxServiceSourceEmitter.ServiceMethod>();
+                list.Add(entry.Method);
+            }
+
+            return new FoxServiceScanResult(byClass);
+        }
+
+        private static List<FoxServiceSourceEmitter.ServiceMethod> ScanServiceType(Type type)
+        {
+            var result = new List<FoxServiceSourceEmitter.ServiceMethod>();
+            var seenNames = new HashSet<string>(StringComparer.Ordinal);
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly;
+            var ns = type.Namespace ?? "";
+            var className = type.Name;
+
+            foreach (var method in type.GetMethods(flags))
+            {
+                if (method.IsSpecialName)
+                    continue;
+
+                var attrs = method.GetCustomAttributes<FoxServiceAttribute>();
+                foreach (var attr in attrs)
+                {
+                    var target = (string.IsNullOrEmpty(ns) ? className : ns + "." + className) + "." + method.Name;
+                    ValidateServiceMethod(target, method, attr, seenNames);
+
+                    var parameters = method.GetParameters();
+                    var hasRequest = parameters.Length == 1;
+                    var requestType = hasRequest ? parameters[0].ParameterType : null;
+                    var responseType = method.ReturnType;
+                    var hasResponse = responseType != typeof(void);
+                    var serviceType = string.IsNullOrWhiteSpace(attr.Type)
+                        ? target
+                        : attr.Type;
+                    var requestSchemaName = string.IsNullOrWhiteSpace(attr.RequestSchemaName)
+                        ? (hasRequest ? SchemaNameFromType(requestType) : serviceType + ".Request")
+                        : attr.RequestSchemaName;
+                    var responseSchemaName = string.IsNullOrWhiteSpace(attr.ResponseSchemaName)
+                        ? (hasResponse ? SchemaNameFromType(responseType) : serviceType + ".Response")
+                        : attr.ResponseSchemaName;
+
+                    if (string.IsNullOrWhiteSpace(attr.Type)
+                        || string.IsNullOrWhiteSpace(attr.RequestSchemaName)
+                        || string.IsNullOrWhiteSpace(attr.ResponseSchemaName))
+                        Debug.LogWarning("[FoxrunCodeGenerator] FOXSERVICE006: " + target + ": missing service type or schema metadata; generated defaults will be used.");
+
+                    result.Add(new FoxServiceSourceEmitter.ServiceMethod(
+                        method.Name,
+                        attr.Name,
+                        serviceType,
+                        attr.Description,
+                        requestSchemaName,
+                        responseSchemaName,
+                        hasRequest ? FoxRunEmissionTypeNameFormatter.FromReflectionType(requestType) : string.Empty,
+                        hasResponse ? FoxRunEmissionTypeNameFormatter.FromReflectionType(responseType) : string.Empty,
+                        hasRequest,
+                        hasResponse));
+                }
+            }
+
+            return result;
+        }
+
+        private static void ValidateServiceMethod(
+            string target,
+            MethodInfo method,
+            FoxServiceAttribute attr,
+            HashSet<string> seenNames)
+        {
+            if (attr == null || string.IsNullOrWhiteSpace(attr.Name) || !attr.Name.StartsWith("/", StringComparison.Ordinal))
+                throw new InvalidOperationException("FOXSERVICE001: " + target + ": service name must be an absolute Foxglove service path.");
+
+            if (!seenNames.Add(attr.Name))
+                throw new InvalidOperationException("FOXSERVICE005: " + target + ": duplicate service name '" + attr.Name + "' within source.");
+
+            var parameters = method.GetParameters();
+            if (method.IsStatic
+                || method.IsGenericMethod
+                || method.GetCustomAttribute<AsyncStateMachineAttribute>() != null
+                || parameters.Length > 1
+                || parameters.Any(parameter => parameter.ParameterType.IsByRef || parameter.IsOut || parameter.IsDefined(typeof(ParamArrayAttribute), false))
+                || IsUnsupportedServiceType(method.ReturnType)
+                || parameters.Any(parameter => IsUnsupportedServiceType(parameter.ParameterType)))
+                throw new InvalidOperationException("FOXSERVICE002: " + target + ": service methods must be non-static, synchronous, non-generic, and accept zero or one serializable DTO parameter.");
+        }
+
+        private static bool IsUnsupportedServiceType(Type type)
+        {
+            if (type == null || type == typeof(void))
+                return false;
+
+            if (type.IsPointer || type.IsByRef || type.IsGenericParameter)
+                return true;
+
+            if (type.FullName == "System.Threading.Tasks.Task"
+                || (type.FullName != null && type.FullName.StartsWith("System.Threading.Tasks.Task`", StringComparison.Ordinal)))
+                return true;
+
+            if (type.IsGenericType && type.GetGenericArguments().Any(argument => argument.IsGenericParameter))
+                return true;
+
+            return IsByRefLike(type);
+        }
+
+        private static string SchemaNameFromType(Type type)
+            => type == null
+                ? string.Empty
+                : (type.FullName ?? type.Name).Replace('+', '.');
+
+        private static bool IsByRefLike(Type type)
+        {
+            var property = typeof(Type).GetProperty("IsByRefLike", BindingFlags.Instance | BindingFlags.Public);
+            return property != null
+                   && property.PropertyType == typeof(bool)
+                   && type != null
+                   && (bool)property.GetValue(type);
+        }
+
         /// <summary>
         /// Generate a complete .g.cs source file string for a single class.
         /// Delegates to <c>FoxgloveSourceEmitter.EmitClass</c> for output
@@ -368,6 +554,27 @@ namespace Unity.FoxgloveSDK.Editor
 
             // Wrap with a Player-only guard so Editor compilation uses the Roslyn
             // generated in-memory source and Player builds use the physical file.
+            var sb = new StringBuilder();
+            sb.AppendLine("// <auto-generated/>");
+            sb.AppendLine("// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.");
+            sb.AppendLine("// SPDX-License-Identifier: Apache-2.0");
+            sb.AppendLine("// " + FoxRunGeneratedSourceReconciler.GeneratedSourceSentinel);
+            sb.AppendLine("// In the Unity Editor, the Roslyn analyzer already generates this partial type in memory.");
+            sb.AppendLine("#if !UNITY_EDITOR");
+            sb.Append(core);
+            sb.AppendLine("#endif");
+            return sb.ToString();
+        }
+
+        public static string EmitServiceSourceFile(
+            string ns,
+            string className,
+            IReadOnlyList<FoxServiceSourceEmitter.ServiceMethod> methods)
+        {
+            if (methods == null || methods.Count == 0)
+                throw new ArgumentException("At least one FoxService method is required to emit a source file.", nameof(methods));
+
+            var core = FoxServiceSourceEmitter.EmitClass(ns, className, methods);
             var sb = new StringBuilder();
             sb.AppendLine("// <auto-generated/>");
             sb.AppendLine("// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.");
@@ -534,6 +741,30 @@ namespace Unity.FoxgloveSDK.Editor
                 ByClass = byClass;
                 ManifestMembers = manifestMembers;
                 ReflectionMembers = reflectionMembers;
+            }
+        }
+
+        private sealed class FoxServiceScanResult
+        {
+            public readonly Dictionary<(string Ns, string ClassName), List<FoxServiceSourceEmitter.ServiceMethod>> ByClass;
+
+            public FoxServiceScanResult(Dictionary<(string Ns, string ClassName), List<FoxServiceSourceEmitter.ServiceMethod>> byClass)
+            {
+                ByClass = byClass;
+            }
+        }
+
+        private sealed class FoxServiceScanEntry
+        {
+            public readonly (string Ns, string ClassName) Key;
+            public readonly string Owner;
+            public readonly FoxServiceSourceEmitter.ServiceMethod Method;
+
+            public FoxServiceScanEntry((string Ns, string ClassName) key, string owner, FoxServiceSourceEmitter.ServiceMethod method)
+            {
+                Key = key;
+                Owner = owner ?? string.Empty;
+                Method = method;
             }
         }
 

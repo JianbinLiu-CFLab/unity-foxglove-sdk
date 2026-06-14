@@ -111,7 +111,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             var demoSetupSource = File.ReadAllText(Path.Combine(fullDir, "Scripts", "FoxgloveDemoSetup.cs"));
             Assert(demoSetupSource.Contains("OnClientMessage -= OnClientMessageReceived"), "FullDemo demo setup unsubscribes client message callback");
-            Assert(demoSetupSource.Contains("UnregisterService(_resetSvcId)"), "FullDemo demo setup unregisters reset service on destroy");
+            Assert(demoSetupSource.Contains("public partial class FoxgloveDemoSetup")
+                   && demoSetupSource.Contains("[FoxService(")
+                   && !demoSetupSource.Contains("_resetSvcId"),
+                "FullDemo demo setup exposes reset service through declarative FoxService");
             Assert(demoSetupSource.Contains("Mathf.Clamp") && demoSetupSource.Contains("ScaleMinimum") && demoSetupSource.Contains("ScaleMaximum"), "FullDemo demo setup clamps remote scale parameter");
 
             var sampleSyncSource = File.ReadAllText(Path.Combine(repoRoot, "Scripts", "samples", "sync_full_demo.py"));

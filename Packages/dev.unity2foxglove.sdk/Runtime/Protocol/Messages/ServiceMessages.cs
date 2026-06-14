@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.Protocol
     [JsonObject(MemberSerialization.OptIn)]
     public class ServiceSchemaDescriptor
     {
-        /// <summary>Encoding type (e.g. "jsonschema", "protobuf"), omit if unknown.</summary>
+        /// <summary>Service payload encoding type (for example <c>json</c>, <c>ros1</c>, or <c>cdr</c>), omit if unknown.</summary>
         [JsonProperty("encoding", NullValueHandling = NullValueHandling.Ignore)]
         public string Encoding { get; set; }
 

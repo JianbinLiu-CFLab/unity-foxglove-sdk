@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Editor
     {
         public const string GeneratedSourceSentinel = "Generated as a physical fallback for Player/IL2CPP builds.";
         public const string GeneratedSourcePattern = "*_FoxRun.g.cs";
+        public const string GeneratedServiceSourcePattern = "*_FoxService.g.cs";
 
         public static IReadOnlyList<string> ReconcileGeneratedSourceFiles(
             string outputDirectory,
@@ -28,7 +29,7 @@ namespace Unity.FoxgloveSDK.Editor
                 StringComparer.OrdinalIgnoreCase);
             var deleted = new List<string>();
 
-            foreach (var path in Directory.GetFiles(outputDirectory, GeneratedSourcePattern, SearchOption.TopDirectoryOnly))
+            foreach (var path in EnumerateGeneratedSourceFiles(outputDirectory))
             {
                 var fileName = Path.GetFileName(path);
                 if (current.Contains(fileName) || !IsOwnedGeneratedSourceFile(path))
@@ -43,6 +44,14 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return deleted;
+        }
+
+        private static IEnumerable<string> EnumerateGeneratedSourceFiles(string outputDirectory)
+        {
+            foreach (var path in Directory.GetFiles(outputDirectory, GeneratedSourcePattern, SearchOption.TopDirectoryOnly))
+                yield return path;
+            foreach (var path in Directory.GetFiles(outputDirectory, GeneratedServiceSourcePattern, SearchOption.TopDirectoryOnly))
+                yield return path;
         }
 
         public static bool IsOwnedGeneratedSourceFile(string path)

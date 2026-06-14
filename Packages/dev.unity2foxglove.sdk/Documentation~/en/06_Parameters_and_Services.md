@@ -54,13 +54,50 @@ sets the cube scale to `2`.
 
 Services are request-response actions. Foxglove sends a request, Unity performs an action, and Unity sends a response.
 
-In the Full Demo, the main service is:
+In the Full Demo, the main service is declared with `[FoxService]`:
 
 | Service | Request | Expected response | What it does |
 |---|---|---|---|
 | `/cube/reset_pose` | `{}` | `{"status":"ok"}` | Resets cube position, rotation, and scale |
 
-## 6. Use the Service Call Panel
+## 6. Declarative Services With `[FoxService]`
+
+Use `[FoxService]` when a service should live next to the Unity method that performs the action. The declaring `MonoBehaviour` must be `partial` so the generated wrapper can call the method directly.
+
+```csharp
+using Unity.FoxgloveSDK.Components;
+
+public partial class CubeControls : MonoBehaviour
+{
+    [FoxService(
+        "/cube/reset_pose",
+        Type = "Unity2Foxglove.Demo.ResetPose",
+        RequestSchemaName = "Unity2Foxglove.Demo.ResetPoseRequest",
+        ResponseSchemaName = "Unity2Foxglove.Demo.ResetPoseResponse")]
+    private ResetPoseResponse ResetPose(ResetPoseRequest request)
+    {
+        transform.position = Vector3.zero;
+        return new ResetPoseResponse { status = "ok" };
+    }
+
+    private sealed class ResetPoseRequest {}
+    private sealed class ResetPoseResponse { public string status; }
+}
+```
+
+Supported method shapes:
+
+- instance methods only;
+- zero or one request parameter;
+- JSON-serializable request and response DTOs;
+- `void` response when `{}` is enough;
+- private methods are valid on `partial` classes.
+
+Rejected shapes include static, generic, async, `ref`/`out`/`in`, more than one parameter, open generic DTOs, pointer/by-ref/ref-like DTOs, and `Task` responses.
+
+The generated wrapper deserializes the request from `JToken`, calls the method directly, and serializes the response back to `JToken`. In the Unity Editor this comes from the Roslyn source generator. Before Player builds, the SDK writes physical `*_FoxService.g.cs` fallback files so IL2CPP builds do not need runtime reflection invocation.
+
+## 7. Use the Service Call Panel
 
 1. Add a **Service Call** panel.
 2. Open the panel settings.
@@ -78,7 +115,7 @@ The cube should reset and the response should show `status: "ok"`.
 > [!WARNING]
 > Do not type `{cube/reset_pose}` or `"/cube/reset_pose"` in the request box. The service name belongs in panel settings. The request body is only the JSON payload.
 
-## 7. Empty Parameter List
+## 8. Empty Parameter List
 
 Check these in order:
 
@@ -88,7 +125,7 @@ Check these in order:
 4. The demo setup object is enabled.
 5. Reconnect Foxglove after starting Play Mode.
 
-## 8. Service Call Timeout
+## 9. Service Call Timeout
 
 Check these in order:
 
@@ -97,9 +134,9 @@ Check these in order:
 3. Unity is still in Play Mode.
 4. The Unity Console does not show service handler errors.
 
-## 9. Developer API Example
+## 10. Manual Service API Example
 
-Use `RegisterParameter` and `RegisterService` from `FoxgloveManager` when writing your own scripts.
+Use `RegisterParameter` and `RegisterService` from `FoxgloveManager` when you need to create or remove services dynamically at runtime. For static Unity actions, prefer `[FoxService]`.
 
 ```csharp
 using Newtonsoft.Json.Linq;
@@ -118,8 +155,18 @@ public class MyControls : MonoBehaviour
         {
             Name = "/my/reset",
             Type = "json",
-            RequestSchema = "{}",
-            ResponseSchema = "{}"
+            Request = new ServiceSchemaDescriptor
+            {
+                Encoding = "json",
+                SchemaName = "MyResetRequest",
+                Schema = "{}"
+            },
+            Response = new ServiceSchemaDescriptor
+            {
+                Encoding = "json",
+                SchemaName = "MyResetResponse",
+                Schema = "{}"
+            }
         },
         request =>
         {
@@ -130,6 +177,6 @@ public class MyControls : MonoBehaviour
 }
 ```
 
-## 10. Current Capability Notes
+## 11. Current Capability Notes
 
-The current user-facing workflow supports reading and setting parameters and calling services. If you need live parameter push subscriptions across multiple external clients, verify that behavior in your target version before relying on it.
+The current user-facing workflow supports reading and setting parameters and calling services. Service handlers run on Unity's main thread through the existing service drain path, so normal Unity API access is allowed. Payload limits and handler failures are governed by the existing Foxglove service registry and are reported to the client as service-call failures.
