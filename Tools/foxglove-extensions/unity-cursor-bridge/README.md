@@ -95,6 +95,68 @@ Unity should follow the Foxglove playhead. Normal playback advances replay
 incrementally; explicit seeks or scrubs refresh the scene from a latest-at
 snapshot.
 
+## Cursor Rate
+
+The `Cursor rate (Hz)` field sets how often the panel POSTs a fresh playback
+cursor to Unity (default 60). Lower it when Unity runs a heavy scene: fewer
+cursors per second means Unity is forced to drain less often, which reduces the
+chance it falls behind and has to take the expensive latest-at snapshot path.
+The setting persists with the panel.
+
+The forward path now waits for Unity to acknowledge (HTTP 202) each cursor
+before sending the next one. At most one cursor POST is in flight at a time, so
+Foxglove's send cadence adapts to Unity's processing speed instead of flooding
+it. While waiting, only the latest cursor is sent next.
+
+## Follow Unity Replay (Experimental)
+
+When the installed Foxglove build exposes a programmatic `seekPlayback`, the
+panel shows an extra `Follow Unity replay` toggle (default off).
+
+**Use this toggle instead of pressing Foxglove's own play button.** The Foxglove
+panel API has no play/pause control — only `seekPlayback` — so the panel cannot
+take ownership of Foxglove's playback clock. Follow therefore runs its own
+**internal clock**: it sends a forward "advance" cursor, waits for Unity's 202
+ACK, advances the internal clock by one rate step, sends the next cursor, and so
+on. Unity's ACK latency paces the whole loop, so Foxglove can never outrun Unity.
+
+Each step advances by the real wall-clock time elapsed since the previous step
+(so playback runs at ~1x regardless of ACK latency), clamped under Unity's 500 ms
+seek threshold so Unity stays on its cheap forward-advance path. If Unity cannot
+keep up, the loop slows gracefully instead of jumping.
+
+The cursor stream to Unity runs at the full cursor rate, but the best-effort
+`seekPlayback` that drags the Foxglove UI along is throttled (~10 Hz, the
+`SEEK_UI_INTERVAL_MS` constant). Because `seekPlayback` is a *jump* (Foxglove
+reloads the frame at the target time), calling it every cursor strobes the
+Foxglove panels — point clouds in particular flicker. Throttling reduces that,
+but some flicker is inherent to seek-driving: treat **Unity as the smooth view**
+and the Foxglove panels as a coarse follow. The panel's `Replay time` readout
+still advances smoothly because it shows the internal clock, not the (throttled)
+Foxglove playhead. `SEEK_UI_INTERVAL_MS` is the main tuning knob — lower it for a
+more continuous Foxglove UI at the cost of more frame reloads, raise it for fewer
+reloads.
+
+Because of this, Follow is mainly worth it when Unity is the bottleneck (heavy
+scenes that drop frames chasing Foxglove). For light scenes, leaving Follow
+**off** and driving from Foxglove's own play button gives smoother Foxglove
+panels.
+
+When follow reaches the end of the replay it parks: the loop stops and the panel
+falls back to plain Foxglove-to-Unity sync, so you can scrub the timeline freely
+(each scrub syncs Unity once) without playback running away. Re-check `Follow
+Unity replay` to resume Unity-paced playback from the current position.
+
+**Do not press Foxglove's play button while Follow is on.** Because there is no
+pause API, Foxglove's own free-run and the follow loop would both drive time and
+fight each other (the timeline gets pinned near the start). Treat Follow as the
+playback driver, not an overlay on Foxglove playback. This is why the feature is
+experimental.
+
+`seekPlayback` is an undocumented panel API reached via a type cast; it may
+change or disappear on Foxglove upgrades. If it is absent the toggle is hidden
+and the panel behaves exactly as the default Foxglove-to-Unity sync.
+
 ## Endpoint And Security
 
 The default endpoint is loopback-only:
