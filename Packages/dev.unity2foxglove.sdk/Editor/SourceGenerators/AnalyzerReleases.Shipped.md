@@ -12,3 +12,6 @@ FOXRUN002 | FoxRun | Warning | Same FoxRun topic has conflicting SchemaName valu
 FOXRUN003 | FoxRun | Warning | FoxRun field names collide after stripping leading underscores.
 FOXRUN004 | FoxRun | Error | [FoxRun] on a multi-variable field declaration is unsupported.
 FOXRUN005 | FoxRun | Warning | Same-topic FoxRun members mix PublishMode, ChangeEpsilon, or ForceIntervalSeconds.
+FOXRUN015 | FoxRun | Error | FoxRun conditional gate member is missing or invalid.
+FOXRUN016 | FoxRun | Error | FoxRun conditional gate member must be bool.
+FOXRUN017 | FoxRun | Error | Same-topic FoxRun members mix When or Unless conditional gates.

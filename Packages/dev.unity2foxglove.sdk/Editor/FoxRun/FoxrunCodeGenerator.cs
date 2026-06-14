@@ -320,7 +320,8 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken));
+                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
+                        a.When, a.Unless));
                 }
             }
             foreach (var pi in type.GetProperties(flags))
@@ -330,7 +331,8 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken));
+                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
+                        a.When, a.Unless));
                 }
             }
             return result;
@@ -415,13 +417,15 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly float ForceIntervalSeconds;
             public readonly int RawMemberOrder;
             public readonly string ConditionalSymbols;
+            public readonly string When;
+            public readonly string Unless;
 
             /// <summary>
             /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "")
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "")
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -440,6 +444,8 @@ namespace Unity.FoxgloveSDK.Editor
                 ForceIntervalSeconds = forceIntervalSeconds;
                 RawMemberOrder = rawMemberOrder;
                 ConditionalSymbols = conditionalSymbols ?? "";
+                When = when ?? "";
+                Unless = unless ?? "";
             }
 
             /// <summary>
@@ -447,7 +453,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "")
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "")
             {
                 MemberName = name;
                 MemberKind = "field";
@@ -466,6 +472,8 @@ namespace Unity.FoxgloveSDK.Editor
                 ForceIntervalSeconds = forceIntervalSeconds;
                 RawMemberOrder = rawMemberOrder;
                 ConditionalSymbols = conditionalSymbols ?? "";
+                When = when ?? "";
+                Unless = unless ?? "";
             }
 
             public FoxRunManifestMember ToManifestMember()
@@ -506,7 +514,9 @@ namespace Unity.FoxgloveSDK.Editor
                     ChangeEpsilon,
                     ForceIntervalSeconds,
                     RawMemberOrder,
-                    ConditionalSymbols);
+                    ConditionalSymbols,
+                    When,
+                    Unless);
             }
         }
 

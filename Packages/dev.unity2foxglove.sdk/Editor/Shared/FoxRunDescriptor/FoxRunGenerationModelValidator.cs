@@ -68,6 +68,12 @@ namespace Unity.FoxgloveSDK.Editor
             if (!IsKnownMemberKind(member.MemberKind))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
 
+            if (IsInvalidConditionName(member.When))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN015", target, member.MemberName, "FoxRun When condition member name is invalid or missing."));
+
+            if (IsInvalidConditionName(member.Unless))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN016", target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
+
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
             {
                 var raw = member.RawObservedTypeName ?? string.Empty;
@@ -147,7 +153,51 @@ namespace Unity.FoxgloveSDK.Editor
                         first.MemberName,
                         "Topic '" + group.Key + "' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values."));
                 }
+
+                var mixedConditions = group.Select(member => member.When).Distinct(StringComparer.Ordinal).Count() > 1
+                    || group.Select(member => member.Unless).Distinct(StringComparer.Ordinal).Count() > 1;
+                if (mixedConditions)
+                {
+                    var first = group.First();
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                        "FOXRUN017",
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "Topic '" + group.Key + "' has mixed When or Unless values."));
+                }
             }
+        }
+
+        private static bool IsInvalidConditionName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            var value = name.Trim();
+            if (value.EndsWith("()", StringComparison.Ordinal))
+                value = value.Substring(0, value.Length - 2);
+            if (value.Length == 0)
+                return true;
+
+            if (!IsIdentifierStart(value[0]))
+                return true;
+            for (var i = 1; i < value.Length; i++)
+            {
+                if (!IsIdentifierPart(value[i]))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsIdentifierStart(char ch)
+        {
+            return ch == '_' || char.IsLetter(ch);
+        }
+
+        private static bool IsIdentifierPart(char ch)
+        {
+            return ch == '_' || char.IsLetterOrDigit(ch);
         }
 
         private static bool IsUnsupportedGenericMember(FoxRunGenerationMember member)

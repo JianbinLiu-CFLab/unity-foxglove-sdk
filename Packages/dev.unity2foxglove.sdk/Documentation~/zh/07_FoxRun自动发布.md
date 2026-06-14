@@ -53,6 +53,8 @@ public partial class TestLog : MonoBehaviour       // 必须是 partial
 | `PublishMode` | `FoxRunPublishMode` | `FixedRate` | 发布策略：固定频率、变化触发、变化或心跳、手动触发 |
 | `ChangeEpsilon` | `float` | `0f` | `OnChange` / `OnChangeOrInterval` 的数值变化阈值 |
 | `ForceIntervalSeconds` | `float` | `0f` | `OnChangeOrInterval` 的强制心跳间隔 |
+| `When` | `string` | `""` | 指向 bool 字段、属性或无参方法；为 true 时才发布 |
+| `Unless` | `string` | `""` | 指向 bool 字段、属性或无参方法；为 true 时抑制发布 |
 
 ### SchemaName 参数
 

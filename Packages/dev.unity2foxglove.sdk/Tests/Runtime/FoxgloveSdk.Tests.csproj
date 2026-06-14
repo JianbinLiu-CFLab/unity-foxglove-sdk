@@ -172,6 +172,7 @@
     <Compile Include="Phase140HValidation.cs" />
     <Compile Include="Phase140H2Validation.cs" />
     <Compile Include="Phase140JValidation.cs" />
+    <Compile Include="FoxRunConditionalPublishGateValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
     <Compile Include="Phase138QValidation.cs" />
     <!-- 138S: validate VirtualImu native DDS output contracts. -->

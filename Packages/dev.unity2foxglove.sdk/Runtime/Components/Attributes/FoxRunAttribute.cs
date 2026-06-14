@@ -39,6 +39,12 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Heartbeat interval in seconds for OnChangeOrInterval mode. Non-positive disables.</summary>
         public float ForceIntervalSeconds { get; set; } = 0f;
 
+        /// <summary>Optional bool field, property, or zero-argument method that must be true to publish.</summary>
+        public string When { get; set; } = string.Empty;
+
+        /// <summary>Optional bool field, property, or zero-argument method that must be false to publish.</summary>
+        public string Unless { get; set; } = string.Empty;
+
         /// <summary>Create a FoxRun attribute for the given Foxglove topic.</summary>
         public FoxRunAttribute(string topic)
         {

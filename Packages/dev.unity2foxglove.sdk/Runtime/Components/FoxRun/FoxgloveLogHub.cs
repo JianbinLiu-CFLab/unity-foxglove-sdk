@@ -270,6 +270,9 @@ namespace Unity.FoxgloveSDK.Components
                         nonPositivePublishesEveryFrame: false))
                     return false;
 
+                if (!CanPublishSourceTopic(source, topicIndex, "scheduled publish"))
+                    return false;
+
                 var policySource = source as IFoxgloveLogPolicySource;
                 if (policySource != null && !policySource.FoxgloveLog_ShouldPublish(topicIndex, nowSec))
                     return false;
@@ -289,6 +292,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             try
             {
+                if (!CanPublishSourceTopic(source, topicIndex, "trigger publish"))
+                    return false;
+
                 source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
                 if (source is IFoxgloveLogPolicySource policySource)
                     policySource.FoxgloveLog_MarkPublished(topicIndex, nowSec);
@@ -297,6 +303,23 @@ namespace Unity.FoxgloveSDK.Components
             catch (Exception ex) when (IsRecoverableSourceException(ex))
             {
                 LogSourceFailure(source, topicIndex, "trigger publish", ex);
+                return false;
+            }
+        }
+
+        private bool CanPublishSourceTopic(IFoxgloveLogSource source, int topicIndex, string operation)
+        {
+            var conditionSource = source as IFoxgloveLogConditionSource;
+            if (conditionSource == null)
+                return true;
+
+            try
+            {
+                return conditionSource.FoxgloveLog_CanPublish(topicIndex);
+            }
+            catch (Exception ex) when (IsRecoverableSourceException(ex))
+            {
+                LogSourceFailure(source, topicIndex, operation + " condition", ex);
                 return false;
             }
         }

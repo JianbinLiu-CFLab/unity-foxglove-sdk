@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyFOXRUN006NativeContainerMessage();
             VerifyFOXRUN006GenericMessageUnchanged();
             VerifyFOXRUN006IdSeverityUnchanged();
-            VerifyNoNewDiagnosticIds();
+            VerifyConditionDiagnosticIdsReservedBy141A();
             VerifyInventoryBackwardCompatible();
             VerifyChangeHelperCompiles();
 
@@ -215,14 +215,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(d2 != null && d2.Severity == "Error", "142-36: FOXRUN006 severity is Error for generic unsupported");
         }
 
-        private static void VerifyNoNewDiagnosticIds()
+        private static void VerifyConditionDiagnosticIdsReservedBy141A()
         {
             var generatorSource = File.ReadAllText(RepoPath(SourceGeneratorPath));
-            // Match string-literal future IDs to avoid false-positive on comments.
-            Check(!generatorSource.Contains("\"FOXRUN015\"", StringComparison.Ordinal),
-                "142-37: source generator contains no FOXRUN015 diagnostic descriptor");
-            Check(!generatorSource.Contains("\"FOXRUN016\"", StringComparison.Ordinal),
-                "142-38: source generator contains no FOXRUN016 diagnostic descriptor");
+            Check(generatorSource.Contains("\"FOXRUN015\"", StringComparison.Ordinal),
+                "142-37: FOXRUN015 condition diagnostic descriptor is present");
+            Check(generatorSource.Contains("\"FOXRUN016\"", StringComparison.Ordinal),
+                "142-38: FOXRUN016 condition diagnostic descriptor is present");
         }
 
         private static void VerifyInventoryBackwardCompatible()
@@ -245,6 +244,9 @@ namespace Unity.FoxgloveSDK.Tests
                 { "FOXRUN012", ("FoxRun member name required", "Error") },
                 { "FOXRUN013", ("FoxRun publish mode out of range", "Error") },
                 { "FOXRUN014", ("FoxRun member kind invalid", "Error") },
+                { "FOXRUN015", ("FoxRun condition member missing", "Error") },
+                { "FOXRUN016", ("FoxRun condition member must be bool", "Error") },
+                { "FOXRUN017", ("Mixed same-topic conditional gates", "Error") },
             };
 
             foreach (var kv in expected)
