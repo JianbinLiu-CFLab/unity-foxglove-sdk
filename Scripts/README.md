@@ -234,6 +234,31 @@ Defaults:
 - Port: `8765`
 - Fallback channel IDs: `1..128`
 
+## Smoke: Phase 144 Fragmented WebSocket Probe
+
+Entry script:
+
+```text
+Scripts/smoke/phase144_fragmented_ws_probe.py
+```
+
+Purpose:
+
+- Connect to a running Unity2Foxglove WebSocket server.
+- Send a valid fragmented text subscribe message and confirm the connection
+  stays open.
+- Send malformed fragmented-frame sequences and confirm the server rejects
+  only those client connections.
+
+Basic usage while Unity Play Mode is running:
+
+```bash
+python Scripts/smoke/phase144_fragmented_ws_probe.py
+python Scripts/smoke/phase144_fragmented_ws_probe.py --mode positive
+python Scripts/smoke/phase144_fragmented_ws_probe.py --mode negative
+python Scripts/smoke/phase144_fragmented_ws_probe.py --url ws://127.0.0.1:8765
+```
+
 ## Smoke: TF WebSocket Client
 
 Entry script:

@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int CloseDrainTimeoutMs = 250;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
+        private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -476,6 +477,10 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Continuously read frames, dispatch text/binary/close/ping, until the stream ends or is canceled.</summary>
         private void ReceiveLoop(uint clientId, WsConnection conn, CancellationToken ct)
         {
+            MemoryStream fragmentedPayload = null;
+            byte fragmentedOpcode = 0;
+            var fragmentedBytes = 0;
+
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -483,24 +488,63 @@ namespace Unity.FoxgloveSDK.Transport
                     var frame = conn.ReadFrame();
                     if (frame == null) break;
 
-                    // Reject fragmented text/binary frames (continuation not supported)
-                    if (!frame.Fin && (frame.Opcode == WsOpcode.Text || frame.Opcode == WsOpcode.Binary))
-                    {
-                        conn.TouchActivity();
-                        HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
-                        conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
-                        return;
-                    }
-
                     conn.TouchActivity();
                     switch (frame.Opcode)
                     {
                         case WsOpcode.Text:
-                            OnTextReceived?.Invoke(clientId, Encoding.UTF8.GetString(frame.Payload));
-                            break;
                         case WsOpcode.Binary:
-                            OnBinaryReceived?.Invoke(clientId, frame.Payload);
+                            if (fragmentedPayload != null)
+                            {
+                                CloseProtocolError(clientId, conn);
+                                return;
+                            }
+
+                            if (frame.Fin)
+                            {
+                                if (frame.Opcode == WsOpcode.Text)
+                                    OnTextReceived?.Invoke(clientId, Encoding.UTF8.GetString(frame.Payload));
+                                else
+                                    OnBinaryReceived?.Invoke(clientId, frame.Payload);
+                                break;
+                            }
+
+                            fragmentedOpcode = frame.Opcode;
+                            fragmentedPayload = new MemoryStream();
+                            if (!TryAppendFragment(fragmentedPayload, frame.Payload, ref fragmentedBytes))
+                            {
+                                CloseProtocolError(clientId, conn);
+                                return;
+                            }
                             break;
+
+                        case WsOpcode.Continuation:
+                            if (fragmentedPayload == null)
+                            {
+                                CloseProtocolError(clientId, conn);
+                                return;
+                            }
+
+                            if (!TryAppendFragment(fragmentedPayload, frame.Payload, ref fragmentedBytes))
+                            {
+                                CloseProtocolError(clientId, conn);
+                                return;
+                            }
+
+                            if (frame.Fin)
+                            {
+                                var payload = fragmentedPayload.ToArray();
+                                fragmentedPayload.Dispose();
+                                fragmentedPayload = null;
+                                fragmentedBytes = 0;
+
+                                if (fragmentedOpcode == WsOpcode.Text)
+                                    OnTextReceived?.Invoke(clientId, Encoding.UTF8.GetString(payload));
+                                else
+                                    OnBinaryReceived?.Invoke(clientId, payload);
+                                fragmentedOpcode = 0;
+                            }
+                            break;
+
                         case WsOpcode.Close:
                             HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
                             conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
@@ -518,8 +562,27 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
+                fragmentedPayload?.Dispose();
                 DisconnectClient(clientId, conn);
             }
+        }
+
+        private static bool TryAppendFragment(MemoryStream stream, byte[] payload, ref int totalBytes)
+        {
+            var length = payload?.Length ?? 0;
+            if (length > MaxFragmentedMessageBytes - totalBytes)
+                return false;
+
+            if (length > 0)
+                stream.Write(payload, 0, length);
+            totalBytes += length;
+            return true;
+        }
+
+        private void CloseProtocolError(uint clientId, WsConnection conn)
+        {
+            HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
+            conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
         }
 
         /// <summary>Remove the client from the dictionary, fire the disconnected event, and dispose the connection.</summary>

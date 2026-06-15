@@ -375,8 +375,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("hi"), masked: true, fin: true, reservedBits: 0x40)) == null,
                 "52B-5d: client frames with RSV bits are rejected when no extension is negotiated");
 
-            Check(ReadFrameFromBytes(BuildClientFrame(0x0, Encoding.UTF8.GetBytes("tail"), masked: true, fin: true)) == null,
-                "52B-5e: unsupported continuation frames are rejected");
+            var continuation = ReadFrameFromBytes(BuildClientFrame(0x0, Encoding.UTF8.GetBytes("tail"), masked: true, fin: true));
+            Check(continuation != null && continuation.Opcode == WsOpcode.Continuation,
+                "52B-5e: continuation frames decode for transport-level fragmentation handling");
 
             Check(ReadFrameFromBytes(BuildClientFrame(0x3, Encoding.UTF8.GetBytes("reserved"), masked: true, fin: true)) == null,
                 "52B-5f: reserved data opcodes are rejected");
