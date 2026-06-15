@@ -16,16 +16,18 @@ using UnityEngine;
 /// 1. Add this component to any enabled GameObject in a scene that also has a
 ///    running <see cref="FoxgloveManager"/>.
 /// 2. Enter Play Mode and connect Foxglove to ws://127.0.0.1:8765.
-/// 3. Confirm that the default <c>/debug/overlay_smoke</c> topic
+/// 3. Clear <c>Disable Normal Publish</c>, or use the context menu action
+///    <c>Debug Overlay/Publish Valid Overlay Once</c>.
+/// 4. Confirm that the default <c>/debug/overlay_smoke</c> topic
 ///    appears as schemaless JSON with version/kind/source/label/values fields.
-/// 4. Enable <c>Invalid Topic Should Not Publish</c> in the Inspector during
+/// 5. Enable <c>Invalid Topic Should Not Publish</c> in the Inspector during
 ///    Play Mode. While any negative probe is enabled, the valid overlay stream
 ///    is paused. The probe should keep reporting <c>false</c>, and no
 ///    <c>/robot/overlay_smoke</c> topic should appear.
-/// 5. Enable <c>Binary Value Should Not Publish</c>. The probe should keep
+/// 6. Enable <c>Binary Value Should Not Publish</c>. The probe should keep
 ///    reporting <c>false</c>, and the valid overlay frame counter should stop
 ///    increasing while the probe is enabled.
-/// 6. Recheck <c>Assets/Generated/FoxRun/foxrun.manifest.hash</c>. This smoke
+/// 7. Recheck <c>Assets/Generated/FoxRun/foxrun.manifest.hash</c>. This smoke
 ///    component uses a non-contract debug overlay path and should not change
 ///    the FoxRun manifest hash.
 /// </remarks>
@@ -50,8 +52,8 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     [SerializeField] private string _label = "manual unity smoke";
     [Tooltip("How often the valid overlay sample is published while Play Mode is running.")]
     [SerializeField, Min(0.05f)] private float _publishIntervalSeconds = 0.5f;
-    [Tooltip("Disable normal valid-topic publishing while keeping the rejection probes available.")]
-    [SerializeField] private bool _disableNormalPublish;
+    [Tooltip("Disable normal valid-topic publishing while keeping manual publish and rejection probes available.")]
+    [SerializeField] private bool _disableNormalPublish = true;
 
     [Header("Negative Probes")]
     [Tooltip("When enabled during Play Mode, pauses the valid stream and repeatedly attempts to publish to a non-/debug/ topic. Expected result: false and no /robot/overlay_smoke topic.")]

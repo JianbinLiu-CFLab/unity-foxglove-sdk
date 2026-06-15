@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -61,22 +60,23 @@ namespace Unity.FoxgloveSDK.Editor
                 return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
 
             var properties = new List<FoxServiceSchemaProperty>();
-            var flags = BindingFlags.Instance | BindingFlags.Public;
-            foreach (var field in type.GetFields(flags).OrderBy(field => field.MetadataToken))
+            foreach (var member in FoxServiceDtoReflectionMembers.SerializableMembers(type))
             {
-                if (field.IsStatic || field.IsLiteral || IsIgnoredDtoMember(field))
-                    continue;
-                properties.Add(new FoxServiceSchemaProperty(JsonPropertyName(field), Build(field.FieldType, side, depth + 1, memo, stack)));
-            }
-
-            foreach (var property in type.GetProperties(flags).OrderBy(property => property.MetadataToken))
-            {
-                if (property.GetIndexParameters().Length != 0
-                    || property.GetMethod == null
-                    || !property.GetMethod.IsPublic
-                    || IsIgnoredDtoMember(property))
-                    continue;
-                properties.Add(new FoxServiceSchemaProperty(JsonPropertyName(property), Build(property.PropertyType, side, depth + 1, memo, stack)));
+                if (member is FieldInfo field)
+                {
+                    if (field.IsStatic || field.IsLiteral || FoxServiceDtoReflectionMembers.IsIgnored(field))
+                        continue;
+                    properties.Add(new FoxServiceSchemaProperty(FoxServiceDtoReflectionMembers.JsonPropertyName(field), Build(field.FieldType, side, depth + 1, memo, stack)));
+                }
+                else if (member is PropertyInfo property)
+                {
+                    if (property.GetIndexParameters().Length != 0
+                        || property.GetMethod == null
+                        || !property.GetMethod.IsPublic
+                        || FoxServiceDtoReflectionMembers.IsIgnored(property))
+                        continue;
+                    properties.Add(new FoxServiceSchemaProperty(FoxServiceDtoReflectionMembers.JsonPropertyName(property), Build(property.PropertyType, side, depth + 1, memo, stack)));
+                }
             }
 
             var model = FoxServiceSchemaModel.Object(properties);
@@ -105,22 +105,6 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return false;
-        }
-
-        private static string JsonPropertyName(MemberInfo member)
-        {
-            foreach (var attribute in member.GetCustomAttributes(true))
-            {
-                var attributeType = attribute.GetType();
-                if (!string.Equals(attributeType.FullName, "Newtonsoft.Json.JsonPropertyAttribute", StringComparison.Ordinal))
-                    continue;
-
-                var propertyName = attributeType.GetProperty("PropertyName", BindingFlags.Instance | BindingFlags.Public);
-                if (propertyName != null && propertyName.GetValue(attribute) is string value && !string.IsNullOrWhiteSpace(value))
-                    return value;
-            }
-
-            return member.Name;
         }
 
         private static bool TryGetJsonScalarType(Type type, out string jsonType)
@@ -219,13 +203,5 @@ namespace Unity.FoxgloveSDK.Editor
             return (definition.FullName ?? definition.Name).Replace('+', '.');
         }
 
-        private static bool IsIgnoredDtoMember(MemberInfo member)
-            => member.GetCustomAttributes(true).Any(attribute =>
-            {
-                var typeName = attribute.GetType().FullName ?? string.Empty;
-                return typeName == "Newtonsoft.Json.JsonIgnoreAttribute"
-                       || typeName == "System.Text.Json.Serialization.JsonIgnoreAttribute"
-                       || typeName == "System.NonSerializedAttribute";
-            });
     }
 }

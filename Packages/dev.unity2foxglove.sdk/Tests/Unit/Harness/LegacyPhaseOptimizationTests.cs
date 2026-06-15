@@ -299,8 +299,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ManualSmokeStateAndCountersRemainLongRunningSafe()
         {
+            var overlaySmoke = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/FoxgloveDebugOverlaySmoke.cs");
+            var sampleScene = TestSources.Text("Unity2Foxglove/Assets/Scenes/SampleScene.unity");
+
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/FoxgloveDebugOverlaySmoke.cs");
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase106Ros2ForUnityAcceptance.cs");
+
+            Assert.Contains("[SerializeField] private bool _disableNormalPublish = true;", overlaySmoke, StringComparison.Ordinal);
+            Assert.Contains("m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDebugOverlaySmoke", sampleScene, StringComparison.Ordinal);
+            Assert.Contains("_disableNormalPublish: 1", sampleScene, StringComparison.Ordinal);
 
             var phase110 = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs");
             var phase127 = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs");

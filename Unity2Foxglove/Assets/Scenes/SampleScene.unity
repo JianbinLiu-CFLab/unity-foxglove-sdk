@@ -817,7 +817,7 @@ MonoBehaviour:
   _source: FoxgloveDebugOverlaySmoke
   _label: manual unity smoke
   _publishIntervalSeconds: 0.5
-  _disableNormalPublish: 0
+  _disableNormalPublish: 1
   _invalidTopicShouldNotPublish: 0
   _binaryValueShouldNotPublish: 0
   _publishedCount: 0

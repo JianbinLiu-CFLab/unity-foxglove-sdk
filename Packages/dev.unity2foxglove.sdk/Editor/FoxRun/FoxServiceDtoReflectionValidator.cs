@@ -127,47 +127,48 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var flags = BindingFlags.Instance | BindingFlags.Public;
             var diagnosticCountBeforeMembers = diagnostics.Count;
-            foreach (var field in type.GetFields(flags).OrderBy(field => field.MetadataToken))
+            foreach (var member in FoxServiceDtoReflectionMembers.SerializableMembers(type))
             {
-                if (field.IsStatic || field.IsLiteral)
-                    continue;
-                if (IsIgnoredDtoMember(field))
+                if (member is FieldInfo field)
                 {
-                    AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.FieldType), "Member is ignored by serialization attributes.", diagnostics);
-                    continue;
-                }
-                if (field.IsInitOnly)
-                {
-                    AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.FieldType), "Readonly fields may serialize but may not round-trip from request JSON.", diagnostics);
-                    continue;
-                }
-                ValidateType(field.FieldType, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
-            }
-
-            foreach (var property in type.GetProperties(flags).OrderBy(property => property.MetadataToken))
-            {
-                if (property.GetIndexParameters().Length != 0 || property.GetMethod == null)
-                    continue;
-                if (IsIgnoredDtoMember(property))
-                {
-                    AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.PropertyType), "Member is ignored by serialization attributes.", diagnostics);
-                    continue;
-                }
-                if (property.SetMethod == null)
-                {
-                    if (TryGetListElementType(property.PropertyType, side, out var getOnlyElementType)
-                        && IsMutableCollectionContract(property.PropertyType))
+                    if (field.IsStatic || field.IsLiteral)
+                        continue;
+                    if (FoxServiceDtoReflectionMembers.IsIgnored(field))
                     {
-                        ValidateType(getOnlyElementType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                        AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.FieldType), "Member is ignored by serialization attributes.", diagnostics);
                         continue;
                     }
-
-                    AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.PropertyType), "Get-only properties are not populated during request deserialization.", diagnostics);
-                    continue;
+                    if (field.IsInitOnly)
+                    {
+                        AddDtoWarning(side, rootName, path + "." + field.Name, DiagnosticTypeName(field.FieldType), "Readonly fields may serialize but may not round-trip from request JSON.", diagnostics);
+                        continue;
+                    }
+                    ValidateType(field.FieldType, side, path + "." + field.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
                 }
-                ValidateType(property.PropertyType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                else if (member is PropertyInfo property)
+                {
+                    if (property.GetIndexParameters().Length != 0 || property.GetMethod == null)
+                        continue;
+                    if (FoxServiceDtoReflectionMembers.IsIgnored(property))
+                    {
+                        AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.PropertyType), "Member is ignored by serialization attributes.", diagnostics);
+                        continue;
+                    }
+                    if (property.SetMethod == null)
+                    {
+                        if (TryGetListElementType(property.PropertyType, side, out var getOnlyElementType)
+                            && IsMutableCollectionContract(property.PropertyType))
+                        {
+                            ValidateType(getOnlyElementType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                            continue;
+                        }
+
+                        AddDtoWarning(side, rootName, path + "." + property.Name, DiagnosticTypeName(property.PropertyType), "Get-only properties are not populated during request deserialization.", diagnostics);
+                        continue;
+                    }
+                    ValidateType(property.PropertyType, side, path + "." + property.Name, rootType, diagnostics, stack, validatedTypes, depth + 1);
+                }
             }
 
             stack.Remove(stackKey);
@@ -235,15 +236,6 @@ namespace Unity.FoxgloveSDK.Editor
             if (definition == typeof(SortedDictionary<,>)) return "System.Collections.Generic.SortedDictionary<TKey, TValue>";
             return FullTypeName(definition);
         }
-
-        private static bool IsIgnoredDtoMember(MemberInfo member)
-            => member.GetCustomAttributes(true).Any(attribute =>
-            {
-                var typeName = attribute.GetType().FullName ?? string.Empty;
-                return typeName == "Newtonsoft.Json.JsonIgnoreAttribute"
-                       || typeName == "System.Text.Json.Serialization.JsonIgnoreAttribute"
-                       || typeName == "System.NonSerializedAttribute";
-            });
 
         private static bool IsByRefLike(Type type)
             => IsByRefLikeProperty != null

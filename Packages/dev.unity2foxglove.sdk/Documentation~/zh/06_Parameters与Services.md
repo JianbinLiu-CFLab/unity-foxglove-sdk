@@ -89,6 +89,8 @@ DTO 校验会递归检查成员。推荐 DTO 只包含 public 字段或 get/set 
 
 get-only 的可变集合属性可以使用，例如 `public List<string> Tags { get; } = new();`，Newtonsoft 可以填充已有集合。get-only 的标量属性和 `readonly` 字段会产生 warning，因为它们可能可以序列化，但不一定能从 request JSON 反序列化并 round-trip。
 
+DTO 成员发现按最终 JSON 形状处理。派生 DTO 用 `new` 隐藏继承成员时，会按 JSON property name 去重并让派生成员优先；`[JsonProperty("...")]` 名称也参与同一规则。多维数组不支持并会阻断生成服务 descriptor；请改用单维数组、扁平集合或显式嵌套 DTO。
+
 当 DTO 成员不能安全序列化时，生成器会带成员路径报诊断：
 
 - `FOXSERVICE003`：request DTO 中有不支持的成员；
