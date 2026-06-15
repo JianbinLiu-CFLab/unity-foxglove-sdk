@@ -150,7 +150,7 @@ namespace Unity.FoxgloveSDK.Transport
         private static bool IsControlOpcode(int opcode) => opcode >= WsOpcode.Close;
 
         private static bool IsKnownDataOpcode(int opcode) =>
-            opcode == WsOpcode.Text || opcode == WsOpcode.Binary;
+            opcode == WsOpcode.Continuation || opcode == WsOpcode.Text || opcode == WsOpcode.Binary;
 
         private static bool IsKnownControlOpcode(int opcode) =>
             opcode == WsOpcode.Close || opcode == WsOpcode.Ping || opcode == WsOpcode.Pong;
@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// <summary>RFC 6455 WebSocket opcode constants.</summary>
     internal static class WsOpcode
     {
-        /// <summary>Continuation frame opcode (0x0). Fragmentation is not supported by this server.</summary>
+        /// <summary>Continuation frame opcode (0x0).</summary>
         public const byte Continuation = 0x0;
         /// <summary>Text frame opcode (0x1).</summary>
         public const byte Text = 0x1;
