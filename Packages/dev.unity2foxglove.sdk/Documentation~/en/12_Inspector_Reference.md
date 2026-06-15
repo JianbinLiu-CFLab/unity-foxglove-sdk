@@ -73,6 +73,10 @@ The **Replay Preflight** tools help prepare this path before Play Mode. **Use La
 
 When another person or device imports the CA, require a manual verification step: compare the `Root CA SHA-256` value shown in Unity with the fingerprint shown on the distributor root page before trusting the certificate. Keep the shared token out of approval records and deliver it through a separate trusted channel. The local generator fills project fields only; it does not import the CA into any OS trust store. The default built-in generator uses Unity's bundled Mono certificate APIs; OpenSSL is optional and used only when the OpenSSL generator is selected.
 
+### 3.7 FoxServices
+
+The **FoxServices** section is available on the Manager Inspector. In Edit Mode it explains that service registration is runtime-only. In Play Mode it shows the generated and registered service names, schema names, service IDs, and source component/type. **Copy Service List** copies a compact text summary for acceptance notes or bug reports.
+
 ## 4. FoxglovePublisherBase Fields
 
 These fields appear on publisher components derived from `FoxglovePublisherBase`.

@@ -131,7 +131,13 @@ The cube should reset and the response should show `status: "ok"`.
 > [!WARNING]
 > Do not type `{cube/reset_pose}` or `"/cube/reset_pose"` in the request box. The service name belongs in panel settings. The request body is only the JSON payload.
 
-## 8. Empty Parameter List
+## 8. Generated Service Schemas
+
+`[FoxService]` generates compact JSON schema previews for request and response DTOs. Foxglove can use these previews to show the request and response shape for generated services, including nested objects, arrays, dictionaries, and scalar fields.
+
+The Manager Inspector also shows the generated services that are registered while Unity is in Play Mode. Use **FoxServices > Copy Service List** when you need a quick acceptance note or bug report with the active service names and schema names.
+
+## 9. Empty Parameter List
 
 Check these in order:
 
@@ -141,7 +147,7 @@ Check these in order:
 4. The demo setup object is enabled.
 5. Reconnect Foxglove after starting Play Mode.
 
-## 9. Service Call Timeout
+## 10. Service Call Timeout
 
 Check these in order:
 
@@ -150,7 +156,7 @@ Check these in order:
 3. Unity is still in Play Mode.
 4. The Unity Console does not show service handler errors.
 
-## 10. Manual Service API Example
+## 11. Manual Service API Example
 
 Use `RegisterParameter` and `RegisterService` from `FoxgloveManager` when you need to create or remove services dynamically at runtime. For static Unity actions, prefer `[FoxService]`.
 
@@ -193,6 +199,6 @@ public class MyControls : MonoBehaviour
 }
 ```
 
-## 11. Current Capability Notes
+## 12. Current Capability Notes
 
 The current user-facing workflow supports reading and setting parameters and calling services. Service handlers run on Unity's main thread through the existing service drain path, so normal Unity API access is allowed. Payload limits and handler failures are governed by the existing Foxglove service registry and are reported to the client as service-call failures.

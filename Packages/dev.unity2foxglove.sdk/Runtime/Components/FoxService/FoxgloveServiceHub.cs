@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableFallbackSceneScan = true;
 
         private readonly Dictionary<IFoxgloveServiceSource, List<uint>> _serviceIdsBySource = new();
+        private readonly Dictionary<IFoxgloveServiceSource, List<FoxgloveGeneratedServiceDescriptor>> _descriptorsBySource = new();
         private readonly Dictionary<string, IFoxgloveServiceSource> _ownersByServiceName = new();
         private readonly HashSet<string> _warnedFailures = new();
         private float _managerSearchCooldown;
@@ -61,6 +62,12 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _instance?.UnregisterSourceNow(source);
+        }
+
+        public static bool TryGetActive(out FoxgloveServiceHub hub)
+        {
+            hub = _instance;
+            return hub != null;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -217,6 +224,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _serviceIdsBySource[source] = ids;
+            _descriptorsBySource[source] = new List<FoxgloveGeneratedServiceDescriptor>(descriptors);
         }
 
         private bool TryReserveServiceNames(
@@ -302,6 +310,7 @@ namespace Unity.FoxgloveSDK.Components
                     _manager?.UnregisterService(id);
                 _serviceIdsBySource.Remove(source);
             }
+            _descriptorsBySource.Remove(source);
 
             if (SourceUnavailable(source))
             {
@@ -334,7 +343,37 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _serviceIdsBySource.Clear();
+            _descriptorsBySource.Clear();
             _ownersByServiceName.Clear();
+        }
+
+        public IReadOnlyList<FoxgloveRegisteredServiceSnapshot> GetRegisteredServiceSnapshots()
+        {
+            var snapshots = new List<FoxgloveRegisteredServiceSnapshot>();
+            foreach (var pair in _serviceIdsBySource)
+            {
+                var source = pair.Key;
+                var ids = pair.Value;
+                if (!_descriptorsBySource.TryGetValue(source, out var descriptors))
+                    continue;
+
+                var count = Math.Min(ids.Count, descriptors.Count);
+                var sourceName = SourceDisplayName(source);
+                for (var i = 0; i < count; i++)
+                {
+                    var descriptor = descriptors[i];
+                    snapshots.Add(new FoxgloveRegisteredServiceSnapshot(
+                        ids[i],
+                        descriptor.Name,
+                        descriptor.Type,
+                        descriptor.RequestSchemaName,
+                        descriptor.ResponseSchemaName,
+                        sourceName));
+                }
+            }
+
+            snapshots.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.Ordinal));
+            return snapshots;
         }
 
         private void ReleaseServiceNamesByOwner(IFoxgloveServiceSource source)
@@ -360,15 +399,27 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     Encoding = JsonMessageEncoding,
                     SchemaName = generated.RequestSchemaName,
-                    Schema = string.Empty
+                    Schema = generated.RequestSchema
                 },
                 Response = new ServiceSchemaDescriptor
                 {
                     Encoding = JsonMessageEncoding,
                     SchemaName = generated.ResponseSchemaName,
-                    Schema = string.Empty
+                    Schema = generated.ResponseSchema
                 }
             };
+        }
+
+        private static string SourceDisplayName(IFoxgloveServiceSource source)
+        {
+            if (source is MonoBehaviour behaviour)
+            {
+                if (behaviour == null || behaviour.gameObject == null)
+                    return source.GetType().Name;
+                return behaviour.gameObject.name + " (" + source.GetType().Name + ")";
+            }
+
+            return source?.GetType().Name ?? string.Empty;
         }
 
         private void WarnOnce(IFoxgloveServiceSource source, string serviceName, string message)
