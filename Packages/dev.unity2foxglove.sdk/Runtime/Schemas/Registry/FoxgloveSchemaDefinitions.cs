@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Schemas
         public const string LaserScanSchemaName = "foxglove.LaserScan";
         /// <summary>Schema name for CameraCalibration.</summary>
         public const string CameraCalibrationSchemaName = "foxglove.CameraCalibration";
+        /// <summary>Schema name for Unity2Foxglove SystemInfo telemetry.</summary>
+        public const string SystemInfoSchemaName = "unity2foxglove.SystemInfo";
         // RawImage is intentionally omitted from the JSON schema registry because
         // the SDK currently exposes it through the protobuf-only camera path.
         /// <summary>Encoding identifier for JSON Schema.</summary>
@@ -83,6 +85,31 @@ namespace Unity.FoxgloveSDK.Schemas
         /// <summary>Decoded CameraCalibration JSON Schema text.</summary>
         public static readonly string CameraCalibrationSchema =
             Encoding.UTF8.GetString(Convert.FromBase64String(CameraCalibrationSchemaB64));
+
+        /// <summary>Unity2Foxglove SystemInfo JSON Schema text.</summary>
+        public const string SystemInfoSchema =
+            "{" +
+            "\"title\":\"unity2foxglove.SystemInfo\"," +
+            "\"description\":\"Unity runtime and device telemetry published by Unity2Foxglove.\"," +
+            "\"type\":\"object\"," +
+            "\"properties\":{" +
+            "\"timestamp\":{\"type\":\"object\",\"properties\":{\"sec\":{\"type\":\"integer\",\"minimum\":0},\"nsec\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999999999}},\"required\":[\"sec\",\"nsec\"]}," +
+            "\"frameTimeMs\":{\"type\":\"number\",\"minimum\":0}," +
+            "\"fps\":{\"type\":\"number\",\"minimum\":0}," +
+            "\"gcMemoryMB\":{\"type\":\"number\",\"minimum\":0}," +
+            "\"monoUsedMemoryMB\":{\"type\":\"number\",\"minimum\":0}," +
+            "\"totalAllocatedMemoryMB\":{\"type\":\"number\",\"minimum\":0}," +
+            "\"totalReservedMemoryMB\":{\"type\":\"number\",\"minimum\":0}," +
+            "\"systemMemorySizeMB\":{\"type\":\"integer\",\"minimum\":0}," +
+            "\"processorCount\":{\"type\":\"integer\",\"minimum\":0}," +
+            "\"processorType\":{\"type\":\"string\"}," +
+            "\"graphicsDeviceName\":{\"type\":\"string\"}," +
+            "\"graphicsMemorySizeMB\":{\"type\":\"integer\",\"minimum\":0}," +
+            "\"platform\":{\"type\":\"string\"}," +
+            "\"unityVersion\":{\"type\":\"string\"}" +
+            "}," +
+            "\"required\":[\"timestamp\",\"frameTimeMs\",\"fps\",\"gcMemoryMB\",\"monoUsedMemoryMB\",\"totalAllocatedMemoryMB\",\"totalReservedMemoryMB\",\"systemMemorySizeMB\",\"processorCount\",\"processorType\",\"graphicsDeviceName\",\"graphicsMemorySizeMB\",\"platform\",\"unityVersion\"]" +
+            "}";
 
         /// <summary>Log.json sha256=291a4d507377c811</summary>
         private const string LogSchemaB64 =
@@ -147,6 +174,13 @@ namespace Unity.FoxgloveSDK.Schemas
                 Name = CameraCalibrationSchemaName,
                 Encoding = JsonSchemaEncoding,
                 Content = CameraCalibrationSchema
+            });
+
+            registry.Register(new SchemaEntry
+            {
+                Name = SystemInfoSchemaName,
+                Encoding = JsonSchemaEncoding,
+                Content = SystemInfoSchema
             });
         }
     }
