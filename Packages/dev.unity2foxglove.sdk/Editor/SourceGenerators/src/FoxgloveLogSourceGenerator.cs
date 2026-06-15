@@ -316,6 +316,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     ? serviceType + ".Response"
                     : responseType.ToDisplayString();
 
+            var shouldSkipSchemaPreview = diagnostics.Any(IsBlockingSchemaPreviewDiagnostic);
+            var requestSchema = shouldSkipSchemaPreview
+                ? EmptyServiceSchemaPreview()
+                : FoxServiceSchemaEmitter.Emit(BuildServiceSchema(requestType, FoxServiceDtoRules.RequestSide, 0));
+            var responseSchema = shouldSkipSchemaPreview
+                ? EmptyServiceSchemaPreview()
+                : FoxServiceSchemaEmitter.Emit(BuildServiceSchema(responseType, FoxServiceDtoRules.ResponseSide, 0));
+
             return new ServiceMethodData(
                 ns,
                 className,
@@ -325,6 +333,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 description,
                 requestSchemaName,
                 responseSchemaName,
+                requestSchema,
+                responseSchema,
                 TypeNameForEmission(requestType),
                 TypeNameForEmission(responseType),
                 requestType != null,
@@ -337,6 +347,167 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             => type == null
                 ? string.Empty
                 : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        private static FoxServiceSchemaModel BuildServiceSchema(ITypeSymbol type, string side, int depth)
+            => BuildServiceSchema(
+                type,
+                side,
+                depth,
+                new Dictionary<string, FoxServiceSchemaModel>(StringComparer.Ordinal),
+                new HashSet<string>(StringComparer.Ordinal));
+
+        private static string EmptyServiceSchemaPreview()
+            => FoxServiceSchemaEmitter.Emit(FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>()));
+
+        private static bool IsBlockingSchemaPreviewDiagnostic(ServiceDiagnostic diagnostic)
+            => diagnostic != null
+               && Diags.Service(diagnostic.Id).DefaultSeverity == DiagnosticSeverity.Error;
+
+        private static FoxServiceSchemaModel BuildServiceSchema(
+            ITypeSymbol type,
+            string side,
+            int depth,
+            IDictionary<string, FoxServiceSchemaModel> memo,
+            ISet<string> stack)
+        {
+            if (type == null || type.SpecialType == SpecialType.System_Void)
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
+
+            if (depth > FoxServiceDtoRules.MaxDepth)
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
+
+            type = UnwrapNullable(type);
+            if (type is IArrayTypeSymbol array)
+                return FoxServiceSchemaModel.ArrayOf(BuildServiceSchema(array.ElementType, side, depth + 1, memo, stack));
+
+            if (!(type is INamedTypeSymbol named))
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
+
+            if (TryGetJsonScalarType(named, out var scalar))
+                return FoxServiceSchemaModel.Scalar(scalar);
+
+            if (named.TypeKind == TypeKind.Enum)
+                return FoxServiceSchemaModel.Scalar("integer");
+
+            if (IsUnsupportedSchemaPreviewType(named))
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
+
+            if (TryGetDictionaryValueType(named, out _, out var valueType))
+                return FoxServiceSchemaModel.Dictionary(BuildServiceSchema(valueType, side, depth + 1, memo, stack));
+
+            if (TryGetListElementType(named, side, out var elementType))
+                return FoxServiceSchemaModel.ArrayOf(BuildServiceSchema(elementType, side, depth + 1, memo, stack));
+
+            var typeKey = FullTypeName(named);
+            if (memo.TryGetValue(typeKey, out var cached))
+                return cached;
+            if (!stack.Add(typeKey))
+                return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
+
+            var properties = new List<FoxServiceSchemaProperty>();
+            foreach (var member in InheritedAndDeclaredMembers(named).OrderBy(MemberOrder))
+            {
+                if (member.IsStatic || HasIgnoredSerializationAttribute(member))
+                    continue;
+                if (member is IFieldSymbol field)
+                {
+                    if (field.IsConst || field.DeclaredAccessibility != Accessibility.Public)
+                        continue;
+                    properties.Add(new FoxServiceSchemaProperty(JsonPropertyName(field), BuildServiceSchema(field.Type, side, depth + 1, memo, stack)));
+                }
+                else if (member is IPropertySymbol property)
+                {
+                    if (property.DeclaredAccessibility != Accessibility.Public
+                        || property.IsIndexer
+                        || property.GetMethod == null)
+                        continue;
+                    properties.Add(new FoxServiceSchemaProperty(JsonPropertyName(property), BuildServiceSchema(property.Type, side, depth + 1, memo, stack)));
+                }
+            }
+
+            var model = FoxServiceSchemaModel.Object(properties);
+            stack.Remove(typeKey);
+            memo[typeKey] = model;
+            return model;
+        }
+
+        private static string JsonPropertyName(ISymbol member)
+        {
+            foreach (var attribute in member.GetAttributes())
+            {
+                var attributeName = FullTypeName(attribute.AttributeClass);
+                if (attributeName != "Newtonsoft.Json.JsonPropertyAttribute")
+                    continue;
+
+                foreach (var namedArgument in attribute.NamedArguments)
+                {
+                    if (namedArgument.Key == "PropertyName"
+                        && namedArgument.Value.Value is string namedValue
+                        && !string.IsNullOrWhiteSpace(namedValue))
+                        return namedValue;
+                }
+
+                if (attribute.ConstructorArguments.Length > 0
+                    && attribute.ConstructorArguments[0].Value is string constructorValue
+                    && !string.IsNullOrWhiteSpace(constructorValue))
+                    return constructorValue;
+            }
+
+            return member.Name;
+        }
+
+        private static bool IsUnsupportedSchemaPreviewType(INamedTypeSymbol named)
+        {
+            var fullName = FullTypeName(named);
+            return named.TypeKind == TypeKind.Delegate
+                   || named.TypeKind == TypeKind.Interface
+                   || fullName == "System.Object"
+                   || FoxServiceDtoTypeNames.IsTaskLike(fullName)
+                   || FoxServiceDtoTypeNames.IsUnsafeRuntimeHandle(fullName)
+                   || IsUnityObjectType(named);
+        }
+
+        private static bool TryGetJsonScalarType(INamedTypeSymbol named, out string jsonType)
+        {
+            jsonType = null;
+            switch (named.SpecialType)
+            {
+                case SpecialType.System_Boolean:
+                    jsonType = "boolean";
+                    return true;
+                case SpecialType.System_Byte:
+                case SpecialType.System_SByte:
+                case SpecialType.System_Int16:
+                case SpecialType.System_UInt16:
+                case SpecialType.System_Int32:
+                case SpecialType.System_UInt32:
+                case SpecialType.System_Int64:
+                case SpecialType.System_UInt64:
+                    jsonType = "integer";
+                    return true;
+                case SpecialType.System_Single:
+                case SpecialType.System_Double:
+                case SpecialType.System_Decimal:
+                    jsonType = "number";
+                    return true;
+                case SpecialType.System_String:
+                case SpecialType.System_Char:
+                    jsonType = "string";
+                    return true;
+            }
+
+            var fullName = FullTypeName(named);
+            if (fullName == "System.DateTime"
+                || fullName == "System.DateTimeOffset"
+                || fullName == "System.Guid"
+                || fullName == "System.TimeSpan")
+            {
+                jsonType = "string";
+                return true;
+            }
+
+            return false;
+        }
 
         private static IEnumerable<ServiceDiagnostic> ValidateServiceDtoType(
             ITypeSymbol type,
@@ -975,6 +1146,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 string description,
                 string requestSchemaName,
                 string responseSchemaName,
+                string requestSchema,
+                string responseSchema,
                 string requestTypeName,
                 string responseTypeName,
                 bool hasRequest,
@@ -990,6 +1163,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 Description = description ?? string.Empty;
                 RequestSchemaName = requestSchemaName ?? string.Empty;
                 ResponseSchemaName = responseSchemaName ?? string.Empty;
+                RequestSchema = requestSchema ?? string.Empty;
+                ResponseSchema = responseSchema ?? string.Empty;
                 RequestTypeName = requestTypeName ?? string.Empty;
                 ResponseTypeName = responseTypeName ?? string.Empty;
                 HasRequest = hasRequest;
@@ -1006,6 +1181,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public string Description { get; }
             public string RequestSchemaName { get; }
             public string ResponseSchemaName { get; }
+            public string RequestSchema { get; }
+            public string ResponseSchema { get; }
             public string RequestTypeName { get; }
             public string ResponseTypeName { get; }
             public bool HasRequest { get; }
@@ -1022,6 +1199,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     Description,
                     RequestSchemaName,
                     ResponseSchemaName,
+                    RequestSchema,
+                    ResponseSchema,
                     RequestTypeName,
                     ResponseTypeName,
                     HasRequest,

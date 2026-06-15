@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
         private bool _publishDataExpanded;
         private bool _ros2BridgeExpanded;
         private bool _mcapExpanded;
+        private bool _foxServicesExpanded;
         private bool _schemaEvidenceAdvancedExpanded;
         private bool _remoteFileAccessExpanded = true;
         private bool _diagnosticsExpanded;
@@ -69,6 +70,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawSection("Publish Data", ref _publishDataExpanded, DrawPublishDataSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
+            DrawSection("FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
             var ros2BridgeProp = serializedObject.FindProperty("_ros2BridgeEnabled");
             if (ros2BridgeProp != null && ros2BridgeProp.boolValue)
                 DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
@@ -174,6 +176,72 @@ namespace Unity.FoxgloveSDK.Editor
 
             FoxgloveManagerInspectorLayout.Subheader("Certificate Tools");
             DrawSecureWebSocketSection(isSecure);
+        }
+
+        private void DrawFoxServicesSection()
+        {
+            if (!Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox(
+                    "Generated [FoxService] services register when Play Mode starts. Use Foxglove's Call Service panel to invoke them.",
+                    MessageType.Info);
+                return;
+            }
+
+            if (!Components.FoxgloveServiceHub.TryGetActive(out var hub) || hub == null)
+            {
+                EditorGUILayout.HelpBox("FoxServiceHub is not active yet.", MessageType.Info);
+                return;
+            }
+
+            var snapshots = hub.GetRegisteredServiceSnapshots();
+            using (new EditorGUI.DisabledScope(true))
+                EditorGUILayout.IntField("Registered Services", snapshots.Count);
+
+            if (snapshots.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No generated [FoxService] services are currently registered.", MessageType.Info);
+                return;
+            }
+
+            if (GUILayout.Button("Copy Service List"))
+                EditorGUIUtility.systemCopyBuffer = BuildServiceListText(snapshots);
+
+            foreach (var snapshot in snapshots)
+            {
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        EditorGUILayout.SelectableLabel(snapshot.Name, EditorStyles.textField, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                        if (GUILayout.Button("Copy", GUILayout.Width(54)))
+                            EditorGUIUtility.systemCopyBuffer = snapshot.Name;
+                    }
+
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.TextField("Source", snapshot.Source);
+                        EditorGUILayout.TextField("Request", snapshot.RequestSchemaName);
+                        EditorGUILayout.TextField("Response", snapshot.ResponseSchemaName);
+                        EditorGUILayout.LongField("Service Id", snapshot.ServiceId);
+                    }
+                }
+            }
+        }
+
+        private static string BuildServiceListText(System.Collections.Generic.IReadOnlyList<Components.FoxgloveRegisteredServiceSnapshot> snapshots)
+        {
+            var lines = new string[snapshots.Count];
+            for (var i = 0; i < snapshots.Count; i++)
+            {
+                var snapshot = snapshots[i];
+                lines[i] = snapshot.Name
+                           + " | Source: " + snapshot.Source
+                           + " | Request: " + snapshot.RequestSchemaName
+                           + " | Response: " + snapshot.ResponseSchemaName
+                           + " | Service Id: " + snapshot.ServiceId;
+            }
+            return string.Join("\n", lines);
         }
 
         private void DrawSecureWebSocketSection(bool isSecure)

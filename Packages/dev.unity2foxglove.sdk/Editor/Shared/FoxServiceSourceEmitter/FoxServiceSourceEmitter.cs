@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.Editor
                 string description,
                 string requestSchemaName,
                 string responseSchemaName,
+                string requestSchema,
+                string responseSchema,
                 string requestTypeName,
                 string responseTypeName,
                 bool hasRequest,
@@ -35,6 +37,8 @@ namespace Unity.FoxgloveSDK.Editor
                 Description = description ?? string.Empty;
                 RequestSchemaName = requestSchemaName ?? string.Empty;
                 ResponseSchemaName = responseSchemaName ?? string.Empty;
+                RequestSchema = requestSchema ?? string.Empty;
+                ResponseSchema = responseSchema ?? string.Empty;
                 RequestTypeName = requestTypeName ?? string.Empty;
                 ResponseTypeName = responseTypeName ?? string.Empty;
                 HasRequest = hasRequest;
@@ -47,6 +51,8 @@ namespace Unity.FoxgloveSDK.Editor
             public string Description { get; }
             public string RequestSchemaName { get; }
             public string ResponseSchemaName { get; }
+            public string RequestSchema { get; }
+            public string ResponseSchema { get; }
             public string RequestTypeName { get; }
             public string ResponseTypeName { get; }
             public bool HasRequest { get; }
@@ -95,7 +101,9 @@ namespace Unity.FoxgloveSDK.Editor
                               + Lit(method.ServiceType) + "\", \""
                               + Lit(method.Description) + "\", \""
                               + Lit(method.RequestSchemaName) + "\", \""
-                              + Lit(method.ResponseSchemaName) + "\", __FoxService_"
+                              + Lit(method.ResponseSchemaName) + "\", \""
+                              + Lit(method.RequestSchema) + "\", \""
+                              + Lit(method.ResponseSchema) + "\", __FoxService_"
                               + IdentifierUtils.SanitizeIdentifier(method.MethodName) + ")" + (i + 1 == methods.Count ? string.Empty : ","));
             }
             sb.AppendLine(pad + "        });");

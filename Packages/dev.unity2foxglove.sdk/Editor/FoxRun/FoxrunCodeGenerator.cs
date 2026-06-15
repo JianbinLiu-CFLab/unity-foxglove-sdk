@@ -446,6 +446,8 @@ namespace Unity.FoxgloveSDK.Editor
                     var responseSchemaName = string.IsNullOrWhiteSpace(attr.ResponseSchemaName)
                         ? (hasResponse ? SchemaNameFromType(responseType) : serviceType + ".Response")
                         : attr.ResponseSchemaName;
+                    var requestSchema = FoxServiceSchemaEmitter.Emit(FoxServiceSchemaReflectionBuilder.Build(requestType, FoxServiceDtoRules.RequestSide));
+                    var responseSchema = FoxServiceSchemaEmitter.Emit(FoxServiceSchemaReflectionBuilder.Build(hasResponse ? responseType : null, FoxServiceDtoRules.ResponseSide));
 
                     if (string.IsNullOrWhiteSpace(attr.Type)
                         || string.IsNullOrWhiteSpace(attr.RequestSchemaName)
@@ -459,6 +461,8 @@ namespace Unity.FoxgloveSDK.Editor
                         attr.Description,
                         requestSchemaName,
                         responseSchemaName,
+                        requestSchema,
+                        responseSchema,
                         hasRequest ? FoxRunEmissionTypeNameFormatter.FromReflectionType(requestType) : string.Empty,
                         hasResponse ? FoxRunEmissionTypeNameFormatter.FromReflectionType(responseType) : string.Empty,
                         hasRequest,

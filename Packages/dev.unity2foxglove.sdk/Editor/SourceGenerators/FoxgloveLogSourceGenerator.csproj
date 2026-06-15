@@ -13,6 +13,7 @@
     <Compile Include="src\**\*.cs" />
     <Compile Include="..\Shared\FoxgloveSourceEmitter\**\*.cs" LinkBase="Shared\FoxgloveSourceEmitter" />
     <Compile Include="..\Shared\FoxServiceSourceEmitter\**\*.cs" LinkBase="Shared\FoxServiceSourceEmitter" />
+    <Compile Include="..\Shared\FoxServiceSchema\**\*.cs" LinkBase="Shared\FoxServiceSchema" />
     <Compile Include="..\Shared\FoxServiceDtoValidation\**\*.cs" LinkBase="Shared\FoxServiceDtoValidation" />
     <Compile Include="..\Shared\FoxRunDescriptor\**\*.cs"
              Exclude="..\Shared\FoxRunDescriptor\FoxRunGeneratedSourceReconciler.cs"
