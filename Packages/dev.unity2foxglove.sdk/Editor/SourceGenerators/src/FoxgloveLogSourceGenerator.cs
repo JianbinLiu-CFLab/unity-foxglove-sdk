@@ -405,7 +405,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return FoxServiceSchemaModel.Object(Array.Empty<FoxServiceSchemaProperty>());
 
             var properties = new List<FoxServiceSchemaProperty>();
-            foreach (var member in InheritedAndDeclaredMembers(named).OrderBy(MemberOrder))
+            foreach (var member in InheritedAndDeclaredMembers(named))
             {
                 if (member.IsStatic || HasIgnoredSerializationAttribute(member))
                     continue;
@@ -631,7 +631,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
 
             var diagnosticCountBeforeMembers = diagnostics.Count;
-            foreach (var member in InheritedAndDeclaredMembers(named).OrderBy(MemberOrder))
+            foreach (var member in InheritedAndDeclaredMembers(named))
             {
                 if (member.IsStatic)
                     continue;
@@ -687,23 +687,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static IEnumerable<ISymbol> InheritedAndDeclaredMembers(INamedTypeSymbol type)
         {
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var hierarchy = new Stack<INamedTypeSymbol>();
+            var seenJsonNames = new HashSet<string>(StringComparer.Ordinal);
             for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
-                hierarchy.Push(current);
-
-            while (hierarchy.Count > 0)
             {
-                foreach (var member in hierarchy.Pop().GetMembers())
+                foreach (var member in current.GetMembers().OrderBy(MemberOrder))
                 {
                     if (member is IFieldSymbol field)
                     {
-                        if (seen.Add("F:" + field.Name))
+                        if (seenJsonNames.Add(JsonPropertyName(field)))
                             yield return field;
                     }
                     else if (member is IPropertySymbol property)
                     {
-                        if (seen.Add("P:" + property.Name))
+                        if (seenJsonNames.Add(JsonPropertyName(property)))
                             yield return property;
                     }
                 }

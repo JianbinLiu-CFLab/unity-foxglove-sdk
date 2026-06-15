@@ -178,6 +178,7 @@
     <Compile Include="FoxServiceDeclarativeRpcValidation.cs" />
     <Compile Include="FoxServiceDtoSerializationAnalyzerValidation.cs" />
     <Compile Include="FoxServiceEditorSchemaPolishValidation.cs" />
+    <Compile Include="FoxServiceDtoGraphWalkerConvergenceValidation.cs" />
     <Compile Include="Phase138PValidation.cs" />
     <Compile Include="Phase138QValidation.cs" />
     <!-- 138S: validate VirtualImu native DDS output contracts. -->

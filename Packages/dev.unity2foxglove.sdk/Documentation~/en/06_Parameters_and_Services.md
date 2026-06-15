@@ -101,6 +101,8 @@ Supported collection shapes are `List<T>`, `IList<T>`, `IReadOnlyList<T>`, `Hash
 
 Get-only mutable collection properties, such as `public List<string> Tags { get; } = new();`, are accepted because Newtonsoft can populate the existing collection. Get-only scalar properties and `readonly` fields produce warnings because they may serialize but may not round-trip from request JSON.
 
+DTO member discovery follows the effective JSON shape. If a derived DTO hides an inherited member with `new`, the derived member wins by JSON property name; `[JsonProperty("...")]` names participate in the same de-duplication. Multi-dimensional arrays are unsupported and block generated service descriptors. Use single-dimensional arrays, flattened collections, or explicit nested DTOs instead.
+
 The generator reports a diagnostic with the member path when it finds a DTO member that cannot be serialized safely:
 
 - `FOXSERVICE003` for unsupported request DTO members;
