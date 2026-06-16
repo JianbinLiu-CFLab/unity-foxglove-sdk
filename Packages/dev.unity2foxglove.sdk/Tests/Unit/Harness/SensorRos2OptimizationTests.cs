@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Unit
@@ -203,7 +203,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var generated = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
             var generator = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers.py");
-            var generatorTests = TestSources.Text("Scripts/tests/test_generator_build_performance_scripts.py");
+            var generatorTests = TestSources.Text("Scripts/schema/regression_checks/test_schema_tooling.py");
             var frame = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs");
             var scene = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
             var camera = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCameraCalibrationBuilder.cs");

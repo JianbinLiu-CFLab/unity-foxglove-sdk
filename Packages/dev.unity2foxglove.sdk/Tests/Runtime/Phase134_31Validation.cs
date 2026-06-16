@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyUnityIl2CppBuildRunner()
         {
-            var source = ReadRepoText("Scripts/build_tools/unity_il2cpp.py");
+            var source = ReadRepoText("Scripts/unity_build/unity_il2cpp.py");
 
             Check(source.Contains("or find_unity_from_project_version(project_path)", StringComparison.Ordinal)
                   && source.IndexOf("or find_unity_from_project_version(project_path)", StringComparison.Ordinal)

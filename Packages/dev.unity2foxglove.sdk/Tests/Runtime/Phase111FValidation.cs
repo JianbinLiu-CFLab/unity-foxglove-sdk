@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -248,7 +248,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimeGeneratorAndValidation()
         {
-            var generator = ReadRepoText("Scripts/release/build_r2fu_runtime_package.py");
+            var generator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             foreach (var token in new[]
             {
                 "collect_local_patch_overlays",
@@ -264,7 +264,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "111F-F1: runtime generator preserves package hardening token: " + token);
             }
 
-            var validator = ReadRepoText("Scripts/release/validate_r2fu_runtime_package.py");
+            var validator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py");
             Check(validator.Contains("check_runtime_source_patches", StringComparison.Ordinal)
                   && validator.Contains("check_generator_alignment", StringComparison.Ordinal)
                   && validator.Contains("Stopwatch.Frequency", StringComparison.Ordinal)
@@ -274,7 +274,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBuildOrchestratorCleanup()
         {
-            var script = ReadRepoText("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py");
+            var script = ReadRepoText("Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py");
             Check(script.Contains("kill_process_tree_windows", StringComparison.Ordinal)
                   && script.Contains("taskkill", StringComparison.Ordinal)
                   && script.Contains("timed_out", StringComparison.Ordinal)

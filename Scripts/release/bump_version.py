@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -221,7 +221,7 @@ class VersionBump:
             "Run before publishing the release:\n\n"
             "```bash\n"
             "dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj\n"
-            "python Scripts/release/validate_package.py\n"
+            "python Scripts/package/validate_unity_package.py\n"
             "python Scripts/performance/run_baseline.py --quick --output build/performance/release\n"
             "```\n"
         )

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Unit
@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             var sync = Text("Scripts/samples/sync_full_demo.py");
             Assert.DoesNotContain("InputSystem_Actions.inputactions", sync, StringComparison.Ordinal);
 
-            var validator = Text("Scripts/release/validate_package.py");
+            var validator = Text("Scripts/package/validate_unity_package.py");
             var requiredFullStart = validator.IndexOf("required_full = [", StringComparison.Ordinal);
             var requiredFullEnd = validator.IndexOf("missing = [rel(p) for p in required_full", StringComparison.Ordinal);
             Assert.True(requiredFullStart >= 0 && requiredFullEnd > requiredFullStart);

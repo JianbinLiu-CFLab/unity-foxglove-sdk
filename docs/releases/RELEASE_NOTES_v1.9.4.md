@@ -1,4 +1,4 @@
-# Unity2Foxglove v1.9.4 Release Notes
+﻿# Unity2Foxglove v1.9.4 Release Notes
 
 Release date: 2026-05-27
 
@@ -30,9 +30,9 @@ Release preparation was validated with:
 python Scripts/release/bump_version.py 1.9.4 --date 2026-05-27
 dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj -c Release -o build/SourceGenerators/Release/netstandard2.0
 dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
-python Scripts/release/validate_package.py
-python Scripts/release/validate_r2fu_runtime_package.py
-python Scripts/release/validate_ros2forunity_package.py
+python Scripts/package/validate_unity_package.py
+python Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py
+python Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py
 python Scripts/performance/run_baseline.py --quick --output build/performance/release
 python -m compileall -q Scripts
 git diff --check

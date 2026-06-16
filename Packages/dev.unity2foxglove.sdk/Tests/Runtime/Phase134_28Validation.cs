@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimePackageBuilderZipSafety()
         {
-            var source = ReadRepoText("Scripts/release/build_r2fu_runtime_package.py");
+            var source = ReadRepoText("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             Check(source.Contains("PurePosixPath", StringComparison.Ordinal)
                   && source.Contains("safe_runtime_zip_relative_path", StringComparison.Ordinal),
                 "134-28A-1: runtime package builder normalizes zip entry paths as POSIX paths");
@@ -52,7 +52,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimePackageBuilderRegressionTest()
         {
-            var source = ReadRepoText("Scripts/tests/test_build_r2fu_runtime_package.py");
+            var source = ReadRepoText("Scripts/ros2forunity/windows/jazzy/regression_checks/test_build_r2fu_runtime_package.py");
             Check(source.Contains("Ros2ForUnity/../escape.txt", StringComparison.Ordinal)
                   && source.Contains("assertRaises(ValueError)", StringComparison.Ordinal)
                   && source.Contains("assertFalse((root / \"escape.txt\").exists())", StringComparison.Ordinal),
@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseValidatorRobustness()
         {
-            var runtimeValidator = ReadRepoText("Scripts/release/validate_r2fu_runtime_package.py");
+            var runtimeValidator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py");
             Check(runtimeValidator.Contains("def read_optional_text(path: Path) -> str:", StringComparison.Ordinal)
                   && runtimeValidator.Contains("node = read_optional_text(scripts / \"ROS2Node.cs\")", StringComparison.Ordinal)
                   && runtimeValidator.Contains("sensor = read_optional_text(scripts / \"Sensor.cs\")", StringComparison.Ordinal),
@@ -75,7 +75,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !runtimeValidator.Contains("sensor.index(\"readings.SetHeaderFrame\")", StringComparison.Ordinal),
                 "134-28C-2: runtime validator avoids unsafe Sensor.index null-guard check");
 
-            var optionalValidator = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
+            var optionalValidator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
             Check(optionalValidator.Contains("manifest_text = MANIFEST.read_text", StringComparison.Ordinal)
                   && optionalValidator.Contains("if MANIFEST.exists() else \"\"", StringComparison.Ordinal)
                   && !optionalValidator.Contains("(PACKAGE / \"Compliance\" / \"ros2-for-unity-adoption-manifest.json\").read_text", StringComparison.Ordinal),
@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseBuilderCompatibility()
         {
-            var builder = ReadRepoText("Scripts/release/build_r2fu_runtime_package.py");
+            var builder = ReadRepoText("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             Check(builder.Contains("hashlib.md5(seed.encode(\"utf-8\"), usedforsecurity=False)", StringComparison.Ordinal),
                 "134-28D-1: deterministic Unity GUID MD5 marks non-security use");
             Check(builder.Contains("def rmtree_with_writable_retry(path: Path) -> None:", StringComparison.Ordinal)
@@ -102,8 +102,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCiCoversR2fuValidators()
         {
             var workflow = ReadRepoText(".github/workflows/package-check.yml");
-            Check(workflow.Contains("python3 Scripts/release/validate_r2fu_runtime_package.py", StringComparison.Ordinal)
-                  && workflow.Contains("python3 Scripts/release/validate_ros2forunity_package.py", StringComparison.Ordinal),
+            Check(workflow.Contains("python3 Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py", StringComparison.Ordinal)
+                  && workflow.Contains("python3 Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py", StringComparison.Ordinal),
                 "134-28E-1: package CI runs R2FU runtime and adapter package validators");
         }
 

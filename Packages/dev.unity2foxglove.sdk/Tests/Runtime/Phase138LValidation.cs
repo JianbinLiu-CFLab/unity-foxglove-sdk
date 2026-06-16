@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.Tests
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
             var readme = Read("Packages/dev.unity2foxglove.ros2forunity/README.md");
             var sampleReadme = Read("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/README.md");
-            var rvizLauncher = Read("Scripts/smoke/launch_phase138l_rviz2.py");
+            var rvizLauncher = Read("Scripts/smoke/ros2/launch_phase138l_rviz2.py");
 
             Check(publisher.Contains("public bool IsPointCloud2NativeOutput", StringComparison.Ordinal)
                   && publisher.Contains("public string PointCloud2NativeTopic", StringComparison.Ordinal)

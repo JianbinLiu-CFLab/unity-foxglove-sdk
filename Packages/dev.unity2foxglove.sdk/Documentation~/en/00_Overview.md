@@ -1,4 +1,4 @@
-## 1. Purpose
+﻿## 1. Purpose
 
 Use this manual as the entry point for installing Unity2Foxglove, connecting Unity to Foxglove, recording or replaying MCAP files, and building an IL2CPP Player.
 
@@ -26,7 +26,7 @@ You will follow the same path most users need: install the package, connect Foxg
 ## 5. Recording, Replay, and Builds
 
 - [08_MCAP_Recording_and_Replay](08_MCAP_Recording_and_Replay.md): record Unity data, open MCAP in Foxglove, and replay in Unity.
-- [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md): build and verify a standalone Player with `Scripts/build_tools/unity_il2cpp.py`.
+- [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md): build and verify a standalone Player with `Scripts/unity_build/unity_il2cpp.py`.
 
 ## 6. Advanced Reading
 

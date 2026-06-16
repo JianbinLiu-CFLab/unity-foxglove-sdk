@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -25,9 +25,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string BuilderScriptPath = SamplePath + "/Phase129PointCloud2MessageBuilder.cs";
         private const string RvizConfigPath = SamplePath + "/rviz2_phase129_pointcloud2.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase129_pointcloud2_evidence_template.md";
-        private const string AcceptanceScriptPath = "Scripts/smoke/phase129_pointcloud2_acceptance.py";
-        private const string RvizLauncherPath = "Scripts/smoke/launch_phase129_rviz2.py";
-        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
+        private const string AcceptanceScriptPath = "Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/ros2/launch_phase129_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/ros2/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
@@ -373,7 +373,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseValidatorAcceptsV1SampleSet()
         {
-            var script = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
+            var script = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
             Check(script.Contains("RVIZ_POINTCLOUD2_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("RViz2 PointCloud2 Acceptance", StringComparison.Ordinal)
                   && script.Contains("RVIZ_SAMPLE", StringComparison.Ordinal)

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -30,13 +30,13 @@ namespace Unity.FoxgloveSDK.Tests
             var repoRoot = FindRepoRoot();
             if (repoRoot == null)
             {
-                Console.WriteLine("[WARN] Could not find repo root — skipping path-based checks.");
+                Console.WriteLine("[WARN] Could not find repo root 鈥?skipping path-based checks.");
                 return;
             }
 
             var pkgDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk");
 
-            // 鈹€鈹€ 16A: Package metadata 鈹€鈹€
+            // 閳光偓閳光偓 16A: Package metadata 閳光偓閳光偓
             var pkgJson = Path.Combine(pkgDir, "package.json");
             Assert(File.Exists(pkgJson), $"package.json exists at {pkgJson}");
 
@@ -46,13 +46,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("\"displayName\": \"Unity2Foxglove SDK\""), "package.json displayName correct");
             Assert(json.Contains("\"license\": \"Apache-2.0\""), "package.json license is Apache-2.0");
 
-            // 鈹€鈹€ 16A: LICENSE files 鈹€鈹€
+            // 閳光偓閳光偓 16A: LICENSE files 閳光偓閳光偓
             var pkgLicense = Path.Combine(pkgDir, "LICENSE");
             Assert(File.Exists(pkgLicense), $"Package LICENSE exists at {pkgLicense}");
             var rootLicense = Path.Combine(repoRoot, "LICENSE");
             Assert(File.Exists(rootLicense), $"Root LICENSE exists at {rootLicense}");
 
-            // 鈹€鈹€ 16C: .gitignore covers build artifacts 鈹€鈹€
+            // 閳光偓閳光偓 16C: .gitignore covers build artifacts 閳光偓閳光偓
             var gitignorePath = Path.Combine(repoRoot, ".gitignore");
             Assert(File.Exists(gitignorePath), ".gitignore exists");
             var gitignore = File.ReadAllText(gitignorePath);
@@ -61,13 +61,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gitignore.Contains("build/"), ".gitignore covers build/");
             ValidatePackageBuildOutputsAbsent(repoRoot);
 
-            // 鈹€鈹€ 16D: CI workflows 鈹€鈹€
+            // 閳光偓閳光偓 16D: CI workflows 閳光偓閳光偓
             var ciDir = Path.Combine(repoRoot, ".github", "workflows");
             Assert(Directory.Exists(ciDir), ".github/workflows/ exists");
             Assert(File.Exists(Path.Combine(ciDir, "dotnet-tests.yml")), "dotnet-tests.yml exists");
             Assert(File.Exists(Path.Combine(ciDir, "package-check.yml")), "package-check.yml exists");
 
-            // 鈹€鈹€ asmdef consistency 鈹€鈹€
+            // 閳光偓閳光偓 asmdef consistency 閳光偓閳光偓
             var asmdefPath = Path.Combine(pkgDir, "Runtime", "Unity.FoxgloveSDK.asmdef");
             Assert(File.Exists(asmdefPath), "Runtime asmdef exists");
             var asmdef = File.ReadAllText(asmdefPath);
@@ -110,17 +110,17 @@ namespace Unity.FoxgloveSDK.Tests
             var requiredHeaderFiles = new[]
             {
                 "Scripts/architecture/analyze_coupling.py",
-                "Scripts/build_tools/unity_il2cpp.py",
+                "Scripts/unity_build/unity_il2cpp.py",
                 "Scripts/performance/run_baseline.py",
                 "Scripts/release/bump_version.py",
-                "Scripts/release/validate_package.py",
+                "Scripts/package/validate_unity_package.py",
                 "Scripts/samples/sync_full_demo.py",
                 "Scripts/schema/generate_ros2_msg_schema_catalog.py",
-                "Scripts/smoke/phase34_attachment_mcap.py",
-                "Scripts/smoke/phase44_all_schemas_mcap.py",
-                "Scripts/smoke/phase40_slow_camera_client.py",
-                "Scripts/smoke/tf_websocket_smoke.py",
-                "Scripts/smoke/fetch_asset_smoke.py",
+                "Scripts/smoke/mcap/phase34_attachment_mcap.py",
+                "Scripts/smoke/mcap/phase44_all_schemas_mcap.py",
+                "Scripts/smoke/websocket/phase40_slow_camera_client.py",
+                "Scripts/smoke/websocket/tf_websocket_smoke.py",
+                "Scripts/smoke/assets/fetch_asset_smoke.py",
                 "Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs",
             };
 

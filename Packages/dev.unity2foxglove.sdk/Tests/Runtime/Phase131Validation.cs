@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -23,9 +23,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string SampleReadmePath = SamplePath + "/README.md";
         private const string RvizConfigPath = SamplePath + "/rviz2_phase131_standard_visualization.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase131_standard_visualization_evidence_template.md";
-        private const string AcceptanceScriptPath = "Scripts/smoke/phase131_standard_visualization_acceptance.py";
-        private const string RvizLauncherScriptPath = "Scripts/smoke/launch_phase131_rviz2.py";
-        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
+        private const string AcceptanceScriptPath = "Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py";
+        private const string RvizLauncherScriptPath = "Scripts/smoke/ros2/launch_phase131_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/ros2/_ros2_windows_env.py";
 
         private static int _passed;
         private static string _repoRoot;
@@ -192,10 +192,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "131D-7: shared publisher wait loop is deadline-aware and avoids fixed long sleeps");
             foreach (var path in new[]
                      {
-                         "Scripts/smoke/phase128_rviz2_acceptance.py",
-                         "Scripts/smoke/phase129_pointcloud2_acceptance.py",
-                         "Scripts/smoke/phase130_markerarray_acceptance.py",
-                         "Scripts/smoke/phase131_standard_visualization_acceptance.py"
+                         "Scripts/smoke/ros2/phase128_rviz2_acceptance.py",
+                         "Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py",
+                         "Scripts/smoke/ros2/phase130_markerarray_acceptance.py",
+                         "Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py"
                      })
             {
                 var smokeHelper = ReadRepoText(path);
@@ -299,7 +299,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseValidatorAcceptsV1SampleSet()
         {
-            var script = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
+            var script = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
             Check(script.Contains("RVIZ_V1_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("RViz2 Standard Visualization v1", StringComparison.Ordinal)
                   && script.Contains("len(samples) >=", StringComparison.Ordinal)

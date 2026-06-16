@@ -1,4 +1,4 @@
-## 1. Purpose
+﻿## 1. Purpose
 
 Use this page to build and verify a standalone Unity Player with Unity2Foxglove enabled.
 
@@ -22,20 +22,20 @@ Check:
 Run:
 
 ```powershell
-python Scripts/build_tools/unity_il2cpp.py --target win64
+python Scripts/unity_build/unity_il2cpp.py --target win64
 ```
 
 Other targets:
 
 ```powershell
-python Scripts/build_tools/unity_il2cpp.py --target linux64
-python Scripts/build_tools/unity_il2cpp.py --target macos
+python Scripts/unity_build/unity_il2cpp.py --target linux64
+python Scripts/unity_build/unity_il2cpp.py --target macos
 ```
 
 If Unity is not auto-detected, pass it explicitly:
 
 ```powershell
-python Scripts/build_tools/unity_il2cpp.py --target win64 --unity "path/to/Unity"
+python Scripts/unity_build/unity_il2cpp.py --target win64 --unity "path/to/Unity"
 ```
 
 ## 5. Watch Build Progress

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -25,9 +25,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string SampleScriptPath = SamplePath + "/Phase128Rviz2TfLaserScanSmoke.cs";
         private const string RvizConfigPath = SamplePath + "/rviz2_phase128_tf_laserscan.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase128_rviz2_evidence_template.md";
-        private const string AcceptanceScriptPath = "Scripts/smoke/phase128_rviz2_acceptance.py";
-        private const string RvizLauncherPath = "Scripts/smoke/launch_phase128_rviz2.py";
-        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
+        private const string AcceptanceScriptPath = "Scripts/smoke/ros2/phase128_rviz2_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/ros2/launch_phase128_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/ros2/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;

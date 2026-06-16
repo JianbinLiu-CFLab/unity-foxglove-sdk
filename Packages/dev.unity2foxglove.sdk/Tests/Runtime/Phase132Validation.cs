@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -29,9 +29,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string PoseSourcePath = SamplePath + "/Phase132StandardPoseSource.cs";
         private const string NavSatFixSourcePath = SamplePath + "/Phase132StandardNavSatFixSource.cs";
         private const string RvizConfigPath = SamplePath + "/rviz2_phase132_standard_messages.rviz";
-        private const string AcceptanceScriptPath = "Scripts/smoke/phase132_standard_messages_acceptance.py";
-        private const string RvizLauncherPath = "Scripts/smoke/launch_phase132_rviz2.py";
-        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
+        private const string AcceptanceScriptPath = "Scripts/smoke/ros2/phase132_standard_messages_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/ros2/launch_phase132_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/ros2/_ros2_windows_env.py";
 
         private static readonly string[] Topics =
         {
@@ -347,7 +347,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseValidatorAndWiring()
         {
-            var script = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
+            var script = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";
         private const string Runtime = OptionalPackage + "/Runtime";
         private const string CorePackageJson = "Packages/dev.unity2foxglove.sdk/package.json";
-        private const string OptionalPackageValidator = "Scripts/release/validate_ros2forunity_package.py";
+        private const string OptionalPackageValidator = "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py";
 
         private static int _passed;
         private static IReadOnlyList<string> _runtimeTextFiles;

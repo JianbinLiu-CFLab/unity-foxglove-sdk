@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase139Validation
     {
-        private const string ScriptPath = "Scripts/smoke/phase139_e2e_integration_smoke.py";
+        private const string ScriptPath = "Scripts/smoke/replay/phase139_e2e_integration_smoke.py";
         private const string ForbiddenPowerShellWrapper = "Scripts/smoke/phase139_e2e_integration_smoke.ps1";
 
         private static readonly string CachedRepoRoot = ResolveRepoRoot();

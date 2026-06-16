@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -308,7 +308,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(samples.Count == 4 && samples.Any(sample => sample["displayName"]?.ToString() == "ROS2 Bridge Sample"),
                 "99D-1: package metadata includes ROS2 Bridge Sample as fourth sample");
 
-            var releaseValidation = ReadRepoText("Scripts/release/validate_package.py");
+            var releaseValidation = ReadRepoText("Scripts/package/validate_unity_package.py");
             Check(releaseValidation.Contains("EXPECTED_SAMPLE_COUNT = 4")
                   && releaseValidation.Contains("\"ROS2 Bridge Sample\""),
                 "99D-2: release validation expects the fourth sample");

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -144,7 +144,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "121-C2: runner overlay is present for " + Path.GetFileName(file));
             }
 
-            Check(!script.Contains("third-party/mcap/tests/conformance/scripts/run-tests/runners/index.ts", StringComparison.Ordinal),
+            Check(!script.Contains("third-party/mcap/regression_checks/conformance/scripts/run-tests/runners/index.ts", StringComparison.Ordinal),
                 "121-C3: wrapper does not require editing tracked upstream runner index in place");
         }
 

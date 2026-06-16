@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -271,7 +271,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySmokeScript()
         {
-            var script = Read("Scripts/smoke/phase139d_unity_cursor_bridge_acceptance.py");
+            var script = Read("Scripts/smoke/replay/phase139d_unity_cursor_bridge_acceptance.py");
 
             Check(script.Contains("extension-metadata", StringComparison.Ordinal)
                   && script.Contains("endpoint-loopback", StringComparison.Ordinal),

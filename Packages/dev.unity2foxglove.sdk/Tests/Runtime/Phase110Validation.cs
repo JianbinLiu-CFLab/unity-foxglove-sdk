@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string StringSmokeBatchPath =
             "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs";
         private const string StringSmokeRos2ScriptPath =
-            "Scripts/smoke/phase110_string_smoke_acceptance.py";
+            "Scripts/smoke/ros2/phase110_string_smoke_acceptance.py";
         private const string RuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
         private const string InTopic = "/unity2foxglove/ros2forunity/string/in";

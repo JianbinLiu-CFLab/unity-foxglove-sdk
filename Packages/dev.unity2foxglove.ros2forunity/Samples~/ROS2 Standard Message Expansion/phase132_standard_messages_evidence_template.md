@@ -1,4 +1,4 @@
-# ROS2 Standard Message Expansion Evidence
+﻿# ROS2 Standard Message Expansion Evidence
 
 ## Environment
 
@@ -36,7 +36,7 @@ last error:
 ## Helper Command
 
 ```text
-python Scripts\smoke\phase132_standard_messages_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows
+python Scripts\smoke\ros2\phase132_standard_messages_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows
 ```
 
 ## Topic Evidence

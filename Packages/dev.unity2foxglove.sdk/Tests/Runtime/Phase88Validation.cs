@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCompressedDracoProbe()
         {
-            var source = ReadRepoText("Scripts/smoke/compressed_pointcloud_draco_probe.py");
+            var source = ReadRepoText("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
             Check(!string.IsNullOrEmpty(source),
                 "88A-1: compressed Draco smoke probe exists");
             Check(source.Contains("DEFAULT_TOPIC = \"/unity/point_cloud_draco\"")
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMcapInspectionTooling()
         {
-            var source = ReadRepoText("Scripts/smoke/compressed_pointcloud_mcap_inspect.py");
+            var source = ReadRepoText("Scripts/smoke/mcap/compressed_pointcloud_mcap_inspect.py");
             Check(!string.IsNullOrEmpty(source),
                 "88B-1: compressed point-cloud MCAP inspection script exists");
             Check(source.Contains("/unity/point_cloud")
@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEvidenceTemplate()
         {
-            var source = ReadRepoText("Scripts/smoke/phase88_draco_evidence_template.md");
+            var source = ReadRepoText("Scripts/smoke/mcap/phase88_draco_evidence_template.md");
             Check(!string.IsNullOrEmpty(source),
                 "88D-1: tracked Phase88 evidence template exists");
             Check(source.Contains("Final Verdict")

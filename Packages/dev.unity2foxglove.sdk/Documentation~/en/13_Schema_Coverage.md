@@ -1,4 +1,4 @@
-## 1. Purpose
+﻿## 1. Purpose
 
 Use this page to understand how Unity2Foxglove validates official Foxglove schema coverage, and where generic schema parity differs from dedicated Unity publisher UX.
 
@@ -82,7 +82,7 @@ ROS 2 `.msg` catalog entries beyond the dedicated list above are available for c
 From the repository root:
 
 ```bash
-python Scripts/smoke/phase44_all_schemas_mcap.py
+python Scripts/smoke/mcap/phase44_all_schemas_mcap.py
 ```
 
 The script writes:
@@ -96,7 +96,7 @@ Open that file in Foxglove Desktop and check the Problems panel. The smoke file 
 To generate a ROS 2 `.msg` + CDR smoke MCAP:
 
 ```bash
-python Scripts/smoke/ros2_cdr_mcap_inspect.py
+python Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py
 ```
 
 The script writes and strictly inspects:
@@ -108,7 +108,7 @@ build/test_mcap/phase93_ros2_full_schema.mcap
 This fixture validates all 41 ROS 2 `.msg` schema records, 41 `messageEncoding = cdr` channels, and one CDR-framed payload for every generated schema. To inspect an existing MCAP instead of generating the default fixture, pass its path as the positional argument:
 
 ```bash
-python Scripts/smoke/ros2_cdr_mcap_inspect.py build/test_mcap/phase93_ros2_full_schema.mcap
+python Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py build/test_mcap/phase93_ros2_full_schema.mcap
 ```
 
 The seven smoke builders listed above remain the source-compatible hand-written builder set used by the productized publisher paths.

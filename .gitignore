@@ -40,6 +40,13 @@ Unity2Foxglove/Recordings/*
 debug_mcap/
 .dotnet-home/
 
+# Local R2FU runtime artifacts. CI scripts may populate this path during a run,
+# and local workstations may link ignored distro subdirectories to an external
+# artifact cache.
+r2fu-runtime-artifacts/*
+!r2fu-runtime-artifacts/
+!r2fu-runtime-artifacts/README.md
+
 # ISG generated source files are rebuilt before IL2CPP/CI builds
 Unity2Foxglove/Assets/Scripts/Generated/*
 Unity2Foxglove/Assets/Scripts/Generated.meta

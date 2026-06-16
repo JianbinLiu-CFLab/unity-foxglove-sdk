@@ -1,4 +1,4 @@
-# Remote Timeline-Controlled Scene Reproduction for Unity-Based Telemetry Replay
+﻿# Remote Timeline-Controlled Scene Reproduction for Unity-Based Telemetry Replay
 
 **Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-09.**
 
@@ -42,7 +42,7 @@ MCAP [3, 4] provides the timestamped, multi-channel log container used by Unity2
 
 ### 3.3 Foxglove PlaybackControl Protocol
 
-Foxglove's PlaybackControl capability [5, 6, 7] lets the Foxglove UI control an external WebSocket server that owns playback. Foxglove sends play, pause, seek, and speed changes; the application loads data, handles requests, advances time, and returns updated playback state so the UI stays synchronized. The SDK `PlaybackState` frame includes a `did_seek` field [8], and Foxglove panel render state exposes `didSeek` so panels can clear stale state when data may have been skipped [9]. Unity2Foxglove uses this protocol directly. The important difference is that Unity2Foxglove is not only streaming data back to Foxglove — it also uses the same replay control path to reproduce a Unity scene from MCAP state.
+Foxglove's PlaybackControl capability [5, 6, 7] lets the Foxglove UI control an external WebSocket server that owns playback. Foxglove sends play, pause, seek, and speed changes; the application loads data, handles requests, advances time, and returns updated playback state so the UI stays synchronized. The SDK `PlaybackState` frame includes a `did_seek` field [8], and Foxglove panel render state exposes `didSeek` so panels can clear stale state when data may have been skipped [9]. Unity2Foxglove uses this protocol directly. The important difference is that Unity2Foxglove is not only streaming data back to Foxglove 鈥?it also uses the same replay control path to reproduce a Unity scene from MCAP state.
 
 ### 3.4 Dexory foxglove_mcap_player
 
@@ -58,7 +58,7 @@ ROS 2's `rosbag2_transport` Player supports remote-control services including se
 
 ### 3.7 Isaac Sim and USD + ROS Bag Workflows
 
-Isaac Sim's ROS 2 Bridge and simulation-control documentation [18, 19] show a related reproducibility pattern: recorded topic data, ROS bridge state, and saved scene/world descriptions all matter for simulation context. A separate workflow combining ROS 2 bags with USD scenes [20] makes that relationship explicit. The similarity is conceptual — recorded data alone is not enough; scene context matters. The difference is operational: Unity2Foxglove performs seek-time scene reproduction in a live Unity process controlled by Foxglove over WebSocket.
+Isaac Sim's ROS 2 Bridge and simulation-control documentation [18, 19] show a related reproducibility pattern: recorded topic data, ROS bridge state, and saved scene/world descriptions all matter for simulation context. A separate workflow combining ROS 2 bags with USD scenes [20] makes that relationship explicit. The similarity is conceptual 鈥?recorded data alone is not enough; scene context matters. The difference is operational: Unity2Foxglove performs seek-time scene reproduction in a live Unity process controlled by Foxglove over WebSocket.
 
 ### 3.8 Unity Replay Systems
 
@@ -256,7 +256,7 @@ The helper script verifies the backend endpoints and writes machine-readable
 evidence for the manual Foxglove pass:
 
 ```powershell
-python Scripts/smoke/phase139c_dataloader_cursor_acceptance.py --mode curve-only --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --json-out build/phase139c/manual.json
+python Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py --mode curve-only --mcap "Unity2Foxglove/Recordings/foxglove_20260605_144901_2666478Z.mcap" --json-out build/phase139c/manual.json
 ```
 
 The script checks both the contract endpoints (`/v1/manifest` and `/v1/data`)

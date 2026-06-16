@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string RuntimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
         private const string CorePackageJson = "Packages/dev.unity2foxglove.sdk/package.json";
         private const string Manifest = OptionalPackage + "/Compliance/ros2-for-unity-adoption-manifest.json";
-        private const string OptionalPackageValidator = "Scripts/release/validate_ros2forunity_package.py";
+        private const string OptionalPackageValidator = "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py";
         private const string JazzyArtifactName = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip";
         // Mirrors the adoption manifest and release-side hash sidecar; this check catches accidental artifact swaps.
         private const string JazzyArtifactSha256 = "709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a";
