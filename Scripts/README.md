@@ -1,4 +1,4 @@
-# Scripts
+﻿# Scripts
 
 Project-level helper scripts. Scripts under this directory are Python entry points so they can run on Windows, Ubuntu/Linux, and macOS without requiring PowerShell. All paths are resolved relative to each script location or the workspace root; no hardcoded absolute paths are required.
 
@@ -13,12 +13,22 @@ Directory layout:
 
 ```text
 Scripts/
-  build_tools/  Unity Player build entry points
+  smoke/        Runnable smoke probes, protocol clients, and live-tool helpers
+    assets/     Asset fetch probes
+    mcap/       MCAP generation and inspection probes
+    replay/     Remote data loader and replay/cursor probes
+    ros2/       ROS2, RViz2, and R2FU live probes
+    websocket/  Foxglove WebSocket protocol probes
+  architecture/ Static architecture checks
+  mcap/         MCAP analysis, conformance, and inspection tooling
+  native/       Native helper source and contracts
+  package/      Unity package structure and public-content validation
+  ros2forunity/ ROS2 For Unity artifact/package tooling by platform and distro
+  unity_build/  Unity Player build entry points
   performance/  Benchmark and performance baselines
-  release/      Version bump and package release checks
+  release/      Version bump and release orchestration
   samples/      Sample-content synchronization
   schema/       Generated runtime schema catalog helpers
-  smoke/        Manual smoke fixtures and protocol clients
 ```
 
 ## Package Version Bump
@@ -47,7 +57,7 @@ python Scripts/release/bump_version.py 1.2.0 --date 2026-05-11
 Entry script:
 
 ```text
-Scripts/build_tools/unity_il2cpp.py
+Scripts/unity_build/unity_il2cpp.py
 ```
 
 Purpose:
@@ -60,7 +70,7 @@ Purpose:
 Basic usage from the workspace root:
 
 ```bash
-python Scripts/build_tools/unity_il2cpp.py
+python Scripts/unity_build/unity_il2cpp.py
 ```
 
 The default target is selected based on the current system:
@@ -72,21 +82,21 @@ The default target is selected based on the current system:
 Specifying a target:
 
 ```bash
-python Scripts/build_tools/unity_il2cpp.py --target win64
-python Scripts/build_tools/unity_il2cpp.py --target linux64
-python Scripts/build_tools/unity_il2cpp.py --target macos
+python Scripts/unity_build/unity_il2cpp.py --target win64
+python Scripts/unity_build/unity_il2cpp.py --target linux64
+python Scripts/unity_build/unity_il2cpp.py --target macos
 ```
 
 Dry run:
 
 ```bash
-python Scripts/build_tools/unity_il2cpp.py --target win64 --dry-run
+python Scripts/unity_build/unity_il2cpp.py --target win64 --dry-run
 ```
 
 Specifying Unity:
 
 ```bash
-python Scripts/build_tools/unity_il2cpp.py --target win64 --unity "/path/to/Unity"
+python Scripts/unity_build/unity_il2cpp.py --target win64 --unity "/path/to/Unity"
 ```
 
 Or set `UNITY_EXE` / `UNITY_PATH` in the shell before running the script.
@@ -94,9 +104,9 @@ Or set `UNITY_EXE` / `UNITY_PATH` in the shell before running the script.
 Specifying output locations:
 
 ```bash
-python Scripts/build_tools/unity_il2cpp.py --target win64 --log build/Unity/manual-win64-il2cpp.log
-python Scripts/build_tools/unity_il2cpp.py --target win64 --build-dir build/Unity/manual-win64
-python Scripts/build_tools/unity_il2cpp.py --target win64 --output build/Unity/manual-win64/WindowsIL2CPP/FoxgloveDemo.exe
+python Scripts/unity_build/unity_il2cpp.py --target win64 --log build/Unity/manual-win64-il2cpp.log
+python Scripts/unity_build/unity_il2cpp.py --target win64 --build-dir build/Unity/manual-win64
+python Scripts/unity_build/unity_il2cpp.py --target win64 --output build/Unity/manual-win64/WindowsIL2CPP/FoxgloveDemo.exe
 ```
 
 Cross-platform notes:
@@ -148,22 +158,22 @@ python Scripts/samples/sync_full_demo.py --dry-run
 python Scripts/samples/sync_full_demo.py
 ```
 
-## Release Package Validation
+## Unity Package Validation
 
 Entry script:
 
 ```text
-Scripts/release/validate_package.py
+Scripts/package/validate_unity_package.py
 ```
 
 Purpose:
 
-- Validate package metadata, required files, sample declarations, sample assets, and forbidden generated artifacts before release.
+- Validate package metadata, required files, public docs, sample declarations, sample assets, and forbidden generated artifacts before release.
 
 Basic usage:
 
 ```bash
-python Scripts/release/validate_package.py
+python Scripts/package/validate_unity_package.py
 ```
 
 ## Schema: ROS 2 .msg Catalog
@@ -191,7 +201,7 @@ python Scripts/schema/generate_ros2_msg_schema_catalog.py
 Entry script:
 
 ```text
-Scripts/smoke/phase34_attachment_mcap.py
+Scripts/smoke/mcap/phase34_attachment_mcap.py
 ```
 
 Purpose:
@@ -202,8 +212,8 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/phase34_attachment_mcap.py
-python Scripts/smoke/phase34_attachment_mcap.py --output build/test_mcap/phase34_attachment_smoke.mcap
+python Scripts/smoke/mcap/phase34_attachment_mcap.py
+python Scripts/smoke/mcap/phase34_attachment_mcap.py --output build/test_mcap/phase34_attachment_smoke.mcap
 ```
 
 ## Smoke: Phase 40 Slow Camera Client
@@ -211,7 +221,7 @@ python Scripts/smoke/phase34_attachment_mcap.py --output build/test_mcap/phase34
 Entry script:
 
 ```text
-Scripts/smoke/phase40_slow_camera_client.py
+Scripts/smoke/websocket/phase40_slow_camera_client.py
 ```
 
 Purpose:
@@ -223,9 +233,9 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/phase40_slow_camera_client.py
-python Scripts/smoke/phase40_slow_camera_client.py --advertise-timeout-seconds 15 --hold-seconds 120
-python Scripts/smoke/phase40_slow_camera_client.py --no-fallback
+python Scripts/smoke/websocket/phase40_slow_camera_client.py
+python Scripts/smoke/websocket/phase40_slow_camera_client.py --advertise-timeout-seconds 15 --hold-seconds 120
+python Scripts/smoke/websocket/phase40_slow_camera_client.py --no-fallback
 ```
 
 Defaults:
@@ -239,7 +249,7 @@ Defaults:
 Entry script:
 
 ```text
-Scripts/smoke/phase144_fragmented_ws_probe.py
+Scripts/smoke/websocket/phase144_fragmented_ws_probe.py
 ```
 
 Purpose:
@@ -253,10 +263,10 @@ Purpose:
 Basic usage while Unity Play Mode is running:
 
 ```bash
-python Scripts/smoke/phase144_fragmented_ws_probe.py
-python Scripts/smoke/phase144_fragmented_ws_probe.py --mode positive
-python Scripts/smoke/phase144_fragmented_ws_probe.py --mode negative
-python Scripts/smoke/phase144_fragmented_ws_probe.py --url ws://127.0.0.1:8765
+python Scripts/smoke/websocket/phase144_fragmented_ws_probe.py
+python Scripts/smoke/websocket/phase144_fragmented_ws_probe.py --mode positive
+python Scripts/smoke/websocket/phase144_fragmented_ws_probe.py --mode negative
+python Scripts/smoke/websocket/phase144_fragmented_ws_probe.py --url ws://127.0.0.1:8765
 ```
 
 ## Smoke: TF WebSocket Client
@@ -264,7 +274,7 @@ python Scripts/smoke/phase144_fragmented_ws_probe.py --url ws://127.0.0.1:8765
 Entry script:
 
 ```text
-Scripts/smoke/tf_websocket_smoke.py
+Scripts/smoke/websocket/tf_websocket_smoke.py
 ```
 
 Purpose:
@@ -276,8 +286,8 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/tf_websocket_smoke.py
-python Scripts/smoke/tf_websocket_smoke.py --port 8765 --max-frames 20
+python Scripts/smoke/websocket/tf_websocket_smoke.py
+python Scripts/smoke/websocket/tf_websocket_smoke.py --port 8765 --max-frames 20
 ```
 
 ## Smoke: Topic Rate Probe
@@ -285,7 +295,7 @@ python Scripts/smoke/tf_websocket_smoke.py --port 8765 --max-frames 20
 Entry script:
 
 ```text
-Scripts/smoke/topic_rate_probe.py
+Scripts/smoke/websocket/topic_rate_probe.py
 ```
 
 Purpose:
@@ -298,9 +308,9 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/topic_rate_probe.py --port 8765 --topic /tf --duration 15 --target-hz 40
-python Scripts/smoke/topic_rate_probe.py --url ws://127.0.0.1:8765 --topic /scene --target-hz 10
-python Scripts/smoke/topic_rate_probe.py --url wss://127.0.0.1:8765 --insecure --token FoxRun --topic /tf --target-hz 40
+python Scripts/smoke/websocket/topic_rate_probe.py --port 8765 --topic /tf --duration 15 --target-hz 40
+python Scripts/smoke/websocket/topic_rate_probe.py --url ws://127.0.0.1:8765 --topic /scene --target-hz 10
+python Scripts/smoke/websocket/topic_rate_probe.py --url wss://127.0.0.1:8765 --insecure --token FoxRun --topic /tf --target-hz 40
 ```
 
 ## Smoke: fetchAsset Client
@@ -308,7 +318,7 @@ python Scripts/smoke/topic_rate_probe.py --url wss://127.0.0.1:8765 --insecure -
 Entry script:
 
 ```text
-Scripts/smoke/fetch_asset_smoke.py
+Scripts/smoke/assets/fetch_asset_smoke.py
 ```
 
 Purpose:
@@ -320,8 +330,8 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/fetch_asset_smoke.py
-python Scripts/smoke/fetch_asset_smoke.py --uri asset://demo/Scripts/FoxgloveDemoSetup.cs --output build/smoke/fetched_demo.cs
+python Scripts/smoke/assets/fetch_asset_smoke.py
+python Scripts/smoke/assets/fetch_asset_smoke.py --uri asset://demo/Scripts/FoxgloveDemoSetup.cs --output build/smoke/fetched_demo.cs
 ```
 
 ## Smoke: Phase 44 All Schemas MCAP
@@ -329,7 +339,7 @@ python Scripts/smoke/fetch_asset_smoke.py --uri asset://demo/Scripts/FoxgloveDem
 Entry script:
 
 ```text
-Scripts/smoke/phase44_all_schemas_mcap.py
+Scripts/smoke/mcap/phase44_all_schemas_mcap.py
 ```
 
 Purpose:
@@ -340,8 +350,8 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/phase44_all_schemas_mcap.py
-python Scripts/smoke/phase44_all_schemas_mcap.py --output build/test_mcap/phase44_all_schemas_smoke.mcap
+python Scripts/smoke/mcap/phase44_all_schemas_mcap.py
+python Scripts/smoke/mcap/phase44_all_schemas_mcap.py --output build/test_mcap/phase44_all_schemas_smoke.mcap
 ```
 
 ## Smoke: Phase 68 Indexed Reader
@@ -349,7 +359,7 @@ python Scripts/smoke/phase44_all_schemas_mcap.py --output build/test_mcap/phase4
 Entry script:
 
 ```text
-Scripts/smoke/phase68_indexed_reader_smoke.py
+Scripts/smoke/mcap/phase68_indexed_reader_smoke.py
 ```
 
 Purpose:
@@ -361,10 +371,10 @@ Purpose:
 Basic usage:
 
 ```bash
-python Scripts/smoke/phase68_indexed_reader_smoke.py
-python Scripts/smoke/phase68_indexed_reader_smoke.py Unity2Foxglove/Recordings/manual_recording.mcap
-python Scripts/smoke/phase68_indexed_reader_smoke.py --mcap "Unity2Foxglove/Recordings/*.mcap"
-python Scripts/smoke/phase68_indexed_reader_smoke.py --topic /tf --topic /scene
+python Scripts/smoke/mcap/phase68_indexed_reader_smoke.py
+python Scripts/smoke/mcap/phase68_indexed_reader_smoke.py Unity2Foxglove/Recordings/manual_recording.mcap
+python Scripts/smoke/mcap/phase68_indexed_reader_smoke.py --mcap "Unity2Foxglove/Recordings/*.mcap"
+python Scripts/smoke/mcap/phase68_indexed_reader_smoke.py --topic /tf --topic /scene
 ```
 
 Defaults:

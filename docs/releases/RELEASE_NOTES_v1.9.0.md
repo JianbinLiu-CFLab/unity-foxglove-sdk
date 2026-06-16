@@ -1,4 +1,4 @@
-# Unity2Foxglove v1.9.0 Release Notes
+﻿# Unity2Foxglove v1.9.0 Release Notes
 
 Release date: 2026-05-22
 
@@ -27,7 +27,7 @@ Preparation verification:
 ```bash
 python Scripts/release/bump_version.py 1.9.0 --date 2026-05-22 --dry-run
 dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
-python Scripts/release/validate_package.py
+python Scripts/package/validate_unity_package.py
 ```
 
 Observed results:

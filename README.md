@@ -1,4 +1,4 @@
-# 1. Unity2Foxglove
+﻿# 1. Unity2Foxglove
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
@@ -102,7 +102,7 @@ No external processes. No ROS installation. No platform lock-in. Just attach a `
 - Use the `Unity2Foxglove` demo project when you want a ready-to-open workspace for Foxglove panels, MCAP recording, replay, IL2CPP, manual acceptance, and future combined package experiments.
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization` for the minimal publisher setup (no extra dependencies).
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization` for the complete demo experience (requires Input System + URP).
-- Use `Scripts/build_tools/unity_il2cpp.py` together with `Unity2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
+- Use `Scripts/unity_build/unity_il2cpp.py` together with `Unity2Foxglove` to quickly produce IL2CPP standalone builds under `build/Unity`.
 
 The Unity2Foxglove demo project is the place for manual acceptance and combined-package experiments; the reusable UPM packages stay under `Packages/`.
 

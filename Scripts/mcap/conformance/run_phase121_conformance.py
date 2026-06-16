@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Purpose: Run the Phase 121 MCAP conformance baseline through a cross-platform Python entry point.
@@ -341,7 +341,7 @@ def run_conformance(release_blocking: bool) -> int:
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
 
     if not OFFICIAL_CONFORMANCE.exists():
-        write_skipped_report("third-party/mcap/tests/conformance was not found.")
+        write_skipped_report("third-party/mcap/regression_checks/conformance was not found.")
         return 1 if release_blocking else 0
 
     if shutil.which("dotnet") is None:

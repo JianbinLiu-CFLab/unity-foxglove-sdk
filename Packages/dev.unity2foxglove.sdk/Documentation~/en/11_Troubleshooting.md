@@ -1,4 +1,4 @@
-## 1. Purpose
+﻿## 1. Purpose
 
 Use this page when Unity, Foxglove, MCAP, FoxRun, or IL2CPP behavior does not match the expected guide results.
 
@@ -166,7 +166,7 @@ Check:
 
 - Target platform module is installed in Unity Hub.
 - Run from the repository root.
-- Use `python Scripts/build_tools/unity_il2cpp.py --target win64` for the standard Windows build.
+- Use `python Scripts/unity_build/unity_il2cpp.py --target win64` for the standard Windows build.
 - Open the log file printed by the script.
 
 If JSON messages become `{}` only in Player, verify the project has linker preservation for Newtonsoft.Json and `Unity.FoxgloveSDK`.

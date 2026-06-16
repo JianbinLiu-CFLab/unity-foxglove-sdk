@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -194,15 +194,15 @@ def main() -> int:
     # --- package validators ---
     if args.only in (None, "packages"):
         results["validate-package"] = run(
-            ["python", "Scripts/release/validate_package.py"],
-            "validate_package.py"
+            ["python", "Scripts/package/validate_unity_package.py"],
+            "validate_unity_package.py"
         )
         results["validate-r2fu"] = run(
-            ["python", "Scripts/release/validate_r2fu_runtime_package.py"],
+            ["python", "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
             "validate_r2fu_runtime_package.py"
         )
         results["validate-adapter"] = run(
-            ["python", "Scripts/release/validate_ros2forunity_package.py"],
+            ["python", "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
             "validate_ros2forunity_package.py"
         )
 

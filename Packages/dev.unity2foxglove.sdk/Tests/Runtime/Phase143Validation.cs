@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(registry.Contains("--phase138", StringComparison.Ordinal)
                   && registry.Contains("--phase138b", StringComparison.Ordinal),
                 "143A-1: tracked validation registry keeps downstream Jazzy gates explicit");
-            Check(RepoFileExists("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
+            Check(RepoFileExists("Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py"),
                 "143A-2: tracked Jazzy Windows build orchestrator is present");
             Check(RepoFileExists("Packages/dev.unity2foxglove.ros2forunity/package.json"),
                 "143A-3: tracked optional ROS2 package manifest is present");

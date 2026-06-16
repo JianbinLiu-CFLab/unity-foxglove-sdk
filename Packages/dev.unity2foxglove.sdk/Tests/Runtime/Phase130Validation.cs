@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -25,9 +25,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string BuilderScriptPath = SamplePath + "/Phase130MarkerArrayMessageBuilder.cs";
         private const string RvizConfigPath = SamplePath + "/rviz2_phase130_markerarray.rviz";
         private const string EvidenceTemplatePath = SamplePath + "/phase130_markerarray_evidence_template.md";
-        private const string AcceptanceScriptPath = "Scripts/smoke/phase130_markerarray_acceptance.py";
-        private const string RvizLauncherPath = "Scripts/smoke/launch_phase130_rviz2.py";
-        private const string SharedHelperPath = "Scripts/smoke/_ros2_windows_env.py";
+        private const string AcceptanceScriptPath = "Scripts/smoke/ros2/phase130_markerarray_acceptance.py";
+        private const string RvizLauncherPath = "Scripts/smoke/ros2/launch_phase130_rviz2.py";
+        private const string SharedHelperPath = "Scripts/smoke/ros2/_ros2_windows_env.py";
         private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
@@ -368,7 +368,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseValidatorAcceptsV1SampleSet()
         {
-            var script = ReadRepoText("Scripts/release/validate_ros2forunity_package.py");
+            var script = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
             Check(script.Contains("RVIZ_MARKERARRAY_SAMPLE", StringComparison.Ordinal)
                   && script.Contains("RViz2 MarkerArray Acceptance", StringComparison.Ordinal)
                   && script.Contains("RVIZ_SAMPLE", StringComparison.Ordinal)

@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTfWebSocketSmokeDiscoversChannels()
         {
-            var source = ReadRepoText("Scripts/smoke/tf_websocket_smoke.py");
+            var source = ReadRepoText("Scripts/smoke/websocket/tf_websocket_smoke.py");
             Check(source.Contains("DEFAULT_TOPIC = \"/tf\"", StringComparison.Ordinal)
                   && source.Contains("DEFAULT_ADVERTISE_TIMEOUT_SECONDS", StringComparison.Ordinal)
                   && source.Contains("wait_for_channel", StringComparison.Ordinal),
@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudProbesFailMalformedPayloads()
         {
-            var draco = ReadRepoText("Scripts/smoke/compressed_pointcloud_draco_probe.py");
+            var draco = ReadRepoText("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
             Check(draco.Contains("EXIT_DECODE_FAILURE = 6", StringComparison.Ordinal)
                   && draco.Contains("--allow-malformed-payloads", StringComparison.Ordinal),
                 "134-29B-1: Draco probe exposes an explicit decode-failure exit path");
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && draco.Contains("exit_code = EXIT_DECODE_FAILURE", StringComparison.Ordinal),
                 "134-29B-2: Draco probe fails when received payloads cannot be decoded");
 
-            var qos = ReadRepoText("Scripts/smoke/pointcloud_qos_probe.py");
+            var qos = ReadRepoText("Scripts/smoke/websocket/pointcloud_qos_probe.py");
             Check(qos.Contains("EXIT_DECODE_FAILURE = 6", StringComparison.Ordinal)
                   && qos.Contains("result = \"DECODE_FAILURE\"", StringComparison.Ordinal)
                   && qos.Contains("exit_code = EXIT_DECODE_FAILURE", StringComparison.Ordinal),
@@ -75,7 +75,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFetchAssetFrameBounds()
         {
-            var source = ReadRepoText("Scripts/smoke/fetch_asset_smoke.py");
+            var source = ReadRepoText("Scripts/smoke/assets/fetch_asset_smoke.py");
             Check(source.Contains("MIN_FETCH_ASSET_RESPONSE_BYTES = PAYLOAD_START", StringComparison.Ordinal)
                   && source.Contains("if len(data) < MIN_FETCH_ASSET_RESPONSE_BYTES:", StringComparison.Ordinal)
                   && source.Contains("FetchAsset response too short", StringComparison.Ordinal),
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAttachmentMcapFixtureConstants()
         {
-            var source = ReadRepoText("Scripts/smoke/phase34_attachment_mcap.py");
+            var source = ReadRepoText("Scripts/smoke/mcap/phase34_attachment_mcap.py");
             Check(source.Contains("MESSAGE_INDEX_RECORDS_BYTE_LENGTH", StringComparison.Ordinal)
                   && source.Contains("ZERO_CRC_SENTINEL", StringComparison.Ordinal)
                   && !source.Contains("MESSAGE_RECORD_OFFSET_IN_CHUNK", StringComparison.Ordinal)
@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySlowCameraAdvertiseParsing()
         {
-            var source = ReadRepoText("Scripts/smoke/phase40_slow_camera_client.py");
+            var source = ReadRepoText("Scripts/smoke/websocket/phase40_slow_camera_client.py");
             Check(source.Contains("MAX_HANDSHAKE_RESPONSE_BYTES = 8192", StringComparison.Ordinal)
                   && source.Contains("Handshake response exceeded", StringComparison.Ordinal),
                 "134-29E-1: slow camera client caps websocket handshake response bytes");
@@ -112,8 +112,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTopicProbeExceptionOrdering()
         {
-            VerifyTopicNotFoundBeforeWait("Scripts/smoke/pointcloud_qos_probe.py");
-            VerifyTopicNotFoundBeforeWait("Scripts/smoke/topic_rate_probe.py");
+            VerifyTopicNotFoundBeforeWait("Scripts/smoke/websocket/pointcloud_qos_probe.py");
+            VerifyTopicNotFoundBeforeWait("Scripts/smoke/websocket/topic_rate_probe.py");
         }
 
         private static void VerifyTopicNotFoundBeforeWait(string relativePath)
@@ -127,9 +127,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDotnetSmokeScriptsSurfaceFailures()
         {
-            VerifyCapturedDotnetFailure("Scripts/smoke/phase44_all_schemas_mcap.py", "phase44");
-            VerifyCapturedDotnetFailure("Scripts/smoke/phase68_indexed_reader_smoke.py", "phase68");
-            VerifyCapturedDotnetFailure("Scripts/smoke/ros2_cdr_mcap_inspect.py", "ros2_cdr");
+            VerifyCapturedDotnetFailure("Scripts/smoke/mcap/phase44_all_schemas_mcap.py", "phase44");
+            VerifyCapturedDotnetFailure("Scripts/smoke/mcap/phase68_indexed_reader_smoke.py", "phase68");
+            VerifyCapturedDotnetFailure("Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py", "ros2_cdr");
         }
 
         private static void VerifyCapturedDotnetFailure(string relativePath, string label)

@@ -1,4 +1,4 @@
-# Unity2Foxglove v1.5.0 Release Notes
+﻿# Unity2Foxglove v1.5.0 Release Notes
 
 Release date: 2026-05-14
 
@@ -33,7 +33,7 @@ Completed before preparing this release:
 
 ```bash
 dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
-uv run --python 3.11 Scripts/release/validate_package.py
+uv run --python 3.11 Scripts/package/validate_unity_package.py
 uv run --python 3.11 Scripts/performance/run_baseline.py --quick --output build/performance/phase63-schemas-proto-generated-organization
 ```
 

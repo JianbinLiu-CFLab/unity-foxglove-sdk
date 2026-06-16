@@ -33,7 +33,7 @@ Release preparation was validated with:
 ```bash
 python Scripts/release/bump_version.py 1.9.5 --date 2026-06-14
 python Scripts/release/run_ci.py
-python -m pytest Scripts/tests -p no:cacheprovider
+python -m pytest Scripts -p no:cacheprovider
 python -m compileall -q Scripts
 cd Tools/foxglove-extensions/unity-cursor-bridge && npm test -- --run
 cd Tools/foxglove-extensions/unity-cursor-bridge && npm run build

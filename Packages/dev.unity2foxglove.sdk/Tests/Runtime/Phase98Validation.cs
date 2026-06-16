@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -369,7 +369,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyLegacySampleAndReleaseChecks()
         {
             var phase17 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase17Validation.cs");
-            var validatePackage = ReadRepoText("Scripts/release/validate_package.py");
+            var validatePackage = ReadRepoText("Scripts/package/validate_unity_package.py");
 
             Check(phase17.Contains("samples.Count == 4") && phase17.Contains("ROS2 Bridge Sample"),
                 "98F-1: Phase17 package validation accepts four samples");

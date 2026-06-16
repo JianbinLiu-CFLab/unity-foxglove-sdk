@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySmokeScriptContract()
         {
-            var script = Read("Scripts/smoke/phase139c_dataloader_cursor_acceptance.py");
+            var script = Read("Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py");
 
             Check(script.Contains("--mode", StringComparison.Ordinal)
                   && script.Contains("curve-only", StringComparison.Ordinal),

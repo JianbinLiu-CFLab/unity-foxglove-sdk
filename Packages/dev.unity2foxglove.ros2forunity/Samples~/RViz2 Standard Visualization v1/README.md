@@ -1,4 +1,4 @@
-# RViz2 Standard Visualization v1
+﻿# RViz2 Standard Visualization v1
 
 This docs/config/evidence kit consolidates the source-only ROS2 For Unity RViz2 acceptance workflow for the v1 topic set:
 
@@ -46,13 +46,13 @@ It does not add CameraInfo, raw Image, CompressedImage, IMU, Odometry, PoseStamp
 Run Unity first. For full external ROS2 topic checks plus RViz2 launch, use the one-command helper from the repository root:
 
 ```text
-python Scripts\smoke\phase131_standard_visualization_acceptance.py
+python Scripts\smoke\ros2\phase131_standard_visualization_acceptance.py
 ```
 
 If your ROS2 root or sample path differs from the default, override them explicitly:
 
 ```text
-python Scripts\smoke\phase131_standard_visualization_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization v1\rviz2_phase131_standard_visualization.rviz"
+python Scripts\smoke\ros2\phase131_standard_visualization_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization v1\rviz2_phase131_standard_visualization.rviz"
 ```
 
 The helper uses:
@@ -66,7 +66,7 @@ The acceptance helper launches RViz2 first, prints timestamped RViz2 startup dia
 To open only RViz2 without one-shot CLI echo checks, use this Python launcher:
 
 ```text
-python Scripts\smoke\launch_phase131_rviz2.py
+python Scripts\smoke\ros2\launch_phase131_rviz2.py
 ```
 
 RViz2 is launched directly through `<ros2-root>\bin\rviz2.exe` with RViz2/Ogre/gz_math DLL directories added to `PATH`. This avoids treating a bare `ros2` launcher as the primary Windows path.

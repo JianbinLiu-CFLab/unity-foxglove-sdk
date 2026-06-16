@@ -1,4 +1,4 @@
-# RViz2 PointCloud2 Acceptance
+﻿# RViz2 PointCloud2 Acceptance
 
 This source-only sample publishes a generic unorganized point cloud through the optional ROS2 For Unity route. It uses Unity2Foxglove `PointCloudFrame` data, packs it with `PointCloudPackedDataBuilder`, maps the packed fields to `sensor_msgs/msg/PointCloud2`, and publishes the result on `/points`.
 
@@ -41,13 +41,13 @@ width = 1000
 Run Unity first, then execute this canonical command from the repository root:
 
 ```text
-python Scripts\smoke\phase129_pointcloud2_acceptance.py
+python Scripts\smoke\ros2\phase129_pointcloud2_acceptance.py
 ```
 
 If your ROS2 root or sample path differs from the default, override them explicitly:
 
 ```text
-python Scripts\smoke\phase129_pointcloud2_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz"
+python Scripts\smoke\ros2\phase129_pointcloud2_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz"
 ```
 
 The helper uses:
@@ -62,7 +62,7 @@ Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for the canonical same-machine accep
 By default, the helper launches direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces. RViz2 can still open slowly on Windows during cold starts, Defender scanning, or concurrent ROS2/colcon builds, and the helper prints timestamped launch diagnostics. To launch only RViz2 after Unity is already publishing, use:
 
 ```text
-python Scripts\smoke\launch_phase129_rviz2.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz"
+python Scripts\smoke\ros2\launch_phase129_rviz2.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 PointCloud2 Acceptance\rviz2_phase129_pointcloud2.rviz"
 ```
 
 ## Secondary Manual Commands
@@ -74,7 +74,7 @@ $ ros2 topic info -v /tf
 $ ros2 topic info -v /points
 $ ros2 topic echo --once /tf tf2_msgs/msg/TFMessage
 $ ros2 topic echo --once /points sensor_msgs/msg/PointCloud2
-$ python Scripts\smoke\launch_phase129_rviz2.py
+$ python Scripts\smoke\ros2\launch_phase129_rviz2.py
 ```
 
 ## PASS Criteria

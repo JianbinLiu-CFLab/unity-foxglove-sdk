@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -90,8 +90,8 @@ namespace Unity.FoxgloveSDK.Tests
                     "115H-C3: copied upstream-only vendored file is not marked as locally modified: " + relative);
             }
 
-            var generator = ReadRepoText("Scripts/release/build_r2fu_runtime_package.py");
-            var validator = ReadRepoText("Scripts/release/validate_r2fu_runtime_package.py");
+            var generator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
+            var validator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py");
             CheckContainsAll(
                 generator,
                 "115H-C4: runtime generator preserves local patch overlays",
@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115H-F3: unavailable context summary documents no bundled runtime behavior",
                 "not bundled", "facade");
             CheckContainsAll(
-                ReadRepoText("Scripts/smoke/phase138b_r2fu_jazzy_windows_build.py"),
+                ReadRepoText("Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py"),
                 "115H-F4: Phase138B smoke script documents Python orchestrator and upstream PowerShell boundary",
                 "Python orchestrator",
                 "not a project-owned PowerShell",

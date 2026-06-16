@@ -1,4 +1,4 @@
-# ROS2 Standard Message Expansion
+﻿# ROS2 Standard Message Expansion
 
 This source-only sample publishes six conventional ROS2 standard message topics through the optional ROS2 For Unity route:
 
@@ -77,7 +77,7 @@ Production projects should namespace them, for example `/unity/odom` or `/unity/
 Run Unity first, then execute this canonical command from the repository root:
 
 ```text
-python Scripts\smoke\phase132_standard_messages_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows
+python Scripts\smoke\ros2\phase132_standard_messages_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows
 ```
 
 The helper uses:
@@ -91,7 +91,7 @@ It uses `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` for same-machine Unity accepta
 To launch only the visual helper without the six-topic CLI checks:
 
 ```text
-python Scripts\smoke\launch_phase132_rviz2.py
+python Scripts\smoke\ros2\launch_phase132_rviz2.py
 ```
 
 ## Secondary Diagnostics

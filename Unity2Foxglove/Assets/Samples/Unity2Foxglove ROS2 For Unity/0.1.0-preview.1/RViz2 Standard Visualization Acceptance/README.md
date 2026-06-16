@@ -1,4 +1,4 @@
-# RViz2 Standard Visualization Acceptance
+﻿# RViz2 Standard Visualization Acceptance
 
 This source-only sample verifies the optional ROS2 For Unity route with standard ROS2 visualization messages. It publishes `tf2_msgs/msg/TFMessage` on `/tf` and `sensor_msgs/msg/LaserScan` on `/scan` for RViz2.
 
@@ -32,7 +32,7 @@ RViz2 should use `map` as the fixed frame.
 Run Unity first, then execute:
 
 ```text
-python Scripts\smoke\phase128_rviz2_acceptance.py
+python Scripts\smoke\ros2\phase128_rviz2_acceptance.py
 ```
 
 The helper uses:
@@ -47,13 +47,13 @@ Leave `ROS_AUTOMATIC_DISCOVERY_RANGE` unset for the canonical same-machine accep
 If your ROS2 root or sample path differs from the default, override them explicitly:
 
 ```text
-python Scripts\smoke\phase128_rviz2_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
+python Scripts\smoke\ros2\phase128_rviz2_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
 ```
 
 To launch only RViz2 after Unity is already publishing, use the Python launcher:
 
 ```text
-python Scripts\smoke\launch_phase128_rviz2.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
+python Scripts\smoke\ros2\launch_phase128_rviz2.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization Acceptance\rviz2_phase128_tf_laserscan.rviz"
 ```
 
 The launcher uses direct `rviz2.exe`, adds the required RViz2/Ogre/gz_math DLL directories, and passes the config path safely even when the workspace path contains spaces.
@@ -67,7 +67,7 @@ $ ros2 topic info -v /tf
 $ ros2 topic info -v /scan
 $ ros2 topic echo --once /tf tf2_msgs/msg/TFMessage
 $ ros2 topic echo --once /scan sensor_msgs/msg/LaserScan
-$ python Scripts\smoke\launch_phase128_rviz2.py
+$ python Scripts\smoke\ros2\launch_phase128_rviz2.py
 ```
 
 ## PASS Criteria

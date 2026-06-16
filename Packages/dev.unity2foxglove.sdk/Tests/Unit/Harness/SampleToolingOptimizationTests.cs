@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Unit
@@ -152,11 +152,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ReleaseValidatorsAvoidUnboundedReadsAndRepeatedWalks()
         {
-            var inspect = TestSources.Text("Scripts/release/inspect_r2fu_runtime_artifact.py");
+            var inspect = TestSources.Text("Scripts/ros2forunity/windows/jazzy/inspect_r2fu_runtime_artifact.py");
             var summary = TestSources.Slice(inspect, "def summarize_components", "def inspect_zip");
-            var build = TestSources.Text("Scripts/release/build_r2fu_runtime_package.py");
+            var build = TestSources.Text("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             var metas = TestSources.Slice(build, "def write_generated_metas", "def package_json");
-            var validate = TestSources.Text("Scripts/release/validate_package.py");
+            var validate = TestSources.Text("Scripts/package/validate_unity_package.py");
             var artifacts = TestSources.Slice(validate, "def check_package_build_artifacts", "def check_google_protobuf_collision");
             var runCi = TestSources.Text("Scripts/release/run_ci.py");
 
@@ -190,13 +190,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void CoreSmokeScriptsAvoidHotPathCopies()
         {
-            var phase40 = TestSources.Text("Scripts/smoke/phase40_slow_camera_client.py");
+            var phase40 = TestSources.Text("Scripts/smoke/websocket/phase40_slow_camera_client.py");
             var handshake = TestSources.Slice(phase40, "def read_handshake_response", "def build_websocket_upgrade_request");
-            var phase139 = TestSources.Text("Scripts/smoke/phase139_e2e_integration_smoke.py");
+            var phase139 = TestSources.Text("Scripts/smoke/replay/phase139_e2e_integration_smoke.py");
             var collectMessages = TestSources.Slice(phase139, "async def collect_messages", "def summarize_observed");
             var collectAdvertisements = TestSources.Slice(phase139, "async def collect_advertisements", "async def collect_messages");
-            var phase68 = TestSources.Text("Scripts/smoke/phase68_indexed_reader_smoke.py");
-            var topicRate = TestSources.Text("Scripts/smoke/topic_rate_probe.py");
+            var phase68 = TestSources.Text("Scripts/smoke/mcap/phase68_indexed_reader_smoke.py");
+            var topicRate = TestSources.Text("Scripts/smoke/websocket/topic_rate_probe.py");
 
             Assert.Contains("HANDSHAKE_READ_CHUNK_BYTES = 256", phase40, StringComparison.Ordinal);
             Assert.Contains("to_read = min(HANDSHAKE_READ_CHUNK_BYTES, MAX_HANDSHAKE_RESPONSE_BYTES - len(response))", handshake, StringComparison.Ordinal);
@@ -227,19 +227,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var bridge = TestSources.Text("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
             var payload = TestSources.Slice(bridge, "PayloadView payload_for_publish", "class BridgeNode");
-            var topicRate = TestSources.Text("Scripts/smoke/topic_rate_probe.py");
-            var env = TestSources.Text("Scripts/smoke/_ros2_windows_env.py");
+            var topicRate = TestSources.Text("Scripts/smoke/websocket/topic_rate_probe.py");
+            var env = TestSources.Text("Scripts/smoke/ros2/_ros2_windows_env.py");
             var visibleWindows = TestSources.Slice(env, "def visible_windows_for_pid", "def launch_rviz");
-            var phase139 = TestSources.Text("Scripts/smoke/phase139_e2e_integration_smoke.py");
+            var phase139 = TestSources.Text("Scripts/smoke/replay/phase139_e2e_integration_smoke.py");
 
             Assert.Contains("struct PayloadView", bridge, StringComparison.Ordinal);
             Assert.Contains("return PayloadView{frame.payload.data(), frame.payload.size()};", payload, StringComparison.Ordinal);
             Assert.Contains("return PayloadView{frame.payload.data() + 4, frame.payload.size() - 4};", payload, StringComparison.Ordinal);
             Assert.DoesNotContain("return frame.payload;", payload, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t>(frame.payload.begin() + 4", payload, StringComparison.Ordinal);
-            VerifyProbe("Scripts/smoke/topic_rate_probe.py", removePayloadLengthSlice: true);
-            VerifyProbe("Scripts/smoke/pointcloud_qos_probe.py", removePayloadLengthSlice: false);
-            VerifyProbe("Scripts/smoke/compressed_pointcloud_draco_probe.py", removePayloadLengthSlice: false);
+            VerifyProbe("Scripts/smoke/websocket/topic_rate_probe.py", removePayloadLengthSlice: true);
+            VerifyProbe("Scripts/smoke/websocket/pointcloud_qos_probe.py", removePayloadLengthSlice: false);
+            VerifyProbe("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py", removePayloadLengthSlice: false);
             Assert.Contains("_ENUM_WINDOWS_PROC_TYPE = ctypes.WINFUNCTYPE", env, StringComparison.Ordinal);
             Assert.Contains("_USER32 = ctypes.windll.user32", env, StringComparison.Ordinal);
             Assert.Contains("if _USER32 is None or _ENUM_WINDOWS_PROC_TYPE is None:", visibleWindows, StringComparison.Ordinal);
