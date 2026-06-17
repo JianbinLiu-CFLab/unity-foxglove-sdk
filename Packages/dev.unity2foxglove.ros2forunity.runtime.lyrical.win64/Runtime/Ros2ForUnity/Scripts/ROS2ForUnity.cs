@@ -261,44 +261,20 @@ internal class ROS2ForUnity : IDisposable
         {
             prefixPath = pluginPrefixPath;
         }
-        string currentPrefixPath = Environment.GetEnvironmentVariable("AMENT_PREFIX_PATH");
-        char envPathSep = GetOS() == Platform.Windows ? ';' : ':';
-
-        if (String.IsNullOrEmpty(currentPrefixPath))
-        {
-            SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
-            return;
-        }
-
-        StringComparison comparison = GetOS() == Platform.Windows
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        foreach (string entry in currentPrefixPath.Split(envPathSep))
-        {
-            if (String.Equals(entry.Trim(), prefixPath, comparison))
-            {
-                return;
-            }
-        }
-
-        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath + envPathSep + currentPrefixPath);
+        // U2F-LOCAL-PATCH: standalone runtime must not inherit a sourced ROS2 workspace.
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
     }
 
     private static void SetStandaloneRmwImplementation()
     {
-        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION")))
-        {
-            SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
-        }
+        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection.
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
     }
 
     private static void SetStandaloneRosDistro(string ros2Codename)
     {
-        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ROS_DISTRO")))
-        {
-            SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
-        }
+        // U2F-LOCAL-PATCH: hide any externally sourced ROS_DISTRO from standalone checks.
+        SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
     }
 
     private static void SetStandaloneRcutilsConsoleMode()
@@ -351,8 +327,12 @@ internal class ROS2ForUnity : IDisposable
             FailIntegrity(errMessage);
         }
 
-        if (IsStandalone() && !string.IsNullOrEmpty(ros2SourcedCodename)) {
-            string errMessage = "You should not source ROS2 in 'ros2-for-unity' standalone build.";
+        if (IsStandalone()
+            && !string.IsNullOrEmpty(ros2SourcedCodename)
+            && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            string errMessage =
+                "ROS2 version in standalone process environment does not match this runtime package. " +
+                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".";
             FailIntegrity(errMessage);
         }
     }
@@ -538,6 +518,14 @@ internal class ROS2ForUnity : IDisposable
 
             // Load metadata
             LoadMetadata();
+            if (IsStandalone())
+            {
+                string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
+                SetStandaloneRosDistro(packagedRos2Version);
+                SetStandalonePrefixPath();
+                SetStandaloneRmwImplementation();
+                SetStandaloneRcutilsConsoleMode();
+            }
             string currentRos2Version = GetROSVersion();
             string standalone = IsStandalone() ? "standalone" : "non-standalone";
 

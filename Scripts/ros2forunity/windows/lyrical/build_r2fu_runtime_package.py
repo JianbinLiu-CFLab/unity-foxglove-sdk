@@ -768,6 +768,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
     text = source.read_text(encoding="utf-8")
     text = patch_ros2cs_logger_callback_api(text)
+    text = patch_standalone_environment_isolation(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         write_text(source, text)
         return
@@ -788,6 +789,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     else:
         raise ValueError("Could not find upstream ROS2ForUnity path block to patch.")
     text = patch_rmw_guard(text)
+    text = patch_standalone_environment_isolation(text)
     write_text(source, text)
 
 
@@ -814,6 +816,90 @@ def patch_rmw_guard(text: str) -> str:
         if marker not in text:
             raise ValueError("Could not find RMW implementation read for RMW guard patch.")
         text = text.replace(marker, marker + "            ValidateRmwImplementation(rmwImpl);\n", 1)
+    return text
+
+
+def patch_standalone_environment_isolation(text: str) -> str:
+    """Patch standalone startup so sourced ROS2 shells do not poison Unity."""
+    old_prefix = '''        string currentPrefixPath = Environment.GetEnvironmentVariable("AMENT_PREFIX_PATH");
+        char envPathSep = GetOS() == Platform.Windows ? ';' : ':';
+
+        if (String.IsNullOrEmpty(currentPrefixPath))
+        {
+            SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
+            return;
+        }
+
+        StringComparison comparison = GetOS() == Platform.Windows
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (string entry in currentPrefixPath.Split(envPathSep))
+        {
+            if (String.Equals(entry.Trim(), prefixPath, comparison))
+            {
+                return;
+            }
+        }
+
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath + envPathSep + currentPrefixPath);
+'''
+    new_prefix = '''        // U2F-LOCAL-PATCH: standalone runtime must not inherit a sourced ROS2 workspace.
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
+'''
+    text = text.replace(old_prefix, new_prefix)
+
+    old_rmw = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION")))
+        {
+            SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
+        }
+'''
+    new_rmw = '''        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection.
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
+'''
+    text = text.replace(old_rmw, new_rmw)
+
+    old_distro = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ROS_DISTRO")))
+        {
+            SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
+        }
+'''
+    new_distro = '''        // U2F-LOCAL-PATCH: hide any externally sourced ROS_DISTRO from standalone checks.
+        SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
+'''
+    text = text.replace(old_distro, new_distro)
+
+    old_integrity = '''        if (IsStandalone() && !string.IsNullOrEmpty(ros2SourcedCodename)) {
+            string errMessage = "You should not source ROS2 in 'ros2-for-unity' standalone build.";
+            FailIntegrity(errMessage);
+        }
+'''
+    new_integrity = '''        if (IsStandalone()
+            && !string.IsNullOrEmpty(ros2SourcedCodename)
+            && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            string errMessage =
+                "ROS2 version in standalone process environment does not match this runtime package. " +
+                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".";
+            FailIntegrity(errMessage);
+        }
+'''
+    text = text.replace(old_integrity, new_integrity)
+
+    startup_marker = "            // Load metadata\n            LoadMetadata();\n"
+    startup_patch = '''            // Load metadata
+            LoadMetadata();
+            if (IsStandalone())
+            {
+                string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
+                SetStandaloneRosDistro(packagedRos2Version);
+                SetStandalonePrefixPath();
+                SetStandaloneRmwImplementation();
+                SetStandaloneRcutilsConsoleMode();
+            }
+'''
+    if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
+        text = text.replace(startup_marker, startup_patch, 1)
+
     return text
 
 

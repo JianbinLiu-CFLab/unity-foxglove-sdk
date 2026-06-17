@@ -556,6 +556,16 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and EXPECTED_RMW_IMPLEMENTATION in runtime,
         "ROS2ForUnity.cs",
     )
+    add(
+        results,
+        "ROS2ForUnity standalone isolates sourced ROS2 environment",
+        "standalone runtime must not inherit a sourced ROS2 workspace" in runtime
+        and "standalone runtime owns its RMW selection" in runtime
+        and "hide any externally sourced ROS_DISTRO" in runtime
+        and "packagedRos2Version = GetMetadataValue" in runtime
+        and "ROS2 version in standalone process environment does not match this runtime package" in runtime,
+        "ROS2ForUnity.cs",
+    )
 
     dotnet_time = read_optional_text(scripts / "Time" / "DotnetTimeSource.cs")
     add(
