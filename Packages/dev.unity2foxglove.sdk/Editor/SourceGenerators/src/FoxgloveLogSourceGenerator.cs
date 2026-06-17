@@ -933,12 +933,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (roslynMembers.Count == 0) return;
 
             var model = FoxRunRoslynGenerationModelLowerer.Lower(roslynMembers);
-            foreach (var diagnostic in FoxRunGenerationModelValidator.Validate(model))
+            var sharedDiagnostics = FoxRunGenerationModelValidator.Validate(model);
+            var invalidDeclaringTypes = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var diagnostic in sharedDiagnostics)
+            {
                 spc.ReportDiagnostic(Diagnostic.Create(Diags.Shared(diagnostic.Id), LocationFor(diagnostic, memberLocations), diagnostic.Target));
+                if (diagnostic.Severity == "Error")
+                    invalidDeclaringTypes.Add(DiagnosticDeclaringType(diagnostic));
+            }
 
             var emittedTypes = new List<FoxRunGenerationType>();
             foreach (var type in model.Types)
             {
+                if (invalidDeclaringTypes.Contains(type.DeclaringType))
+                    continue;
+
                 var key = (type.Namespace, type.ClassName);
                 if (!firstMemberByClass.TryGetValue(key, out var first))
                     continue;
@@ -954,6 +963,22 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(
                 new FoxRunGenerationModel(emittedTypes, model.DescriptorVersion, model.GeneratorVersion));
             spc.AddSource("FoxRunGeneratedDescriptorInfo.g.cs", DescriptorCarrierSource(descriptor));
+        }
+
+        private static string DiagnosticDeclaringType(FoxRunGenerationDiagnostic diagnostic)
+        {
+            if (diagnostic == null)
+                return string.Empty;
+
+            var target = diagnostic.Target ?? string.Empty;
+            var memberName = diagnostic.MemberName ?? string.Empty;
+            if (memberName.Length == 0)
+                return target;
+
+            var memberSuffix = "." + memberName;
+            return target.EndsWith(memberSuffix, StringComparison.Ordinal)
+                ? target.Substring(0, target.Length - memberSuffix.Length)
+                : target;
         }
 
         private static void GenerateServices(SourceProductionContext spc, ImmutableArray<ServiceMethodData> items)

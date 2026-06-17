@@ -101,9 +101,9 @@ namespace Unity.FoxgloveSDK.Tests
             });
 
             var body = ExtractMethodBody(source, "FoxRun_Trigger_event");
-            Check(body.Contains("FoxgloveLogHub.Trigger(this, 0)") && body.Contains("FoxgloveLogHub.Trigger(this, 1)"),
-                "53B-7: same member trigger method calls every trigger topic index");
-            Check(!body.Contains("FoxgloveLogHub.Trigger(this, 2)"),
+            Check(body.Contains("FoxgloveLogHub.Trigger(this, 1)") && body.Contains("FoxgloveLogHub.Trigger(this, 2)"),
+                "53B-7: same member trigger method calls every trigger topic index after ordinal topic ordering");
+            Check(!body.Contains("FoxgloveLogHub.Trigger(this, 0)"),
                 "53B-8: member trigger method excludes timer-only topic indexes");
         }
 

@@ -3,6 +3,7 @@
 //
 // Module: Editor/Shared/FoxgloveSourceEmitter
 
+using System.Globalization;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -33,7 +34,17 @@ namespace Unity.FoxgloveSDK.Editor
                     case '\n': sb.Append("\\n"); break;
                     case '\t': sb.Append("\\t"); break;
                     case '\0': sb.Append("\\0"); break;
-                    default: sb.Append(ch); break;
+                    default:
+                        if (char.IsControl(ch) || ch == '\u2028' || ch == '\u2029' || char.IsSurrogate(ch))
+                        {
+                            sb.Append("\\u");
+                            sb.Append(((int)ch).ToString("X4", CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            sb.Append(ch);
+                        }
+                        break;
                 }
             }
             return sb.ToString();
