@@ -396,13 +396,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsAllowedRuntimePackageFile(string path)
         {
-            if (!path.StartsWith(RuntimePackage + "/", StringComparison.Ordinal))
+            if (!IsExplicitRuntimePackagePath(path))
                 return false;
 
             return !path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
                    && !path.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
                    && !path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
         }
+
+        private static bool IsExplicitRuntimePackagePath(string path)
+            => path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal);
 
         private static JObject LoadJsonObject(string relativePath)
         {

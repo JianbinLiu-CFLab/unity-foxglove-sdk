@@ -40,6 +40,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static bool IsForbiddenR2fuArtifact(string path, string allowedRuntimePackagePrefix = null)
         {
+            if (IsExplicitRuntimePackagePath(path))
+                return false;
+
             if (!string.IsNullOrEmpty(allowedRuntimePackagePrefix)
                 && path.StartsWith(allowedRuntimePackagePrefix.TrimEnd('/') + "/", StringComparison.Ordinal))
             {
@@ -53,6 +56,9 @@ namespace Unity.FoxgloveSDK.Tests
                    || path.EndsWith("metadata_ros2cs.xml", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("metadata_ros2_for_unity.xml", StringComparison.OrdinalIgnoreCase);
         }
+
+        public static bool IsExplicitRuntimePackagePath(string path)
+            => path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal);
 
         public static IReadOnlyList<string> GitLsFiles(string repoRoot)
         {

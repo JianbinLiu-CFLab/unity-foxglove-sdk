@@ -190,6 +190,7 @@ namespace Unity.FoxgloveSDK.Tests
             var expectedEditorFiles = new[]
             {
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
+                OptionalPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelectorInspector.cs",
                 OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
@@ -305,10 +306,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {
-            return PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(
-                path,
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64");
+            return !IsExplicitRuntimePackagePath(path)
+                   && PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(path);
         }
+
+        private static bool IsExplicitRuntimePackagePath(string path)
+            => path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal);
 
         private static bool IsOptionalPackageRuntimeBinary(string path)
         {
