@@ -737,7 +737,11 @@ def main(argv: list[str]) -> int:
     print(json.dumps(evidence, indent=2, sort_keys=True))
     if args.print_json:
         print("PHASE138U_LIDAR_DESKEW_JSON=" + json.dumps(evidence, sort_keys=True))
-    print("[phase138u-lidar-deskew] PASS")
+    motion_status = evidence["motion_contract"].get("status")
+    if motion_status == "static_allowed":
+        print("[phase138u-lidar-deskew] PASS (DDS-WIRING-ONLY: static capture accepted)")
+    else:
+        print("[phase138u-lidar-deskew] PASS")
     return 0
 
 
