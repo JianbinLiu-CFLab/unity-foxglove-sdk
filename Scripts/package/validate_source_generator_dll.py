@@ -28,6 +28,7 @@ BUILT_DLL = BUILD_OUTPUT_DIR / "FoxgloveLogSourceGenerator.dll"
 
 
 def sha256(path: Path) -> str:
+    """Return the SHA-256 hex digest for a file."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -36,6 +37,7 @@ def sha256(path: Path) -> str:
 
 
 def run_build() -> None:
+    """Build the source generator project in Release mode."""
     command = [
         "dotnet",
         "build",
@@ -50,6 +52,7 @@ def run_build() -> None:
 
 
 def validate_or_update(update: bool) -> int:
+    """Validate or update the checked-in analyzer DLL."""
     if not PROJECT.exists():
         print(f"[FAIL] Source generator project missing: {PROJECT}", file=sys.stderr)
         return 1
@@ -85,6 +88,7 @@ def validate_or_update(update: bool) -> int:
 
 
 def main() -> int:
+    """Parse command-line arguments and return a process exit code."""
     parser = argparse.ArgumentParser(description="Validate the checked-in source generator DLL.")
     parser.add_argument(
         "--update",
