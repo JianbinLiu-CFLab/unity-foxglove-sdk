@@ -209,12 +209,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "110-D11c: facade sample smoke creates subscription before publisher so R2FU/Jazzy exposes both graph endpoints");
 
             var defineInstaller = ReadRepoText(DefineInstallerPath);
-            Check(defineInstaller.Contains(RuntimePackageName, StringComparison.Ordinal)
-                  && defineInstaller.Contains(Define, StringComparison.Ordinal)
+            var runtimeSelection = ReadRepoText(OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs");
+            var compileSymbolSurface = defineInstaller + Environment.NewLine + runtimeSelection;
+            Check(compileSymbolSurface.Contains(RuntimePackageName, StringComparison.Ordinal)
+                  && compileSymbolSurface.Contains(Define, StringComparison.Ordinal)
                   && defineInstaller.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal)
                   && defineInstaller.Contains("ReconcileCompileSymbol", StringComparison.Ordinal)
                   && defineInstaller.Contains("RemoveAll", StringComparison.Ordinal)
-                  && defineInstaller.Contains("Regex.IsMatch", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("Regex.IsMatch", StringComparison.Ordinal)
                   && !defineInstaller.Contains("using ROS2;", StringComparison.Ordinal)
                   && !defineInstaller.Contains("ROS2UnityComponent", StringComparison.Ordinal),
                 "110-D12: adapter reconciles the R2FU compile symbol when the runtime package is installed or removed");

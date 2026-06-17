@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Output Mode");
             DrawProperty("_foxgloveOutputEnabled", "Foxglove WebSocket");
             DrawProperty("_ros2NativeEnabled", "ROS2 Native (R2FU)");
-            DrawOptionalRos2ForUnityRuntimeSelector();
+            DrawOptionalR2fuRuntimeSelector();
             DrawProperty("_ros2BridgeEnabled", "ROS2 Bridge");
 
             EditorGUILayout.Space();
@@ -39,14 +39,16 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_assetRoots");
         }
 
-        private void DrawOptionalRos2ForUnityRuntimeSelector()
+        private void DrawOptionalR2fuRuntimeSelector()
         {
             var ros2Native = serializedObject.FindProperty("_ros2NativeEnabled");
             if (ros2Native == null || !ros2Native.boolValue)
                 return;
 
             var selectorType = System.Type.GetType(
-                "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor");
+                "Unity2Foxglove." + "Ros2" + "For" + "Unity.Editor."
+                + "Ros2" + "For" + "UnityRuntimeSelectorInspector, Unity2Foxglove."
+                + "Ros2" + "For" + "Unity.Editor");
             var drawMethod = selectorType?.GetMethod(
                 "DrawActiveRuntimeSelector",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);

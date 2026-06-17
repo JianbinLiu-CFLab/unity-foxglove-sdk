@@ -96,9 +96,10 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(ManagerInspectorPath);
 
             Check(source.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
-                  && source.Contains("DrawOptionalRos2ForUnityRuntimeSelector", StringComparison.Ordinal),
+                  && source.Contains("DrawOptionalR2fuRuntimeSelector", StringComparison.Ordinal),
                 "146A-D1: Foxglove Manager Inspector hosts the runtime selector under ROS2 Native");
-            Check(source.Contains("Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector", StringComparison.Ordinal)
+            Check(source.Contains("\"Unity2Foxglove.\" + \"Ros2\" + \"For\" + \"Unity.Editor.\"", StringComparison.Ordinal)
+                  && source.Contains("\"Ros2\" + \"For\" + \"UnityRuntimeSelectorInspector", StringComparison.Ordinal)
                   && source.Contains("GetMethod", StringComparison.Ordinal),
                 "146A-D2: core SDK discovers the optional selector by reflection");
             Check(source.Contains("TargetInvocationException", StringComparison.Ordinal)

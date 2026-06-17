@@ -630,14 +630,19 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
             and asmdef_data.get("autoReferenced") is True
         )
     installer = editor / "Ros2ForUnityRuntimeDefineInstaller.cs"
+    selection = editor / "Ros2ForUnityRuntimeSelection.cs"
     installer_text = installer.read_text(encoding="utf-8", errors="replace") if installer.exists() else ""
+    selection_text = selection.read_text(encoding="utf-8", errors="replace") if selection.exists() else ""
+    compile_symbol_surface = installer_text + "\n" + selection_text
     add(
         results,
         "optional package editor surface only enables runtime compile symbol",
         not invalid_editor_files
         and editor_asmdefs_are_editor_only
-        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in installer_text
-        and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in installer_text
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in compile_symbol_surface
+        and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in compile_symbol_surface
+        and "Ros2ForUnityRuntimeSelection.GetStatus()" in installer_text
+        and "Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols" in installer_text
         and "NamedBuildTarget.Standalone" in installer_text
         and "using ROS2;" not in installer_text
         and "ROS2UnityComponent" not in installer_text,

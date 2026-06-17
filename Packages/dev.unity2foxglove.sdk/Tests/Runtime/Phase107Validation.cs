@@ -103,12 +103,17 @@ namespace Unity.FoxgloveSDK.Tests
                     .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token));
             }
             var installer = Path.Combine(editorRoot, "Ros2ForUnityRuntimeDefineInstaller.cs");
+            var selection = Path.Combine(editorRoot, "Ros2ForUnityRuntimeSelection.cs");
             var installerText = File.Exists(installer) ? File.ReadAllText(installer) : string.Empty;
+            var selectionText = File.Exists(selection) ? File.ReadAllText(selection) : string.Empty;
+            var compileSymbolSurface = installerText + Environment.NewLine + selectionText;
 
             Check(invalidFiles.Count == 0
                   && tokenHits.Count == 0
-                  && installerText.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
-                  && installerText.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && compileSymbolSurface.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
+                  && compileSymbolSurface.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && installerText.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal)
+                  && installerText.Contains("Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols", StringComparison.Ordinal)
                   && installerText.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal),
                 "107-A8: optional package Editor surface only auto-enables the runtime compile symbol"
                 + (invalidFiles.Count == 0 && tokenHits.Count == 0 ? string.Empty : " (" + string.Join(", ", invalidFiles.Concat(tokenHits)) + ")"));
