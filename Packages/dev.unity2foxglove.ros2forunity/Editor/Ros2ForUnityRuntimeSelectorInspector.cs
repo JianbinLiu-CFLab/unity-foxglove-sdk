@@ -34,15 +34,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Info);
 
-            var pendingRestartPackage = Ros2ForUnityRuntimeSelection.GetPendingEditorRestartRuntimePackage();
-            if (!string.IsNullOrWhiteSpace(pendingRestartPackage))
-            {
-                EditorGUILayout.HelpBox(
-                    "Restart Unity before entering Play Mode. The active runtime was switched to "
-                    + pendingRestartPackage
-                    + ", but native ROS2 runtime DLLs loaded earlier in this Editor process cannot be unloaded safely.",
-                    MessageType.Error);
-            }
+            DrawRestartStatus(projectDirectory, status);
 
             if (status.SelectedRuntime != null)
             {
@@ -51,6 +43,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     EditorGUILayout.TextField("Runtime Package", status.SelectedRuntime.PackageName);
                     EditorGUILayout.TextField("ROS Distro", status.SelectedRuntime.RosDistro);
                     EditorGUILayout.TextField("Runtime Id", status.SelectedRuntime.RuntimeId);
+                }
+            }
+        }
+
+        private static void DrawRestartStatus(string projectDirectory, Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            if (status.SelectedRuntime != null)
+            {
+                var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
+                var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
+                if (!string.IsNullOrWhiteSpace(restartPackage))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Restart Unity before entering Play Mode. This Editor session already loaded "
+                        + sessionRuntime
+                        + " native ROS2 runtime DLLs, and the active runtime is now "
+                        + restartPackage
+                        + ". Unity cannot safely unload native ROS2 DLLs mid-session.",
+                        MessageType.Error);
+
+                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    {
+                        if (GUILayout.Button("Restart Unity"))
+                            Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(sessionRuntime))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Switching runtime packages is safe before this Editor session enters Play Mode. A restart is required only after a different ROS2 runtime has already loaded native DLLs in this session.",
+                        MessageType.Info);
                 }
             }
         }
@@ -81,7 +104,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
-            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Restart Unity after package reimport and script compilation finish.", MessageType.Info);
+            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.", MessageType.Info);
         }
     }
 }

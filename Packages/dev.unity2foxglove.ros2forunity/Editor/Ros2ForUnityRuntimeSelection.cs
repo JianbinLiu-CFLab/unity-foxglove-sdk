@@ -7,12 +7,12 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.PackageManager;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Unity2Foxglove.Ros2ForUnity.Editor
@@ -65,8 +65,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     {
         public const string BaseCompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         public const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
-        private const string RestartProcessIdKey = "Unity2Foxglove.Ros2ForUnity.RuntimeSwitchProcessId";
-        private const string RestartPackageKey = "Unity2Foxglove.Ros2ForUnity.RuntimeSwitchPackage";
+        private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
 
         public static string ProjectDirectoryFromApplication()
         {
@@ -158,27 +157,56 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             manifest = RemoveRuntimePackageDependencies(manifest);
             manifest = AddRuntimePackageDependency(manifest, candidate.PackageName);
             File.WriteAllText(manifestPath, manifest);
-            MarkEditorRestartRequired(candidate.PackageName);
             Client.Resolve();
         }
 
-        public static string GetPendingEditorRestartRuntimePackage()
+        public static string GetSessionRuntimePackage()
+            => SessionState.GetString(SessionRuntimeKey, string.Empty);
+
+        public static void BindActiveRuntimeForPlayMode(string projectDirectory)
         {
-            var switchProcessId = EditorPrefs.GetInt(RestartProcessIdKey, -1);
-            if (switchProcessId < 0)
-                return string.Empty;
+            var sessionRuntime = GetSessionRuntimePackage();
+            if (!string.IsNullOrWhiteSpace(sessionRuntime))
+                return;
 
-            if (switchProcessId != CurrentEditorProcessId())
-            {
-                ClearEditorRestartRequirement();
-                return string.Empty;
-            }
+            var status = GetStatus(projectDirectory);
+            if (status.SelectedRuntime == null)
+                return;
 
-            return EditorPrefs.GetString(RestartPackageKey, string.Empty);
+            SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
         }
 
-        public static bool IsEditorRestartRequired()
-            => !string.IsNullOrWhiteSpace(GetPendingEditorRestartRuntimePackage());
+        public static string GetRuntimePackageRequiringEditorRestart(string projectDirectory)
+        {
+            var sessionRuntime = GetSessionRuntimePackage();
+            if (string.IsNullOrWhiteSpace(sessionRuntime))
+                return string.Empty;
+
+            var status = GetStatus(projectDirectory);
+            if (status.SelectedRuntime == null)
+                return string.Empty;
+
+            return string.Equals(status.SelectedRuntime.PackageName, sessionRuntime, StringComparison.Ordinal)
+                ? string.Empty
+                : status.SelectedRuntime.PackageName;
+        }
+
+        public static bool IsEditorRestartRequired(string projectDirectory)
+            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(projectDirectory));
+
+        public static void RestartEditor(string projectDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(projectDirectory))
+                throw new InvalidOperationException("Could not resolve the Unity project directory.");
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                throw new InvalidOperationException("Cannot restart Unity while Play Mode is active or changing.");
+
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                return;
+
+            EditorApplication.OpenProject(projectDirectory);
+        }
 
         public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes(string projectDirectory)
         {
@@ -242,21 +270,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             return new Ros2ForUnityRuntimeDescriptor(displayName, packageName, runtimeId, rosDistro, platform);
         }
-
-        private static void MarkEditorRestartRequired(string packageName)
-        {
-            EditorPrefs.SetInt(RestartProcessIdKey, CurrentEditorProcessId());
-            EditorPrefs.SetString(RestartPackageKey, packageName ?? string.Empty);
-        }
-
-        private static void ClearEditorRestartRequirement()
-        {
-            EditorPrefs.DeleteKey(RestartProcessIdKey);
-            EditorPrefs.DeleteKey(RestartPackageKey);
-        }
-
-        private static int CurrentEditorProcessId()
-            => Process.GetCurrentProcess().Id;
 
         private static bool IsEmbeddedPackage(string projectDirectory, string packageDirectory)
         {

@@ -82,10 +82,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("RemoveRuntimePackageDependencies", StringComparison.Ordinal)
                   && source.Contains("AddRuntimePackageDependency", StringComparison.Ordinal),
                 "146A-B4: manifest switching reaches the final single-runtime dependency state in one write");
-            Check(source.Contains("MarkEditorRestartRequired", StringComparison.Ordinal)
-                  && source.Contains("Process.GetCurrentProcess().Id", StringComparison.Ordinal)
-                  && source.Contains("EditorPrefs", StringComparison.Ordinal),
-                "146A-B5: manifest switching records an Editor-process restart requirement");
+            Check(source.Contains("SessionRuntimeKey", StringComparison.Ordinal)
+                  && source.Contains("SessionState", StringComparison.Ordinal)
+                  && !source.Contains("EditorPrefs", StringComparison.Ordinal),
+                "146A-B5: runtime guard records per-Editor-session runtime state without persistent drift");
         }
 
         private static void DefineInstallerUsesOnlyBaseRuntimeSymbol()
@@ -144,14 +144,17 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(guard.Contains("EditorApplication.playModeStateChanged", StringComparison.Ordinal)
                   && guard.Contains("PlayModeStateChange.ExitingEditMode", StringComparison.Ordinal)
-                  && guard.Contains("GetPendingEditorRestartRuntimePackage", StringComparison.Ordinal),
-                "146A-F1: Play Mode is guarded after a runtime switch in the same Editor process");
+                  && guard.Contains("BindActiveRuntimeForPlayMode", StringComparison.Ordinal)
+                  && guard.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal),
+                "146A-F1: Play Mode binds the first runtime used by this Editor session");
             Check(guard.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
                   && guard.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal),
-                "146A-F2: Play Mode guard cancels unsafe entry and explains the restart requirement");
-            Check(inspector.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal)
-                  && inspector.Contains("native ROS2 runtime DLLs loaded earlier", StringComparison.Ordinal),
-                "146A-F3: Inspector surfaces the post-switch Unity restart requirement");
+                "146A-F2: Play Mode guard cancels unsafe mixed-runtime entry and explains the restart requirement");
+            Check(inspector.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal)
+                  && inspector.Contains("Restart Unity", StringComparison.Ordinal)
+                  && inspector.Contains("RestartEditor(projectDirectory)", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
+                "146A-F3: Inspector surfaces conditional restart state and offers one-click relaunch");
         }
 
         private static void ReadmeDocumentsActiveRuntimeSelection()
@@ -164,8 +167,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("manifest.json", StringComparison.Ordinal)
                   && source.Contains("ROS2 For Unity Runtime", StringComparison.Ordinal)
                   && source.Contains("package reimport", StringComparison.Ordinal)
-                  && source.Contains("restart Unity", StringComparison.Ordinal),
-                "146A-G2: README documents manifest switching, the Inspector selector, and restart requirement");
+                  && source.Contains("After an Editor session has loaded one ROS2 runtime", StringComparison.Ordinal),
+                "146A-G2: README documents manifest switching and conditional restart requirement");
         }
 
         private static void ValidationRegistryWiresPhase146A()

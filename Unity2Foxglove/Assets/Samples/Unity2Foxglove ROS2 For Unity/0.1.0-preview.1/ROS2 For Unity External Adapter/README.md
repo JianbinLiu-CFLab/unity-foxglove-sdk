@@ -10,7 +10,7 @@ dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 ```
 
-Keep candidate runtime packages under the repository root `Packages/` directory. In the Foxglove Manager Inspector, use the `ROS2 For Unity Runtime` active runtime dropdown to choose the single runtime package that should be resolved by `Unity2Foxglove/Packages/manifest.json`. Switching runtimes triggers a Unity package reimport and script compilation. Restart Unity after switching runtime packages before entering Play Mode; native ROS2 runtime DLLs loaded from the previous runtime stay in the Editor process until it exits.
+Keep candidate runtime packages under the repository root `Packages/` directory. In the Foxglove Manager Inspector, use the `ROS2 For Unity Runtime` active runtime dropdown to choose the single runtime package that should be resolved by `Unity2Foxglove/Packages/manifest.json`. Switching runtimes triggers a Unity package reimport and script compilation. If this Editor session already entered Play Mode with a different ROS2 runtime, restart Unity before entering Play Mode again; native ROS2 runtime DLLs stay in the Editor process until it exits.
 
 When one runtime package is active, the adapter package enables the sample compile symbol automatically for the Standalone build target:
 

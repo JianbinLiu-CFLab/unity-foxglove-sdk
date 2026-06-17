@@ -23,9 +23,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (state != PlayModeStateChange.ExitingEditMode)
                 return;
 
-            var runtimePackage = Ros2ForUnityRuntimeSelection.GetPendingEditorRestartRuntimePackage();
+            var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
+            var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
             if (string.IsNullOrWhiteSpace(runtimePackage))
+            {
+                Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(projectDirectory);
                 return;
+            }
 
             Debug.LogError(
                 "Unity2Foxglove ROS2 For Unity runtime was switched to "
