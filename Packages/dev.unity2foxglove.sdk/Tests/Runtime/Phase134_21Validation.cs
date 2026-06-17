@@ -41,6 +41,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var installer = ReadRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs");
+            var selection = ReadRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
 
             Check(installer.Contains("if (!Application.isBatchMode)", StringComparison.Ordinal)
                   && installer.Contains("EditorApplication.Exit(exitCode)", StringComparison.Ordinal),
@@ -49,9 +51,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && installer.Contains("FormatFailureMessage", StringComparison.Ordinal)
                   && installer.Contains("Debug.LogError", StringComparison.Ordinal),
                 "134-21-D2: editor delayCall reconciliation reports contextual package failures");
-            Check(installer.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal)
-                  && installer.Contains("Leaving ROS2 For Unity compile symbols disabled", StringComparison.Ordinal)
-                  && installer.Contains("ContainsPackageKey(lockFile)", StringComparison.Ordinal),
+            Check(installer.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal)
+                  && selection.Contains("\"Packages\", \"manifest.json\"", StringComparison.Ordinal)
+                  && selection.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal)
+                  && selection.Contains("ContainsPackageKey(File.ReadAllText(lockPath), packageName)", StringComparison.Ordinal),
                 "134-21-D3: runtime detection cross-checks Unity package lock resolution");
         }
 

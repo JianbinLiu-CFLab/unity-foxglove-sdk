@@ -54,7 +54,7 @@ Dependency direction is intentionally one-way:
 dev.unity2foxglove.sdk does not depend on ROS2 For Unity packages.
 dev.unity2foxglove.ros2forunity can compile without runtime packages.
 dev.unity2foxglove.ros2forunity.runtime.* packages must not force the core SDK to load ROS2.
-Only one runtime package should be active in a Unity project unless a future conflict resolver exists.
+Multiple runtime packages may be installed, but exactly one active runtime is selected per Unity project.
 ```
 
 Runtime packages are expected to be package/release artifacts. They should carry their own manifest, checksum, file inventory, third-party notices, and license inventory.
@@ -68,14 +68,14 @@ dev.unity2foxglove.ros2forunity
 dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 ```
 
-The adapter package automatically enables the Standalone build-target symbols when it detects the Jazzy Win64 runtime package:
+The adapter package manages the Standalone build-target symbols from the project active runtime selection:
 
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
 UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE
 ```
 
-Automatic detection is intentionally conservative: the runtime package must be present in both `Packages/manifest.json` and Unity's resolved `Packages/packages-lock.json`. If the manifest lists the runtime package but Unity has not resolved it yet, the installer leaves both symbols disabled and logs a package-specific warning rather than compiling guarded code against missing runtime assemblies. The automatic installer only edits the Standalone build target. `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE` is managed by the runtime-package detector and gates the Native bridge assembly that hard-references the Jazzy Win64 runtime package.
+Runtime detection is intentionally conservative: a runtime package must be present in both `Packages/manifest.json` and Unity's resolved `Packages/packages-lock.json`. The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` dropdown. If no explicit active runtime is stored in `ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json`, the first installed supported runtime is selected and persisted automatically; changing the dropdown selects a different active runtime. The installer only edits the Standalone build target. `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE` is managed by the runtime-package detector and gates the Native bridge assembly that hard-references the Jazzy Win64 runtime package.
 
 The adapter runtime and editor asmdefs remain `autoReferenced=true` on purpose. Imported Package Manager samples land in predefined project assemblies, so this convenience keeps the facade interfaces visible without requiring users to add sample asmdefs. The core SDK still has no reference to this optional package.
 

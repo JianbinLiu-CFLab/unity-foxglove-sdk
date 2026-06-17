@@ -190,6 +190,8 @@ namespace Unity.FoxgloveSDK.Tests
             var expectedEditorFiles = new[]
             {
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
+                OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs",
+                OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelectorInspector.cs",
                 OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
             };
             Check(editorFiles.SequenceEqual(expectedEditorFiles),
