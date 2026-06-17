@@ -445,7 +445,7 @@ def check_runtime_asmdef(results: list[CheckResult]) -> None:
     """Validate the runtime assembly definition is safe for Editor and Player."""
     path = RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef"
     data = load_json(path, results, "runtime asmdef parses")
-    add(results, "runtime asmdef name", data.get("name") == "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64", f"name={data.get('name')!r}")
+    add(results, "runtime asmdef name", data.get("name") == "Unity2Foxglove.Ros2ForUnity.Runtime", f"name={data.get('name')!r}")
     add(
         results,
         "runtime asmdef targets Windows runtime and editor",
@@ -453,6 +453,7 @@ def check_runtime_asmdef(results: list[CheckResult]) -> None:
         f"includePlatforms={data.get('includePlatforms')!r}",
     )
     add(results, "runtime asmdef auto-referenced", data.get("autoReferenced") is True, f"autoReferenced={data.get('autoReferenced')!r}")
+    add(results, "runtime asmdef has no define gate", "defineConstraints" not in data, f"defineConstraints={data.get('defineConstraints')!r}")
 
 
 def check_runtime_source_patches(results: list[CheckResult]) -> None:
@@ -520,6 +521,12 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
     add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
+    add(
+        results,
+        "ROS2ForUnity uses non-obsolete ros2cs logger callback API",
+        "Ros2csLogger.SetCallback" in runtime and "Ros2csLogger.setCallback" not in runtime,
+        "ROS2ForUnity.cs",
+    )
     add(
         results,
         "ROS2ForUnity enforces expected RMW",

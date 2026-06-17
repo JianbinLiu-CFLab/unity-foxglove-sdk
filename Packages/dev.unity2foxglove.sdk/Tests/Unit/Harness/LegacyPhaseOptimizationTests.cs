@@ -209,9 +209,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     public sealed class Ros2ForUnityPackageContractTests
     {
         private const string BaseSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
-        private const string JazzyPackageSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE";
-        private const string LyricalPackageSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY_LYRICAL_WIN64_PACKAGE";
-
         [Fact]
         public void NativeBridgeDefinesAndDocsStayPackageScoped()
         {
@@ -223,22 +220,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var unavailable = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Unity2FoxgloveRos2UnavailableContext.cs");
 
             Assert.Contains("\"" + BaseSymbol + "\"", asmdef, StringComparison.Ordinal);
-            Assert.Contains("\"" + JazzyPackageSymbol + "\"", asmdef, StringComparison.Ordinal);
-            Assert.True(asmdef.IndexOf("\"defineConstraints\"", StringComparison.Ordinal) < asmdef.IndexOf("\"" + JazzyPackageSymbol + "\"", StringComparison.Ordinal));
-            Assert.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64\"", asmdef, StringComparison.Ordinal);
+            Assert.DoesNotContain("JAZZY_WIN64_PACKAGE", asmdef, StringComparison.Ordinal);
+            Assert.DoesNotContain("LYRICAL_WIN64_PACKAGE", asmdef, StringComparison.Ordinal);
+            Assert.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", asmdef, StringComparison.Ordinal);
             Assert.Contains("BaseCompileSymbol", installer, StringComparison.Ordinal);
             Assert.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", installer, StringComparison.Ordinal);
-            Assert.Contains("Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols", installer, StringComparison.Ordinal);
             Assert.Contains("EnsureSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol)", installer, StringComparison.Ordinal);
-            Assert.Contains("EnsureSymbol(parts, status.SelectedRuntime.CompileSymbol)", installer, StringComparison.Ordinal);
-            Assert.Contains("RemoveSymbol(parts, symbol)", installer, StringComparison.Ordinal);
-            Assert.Contains(JazzyPackageSymbol, selection, StringComparison.Ordinal);
-            Assert.Contains(LyricalPackageSymbol, selection, StringComparison.Ordinal);
-            Assert.Contains("ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json", selection, StringComparison.Ordinal);
+            Assert.DoesNotContain("RuntimeCompileSymbols", installer, StringComparison.Ordinal);
+            Assert.Contains("DiscoverCandidateRuntimes", selection, StringComparison.Ordinal);
+            Assert.Contains("SwitchActiveRuntimePackage", selection, StringComparison.Ordinal);
+            Assert.DoesNotContain("ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json", selection, StringComparison.Ordinal);
             Assert.DoesNotContain("set the symbol manually for external imports", readme, StringComparison.Ordinal);
             Assert.DoesNotContain("For an external, non-package ROS2 For Unity import, add that symbol manually.", readme, StringComparison.Ordinal);
-            Assert.Contains(JazzyPackageSymbol, readme, StringComparison.Ordinal);
-            Assert.Contains("managed by the runtime-package detector", readme, StringComparison.Ordinal);
+            Assert.Contains("manifest.json", readme, StringComparison.Ordinal);
+            Assert.Contains("candidate runtime packages", readme, StringComparison.Ordinal);
             Assert.Contains("external source-only adapter samples", readme, StringComparison.Ordinal);
             Assert.Contains("Null or whitespace node names must be normalized", contextInterface, StringComparison.Ordinal);
             Assert.Contains("Unavailable subscriptions preserve the topic but intentionally do not invoke callbacks", unavailable, StringComparison.Ordinal);

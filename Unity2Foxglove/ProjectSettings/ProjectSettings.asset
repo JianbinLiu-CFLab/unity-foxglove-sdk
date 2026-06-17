@@ -834,7 +834,7 @@ PlayerSettings:
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
   scriptingDefineSymbols:
-    Standalone: UNITY2FOXGLOVE_ROS2_FOR_UNITY;UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE
+    Standalone: UNITY2FOXGLOVE_ROS2_FOR_UNITY
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:

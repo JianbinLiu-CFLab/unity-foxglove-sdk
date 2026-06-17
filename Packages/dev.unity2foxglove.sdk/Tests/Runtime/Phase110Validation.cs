@@ -211,15 +211,19 @@ namespace Unity.FoxgloveSDK.Tests
             var defineInstaller = ReadRepoText(DefineInstallerPath);
             var runtimeSelection = ReadRepoText(OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs");
             var compileSymbolSurface = defineInstaller + Environment.NewLine + runtimeSelection;
-            Check(compileSymbolSurface.Contains(RuntimePackageName, StringComparison.Ordinal)
+            Check(runtimeSelection.Contains("RuntimePackagePrefix", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("ReadManifestRuntimePackages", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("SwitchActiveRuntimePackage", StringComparison.Ordinal)
                   && compileSymbolSurface.Contains(Define, StringComparison.Ordinal)
                   && defineInstaller.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal)
                   && defineInstaller.Contains("ReconcileCompileSymbol", StringComparison.Ordinal)
-                  && defineInstaller.Contains("RemoveAll", StringComparison.Ordinal)
-                  && runtimeSelection.Contains("Regex.IsMatch", StringComparison.Ordinal)
+                  && defineInstaller.Contains("RemoveStaleRuntimePackageSymbols", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("Client.Resolve()", StringComparison.Ordinal)
+                  && !runtimeSelection.Contains(RuntimePackageName, StringComparison.Ordinal)
+                  && !defineInstaller.Contains("RuntimeCompileSymbols", StringComparison.Ordinal)
                   && !defineInstaller.Contains("using ROS2;", StringComparison.Ordinal)
                   && !defineInstaller.Contains("ROS2UnityComponent", StringComparison.Ordinal),
-                "110-D12: adapter reconciles the R2FU compile symbol when the runtime package is installed or removed");
+                "110-D12: adapter reconciles the base R2FU compile symbol from the manifest-derived active runtime");
         }
 
         private static void VerifyFacadeBoundary()

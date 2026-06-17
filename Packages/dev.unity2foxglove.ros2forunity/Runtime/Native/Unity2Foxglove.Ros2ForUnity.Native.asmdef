@@ -6,7 +6,7 @@
     "Unity.FoxgloveSDK.Runtime",
     "Unity.FoxgloveSDK.Proto",
     "Unity.FoxgloveSDK.Sensors",
-    "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64"
+    "Unity2Foxglove.Ros2ForUnity.Runtime"
   ],
   "includePlatforms": [
     "Editor",
@@ -18,8 +18,7 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [
-    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
-    "UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE"
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
   ],
   "versionDefines": [],
   "noEngineReferences": false

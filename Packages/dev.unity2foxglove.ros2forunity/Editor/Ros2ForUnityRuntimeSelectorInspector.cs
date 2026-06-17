@@ -29,14 +29,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
-            if (installed.Length > 0
-                && string.IsNullOrWhiteSpace(status.ActiveRuntimePackage)
-                && status.SelectedRuntime != null)
-            {
-                SaveAndReconcile(projectDirectory, status.SelectedRuntime);
-                status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
-            }
-
             DrawRuntimePopup(projectDirectory, status, installed);
 
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
@@ -58,22 +50,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Ros2ForUnityRuntimeSelectionStatus status,
             Ros2ForUnityRuntimeDescriptor[] installed)
         {
-            var selectedIndex = Math.Max(
-                0,
-                Array.FindIndex(installed, runtime =>
-                    string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal)));
+            var selectedIndex = Math.Max(0, Array.FindIndex(installed, runtime =>
+                status.SelectedRuntime != null
+                && string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal)));
             var installedLabels = installed.Select(runtime => runtime.DisplayName).ToArray();
 
-            EditorGUI.BeginChangeCheck();
-            var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, installedLabels);
-            if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < installed.Length)
-                SaveAndReconcile(projectDirectory, installed[changedIndex]);
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            {
+                EditorGUI.BeginChangeCheck();
+                var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, installedLabels);
+                if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < installed.Length)
+                    SwitchAndResolve(projectDirectory, installed[changedIndex]);
+            }
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                EditorGUILayout.HelpBox("Exit Play Mode before switching ROS2 For Unity runtime packages.", MessageType.Warning);
         }
 
-        private static void SaveAndReconcile(string projectDirectory, Ros2ForUnityRuntimeDescriptor runtime)
+        private static void SwitchAndResolve(string projectDirectory, Ros2ForUnityRuntimeDescriptor runtime)
         {
-            Ros2ForUnityRuntimeSelection.SaveActiveRuntimePackage(projectDirectory, runtime.PackageName);
+            Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
+            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Wait for package reimport and script compilation to finish.", MessageType.Info);
         }
     }
 }

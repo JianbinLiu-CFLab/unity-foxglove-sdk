@@ -53,9 +53,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-21-D2: editor delayCall reconciliation reports contextual package failures");
             Check(installer.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal)
                   && selection.Contains("\"Packages\", \"manifest.json\"", StringComparison.Ordinal)
-                  && selection.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal)
-                  && selection.Contains("ContainsPackageKey(File.ReadAllText(lockPath), packageName)", StringComparison.Ordinal),
-                "134-21-D3: runtime detection cross-checks Unity package lock resolution");
+                  && selection.Contains("ReadManifestRuntimePackages", StringComparison.Ordinal)
+                  && selection.Contains("SwitchActiveRuntimePackage", StringComparison.Ordinal)
+                  && selection.Contains("RemoveRuntimePackageDependencies", StringComparison.Ordinal)
+                  && selection.Contains("AddRuntimePackageDependency", StringComparison.Ordinal)
+                  && selection.Contains("Client.Resolve()", StringComparison.Ordinal)
+                  && !selection.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal),
+                "134-21-D3: runtime detection uses manifest source-of-truth and resolves package locks after switching");
         }
 
         private static void VerifyAsmdefAndDocsPolicy()
@@ -71,11 +75,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && readme.Contains("autoReferenced=true", StringComparison.Ordinal)
                   && readme.Contains("predefined project assemblies", StringComparison.Ordinal),
                 "134-21-E1: optional asmdef auto-reference policy is intentional and documented");
-            Check(readme.Contains("Packages/packages-lock.json", StringComparison.Ordinal)
+            Check(readme.Contains("manifest.json", StringComparison.Ordinal)
                   && readme.Contains("Standalone build target", StringComparison.Ordinal)
                   && readme.Contains("external source-only adapter samples", StringComparison.Ordinal)
-                  && readme.Contains("Do not enable `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE`", StringComparison.Ordinal),
-                "134-21-E2: README documents resolved-package and Standalone-only symbol behavior");
+                  && readme.Contains("Per-distro runtime symbols are not compile gates", StringComparison.Ordinal),
+                "134-21-E2: README documents manifest-selected runtime and Standalone-only base symbol behavior");
         }
 
         private static void VerifyFacadeXmlDocs()

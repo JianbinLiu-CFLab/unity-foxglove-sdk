@@ -1,0 +1,718 @@
+// Copyright 2019-2021 Robotec.ai.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+using System.Xml;
+
+namespace ROS2
+{
+
+/// <summary>
+/// An internal class responsible for handling checking, proper initialization and shutdown of ROS2cs,
+/// </summary>
+internal class ROS2ForUnity : IDisposable
+{
+    private static bool isInitialized = false;
+    private static readonly object initMutex = new object();
+    private static int referenceCount = 0;
+    private static bool pathConfigured = false;
+    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";
+    private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64";
+    private const string unity2FoxgloveRuntimePackageAssetPath =
+        "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity";
+    private static readonly string[] supportedVersionsOrdered = { "foxy", "galactic", "humble", "jazzy", "lyrical", "rolling" };
+    private static readonly HashSet<string> supportedVersions = new HashSet<string>(supportedVersionsOrdered);
+    private static readonly string supportedVersionsString = String.Join(", ", supportedVersionsOrdered);
+    private static readonly Lazy<string> ros2ForUnityPath = new Lazy<string>(ComputeRos2ForUnityPath);
+    private static readonly Lazy<string> pluginPath = new Lazy<string>(ComputePluginPath);
+    private static ConsoleCancelEventHandler consoleCancelHandler;
+    private const string expectedRmwImplementation = "rmw_fastrtps_cpp";
+
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    private static extern int _putenv_s(string name, string value);
+
+#if UNITY_EDITOR
+    private static bool editorHandlersRegistered = false;
+#endif
+    // Metadata files are local package files; disable external XML resolution defensively.
+    private XmlDocument ros2csMetadata = new XmlDocument { XmlResolver = null };
+    private XmlDocument ros2ForUnityMetadata = new XmlDocument { XmlResolver = null };
+    private bool ownsReference = false;
+
+    public enum Platform
+    {
+        Windows,
+        Linux
+    }
+
+    public static Platform GetOS()
+    {
+        if (Application.platform == RuntimePlatform.LinuxEditor || Application.platform == RuntimePlatform.LinuxPlayer)
+        {
+            return Platform.Linux;
+        }
+        else if (Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer)
+        {
+            return Platform.Windows;
+        }
+        throw new System.NotSupportedException("Only Linux and Windows are supported");
+    }
+
+    private static bool InEditor() {
+        return Application.isEditor;
+    }
+
+    private static string GetOSName()
+    {
+        switch (GetOS())
+        {
+            case Platform.Linux:
+                return "Linux";
+            case Platform.Windows:
+                return "Windows";
+            default:
+                throw new System.NotSupportedException("Only Linux and Windows are supported");
+        }
+    }
+
+    private static string GetEnvPathVariableName()
+    {
+      string envVariable = "LD_LIBRARY_PATH";
+      if (GetOS() == Platform.Windows)
+      {
+          envVariable = "PATH";
+      }
+      return envVariable;
+    }
+
+    private static string GetEnvPathVariableValue()
+    {
+        return Environment.GetEnvironmentVariable(GetEnvPathVariableName());
+    }
+
+    private static void SetProcessEnvironmentVariable(string name, string value)
+    {
+        Environment.SetEnvironmentVariable(name, value);
+        if (GetOS() == Platform.Windows)
+        {
+            _putenv_s(name, value);
+        }
+    }
+
+    public static string GetRos2ForUnityPath()
+    {
+        return ros2ForUnityPath.Value;
+    }
+
+    private static string ComputeRos2ForUnityPath()
+    {
+        char separator = Path.DirectorySeparatorChar;
+        string appDataPath = Application.dataPath;
+        string path = appDataPath;
+
+        if (InEditor()) {
+            string assetPath = path + separator + ros2ForUnityAssetFolderName;
+            if (Directory.Exists(assetPath)) {
+                return assetPath;
+            }
+
+            // Unity2Foxglove package path support for local packages installed with
+            // Package Manager's "Add package from disk..." flow.
+#if UNITY_EDITOR
+            UnityEditor.PackageManager.PackageInfo runtimePackage =
+                UnityEditor.PackageManager.PackageInfo.FindForAssetPath(unity2FoxgloveRuntimePackageAssetPath);
+            if (runtimePackage != null && !string.IsNullOrEmpty(runtimePackage.resolvedPath)) {
+                string resolvedPackagePath = Path.Combine(
+                    runtimePackage.resolvedPath,
+                    "Runtime",
+                    ros2ForUnityAssetFolderName);
+                if (Directory.Exists(resolvedPackagePath)) {
+                    return resolvedPackagePath;
+                }
+            }
+#endif
+
+            DirectoryInfo dataDirectory = Directory.GetParent(appDataPath);
+            if (dataDirectory != null) {
+                string packagePath = Path.Combine(
+                    dataDirectory.FullName,
+                    "Packages",
+                    unity2FoxgloveRuntimePackageName,
+                    "Runtime",
+                    ros2ForUnityAssetFolderName);
+                if (Directory.Exists(packagePath)) {
+                    return packagePath;
+                }
+            }
+
+            // Unity2Foxglove package path support: keep upstream asset-folder fallback.
+            return assetPath;
+        }
+        return path;
+    }
+
+    public static string GetPluginPath()
+    {
+        return pluginPath.Value;
+    }
+
+    private static string ComputePluginPath()
+    {
+        char separator = Path.DirectorySeparatorChar;
+        string ros2ForUnityPath = GetRos2ForUnityPath();
+        string path = ros2ForUnityPath;
+
+        // Editor: Assets/Ros2ForUnity/Plugins/<OS>/x86_64
+        // Windows Player: <App>_Data/Plugins/x86_64
+        // Linux Player: <App>_Data/Plugins
+
+        path += separator + "Plugins";
+
+        if (InEditor()) {
+            path += separator + GetOSName();
+        }
+
+        if (InEditor() || GetOS() == Platform.Windows)
+        {
+           path += separator + "x86_64";
+        }
+
+        if (GetOS() == Platform.Windows)
+        {
+           path = path.Replace("/", "\\");
+        }
+
+        return path;
+    }
+
+    /// <summary>
+    /// Function responsible for setting up of environment paths for standalone builds
+    /// </summary>
+    /// <description>
+    /// Note that on Linux, LD_LIBRARY_PATH as used for dlopen() is determined on process start and this change won't
+    /// affect it. Ros2 looks for rmw implementation based on this variable (independently) and the change
+    /// is effective for this process, however rmw implementation's dependencies itself are loaded by dynamic linker
+    /// anyway so setting it for Linux is pointless.
+    /// </description>
+    private static void SetEnvPathVariable()
+    {
+        string currentPath = GetEnvPathVariableValue();
+        string pluginPath = GetPluginPath();
+
+        char envPathSep = ':';
+        if (GetOS() == Platform.Windows)
+        {
+            envPathSep = ';';
+        }
+
+        if (String.IsNullOrEmpty(currentPath))
+        {
+            SetProcessEnvironmentVariable(GetEnvPathVariableName(), pluginPath);
+            pathConfigured = true;
+            return;
+        }
+
+        StringComparison comparison = GetOS() == Platform.Windows
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (string entry in currentPath.Split(envPathSep))
+        {
+            if (String.Equals(entry.Trim(), pluginPath, comparison))
+            {
+                pathConfigured = true;
+                return;
+            }
+        }
+
+        SetProcessEnvironmentVariable(GetEnvPathVariableName(), pluginPath + envPathSep + currentPath);
+        pathConfigured = true;
+    }
+
+    private static void SetStandalonePrefixPath()
+    {
+        string prefixPath = GetRos2ForUnityPath();
+        string streamingAssetsPrefixPath = Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
+        string pluginPrefixPath = GetPluginPath();
+        if (Directory.Exists(Path.Combine(streamingAssetsPrefixPath, "share")))
+        {
+            prefixPath = streamingAssetsPrefixPath;
+        }
+        else if (Directory.Exists(Path.Combine(pluginPrefixPath, "share")))
+        {
+            prefixPath = pluginPrefixPath;
+        }
+        string currentPrefixPath = Environment.GetEnvironmentVariable("AMENT_PREFIX_PATH");
+        char envPathSep = GetOS() == Platform.Windows ? ';' : ':';
+
+        if (String.IsNullOrEmpty(currentPrefixPath))
+        {
+            SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
+            return;
+        }
+
+        StringComparison comparison = GetOS() == Platform.Windows
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (string entry in currentPrefixPath.Split(envPathSep))
+        {
+            if (String.Equals(entry.Trim(), prefixPath, comparison))
+            {
+                return;
+            }
+        }
+
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath + envPathSep + currentPrefixPath);
+    }
+
+    private static void SetStandaloneRmwImplementation()
+    {
+        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION")))
+        {
+            SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
+        }
+    }
+
+    private static void SetStandaloneRosDistro(string ros2Codename)
+    {
+        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ROS_DISTRO")))
+        {
+            SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
+        }
+    }
+
+    private static void SetStandaloneRcutilsConsoleMode()
+    {
+        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("RCUTILS_COLORIZED_OUTPUT")))
+        {
+            SetProcessEnvironmentVariable("RCUTILS_COLORIZED_OUTPUT", "0");
+        }
+    }
+
+    public bool IsStandalone()
+    {
+        return ParseMetadataBool(GetMetadataValue(ros2csMetadata, "/ros2cs/standalone"), "/ros2cs/standalone");
+    }
+
+    public string GetROSVersion()
+    {
+        string ros2SourcedCodename = GetROSVersionSourced();
+        string ros2FromRos4UMetadata = GetMetadataValue(ros2ForUnityMetadata, "/ros2_for_unity/ros2");
+
+        //  Sourced ROS2 libs takes priority
+        if (string.IsNullOrEmpty(ros2SourcedCodename)) {
+            return ros2FromRos4UMetadata;
+        }
+
+        return ros2SourcedCodename;
+    }
+
+    /// <summary>
+    /// Checks if both ros2cs and ros2-for-unity were build for the same ros version as well as
+    /// the current sourced ros version matches ros2cs binaries.
+    /// </summary>
+    public void CheckIntegrity()
+    {
+        string ros2SourcedCodename = GetROSVersionSourced();
+        string ros2FromRos2csMetadata = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
+        string ros2FromRos4UMetadata = GetMetadataValue(ros2ForUnityMetadata, "/ros2_for_unity/ros2");
+
+        if (ros2FromRos4UMetadata != ros2FromRos2csMetadata) {
+            string errMessage =
+                "ROS2 versions in 'ros2cs' and 'ros2-for-unity' metadata files are not the same. " +
+                "This is caused by mixing versions/builds.";
+            FailIntegrity(errMessage);
+        }
+
+        if(!IsStandalone() && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            string errMessage =
+                "ROS2 version in 'ros2cs' metadata doesn't match currently sourced version. " +
+                "This is caused by mixing versions/builds.";
+            FailIntegrity(errMessage);
+        }
+
+        if (IsStandalone() && !string.IsNullOrEmpty(ros2SourcedCodename)) {
+            string errMessage = "You should not source ROS2 in 'ros2-for-unity' standalone build.";
+            FailIntegrity(errMessage);
+        }
+    }
+
+    private static void FailIntegrity(string errMessage)
+    {
+        Debug.LogError(errMessage);
+#if UNITY_EDITOR
+        EditorApplication.isPlaying = false;
+        throw new InvalidOperationException(errMessage);
+#else
+        const int ROS_METADATA_MISMATCH_ERROR_CODE = 35;
+        Application.Quit(ROS_METADATA_MISMATCH_ERROR_CODE);
+        throw new InvalidOperationException(errMessage);
+#endif
+    }
+
+    public string GetROSVersionSourced()
+    {
+        return Environment.GetEnvironmentVariable("ROS_DISTRO");
+    }
+
+    /// <summary>
+    /// Check if the ros version is supported, only applicable to non-standalone plugin versions
+    /// (i. e. without ros2 libraries included in the plugin).
+    /// </summary>
+    private void CheckROSSupport(string ros2Codename)
+    {
+        if (string.IsNullOrEmpty(ros2Codename))
+        {
+            string errMessage = "No ROS environment sourced. You need to source your ROS2 " + supportedVersionsString
+              + " environment before launching Unity (ROS_DISTRO env variable not found)";
+            Debug.LogError(errMessage);
+#if UNITY_EDITOR
+            EditorApplication.isPlaying = false;
+            throw new System.InvalidOperationException(errMessage);
+#else
+            const int ROS_NOT_SOURCED_ERROR_CODE = 33;
+            Application.Quit(ROS_NOT_SOURCED_ERROR_CODE);
+            throw new System.InvalidOperationException(errMessage);
+#endif
+        }
+
+        if (!supportedVersions.Contains(ros2Codename))
+        {
+            string errMessage = "Currently sourced ROS version differs from supported one. Sourced: " + ros2Codename
+              + ", supported: " + supportedVersionsString + ".";
+            Debug.LogError(errMessage);
+#if UNITY_EDITOR
+            EditorApplication.isPlaying = false;
+            throw new System.NotSupportedException(errMessage);
+#else
+            const int ROS_BAD_VERSION_CODE = 34;
+            Application.Quit(ROS_BAD_VERSION_CODE);
+            throw new System.NotSupportedException(errMessage);
+#endif
+        } else if (ros2Codename.Equals("foxy") || ros2Codename.Equals("galactic")) {
+            Debug.LogWarning("You are using ROS2 " + ros2Codename + ", which has reached end of life.");
+        } else if (ros2Codename.Equals("rolling") ) {
+            Debug.LogWarning("You are using ROS2 rolling version. Bleeding edge version might not work correctly.");
+        }
+    }
+
+    private static void ValidateRmwImplementation(string rmwImpl)
+    {
+        if (string.Equals(rmwImpl, expectedRmwImplementation, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string errMessage =
+            "ROS2 For Unity runtime was built for RMW implementation '" +
+            expectedRmwImplementation + "' but initialized with '" + rmwImpl +
+            "'. Ensure RMW_IMPLEMENTATION is unset or set to '" +
+            expectedRmwImplementation + "'.";
+        FailIntegrity(errMessage);
+    }
+
+    private void RegisterCtrlCHandler()
+    {
+#if ENABLE_MONO
+        // Il2CPP build does not support Console.CancelKeyPress currently
+        if (consoleCancelHandler == null)
+        {
+            consoleCancelHandler = (sender, eventArgs) => {
+                eventArgs.Cancel = true;
+                ShutdownShared();
+            };
+            Console.CancelKeyPress += consoleCancelHandler;
+        }
+#endif
+    }
+
+    private void ConnectLoggers()
+    {
+        Ros2csLogger.SetCallback(LogLevel.ERROR, Debug.LogError);
+        Ros2csLogger.SetCallback(LogLevel.WARNING, Debug.LogWarning);
+        Ros2csLogger.SetCallback(LogLevel.INFO, Debug.Log);
+        Ros2csLogger.SetCallback(LogLevel.DEBUG, Debug.Log);
+        Ros2csLogger.LogLevel = LogLevel.WARNING;
+    }
+
+    private string GetMetadataValue(XmlDocument doc, string valuePath)
+    {
+        if (doc.DocumentElement == null)
+        {
+            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);
+        }
+
+        XmlNode node = doc.DocumentElement.SelectSingleNode(valuePath);
+        if (node == null || node.InnerText == null)
+        {
+            throw new InvalidOperationException("Metadata value missing: " + valuePath);
+        }
+
+        return node.InnerText;
+    }
+
+    private bool ParseMetadataBool(string value, string valuePath)
+    {
+        string normalized = value.Trim();
+        if (normalized == "1")
+        {
+            return true;
+        }
+        if (normalized == "0")
+        {
+            return false;
+        }
+        if (bool.TryParse(normalized, out bool parsed))
+        {
+            return parsed;
+        }
+
+        throw new InvalidOperationException("Metadata value is not a boolean: " + valuePath + " = " + value);
+    }
+
+    private void LoadMetadata()
+    {
+        char separator = Path.DirectorySeparatorChar;
+        try
+        {
+            string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";
+            string ros2ForUnityMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2_for_unity.xml";
+            ros2csMetadata.Load(ros2csMetadataPath);
+            ros2ForUnityMetadata.Load(ros2ForUnityMetadataPath);
+        }
+        catch (System.IO.FileNotFoundException e)
+        {
+#if UNITY_EDITOR
+            var errMessage = "Could not find metadata files: " + e.Message;
+            EditorApplication.isPlaying = false;
+            throw new System.IO.FileNotFoundException(errMessage, e);
+#else
+            const int NO_METADATA = 1;
+            Application.Quit(NO_METADATA);
+            throw;
+#endif
+        }
+        catch (XmlException e)
+        {
+            string errMessage = "Could not parse ros2-for-unity metadata: " + e.Message;
+#if UNITY_EDITOR
+            EditorApplication.isPlaying = false;
+#else
+            const int BAD_METADATA = 2;
+            Application.Quit(BAD_METADATA);
+#endif
+            throw new InvalidOperationException(errMessage, e);
+        }
+    }
+
+    internal ROS2ForUnity()
+    {
+        lock (initMutex)
+        {
+            if (isInitialized)
+            {
+                referenceCount++;
+                ownsReference = true;
+                return;
+            }
+
+            // Load metadata
+            LoadMetadata();
+            string currentRos2Version = GetROSVersion();
+            string standalone = IsStandalone() ? "standalone" : "non-standalone";
+
+            // Self checks
+            CheckROSSupport(currentRos2Version);
+            CheckIntegrity();
+
+            // Library loading
+            if (GetOS() == Platform.Windows) {
+                // Windows version can run standalone, modifies PATH to ensure all plugins visibility.
+                if (!pathConfigured)
+                {
+                    SetEnvPathVariable();
+                }
+                if (IsStandalone())
+                {
+                    SetStandaloneRosDistro(currentRos2Version);
+                    SetStandalonePrefixPath();
+                    SetStandaloneRmwImplementation();
+                    SetStandaloneRcutilsConsoleMode();
+                }
+            } else {
+                // For foxy, it is necessary to use modified version of librcpputils to resolve custom msgs packages.
+                ROS2.GlobalVariables.absolutePath = GetPluginPath() + "/";
+                if (currentRos2Version == "foxy") {
+                    ROS2.GlobalVariables.preloadLibrary = true;
+                    ROS2.GlobalVariables.preloadLibraryName = "librcpputils.so";
+                }
+            }
+
+            // Initialize
+            ConnectLoggers();
+            Ros2cs.Init();
+            RegisterCtrlCHandler();
+
+            string rmwImpl = Ros2cs.GetRMWImplementation();
+            ValidateRmwImplementation(rmwImpl);
+
+            Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+
+#if UNITY_EDITOR
+            RegisterEditorHandlers();
+#endif
+            isInitialized = true;
+            referenceCount = 1;
+            ownsReference = true;
+        }
+    }
+
+    private static void ThrowIfUninitialized(string callContext)
+    {
+        if (!isInitialized)
+        {
+            throw new InvalidOperationException("Ros2 For Unity is not initialized, can't " + callContext);
+        }
+    }
+
+    /// <summary>
+    /// Check if ROS2 module is properly initialized and no shutdown was called yet
+    /// </summary>
+    /// <returns>The state of ROS2 module. Should be checked before attempting to create or use pubs/subs</returns>
+    public bool Ok()
+    {
+        lock (initMutex)
+        {
+            if (!isInitialized)
+            {
+                return false;
+            }
+            return Ros2cs.Ok();
+        }
+    }
+    internal void DestroyROS2ForUnity()
+    {
+        lock (initMutex)
+        {
+            if (!ownsReference)
+            {
+                return;
+            }
+
+            ownsReference = false;
+            if (referenceCount > 0)
+            {
+                referenceCount--;
+            }
+
+            if (referenceCount == 0)
+            {
+                ShutdownShared();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        DestroyROS2ForUnity();
+        GC.SuppressFinalize(this);
+    }
+
+    private static void ShutdownShared()
+    {
+        lock (initMutex)
+        {
+            if (!isInitialized)
+            {
+                referenceCount = 0;
+                return;
+            }
+
+            Debug.Log("Shutting down Ros2 For Unity");
+            try
+            {
+#if UNITY_EDITOR
+                UnregisterEditorHandlers();
+#endif
+                Ros2cs.Shutdown();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+            finally
+            {
+                isInitialized = false;
+                referenceCount = 0;
+                UnregisterCtrlCHandlerStatic();
+            }
+        }
+    }
+
+    private static void UnregisterCtrlCHandlerStatic()
+    {
+#if ENABLE_MONO
+        if (consoleCancelHandler != null)
+        {
+            Console.CancelKeyPress -= consoleCancelHandler;
+            consoleCancelHandler = null;
+        }
+#endif
+    }
+
+#if UNITY_EDITOR
+    private static void RegisterEditorHandlers()
+    {
+        if (editorHandlersRegistered)
+        {
+            return;
+        }
+
+        EditorApplication.playModeStateChanged += EditorPlayStateChanged;
+        EditorApplication.quitting += ShutdownShared;
+        editorHandlersRegistered = true;
+    }
+
+    private static void UnregisterEditorHandlers()
+    {
+        if (!editorHandlersRegistered)
+        {
+            return;
+        }
+
+        EditorApplication.playModeStateChanged -= EditorPlayStateChanged;
+        EditorApplication.quitting -= ShutdownShared;
+        editorHandlersRegistered = false;
+    }
+
+    private static void EditorPlayStateChanged(PlayModeStateChange change)
+    {
+        if (change == PlayModeStateChange.ExitingPlayMode)
+        {
+            ShutdownShared();
+        }
+    }
+#endif
+}
+
+}  // namespace ROS2

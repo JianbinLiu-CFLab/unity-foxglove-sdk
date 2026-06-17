@@ -7,9 +7,12 @@ Recommended setup:
 ```text
 dev.unity2foxglove.ros2forunity
 dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
+dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 ```
 
-When the Jazzy Win64 runtime package is installed, the adapter package enables the sample compile symbol automatically for the Standalone build target:
+Keep candidate runtime packages under the repository root `Packages/` directory. In the Foxglove Manager Inspector, use the `ROS2 For Unity Runtime` active runtime dropdown to choose the single runtime package that should be resolved by `Unity2Foxglove/Packages/manifest.json`. Switching runtimes triggers a Unity package reimport and script compilation.
+
+When one runtime package is active, the adapter package enables the sample compile symbol automatically for the Standalone build target:
 
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -20,7 +23,7 @@ For an external, non-package ROS2 For Unity import, add that symbol manually.
 ## Unity Setup
 
 1. Install the `dev.unity2foxglove.ros2forunity` package.
-2. Install the `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package.
+2. Keep at least one runtime candidate package under repository-root `Packages/`, such as `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` or `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64`.
 3. Import this package sample: `ROS2 For Unity External Adapter`.
 4. Add the ROS2 For Unity string smoke component to a scene object.
 5. Enter Play Mode.
