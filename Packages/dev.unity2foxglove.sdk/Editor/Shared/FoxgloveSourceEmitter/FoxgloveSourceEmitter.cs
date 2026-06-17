@@ -138,12 +138,21 @@ namespace Unity.FoxgloveSDK.Editor
             var topicMap = new Dictionary<string, List<TopicMember>>();
             foreach (var m in members)
             {
+                if (m == null)
+                    throw new ArgumentException("TopicMember cannot be null.", nameof(members));
+                if (string.IsNullOrWhiteSpace(m.MemberName))
+                    throw new ArgumentException("TopicMember has empty MemberName.", nameof(members));
+                if (string.IsNullOrWhiteSpace(m.TypeName))
+                    throw new ArgumentException("TopicMember '" + m.MemberName + "' has empty TypeName.", nameof(members));
+                if (string.IsNullOrWhiteSpace(m.Topic))
+                    throw new ArgumentException("TopicMember '" + m.MemberName + "' has empty Topic.", nameof(members));
+
                 if (!topicMap.TryGetValue(m.Topic, out var list))
                     topicMap[m.Topic] = list = new List<TopicMember>();
                 list.Add(m);
             }
 
-            var topics = topicMap.Keys.ToList();
+            var topics = topicMap.Keys.OrderBy(topic => topic, StringComparer.Ordinal).ToList();
             var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPublishMode(kvp.Value));
             var hasPolicy = members.Any(m => m.PublishMode != 0);
             var hasConditions = members.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
