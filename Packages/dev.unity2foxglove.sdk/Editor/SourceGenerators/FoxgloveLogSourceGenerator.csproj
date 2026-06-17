@@ -8,6 +8,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Deterministic>true</Deterministic>
     <DebugType>none</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="src\**\*.cs" />

@@ -164,16 +164,20 @@ Entry script:
 
 ```text
 Scripts/package/validate_unity_package.py
+Scripts/package/validate_source_generator_dll.py
 ```
 
 Purpose:
 
 - Validate package metadata, required files, public docs, sample declarations, sample assets, and forbidden generated artifacts before release.
+- Rebuild the checked-in Roslyn source generator DLL in Release mode and verify the tracked analyzer DLL is byte-for-byte fresh.
 
 Basic usage:
 
 ```bash
 python Scripts/package/validate_unity_package.py
+python Scripts/package/validate_source_generator_dll.py
+python Scripts/package/validate_source_generator_dll.py --update
 ```
 
 ## Schema: ROS 2 .msg Catalog

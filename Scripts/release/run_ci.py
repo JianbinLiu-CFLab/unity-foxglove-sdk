@@ -26,6 +26,7 @@ UNIT_TESTS_PROJ = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTe
 SOURCE_GENERATOR_PROJ = (
     "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj"
 )
+SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 
 
 def green(msg: str) -> str:
@@ -147,6 +148,10 @@ def main() -> int:
                     "-o", "build/SourceGenerators/Release/netstandard2.0",
                 ],
                 "Build Roslyn analyzer DLL",
+            )
+            results["analyzer-dll"] = run(
+                ["python", SOURCE_GENERATOR_VALIDATOR],
+                "Source generator DLL freshness"
             )
             if results.get("analyzer-build"):
                 results["analyzer-freshness"] = run_with_restore_fallback(
