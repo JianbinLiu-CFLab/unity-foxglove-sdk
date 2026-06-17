@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string InspectorPath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs";
+        private const string PlayModeGuardPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs";
         private const string ReadmePath =
             "Packages/dev.unity2foxglove.ros2forunity/README.md";
         private const string ManagerInspectorPath =
@@ -39,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             DefineInstallerUsesOnlyBaseRuntimeSymbol();
             ManagerInspectorHostsOptionalSelector();
             RuntimeSelectorUsesOneDropdown();
+            RuntimeSwitchRequiresEditorRestart();
             ReadmeDocumentsActiveRuntimeSelection();
             ValidationRegistryWiresPhase146A();
 
@@ -79,6 +82,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("RemoveRuntimePackageDependencies", StringComparison.Ordinal)
                   && source.Contains("AddRuntimePackageDependency", StringComparison.Ordinal),
                 "146A-B4: manifest switching reaches the final single-runtime dependency state in one write");
+            Check(source.Contains("MarkEditorRestartRequired", StringComparison.Ordinal)
+                  && source.Contains("Process.GetCurrentProcess().Id", StringComparison.Ordinal)
+                  && source.Contains("EditorPrefs", StringComparison.Ordinal),
+                "146A-B5: manifest switching records an Editor-process restart requirement");
         }
 
         private static void DefineInstallerUsesOnlyBaseRuntimeSymbol()
@@ -130,6 +137,23 @@ namespace Unity.FoxgloveSDK.Tests
                 "146A-E4: runtime selector does not add a placeholder confirmation step");
         }
 
+        private static void RuntimeSwitchRequiresEditorRestart()
+        {
+            var guard = ReadRepoText(PlayModeGuardPath);
+            var inspector = ReadRepoText(InspectorPath);
+
+            Check(guard.Contains("EditorApplication.playModeStateChanged", StringComparison.Ordinal)
+                  && guard.Contains("PlayModeStateChange.ExitingEditMode", StringComparison.Ordinal)
+                  && guard.Contains("GetPendingEditorRestartRuntimePackage", StringComparison.Ordinal),
+                "146A-F1: Play Mode is guarded after a runtime switch in the same Editor process");
+            Check(guard.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && guard.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal),
+                "146A-F2: Play Mode guard cancels unsafe entry and explains the restart requirement");
+            Check(inspector.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal)
+                  && inspector.Contains("native ROS2 runtime DLLs loaded earlier", StringComparison.Ordinal),
+                "146A-F3: Inspector surfaces the post-switch Unity restart requirement");
+        }
+
         private static void ReadmeDocumentsActiveRuntimeSelection()
         {
             var source = ReadRepoText(ReadmePath);
@@ -139,8 +163,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "146A-F1: README documents candidate runtimes versus the active manifest runtime");
             Check(source.Contains("manifest.json", StringComparison.Ordinal)
                   && source.Contains("ROS2 For Unity Runtime", StringComparison.Ordinal)
-                  && source.Contains("package reimport", StringComparison.Ordinal),
-                "146A-F2: README documents manifest switching and the Inspector selector");
+                  && source.Contains("package reimport", StringComparison.Ordinal)
+                  && source.Contains("restart Unity", StringComparison.Ordinal),
+                "146A-G2: README documents manifest switching, the Inspector selector, and restart requirement");
         }
 
         private static void ValidationRegistryWiresPhase146A()
@@ -149,9 +174,9 @@ namespace Unity.FoxgloveSDK.Tests
             var project = ReadRepoText(ProjectPath);
 
             Check(registry.Contains("Ci(\"--phase146a\", \"Phase 146A\", R2fuActiveRuntimeSelectorValidation.Validate", StringComparison.Ordinal),
-                "146A-G1: validation registry wires --phase146a to the runtime selector validation");
+                "146A-H1: validation registry wires --phase146a to the runtime selector validation");
             Check(project.Contains("R2fuActiveRuntimeSelectorValidation.cs", StringComparison.Ordinal),
-                "146A-G2: runtime validation project compiles the runtime selector validation");
+                "146A-H2: runtime validation project compiles the runtime selector validation");
         }
 
         private static string ReadRepoText(string relativePath)

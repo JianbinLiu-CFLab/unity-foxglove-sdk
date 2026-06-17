@@ -7,6 +7,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -64,6 +65,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     {
         public const string BaseCompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         public const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
+        private const string RestartProcessIdKey = "Unity2Foxglove.Ros2ForUnity.RuntimeSwitchProcessId";
+        private const string RestartPackageKey = "Unity2Foxglove.Ros2ForUnity.RuntimeSwitchPackage";
 
         public static string ProjectDirectoryFromApplication()
         {
@@ -155,8 +158,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             manifest = RemoveRuntimePackageDependencies(manifest);
             manifest = AddRuntimePackageDependency(manifest, candidate.PackageName);
             File.WriteAllText(manifestPath, manifest);
+            MarkEditorRestartRequired(candidate.PackageName);
             Client.Resolve();
         }
+
+        public static string GetPendingEditorRestartRuntimePackage()
+        {
+            var switchProcessId = EditorPrefs.GetInt(RestartProcessIdKey, -1);
+            if (switchProcessId < 0)
+                return string.Empty;
+
+            if (switchProcessId != CurrentEditorProcessId())
+            {
+                ClearEditorRestartRequirement();
+                return string.Empty;
+            }
+
+            return EditorPrefs.GetString(RestartPackageKey, string.Empty);
+        }
+
+        public static bool IsEditorRestartRequired()
+            => !string.IsNullOrWhiteSpace(GetPendingEditorRestartRuntimePackage());
 
         public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes(string projectDirectory)
         {
@@ -220,6 +242,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             return new Ros2ForUnityRuntimeDescriptor(displayName, packageName, runtimeId, rosDistro, platform);
         }
+
+        private static void MarkEditorRestartRequired(string packageName)
+        {
+            EditorPrefs.SetInt(RestartProcessIdKey, CurrentEditorProcessId());
+            EditorPrefs.SetString(RestartPackageKey, packageName ?? string.Empty);
+        }
+
+        private static void ClearEditorRestartRequirement()
+        {
+            EditorPrefs.DeleteKey(RestartProcessIdKey);
+            EditorPrefs.DeleteKey(RestartPackageKey);
+        }
+
+        private static int CurrentEditorProcessId()
+            => Process.GetCurrentProcess().Id;
 
         private static bool IsEmbeddedPackage(string projectDirectory, string packageDirectory)
         {

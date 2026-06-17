@@ -127,12 +127,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             var readme = ReadRepoText(AdapterPackage + "/README.md");
             Check(readme.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", StringComparison.Ordinal)
-                  && readme.Contains("active runtime dropdown", StringComparison.Ordinal),
+                  && readme.Contains("active runtime dropdown", StringComparison.Ordinal)
+                  && readme.Contains("restart Unity", StringComparison.Ordinal),
                 "146B-C3: adapter README documents Lyrical package selection");
 
             var sampleReadme = ReadRepoText(AdapterPackage + "/Samples~/ROS2 For Unity External Adapter/README.md");
             Check(sampleReadme.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", StringComparison.Ordinal)
-                  && sampleReadme.Contains("active runtime dropdown", StringComparison.Ordinal),
+                  && sampleReadme.Contains("active runtime dropdown", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Restart Unity after switching runtime packages", StringComparison.Ordinal),
                 "146B-C4: external adapter sample documents runtime selection");
         }
 
@@ -149,6 +151,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && !nativeAsmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE\"", StringComparison.Ordinal)
                   && !nativeAsmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY_LYRICAL_WIN64_PACKAGE\"", StringComparison.Ordinal),
                 "146B-D2: native bridge references the stable active runtime assembly without distro pinning");
+            Check(selector.Contains("MarkEditorRestartRequired", StringComparison.Ordinal)
+                  && selector.Contains("GetPendingEditorRestartRuntimePackage", StringComparison.Ordinal)
+                  && ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs").Contains("PlayModeStateChange.ExitingEditMode", StringComparison.Ordinal),
+                "146B-D3: runtime switching requires an Editor restart before Play Mode");
         }
 
         private static void UnityProjectResolvesOnlyOneRuntime()

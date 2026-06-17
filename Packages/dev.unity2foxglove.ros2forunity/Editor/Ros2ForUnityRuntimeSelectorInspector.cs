@@ -34,6 +34,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Info);
 
+            var pendingRestartPackage = Ros2ForUnityRuntimeSelection.GetPendingEditorRestartRuntimePackage();
+            if (!string.IsNullOrWhiteSpace(pendingRestartPackage))
+            {
+                EditorGUILayout.HelpBox(
+                    "Restart Unity before entering Play Mode. The active runtime was switched to "
+                    + pendingRestartPackage
+                    + ", but native ROS2 runtime DLLs loaded earlier in this Editor process cannot be unloaded safely.",
+                    MessageType.Error);
+            }
+
             if (status.SelectedRuntime != null)
             {
                 using (new EditorGUI.DisabledScope(true))
@@ -71,7 +81,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
-            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Wait for package reimport and script compilation to finish.", MessageType.Info);
+            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Restart Unity after package reimport and script compilation finish.", MessageType.Info);
         }
     }
 }

@@ -71,6 +71,8 @@ dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 
 The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` active runtime dropdown. Changing it edits `Unity2Foxglove/Packages/manifest.json` so exactly one runtime package is active, then Unity performs a normal package reimport and script compilation. This is intentionally slower than a scripting-define switch because Unity must not import two sets of ROS2 managed message DLLs or native runtime DLLs at once.
 
+After changing the active runtime, restart Unity before entering Play Mode. Windows native plugins loaded from the previous runtime stay in the Editor process until it exits, so a restart is required to avoid mixing Jazzy and Lyrical ROS2 DLLs in one process.
+
 The adapter package manages only the base Standalone build-target symbol:
 
 ```text
