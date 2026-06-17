@@ -17,6 +17,8 @@ REQUIRE_MOTION_FLAG = "--require-motion"
 
 
 def main(argv: list[str]) -> int:
+    """Run the Phase138U LiDAR deskew acceptance against Lyrical by default."""
+
     args = list(argv)
     if "--ros2-root" not in args:
         args = ["--ros2-root", DEFAULT_LYRICAL_ROOT, *args]

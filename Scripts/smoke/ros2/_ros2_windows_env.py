@@ -74,6 +74,8 @@ def resolve_existing_path(path_text: str, description: str, workspace_root: path
 
 
 def infer_ros_distro(ros2_root: pathlib.Path) -> str:
+    """Infer the Windows ROS2 distro from the install path."""
+
     root_text = str(ros2_root).lower()
     if "lyrical" in root_text:
         return "lyrical"
