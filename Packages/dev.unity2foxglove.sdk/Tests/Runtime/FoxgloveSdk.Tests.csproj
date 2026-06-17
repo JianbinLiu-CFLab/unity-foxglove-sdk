@@ -137,6 +137,7 @@
     <Compile Include="ProtocolEdgeHardeningValidation.cs" />
     <Compile Include="SystemInfoPublisherValidation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
+    <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="Phase138Validation.cs" />
     <Compile Include="Phase138BValidation.cs" />
     <Compile Include="Phase138HValidation.cs" />

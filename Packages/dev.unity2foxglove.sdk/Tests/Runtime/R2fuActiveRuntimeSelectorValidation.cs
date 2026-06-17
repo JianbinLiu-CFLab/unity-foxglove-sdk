@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string InspectorPath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs";
+        private const string PlayModeGuardPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs";
         private const string ReadmePath =
             "Packages/dev.unity2foxglove.ros2forunity/README.md";
         private const string ManagerInspectorPath =
@@ -34,61 +36,72 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 146A: R2FU Active Runtime Selector ===");
             _passed = 0;
 
-            RuntimeSelectionKnowsSupportedPackages();
-            RuntimeSelectionUsesProjectSettings();
-            DefineInstallerUsesOnlyTheActiveRuntime();
+            RuntimeSelectionDiscoversCandidatePackages();
+            RuntimeSelectionUsesManifestAsTruth();
+            DefineInstallerUsesOnlyBaseRuntimeSymbol();
             ManagerInspectorHostsOptionalSelector();
             RuntimeSelectorUsesOneDropdown();
+            RuntimeSwitchRequiresEditorRestart();
             ReadmeDocumentsActiveRuntimeSelection();
             ValidationRegistryWiresPhase146A();
 
             Console.WriteLine($"Phase 146A: {_passed} checks passed.");
         }
 
-        private static void RuntimeSelectionKnowsSupportedPackages()
+        private static void RuntimeSelectionDiscoversCandidatePackages()
         {
             var source = ReadRepoText(SelectionPath);
 
-            Check(source.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal),
-                "146A-A1: runtime selector knows the Jazzy Win64 runtime package");
-            Check(source.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", StringComparison.Ordinal),
-                "146A-A2: runtime selector reserves the Lyrical Win64 runtime package id");
-            Check(source.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE", StringComparison.Ordinal)
-                  && source.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY_LYRICAL_WIN64_PACKAGE", StringComparison.Ordinal),
-                "146A-A3: runtime selector maps each runtime to a runtime-specific compile symbol");
-            Check(source.Contains("KnownRuntimeDescriptors", StringComparison.Ordinal)
-                  && source.Contains("RuntimeCompileSymbols", StringComparison.Ordinal),
-                "146A-A4: runtime selector exposes known runtimes and runtime symbol set to editor tooling");
+            Check(source.Contains("RuntimePackagePrefix", StringComparison.Ordinal)
+                  && source.Contains("DiscoverCandidateRuntimes", StringComparison.Ordinal),
+                "146A-A1: runtime selector discovers runtime packages by package-id convention");
+            Check(source.Contains("RepositoryPackagesDirectory", StringComparison.Ordinal)
+                  && source.Contains("file:../../Packages/", StringComparison.Ordinal),
+                "146A-A2: runtime selector searches the repository Packages directory used by manifest file references");
+            Check(!source.Contains("KnownRuntimes", StringComparison.Ordinal)
+                  && !source.Contains("KnownRuntimeDescriptors", StringComparison.Ordinal),
+                "146A-A3: runtime selector no longer hardcodes known runtime descriptors");
+            Check(!source.Contains("JazzyWin64CompileSymbol", StringComparison.Ordinal)
+                  && !source.Contains("LyricalWin64CompileSymbol", StringComparison.Ordinal),
+                "146A-A4: runtime selector no longer carries per-distro compile gates");
         }
 
-        private static void RuntimeSelectionUsesProjectSettings()
+        private static void RuntimeSelectionUsesManifestAsTruth()
         {
             var source = ReadRepoText(SelectionPath);
 
-            Check(source.Contains("ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json", StringComparison.Ordinal),
-                "146A-B1: active runtime selection persists in ProjectSettings");
-            Check(source.Contains("activeRuntimePackage", StringComparison.Ordinal)
-                  && source.Contains("SaveActiveRuntimePackage", StringComparison.Ordinal),
-                "146A-B2: settings file stores the explicit active runtime package");
-            Check(source.Contains("installed.Length > 0", StringComparison.Ordinal)
-                  && source.Contains("installed[0]", StringComparison.Ordinal),
-                "146A-B3: missing settings fall back to the first installed runtime");
+            Check(source.Contains("ReadManifestRuntimePackages", StringComparison.Ordinal)
+                  && source.Contains("ActiveRuntimePackage", StringComparison.Ordinal),
+                "146A-B1: active runtime selection is derived from the Unity package manifest");
+            Check(source.Contains("SwitchActiveRuntimePackage", StringComparison.Ordinal)
+                  && source.Contains("Client.Resolve()", StringComparison.Ordinal),
+                "146A-B2: runtime changes atomically rewrite manifest then ask Unity to resolve packages");
+            Check(!source.Contains("Unity2FoxgloveRos2ForUnitySettings.json", StringComparison.Ordinal)
+                  && !source.Contains("SaveActiveRuntimePackage", StringComparison.Ordinal),
+                "146A-B3: selector no longer treats ProjectSettings JSON as source of truth");
+            Check(source.Contains("RemoveRuntimePackageDependencies", StringComparison.Ordinal)
+                  && source.Contains("AddRuntimePackageDependency", StringComparison.Ordinal),
+                "146A-B4: manifest switching reaches the final single-runtime dependency state in one write");
+            Check(source.Contains("SessionRuntimeKey", StringComparison.Ordinal)
+                  && source.Contains("SessionState", StringComparison.Ordinal)
+                  && !source.Contains("EditorPrefs", StringComparison.Ordinal),
+                "146A-B5: runtime guard records per-Editor-session runtime state without persistent drift");
         }
 
-        private static void DefineInstallerUsesOnlyTheActiveRuntime()
+        private static void DefineInstallerUsesOnlyBaseRuntimeSymbol()
         {
             var source = ReadRepoText(InstallerPath);
 
             Check(source.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal),
-                "146A-C1: define installer reads the project runtime selection status");
-            Check(source.Contains("Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols", StringComparison.Ordinal)
-                  && source.Contains("RemoveSymbol(parts, symbol)", StringComparison.Ordinal),
-                "146A-C2: define installer clears stale runtime-specific symbols");
+                "146A-C1: define installer reads the manifest-derived runtime selection status");
             Check(source.Contains("Ros2ForUnityRuntimeSelection.BaseCompileSymbol", StringComparison.Ordinal)
-                  && source.Contains("status.SelectedRuntime.CompileSymbol", StringComparison.Ordinal),
-                "146A-C3: define installer enables the base symbol and only the selected runtime symbol");
+                  && source.Contains("EnsureSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol)", StringComparison.Ordinal),
+                "146A-C2: define installer enables only the base optional R2FU symbol");
             Check(source.Contains("RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol)", StringComparison.Ordinal),
-                "146A-C4: define installer removes the base symbol when no active runtime is available");
+                "146A-C3: define installer removes the base symbol when no active runtime is available");
+            Check(!source.Contains("RuntimeCompileSymbols", StringComparison.Ordinal)
+                  && !source.Contains("SelectedRuntime.CompileSymbol", StringComparison.Ordinal),
+                "146A-C4: define installer does not synchronize per-runtime compile symbols");
         }
 
         private static void ManagerInspectorHostsOptionalSelector()
@@ -115,26 +128,47 @@ namespace Unity.FoxgloveSDK.Tests
                 "146A-E1: runtime selection is a single Active Runtime dropdown");
             Check(source.Contains("EditorGUI.BeginChangeCheck()", StringComparison.Ordinal)
                   && source.Contains("EditorGUI.EndChangeCheck()", StringComparison.Ordinal),
-                "146A-E2: dropdown writes settings only after a user-driven change");
-            Check(source.Contains("installed.Length > 0", StringComparison.Ordinal)
-                  && source.Contains("SaveAndReconcile(projectDirectory, status.SelectedRuntime)", StringComparison.Ordinal)
+                "146A-E2: dropdown switches runtime only after a user-driven change");
+            Check(source.Contains("EditorApplication.isPlayingOrWillChangePlaymode", StringComparison.Ordinal)
+                  && source.Contains("SwitchAndResolve(projectDirectory, installed[changedIndex])", StringComparison.Ordinal)
                   && !source.Contains("GUILayout.Button(\"Use", StringComparison.Ordinal),
-                "146A-E3: default runtime selection persists without an extra confirmation button");
+                "146A-E3: selector has no extra confirmation button and refuses unsafe Play Mode switching");
             Check(!source.Contains("Select active runtime...", StringComparison.Ordinal),
                 "146A-E4: runtime selector does not add a placeholder confirmation step");
+        }
+
+        private static void RuntimeSwitchRequiresEditorRestart()
+        {
+            var guard = ReadRepoText(PlayModeGuardPath);
+            var inspector = ReadRepoText(InspectorPath);
+
+            Check(guard.Contains("EditorApplication.playModeStateChanged", StringComparison.Ordinal)
+                  && guard.Contains("PlayModeStateChange.ExitingEditMode", StringComparison.Ordinal)
+                  && guard.Contains("BindActiveRuntimeForPlayMode", StringComparison.Ordinal)
+                  && guard.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal),
+                "146A-F1: Play Mode binds the first runtime used by this Editor session");
+            Check(guard.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && guard.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal),
+                "146A-F2: Play Mode guard cancels unsafe mixed-runtime entry and explains the restart requirement");
+            Check(inspector.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal)
+                  && inspector.Contains("Restart Unity", StringComparison.Ordinal)
+                  && inspector.Contains("RestartEditor(projectDirectory)", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
+                "146A-F3: Inspector surfaces conditional restart state and offers one-click relaunch");
         }
 
         private static void ReadmeDocumentsActiveRuntimeSelection()
         {
             var source = ReadRepoText(ReadmePath);
 
-            Check(source.Contains("Multiple runtime packages may be installed", StringComparison.Ordinal)
+            Check(source.Contains("candidate runtime packages", StringComparison.Ordinal)
                   && source.Contains("exactly one active runtime", StringComparison.Ordinal),
-                "146A-F1: README documents installed runtimes versus active runtime");
-            Check(source.Contains("ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json", StringComparison.Ordinal)
+                "146A-F1: README documents candidate runtimes versus the active manifest runtime");
+            Check(source.Contains("manifest.json", StringComparison.Ordinal)
                   && source.Contains("ROS2 For Unity Runtime", StringComparison.Ordinal)
-                  && source.Contains("changing the dropdown selects a different active runtime", StringComparison.Ordinal),
-                "146A-F2: README documents the active runtime setting and Inspector selector");
+                  && source.Contains("package reimport", StringComparison.Ordinal)
+                  && source.Contains("After an Editor session has loaded one ROS2 runtime", StringComparison.Ordinal),
+                "146A-G2: README documents manifest switching and conditional restart requirement");
         }
 
         private static void ValidationRegistryWiresPhase146A()
@@ -143,9 +177,9 @@ namespace Unity.FoxgloveSDK.Tests
             var project = ReadRepoText(ProjectPath);
 
             Check(registry.Contains("Ci(\"--phase146a\", \"Phase 146A\", R2fuActiveRuntimeSelectorValidation.Validate", StringComparison.Ordinal),
-                "146A-G1: validation registry wires --phase146a to the runtime selector validation");
+                "146A-H1: validation registry wires --phase146a to the runtime selector validation");
             Check(project.Contains("R2fuActiveRuntimeSelectorValidation.cs", StringComparison.Ordinal),
-                "146A-G2: runtime validation project compiles the runtime selector validation");
+                "146A-H2: runtime validation project compiles the runtime selector validation");
         }
 
         private static string ReadRepoText(string relativePath)

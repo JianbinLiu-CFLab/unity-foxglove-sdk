@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.Tests
             var coreCameraResolver = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraSensorProfileResolver.cs");
             var coreInfo = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
 
-            Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64\"", StringComparison.Ordinal)
+            Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", StringComparison.Ordinal),
                 "138M-6A: camera DDS bridge stays behind the optional R2FU runtime boundary");
             Check(bridge.Contains("FindObjectsByType<FoxgloveCameraPublisher>", StringComparison.Ordinal)

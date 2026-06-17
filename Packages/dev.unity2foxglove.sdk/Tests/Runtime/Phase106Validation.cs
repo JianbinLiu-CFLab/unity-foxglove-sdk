@@ -140,17 +140,19 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyTrackedAssetBoundary()
         {
             var tracked = PhaseRos2ForUnityValidationHelpers.GitLsFiles(RepoRoot());
-            const string runtimePackage = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/";
             Check(!tracked.Any(path => path.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal)),
                 "106D-1: extracted ROS2 For Unity assets are not tracked");
             var disallowedArtifacts = tracked
-                .Where(path => !path.StartsWith(runtimePackage, StringComparison.Ordinal))
+                .Where(path => !IsExplicitRuntimePackagePath(path))
                 .Where(path => PhaseRos2ForUnityValidationHelpers.IsForbiddenR2fuArtifact(path))
                 .ToList();
             Check(disallowedArtifacts.Count == 0,
-                "106D-2: ROS2 For Unity artifacts are tracked only inside the explicit runtime package"
+                "106D-2: ROS2 For Unity artifacts are tracked only inside explicit runtime packages"
                 + (disallowedArtifacts.Count == 0 ? string.Empty : " (" + string.Join(", ", disallowedArtifacts) + ")"));
         }
+
+        private static bool IsExplicitRuntimePackagePath(string path)
+            => path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal);
 
         private static void VerifyDocsBoundary()
         {

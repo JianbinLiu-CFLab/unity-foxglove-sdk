@@ -10,6 +10,7 @@
   "distributionModel": "one_repo_multi_package_release_artifacts",
   "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
   "activeRuntimePolicy": "one_runtime_package_per_project",
+  "activeRuntimeSourceOfTruth": "Unity2Foxglove/Packages/manifest.json resolves exactly one dev.unity2foxglove.ros2forunity.runtime.* package",
   "knownRuntimeRmw": "rmw_fastrtps_cpp",
   "knownRuntimeRosDistro": "jazzy",
   "currentRecommendedRuntime": {
@@ -54,8 +55,51 @@
   },
   "plannedRuntimePackages": [
     "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
     "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
     "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64"
+  ],
+  "supportedRuntimePackages": [
+    {
+      "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+      "runtimeId": "r2fu-jazzy-win64",
+      "rosDistro": "jazzy",
+      "platform": "win64",
+      "supportLevel": "Recommended",
+      "distributionLevel": "BundleCandidate",
+      "artifact": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
+      "artifactSha256": "709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a",
+      "artifactSize": 17618572,
+      "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
+      "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
+      "inventoryFileCount": 1063,
+      "criticalRuntimeFiles": [
+        "rcl.dll",
+        "yaml.dll",
+        "spdlog.dll",
+        "fmt.dll"
+      ]
+    },
+    {
+      "packageName": "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+      "runtimeId": "r2fu-lyrical-win64",
+      "rosDistro": "lyrical",
+      "platform": "win64",
+      "supportLevel": "Supported",
+      "distributionLevel": "Prototype",
+      "artifact": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
+      "artifactSha256": "58d4a3dbf5d354c8c90c30548a4a2712296b513f374685cdf9b395cba65c7fe5",
+      "artifactSize": 17422086,
+      "inventoryFile": "Compliance/r2fu-lyrical-win64-runtime-inventory.json",
+      "runtimeNoticesFile": "Compliance/r2fu-lyrical-win64-runtime-notices.md",
+      "inventoryFileCount": 961,
+      "criticalRuntimeFiles": [
+        "rcl.dll",
+        "yaml.dll",
+        "spdlog.dll",
+        "fmt.dll"
+      ]
+    }
   ],
   "packageComposition": {
     "sdkAlone": "fully usable for normal Foxglove, MCAP, Replay, and FoxRun workflows",

@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Module: Scripts/smoke
-# Purpose: Shared Windows ROS2 Jazzy helper utilities for smoke acceptance scripts.
+# Purpose: Shared Windows ROS2 helper utilities for smoke acceptance scripts.
 
-"""Shared Windows ROS2 Jazzy helper utilities for smoke acceptance scripts."""
+"""Shared Windows ROS2 helper utilities for smoke acceptance scripts."""
 
 from __future__ import annotations
 
@@ -73,13 +73,25 @@ def resolve_existing_path(path_text: str, description: str, workspace_root: path
         raise FileNotFoundError(f"{description} does not exist: {path}") from exc
 
 
+def infer_ros_distro(ros2_root: pathlib.Path) -> str:
+    """Infer the Windows ROS2 distro from the install path."""
+
+    root_text = str(ros2_root).lower()
+    if "lyrical" in root_text:
+        return "lyrical"
+    if "jazzy" in root_text:
+        return "jazzy"
+    return "jazzy"
+
+
 def build_ros_env(
     ros2_root: pathlib.Path,
     rmw_implementation: str | None = None,
     discovery_range: str | None = None,
     domain_id: str | None = None,
+    ros_distro: str | None = None,
 ) -> dict[str, str]:
-    """Build a deterministic Windows ROS2 Jazzy environment."""
+    """Build a deterministic Windows ROS2 environment."""
 
     pixi = ros2_root / ".pixi" / "envs" / "default"
     env = os.environ.copy()
@@ -103,7 +115,7 @@ def build_ros_env(
     env["COLCON_PYTHON_EXECUTABLE"] = str(pixi / "python.exe")
     env["ROS_VERSION"] = "2"
     env["ROS_PYTHON_VERSION"] = "3"
-    env["ROS_DISTRO"] = "jazzy"
+    env["ROS_DISTRO"] = ros_distro or infer_ros_distro(ros2_root)
     env["ROS_DOMAIN_ID"] = str(domain_id) if domain_id is not None else "0"
     env["RMW_IMPLEMENTATION"] = rmw_implementation or env.get("RMW_IMPLEMENTATION") or "rmw_fastrtps_cpp"
     if discovery_range:
@@ -121,7 +133,7 @@ def validate_ros2_root(ros2_root: pathlib.Path) -> tuple[pathlib.Path, pathlib.P
     missing = [path for path in (pixi_python, ros2_script) if not path.exists()]
     if missing:
         details = "\n".join(f"  missing: {path}" for path in missing)
-        raise FileNotFoundError(f"Invalid ROS2 Jazzy root: {ros2_root}\n{details}")
+        raise FileNotFoundError(f"Invalid ROS2 root: {ros2_root}\n{details}")
     return pixi_python, ros2_script
 
 
@@ -362,9 +374,20 @@ def launch_rviz(
     ]
     rviz_env = env.copy()
     rviz_env["PATH"] = os.pathsep.join(rviz_path)
-    rviz_env["QT_OPENGL"] = "software"
-    rviz_env["QT_QUICK_BACKEND"] = "software"
-    rviz_env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    qt_plugin_path = pixi / "Library" / "lib" / "qt6" / "plugins"
+    if qt_plugin_path.exists():
+        rviz_env["QT_PLUGIN_PATH"] = str(qt_plugin_path)
+        rviz_env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(qt_plugin_path / "platforms")
+        rviz_env["QT_QPA_PLATFORM"] = "windows:dpiawareness=0"
+        rviz_env["QT_ENABLE_HIGHDPI_SCALING"] = "0"
+        rviz_env["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
+        rviz_env["QT_SCALE_FACTOR"] = "1"
+        rviz_env["QT_SCREEN_SCALE_FACTORS"] = "1"
+        rviz_env["QT_OPENGL"] = "desktop"
+    else:
+        rviz_env["QT_OPENGL"] = "software"
+        rviz_env["QT_QUICK_BACKEND"] = "software"
+        rviz_env["LIBGL_ALWAYS_SOFTWARE"] = "1"
 
     log_event(log_prefix, f"RViz2 launch request exe={rviz_exe} config={config}")
     stdout_target = subprocess.DEVNULL

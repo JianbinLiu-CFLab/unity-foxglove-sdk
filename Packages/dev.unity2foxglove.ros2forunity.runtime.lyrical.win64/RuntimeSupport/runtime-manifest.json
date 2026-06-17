@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "r2fu-lyrical-win64",
+  "packageName": "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+  "packageVersion": "0.1.0-preview.1",
+  "rosDistro": "lyrical",
+  "platform": "win64",
+  "unityPlatform": "Windows",
+  "architecture": "x86_64",
+  "buildType": "standalone",
+  "rmwImplementation": "rmw_fastrtps_cpp",
+  "artifactName": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
+  "artifactSha256": "58d4a3dbf5d354c8c90c30548a4a2712296b513f374685cdf9b395cba65c7fe5",
+  "artifactSize": 17422086,
+  "inventoryFile": "RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json",
+  "inventoryFileCount": 961,
+  "runtimeRoot": "Runtime/Ros2ForUnity",
+  "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
+  "sourceBasis": "Local Lyrical rebuild from RobotecAI ROS2 For Unity and ros2cs sources with Windows ROS2 Lyrical dependency closure",
+  "supportLevel": "Supported",
+  "distributionLevel": "Prototype",
+  "activeRuntimePolicy": "one_runtime_package_per_project",
+  "criticalRuntimeFiles": [
+    "rcl.dll",
+    "yaml.dll",
+    "spdlog.dll",
+    "fmt.dll"
+  ],
+  "packagePathPatch": {
+    "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
+    "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
+    "keepsAssetFolderFallback": true
+  },
+  "freshProjectAcceptance": "deferred_to_install_acceptance"
+}

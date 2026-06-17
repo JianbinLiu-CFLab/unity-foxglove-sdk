@@ -639,10 +639,11 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         "optional package editor surface only enables runtime compile symbol",
         not invalid_editor_files
         and editor_asmdefs_are_editor_only
-        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in compile_symbol_surface
+        and "RuntimePackagePrefix" in selection_text
+        and "DiscoverCandidateRuntimes" in selection_text
         and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in compile_symbol_surface
         and "Ros2ForUnityRuntimeSelection.GetStatus()" in installer_text
-        and "Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols" in installer_text
+        and "RuntimeCompileSymbols" not in installer_text
         and "NamedBuildTarget.Standalone" in installer_text
         and "using ROS2;" not in installer_text
         and "ROS2UnityComponent" not in installer_text,

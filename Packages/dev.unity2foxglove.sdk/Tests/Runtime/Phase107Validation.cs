@@ -110,10 +110,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(invalidFiles.Count == 0
                   && tokenHits.Count == 0
-                  && compileSymbolSurface.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
+                  && selectionText.Contains("RuntimePackagePrefix", StringComparison.Ordinal)
+                  && selectionText.Contains("DiscoverCandidateRuntimes", StringComparison.Ordinal)
                   && compileSymbolSurface.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && installerText.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal)
-                  && installerText.Contains("Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols", StringComparison.Ordinal)
+                  && !installerText.Contains("RuntimeCompileSymbols", StringComparison.Ordinal)
                   && installerText.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal),
                 "107-A8: optional package Editor surface only auto-enables the runtime compile symbol"
                 + (invalidFiles.Count == 0 && tokenHits.Count == 0 ? string.Empty : " (" + string.Join(", ", invalidFiles.Concat(tokenHits)) + ")"));
@@ -395,13 +396,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsAllowedRuntimePackageFile(string path)
         {
-            if (!path.StartsWith(RuntimePackage + "/", StringComparison.Ordinal))
+            if (!IsExplicitRuntimePackagePath(path))
                 return false;
 
             return !path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
                    && !path.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
                    && !path.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
         }
+
+        private static bool IsExplicitRuntimePackagePath(string path)
+            => path.StartsWith("Packages/dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal);
 
         private static JObject LoadJsonObject(string relativePath)
         {

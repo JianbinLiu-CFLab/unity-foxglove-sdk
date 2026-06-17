@@ -252,7 +252,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("public string PointCloud2NativeTfParentFrame", StringComparison.Ordinal)
                   && publisher.Contains("public string PointCloud2NativeTfChildFrame", StringComparison.Ordinal),
                 "138L-5A: core publisher exposes read-only product state for optional R2FU DDS adapters");
-            Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64\"", StringComparison.Ordinal)
+            Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", StringComparison.Ordinal),
                 "138L-5B: native R2FU bridge compiles only when the ROS2 runtime symbol is active");
             Check(bridge.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal)

@@ -42,8 +42,9 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRuntimeAsmdef();
             Check(source.Contains("\"WindowsStandalone64\"", StringComparison.Ordinal)
                   && source.Contains("\"Editor\"", StringComparison.Ordinal)
+                  && source.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && !source.Contains("\"includePlatforms\": []", StringComparison.Ordinal),
-                "134-22-C1: Jazzy Win64 runtime asmdef is no longer compiled for every platform");
+                "134-22-C1: Jazzy Win64 runtime asmdef is platform-limited with the stable runtime assembly name");
         }
 
         private static void VerifyMetadataAndFinalizerDiagnostics()

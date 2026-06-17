@@ -397,7 +397,7 @@ def write_json(path: Path, data: dict[str, object]) -> None:
 def runtime_asmdef() -> dict[str, object]:
     """Return the runtime assembly definition used by the packaged R2FU copy."""
     return {
-        "name": "Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64",
+        "name": "Unity2Foxglove.Ros2ForUnity.Runtime",
         "rootNamespace": "",
         "references": [],
         "includePlatforms": ["Editor", "WindowsStandalone64"],
@@ -406,7 +406,6 @@ def runtime_asmdef() -> dict[str, object]:
         "overrideReferences": False,
         "precompiledReferences": [],
         "autoReferenced": True,
-        "defineConstraints": [],
         "versionDefines": [],
         "noEngineReferences": False,
     }
@@ -748,7 +747,9 @@ def patch_ros2_for_unity(package: Path) -> None:
     """Patch ROS2ForUnity.cs so the runtime can live inside a Unity package."""
     source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
     text = source.read_text(encoding="utf-8")
+    text = patch_ros2cs_logger_callback_api(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
+        write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
         text = text.replace(
@@ -767,6 +768,11 @@ def patch_ros2_for_unity(package: Path) -> None:
     else:
         raise ValueError("Could not find upstream ROS2ForUnity path block to patch.")
     write_text(source, text)
+
+
+def patch_ros2cs_logger_callback_api(text: str) -> str:
+    """Patch obsolete ros2cs logger callback calls emitted by older runtime artifacts."""
+    return text.replace("Ros2csLogger.setCallback", "Ros2csLogger.SetCallback")
 
 
 def patch_ros_time_source_contract(package: Path) -> None:

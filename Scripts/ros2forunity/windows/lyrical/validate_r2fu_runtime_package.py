@@ -1,0 +1,762 @@
+﻿#!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Validate the ROS2 For Unity Lyrical Win64 runtime Unity package prototype.
+# Usage: python Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py
+# Inputs: Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64 package directory.
+# Outputs: Prints runtime package checks and exits nonzero on failure.
+
+"""Validate the ROS2 For Unity Lyrical Win64 runtime package prototype."""
+
+from __future__ import annotations
+
+import json
+import argparse
+import hashlib
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Iterable
+
+
+REPO_ROOT_PARENT_DEPTH = 4
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
+PACKAGE = ROOT / "Packages" / PACKAGE_NAME
+ADAPTER_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
+CORE_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
+RUNTIME_ROOT = PACKAGE / "Runtime" / "Ros2ForUnity"
+PLUGIN_ROOT = RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64"
+MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
+INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+
+ARTIFACT_NAME = "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip"
+EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+
+CRITICAL_DLLS = (
+    "rcl.dll",
+    "yaml.dll",
+    "spdlog.dll",
+    "fmt.dll",
+)
+
+MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu"
+LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
+LEAKY_UPSTREAM_EXAMPLES = (
+    "ROS2TalkerExample.cs",
+    "ROS2ListenerExample.cs",
+    "ROS2ClientExample.cs",
+    "ROS2ServiceExample.cs",
+    "ROS2PerformanceTest.cs",
+    "PostInstall.cs",
+)
+PATCHED_VENDOR_FILES = (
+    "ROS2ForUnity.cs",
+    "ROS2Node.cs",
+    "ROS2UnityComponent.cs",
+    "ROS2UnityCore.cs",
+    "Sensor.cs",
+    "Transformations.cs",
+    "Time/DotnetTimeSource.cs",
+    "Time/ITimeSource.cs",
+    "Time/ROS2Clock.cs",
+    "Time/ROS2ScalableTimeSource.cs",
+    "Time/ROS2TimeSource.cs",
+    "Time/TimeUtils.cs",
+    "Time/UnityTimeSource.cs",
+)
+
+PUBLIC_DOCS = (
+    PACKAGE / "README.md",
+    PACKAGE / "THIRD_PARTY_NOTICES.md",
+    PACKAGE / "package.json",
+    MANIFEST,
+)
+
+INTERNAL_TOKENS = (
+    "Phase",
+    "phase",
+    "137B",
+    "106B",
+    "110",
+)
+
+
+@dataclass
+class CheckResult:
+    """Structured result for one runtime package validation check."""
+
+    name: str
+    ok: bool
+    detail: str
+
+
+def rel(path: Path) -> str:
+    """Format a path relative to the repository root when possible."""
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def add(results: list[CheckResult], name: str, ok: bool, detail: str = "") -> None:
+    """Append one check result to the accumulated report."""
+    results.append(CheckResult(name, ok, detail))
+
+
+def iter_files(root: Path) -> Iterable[Path]:
+    """Yield files below a root, returning an empty iterable when absent."""
+    if not root.exists():
+        return ()
+    return (path for path in root.rglob("*") if path.is_file())
+
+
+def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
+    """Load JSON and record whether parsing succeeded."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        add(results, name, False, f"{rel(path)}: {exc}")
+        return {}
+    add(results, name, True, rel(path))
+    return data
+
+
+def read_optional_text(path: Path) -> str:
+    """Read UTF-8 text when present, returning an empty string for absent files."""
+    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+
+
+def file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest for a package payload file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def check_package_metadata(results: list[CheckResult]) -> None:
+    """Validate Unity package metadata."""
+    add(results, "runtime package folder exists", PACKAGE.is_dir(), rel(PACKAGE))
+    data = load_json(PACKAGE / "package.json", results, "package.json parses")
+    if not data:
+        return
+
+    expected = {
+        "name": PACKAGE_NAME,
+        "version": "0.1.0-preview.1",
+        "displayName": "Unity2Foxglove ROS2 For Unity Runtime - Lyrical Win64",
+        "license": "Apache-2.0",
+        "unity": "6000.0",
+        "description": "Optional Lyrical Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",
+    }
+    for key, value in expected.items():
+        add(results, f"package {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    add(results, "package has no dependencies", "dependencies" not in data, f"dependencies={data.get('dependencies')!r}")
+    keywords = data.get("keywords", [])
+    add(
+        results,
+        "package keywords",
+        isinstance(keywords, list) and {"ros2", "ros2-for-unity", "lyrical", "win64"}.issubset(set(keywords)),
+        f"keywords={keywords!r}",
+    )
+
+
+def check_required_files(results: list[CheckResult]) -> None:
+    """Validate files required by the runtime package contract."""
+    required = [
+        PACKAGE / "README.md",
+        PACKAGE / "LICENSE",
+        PACKAGE / "THIRD_PARTY_NOTICES.md",
+        MANIFEST,
+        INVENTORY,
+        RUNTIME_ROOT / "metadata_ros2_for_unity.xml",
+        RUNTIME_ROOT / "metadata_ros2cs.xml",
+        RUNTIME_ROOT / "Plugins" / "metadata_ros2cs.xml",
+        PLUGIN_ROOT / "metadata_ros2cs.xml",
+        RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs",
+        RUNTIME_ROOT / "Scripts" / "ROS2UnityComponent.cs",
+        RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef",
+        RUNTIME_ROOT / "Plugins" / "ros2cs_core.dll",
+        RUNTIME_ROOT / "Plugins" / "ros2cs_common.dll",
+        RUNTIME_ROOT / "Plugins" / "std_msgs_assembly.dll",
+    ]
+    for path in required:
+        add(results, f"required file: {path.name}", path.exists(), rel(path))
+
+
+def check_runtime_manifest(results: list[CheckResult]) -> None:
+    """Validate the runtime support manifest."""
+    data = load_json(MANIFEST, results, "runtime manifest parses")
+    if not data:
+        return
+
+    expected = {
+        "schemaVersion": 1,
+        "runtimeId": "r2fu-lyrical-win64",
+        "packageName": PACKAGE_NAME,
+        "packageVersion": "0.1.0-preview.1",
+        "rosDistro": "lyrical",
+        "platform": "win64",
+        "unityPlatform": "Windows",
+        "architecture": "x86_64",
+        "buildType": "standalone",
+        "rmwImplementation": EXPECTED_RMW_IMPLEMENTATION,
+        "artifactName": ARTIFACT_NAME,
+        "inventoryFile": "RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json",
+        "runtimeRoot": "Runtime/Ros2ForUnity",
+        "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
+        "supportLevel": "Supported",
+        "distributionLevel": "Prototype",
+        "activeRuntimePolicy": "one_runtime_package_per_project",
+        "freshProjectAcceptance": "deferred_to_install_acceptance",
+    }
+    for key, value in expected.items():
+        add(results, f"runtime manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    artifact_sha = data.get("artifactSha256")
+    artifact_size = data.get("artifactSize")
+    inventory_file_count = data.get("inventoryFileCount")
+    add(
+        results,
+        "runtime manifest artifactSha256",
+        isinstance(artifact_sha, str) and len(artifact_sha) == 64 and re.fullmatch(r"[0-9a-f]+", artifact_sha) is not None,
+        f"artifactSha256={artifact_sha!r}",
+    )
+    add(results, "runtime manifest artifactSize", isinstance(artifact_size, int) and artifact_size > 0, f"artifactSize={artifact_size!r}")
+    add(
+        results,
+        "runtime manifest inventoryFileCount",
+        isinstance(inventory_file_count, int) and inventory_file_count > 0,
+        f"inventoryFileCount={inventory_file_count!r}",
+    )
+
+    source_basis = str(data.get("sourceBasis", ""))
+    add(
+        results,
+        "runtime manifest source basis public",
+        "Lyrical" in source_basis and "Phase" not in source_basis and "phase" not in source_basis,
+        source_basis,
+    )
+
+    critical = data.get("criticalRuntimeFiles", [])
+    add(
+        results,
+        "runtime manifest critical DLLs",
+        isinstance(critical, list) and set(CRITICAL_DLLS).issubset(set(critical)),
+        f"criticalRuntimeFiles={critical!r}",
+    )
+
+    patch = data.get("packagePathPatch", {})
+    add(
+        results,
+        "runtime manifest package path patch",
+        isinstance(patch, dict)
+        and patch.get("modifiedFile") == "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"
+        and patch.get("keepsAssetFolderFallback") is True,
+        f"packagePathPatch={patch!r}",
+    )
+
+
+def check_inventory(results: list[CheckResult], release_gate: bool = False) -> None:
+    """Validate the copied runtime inventory."""
+    data = load_json(INVENTORY, results, "runtime inventory parses")
+    if not data:
+        return
+    manifest = load_json(MANIFEST, results, "runtime manifest parses for inventory cross-check")
+
+    expected = {
+        "schemaVersion": 1,
+        "runtimeId": "r2fu-lyrical-win64",
+        "artifactName": ARTIFACT_NAME,
+        "rosDistro": "lyrical",
+        "rmw": EXPECTED_RMW_IMPLEMENTATION,
+        "platform": "win64",
+        "buildType": "standalone",
+    }
+    for key, value in expected.items():
+        add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    add(
+        results,
+        "runtime inventory sha256 matches manifest",
+        data.get("sha256") == manifest.get("artifactSha256"),
+        f"inventory={data.get('sha256')!r}, manifest={manifest.get('artifactSha256')!r}",
+    )
+    add(
+        results,
+        "runtime inventory artifactSize matches manifest",
+        data.get("artifactSize") == manifest.get("artifactSize"),
+        f"inventory={data.get('artifactSize')!r}, manifest={manifest.get('artifactSize')!r}",
+    )
+    add(
+        results,
+        "runtime inventory fileCount matches manifest",
+        data.get("fileCount") == manifest.get("inventoryFileCount"),
+        f"inventory={data.get('fileCount')!r}, manifest={manifest.get('inventoryFileCount')!r}",
+    )
+
+    redistribution_status = str(data.get("redistributionStatus", ""))
+    add(
+        results,
+        "runtime inventory redistributionStatus recorded",
+        redistribution_status in {"candidate_not_published", "published"},
+        f"redistributionStatus={redistribution_status!r}",
+    )
+    if release_gate:
+        add(
+            results,
+            "release gate: runtime redistributionStatus is published",
+            redistribution_status == "published",
+            f"redistributionStatus={redistribution_status!r}",
+        )
+
+    categories = data.get("categoryCounts", {})
+    native_library_count = int(categories.get("native_libraries", 0)) if isinstance(categories, dict) else 0
+    add(
+        results,
+        "runtime inventory native library count",
+        native_library_count >= 700,
+        f"categoryCounts={categories!r}",
+    )
+
+    critical = data.get("knownCriticalFiles", [])
+    present = {
+        item.get("name")
+        for item in critical
+        if isinstance(item, dict) and item.get("present") is True
+    }
+    add(
+        results,
+        "runtime inventory critical files present",
+        set(CRITICAL_DLLS).issubset(present),
+        f"present={sorted(present)!r}",
+    )
+
+    files = data.get("files", [])
+    malformed: list[str] = []
+    missing: list[str] = []
+    mismatched: list[str] = []
+    checked_dlls = 0
+    if isinstance(files, list):
+        for item in files:
+            if not isinstance(item, dict):
+                malformed.append(repr(item))
+                continue
+            path_text = str(item.get("path", ""))
+            if not path_text.lower().endswith(".dll"):
+                continue
+            checked_dlls += 1
+            expected_hash = str(item.get("sha256", "")).lower()
+            parts = PurePosixPath(path_text).parts
+            if len(parts) < 2 or parts[0] != "Ros2ForUnity":
+                malformed.append(path_text)
+                continue
+            package_path = RUNTIME_ROOT.joinpath(*parts[1:])
+            if not package_path.is_file():
+                missing.append(path_text)
+                continue
+            if expected_hash and file_sha256(package_path) != expected_hash:
+                mismatched.append(path_text)
+
+    add(
+        results,
+        "runtime inventory DLL files exist on disk",
+        isinstance(files, list) and checked_dlls >= native_library_count >= 700 and not malformed and not missing,
+        f"checked_dlls={checked_dlls} malformed={malformed[:8]!r} missing={missing[:8]!r}",
+    )
+    add(
+        results,
+        "runtime inventory DLL hashes match disk",
+        isinstance(files, list) and checked_dlls >= native_library_count >= 700 and not mismatched,
+        f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}",
+    )
+
+
+def check_runtime_files(results: list[CheckResult]) -> None:
+    """Validate critical runtime files and package layout."""
+    for dll in CRITICAL_DLLS:
+        path = PLUGIN_ROOT / dll
+        add(results, f"critical DLL present: {dll}", path.exists(), rel(path))
+
+    dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
+    add(results, "Windows x86_64 DLL payload", len(dlls) >= 700, f"dll_count={len(dlls)}")
+    add(results, "no root zip sidecar copied", not any(PACKAGE.glob("*.zip")) and not any(PACKAGE.glob("*.sha256")), rel(PACKAGE))
+
+    copied_paths = [path.relative_to(PACKAGE).as_posix() for path in iter_files(PACKAGE)]
+    sample_hits = [path for path in copied_paths if "Phase110Ros2ForUnity" in path or "External Adapter" in path]
+    add(results, "runtime package does not duplicate adapter samples", not sample_hits, ", ".join(sample_hits[:8]))
+
+    unexpected_platforms = [
+        path
+        for path in copied_paths
+        if path.startswith("Runtime/Ros2ForUnity/Plugins/")
+        and ("/Linux/" in path or "/Mac" in path or "/macOS/" in path)
+    ]
+    add(results, "runtime plugin payload limited to Windows", not unexpected_platforms, ", ".join(unexpected_platforms[:8]))
+
+    scripts = RUNTIME_ROOT / "Scripts"
+    leaky_examples = [name for name in LEAKY_UPSTREAM_EXAMPLES if (scripts / name).exists()]
+    add(results, "leaky upstream examples pruned", not leaky_examples, ", ".join(leaky_examples))
+
+
+def check_package_path_patch(results: list[CheckResult]) -> None:
+    """Validate the ROS2ForUnity.cs package path patch."""
+    source = RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs"
+    text = source.read_text(encoding="utf-8", errors="replace") if source.exists() else ""
+    required = [
+        "Unity2Foxglove package path support",
+        PACKAGE_NAME,
+        "PackageInfo.FindForAssetPath",
+        "resolvedPath",
+        "unity2FoxgloveRuntimePackageAssetPath",
+        'Path.Combine(',
+        '"Packages"',
+        '"Runtime"',
+        "Directory.Exists(packagePath)",
+        "return assetPath;",
+    ]
+    for token in required:
+        add(results, f"ROS2ForUnity.cs contains {token}", token in text, token)
+    add(
+        results,
+        "UnityEditor using guarded",
+        re.search(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", text) is not None
+        and re.sub(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", "", text).find("using UnityEditor;") < 0,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "PackageManager lookup guarded",
+        "#if UNITY_EDITOR" in text
+        and "UnityEditor.PackageManager.PackageInfo.FindForAssetPath" in text
+        and text.index("#if UNITY_EDITOR") < text.index("UnityEditor.PackageManager.PackageInfo.FindForAssetPath"),
+        "ROS2ForUnity.cs",
+    )
+
+
+def check_runtime_asmdef(results: list[CheckResult]) -> None:
+    """Validate the runtime assembly definition is safe for Editor and Player."""
+    path = RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef"
+    data = load_json(path, results, "runtime asmdef parses")
+    add(results, "runtime asmdef name", data.get("name") == "Unity2Foxglove.Ros2ForUnity.Runtime", f"name={data.get('name')!r}")
+    add(
+        results,
+        "runtime asmdef targets Windows runtime and editor",
+        data.get("includePlatforms") == ["Editor", "WindowsStandalone64"],
+        f"includePlatforms={data.get('includePlatforms')!r}",
+    )
+    add(results, "runtime asmdef auto-referenced", data.get("autoReferenced") is True, f"autoReferenced={data.get('autoReferenced')!r}")
+    add(results, "runtime asmdef has no define gate", "defineConstraints" not in data, f"defineConstraints={data.get('defineConstraints')!r}")
+
+
+def check_runtime_source_patches(results: list[CheckResult]) -> None:
+    """Validate local lifecycle, time-source, and attribution patches on vendored R2FU sources."""
+    scripts = RUNTIME_ROOT / "Scripts"
+    for relative in PATCHED_VENDOR_FILES:
+        path = scripts / relative
+        text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        add(results, f"patched vendored file exists: {relative}", path.exists(), rel(path))
+        add(results, f"patched vendored attribution: {relative}", MODIFICATIONS_COPYRIGHT in text, relative)
+
+    node = read_optional_text(scripts / "ROS2Node.cs")
+    add(results, "ROS2Node implements IDisposable", "class ROS2Node : IDisposable" in node and "public void Dispose()" in node, "ROS2Node.cs")
+    add(results, "ROS2Node avoids finalizer native cleanup", "~ROS2Node" not in node, "ROS2Node.cs")
+    add(results, "ROS2Node removed UnityEditor using", "using UnityEditor;" not in node, "ROS2Node.cs")
+
+    component = read_optional_text(scripts / "ROS2UnityComponent.cs")
+    component_join = "threadToJoin.Join(1000)" in component or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in component
+    for token in (
+        "private volatile bool quitting",
+        "OnDestroy()",
+        "OnApplicationQuit()",
+        "node.Dispose()",
+        "StopExecutor()",
+    ):
+        add(results, f"ROS2UnityComponent lifecycle token: {token}", token in component, token)
+    add(
+        results,
+        "ROS2UnityComponent uses snapshot spin path",
+        "nodesSnapshot" in component
+        and "actionsSnapshot" in component
+        and "collectionVersion" in component
+        and "Ros2cs.SpinOnce(nodesSnapshot, spinTimeout)" in component,
+        "ROS2UnityComponent.cs",
+    )
+    add(
+        results,
+        "ROS2UnityComponent disposes nodes before runtime release",
+        "DisposeNodes()" in component and "instance.DestroyROS2ForUnity()" in component,
+        "ROS2UnityComponent.cs",
+    )
+    add(
+        results,
+        "ROS2UnityComponent executor thread",
+        "private Thread spinThread" in component or "private Thread executorThread" in component,
+        "ROS2UnityComponent.cs",
+    )
+    add(results, "ROS2UnityComponent bounded join", component_join, "ROS2UnityComponent.cs")
+    add(results, "ROS2UnityComponent does not shutdown on ordinary disable", "OnDisable()" not in component, "ROS2UnityComponent.cs")
+
+    core = read_optional_text(scripts / "ROS2UnityCore.cs")
+    core_join = "threadToJoin.Join(1000)" in core or "threadToJoin.Join(TimeSpan.FromSeconds(2))" in core
+    for token in (
+        "IDisposable",
+        "private volatile bool quitting",
+        "public void Dispose()",
+        "StopExecutor()",
+    ):
+        add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)
+    add(
+        results,
+        "ROS2UnityCore uses snapshot spin path",
+        "nodesSnapshot" in core
+        and "actionsSnapshot" in core
+        and "collectionVersion" in core
+        and "Ros2cs.SpinOnce(nodesSnapshot, spinTimeout)" in core,
+        "ROS2UnityCore.cs",
+    )
+    add(
+        results,
+        "ROS2UnityCore disposes nodes before runtime release",
+        "DisposeNodes()" in core and "instance.DestroyROS2ForUnity()" in core,
+        "ROS2UnityCore.cs",
+    )
+    add(
+        results,
+        "ROS2UnityCore executor thread",
+        "private Thread spinThread" in core or "private Thread executorThread" in core,
+        "ROS2UnityCore.cs",
+    )
+    add(results, "ROS2UnityCore bounded join", core_join, "ROS2UnityCore.cs")
+
+    runtime = read_optional_text(scripts / "ROS2ForUnity.cs")
+    old_lifecycle = all(token in runtime for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"))
+    current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
+    add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
+    add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
+    add(
+        results,
+        "ROS2ForUnity uses non-obsolete ros2cs logger callback API",
+        "Ros2csLogger.SetCallback" in runtime and "Ros2csLogger.setCallback" not in runtime,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2ForUnity enforces expected RMW",
+        "expectedRmwImplementation" in runtime
+        and "ValidateRmwImplementation" in runtime
+        and EXPECTED_RMW_IMPLEMENTATION in runtime,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2ForUnity standalone isolates sourced ROS2 environment",
+        "standalone runtime must not inherit a sourced ROS2 workspace" in runtime
+        and "standalone runtime owns its RMW selection" in runtime
+        and "hide any externally sourced ROS_DISTRO" in runtime
+        and "packagedRos2Version = GetMetadataValue" in runtime
+        and "ROS2 version in standalone process environment does not match this runtime package" in runtime,
+        "ROS2ForUnity.cs",
+    )
+
+    dotnet_time = read_optional_text(scripts / "Time" / "DotnetTimeSource.cs")
+    add(
+        results,
+        "DotnetTimeSource converts Stopwatch duration to seconds",
+        ("Stopwatch.Frequency" in dotnet_time and "ElapsedTicks" in dotnet_time)
+        or "stopwatch.Elapsed.TotalSeconds" in dotnet_time,
+        "DotnetTimeSource.cs",
+    )
+
+    for relative in ("Time/ROS2TimeSource.cs", "Time/ROS2ScalableTimeSource.cs"):
+        source = read_optional_text(scripts / relative)
+        add(
+            results,
+            f"{relative} implements bool ITimeSource.GetTime",
+            "public bool GetTime(out int seconds, out uint nanoseconds)" in source
+            and "public void GetTime(out int seconds, out uint nanoseconds)" not in source,
+            relative,
+        )
+        add(
+            results,
+            f"{relative} reports unavailable ROS time",
+            "return false;" in source and "return true;" in source,
+            relative,
+        )
+        add(
+            results,
+            f"{relative} bool contract patch is marked",
+            "bool-returning ITimeSource contract" in source,
+            relative,
+        )
+
+    time_utils = read_optional_text(scripts / "Time" / "TimeUtils.cs")
+    add(
+        results,
+        "TimeUtils normalizes nanoseconds",
+        "Math.Floor(secondsIn)" in time_utils
+        and ("normalizedNanoseconds < 0" in time_utils or "wholeNanoseconds >= 1000000000" in time_utils),
+        "TimeUtils.cs",
+    )
+    add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
+
+    sensor = read_optional_text(scripts / "Sensor.cs")
+    add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
+    readings_guard_index = sensor.find("if (readings != null)")
+    readings_deref_index = sensor.find("readings.SetHeaderFrame")
+    sensor_null_guard = (
+        (readings_guard_index >= 0 and readings_deref_index >= 0 and readings_guard_index < readings_deref_index)
+        or ("if (acquiredReading == null)" in sensor and "acquiredReading.SetHeaderFrame" in sensor)
+    )
+    add(results, "Sensor checks readings before dereference", sensor_null_guard, "Sensor.cs")
+    add(results, "Sensor unregisters executable action", "UnregisterExecutable" in sensor, "Sensor.cs")
+
+
+def check_generator_alignment(results: list[CheckResult]) -> None:
+    """Validate the generator knows about the lifecycle-patched package shape."""
+    generator_path = ROOT / "Scripts" / "ros2forunity" / "windows" / "lyrical" / "build_r2fu_runtime_package.py"
+    try:
+        generator = generator_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        add(results, "runtime package generator script readable", False, f"{rel(generator_path)}: {exc}")
+        return
+
+    add(results, "runtime package generator script readable", True, rel(generator_path))
+    required = (
+        "collect_local_patch_overlays",
+        "apply_local_patch_overlays",
+        "collect_meta_overlays",
+        "apply_meta_overlays",
+        "LOCAL_PATCH_OVERLAY_FILES",
+        "patch_ros_time_source_contract",
+        "LEAKY_UPSTREAM_EXAMPLES",
+        "runtime_asmdef",
+        "make_writable",
+        "windows_long_path",
+        "PackageInfo.FindForAssetPath",
+        "UNITY_EDITOR",
+    )
+    for token in required:
+        add(results, f"runtime package generator token: {token}", token in generator, token)
+
+
+def check_public_docs(results: list[CheckResult]) -> None:
+    """Validate public runtime docs avoid internal planning names."""
+    combined = ""
+    for path in PUBLIC_DOCS:
+        combined += "\n" + path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    hits = sorted({token for token in INTERNAL_TOKENS if token in combined})
+    add(results, "runtime public docs avoid internal planning names", not hits, ", ".join(hits) if hits else "clean")
+
+    readme = (PACKAGE / "README.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "README.md").exists() else ""
+    add(
+        results,
+        "README documents standalone and combined behavior",
+        "runtime.lyrical.win64" in readme and "adapter" in readme and "combined Unity2Foxglove workflow" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "README documents one-runtime policy",
+        "Install only one" in readme and "runtime.*" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "README documents artifact SHA-256",
+        str(load_json(MANIFEST, results, "runtime manifest parses for docs cross-check").get("artifactSha256", "")) in readme,
+        "README.md",
+    )
+    notices = (PACKAGE / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists() else ""
+    add(
+        results,
+        "THIRD_PARTY_NOTICES documents artifact SHA-256",
+        str(load_json(MANIFEST, results, "runtime manifest parses for notices cross-check").get("artifactSha256", "")) in notices,
+        "THIRD_PARTY_NOTICES.md",
+    )
+    add(
+        results,
+        "README documents WSL2 NAT topology limit",
+        "WSL2 NAT" in readme and "diagnostic-only" in readme and "Windows Defender Firewall" in readme,
+        "README.md",
+    )
+
+
+def check_package_boundaries(results: list[CheckResult]) -> None:
+    """Validate the SDK and adapter package dependency boundaries."""
+    sdk_package = load_json(CORE_PACKAGE / "package.json", results, "core package.json parses")
+    adapter_package = load_json(ADAPTER_PACKAGE / "package.json", results, "adapter package.json parses")
+
+    sdk_deps = json.dumps(sdk_package.get("dependencies", {}), sort_keys=True)
+    adapter_deps = json.dumps(adapter_package.get("dependencies", {}), sort_keys=True)
+    add(results, "core SDK does not depend on runtime package", PACKAGE_NAME not in sdk_deps, sdk_deps)
+    add(results, "adapter does not hard-depend on runtime package", PACKAGE_NAME not in adapter_deps, adapter_deps)
+
+    sdk_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in iter_files(CORE_PACKAGE / "Runtime"))
+    add(
+        results,
+        "core SDK runtime remains ROS2 For Unity free",
+        "ROS2UnityComponent" not in sdk_text and "ros2forunity.runtime" not in sdk_text,
+        "core runtime scan",
+    )
+
+
+def run_checks(release_gate: bool = False) -> list[CheckResult]:
+    """Run all runtime package checks."""
+    results: list[CheckResult] = []
+    check_package_metadata(results)
+    check_required_files(results)
+    check_runtime_manifest(results)
+    check_inventory(results, release_gate=release_gate)
+    check_runtime_files(results)
+    check_package_path_patch(results)
+    check_runtime_asmdef(results)
+    check_runtime_source_patches(results)
+    check_generator_alignment(results)
+    check_public_docs(results)
+    check_package_boundaries(results)
+    return results
+
+
+def print_results(results: list[CheckResult]) -> None:
+    """Print validation results in a compact PASS/FAIL format."""
+    for result in results:
+        status = "PASS" if result.ok else "FAIL"
+        detail = f": {result.detail}" if result.detail else ""
+        print(f"[{status}] {result.name}{detail}")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse validator command-line arguments."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--release-gate",
+        action="store_true",
+        help="Require redistributionStatus=published before release publication.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run validation and return a process exit code."""
+    args = parse_args(argv)
+    results = run_checks(release_gate=args.release_gate)
+    print_results(results)
+    failures = [result for result in results if not result.ok]
+    if failures:
+        print(f"\n{len(failures)} check(s) failed.", file=sys.stderr)
+        return EXIT_FAILURE
+    print(f"\nRuntime package validation passed: {len(results)} checks.")
+    return EXIT_SUCCESS
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

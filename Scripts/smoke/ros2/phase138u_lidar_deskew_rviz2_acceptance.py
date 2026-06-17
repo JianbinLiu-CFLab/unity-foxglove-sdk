@@ -321,6 +321,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--motion-delta-threshold-m", type=float, default=0.01)
     parser.add_argument("--wall-improvement-threshold-m", type=float, default=0.002)
     parser.add_argument("--allow-static", action="store_true")
+    parser.add_argument("--rviz-display-mode", choices=("both", "raw"), default="both")
     parser.add_argument("--no-require-wall-improvement", dest="require_wall_improvement", action="store_false")
     parser.add_argument("--self-test", action="store_true")
     parser.set_defaults(print_json=True)
@@ -684,6 +685,7 @@ def main(argv: list[str]) -> int:
             raw_topic,
             deskewed_topic,
             rviz2launch.normalize_frame(args.fixed_frame),
+            args.rviz_display_mode,
         )
         print(f"[phase138u-lidar-deskew] RViz2 config: {config_path}")
         rviz_process = ros2env.launch_rviz(
@@ -735,7 +737,11 @@ def main(argv: list[str]) -> int:
     print(json.dumps(evidence, indent=2, sort_keys=True))
     if args.print_json:
         print("PHASE138U_LIDAR_DESKEW_JSON=" + json.dumps(evidence, sort_keys=True))
-    print("[phase138u-lidar-deskew] PASS")
+    motion_status = evidence["motion_contract"].get("status")
+    if motion_status == "static_allowed":
+        print("[phase138u-lidar-deskew] PASS (DDS-WIRING-ONLY: static capture accepted)")
+    else:
+        print("[phase138u-lidar-deskew] PASS")
     return 0
 
 

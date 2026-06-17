@@ -29,18 +29,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
-            if (installed.Length > 0
-                && string.IsNullOrWhiteSpace(status.ActiveRuntimePackage)
-                && status.SelectedRuntime != null)
-            {
-                SaveAndReconcile(projectDirectory, status.SelectedRuntime);
-                status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
-            }
-
             DrawRuntimePopup(projectDirectory, status, installed);
 
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Info);
+
+            DrawRestartStatus(projectDirectory, status);
 
             if (status.SelectedRuntime != null)
             {
@@ -53,27 +47,64 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
         }
 
+        private static void DrawRestartStatus(string projectDirectory, Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            if (status.SelectedRuntime != null)
+            {
+                var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
+                var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
+                if (!string.IsNullOrWhiteSpace(restartPackage))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Restart Unity before entering Play Mode. This Editor session already loaded "
+                        + sessionRuntime
+                        + " native ROS2 runtime DLLs, and the active runtime is now "
+                        + restartPackage
+                        + ". Unity cannot safely unload native ROS2 DLLs mid-session.",
+                        MessageType.Error);
+
+                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    {
+                        if (GUILayout.Button("Restart Unity"))
+                            Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(sessionRuntime))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Switching runtime packages is safe before this Editor session enters Play Mode. A restart is required only after a different ROS2 runtime has already loaded native DLLs in this session.",
+                        MessageType.Info);
+                }
+            }
+        }
+
         private static void DrawRuntimePopup(
             string projectDirectory,
             Ros2ForUnityRuntimeSelectionStatus status,
             Ros2ForUnityRuntimeDescriptor[] installed)
         {
-            var selectedIndex = Math.Max(
-                0,
-                Array.FindIndex(installed, runtime =>
-                    string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal)));
+            var selectedIndex = Math.Max(0, Array.FindIndex(installed, runtime =>
+                status.SelectedRuntime != null
+                && string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal)));
             var installedLabels = installed.Select(runtime => runtime.DisplayName).ToArray();
 
-            EditorGUI.BeginChangeCheck();
-            var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, installedLabels);
-            if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < installed.Length)
-                SaveAndReconcile(projectDirectory, installed[changedIndex]);
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            {
+                EditorGUI.BeginChangeCheck();
+                var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, installedLabels);
+                if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < installed.Length)
+                    SwitchAndResolve(projectDirectory, installed[changedIndex]);
+            }
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                EditorGUILayout.HelpBox("Exit Play Mode before switching ROS2 For Unity runtime packages.", MessageType.Warning);
         }
 
-        private static void SaveAndReconcile(string projectDirectory, Ros2ForUnityRuntimeDescriptor runtime)
+        private static void SwitchAndResolve(string projectDirectory, Ros2ForUnityRuntimeDescriptor runtime)
         {
-            Ros2ForUnityRuntimeSelection.SaveActiveRuntimePackage(projectDirectory, runtime.PackageName);
+            Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
+            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.", MessageType.Info);
         }
     }
 }

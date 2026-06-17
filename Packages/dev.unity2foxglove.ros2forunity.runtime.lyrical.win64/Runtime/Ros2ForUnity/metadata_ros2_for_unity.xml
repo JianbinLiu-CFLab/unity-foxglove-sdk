@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ros2_for_unity>
+   <ros2>lyrical</ros2>
+   <version>
+      <sha>e5e6e947ef292c3d72da7d10e76e8b9ba695601a</sha>
+      <desc>v0.6.0-jazzy-win64-preview.1-6-ge5e6e94</desc>
+      <date>2026-06-16 00:19:05 +0200</date>
+   </version>
+</ros2_for_unity>

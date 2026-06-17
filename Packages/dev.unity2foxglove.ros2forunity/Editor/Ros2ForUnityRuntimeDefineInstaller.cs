@@ -71,13 +71,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 .ToList();
 
             var changed = false;
-            foreach (var symbol in Ros2ForUnityRuntimeSelection.RuntimeCompileSymbols)
-                changed |= RemoveSymbol(parts, symbol);
+            changed |= RemoveStaleRuntimePackageSymbols(parts);
 
             if (status.HasSelection)
             {
                 changed |= EnsureSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol);
-                changed |= EnsureSymbol(parts, status.SelectedRuntime.CompileSymbol);
             }
             else
             {
@@ -89,11 +87,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             PlayerSettings.SetScriptingDefineSymbols(target, string.Join(";", parts));
             Debug.Log(status.HasSelection
-                ? "Unity2Foxglove enabled " + Ros2ForUnityRuntimeSelection.BaseCompileSymbol + " and "
-                  + status.SelectedRuntime.CompileSymbol + " for active ROS2 For Unity runtime "
+                ? "Unity2Foxglove enabled " + Ros2ForUnityRuntimeSelection.BaseCompileSymbol
+                  + " for active ROS2 For Unity runtime "
                   + status.SelectedRuntime.PackageName + "."
                 : "Unity2Foxglove removed " + Ros2ForUnityRuntimeSelection.BaseCompileSymbol
-                  + " and runtime-specific ROS2 For Unity compile symbols: " + status.Diagnostic);
+                  + ": " + status.Diagnostic);
         }
 
         private static bool EnsureSymbol(System.Collections.Generic.List<string> parts, string symbol)
@@ -108,6 +106,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static bool RemoveSymbol(System.Collections.Generic.List<string> parts, string symbol)
         {
             return parts.RemoveAll(value => string.Equals(value, symbol, StringComparison.Ordinal)) > 0;
+        }
+
+        private static bool RemoveStaleRuntimePackageSymbols(System.Collections.Generic.List<string> parts)
+        {
+            return parts.RemoveAll(value =>
+                value.StartsWith(Ros2ForUnityRuntimeSelection.BaseCompileSymbol + "_", StringComparison.Ordinal)
+                && value.EndsWith("_PACKAGE", StringComparison.Ordinal)) > 0;
         }
 
         private static string FormatFailureMessage(string context, Exception ex)

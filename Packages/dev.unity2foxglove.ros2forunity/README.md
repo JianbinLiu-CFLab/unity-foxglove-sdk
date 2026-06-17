@@ -6,7 +6,7 @@ It provides facade/API boundaries, documentation, attribution records, and a sou
 
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 
-The current product direction is Jazzy-first for Windows x64 runtime work. The `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package owns the ROS2 For Unity Jazzy standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
+The current product direction is Jazzy-first for Windows x64 runtime work, with Lyrical Win64 available as a supported candidate runtime. Runtime packages own the ROS2 For Unity standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
@@ -24,13 +24,13 @@ This optional package is reserved for users who later want Unity to participate 
 bundleStatus: not_bundled
 adapterStatus: external_assets_sample
 recommendedRuntimeCandidate: Ros2ForUnity_jazzy_standalone_windows_x86_64.zip
-runtimePackage: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
+runtimePackages: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64, dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 legacyRuntimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
 ```
 
 The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment.
 
-The current Jazzy Windows x64 runtime package has its runtime manifest, generated file inventory, checksum, and artifact-specific notices under `Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`. The adapter package keeps compatibility records under `Compliance/` without bundling runtime binaries itself.
+The current Windows x64 runtime packages have their runtime manifests, generated file inventories, checksums, and artifact-specific notices under repository-root `Packages/dev.unity2foxglove.ros2forunity.runtime.*` directories. The adapter package keeps compatibility records under `Compliance/` without bundling runtime binaries itself.
 
 The old Humble standalone asset remains historical/fallback evidence, but it is not the recommended new-user runtime line after the Jazzy rebuild and retest.
 
@@ -44,7 +44,7 @@ ROS2 For Unity Jazzy graph snapshots can be intermittent in `ros2 topic list`; u
 |---|---|
 | `dev.unity2foxglove.sdk` | Fully usable by itself for normal Foxglove WebSocket, MCAP, Replay, and FoxRun workflows. |
 | `dev.unity2foxglove.ros2forunity` | Installs and compiles by itself. Reports missing runtime gracefully. |
-| `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Installs runtime files and exposes metadata/diagnostics by itself. |
+| `dev.unity2foxglove.ros2forunity.runtime.*` | Candidate runtime packages kept under the repository root `Packages/`; only the active one is resolved by the Unity project manifest. |
 | Adapter + runtime | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. |
 | SDK + adapter + runtime | Full combined Unity2Foxglove workflow. |
 
@@ -54,32 +54,36 @@ Dependency direction is intentionally one-way:
 dev.unity2foxglove.sdk does not depend on ROS2 For Unity packages.
 dev.unity2foxglove.ros2forunity can compile without runtime packages.
 dev.unity2foxglove.ros2forunity.runtime.* packages must not force the core SDK to load ROS2.
-Multiple runtime packages may be installed, but exactly one active runtime is selected per Unity project.
+Multiple candidate runtime packages may exist on disk, but exactly one active runtime is resolved in `Unity2Foxglove/Packages/manifest.json` per Unity project.
 ```
 
 Runtime packages are expected to be package/release artifacts. They should carry their own manifest, checksum, file inventory, third-party notices, and license inventory.
 
 ## External Adapter Sample
 
-Install the adapter package and the Jazzy Win64 runtime package:
+Install the adapter package and keep candidate runtime packages under the repository root `Packages/` directory:
 
 ```text
 dev.unity2foxglove.ros2forunity
 dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
+dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 ```
 
-The adapter package manages the Standalone build-target symbols from the project active runtime selection:
+The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` active runtime dropdown. Changing it edits `Unity2Foxglove/Packages/manifest.json` so exactly one runtime package is active, then Unity performs a normal package reimport and script compilation. This is intentionally slower than a scripting-define switch because Unity must not import two sets of ROS2 managed message DLLs or native runtime DLLs at once.
+
+If the current Editor session has not entered Play Mode yet, you can switch runtime packages and enter Play Mode without restarting. After an Editor session has loaded one ROS2 runtime in Play Mode, switching to a different runtime requires a Unity restart before Play Mode. Windows native ROS2 plugins stay loaded until the Editor process exits, so the Inspector blocks unsafe Play Mode entry and offers a restart action instead of letting Jazzy and Lyrical DLLs mix in one process.
+
+The adapter package manages only the base Standalone build-target symbol:
 
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
-UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE
 ```
 
-Runtime detection is intentionally conservative: a runtime package must be present in both `Packages/manifest.json` and Unity's resolved `Packages/packages-lock.json`. The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` dropdown. If no explicit active runtime is stored in `ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json`, the first installed supported runtime is selected and persisted automatically; changing the dropdown selects a different active runtime. The installer only edits the Standalone build target. `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE` is managed by the runtime-package detector and gates the Native bridge assembly that hard-references the Jazzy Win64 runtime package.
+Runtime detection uses the Unity project manifest as the single source of truth. Candidate packages are discovered by convention from repository-root `Packages/dev.unity2foxglove.ros2forunity.runtime.*` directories and are not copied into `Unity2Foxglove/Packages/` as embedded packages.
 
 The adapter runtime and editor asmdefs remain `autoReferenced=true` on purpose. Imported Package Manager samples land in predefined project assemblies, so this convenience keeps the facade interfaces visible without requiring users to add sample asmdefs. The core SDK still has no reference to this optional package.
 
-The external source-only adapter samples may use `UNITY2FOXGLOVE_ROS2_FOR_UNITY` with an external ROS2 For Unity import. Do not enable `UNITY2FOXGLOVE_ROS2_FOR_UNITY_JAZZY_WIN64_PACKAGE` unless the Jazzy Win64 runtime package is installed and resolved.
+The external source-only adapter samples may use `UNITY2FOXGLOVE_ROS2_FOR_UNITY` with an external ROS2 For Unity import. Per-distro runtime symbols are not compile gates. The base symbol is reconciled for the Standalone build target only.
 
 The sample exposes one bidirectional `std_msgs/msg/String` smoke pair:
 
