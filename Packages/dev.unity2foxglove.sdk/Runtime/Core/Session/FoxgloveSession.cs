@@ -47,6 +47,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
+        private ISinkChannelFilter _liveWebSocketChannelFilter;
+        private ISinkChannelFilter _mcapRecordingChannelFilter;
 
         /// <summary>Whether protobuf encoding support is enabled for channel registration.</summary>
         private bool _protobufEnabled;
@@ -99,18 +101,46 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Attach an MCAP recorder for session recording.</summary>
         internal void SetRecorder(McapRecorder r) => Volatile.Write(ref _recorder, r);
 
+        /// <summary>Set an optional per-sink channel filter. Null allows all channels for the sink.</summary>
+        internal void SetSinkChannelFilter(FoxgloveSinkKind sink, ISinkChannelFilter filter)
+        {
+            switch (sink)
+            {
+                case FoxgloveSinkKind.LiveWebSocket:
+                    Volatile.Write(ref _liveWebSocketChannelFilter, filter);
+                    break;
+                case FoxgloveSinkKind.McapRecording:
+                    Volatile.Write(ref _mcapRecordingChannelFilter, filter);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(sink), sink, "Unknown Foxglove sink kind.");
+            }
+        }
+
+        /// <summary>Return the configured per-sink channel filter, or null when the sink allows all channels.</summary>
+        internal ISinkChannelFilter GetSinkChannelFilter(FoxgloveSinkKind sink)
+        {
+            return sink switch
+            {
+                FoxgloveSinkKind.LiveWebSocket => Volatile.Read(ref _liveWebSocketChannelFilter),
+                FoxgloveSinkKind.McapRecording => Volatile.Read(ref _mcapRecordingChannelFilter),
+                _ => throw new ArgumentOutOfRangeException(nameof(sink), sink, "Unknown Foxglove sink kind.")
+            };
+        }
+
         /// <summary>
         /// Return whether a registered channel has live subscriber or MCAP recording demand.
         /// </summary>
         public bool HasChannelDemand(uint channelId)
         {
-            if (_channels.Get(channelId) == null)
+            var channel = _channels.Get(channelId);
+            if (channel == null)
                 return false;
 
-            if (_subscriptions.HasSubscribersForChannel(channelId))
+            if (_subscriptions.HasSubscribersForChannel(channelId) && AllowLiveWebSocket(channel))
                 return true;
 
-            return Volatile.Read(ref _recorder) != null;
+            return Volatile.Read(ref _recorder) != null && AllowMcapRecording(channel);
         }
 
         public FoxgloveSession(string name,
@@ -242,13 +272,20 @@ namespace Unity.FoxgloveSDK.Core
                 _graph.RemoveUnityPublishedTopic(previous.Topic);
 
             _channels.Register(channel);
-            _graph.SetUnityPublishedTopic(channel.Topic);
             var recorder = Volatile.Read(ref _recorder);
-            recorder?.AddChannel(channel.Id, channel.Topic, channel.Encoding,
-                channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
-            _transport.BroadcastText(JsonConvert.SerializeObject(
-                new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
-            _graph.BroadcastUpdate();
+            if (recorder != null && AllowMcapRecording(channel))
+            {
+                recorder.AddChannel(channel.Id, channel.Topic, channel.Encoding,
+                    channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
+            }
+
+            if (AllowLiveWebSocket(channel))
+            {
+                _graph.SetUnityPublishedTopic(channel.Topic);
+                _transport.BroadcastText(JsonConvert.SerializeObject(
+                    new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
+                _graph.BroadcastUpdate();
+            }
         }
 
         /// <summary>
@@ -258,17 +295,21 @@ namespace Unity.FoxgloveSDK.Core
         public void UnregisterChannel(uint channelId)
         {
             var ch = _channels.Get(channelId);
-            if (ch != null)
+            var liveAllowed = ch != null && AllowLiveWebSocket(ch);
+            if (ch != null && liveAllowed)
                 _graph.RemoveUnityPublishedTopic(ch.Topic);
             if (!_channels.Remove(channelId)) return;
             foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
             {
-                if (ch != null)
+                if (ch != null && liveAllowed)
                     _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
             }
-            _transport.BroadcastText(JsonConvert.SerializeObject(
-                new Unadvertise { ChannelIds = new List<uint> { channelId } }));
-            _graph.BroadcastUpdate();
+            if (liveAllowed)
+            {
+                _transport.BroadcastText(JsonConvert.SerializeObject(
+                    new Unadvertise { ChannelIds = new List<uint> { channelId } }));
+                _graph.BroadcastUpdate();
+            }
         }
 
         /// <summary>
@@ -376,7 +417,10 @@ namespace Unity.FoxgloveSDK.Core
             if (channel == null) return;
             payload ??= Array.Empty<byte>();
             var recorder = Volatile.Read(ref _recorder);
-            recorder?.WriteMessage(channelId, logTimeNs, payload);
+            if (recorder != null && AllowMcapRecording(channel))
+                recorder.WriteMessage(channelId, logTimeNs, payload);
+            if (!AllowLiveWebSocket(channel))
+                return;
             lock (_subscriberScratchLock)
             {
                 _subscriptions.CopySubscribersForChannel(channelId, _subscriberScratch);
@@ -690,7 +734,9 @@ namespace Unity.FoxgloveSDK.Core
         {
             _transport.SendText(clientId, SerializeServerInfo(CreateServerInfo()));
 
-            var chs = channels ?? _channels.GetAll();
+            // Callers that pass `channels` already filtered them; only the
+            // fallback snapshot of all channels needs live filtering here.
+            var chs = channels ?? FilterLiveChannels(_channels.GetAll());
             if (chs.Count > 0)
                 _transport.SendText(clientId, JsonConvert.SerializeObject(new Advertise
                 {
@@ -715,12 +761,51 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientConnected(uint clientId)
         {
-            var chs = _channels.GetAll();
+            var chs = FilterLiveChannels(_channels.GetAll());
             var svcs = _services.GetAll();
 
             SendSessionSnapshot(clientId, chs, svcs);
             _graph.SeedUnityState(chs, svcs);
         }
+
+        private IReadOnlyCollection<AdvertiseChannel> FilterLiveChannels(IReadOnlyCollection<AdvertiseChannel> channels)
+        {
+            if (channels == null || channels.Count == 0)
+                return channels ?? Array.Empty<AdvertiseChannel>();
+
+            var filtered = new List<AdvertiseChannel>();
+            foreach (var channel in channels)
+            {
+                if (AllowLiveWebSocket(channel))
+                    filtered.Add(channel);
+            }
+
+            return filtered;
+        }
+
+        private bool AllowLiveWebSocket(AdvertiseChannel channel)
+            => AllowChannel(FoxgloveSinkKind.LiveWebSocket, channel);
+
+        private bool AllowMcapRecording(AdvertiseChannel channel)
+            => AllowChannel(FoxgloveSinkKind.McapRecording, channel);
+
+        private bool AllowChannel(FoxgloveSinkKind sink, AdvertiseChannel channel)
+        {
+            if (channel == null)
+                return false;
+
+            var filter = GetSinkChannelFilter(sink);
+            return filter == null || filter.AllowChannel(CreateFilterContext(sink, channel));
+        }
+
+        private static SinkChannelFilterContext CreateFilterContext(FoxgloveSinkKind sink, AdvertiseChannel channel)
+            => new SinkChannelFilterContext(
+                sink,
+                channel.Id,
+                channel.Topic,
+                channel.Encoding,
+                channel.SchemaName,
+                channel.SchemaEncoding);
 
         /// <summary>
         /// On client disconnect: clean up subscriptions, parameter subs,

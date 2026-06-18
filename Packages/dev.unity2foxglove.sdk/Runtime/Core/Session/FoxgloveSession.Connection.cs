@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Core
                     foreach (var sub in msg.Subscriptions)
                     {
                         var ch = _channels.Get(sub.ChannelId);
-                        if (ch != null)
+                        if (ch != null && AllowLiveWebSocket(ch))
                             requested.Add((sub.Id, sub.ChannelId));
                     }
 
