@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
+        private const int MaxFragmentedMessageFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
 
         /// <summary>TCP listener bound to the server address and port.</summary>
         private TcpListener _listener;
@@ -480,6 +481,7 @@ namespace Unity.FoxgloveSDK.Transport
             MemoryStream fragmentedPayload = null;
             byte fragmentedOpcode = 0;
             var fragmentedBytes = 0;
+            var fragmentedFrames = 0;
 
             try
             {
@@ -510,6 +512,7 @@ namespace Unity.FoxgloveSDK.Transport
 
                             fragmentedOpcode = frame.Opcode;
                             fragmentedPayload = new MemoryStream();
+                            fragmentedFrames = 1;
                             if (!TryAppendFragment(fragmentedPayload, frame.Payload, ref fragmentedBytes))
                             {
                                 CloseProtocolError(clientId, conn);
@@ -519,6 +522,13 @@ namespace Unity.FoxgloveSDK.Transport
 
                         case WsOpcode.Continuation:
                             if (fragmentedPayload == null)
+                            {
+                                CloseProtocolError(clientId, conn);
+                                return;
+                            }
+
+                            fragmentedFrames++;
+                            if (fragmentedFrames > MaxFragmentedMessageFrames)
                             {
                                 CloseProtocolError(clientId, conn);
                                 return;
@@ -536,6 +546,7 @@ namespace Unity.FoxgloveSDK.Transport
                                 fragmentedPayload.Dispose();
                                 fragmentedPayload = null;
                                 fragmentedBytes = 0;
+                                fragmentedFrames = 0;
 
                                 if (fragmentedOpcode == WsOpcode.Text)
                                     OnTextReceived?.Invoke(clientId, Encoding.UTF8.GetString(payload));
