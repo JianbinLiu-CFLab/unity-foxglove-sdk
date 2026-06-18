@@ -124,6 +124,10 @@ namespace Unity.FoxgloveSDK.IO
         /// Creates a forward-only lazy iterator over matching raw messages in
         /// indexed file/chunk order. The returned enumerable can be enumerated
         /// only once and does not provide the eager iterator's log-time sorting.
+        /// Do not interleave lazy enumeration with other reads on this loader;
+        /// the underlying indexed reader shares one seekable stream. Dispose
+        /// this loader to release the file handle, even if the returned lazy
+        /// enumerable is never consumed.
         /// </summary>
         public IEnumerable<McapDataLoaderMessage> CreateLazyIterator(McapDataLoaderQuery query)
         {

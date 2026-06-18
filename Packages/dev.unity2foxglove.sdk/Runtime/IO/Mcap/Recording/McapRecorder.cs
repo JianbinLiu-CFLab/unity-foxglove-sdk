@@ -318,110 +318,101 @@ namespace Unity.FoxgloveSDK.IO
                     : 0;
                 _w.WriteDataEnd(dataSectionCrc);
 
-                var sumStart = (ulong)_w.Position;
-
-            // Build summary + summary offset in a temporary stream so we can
-            // compute summary_crc before writing to the real stream.
-                using var summaryBuilder = new MemoryStream();
-                using var summaryWriter = new McapWriter(summaryBuilder, leaveOpen: true);
-
-            // Schema group
-                var schemaGrpStart = (ulong)summaryBuilder.Position;
-                if (_options.RepeatSchemas)
-                {
-                    foreach (var s in _schemas)
-                        summaryWriter.WriteSchema(s.Id, s.Name, s.Encoding, s.Data);
-                }
-                var schemaGrpLen = (ulong)summaryBuilder.Position - schemaGrpStart;
-
-            // Channel group
-                var channelGrpStart = (ulong)summaryBuilder.Position;
-                if (_options.RepeatChannels)
-                {
-                    foreach (var c in _channels)
-                        summaryWriter.WriteChannel(c.Id, c.SchemaId, c.Topic, c.Encoding, c.Metadata ?? new Dictionary<string, string>());
-                }
-                var channelGrpLen = (ulong)summaryBuilder.Position - channelGrpStart;
-
-            // Statistics
-                var msgSt = _msgCount > 0 ? _msgSt : 0;
-                var msgEt = _msgCount > 0 ? _msgEt : 0;
-                var statsGrpStart = (ulong)summaryBuilder.Position;
-                if (_options.UseStatistics)
-                {
-                    summaryWriter.WriteStatistics(_msgCount, (ushort)_schemas.Count, (uint)_channels.Count, _attachmentCount, _metadataCount, (uint)_chunkCount, msgSt, msgEt,
-                        AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq));
-                }
-                var statsGrpLen = (ulong)summaryBuilder.Position - statsGrpStart;
-
-            // MetadataIndex group
-                var metaIdxGrpStart = (ulong)summaryBuilder.Position;
-                if (_options.HasIndex(McapIndexTypes.Metadata))
-                {
-                    foreach (var mi in _metaIdx)
-                        summaryWriter.WriteMetadataIndex(mi.Offset, mi.Length, mi.Name);
-                }
-                var metaIdxGrpLen = (ulong)summaryBuilder.Position - metaIdxGrpStart;
-
-            // AttachmentIndex group
-                var attIdxGrpStart = (ulong)summaryBuilder.Position;
-                if (_options.HasIndex(McapIndexTypes.Attachment))
-                {
-                    foreach (var ai in _attachmentIdx)
-                        summaryWriter.WriteAttachmentIndex(ai);
-                }
-                var attIdxGrpLen = (ulong)summaryBuilder.Position - attIdxGrpStart;
-
-            // ChunkIndex group
-                var chunkIdxGrpStart = (ulong)summaryBuilder.Position;
-                if (_options.UseChunking && _options.HasIndex(McapIndexTypes.Chunk))
-                {
-                    foreach (var ci in _chunkIdx)
-                        summaryWriter.WriteChunkIndex(ci.StartTime, ci.EndTime, ci.Offset, ci.Length, ci.MessageIndexOffsets, ci.MessageIndexLength, ci.Compression, ci.CompressedSize, ci.UncompressedSize);
-                }
-                var chunkIdxGrpLen = (ulong)summaryBuilder.Position - chunkIdxGrpStart;
-
-            // SummaryOffset per group (absolute offsets = sumStart + relative start)
-                var sumOffStart = 0UL;
-                if (_options.UseSummaryOffsets)
-                {
-                    sumOffStart = sumStart + (ulong)summaryBuilder.Position;
-                    if (schemaGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeSchema, sumStart + schemaGrpStart, schemaGrpLen);
-                    if (channelGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChannel, sumStart + channelGrpStart, channelGrpLen);
-                    if (statsGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, sumStart + statsGrpStart, statsGrpLen);
-                    if (metaIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, sumStart + metaIdxGrpStart, metaIdxGrpLen);
-                    if (attIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, sumStart + attIdxGrpStart, attIdxGrpLen);
-                    if (chunkIdxGrpLen > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, sumStart + chunkIdxGrpStart, chunkIdxGrpLen);
-                }
-
-                summaryWriter.Flush();
-                if (!summaryBuilder.TryGetBuffer(out var summaryData))
-                    throw new InvalidOperationException("MCAP summary buffer is not publicly visible.");
-                var hasSummary = summaryData.Count > 0;
-                var footerSummaryStart = hasSummary ? sumStart : 0UL;
-                if (!hasSummary)
-                    sumOffStart = 0;
-
-            // Compute summary_crc per MCAP spec: CRC32 over summary_data, then
-            // continue CRC32 over footer prefix (opcode, length, sumStart, sumOffStart).
-                var footerPrefix = McapWriter.BuildFooterCrcPrefix(footerSummaryStart, sumOffStart);
-                var summaryCrc = 0u;
-                if (_options.EnableCrcs)
-                {
-                    var crc = Crc32Helper.Initialize();
-                    crc = Crc32Helper.Update(
-                        crc,
-                        new ReadOnlySpan<byte>(summaryData.Array, summaryData.Offset, summaryData.Count));
-                    crc = Crc32Helper.Update(crc, footerPrefix);
-                    summaryCrc = Crc32Helper.Finalize(crc);
-                }
-
-                _w.WriteBytes(summaryData);
-                _w.WriteFooter(footerSummaryStart, sumOffStart, summaryCrc);
+                McapSummarySerializer.WriteSummaryAndFooter(
+                    _w,
+                    BuildFinalSummary(),
+                    _options.UseSummaryOffsets,
+                    _options.EnableCrcs);
                 _w.WriteMagic();
                 _w.Flush();
                 _closed = true;
             }
+        }
+
+        private McapFileSummary BuildFinalSummary()
+        {
+            var summary = new McapFileSummary();
+            if (_options.RepeatSchemas)
+            {
+                foreach (var schema in _schemas)
+                {
+                    summary.Schemas.Add(new McapSchema
+                    {
+                        Id = schema.Id,
+                        Name = schema.Name,
+                        Encoding = schema.Encoding,
+                        Data = schema.Data
+                    });
+                }
+            }
+
+            if (_options.RepeatChannels)
+            {
+                foreach (var channel in _channels)
+                {
+                    summary.Channels.Add(new McapChannel
+                    {
+                        Id = channel.Id,
+                        SchemaId = channel.SchemaId,
+                        Topic = channel.Topic,
+                        MessageEncoding = channel.Encoding,
+                        Metadata = channel.Metadata ?? new Dictionary<string, string>()
+                    });
+                }
+            }
+
+            if (_options.UseStatistics)
+            {
+                summary.Statistics = new McapStatistics
+                {
+                    MessageCount = _msgCount,
+                    SchemaCount = (ushort)_schemas.Count,
+                    ChannelCount = (uint)_channels.Count,
+                    AttachmentCount = _attachmentCount,
+                    MetadataCount = _metadataCount,
+                    ChunkCount = (uint)_chunkCount,
+                    MessageStartTime = _msgCount > 0 ? _msgSt : 0,
+                    MessageEndTime = _msgCount > 0 ? _msgEt : 0,
+                    ChannelMessageCounts = AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq)
+                };
+            }
+
+            if (_options.HasIndex(McapIndexTypes.Metadata))
+            {
+                foreach (var metadata in _metaIdx)
+                {
+                    summary.MetadataIndexes.Add(new McapMetadataIndex
+                    {
+                        Offset = metadata.Offset,
+                        Length = metadata.Length,
+                        Name = metadata.Name
+                    });
+                }
+            }
+
+            if (_options.HasIndex(McapIndexTypes.Attachment))
+                summary.AttachmentIndexes.AddRange(_attachmentIdx);
+
+            if (_options.UseChunking && _options.HasIndex(McapIndexTypes.Chunk))
+            {
+                foreach (var chunk in _chunkIdx)
+                {
+                    summary.ChunkIndexes.Add(new McapChunkIndex
+                    {
+                        MessageStartTime = chunk.StartTime,
+                        MessageEndTime = chunk.EndTime,
+                        ChunkStartOffset = chunk.Offset,
+                        ChunkLength = chunk.Length,
+                        MessageIndexOffsets = chunk.MessageIndexOffsets,
+                        MessageIndexLength = chunk.MessageIndexLength,
+                        Compression = chunk.Compression,
+                        CompressedSize = chunk.CompressedSize,
+                        UncompressedSize = chunk.UncompressedSize
+                    });
+                }
+            }
+
+            return summary;
         }
 
         private void WriteMinimalTrailerAfterDroppedFinalChunk()

@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 140-9: MCAP readers and indexing review fixes ===");
             _passed = 0;
 
-            LinearFallbackCacheInvalidatesWhenChunkSizeLimitChanges();
+            LinearFallbackReevaluatesWhenChunkSizeLimitChanges();
             StreamingReaderDeduplicatesBodyAndSummaryIndexes();
             ReaderRejectsOffsetsBeyondSeekableRange();
             ReaderReportsNonSeekableStreamGuidance();
@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 140-9: {_passed} checks passed.");
         }
 
-        private static void LinearFallbackCacheInvalidatesWhenChunkSizeLimitChanges()
+        private static void LinearFallbackReevaluatesWhenChunkSizeLimitChanges()
         {
             var bytes = CreateFixture(new McapWriterOptions
             {
@@ -51,17 +51,17 @@ namespace Unity.FoxgloveSDK.Tests
             });
 
             using var indexed = new McapIndexedReader(new MemoryStream(bytes), leaveOpen: false);
-            var cached = indexed.ReadMessages(new McapReadOptions
+            var messages = indexed.ReadMessages(new McapReadOptions
             {
                 ChunkUncompressedSizeLimit = 0
             });
 
-            Check(cached.Count == 3,
-                "140-9A-1: linear fallback cache can be populated with unlimited chunk size");
+            Check(messages.Count == 3,
+                "140-9A-1: linear fallback reads with unlimited chunk size");
             CheckThrowsWith<InvalidDataException>(
                 () => indexed.ReadMessages(new McapReadOptions { ChunkUncompressedSizeLimit = 1 }),
                 "exceeds limit",
-                "140-9A-2: tighter chunk size limit invalidates cached linear fallback messages");
+                "140-9A-2: tighter chunk size limit is enforced on a later linear fallback read");
         }
 
         private static void StreamingReaderDeduplicatesBodyAndSummaryIndexes()
@@ -167,10 +167,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(streaming.Contains("private readonly byte[] _recordHeaderBuffer", StringComparison.Ordinal)
                   && !streaming.Contains("headerBytes = new byte[McapWriter.RecordHeaderLength]", StringComparison.Ordinal),
                 "140-9G-3: streaming reader reuses its record header buffer");
-            Check(indexed.Contains("private IReadOnlyList<McapMessage> ReadLinearMessages", StringComparison.Ordinal)
-                  && indexed.Contains("var orderedMessages = new List<McapMessage>(ReadLinearMessages(latestOptions));", StringComparison.Ordinal)
-                  && !indexed.Contains("return new List<McapMessage>(_linearMessagesCache);", StringComparison.Ordinal),
-                "140-9G-4: linear fallback only copies cached messages for the sorting path");
+            Check(indexed.Contains("VisitSequentialMessages", StringComparison.Ordinal)
+                  && !indexed.Contains("_linearMessagesCache", StringComparison.Ordinal)
+                  && !indexed.Contains("new List<McapMessage>(ReadLinearMessages", StringComparison.Ordinal),
+                "140-9G-4: latest-before linear fallback does not retain or sort a full reader-wide message cache");
         }
 
         private static byte[] CreateFixture(McapWriterOptions options, Action<McapRecorder> extra = null)

@@ -197,13 +197,13 @@ namespace Unity.FoxgloveSDK.IO
             channels.Add(channel);
         }
 
-        internal static void DecodeDataEnd(byte[] content)
+        internal static uint DecodeDataEnd(byte[] content)
         {
             if (content == null || content.Length != McapWriter.Crc32SizeBytes)
                 throw new InvalidDataException("MCAP DataEnd content length must be 4 bytes.");
 
             var off = 0;
-            McapBinaryReader.ReadU32LE(content, ref off);
+            return McapBinaryReader.ReadU32LE(content, ref off);
         }
 
         // Decode helpers

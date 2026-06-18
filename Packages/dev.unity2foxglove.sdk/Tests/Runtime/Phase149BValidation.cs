@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
 
@@ -24,6 +25,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyPublicApiShape();
             VerifyMetadataAndAttachmentAmendment();
+            VerifyAmendmentCreatesBackupAndKeepsDataCrc();
+            VerifyFailedCloseDoesNotRetryWithNullSourceStream();
+            VerifyStatlessSummaryGetsAmendedStatistics();
             VerifyNoOpCloseLeavesFileUnchanged();
             VerifySummarylessFilesAreRejected();
             VerifySourceShape();
@@ -95,6 +99,107 @@ namespace Unity.FoxgloveSDK.Tests
                         && reader.Summary.Statistics.MetadataCount == 2
                         && reader.Summary.Statistics.AttachmentCount == 2,
                     "149B-9: summary statistics include amended metadata and attachments");
+                Check(File.Exists(path + ".bak"),
+                    "149B-10: amendment keeps a backup of the original file");
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        private static void VerifyAmendmentCreatesBackupAndKeepsDataCrc()
+        {
+            var path = CreateDataCrcFixture();
+            try
+            {
+                var originalCrc = ReadDataSectionCrc(path);
+                Check(originalCrc != 0,
+                    "149B-11: CRC fixture starts with a non-zero DataEnd CRC");
+
+                using (var writer = new McapAmendmentWriter(path))
+                {
+                    writer.AddMetadata("phase149b.crc.metadata", new Dictionary<string, string>
+                    {
+                        ["value"] = "crc"
+                    });
+                    writer.Close();
+                }
+
+                var amendedCrc = ReadDataSectionCrc(path);
+                Check(amendedCrc != 0 && amendedCrc != originalCrc,
+                    "149B-12: amendment recomputes non-zero DataEnd CRC after appending records");
+                Check(File.Exists(path + ".bak") && ReadDataSectionCrc(path + ".bak") == originalCrc,
+                    "149B-13: backup preserves the original DataEnd CRC");
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        private static void VerifyFailedCloseDoesNotRetryWithNullSourceStream()
+        {
+            var path = CreateIndexedFixture();
+            try
+            {
+                var writer = new McapAmendmentWriter(path);
+                writer.AddMetadata("phase149b.failed.close", new Dictionary<string, string>
+                {
+                    ["value"] = "failed-close"
+                });
+
+                var field = typeof(McapAmendmentWriter).GetField("_sourceStream", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (field == null)
+                    throw new InvalidOperationException("Could not find McapAmendmentWriter._sourceStream.");
+
+                var sourceStream = (IDisposable)field.GetValue(writer);
+                sourceStream.Dispose();
+                field.SetValue(writer, null);
+
+                Check(Throws<InvalidOperationException>(() => writer.Close()),
+                    "149B-14: failed amendment close reports a clear terminal-state error instead of NullReferenceException");
+                Check(DoesNotThrow(writer.Dispose),
+                    "149B-15: disposing after a failed explicit close does not retry and mask the original error");
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        private static void VerifyStatlessSummaryGetsAmendedStatistics()
+        {
+            var path = CreateStatlessSummaryFixture();
+            try
+            {
+                using (var writer = new McapAmendmentWriter(path))
+                {
+                    writer.AddMetadata("phase149b.statless.metadata", new Dictionary<string, string>
+                    {
+                        ["value"] = "statless"
+                    });
+                    writer.AddAttachment(
+                        "phase149b-statless.txt",
+                        "text/plain",
+                        Encoding.UTF8.GetBytes("statless attachment"),
+                        logTimeNs: 14930,
+                        createTimeNs: 14931);
+                    writer.Close();
+                }
+
+                using var reader = McapIndexedReader.OpenRead(path, McapSequentialReadLimits.UnlimitedForTests);
+                var statistics = reader.Summary.Statistics;
+                Check(statistics != null
+                        && statistics.MessageCount == 1
+                        && statistics.SchemaCount == 1
+                        && statistics.ChannelCount == 1
+                        && statistics.MetadataCount == 1
+                        && statistics.AttachmentCount == 1,
+                    "149B-16: amendment backfills statistics when the original summary omitted them");
+                Check(reader.MetadataIndexes.Single().Name == "phase149b.statless.metadata"
+                        && reader.AttachmentIndexes.Single().Name == "phase149b-statless.txt",
+                    "149B-17: statless summary amendment indexes new metadata and attachment");
             }
             finally
             {
@@ -114,7 +219,9 @@ namespace Unity.FoxgloveSDK.Tests
                 }
 
                 Check(new FileInfo(path).Length == beforeLength,
-                    "149B-10: no-op amendment leaves file length unchanged");
+                    "149B-18: no-op amendment leaves file length unchanged");
+                Check(!File.Exists(path + ".bak"),
+                    "149B-19: no-op amendment does not create a backup");
             }
             finally
             {
@@ -128,7 +235,7 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 Check(Throws<InvalidDataException>(() => new McapAmendmentWriter(path)),
-                    "149B-11: summaryless MCAP files are rejected");
+                    "149B-20: summaryless MCAP files are rejected");
             }
             finally
             {
@@ -140,18 +247,20 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapAmendmentWriter.cs");
             Check(source.Contains("DataEndOffset", StringComparison.Ordinal)
-                    && source.Contains("SetLength", StringComparison.Ordinal),
-                "149B-12: amendment truncates at the old DataEnd boundary");
+                    && source.Contains("File.Replace", StringComparison.Ordinal)
+                    && source.Contains("Flush(true)", StringComparison.Ordinal)
+                    && !source.Contains("SetLength", StringComparison.Ordinal),
+                "149B-21: amendment writes a durable temp file before replacing the original");
             Check(source.Contains("WriteDataEnd", StringComparison.Ordinal)
-                    && source.Contains("WriteFooter", StringComparison.Ordinal)
+                    && source.Contains("McapSummarySerializer.WriteSummaryAndFooter", StringComparison.Ordinal)
                     && source.Contains("WriteMagic", StringComparison.Ordinal),
-                "149B-13: amendment writes a fresh trailer");
+                "149B-22: amendment writes a fresh summary, footer, and magic");
         }
 
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase149b"),
-                "149B-14: validation registry exposes Phase 149B");
+                "149B-23: validation registry exposes Phase 149B");
         }
 
         private static string CreateIndexedFixture()
@@ -172,6 +281,65 @@ namespace Unity.FoxgloveSDK.Tests
                     logTimeNs: 14910,
                     createTimeNs: 14911);
                 recorder.Close();
+            }
+
+            return path;
+        }
+
+        private static string CreateDataCrcFixture()
+        {
+            var path = TempPath();
+            using (var fs = File.Create(path))
+            using (var recorder = new McapRecorder(fs, null, new McapWriterOptions
+                {
+                    ChunkSizeBytes = 128,
+                    EnableDataCrcs = true
+                }, leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/phase149b/crc", "json", "phase149b.Crc", "jsonschema", "{}");
+                recorder.WriteMessage(1, 10, Payload("crc"));
+                recorder.Close();
+            }
+
+            return path;
+        }
+
+        private static string CreateStatlessSummaryFixture()
+        {
+            var path = TempPath();
+            using (var fs = File.Create(path))
+            using (var writer = new McapWriter(fs, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("phase149b", "unity2foxglove-tests");
+                writer.WriteSchema(1, "phase149b.Statless", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/phase149b/statless", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 0, 14930, 14930, Payload("statless"));
+                writer.WriteDataEnd();
+
+                var summary = new McapFileSummary();
+                summary.Schemas.Add(new McapSchema
+                {
+                    Id = 1,
+                    Name = "phase149b.Statless",
+                    Encoding = "jsonschema",
+                    Data = Encoding.UTF8.GetBytes("{}")
+                });
+                summary.Channels.Add(new McapChannel
+                {
+                    Id = 1,
+                    SchemaId = 1,
+                    Topic = "/phase149b/statless",
+                    MessageEncoding = "json",
+                    Metadata = new Dictionary<string, string>()
+                });
+                McapSummarySerializer.WriteSummaryAndFooter(
+                    writer,
+                    summary,
+                    writeSummaryOffsets: true,
+                    enableSummaryCrc: true);
+                writer.WriteMagic();
+                writer.Flush();
             }
 
             return path;
@@ -209,6 +377,13 @@ namespace Unity.FoxgloveSDK.Tests
             }).Select(message => Encoding.UTF8.GetString(message.Data)).ToList();
         }
 
+        private static uint ReadDataSectionCrc(string path)
+        {
+            using var stream = File.OpenRead(path);
+            var reader = new McapReader(stream);
+            return reader.ReadTrailerInfo().DataSectionCrc;
+        }
+
         private static byte[] Payload(string value)
             => Encoding.UTF8.GetBytes("{\"value\":\"" + value + "\"}");
 
@@ -221,6 +396,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 if (!string.IsNullOrEmpty(path) && File.Exists(path))
                     File.Delete(path);
+                if (!string.IsNullOrEmpty(path) && File.Exists(path + ".bak"))
+                    File.Delete(path + ".bak");
             }
             catch
             {
@@ -248,6 +425,19 @@ namespace Unity.FoxgloveSDK.Tests
             catch (TException)
             {
                 return true;
+            }
+        }
+
+        private static bool DoesNotThrow(Action action)
+        {
+            try
+            {
+                action();
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

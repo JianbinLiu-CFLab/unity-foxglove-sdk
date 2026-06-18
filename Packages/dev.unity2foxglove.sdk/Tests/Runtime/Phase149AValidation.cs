@@ -26,11 +26,12 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyReaderLazyMatchesEagerFileOrder();
             VerifyReaderLazyFiltersAndLimitsInFileOrder();
             VerifyDataLoaderLazyIteratorMapsMessages();
+            VerifyUnindexedLatestBeforeScansCorrectLatestPerChannel();
             VerifyLazyReaderRejectsSortedOrders();
             VerifyLazyReaderRejectsUnindexedFiles();
             VerifyLazyEnumerablesAreSinglePass();
-            VerifyEmptyDataLoaderLazyIteratorIsSinglePass();
             VerifyDisposedLoaderStopsLazyEnumeration();
+            VerifyEmptyDataLoaderLazyIteratorIsSinglePass();
             VerifySourceShapePreventsFakeLazyImplementation();
             VerifyValidationRegistryEntry();
 
@@ -106,12 +107,35 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     Order = McapReadOrder.LogTimeAscending
                 })),
-                "149A-8: lazy reader rejects log-time ascending requests");
+                "149A-10: lazy reader rejects log-time ascending requests");
             Check(Throws<NotSupportedException>(() => reader.EnumerateMessages(new McapReadOptions
                 {
                     Order = McapReadOrder.LogTimeDescending
                 })),
-                "149A-9: lazy reader rejects log-time descending requests");
+                "149A-11: lazy reader rejects log-time descending requests");
+        }
+
+        private static void VerifyUnindexedLatestBeforeScansCorrectLatestPerChannel()
+        {
+            using var ms = CreateUnindexedMultiChannelFixture();
+            using var reader = new McapIndexedReader(ms, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var latest = reader.ReadLatestBefore(new McapReadOptions
+            {
+                EndTimeNs = 30
+            });
+
+            Check(latest.Select(message => message.ChannelId).SequenceEqual(new ushort[] { 1, 2 })
+                    && latest.Select(message => message.LogTime).SequenceEqual(new ulong[] { 30, 20 })
+                    && latest.Select(message => Encoding.UTF8.GetString(message.Data)).SequenceEqual(new[] { "{\"value\":\"a30\"}", "{\"value\":\"b20\"}" }),
+                "149A-8: unindexed latest-before returns the correct per-channel latest messages from out-of-order file data");
+
+            var exclusive = reader.ReadLatestBefore(new McapReadOptions
+            {
+                EndTimeNs = 40,
+                UseOfficialEndTimeSemantics = true
+            });
+            Check(exclusive.Select(message => message.LogTime).SequenceEqual(new ulong[] { 30, 20 }),
+                "149A-9: unindexed latest-before honors official exclusive end-time semantics");
         }
 
         private static void VerifyLazyReaderRejectsUnindexedFiles()
@@ -125,7 +149,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             using var enumerator = lazy.GetEnumerator();
             Check(Throws<InvalidOperationException>(() => enumerator.MoveNext()),
-                "149A-10: lazy reader rejects files without chunk indexes instead of falling back to a full scan");
+                "149A-12: lazy reader rejects files without chunk indexes instead of falling back to a full scan");
         }
 
         private static void VerifyLazyEnumerablesAreSinglePass()
@@ -139,7 +163,7 @@ namespace Unity.FoxgloveSDK.Tests
             using (readerLazy.GetEnumerator())
             {
                 Check(Throws<InvalidOperationException>(() => readerLazy.GetEnumerator()),
-                    "149A-11: reader lazy enumerable rejects a second enumeration");
+                    "149A-13: reader lazy enumerable rejects a second enumeration");
             }
 
             using var loaderStream = CreateIndexedFixture();
@@ -148,7 +172,7 @@ namespace Unity.FoxgloveSDK.Tests
             using (loaderLazy.GetEnumerator())
             {
                 Check(Throws<InvalidOperationException>(() => loaderLazy.GetEnumerator()),
-                    "149A-12: DataLoader lazy enumerable rejects a second enumeration");
+                    "149A-14: DataLoader lazy enumerable rejects a second enumeration");
             }
         }
 
@@ -162,7 +186,7 @@ namespace Unity.FoxgloveSDK.Tests
             loader.Dispose();
 
             Check(Throws<ObjectDisposedException>(() => enumerator.MoveNext()),
-                "149A-13: lazy DataLoader iterator observes disposal before first read");
+                "149A-15: lazy DataLoader iterator observes disposal before first read");
         }
 
         private static void VerifyEmptyDataLoaderLazyIteratorIsSinglePass()
@@ -178,7 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
             using (lazy.GetEnumerator())
             {
                 Check(Throws<InvalidOperationException>(() => lazy.GetEnumerator()),
-                    "149A-13b: empty DataLoader lazy iterator keeps the single-pass contract");
+                    "149A-16: empty DataLoader lazy iterator keeps the single-pass contract");
             }
         }
 
@@ -192,22 +216,32 @@ namespace Unity.FoxgloveSDK.Tests
             var readerLazyCore = SourceMember(
                 indexedReader,
                 "private IEnumerable<McapMessage> EnumerateMessagesCore");
+            var indexedFileOrderCore = SourceMember(
+                indexedReader,
+                "private IEnumerable<McapMessage> EnumerateIndexedMessagesInFileOrder");
 
             Check(dataLoaderLazy.Contains("McapLazyMessageEnumerable", StringComparison.Ordinal)
                     && !dataLoaderLazy.Contains("ReadMessages(", StringComparison.Ordinal),
-                "149A-14: DataLoader lazy API does not materialize through ReadMessages");
-            Check(readerLazyCore.Contains("yield return", StringComparison.Ordinal)
-                    && readerLazyCore.Contains("ReadChunkRecords", StringComparison.Ordinal),
-                "149A-15: indexed lazy core yields from chunk reads");
+                "149A-17: DataLoader lazy API does not materialize through ReadMessages");
+            Check(readerLazyCore.Contains("EnumerateIndexedMessagesInFileOrder", StringComparison.Ordinal)
+                    && !readerLazyCore.Contains("ReadChunkRecords", StringComparison.Ordinal),
+                "149A-18: indexed lazy core shares the eager file-order chunk pipeline");
+            Check(indexedFileOrderCore.Contains("yield return", StringComparison.Ordinal)
+                    && indexedFileOrderCore.Contains("ReadChunkRecords", StringComparison.Ordinal)
+                    && indexedFileOrderCore.Contains("EnumerateChunkMessages", StringComparison.Ordinal),
+                "149A-19: shared indexed file-order pipeline yields from chunk reads");
             Check(!readerLazyCore.Contains("ApplyOrderingAndLimit", StringComparison.Ordinal)
                     && !readerLazyCore.Contains("ReadLinearMessages", StringComparison.Ordinal),
-                "149A-16: indexed lazy core avoids eager sorting and sequential fallback");
+                "149A-20: indexed lazy core avoids eager sorting and sequential fallback");
+            Check(!indexedReader.Contains("_linearMessagesCache", StringComparison.Ordinal)
+                    && indexedReader.Contains("VisitSequentialMessages", StringComparison.Ordinal),
+                "149A-21: unindexed latest-before scans without retaining a reader-wide message cache");
         }
 
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase149a"),
-                "149A-17: validation registry exposes Phase 149A");
+                "149A-22: validation registry exposes Phase 149A");
         }
 
         private static MemoryStream CreateIndexedFixture()
@@ -239,6 +273,29 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 recorder.AddChannel(1, "/phase149a/unindexed", "json", "phase149a.Unindexed", "jsonschema", "{\"type\":\"object\"}");
                 recorder.WriteMessage(1, 1, Payload("unindexed"));
+                recorder.Close();
+            }
+
+            ms.Position = 0;
+            return ms;
+        }
+
+        private static MemoryStream CreateUnindexedMultiChannelFixture()
+        {
+            var ms = new MemoryStream();
+            using (var recorder = new McapRecorder(ms, null, new McapWriterOptions
+                {
+                    UseChunking = false,
+                    IndexTypes = McapIndexTypes.None
+                }, leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/phase149a/latest-a", "json", "phase149a.LatestA", "jsonschema", "{\"type\":\"object\"}");
+                recorder.AddChannel(2, "/phase149a/latest-b", "json", "phase149a.LatestB", "jsonschema", "{\"type\":\"object\"}");
+                recorder.WriteMessage(1, 30, Payload("a30"));
+                recorder.WriteMessage(2, 20, Payload("b20"));
+                recorder.WriteMessage(1, 10, Payload("a10"));
+                recorder.WriteMessage(2, 40, Payload("b40"));
+                recorder.WriteMessage(1, 25, Payload("a25"));
                 recorder.Close();
             }
 

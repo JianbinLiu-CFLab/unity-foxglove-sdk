@@ -14,5 +14,6 @@ namespace Unity.FoxgloveSDK.IO
         public uint SummaryCrc;
         public ulong DataEndOffset;
         public ulong DataEndEndOffset;
+        public uint DataSectionCrc;
     }
 }
