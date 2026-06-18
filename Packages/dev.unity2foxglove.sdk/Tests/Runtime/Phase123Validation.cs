@@ -167,8 +167,8 @@ namespace Unity.FoxgloveSDK.Tests
                     stream.ResetSeekToStartCount();
                     Check(indexed.ReadMessages().Count == 3
                           && indexed.ReadLatestBefore(new McapReadOptions { EndTimeNs = 30 }).Count == 1
-                          && stream.SeekToStartCount == 1,
-                        "123-D3: non-index linear fallback caches one full scan across read and latest-at queries");
+                          && stream.SeekToStartCount == 2,
+                        "123-D3: non-index linear fallback rescans each query instead of retaining a reader-wide cache");
                 }
 
                 Check(!stream.CanRead, "123-D3b: CountingSeekStream forwards owned-stream disposal");

@@ -121,6 +121,25 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Creates a forward-only lazy iterator over matching raw messages in
+        /// indexed file/chunk order. The returned enumerable can be enumerated
+        /// only once and does not provide the eager iterator's log-time sorting.
+        /// Do not interleave lazy enumeration with other reads on this loader;
+        /// the underlying indexed reader shares one seekable stream. Dispose
+        /// this loader to release the file handle, even if the returned lazy
+        /// enumerable is never consumed.
+        /// </summary>
+        public IEnumerable<McapDataLoaderMessage> CreateLazyIterator(McapDataLoaderQuery query)
+        {
+            ThrowIfDisposed();
+            Initialize();
+            if (!QueryCanMatch(query?.ChannelIds, query?.Topics))
+                return CreateEmptyLazyIterator();
+
+            return new McapLazyMessageEnumerable(this, ToLazyReadOptions(query));
+        }
+
+        /// <summary>
         /// Creates an opt-in decoded iterator over matching messages while
         /// preserving each raw MCAP payload as the source of truth.
         /// Like <see cref="CreateIterator"/>, this materializes the raw result set
@@ -611,6 +630,16 @@ namespace Unity.FoxgloveSDK.IO
             return _cachedDecodeRegistry;
         }
 
+        internal IEnumerable<McapDataLoaderMessage> EnumerateLazyMessages(McapReadOptions options)
+        {
+            ThrowIfDisposed();
+            foreach (var message in _reader.EnumerateMessages(options))
+            {
+                ThrowIfDisposed();
+                yield return ToDataLoaderMessage(message);
+            }
+        }
+
         private static int ComputeDecodeOptionsFingerprint(McapDecodeOptions options)
         {
             if (options == null)
@@ -644,6 +673,18 @@ namespace Unity.FoxgloveSDK.IO
                 MaxMessages = query.MaxMessages
             };
         }
+
+        private static McapReadOptions ToLazyReadOptions(McapDataLoaderQuery query)
+        {
+            var options = ToReadOptions(query);
+            options.Order = McapReadOrder.FileOrder;
+            return options;
+        }
+
+        private static IEnumerable<McapDataLoaderMessage> CreateEmptyLazyIterator()
+            => new McapSinglePassEnumerable<McapDataLoaderMessage>(
+                nameof(McapDataLoader) + "." + nameof(CreateLazyIterator),
+                () => ((IEnumerable<McapDataLoaderMessage>)Array.Empty<McapDataLoaderMessage>()).GetEnumerator());
 
         private static List<ushort> CopyUShorts(List<ushort> source)
             => source == null ? new List<ushort>() : new List<ushort>(source);
