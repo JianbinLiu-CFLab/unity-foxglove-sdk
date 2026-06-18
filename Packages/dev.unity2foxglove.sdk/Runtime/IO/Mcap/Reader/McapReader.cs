@@ -187,6 +187,100 @@ namespace Unity.FoxgloveSDK.IO
             };
         }
 
+        internal McapTrailerInfo ReadTrailerInfo(
+            ulong recordSizeLimit = DefaultRecordSizeLimit,
+            bool validateCrcs = true)
+        {
+            if (!_stream.CanSeek)
+                throw new NotSupportedException("McapReader.ReadTrailerInfo requires a seekable stream.");
+
+            const int minFileBytes =
+                McapWriter.MagicLength + McapWriter.RecordHeaderLength +
+                McapWriter.FooterContentLength + McapWriter.MagicLength;
+            if (_stream.Length < minFileBytes)
+                throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
+
+            var magic = new byte[McapWriter.MagicLength];
+            _stream.Seek(0, SeekOrigin.Begin);
+            ReadExact(magic, 0, magic.Length);
+            var expectedMagic = McapWriter.MagicSpan;
+            for (var i = 0; i < expectedMagic.Length; i++)
+                if (magic[i] != expectedMagic[i])
+                    throw new InvalidDataException("MCAP leading magic mismatch");
+
+            _stream.Seek(-McapWriter.MagicLength, SeekOrigin.End);
+            var trailingMagic = new byte[McapWriter.MagicLength];
+            ReadExact(trailingMagic, 0, trailingMagic.Length);
+            for (var i = 0; i < expectedMagic.Length; i++)
+                if (trailingMagic[i] != expectedMagic[i])
+                    throw new InvalidDataException("MCAP trailing magic mismatch");
+
+            var footerOffset = (ulong)_stream.Length
+                - McapWriter.MagicLength
+                - McapWriter.RecordHeaderLength
+                - McapWriter.FooterContentLength;
+            _stream.Seek(ToSeekOffset(footerOffset, "footer"), SeekOrigin.Begin);
+            var (opcode, footerContent) = ReadOneRecord(recordSizeLimit);
+            if (opcode != McapWriter.OpcodeFooter)
+                throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
+
+            var footer = McapRecordDecoder.DecodeFooter(footerContent);
+            if (footer.SummaryStart == 0)
+                throw new InvalidDataException("MCAP amendment requires a summary section.");
+            if (footer.SummaryStart > footerOffset)
+                throw new InvalidDataException("Footer summary_start is past the footer record");
+            if (footer.SummaryStart < (ulong)(McapWriter.MagicLength + McapWriter.RecordHeaderLength))
+                throw new InvalidDataException("Footer summary_start is before the data section");
+            if (footer.SummaryOffsetStart != 0 &&
+                (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
+                throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");
+
+            ValidateSummaryCrc(
+                footer.SummaryStart,
+                footer.SummaryOffsetStart,
+                footer.SummaryCrc,
+                footerOffset,
+                validateCrcs);
+
+            var info = new McapTrailerInfo
+            {
+                FooterOffset = footerOffset,
+                SummaryStart = footer.SummaryStart,
+                SummaryOffsetStart = footer.SummaryOffsetStart,
+                SummaryCrc = footer.SummaryCrc
+            };
+
+            _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
+            var isFirstRecord = true;
+            while ((ulong)_stream.Position < footer.SummaryStart)
+            {
+                var recordStart = (ulong)_stream.Position;
+                var (recordOpcode, content) = ReadOneRecord(recordSizeLimit);
+                var recordEnd = (ulong)_stream.Position;
+                if (recordEnd > footer.SummaryStart)
+                    throw new InvalidDataException("MCAP data-section record extends past summary_start.");
+
+                if (isFirstRecord)
+                {
+                    if (recordOpcode != McapWriter.OpcodeHeader)
+                        throw new InvalidDataException($"Expected Header (0x01) after leading magic, got 0x{recordOpcode:X2}");
+                    McapRecordDecoder.DecodeHeader(content);
+                    isFirstRecord = false;
+                    continue;
+                }
+
+                if (recordOpcode == McapWriter.OpcodeDataEnd)
+                {
+                    McapRecordDecoder.DecodeDataEnd(content);
+                    info.DataEndOffset = recordStart;
+                    info.DataEndEndOffset = recordEnd;
+                    return info;
+                }
+            }
+
+            throw new InvalidDataException("MCAP amendment requires a DataEnd record before the summary section.");
+        }
+
         /// <summary>
         /// Sequentially scans the data section and returns messages found outside the indexed path.
         /// </summary>
@@ -205,6 +299,33 @@ namespace Unity.FoxgloveSDK.IO
                 sequentialLimits: sequentialLimits,
                 validateCrcs: validateCrcs,
                 chunkUncompressedSizeLimit: chunkUncompressedSizeLimit).SequentialMessages ?? new List<McapMessage>();
+        }
+
+        private void ValidateSummaryCrc(
+            ulong summaryStart,
+            ulong summaryOffsetStart,
+            uint summaryCrc,
+            ulong footerOffset,
+            bool validateCrcs)
+        {
+            if (!validateCrcs || summaryCrc == 0)
+                return;
+
+            var summaryLen = footerOffset - summaryStart;
+            if (summaryLen > int.MaxValue)
+                throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
+
+            _stream.Seek(ToSeekOffset(summaryStart, "summary_start"), SeekOrigin.Begin);
+            var summaryBytes = new byte[(int)summaryLen];
+            ReadExact(summaryBytes, 0, (int)summaryLen);
+
+            var footerPrefix = McapWriter.BuildFooterCrcPrefix(summaryStart, summaryOffsetStart);
+            var crc = Crc32Helper.Initialize();
+            crc = Crc32Helper.Update(crc, summaryBytes);
+            crc = Crc32Helper.Update(crc, footerPrefix);
+            var recomputed = Crc32Helper.Finalize(crc);
+            if (recomputed != summaryCrc)
+                throw new InvalidDataException("MCAP summary CRC mismatch");
         }
 
         /// <summary>
