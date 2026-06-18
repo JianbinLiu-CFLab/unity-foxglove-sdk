@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             ReceiveLoopReassemblesFragmentedTextMessages();
             ReceiveLoopReassemblesFragmentedBinaryMessages();
             ReceiveLoopRejectsMalformedFragmentSequences();
+            ReceiveLoopRejectsFragmentedMessagesWithTooManyFrames();
             StatusWireShapeRemainsOfficial();
             FoxgloveAppUrlHelpersKeepOfficialQueryShape();
             ValidationRegistryWiresPhase144();
@@ -114,6 +115,21 @@ namespace Unity.FoxgloveSDK.Tests
             var oversized = RunReceiveLoop(oversizedFragments.ToArray());
             Check(oversized.TextMessages.Count == 0 && oversized.BinaryMessages.Count == 0,
                 "144D-4: fragmented messages above the aggregate size limit are rejected");
+        }
+
+        private static void ReceiveLoopRejectsFragmentedMessagesWithTooManyFrames()
+        {
+            var frames = new List<byte[]>
+            {
+                BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("start"), fin: false)
+            };
+            for (var i = 0; i < ManagedWebSocketOptions.DefaultMaxQueuedFrames; i++)
+                frames.Add(BuildClientFrame(WsOpcode.Continuation, Array.Empty<byte>(), fin: false));
+            frames.Add(BuildClientFrame(WsOpcode.Continuation, Encoding.UTF8.GetBytes("tail"), fin: true));
+
+            var result = RunReceiveLoop(frames.ToArray());
+            Check(result.TextMessages.Count == 0 && result.BinaryMessages.Count == 0,
+                "144D-5: fragmented messages with too many frames are rejected even when empty fragments add no bytes");
         }
 
         private static void StatusWireShapeRemainsOfficial()

@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyDepthMemoDoesNotHideDeepTraversal();
             VerifyHiddenMembersUseDerivedJsonShape();
+            VerifyPrivateDerivedJsonNameDoesNotHidePublicBaseMember();
             VerifyMultiDimensionalArraysAreBlockingInBothPaths();
             VerifyValidationWiring();
 
@@ -86,6 +87,31 @@ namespace Unity.FoxgloveSDK.Tests
                 "141F-6: reflection DTO walker matches derived hidden member validation semantics");
         }
 
+        private static void VerifyPrivateDerivedJsonNameDoesNotHidePublicBaseMember()
+        {
+            var result = RunGenerator(PrivateJsonNameShadowFixtureSource());
+            var diagnostics = result.Diagnostics
+                .Where(diagnostic => diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
+                .ToArray();
+            Check(!diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error),
+                "141F-7: Roslyn DTO walker accepts private JSON-name shadows without losing public base members");
+
+            var generated = GeneratedFoxServiceSource(result);
+            var literals = ExtractDescriptorStringLiterals(generated, "/phase141f/private-shadow");
+            var roslynSchema = JObject.Parse(literals[literals.Length - 2]);
+            var reflectionSchema = JObject.Parse(FoxServiceSchemaEmitter.Emit(FoxServiceSchemaReflectionBuilder.Build(
+                typeof(PrivateJsonNameShadowRequest),
+                FoxServiceDtoRules.RequestSide)));
+
+            Check(JToken.DeepEquals(roslynSchema, reflectionSchema),
+                "141F-8: private JSON-name shadow schema shape matches in Roslyn and reflection paths");
+
+            var itemProperties = (JObject)roslynSchema["properties"]?["Item"]?["properties"];
+            Check(itemProperties?["shared"]?["type"]?.Value<string>() == "integer"
+                  && itemProperties.Properties().Count(property => property.Name == "shared") == 1,
+                "141F-9: private JSON-name shadow keeps the public base property once");
+        }
+
         private static void VerifyMultiDimensionalArraysAreBlockingInBothPaths()
         {
             var result = RunGenerator(MultiDimensionalArrayFixtureSource());
@@ -95,10 +121,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE003"
                                                 && diagnostic.GetMessage().Contains("Request.Grid", StringComparison.Ordinal)),
-                "141F-7: Roslyn rejects multi-dimensional request arrays");
+                "141F-10: Roslyn rejects multi-dimensional request arrays");
 
             Check(!TryGeneratedFoxServiceSource(result, out _),
-                "141F-8: blocked multi-dimensional array service does not emit a descriptor");
+                "141F-11: blocked multi-dimensional array service does not emit a descriptor");
 
             var reflectionDiagnostics = FoxServiceDtoReflectionValidator.Validate(
                 typeof(MultiDimensionalArrayRequest),
@@ -106,7 +132,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "/phase141f/multidim");
             Check(reflectionDiagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE003"
                                                           && diagnostic.Path.Contains("Grid", StringComparison.Ordinal)),
-                "141F-9: reflection rejects multi-dimensional request arrays");
+                "141F-12: reflection rejects multi-dimensional request arrays");
         }
 
         private static void VerifyValidationWiring()
@@ -115,10 +141,10 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
 
             Check(project.Contains("FoxServiceDtoGraphWalkerConvergenceValidation.cs", StringComparison.Ordinal),
-                "141F-10: runtime test project includes graph walker convergence validation");
+                "141F-13: runtime test project includes graph walker convergence validation");
             Check(registry.Contains("--phase141f", StringComparison.Ordinal)
                   && registry.Contains("FoxServiceDtoGraphWalkerConvergenceValidation.Validate", StringComparison.Ordinal),
-                "141F-11: validation registry wires --phase141f");
+                "141F-14: validation registry wires --phase141f");
         }
 
         private static GeneratorDriverRunResult RunGenerator(string source)
@@ -297,6 +323,38 @@ namespace Phase141FHidden
 }
 ";
 
+        private static string PrivateJsonNameShadowFixtureSource()
+            => @"
+using Newtonsoft.Json;
+using Unity.FoxgloveSDK.Components;
+
+namespace Phase141FPrivateShadow
+{
+    public class PrivateJsonNameShadowBase
+    {
+        [JsonProperty(""shared"")]
+        public int BaseValue { get; set; }
+    }
+
+    public sealed class PrivateJsonNameShadowDerived : PrivateJsonNameShadowBase
+    {
+        [JsonProperty(""shared"")]
+        private string PrivateValue { get; set; }
+    }
+
+    public sealed class PrivateJsonNameShadowRequest
+    {
+        public PrivateJsonNameShadowDerived Item { get; set; }
+    }
+
+    public partial class Fixture
+    {
+        [FoxService(""/phase141f/private-shadow"", Type = ""Phase141F.PrivateShadow"", RequestSchemaName = ""Phase141F.PrivateShadow.Request"", ResponseSchemaName = ""Phase141F.PrivateShadow.Response"")]
+        private void Check(PrivateJsonNameShadowRequest request) {}
+    }
+}
+";
+
         private static string MultiDimensionalArrayFixtureSource()
             => @"
 using Unity.FoxgloveSDK.Components;
@@ -381,6 +439,23 @@ namespace Phase141FMultiDim
         private sealed class HiddenMemberRequest
         {
             public HiddenDerived Item { get; set; }
+        }
+
+        private class PrivateJsonNameShadowBase
+        {
+            [JsonProperty("shared")]
+            public int BaseValue { get; set; }
+        }
+
+        private sealed class PrivateJsonNameShadowDerived : PrivateJsonNameShadowBase
+        {
+            [JsonProperty("shared")]
+            private string PrivateValue { get; set; }
+        }
+
+        private sealed class PrivateJsonNameShadowRequest
+        {
+            public PrivateJsonNameShadowDerived Item { get; set; }
         }
 
         private sealed class MultiDimensionalArrayRequest

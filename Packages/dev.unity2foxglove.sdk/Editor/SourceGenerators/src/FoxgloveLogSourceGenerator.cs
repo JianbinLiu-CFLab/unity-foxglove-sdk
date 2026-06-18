@@ -694,16 +694,34 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (member is IFieldSymbol field)
                     {
+                        if (!CanParticipateInJsonNameDedup(field))
+                            continue;
                         if (seenJsonNames.Add(JsonPropertyName(field)))
                             yield return field;
                     }
                     else if (member is IPropertySymbol property)
                     {
+                        if (!CanParticipateInJsonNameDedup(property))
+                            continue;
                         if (seenJsonNames.Add(JsonPropertyName(property)))
                             yield return property;
                     }
                 }
             }
+        }
+
+        private static bool CanParticipateInJsonNameDedup(ISymbol member)
+        {
+            if (member.IsStatic)
+                return false;
+
+            if (member is IFieldSymbol field)
+                return !field.IsConst && field.DeclaredAccessibility == Accessibility.Public;
+
+            if (member is IPropertySymbol property)
+                return property.DeclaredAccessibility == Accessibility.Public;
+
+            return false;
         }
 
         private static ITypeSymbol UnwrapNullable(ITypeSymbol type)
