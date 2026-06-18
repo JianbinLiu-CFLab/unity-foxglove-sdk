@@ -223,7 +223,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -322,7 +322,7 @@ GameObject:
   - component: {fileID: 346350283}
   - component: {fileID: 346350284}
   m_Layer: 0
-  m_Name: Foxglove
+  m_Name: FoxgloveManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -448,7 +448,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b3d0f1e2a4b5c6d7e8f9a0b1c2d3e4f5, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveReplayObjectAdapter
   _manager: {fileID: 0}
   _autoLookup: 1
