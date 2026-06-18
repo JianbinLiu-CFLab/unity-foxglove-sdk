@@ -61,6 +61,19 @@ namespace Unity.FoxgloveSDK.IO
         public byte[] Data;
     }
 
+    /// <summary>MCAP private record with an application-defined opcode in the 0x80-0xFF range.</summary>
+    public class McapPrivateRecord
+    {
+        /// <summary>Application-defined private opcode.</summary>
+        public byte Opcode;
+        /// <summary>Raw private record payload bytes.</summary>
+        public byte[] Data;
+        /// <summary>Absolute file offset for top-level records, or parent chunk offset for chunk records.</summary>
+        public ulong Offset;
+        /// <summary>Whether this private record came from inside a Chunk record.</summary>
+        public bool InChunk;
+    }
+
     /// <summary>MCAP Chunk record — compressed container holding multiple records.</summary>
     public class McapChunk
     {

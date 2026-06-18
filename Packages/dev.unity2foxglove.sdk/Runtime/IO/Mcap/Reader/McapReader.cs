@@ -301,6 +301,93 @@ namespace Unity.FoxgloveSDK.IO
                 chunkUncompressedSizeLimit: chunkUncompressedSizeLimit).SequentialMessages ?? new List<McapMessage>();
         }
 
+        /// <summary>
+        /// Reads private records from the data section into a list.
+        /// </summary>
+        public List<McapPrivateRecord> ReadPrivateRecords(
+            ulong dataSectionEndOffset,
+            ulong recordSizeLimit = DefaultRecordSizeLimit,
+            bool includeChunkRecords = true,
+            bool validateCrcs = true,
+            ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
+        {
+            var records = new List<McapPrivateRecord>();
+            foreach (var record in EnumeratePrivateRecords(
+                         dataSectionEndOffset,
+                         recordSizeLimit,
+                         includeChunkRecords,
+                         validateCrcs,
+                         chunkUncompressedSizeLimit))
+            {
+                records.Add(record);
+            }
+
+            return records;
+        }
+
+        /// <summary>
+        /// Enumerates application-defined private records from the data section.
+        /// </summary>
+        public IEnumerable<McapPrivateRecord> EnumeratePrivateRecords(
+            ulong dataSectionEndOffset,
+            ulong recordSizeLimit = DefaultRecordSizeLimit,
+            bool includeChunkRecords = true,
+            bool validateCrcs = true,
+            ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
+        {
+            _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
+            var isFirstRecord = true;
+            while ((ulong)_stream.Position < dataSectionEndOffset)
+            {
+                var recordStart = (ulong)_stream.Position;
+                var (opcode, content) = ReadOneRecord(recordSizeLimit);
+                var recordEnd = (ulong)_stream.Position;
+                if (recordEnd > dataSectionEndOffset)
+                    throw new InvalidDataException("MCAP data-section record extends past the private record scan bounds.");
+
+                if (isFirstRecord)
+                {
+                    if (opcode != McapWriter.OpcodeHeader)
+                        throw new InvalidDataException($"Expected Header (0x01) after leading magic, got 0x{opcode:X2}");
+                    McapRecordDecoder.DecodeHeader(content);
+                    isFirstRecord = false;
+                    continue;
+                }
+
+                if (McapWriter.IsPrivateOpcode(opcode))
+                {
+                    yield return new McapPrivateRecord
+                    {
+                        Opcode = opcode,
+                        Data = CloneBytes(content),
+                        Offset = recordStart,
+                        InChunk = false
+                    };
+                    continue;
+                }
+
+                if (opcode == McapWriter.OpcodeChunk && includeChunkRecords)
+                {
+                    var records = McapRecordDecoder.DecodeChunkRecordsContent(
+                        content,
+                        out var crcValid,
+                        chunkUncompressedSizeLimit);
+                    if (!crcValid && validateCrcs)
+                        throw new InvalidDataException("MCAP chunk CRC mismatch.");
+
+                    foreach (var privateRecord in EnumerateChunkPrivateRecords(records, recordStart))
+                        yield return privateRecord;
+                    continue;
+                }
+
+                if (opcode == McapWriter.OpcodeDataEnd)
+                {
+                    McapRecordDecoder.DecodeDataEnd(content);
+                    yield break;
+                }
+            }
+        }
+
         private void ValidateSummaryCrc(
             ulong summaryStart,
             ulong summaryOffsetStart,
@@ -413,6 +500,45 @@ namespace Unity.FoxgloveSDK.IO
                 off += recordLength;
             }
             return messages;
+        }
+
+        private static IEnumerable<McapPrivateRecord> EnumerateChunkPrivateRecords(
+            byte[] uncompressedRecords,
+            ulong chunkStartOffset)
+        {
+            var off = 0;
+            while (off < uncompressedRecords.Length)
+            {
+                if (uncompressedRecords.Length - off < McapWriter.RecordHeaderLength)
+                    throw new InvalidDataException("Chunk inner record is truncated.");
+
+                var opcode = uncompressedRecords[off++];
+                if (opcode == 0x00)
+                    throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
+
+                var len = McapBinaryReader.ReadU64LE(uncompressedRecords, ref off);
+                if (len > int.MaxValue)
+                    throw new InvalidDataException("Chunk inner record length exceeds int.MaxValue.");
+                var recordLength = (int)len;
+                if (recordLength < 0 || recordLength > uncompressedRecords.Length - off)
+                    throw new InvalidDataException("Chunk inner record content is truncated.");
+
+                if (McapWriter.IsPrivateOpcode(opcode))
+                {
+                    var data = new byte[recordLength];
+                    if (recordLength > 0)
+                        Buffer.BlockCopy(uncompressedRecords, off, data, 0, recordLength);
+                    yield return new McapPrivateRecord
+                    {
+                        Opcode = opcode,
+                        Data = data,
+                        Offset = chunkStartOffset,
+                        InChunk = true
+                    };
+                }
+
+                off += recordLength;
+            }
         }
 
         private McapFileSummary ScanDataSection(
@@ -607,6 +733,16 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException($"MCAP {context} offset {offset} exceeds seekable range.");
 
             return (long)offset;
+        }
+
+        private static byte[] CloneBytes(byte[] source)
+        {
+            if (source == null || source.Length == 0)
+                return Array.Empty<byte>();
+
+            var copy = new byte[source.Length];
+            Buffer.BlockCopy(source, 0, copy, 0, source.Length);
+            return copy;
         }
 
         /// <summary>

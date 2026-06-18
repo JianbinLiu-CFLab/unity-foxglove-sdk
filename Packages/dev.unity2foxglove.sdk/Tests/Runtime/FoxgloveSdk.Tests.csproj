@@ -140,6 +140,7 @@
     <Compile Include="Phase148Validation.cs" />
     <Compile Include="Phase149AValidation.cs" />
     <Compile Include="Phase149BValidation.cs" />
+    <Compile Include="Phase149CValidation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="Phase138Validation.cs" />

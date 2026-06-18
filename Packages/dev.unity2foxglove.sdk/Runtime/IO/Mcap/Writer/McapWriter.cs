@@ -80,6 +80,17 @@ namespace Unity.FoxgloveSDK.IO
             if (content != null && content.Length > 0) _stream.Write(content, 0, content.Length);
         }
 
+        /// <summary>Write an application-defined private record (opcode <c>0x80</c> through <c>0xFF</c>).</summary>
+        public void WritePrivateRecord(byte opcode, byte[] data)
+        {
+            if (!IsPrivateOpcode(opcode))
+                throw new ArgumentOutOfRangeException(nameof(opcode), "MCAP private record opcodes must be in the 0x80-0xFF range.");
+
+            WriteRecord(opcode, data ?? Array.Empty<byte>());
+        }
+
+        internal static bool IsPrivateOpcode(byte opcode) => opcode >= 0x80;
+
         private void WriteRecord(byte opcode, MemoryStream content)
         {
             _stream.WriteByte(opcode);

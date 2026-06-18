@@ -263,6 +263,19 @@ namespace Unity.FoxgloveSDK.IO
                 () => EnumerateMessagesCore(lazyOptions).GetEnumerator());
         }
 
+        /// <summary>
+        /// Lazily enumerates private records in file order.
+        /// </summary>
+        /// <param name="includeChunkRecords">Whether to include private records stored inside chunks.</param>
+        /// <returns>A single-pass enumerable over private records.</returns>
+        public IEnumerable<McapPrivateRecord> EnumeratePrivateRecords(bool includeChunkRecords = true)
+        {
+            ThrowIfDisposed();
+            return new McapSinglePassEnumerable<McapPrivateRecord>(
+                nameof(McapIndexedReader) + "." + nameof(EnumeratePrivateRecords),
+                () => EnumeratePrivateRecordsCore(includeChunkRecords).GetEnumerator());
+        }
+
         private List<McapMessage> ReadSequentialMessages(McapReadOptions options, List<McapMessage> result)
         {
             var selectedChannelIds = ResolveSelectedChannelIds(options);
@@ -336,6 +349,18 @@ namespace Unity.FoxgloveSDK.IO
                     if (options.MaxMessages > 0 && yielded >= options.MaxMessages)
                         yield break;
                 }
+            }
+        }
+
+        private IEnumerable<McapPrivateRecord> EnumeratePrivateRecordsCore(bool includeChunkRecords)
+        {
+            ThrowIfDisposed();
+            foreach (var record in _reader.EnumeratePrivateRecords(
+                         _summary.DataSectionEndOffset,
+                         includeChunkRecords: includeChunkRecords))
+            {
+                ThrowIfDisposed();
+                yield return record;
             }
         }
 

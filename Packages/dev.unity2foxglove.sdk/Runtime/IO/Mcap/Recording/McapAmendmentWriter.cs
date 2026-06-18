@@ -19,6 +19,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapTrailerInfo _trailer;
         private readonly List<PendingMetadata> _metadata = new List<PendingMetadata>();
         private readonly List<PendingAttachment> _attachments = new List<PendingAttachment>();
+        private readonly List<PendingPrivateRecord> _privateRecords = new List<PendingPrivateRecord>();
         private bool _closed;
         private bool _disposed;
 
@@ -72,13 +73,26 @@ namespace Unity.FoxgloveSDK.IO
             });
         }
 
+        public void AddPrivateRecord(byte opcode, byte[] data)
+        {
+            ThrowIfClosedOrDisposed();
+            if (!McapWriter.IsPrivateOpcode(opcode))
+                throw new ArgumentOutOfRangeException(nameof(opcode), "MCAP private record opcodes must be in the 0x80-0xFF range.");
+
+            _privateRecords.Add(new PendingPrivateRecord
+            {
+                Opcode = opcode,
+                Data = data == null ? Array.Empty<byte>() : (byte[])data.Clone()
+            });
+        }
+
         public void Close()
         {
             ThrowIfDisposed();
             if (_closed)
                 return;
 
-            if (_metadata.Count == 0 && _attachments.Count == 0)
+            if (_metadata.Count == 0 && _attachments.Count == 0 && _privateRecords.Count == 0)
             {
                 _stream.Flush();
                 _closed = true;
@@ -113,6 +127,12 @@ namespace Unity.FoxgloveSDK.IO
                     item.Name,
                     item.MediaType,
                     item.Data));
+            }
+
+            for (var i = 0; i < _privateRecords.Count; i++)
+            {
+                var item = _privateRecords[i];
+                _writer.WritePrivateRecord(item.Opcode, item.Data);
             }
 
             _writer.WriteDataEnd(0);
@@ -290,6 +310,12 @@ namespace Unity.FoxgloveSDK.IO
             public byte[] Data;
             public ulong LogTimeNs;
             public ulong CreateTimeNs;
+        }
+
+        private sealed class PendingPrivateRecord
+        {
+            public byte Opcode;
+            public byte[] Data;
         }
     }
 }
