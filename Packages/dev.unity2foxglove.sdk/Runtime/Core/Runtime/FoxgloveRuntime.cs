@@ -46,6 +46,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
         private bool _ros2MsgSchemasRegistered;
+        // Runtime-owned start-time routing policy. Like parameters and services,
+        // these survive Stop/Start and are re-applied to the next session; Stop
+        // deliberately does not clear them.
+        private ISinkChannelFilter _liveWebSocketChannelFilter;
+        private ISinkChannelFilter _mcapRecordingChannelFilter;
 
         // Runtime-owned definitions survive Stop/Start cycles so
         // parameters and services are re-advertised on restart.
@@ -117,6 +122,46 @@ namespace Unity.FoxgloveSDK.Core
         public ISchemaRegistry Schemas => _schemaRegistry;
         /// <summary>Runtime-owned parameter store.</summary>
         public FoxgloveParameterStore Parameters => _parameters;
+
+        /// <summary>
+        /// Set an optional per-sink channel filter. Null allows all channels for the sink.
+        /// Per-sink filters are a start-time routing policy, not a runtime hot-swap:
+        /// they must be configured before the session starts (while
+        /// <c>_session == null</c>) so the session runs under a fixed policy.
+        /// Like parameters and services, configured filters persist across
+        /// Stop/Start cycles and are re-applied to the next session.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The session is already started.</exception>
+        public void SetSinkChannelFilter(FoxgloveSinkKind sink, ISinkChannelFilter filter)
+        {
+            if (_session != null)
+                throw new InvalidOperationException(
+                    "Sink channel filters must be configured before the session starts; " +
+                    "stop the server before changing a per-sink filter.");
+
+            switch (sink)
+            {
+                case FoxgloveSinkKind.LiveWebSocket:
+                    Volatile.Write(ref _liveWebSocketChannelFilter, filter);
+                    break;
+                case FoxgloveSinkKind.McapRecording:
+                    Volatile.Write(ref _mcapRecordingChannelFilter, filter);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(sink), sink, "Unknown Foxglove sink kind.");
+            }
+        }
+
+        /// <summary>Return the configured per-sink channel filter, or null when the sink allows all channels.</summary>
+        public ISinkChannelFilter GetSinkChannelFilter(FoxgloveSinkKind sink)
+        {
+            return sink switch
+            {
+                FoxgloveSinkKind.LiveWebSocket => Volatile.Read(ref _liveWebSocketChannelFilter),
+                FoxgloveSinkKind.McapRecording => Volatile.Read(ref _mcapRecordingChannelFilter),
+                _ => throw new ArgumentOutOfRangeException(nameof(sink), sink, "Unknown Foxglove sink kind.")
+            };
+        }
 
         /// <summary>Register a named parameter. Can be called before Start; stored for later advertisement.</summary>
         public void RegisterParameter(string name, JToken value, string type, bool writable)
@@ -191,7 +236,9 @@ namespace Unity.FoxgloveSDK.Core
                     _transport, _playbackClock, _schemaRegistry, _logger,
                     _parameters, _services, _recording,
                     _protobufSchemasRegistered, _ros2MsgSchemasRegistered,
-                    this);
+                    this,
+                    Volatile.Read(ref _liveWebSocketChannelFilter),
+                    Volatile.Read(ref _mcapRecordingChannelFilter));
                 session.Start(host, port);
                 _session = session;
                 _replayOrchestrator.Attach(_replay, session);

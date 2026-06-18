@@ -114,7 +114,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sessionSource.Contains("public bool HasChannelDemand"),
                 "73B-1: FoxgloveSession exposes HasChannelDemand");
-            Check(sessionSource.Contains("_channels.Get(channelId) == null"),
+            Check(sessionSource.Contains("_channels.Get(channelId) == null")
+                    || sessionSource.Contains("var channel = _channels.Get(channelId)")
+                    && sessionSource.Contains("if (channel == null)"),
                 "73B-2: session demand defensively rejects missing channels");
             Check(sessionSource.Contains("_subscriptions.HasSubscribersForChannel(channelId)"),
                 "73B-3: session demand considers live subscribers");
