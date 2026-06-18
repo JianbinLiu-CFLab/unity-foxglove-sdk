@@ -1,0 +1,309 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Phase 149A validation for lazy MCAP file-order iteration.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using Unity.FoxgloveSDK.IO;
+
+namespace Unity.FoxgloveSDK.Tests
+{
+    public static class Phase149AValidation
+    {
+        private static int _passCount;
+
+        public static void Validate()
+        {
+            Console.WriteLine("\n--- Phase 149A Tests ---");
+            _passCount = 0;
+
+            VerifyPublicApiShape();
+            VerifyReaderLazyMatchesEagerFileOrder();
+            VerifyReaderLazyFiltersAndLimitsInFileOrder();
+            VerifyDataLoaderLazyIteratorMapsMessages();
+            VerifyLazyReaderRejectsSortedOrders();
+            VerifyLazyReaderRejectsUnindexedFiles();
+            VerifyLazyEnumerablesAreSinglePass();
+            VerifyEmptyDataLoaderLazyIteratorIsSinglePass();
+            VerifyDisposedLoaderStopsLazyEnumeration();
+            VerifySourceShapePreventsFakeLazyImplementation();
+            VerifyValidationRegistryEntry();
+
+            Console.WriteLine("Phase 149A: " + _passCount + " checks passed.\n");
+        }
+
+        private static void VerifyPublicApiShape()
+        {
+            Check(typeof(McapIndexedReader).GetMethod("EnumerateMessages", new[] { typeof(McapReadOptions) }) != null,
+                "149A-1: McapIndexedReader exposes lazy message enumeration");
+            Check(typeof(McapDataLoader).GetMethod("CreateLazyIterator", new[] { typeof(McapDataLoaderQuery) }) != null,
+                "149A-2: McapDataLoader exposes lazy iterator creation");
+        }
+
+        private static void VerifyReaderLazyMatchesEagerFileOrder()
+        {
+            using var ms = CreateIndexedFixture();
+            using var reader = new McapIndexedReader(ms, leaveOpen: true);
+            var options = new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                MaxMessages = 0
+            };
+
+            var eager = reader.ReadMessages(options).Select(message => message.LogTime).ToArray();
+            var lazy = reader.EnumerateMessages(options).Select(message => message.LogTime).ToArray();
+
+            Check(eager.SequenceEqual(new ulong[] { 50, 10, 40, 20, 30 }),
+                "149A-3: eager FileOrder fixture is intentionally not log-time sorted");
+            Check(lazy.SequenceEqual(eager),
+                "149A-4: lazy reader matches eager FileOrder output");
+        }
+
+        private static void VerifyReaderLazyFiltersAndLimitsInFileOrder()
+        {
+            using var ms = CreateIndexedFixture();
+            using var reader = new McapIndexedReader(ms, leaveOpen: true);
+            var messages = reader.EnumerateMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                Topics = new List<string> { "/phase149a/a" },
+                StartTimeNs = 30,
+                EndTimeNs = 50,
+                MaxMessages = 2
+            }).ToList();
+
+            Check(messages.Select(message => message.LogTime).SequenceEqual(new ulong[] { 50, 40 }),
+                "149A-5: lazy reader applies topic, time, and MaxMessages filters without sorting");
+        }
+
+        private static void VerifyDataLoaderLazyIteratorMapsMessages()
+        {
+            using var ms = CreateIndexedFixture();
+            using var loader = new McapDataLoader(ms, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var messages = loader.CreateLazyIterator(new McapDataLoaderQuery
+            {
+                Topics = new List<string> { "/phase149a/b" },
+                MaxMessages = 0
+            }).ToList();
+
+            Check(messages.Select(message => message.LogTime).SequenceEqual(new ulong[] { 10, 20 }),
+                "149A-6: DataLoader lazy iterator preserves matching file order");
+            Check(messages.All(message => message.Topic == "/phase149a/b" && message.MessageEncoding == "json"),
+                "149A-7: DataLoader lazy iterator maps channel metadata");
+        }
+
+        private static void VerifyLazyReaderRejectsSortedOrders()
+        {
+            using var ms = CreateIndexedFixture();
+            using var reader = new McapIndexedReader(ms, leaveOpen: true);
+
+            Check(Throws<NotSupportedException>(() => reader.EnumerateMessages(new McapReadOptions
+                {
+                    Order = McapReadOrder.LogTimeAscending
+                })),
+                "149A-8: lazy reader rejects log-time ascending requests");
+            Check(Throws<NotSupportedException>(() => reader.EnumerateMessages(new McapReadOptions
+                {
+                    Order = McapReadOrder.LogTimeDescending
+                })),
+                "149A-9: lazy reader rejects log-time descending requests");
+        }
+
+        private static void VerifyLazyReaderRejectsUnindexedFiles()
+        {
+            using var ms = CreateUnindexedFixture();
+            using var reader = new McapIndexedReader(ms, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var lazy = reader.EnumerateMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder
+            });
+
+            using var enumerator = lazy.GetEnumerator();
+            Check(Throws<InvalidOperationException>(() => enumerator.MoveNext()),
+                "149A-10: lazy reader rejects files without chunk indexes instead of falling back to a full scan");
+        }
+
+        private static void VerifyLazyEnumerablesAreSinglePass()
+        {
+            using var readerStream = CreateIndexedFixture();
+            using var reader = new McapIndexedReader(readerStream, leaveOpen: true);
+            var readerLazy = reader.EnumerateMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder
+            });
+            using (readerLazy.GetEnumerator())
+            {
+                Check(Throws<InvalidOperationException>(() => readerLazy.GetEnumerator()),
+                    "149A-11: reader lazy enumerable rejects a second enumeration");
+            }
+
+            using var loaderStream = CreateIndexedFixture();
+            using var loader = new McapDataLoader(loaderStream, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var loaderLazy = loader.CreateLazyIterator(new McapDataLoaderQuery { MaxMessages = 0 });
+            using (loaderLazy.GetEnumerator())
+            {
+                Check(Throws<InvalidOperationException>(() => loaderLazy.GetEnumerator()),
+                    "149A-12: DataLoader lazy enumerable rejects a second enumeration");
+            }
+        }
+
+        private static void VerifyDisposedLoaderStopsLazyEnumeration()
+        {
+            using var ms = CreateIndexedFixture();
+            var loader = new McapDataLoader(ms, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var lazy = loader.CreateLazyIterator(new McapDataLoaderQuery { MaxMessages = 0 });
+            using var enumerator = lazy.GetEnumerator();
+
+            loader.Dispose();
+
+            Check(Throws<ObjectDisposedException>(() => enumerator.MoveNext()),
+                "149A-13: lazy DataLoader iterator observes disposal before first read");
+        }
+
+        private static void VerifyEmptyDataLoaderLazyIteratorIsSinglePass()
+        {
+            using var ms = CreateIndexedFixture();
+            using var loader = new McapDataLoader(ms, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var lazy = loader.CreateLazyIterator(new McapDataLoaderQuery
+            {
+                Topics = new List<string> { "/phase149a/missing" },
+                MaxMessages = 0
+            });
+
+            using (lazy.GetEnumerator())
+            {
+                Check(Throws<InvalidOperationException>(() => lazy.GetEnumerator()),
+                    "149A-13b: empty DataLoader lazy iterator keeps the single-pass contract");
+            }
+        }
+
+        private static void VerifySourceShapePreventsFakeLazyImplementation()
+        {
+            var dataLoader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            var indexedReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapIndexedReader.cs");
+            var dataLoaderLazy = SourceMember(
+                dataLoader,
+                "public IEnumerable<McapDataLoaderMessage> CreateLazyIterator");
+            var readerLazyCore = SourceMember(
+                indexedReader,
+                "private IEnumerable<McapMessage> EnumerateMessagesCore");
+
+            Check(dataLoaderLazy.Contains("McapLazyMessageEnumerable", StringComparison.Ordinal)
+                    && !dataLoaderLazy.Contains("ReadMessages(", StringComparison.Ordinal),
+                "149A-14: DataLoader lazy API does not materialize through ReadMessages");
+            Check(readerLazyCore.Contains("yield return", StringComparison.Ordinal)
+                    && readerLazyCore.Contains("ReadChunkRecords", StringComparison.Ordinal),
+                "149A-15: indexed lazy core yields from chunk reads");
+            Check(!readerLazyCore.Contains("ApplyOrderingAndLimit", StringComparison.Ordinal)
+                    && !readerLazyCore.Contains("ReadLinearMessages", StringComparison.Ordinal),
+                "149A-16: indexed lazy core avoids eager sorting and sequential fallback");
+        }
+
+        private static void VerifyValidationRegistryEntry()
+        {
+            Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase149a"),
+                "149A-17: validation registry exposes Phase 149A");
+        }
+
+        private static MemoryStream CreateIndexedFixture()
+        {
+            var ms = new MemoryStream();
+            using (var recorder = new McapRecorder(ms, null, chunkSizeBytes: 96, leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/phase149a/a", "json", "phase149a.A", "jsonschema", "{\"type\":\"object\"}");
+                recorder.AddChannel(2, "/phase149a/b", "json", "phase149a.B", "jsonschema", "{\"type\":\"object\"}");
+                recorder.WriteMessage(1, 50, Payload("a50"));
+                recorder.WriteMessage(2, 10, Payload("b10"));
+                recorder.WriteMessage(1, 40, Payload("a40"));
+                recorder.WriteMessage(2, 20, Payload("b20"));
+                recorder.WriteMessage(1, 30, Payload("a30"));
+                recorder.Close();
+            }
+
+            ms.Position = 0;
+            return ms;
+        }
+
+        private static MemoryStream CreateUnindexedFixture()
+        {
+            var ms = new MemoryStream();
+            using (var recorder = new McapRecorder(ms, null, new McapWriterOptions
+                {
+                    UseChunking = false
+                }, leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/phase149a/unindexed", "json", "phase149a.Unindexed", "jsonschema", "{\"type\":\"object\"}");
+                recorder.WriteMessage(1, 1, Payload("unindexed"));
+                recorder.Close();
+            }
+
+            ms.Position = 0;
+            return ms;
+        }
+
+        private static byte[] Payload(string value)
+            => Encoding.UTF8.GetBytes("{\"value\":\"" + value + "\"}");
+
+        private static string ReadRepoText(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root.");
+
+            return File.ReadAllText(Path.Combine(root, relativePath));
+        }
+
+        private static string SourceMember(string source, string signature)
+        {
+            var start = source.IndexOf(signature, StringComparison.Ordinal);
+            if (start < 0)
+                return string.Empty;
+            var braceStart = source.IndexOf('{', start);
+            if (braceStart < 0)
+                return string.Empty;
+
+            var depth = 0;
+            for (var i = braceStart; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(start, i - start + 1);
+                }
+            }
+
+            return source.Substring(start);
+        }
+
+        private static bool Throws<TException>(Action action)
+            where TException : Exception
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (TException)
+            {
+                return true;
+            }
+        }
+
+        private static void Check(bool condition, string label)
+        {
+            if (!condition)
+                throw new InvalidOperationException("[FAIL] " + label);
+
+            Console.WriteLine("[PASS] " + label);
+            _passCount++;
+        }
+    }
+}

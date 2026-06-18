@@ -138,6 +138,7 @@
     <Compile Include="SystemInfoPublisherValidation.cs" />
     <Compile Include="Phase147Validation.cs" />
     <Compile Include="Phase148Validation.cs" />
+    <Compile Include="Phase149AValidation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="Phase138Validation.cs" />

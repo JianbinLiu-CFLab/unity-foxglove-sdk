@@ -248,6 +248,21 @@ namespace Unity.FoxgloveSDK.IO
             return result;
         }
 
+        /// <summary>
+        /// Lazily enumerates indexed messages in file/chunk order.
+        /// The returned enumerable is forward-only and can be enumerated once.
+        /// </summary>
+        /// <param name="options">Optional query options. Only <see cref="McapReadOrder.FileOrder"/> is supported.</param>
+        /// <returns>A single-pass enumerable over matching messages.</returns>
+        public IEnumerable<McapMessage> EnumerateMessages(McapReadOptions options = null)
+        {
+            ThrowIfDisposed();
+            var lazyOptions = CreateLazyReadOptions(options);
+            return new McapSinglePassEnumerable<McapMessage>(
+                nameof(McapIndexedReader) + "." + nameof(EnumerateMessages),
+                () => EnumerateMessagesCore(lazyOptions).GetEnumerator());
+        }
+
         private List<McapMessage> ReadSequentialMessages(McapReadOptions options, List<McapMessage> result)
         {
             var selectedChannelIds = ResolveSelectedChannelIds(options);
@@ -269,6 +284,59 @@ namespace Unity.FoxgloveSDK.IO
             ApplyOrderingAndLimit(result, options);
 
             return result;
+        }
+
+        private IEnumerable<McapMessage> EnumerateMessagesCore(McapReadOptions options)
+        {
+            ThrowIfDisposed();
+            if (options.EndTimeNs < options.StartTimeNs)
+                yield break;
+
+            var chunkIndexes = _summary.ChunkIndexes;
+            if (chunkIndexes == null || chunkIndexes.Count == 0)
+                throw new InvalidOperationException("Lazy MCAP message enumeration requires chunk indexes.");
+
+            var selectedChannelIds = ResolveSelectedChannelIds(options);
+            if (selectedChannelIds != null && selectedChannelIds.Count == 0)
+                yield break;
+
+            var yielded = 0;
+            foreach (var chunkIndex in chunkIndexes)
+            {
+                ThrowIfDisposed();
+                if (chunkIndex.MessageEndTime < options.StartTimeNs || IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
+                    continue;
+
+                if (selectedChannelIds != null &&
+                    chunkIndex.MessageIndexOffsets != null &&
+                    chunkIndex.MessageIndexOffsets.Count > 0 &&
+                    !ContainsAnySelectedChannel(chunkIndex.MessageIndexOffsets, selectedChannelIds))
+                    continue;
+
+                var uncompressed = _reader.ReadChunkRecords(
+                    chunkIndex.ChunkStartOffset,
+                    chunkIndex.ChunkLength,
+                    out var crcValid,
+                    options.ChunkUncompressedSizeLimit);
+                if (!crcValid && options.ValidateCrcs)
+                    throw new InvalidDataException("MCAP chunk CRC mismatch.");
+
+                var messages = _reader.ReadChunkMessages(uncompressed);
+                for (var i = 0; i < messages.Count; i++)
+                {
+                    ThrowIfDisposed();
+                    var message = messages[i];
+                    if (!IsInTimeRange(message.LogTime, options))
+                        continue;
+                    if (selectedChannelIds != null && !selectedChannelIds.Contains(message.ChannelId))
+                        continue;
+
+                    yield return message;
+                    yielded++;
+                    if (options.MaxMessages > 0 && yielded >= options.MaxMessages)
+                        yield break;
+                }
+            }
         }
 
         /// <summary>
@@ -619,6 +687,16 @@ namespace Unity.FoxgloveSDK.IO
                 ValidateCrcs = source.ValidateCrcs,
                 ChunkUncompressedSizeLimit = source.ChunkUncompressedSizeLimit
             };
+        }
+
+        private static McapReadOptions CreateLazyReadOptions(McapReadOptions source)
+        {
+            var options = source == null
+                ? new McapReadOptions { Order = McapReadOrder.FileOrder }
+                : CopyReadOptions(source);
+            if (options.Order != McapReadOrder.FileOrder)
+                throw new NotSupportedException("Lazy MCAP message enumeration supports FileOrder only.");
+            return options;
         }
 
         private static bool IsAtOrPastEnd(ulong logTime, McapReadOptions options)
