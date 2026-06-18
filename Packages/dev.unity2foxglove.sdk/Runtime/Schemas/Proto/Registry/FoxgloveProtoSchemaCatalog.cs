@@ -100,6 +100,9 @@ namespace Foxglove.Schemas
         private static readonly Dictionary<string, FoxgloveProtoSchemaCatalogEntry> EntriesBySchemaName =
             BuildEntriesBySchemaName();
 
+        private static readonly Dictionary<Type, FoxgloveProtoSchemaCatalogEntry> EntriesByClrType =
+            BuildEntriesByClrType();
+
         /// <summary>Read-only list of all bundled official protobuf schemas.</summary>
         public static IReadOnlyList<FoxgloveProtoSchemaCatalogEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
 
@@ -115,6 +118,18 @@ namespace Foxglove.Schemas
             return EntriesBySchemaName.TryGetValue(schemaName, out entry);
         }
 
+        /// <summary>Find a catalog entry by generated protobuf CLR message type.</summary>
+        public static bool TryGetByClrType(Type clrType, out FoxgloveProtoSchemaCatalogEntry entry)
+        {
+            if (clrType == null)
+            {
+                entry = null;
+                return false;
+            }
+
+            return EntriesByClrType.TryGetValue(clrType, out entry);
+        }
+
         private static FoxgloveProtoSchemaCatalogEntry Entry(string schemaName, Type clrType, string category, bool hasDedicatedUnityPublisher, string note)
         {
             return new FoxgloveProtoSchemaCatalogEntry(schemaName, clrType, category, hasDedicatedUnityPublisher, note);
@@ -125,6 +140,14 @@ namespace Foxglove.Schemas
             var result = new Dictionary<string, FoxgloveProtoSchemaCatalogEntry>(EntriesArray.Length, StringComparer.Ordinal);
             foreach (var entry in EntriesArray)
                 result[entry.SchemaName] = entry;
+            return result;
+        }
+
+        private static Dictionary<Type, FoxgloveProtoSchemaCatalogEntry> BuildEntriesByClrType()
+        {
+            var result = new Dictionary<Type, FoxgloveProtoSchemaCatalogEntry>(EntriesArray.Length);
+            foreach (var entry in EntriesArray)
+                result.Add(entry.ClrType, entry);
             return result;
         }
     }
