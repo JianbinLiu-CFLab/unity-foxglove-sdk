@@ -98,6 +98,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.OnReplayMessageContext += _replayContextForwarder;
             _runtime.OnReplayBatchCompleted += _replayBatchForwarder;
             _warnedNotRunning = false;
+            AdvanceChannelSessionGeneration();
 
             var transport = _runtime.Session?.Transport;
             if (transport != null)
@@ -274,6 +275,7 @@ namespace Unity.FoxgloveSDK.Components
                 _replayBatchForwarder = null;
             }
 
+            AdvanceChannelSessionGeneration();
             _runtime.Stop();
             StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();
