@@ -16,11 +16,22 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private void DrawDiagnosticsSection()
         {
+            DrawProfilerDiagnostics();
+            EditorGUILayout.Space();
             DrawPublishCadenceDiagnostics();
             EditorGUILayout.Space();
             DrawFrameStallDiagnostics();
             EditorGUILayout.Space();
             DrawTransportHealth();
+        }
+
+        private void DrawProfilerDiagnostics()
+        {
+            FoxgloveManagerInspectorLayout.Subheader("Unity Profiler");
+            DrawProperty("_profilingEnabled", "Unity Profiler Markers");
+            EditorGUILayout.HelpBox(
+                "Enables optional SDK ProfilerMarker samples. Marker names are bounded and intended for targeted profiling runs.",
+                MessageType.Info);
         }
 
         private void DrawPublishCadenceDiagnostics()
