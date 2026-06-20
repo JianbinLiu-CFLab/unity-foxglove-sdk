@@ -178,25 +178,19 @@ namespace Unity.FoxgloveSDK.Transport
                 while (true)
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (CountLocked > 0)
+                    FoxgloveProfiler.Global.BeginSample("WsSendQueue.Flush");
+                    try
                     {
-                        FoxgloveProfiler.Global.BeginSample("WsSendQueue.Flush");
-                        try
-                        {
-                            if (TryDequeueLocked(out frame))
-                                return true;
-                        }
-                        finally
-                        {
-                            FoxgloveProfiler.Global.EndSample();
-                        }
+                        if (TryDequeueLocked(out frame))
+                            return true;
+                    }
+                    finally
+                    {
+                        FoxgloveProfiler.Global.EndSample();
                     }
 
                     if (_completed)
-                    {
-                        frame = default;
                         return false;
-                    }
 
                     Monitor.Wait(_lock, SendQueueWaitMs);
                 }

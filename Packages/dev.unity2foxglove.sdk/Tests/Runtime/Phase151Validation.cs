@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyUnityProfilerAdapterShape();
             VerifyManagerProfilerLifecycleShape();
             VerifyPhase151BMarkerInstrumentation();
+            VerifyPhase151CManualAcceptanceShape();
             VerifyProfilerUnitCoverage();
             VerifyValidationRegistryEntry();
 
@@ -80,6 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
             var diagnosticsEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
 
             Check(manager.Contains("_profilingEnabled", StringComparison.Ordinal)
+                  && manager.Contains("public bool ProfilingEnabled => _profilingEnabled", StringComparison.Ordinal)
                   && manager.Contains("ConfigureProfiler()", StringComparison.Ordinal)
                   && manager.Contains("FoxgloveProfiler.SetGlobal(this, UnityProfilerAdapter.Instance)", StringComparison.Ordinal)
                   && manager.Contains("FoxgloveProfiler.ResetGlobal(this)", StringComparison.Ordinal)
@@ -125,6 +127,7 @@ namespace Unity.FoxgloveSDK.Tests
                 ("CdrBuild.LaserScan", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs"),
                 ("VirtualLidar.Update", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs"),
                 ("VirtualLidar.ScheduleScan", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs"),
+                // BuildPoints marks the main-thread job scheduling boundary; the Burst job body itself stays marker-free.
                 ("VirtualLidar.BuildPoints", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs"),
                 ("VirtualLidar.Publish", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs"),
                 ("VirtualImu.Publish", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs"),
@@ -141,6 +144,26 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(text.Contains("\"" + marker + "\"", StringComparison.Ordinal),
                     "Bounded profiler marker exists: " + marker);
             }
+        }
+
+        private static void VerifyPhase151CManualAcceptanceShape()
+        {
+            var script = ReadRepoText("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase151ManualAcceptance.cs");
+
+            Check(script.Contains("[AddComponentMenu(\"Foxglove/Manual Acceptance/Phase151 Profiler\")]", StringComparison.Ordinal)
+                  && script.Contains("[Phase151]", StringComparison.Ordinal)
+                  && script.Contains("\"Phase151.Acceptance.PublishSamples\"", StringComparison.Ordinal)
+                  && script.Contains("manager.ProfilingEnabled", StringComparison.Ordinal)
+                  && script.Contains("runContinuously", StringComparison.Ordinal)
+                  && script.Contains("initialSamplesPublished", StringComparison.Ordinal)
+                  && script.Contains("profilerToggleObserved", StringComparison.Ordinal)
+                  && script.Contains("BuildStatus", StringComparison.Ordinal)
+                  && script.Contains("[CustomEditor(typeof(Phase151ManualAcceptance))]", StringComparison.Ordinal)
+                  && script.Contains("DrawDefaultInspector()", StringComparison.Ordinal)
+                  && !script.Contains("new ProfilerMarker($", StringComparison.Ordinal)
+                  && !script.Contains("BeginSample($", StringComparison.Ordinal)
+                  && !script.Contains("Sample($", StringComparison.Ordinal),
+                "Phase151 manual acceptance script exposes stable Inspector state and no dynamic marker names");
         }
 
         private static string ReadRepoText(string relativePath)

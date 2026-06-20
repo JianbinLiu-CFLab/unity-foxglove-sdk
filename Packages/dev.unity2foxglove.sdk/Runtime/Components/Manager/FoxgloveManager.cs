@@ -220,6 +220,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Current coordinate mode, read from Inspector or code.</summary>
         public CoordinateMode ActiveCoordinateMode => _coordinateMode;
 
+        /// <summary>True when the Inspector's optional Unity Profiler marker hook is enabled.</summary>
+        public bool ProfilingEnabled => _profilingEnabled;
+
         /// <summary>
         /// Converts a Unity position to Foxglove coordinates.
         /// </summary>
