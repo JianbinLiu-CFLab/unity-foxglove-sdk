@@ -68,6 +68,10 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Global policy flag for R2FU native DDS output. R2FU components query this at runtime. Default off; check to enable R2FU output.")]
         [SerializeField] private bool _ros2NativeEnabled;
 
+        [Header("Diagnostics")]
+        [Tooltip("Enable optional Unity Profiler markers for SDK diagnostics. Leave disabled for normal runs.")]
+        [SerializeField] private bool _profilingEnabled;
+
         [Header("Publish Rate")]
         [Tooltip("Default publish rate used by publishers that choose the manager default. Use <= 0 to publish every eligible frame.")]
         [SerializeField] private float _defaultPublishRateHz = 10f;
@@ -216,6 +220,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Current coordinate mode, read from Inspector or code.</summary>
         public CoordinateMode ActiveCoordinateMode => _coordinateMode;
 
+        /// <summary>True when the Inspector's optional Unity Profiler marker hook is enabled.</summary>
+        public bool ProfilingEnabled => _profilingEnabled;
+
         /// <summary>
         /// Converts a Unity position to Foxglove coordinates.
         /// </summary>
@@ -357,6 +364,7 @@ namespace Unity.FoxgloveSDK.Components
                 Application.runInBackground = true;
             }
 
+            ConfigureProfiler();
             EnsureRuntimeCreated();
             CreateRos2BridgeRuntime();
 
@@ -370,6 +378,20 @@ namespace Unity.FoxgloveSDK.Components
             {
                 DisableLivePublishers();
             }
+        }
+
+        /// <summary>
+        /// Applies the Inspector profiler toggle before runtime work starts.
+        /// </summary>
+        private void ConfigureProfiler()
+        {
+            if (_profilingEnabled)
+            {
+                FoxgloveProfiler.SetGlobal(this, UnityProfilerAdapter.Instance);
+                return;
+            }
+
+            FoxgloveProfiler.ResetGlobal(this);
         }
 
         /// <summary>
@@ -465,6 +487,7 @@ namespace Unity.FoxgloveSDK.Components
             _ros2BridgeRuntime?.Stop();
             StopServer(restoreLivePublishers: false);
             _outputModeWatchInitialized = false;
+            FoxgloveProfiler.ResetGlobal(this);
         }
 
         /// <summary>
@@ -481,6 +504,7 @@ namespace Unity.FoxgloveSDK.Components
             _certificateDistributor = null;
             _runtime?.Dispose();
             _runtime = null;
+            FoxgloveProfiler.ResetGlobal(this);
         }
 
         /// <summary>

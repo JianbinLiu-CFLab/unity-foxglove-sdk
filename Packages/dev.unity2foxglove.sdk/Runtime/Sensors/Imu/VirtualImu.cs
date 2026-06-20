@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using Foxglove.Schemas;
+using Unity.Profiling;
 using UnityEngine;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
@@ -30,6 +31,7 @@ namespace Unity.FoxgloveSDK.Components
         private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
+        private static readonly ProfilerMarker PublishMarker = new ProfilerMarker("VirtualImu.Publish");
         private static int _fixedDeltaOverrideUsers;
         private static float _fixedDeltaOverrideOriginal;
 
@@ -240,46 +242,49 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Update()
         {
-            if (!PublishEnabled || _manager == null || _queue.Count == 0)
-                return;
-            if (_manager.Runtime == null)
-                return;
-
-            EnsureSchemaRegistered();
-
-            var queuedAtFrameStart = _queue.Count;
-            var webSocketBudget = ResolveWebSocketSamplesPerFrame(queuedAtFrameStart);
-            var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;
-            var webSocketPublished = 0;
-
-            while (_queue.Count > 0)
+            using (PublishMarker.Auto())
             {
-                var sample = _queue.Dequeue();
-                var nativeFrameHandler = ImuNativeFrameReady;
-                ImuNativeFrame nativeFrame = null;
-                if (nativeFrameHandler != null)
-                {
-                    nativeFrame = CreateNativeFrame(
-                        sample.TimestampNs,
-                        _frameId,
-                        sample.LinearAcceleration,
-                        sample.AngularVelocity,
-                        sample.Orientation,
-                        _includeOrientation);
-                }
+                if (!PublishEnabled || _manager == null || _queue.Count == 0)
+                    return;
+                if (_manager.Runtime == null)
+                    return;
 
-                if (webSocketSkipCount > 0)
-                {
-                    webSocketSkipCount--;
-                }
-                else if (webSocketPublished < webSocketBudget)
-                {
-                    PublishWebSocketSample(sample);
-                    webSocketPublished++;
-                }
+                EnsureSchemaRegistered();
 
-                if (nativeFrame != null)
-                    nativeFrameHandler.Invoke(nativeFrame);
+                var queuedAtFrameStart = _queue.Count;
+                var webSocketBudget = ResolveWebSocketSamplesPerFrame(queuedAtFrameStart);
+                var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;
+                var webSocketPublished = 0;
+
+                while (_queue.Count > 0)
+                {
+                    var sample = _queue.Dequeue();
+                    var nativeFrameHandler = ImuNativeFrameReady;
+                    ImuNativeFrame nativeFrame = null;
+                    if (nativeFrameHandler != null)
+                    {
+                        nativeFrame = CreateNativeFrame(
+                            sample.TimestampNs,
+                            _frameId,
+                            sample.LinearAcceleration,
+                            sample.AngularVelocity,
+                            sample.Orientation,
+                            _includeOrientation);
+                    }
+
+                    if (webSocketSkipCount > 0)
+                    {
+                        webSocketSkipCount--;
+                    }
+                    else if (webSocketPublished < webSocketBudget)
+                    {
+                        PublishWebSocketSample(sample);
+                        webSocketPublished++;
+                    }
+
+                    if (nativeFrame != null)
+                        nativeFrameHandler.Invoke(nativeFrame);
+                }
             }
         }
 

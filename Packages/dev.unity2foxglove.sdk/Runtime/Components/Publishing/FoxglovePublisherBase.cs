@@ -9,6 +9,9 @@
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
+#if UNITY_2020_3_OR_NEWER
+using Unity.Profiling;
+#endif
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -19,6 +22,10 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public abstract class FoxglovePublisherBase : MonoBehaviour
     {
+#if UNITY_2020_3_OR_NEWER
+        private static readonly ProfilerMarker PublisherTickMarker = new ProfilerMarker("FoxglovePublisher.Tick");
+#endif
+
         [Header("General")]
         [SerializeField] protected FoxgloveManager _manager;
         [SerializeField] protected string _topic = "";
@@ -216,11 +223,18 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True if enough time has elapsed since last publish.</summary>
         protected bool ShouldPublishNow()
         {
+#if UNITY_2020_3_OR_NEWER
+            using (PublisherTickMarker.Auto())
+            {
+#endif
             return FixedRatePublishScheduler.ShouldPublish(
                 Time.unscaledTimeAsDouble,
                 EffectivePublishRateHz,
                 ref _publishRateState,
                 nonPositivePublishesEveryFrame: true);
+#if UNITY_2020_3_OR_NEWER
+            }
+#endif
         }
 
         /// <summary>
@@ -230,11 +244,18 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPublishNowFixed()
         {
+#if UNITY_2020_3_OR_NEWER
+            using (PublisherTickMarker.Auto())
+            {
+#endif
             return FixedRatePublishScheduler.ShouldPublish(
                 Time.fixedTimeAsDouble,
                 EffectivePublishRateHz,
                 ref _publishRateStateFixed,
                 nonPositivePublishesEveryFrame: true);
+#if UNITY_2020_3_OR_NEWER
+            }
+#endif
         }
 
         /// <summary>Replace spaces with underscores. Use fallback if empty.</summary>

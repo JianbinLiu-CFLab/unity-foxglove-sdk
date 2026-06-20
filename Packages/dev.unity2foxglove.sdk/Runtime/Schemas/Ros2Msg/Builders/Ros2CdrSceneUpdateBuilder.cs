@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
@@ -21,10 +22,18 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            var writer = new Ros2CdrWriter(EstimateCapacity(message));
-            WriteDeletions(writer, message.Deletions);
-            WriteEntities(writer, message.Entities);
-            return writer.ToArray();
+            FoxgloveProfiler.Global.BeginSample("CdrBuild.SceneUpdate");
+            try
+            {
+                var writer = new Ros2CdrWriter(EstimateCapacity(message));
+                WriteDeletions(writer, message.Deletions);
+                WriteEntities(writer, message.Entities);
+                return writer.ToArray();
+            }
+            finally
+            {
+                FoxgloveProfiler.Global.EndSample();
+            }
         }
 
         private static int EstimateCapacity(SceneUpdateMessage message)

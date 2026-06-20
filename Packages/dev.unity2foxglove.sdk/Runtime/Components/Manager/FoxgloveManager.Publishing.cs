@@ -7,6 +7,9 @@
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
+#if UNITY_2020_3_OR_NEWER
+using Unity.Profiling;
+#endif
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -41,6 +44,12 @@ namespace Unity.FoxgloveSDK.Components
         /// Empty schema payload used for schemaless manual JSON channels.
         /// </summary>
         private const string EmptySchemaPayload = "";
+
+#if UNITY_2020_3_OR_NEWER
+        private static readonly ProfilerMarker PublishJsonMarker = new ProfilerMarker("FoxgloveManager.PublishJson");
+        private static readonly ProfilerMarker PublishProtoMarker = new ProfilerMarker("FoxgloveManager.PublishProto");
+        private static readonly ProfilerMarker PublishRos2Marker = new ProfilerMarker("FoxgloveManager.PublishRos2");
+#endif
 
         /// <summary>
         /// Gets or registers a schema-bound channel.
@@ -271,6 +280,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishJson(string topic, string schemaName, object message, ulong logTimeNs)
         {
+#if UNITY_2020_3_OR_NEWER
+            PublishJsonMarker.Begin();
+            try
+            {
+#endif
             if (SuppressLivePublishersForReplay)
             {
                 return;
@@ -295,6 +309,13 @@ namespace Unity.FoxgloveSDK.Components
                 : GetOrRegisterSchemaChannel(topic, schemaName, JsonEncoding);
             _runtime.PublishJson(channelId, message, logTimeNs);
             RecordPublishCadence(topic, JsonEncoding);
+#if UNITY_2020_3_OR_NEWER
+            }
+            finally
+            {
+                PublishJsonMarker.End();
+            }
+#endif
         }
 
         /// <summary>
@@ -306,6 +327,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishProto(string topic, string schemaName, byte[] payload, ulong logTimeNs)
         {
+#if UNITY_2020_3_OR_NEWER
+            PublishProtoMarker.Begin();
+            try
+            {
+#endif
             if (SuppressLivePublishersForReplay)
             {
                 return;
@@ -328,6 +354,13 @@ namespace Unity.FoxgloveSDK.Components
             var channelId = GetOrRegisterSchemaChannel(topic, schemaName, ProtobufEncoding);
             _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
             RecordPublishCadence(topic, ProtobufEncoding);
+#if UNITY_2020_3_OR_NEWER
+            }
+            finally
+            {
+                PublishProtoMarker.End();
+            }
+#endif
         }
 
         /// <summary>
@@ -349,6 +382,11 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishRos2(string topic, string schemaName, byte[] payload, ulong logTimeNs)
         {
+#if UNITY_2020_3_OR_NEWER
+            PublishRos2Marker.Begin();
+            try
+            {
+#endif
             if (SuppressLivePublishersForReplay)
             {
                 return;
@@ -371,6 +409,13 @@ namespace Unity.FoxgloveSDK.Components
             var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
             RecordPublishCadence(topic, CdrEncoding);
+#if UNITY_2020_3_OR_NEWER
+            }
+            finally
+            {
+                PublishRos2Marker.End();
+            }
+#endif
         }
 
         private static bool IsValidPublishTopic(string topic)

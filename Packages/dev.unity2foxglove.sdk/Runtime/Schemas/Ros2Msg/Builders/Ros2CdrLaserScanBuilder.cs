@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 {
@@ -29,15 +30,23 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             ValidateAngles(startAngle, endAngle);
             ValidateIntensities(rangeList, intensityList);
 
-            var writer = new Ros2CdrWriter(128 + ((rangeList.Count + intensityList.Count) * sizeof(double)));
-            Ros2CdrGeometryWriter.WriteTime(writer, unixNs);
-            writer.WriteString(frameId);
-            Ros2CdrGeometryWriter.WriteIdentityPose(writer);
-            writer.WriteFloat64(startAngle);
-            writer.WriteFloat64(endAngle);
-            writer.WriteFloat64Sequence(rangeList);
-            writer.WriteFloat64Sequence(intensityList);
-            return writer.ToArray();
+            FoxgloveProfiler.Global.BeginSample("CdrBuild.LaserScan");
+            try
+            {
+                var writer = new Ros2CdrWriter(128 + ((rangeList.Count + intensityList.Count) * sizeof(double)));
+                Ros2CdrGeometryWriter.WriteTime(writer, unixNs);
+                writer.WriteString(frameId);
+                Ros2CdrGeometryWriter.WriteIdentityPose(writer);
+                writer.WriteFloat64(startAngle);
+                writer.WriteFloat64(endAngle);
+                writer.WriteFloat64Sequence(rangeList);
+                writer.WriteFloat64Sequence(intensityList);
+                return writer.ToArray();
+            }
+            finally
+            {
+                FoxgloveProfiler.Global.EndSample();
+            }
         }
 
         private static IReadOnlyList<double> ToReadOnlyListOrEmpty(IEnumerable<double> values)
