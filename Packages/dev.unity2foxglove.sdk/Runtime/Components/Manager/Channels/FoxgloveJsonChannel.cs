@@ -24,8 +24,12 @@ namespace Unity.FoxgloveSDK.Components
         public uint ChannelId { get; }
         public string SchemaName { get; }
 
+        /// <summary>Publish a JSON-serialized sample on this session-bound channel.</summary>
+        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
         public void Log(object message) => Log(message, _manager.NowNs);
 
+        /// <summary>Publish a JSON-serialized sample on this session-bound channel.</summary>
+        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
         public void Log(object message, ulong timestampNs)
             => _manager.PublishJsonChannel(_generation, ChannelId, Topic, message, timestampNs);
     }

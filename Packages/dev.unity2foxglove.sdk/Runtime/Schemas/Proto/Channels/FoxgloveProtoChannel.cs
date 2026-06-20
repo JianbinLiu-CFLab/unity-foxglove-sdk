@@ -13,10 +13,12 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxgloveProtoChannel<T> where T : class, Google.Protobuf.IMessage
     {
         private readonly FoxgloveManager _manager;
+        private readonly ulong _generation;
 
-        internal FoxgloveProtoChannel(FoxgloveManager manager, uint channelId, string topic, string schemaName)
+        internal FoxgloveProtoChannel(FoxgloveManager manager, ulong generation, uint channelId, string topic, string schemaName)
         {
             _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+            _generation = generation;
             ChannelId = channelId;
             Topic = topic;
             SchemaName = schemaName;
@@ -26,19 +28,25 @@ namespace Unity.FoxgloveSDK.Components
         public uint ChannelId { get; }
         public string SchemaName { get; }
 
+        /// <summary>Publish a protobuf sample on this session-bound channel.</summary>
+        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
         public void Log(T message) => Log(message, _manager.NowNs);
 
+        /// <summary>Publish a protobuf sample on this session-bound channel.</summary>
+        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
         public void Log(T message, ulong timestampNs)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            _manager.PublishProto(Topic, SchemaName, message.ToByteArray(), timestampNs);
+            _manager.PublishProtoChannel(_generation, ChannelId, Topic, message.ToByteArray(), timestampNs);
         }
     }
 
     public static class FoxgloveProtoChannelExtensions
     {
+        /// <summary>Create or reuse a protobuf channel for the current running Foxglove session.</summary>
+        /// <remarks>Call from the Unity main thread, matching the manager's publishing lifecycle contract.</remarks>
         public static FoxgloveProtoChannel<T> CreateProtoChannel<T>(this FoxgloveManager manager, string topic)
             where T : class, Google.Protobuf.IMessage
         {
@@ -51,6 +59,8 @@ namespace Unity.FoxgloveSDK.Components
             return manager.CreateProtoChannel<T>(topic, entry.SchemaName);
         }
 
+        /// <summary>Create or reuse a protobuf channel for the current running Foxglove session.</summary>
+        /// <remarks>Call from the Unity main thread, matching the manager's publishing lifecycle contract.</remarks>
         public static FoxgloveProtoChannel<T> CreateProtoChannel<T>(this FoxgloveManager manager, string topic, string schemaName)
             where T : class, Google.Protobuf.IMessage
         {
@@ -71,7 +81,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var channelId = manager.GetOrRegisterSchemaChannel(topic, schemaName, "protobuf");
-            return new FoxgloveProtoChannel<T>(manager, channelId, topic, schemaName);
+            return new FoxgloveProtoChannel<T>(manager, manager.CurrentChannelSessionGeneration, channelId, topic, schemaName);
         }
     }
 }
