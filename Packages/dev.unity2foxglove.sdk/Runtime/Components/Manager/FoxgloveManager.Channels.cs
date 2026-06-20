@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Create or reuse a JSON channel for the current running Foxglove session.
         /// </summary>
+        /// <remarks>Call from the Unity main thread, matching the manager's publishing lifecycle contract.</remarks>
         public FoxgloveJsonChannel CreateJsonChannel(string topic, string schemaName = "")
         {
             EnsureChannelFactoryCanRegister();
@@ -28,6 +29,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Create or reuse a raw byte channel for the current running Foxglove session.
         /// </summary>
+        /// <remarks>Call from the Unity main thread, matching the manager's publishing lifecycle contract.</remarks>
         public FoxgloveRawChannel CreateRawChannel(string topic, string encoding, string schemaName = "")
         {
             if (string.IsNullOrWhiteSpace(encoding))
@@ -40,6 +42,8 @@ namespace Unity.FoxgloveSDK.Components
                 : GetOrRegisterSchemaChannel(topic, normalizedSchemaName, encoding);
             return new FoxgloveRawChannel(this, _channelSessionGeneration, channelId, topic, encoding, normalizedSchemaName);
         }
+
+        internal ulong CurrentChannelSessionGeneration => _channelSessionGeneration;
 
         internal void PublishJsonChannel(ulong generation, uint channelId, string topic, object message, ulong timestampNs)
         {
@@ -57,6 +61,15 @@ namespace Unity.FoxgloveSDK.Components
 
             _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), timestampNs);
             RecordPublishCadence(topic, encoding);
+        }
+
+        internal void PublishProtoChannel(ulong generation, uint channelId, string topic, byte[] payload, ulong timestampNs)
+        {
+            if (!TryPrepareChannelLog(generation, topic, "publish protobuf channel"))
+                return;
+
+            _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), timestampNs);
+            RecordPublishCadence(topic, ProtobufEncoding);
         }
 
         private void EnsureChannelFactoryCanRegister()

@@ -22,8 +22,9 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyChannelFacadePublicApiShape();
             VerifyManagerFactoriesAndGenerationGuardShape();
             VerifyRawChannelPublishesExactBytes();
+            VerifyProtoChannelUsesGenerationGuard();
             VerifyProtobufCatalogClrTypeLookupShape();
-            VerifyTestSurfaceKeepsUnityFacingProtoExtensionsOutOfDotnetRunner();
+            VerifyTestSurfaceCompilesProtoWrapperForBehaviorTests();
             VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 150: " + _passCount + " checks passed.\n");
@@ -50,11 +51,12 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(proto.Contains("public sealed class FoxgloveProtoChannel<T>", StringComparison.Ordinal)
                   && proto.Contains("where T : class, Google.Protobuf.IMessage", StringComparison.Ordinal)
+                  && proto.Contains("private readonly ulong _generation", StringComparison.Ordinal)
                   && proto.Contains("message.ToByteArray()", StringComparison.Ordinal)
                   && proto.Contains("public static class FoxgloveProtoChannelExtensions", StringComparison.Ordinal)
                   && proto.Contains("CreateProtoChannel<T>(this FoxgloveManager manager", StringComparison.Ordinal)
                   && proto.Contains("throw new ArgumentNullException(nameof(message))", StringComparison.Ordinal),
-                "150-3: protobuf channel extension serializes IMessage values and rejects null messages");
+                "150-3: protobuf channel captures session generation and rejects null messages");
         }
 
         private static void VerifyManagerFactoriesAndGenerationGuardShape()
@@ -67,6 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "150-4: manager exposes JSON and raw channel factories without depending on the proto assembly");
 
             Check(manager.Contains("_channelSessionGeneration", StringComparison.Ordinal)
+                  && manager.Contains("CurrentChannelSessionGeneration", StringComparison.Ordinal)
                   && manager.Contains("ValidateChannelSessionGeneration", StringComparison.Ordinal)
                   && manager.Contains("ulong generation, uint channelId", StringComparison.Ordinal)
                   && manager.Contains("InvalidOperationException", StringComparison.Ordinal),
@@ -89,6 +92,23 @@ namespace Unity.FoxgloveSDK.Tests
                 "150-7: raw channel helper publishes caller bytes by channel id without serialization");
         }
 
+        private static void VerifyProtoChannelUsesGenerationGuard()
+        {
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
+            var proto = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Channels/FoxgloveProtoChannel.cs");
+            var protoHelper = PhaseValidationSourceHelpers.SourceMethod(manager, "PublishProtoChannel");
+
+            Check(proto.Contains("PublishProtoChannel(_generation, ChannelId, Topic", StringComparison.Ordinal)
+                  && proto.Contains("manager.CurrentChannelSessionGeneration", StringComparison.Ordinal)
+                  && !proto.Contains("_manager.PublishProto(Topic, SchemaName", StringComparison.Ordinal),
+                "150-8: protobuf channel Log uses captured generation instead of legacy topic publish");
+
+            Check(protoHelper.Contains("TryPrepareChannelLog(generation, topic, \"publish protobuf channel\")", StringComparison.Ordinal)
+                  && protoHelper.Contains("_runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), timestampNs)", StringComparison.Ordinal)
+                  && protoHelper.Contains("RecordPublishCadence(topic, ProtobufEncoding)", StringComparison.Ordinal),
+                "150-9: protobuf channel helper validates generation and publishes by captured channel id");
+        }
+
         private static void VerifyProtobufCatalogClrTypeLookupShape()
         {
             var catalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/FoxgloveProtoSchemaCatalog.cs");
@@ -96,23 +116,29 @@ namespace Unity.FoxgloveSDK.Tests
             Check(catalog.Contains("TryGetByClrType(Type clrType", StringComparison.Ordinal)
                   && catalog.Contains("EntriesByClrType", StringComparison.Ordinal)
                   && catalog.Contains("BuildEntriesByClrType", StringComparison.Ordinal),
-                "150-8: protobuf catalog supports explicit CLR type lookup");
+                "150-10: protobuf catalog supports explicit CLR type lookup");
         }
 
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase150"),
-                "150-10: validation registry exposes the SDK-style channel API flag");
+                "150-12: validation registry exposes the SDK-style channel API flag");
         }
 
-        private static void VerifyTestSurfaceKeepsUnityFacingProtoExtensionsOutOfDotnetRunner()
+        private static void VerifyTestSurfaceCompilesProtoWrapperForBehaviorTests()
         {
             var runtimeProject = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var testSurface = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/FoxgloveSdk.TestSurface.props");
+            var unitProject = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj");
+            var unitTest = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Schemas/ProtoChannelSessionGuardTests.cs");
 
             Check(runtimeProject.Contains("Runtime/Schemas/Proto/**/Channels/**/*.cs", StringComparison.Ordinal)
-                  && testSurface.Contains("Runtime/Schemas/Proto/**/Channels/**/*.cs", StringComparison.Ordinal),
-                "150-9: .NET test surface excludes Unity-facing proto channel extensions");
+                  && testSurface.Contains("Runtime/Schemas/Proto/**/Channels/**/*.cs", StringComparison.Ordinal)
+                  && !unitProject.Contains("Runtime/Schemas/Proto/Channels/FoxgloveProtoChannel.cs", StringComparison.Ordinal)
+                  && unitTest.Contains("CSharpCompilation.Create", StringComparison.Ordinal)
+                  && unitTest.Contains("FakeManagerSource", StringComparison.Ordinal)
+                  && unitTest.Contains("ProtoChannelRejectsLogAfterSessionGenerationChanges", StringComparison.Ordinal),
+                "150-11: unit tests compile the proto wrapper in an isolated harness and cover stale generation behavior");
         }
 
         private static string ReadRepoText(string relativePath)

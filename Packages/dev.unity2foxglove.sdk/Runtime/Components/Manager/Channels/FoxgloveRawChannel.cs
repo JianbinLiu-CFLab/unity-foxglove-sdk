@@ -32,8 +32,12 @@ namespace Unity.FoxgloveSDK.Components
         public string Encoding { get; }
         public string SchemaName { get; }
 
+        /// <summary>Publish raw bytes on this session-bound channel.</summary>
+        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
         public void Log(byte[] payload) => Log(payload, _manager.NowNs);
 
+        /// <summary>Publish raw bytes on this session-bound channel.</summary>
+        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
         public void Log(byte[] payload, ulong timestampNs)
             => _manager.PublishRawChannel(_generation, ChannelId, Topic, Encoding, payload, timestampNs);
     }
