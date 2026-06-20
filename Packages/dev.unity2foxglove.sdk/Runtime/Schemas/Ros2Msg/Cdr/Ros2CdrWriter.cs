@@ -8,6 +8,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
+using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 {
@@ -176,9 +177,17 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Return the completed payload bytes.</summary>
         public byte[] ToArray()
         {
-            var result = new byte[_position];
-            Buffer.BlockCopy(_buffer, 0, result, 0, _position);
-            return result;
+            FoxgloveProfiler.Global.BeginSample("Ros2CdrWriter.ToArray");
+            try
+            {
+                var result = new byte[_position];
+                Buffer.BlockCopy(_buffer, 0, result, 0, _position);
+                return result;
+            }
+            finally
+            {
+                FoxgloveProfiler.Global.EndSample();
+            }
         }
 
         private void Align(int alignment)

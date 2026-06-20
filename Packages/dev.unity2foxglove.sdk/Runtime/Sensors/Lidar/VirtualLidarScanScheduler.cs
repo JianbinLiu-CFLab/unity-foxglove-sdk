@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
@@ -26,6 +27,9 @@ namespace Unity.FoxgloveSDK.Components
         private readonly LidarScanDiagnostics _scanDiagnostics = new LidarScanDiagnostics();
         private readonly UnityEngine.Object _logContext;
         private readonly List<int> _scanCrossings = new();
+
+        private static readonly ProfilerMarker ScheduleScanMarker = new ProfilerMarker("VirtualLidar.ScheduleScan");
+        private static readonly ProfilerMarker BuildPointsMarker = new ProfilerMarker("VirtualLidar.BuildPoints");
 
         // Async scan batches advance through this small state machine so FixedUpdate
         // schedules raycast/build work without waiting on it in the same tick.
@@ -71,111 +75,115 @@ namespace Unity.FoxgloveSDK.Components
             float4x4 activeScanWorldToLocal,
             VirtualLidarScanBuffers scanBuffers)
         {
-            if (_pendingScanState == PendingScanState.Scheduled)
+            using (ScheduleScanMarker.Auto())
             {
-                RecordLidarDiagnostics(
-                    logPerformanceDiagnostics,
-                    0,
-                    0,
-                    0d,
-                    0d,
-                    0d,
-                    asyncOverrun: true,
-                    fixedDeltaTimeSeconds);
-                return;
-            }
-
-            // Rays are cast from the current tick pose. The build job keeps both the
-            // active scan-reference coordinates for legacy visualization and the
-            // acquisition-time coordinates needed by raw PointCloud2 Native streams.
-            var queryParams = new QueryParameters(layerMask.value);
-            var acquisitionWorldToLocal = Matrix4x4
-                .TRS(worldPos, worldRot, Vector3.one)
-                .inverse
-                .ToFloat4x4();
-
-            // Build one batch for all columns this tick (cap at one revolution).
-            _scanCrossings.Clear();
-            var batchCount = 0;
-            var commands = scanBuffers.Commands;
-            var results = scanBuffers.Results;
-            var rayTimeOffsets = scanBuffers.RayTimeOffsets;
-            var rayRings = scanBuffers.RayRings;
-            for (var c = 0; c < columnsToEmit && batchCount < scanBuffers.EffectiveRayCount; c++)
-            {
-                var rays = scanBuffers.ColumnRays[scanColumnCursor];
-                for (var r = 0; r < rays.Length && batchCount < scanBuffers.EffectiveRayCount; r++)
+                if (_pendingScanState == PendingScanState.Scheduled)
                 {
-                    var k = rays[r];
-                    var index = k * scanBuffers.RayStride;
-                    if (index >= scanBuffers.RawRayCount)
-                        index = scanBuffers.RawRayCount - 1;
-
-                    if (!scanPattern.TryGetRay(index, frameCounter, out var localDir, out var timeOffset))
-                    {
-                        commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
-                        rayTimeOffsets[batchCount] = 0f;
-                        rayRings[batchCount] = 0;
-                    }
-                    else
-                    {
-                        var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
-                        commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, maxRangeMeters);
-                        rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, scanPattern.ScanRateHz);
-                        rayRings[batchCount] = scanBuffers.SpinEffectiveColumns > 0
-                            ? (ushort)(index / scanBuffers.SpinEffectiveColumns)
-                            : (ushort)0;
-                    }
-
-                    batchCount++;
+                    RecordLidarDiagnostics(
+                        logPerformanceDiagnostics,
+                        0,
+                        0,
+                        0d,
+                        0d,
+                        0d,
+                        asyncOverrun: true,
+                        fixedDeltaTimeSeconds);
+                    return;
                 }
 
-                scanColumnCursor++;
-                if (scanColumnCursor >= scanBuffers.ScanColumnCount)
+                // Rays are cast from the current tick pose. The build job keeps both the
+                // active scan-reference coordinates for legacy visualization and the
+                // acquisition-time coordinates needed by raw PointCloud2 Native streams.
+                var queryParams = new QueryParameters(layerMask.value);
+                var acquisitionWorldToLocal = Matrix4x4
+                    .TRS(worldPos, worldRot, Vector3.one)
+                    .inverse
+                    .ToFloat4x4();
+
+                // Build one batch for all columns this tick (cap at one revolution).
+                _scanCrossings.Clear();
+                var batchCount = 0;
+                var commands = scanBuffers.Commands;
+                var results = scanBuffers.Results;
+                var rayTimeOffsets = scanBuffers.RayTimeOffsets;
+                var rayRings = scanBuffers.RayRings;
+                for (var c = 0; c < columnsToEmit && batchCount < scanBuffers.EffectiveRayCount; c++)
                 {
-                    _scanCrossings.Add(batchCount);
-                    scanColumnCursor = 0;
+                    var rays = scanBuffers.ColumnRays[scanColumnCursor];
+                    for (var r = 0; r < rays.Length && batchCount < scanBuffers.EffectiveRayCount; r++)
+                    {
+                        var k = rays[r];
+                        var index = k * scanBuffers.RayStride;
+                        if (index >= scanBuffers.RawRayCount)
+                            index = scanBuffers.RawRayCount - 1;
+
+                        if (!scanPattern.TryGetRay(index, frameCounter, out var localDir, out var timeOffset))
+                        {
+                            commands[batchCount] = new RaycastCommand(worldPos, Vector3.forward, queryParams, 0f);
+                            rayTimeOffsets[batchCount] = 0f;
+                            rayRings[batchCount] = 0;
+                        }
+                        else
+                        {
+                            var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
+                            commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, maxRangeMeters);
+                            rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, scanPattern.ScanRateHz);
+                            rayRings[batchCount] = scanBuffers.SpinEffectiveColumns > 0
+                                ? (ushort)(index / scanBuffers.SpinEffectiveColumns)
+                                : (ushort)0;
+                        }
+
+                        batchCount++;
+                    }
+
+                    scanColumnCursor++;
+                    if (scanColumnCursor >= scanBuffers.ScanColumnCount)
+                    {
+                        _scanCrossings.Add(batchCount);
+                        scanColumnCursor = 0;
+                    }
                 }
+
+                if (batchCount <= 0)
+                    return;
+
+                var requiredCrossingCount = _scanCrossings.Count;
+                if (_pendingScanCrossings.Length < requiredCrossingCount)
+                {
+                    // grow-only: retain the peak crossing buffer to avoid per-tick churn;
+                    // this is bounded by the maximum revolution crossings in one scheduled batch.
+                    _pendingScanCrossings = new int[Math.Max(1, requiredCrossingCount)];
+                }
+                _pendingScanCrossingCount = Math.Min(requiredCrossingCount, _pendingScanCrossings.Length);
+                for (var i = 0; i < _pendingScanCrossingCount; i++)
+                    _pendingScanCrossings[i] = _scanCrossings[i];
+
+                _pendingBatchCount = batchCount;
+                _pendingProfileHash = scanBuffers.ComputeProfileHash();
+                _pendingScanId = ++_nextPendingScanId;
+                var raycastHandle = RaycastCommand.ScheduleBatch(
+                    commands.GetSubArray(0, batchCount),
+                    results.GetSubArray(0, batchCount),
+                    64);
+
+                var minRange = (float)scanPattern.MinRangeMeters;
+                var buildJob = new VirtualLidarBuildPointsJob
+                {
+                    Hits = results,
+                    RayTimeOffsets = rayTimeOffsets,
+                    RayRings = rayRings,
+                    WorldToLocal = activeScanWorldToLocal,
+                    AcquisitionWorldToLocal = acquisitionWorldToLocal,
+                    MinRange = minRange,
+                    MaxRange = maxRangeMeters,
+                    SyntheticIntensity = syntheticIntensity,
+                    SyntheticReflectivity = syntheticReflectivity,
+                    Points = scanBuffers.PointData
+                };
+                using (BuildPointsMarker.Auto())
+                    _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
+                _pendingScanState = PendingScanState.Scheduled;
             }
-
-            if (batchCount <= 0)
-                return;
-
-            var requiredCrossingCount = _scanCrossings.Count;
-            if (_pendingScanCrossings.Length < requiredCrossingCount)
-            {
-                // grow-only: retain the peak crossing buffer to avoid per-tick churn;
-                // this is bounded by the maximum revolution crossings in one scheduled batch.
-                _pendingScanCrossings = new int[Math.Max(1, requiredCrossingCount)];
-            }
-            _pendingScanCrossingCount = Math.Min(requiredCrossingCount, _pendingScanCrossings.Length);
-            for (var i = 0; i < _pendingScanCrossingCount; i++)
-                _pendingScanCrossings[i] = _scanCrossings[i];
-
-            _pendingBatchCount = batchCount;
-            _pendingProfileHash = scanBuffers.ComputeProfileHash();
-            _pendingScanId = ++_nextPendingScanId;
-            var raycastHandle = RaycastCommand.ScheduleBatch(
-                commands.GetSubArray(0, batchCount),
-                results.GetSubArray(0, batchCount),
-                64);
-
-            var minRange = (float)scanPattern.MinRangeMeters;
-            var buildJob = new VirtualLidarBuildPointsJob
-            {
-                Hits = results,
-                RayTimeOffsets = rayTimeOffsets,
-                RayRings = rayRings,
-                WorldToLocal = activeScanWorldToLocal,
-                AcquisitionWorldToLocal = acquisitionWorldToLocal,
-                MinRange = minRange,
-                MaxRange = maxRangeMeters,
-                SyntheticIntensity = syntheticIntensity,
-                SyntheticReflectivity = syntheticReflectivity,
-                Points = scanBuffers.PointData
-            };
-            _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
-            _pendingScanState = PendingScanState.Scheduled;
         }
 
         /// <summary>

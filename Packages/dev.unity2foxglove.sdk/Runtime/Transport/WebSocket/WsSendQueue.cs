@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Transport
 {
@@ -101,58 +102,66 @@ namespace Unity.FoxgloveSDK.Transport
 
         public EnqueueResult Enqueue(QueuedFrame frame)
         {
-            lock (_lock)
+            FoxgloveProfiler.Global.BeginSample("WsSendQueue.Enqueue");
+            try
             {
-                if (_completed)
-                    return new EnqueueResult(false, false, 0, _droppedDataFrames, false);
-
-                var dropped = 0;
-                var droppedBefore = _droppedDataFrames;
-                // Preserve control frames by discarding stale data first.
-                // If a control frame still cannot fit, the caller disconnects
-                // the slow client so one socket cannot block protocol traffic.
-                while (!CanFitLocked(frame) && _dataFrames.Count > 0)
+                lock (_lock)
                 {
-                    DropOldestDataLocked();
-                    dropped++;
-                }
+                    if (_completed)
+                        return new EnqueueResult(false, false, 0, _droppedDataFrames, false);
 
-                if (!CanFitLocked(frame))
-                {
-                    if (frame.Priority == FramePriority.Control)
+                    var dropped = 0;
+                    var droppedBefore = _droppedDataFrames;
+                    // Preserve control frames by discarding stale data first.
+                    // If a control frame still cannot fit, the caller disconnects
+                    // the slow client so one socket cannot block protocol traffic.
+                    while (!CanFitLocked(frame) && _dataFrames.Count > 0)
                     {
+                        DropOldestDataLocked();
+                        dropped++;
+                    }
+
+                    if (!CanFitLocked(frame))
+                    {
+                        if (frame.Priority == FramePriority.Control)
+                        {
+                            return new EnqueueResult(
+                                false,
+                                true,
+                                dropped,
+                                _droppedDataFrames,
+                                ShouldLogDrop(droppedBefore, _droppedDataFrames));
+                        }
+
+                        dropped++;
+                        _droppedDataFrames++;
                         return new EnqueueResult(
                             false,
-                            true,
+                            false,
                             dropped,
                             _droppedDataFrames,
                             ShouldLogDrop(droppedBefore, _droppedDataFrames));
                     }
 
-                    dropped++;
-                    _droppedDataFrames++;
+                    if (frame.Priority == FramePriority.Control)
+                        _controlFrames.Enqueue(frame);
+                    else
+                        _dataFrames.Enqueue(frame);
+
+                    _queuedBytes += frame.SizeBytes;
+                    Monitor.Pulse(_lock);
+
                     return new EnqueueResult(
-                        false,
+                        true,
                         false,
                         dropped,
                         _droppedDataFrames,
                         ShouldLogDrop(droppedBefore, _droppedDataFrames));
                 }
-
-                if (frame.Priority == FramePriority.Control)
-                    _controlFrames.Enqueue(frame);
-                else
-                    _dataFrames.Enqueue(frame);
-
-                _queuedBytes += frame.SizeBytes;
-                Monitor.Pulse(_lock);
-
-                return new EnqueueResult(
-                    true,
-                    false,
-                    dropped,
-                    _droppedDataFrames,
-                    ShouldLogDrop(droppedBefore, _droppedDataFrames));
+            }
+            finally
+            {
+                FoxgloveProfiler.Global.EndSample();
             }
         }
 
@@ -169,10 +178,25 @@ namespace Unity.FoxgloveSDK.Transport
                 while (true)
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (TryDequeueLocked(out frame))
-                        return true;
+                    if (CountLocked > 0)
+                    {
+                        FoxgloveProfiler.Global.BeginSample("WsSendQueue.Flush");
+                        try
+                        {
+                            if (TryDequeueLocked(out frame))
+                                return true;
+                        }
+                        finally
+                        {
+                            FoxgloveProfiler.Global.EndSample();
+                        }
+                    }
+
                     if (_completed)
+                    {
+                        frame = default;
                         return false;
+                    }
 
                     Monitor.Wait(_lock, SendQueueWaitMs);
                 }

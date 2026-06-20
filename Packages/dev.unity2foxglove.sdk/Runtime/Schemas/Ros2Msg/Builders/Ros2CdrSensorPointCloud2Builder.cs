@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
@@ -75,20 +76,28 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             data ??= Array.Empty<byte>();
             ValidateLayout(height, width, pointStep, data);
 
-            var writer = new Ros2CdrWriter(128 + (fields.Count * 32) + data.Length);
-            Ros2CdrGeometryWriter.WriteTime(writer, unixNs);
-            writer.WriteString(frameId);
-            writer.WriteUInt32(height);
-            writer.WriteUInt32(width);
-            writer.WriteSequenceLength(fields.Count);
-            for (var i = 0; i < fields.Count; i++)
-                WritePointField(writer, fields[i]);
-            writer.WriteBool(false);
-            writer.WriteUInt32(pointStep);
-            writer.WriteUInt32(checked(pointStep * width));
-            writer.WriteByteArray(data);
-            writer.WriteBool(isDense);
-            return writer.ToArray();
+            FoxgloveProfiler.Global.BeginSample("CdrBuild.PointCloud2");
+            try
+            {
+                var writer = new Ros2CdrWriter(128 + (fields.Count * 32) + data.Length);
+                Ros2CdrGeometryWriter.WriteTime(writer, unixNs);
+                writer.WriteString(frameId);
+                writer.WriteUInt32(height);
+                writer.WriteUInt32(width);
+                writer.WriteSequenceLength(fields.Count);
+                for (var i = 0; i < fields.Count; i++)
+                    WritePointField(writer, fields[i]);
+                writer.WriteBool(false);
+                writer.WriteUInt32(pointStep);
+                writer.WriteUInt32(checked(pointStep * width));
+                writer.WriteByteArray(data);
+                writer.WriteBool(isDense);
+                return writer.ToArray();
+            }
+            finally
+            {
+                FoxgloveProfiler.Global.EndSample();
+            }
         }
 
         private static void WritePointField(Ros2CdrWriter writer, PointCloudPackedField field)

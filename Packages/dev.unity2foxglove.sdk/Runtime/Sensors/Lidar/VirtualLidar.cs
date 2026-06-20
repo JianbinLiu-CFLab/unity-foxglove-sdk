@@ -7,6 +7,7 @@ using System;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
@@ -200,6 +201,8 @@ namespace Unity.FoxgloveSDK.Components
         private Action _onScanBoundary;
         private VirtualLidarScanScheduler _scanScheduler;
 
+        private static readonly ProfilerMarker UpdateMarker = new ProfilerMarker("VirtualLidar.Update");
+
         // Stream state.
         private bool _hasPrevPose;
         private double _prevFixedTime;
@@ -355,84 +358,87 @@ namespace Unity.FoxgloveSDK.Components
 
         private void FixedUpdate()
         {
-            if (_scanPattern == null || !_scanBuffers.IsCreated || _scanBuffers.EffectiveRayCount <= 0)
-                return;
-
-            if (_scanPeriod <= 0f || _scanBuffers.ScanColumnCount <= 0)
-                return;
-
-            EnsureScanClock(Time.fixedTimeAsDouble);
-
-            ScanScheduler.ConsumePendingScan(
-                _logPerformanceDiagnostics,
-                Time.fixedDeltaTime,
-                UseNativePointCloudSnapshotPath(),
-                _scanBuffers,
-                ref _activeScanFrame,
-                ref _activeScanPointSnapshot,
-                ref _activeScanPointSnapshotCount,
-                ref _activeScanValidPoints,
-                OnScanBoundaryAction);
-
-            if (_activeScanFrame == null)
-                StartNewScan(Time.fixedTimeAsDouble);
-
-            var nowPhys = Time.fixedTimeAsDouble;
-            if (!_hasPrevPose)
+            using (UpdateMarker.Auto())
             {
-                _hasPrevPose = true;
+                if (_scanPattern == null || !_scanBuffers.IsCreated || _scanBuffers.EffectiveRayCount <= 0)
+                    return;
+
+                if (_scanPeriod <= 0f || _scanBuffers.ScanColumnCount <= 0)
+                    return;
+
+                EnsureScanClock(Time.fixedTimeAsDouble);
+
+                ScanScheduler.ConsumePendingScan(
+                    _logPerformanceDiagnostics,
+                    Time.fixedDeltaTime,
+                    UseNativePointCloudSnapshotPath(),
+                    _scanBuffers,
+                    ref _activeScanFrame,
+                    ref _activeScanPointSnapshot,
+                    ref _activeScanPointSnapshotCount,
+                    ref _activeScanValidPoints,
+                    OnScanBoundaryAction);
+
+                if (_activeScanFrame == null)
+                    StartNewScan(Time.fixedTimeAsDouble);
+
+                var nowPhys = Time.fixedTimeAsDouble;
+                if (!_hasPrevPose)
+                {
+                    _hasPrevPose = true;
+                    _prevFixedTime = nowPhys;
+                    return;
+                }
+
+                var dt = nowPhys - _prevFixedTime;
                 _prevFixedTime = nowPhys;
-                return;
+                if (dt <= 0d)
+                    return;
+
+                // Columns this scan rate wants to advance this tick; carry the remainder.
+                _scanColumnProgress += dt * _scanBuffers.ScanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
+
+                // Hard cap on per-tick raycast work: the real fix. PhysX must finish the batch
+                // within one fixed step or RaycastCommand.Complete() blocks the physics loop and
+                // starves TF/camera/render. When the budget can not keep up with the nominal scan
+                // rate, the scan just spans more ticks (lower effective Hz), never a stall.
+                var budgetColumns = BudgetColumnsPerTick();
+
+                // Never let the backlog grow past one revolution, or a slow start would burst a
+                // giant batch and reintroduce the very stall we are preventing.
+                var maxProgress = _scanBuffers.ScanColumnCount + budgetColumns;
+                if (_scanColumnProgress > maxProgress)
+                    _scanColumnProgress = maxProgress;
+
+                // Keep one scheduled batch inside the current revolution. A completed scan has
+                // one reference pose; crossing into the next revolution inside the same build job
+                // would mix two scan frames through one world-to-local matrix.
+                var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor;
+                if (remainingColumns <= 0 || remainingColumns > _scanBuffers.ScanColumnCount)
+                    remainingColumns = _scanBuffers.ScanColumnCount;
+
+                var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress),
+                    Math.Min(budgetColumns, remainingColumns));
+                if (columnsToEmit <= 0)
+                    return;
+                _scanColumnProgress -= columnsToEmit;
+
+                ScanScheduler.SchedulePendingScan(
+                    columnsToEmit,
+                    _logPerformanceDiagnostics,
+                    Time.fixedDeltaTime,
+                    _frameCounter,
+                    ref _scanColumnCursor,
+                    transform.position,
+                    transform.rotation,
+                    _layerMask,
+                    _maxRangeMeters,
+                    _syntheticIntensity,
+                    _syntheticReflectivity,
+                    _scanPattern,
+                    _activeScanWorldToLocal,
+                    _scanBuffers);
             }
-
-            var dt = nowPhys - _prevFixedTime;
-            _prevFixedTime = nowPhys;
-            if (dt <= 0d)
-                return;
-
-            // Columns this scan rate wants to advance this tick; carry the remainder.
-            _scanColumnProgress += dt * _scanBuffers.ScanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
-
-            // Hard cap on per-tick raycast work: the real fix. PhysX must finish the batch
-            // within one fixed step or RaycastCommand.Complete() blocks the physics loop and
-            // starves TF/camera/render. When the budget can not keep up with the nominal scan
-            // rate, the scan just spans more ticks (lower effective Hz), never a stall.
-            var budgetColumns = BudgetColumnsPerTick();
-
-            // Never let the backlog grow past one revolution, or a slow start would burst a
-            // giant batch and reintroduce the very stall we are preventing.
-            var maxProgress = _scanBuffers.ScanColumnCount + budgetColumns;
-            if (_scanColumnProgress > maxProgress)
-                _scanColumnProgress = maxProgress;
-
-            // Keep one scheduled batch inside the current revolution. A completed scan has
-            // one reference pose; crossing into the next revolution inside the same build job
-            // would mix two scan frames through one world-to-local matrix.
-            var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor;
-            if (remainingColumns <= 0 || remainingColumns > _scanBuffers.ScanColumnCount)
-                remainingColumns = _scanBuffers.ScanColumnCount;
-
-            var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress),
-                Math.Min(budgetColumns, remainingColumns));
-            if (columnsToEmit <= 0)
-                return;
-            _scanColumnProgress -= columnsToEmit;
-
-            ScanScheduler.SchedulePendingScan(
-                columnsToEmit,
-                _logPerformanceDiagnostics,
-                Time.fixedDeltaTime,
-                _frameCounter,
-                ref _scanColumnCursor,
-                transform.position,
-                transform.rotation,
-                _layerMask,
-                _maxRangeMeters,
-                _syntheticIntensity,
-                _syntheticReflectivity,
-                _scanPattern,
-                _activeScanWorldToLocal,
-                _scanBuffers);
         }
 
         private void StartNewScan(double scanStartPhysSeconds)

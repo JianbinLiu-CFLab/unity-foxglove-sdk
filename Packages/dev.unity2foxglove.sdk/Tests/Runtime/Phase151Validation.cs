@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyUnityNeutralProfilerCore();
             VerifyUnityProfilerAdapterShape();
             VerifyManagerProfilerLifecycleShape();
+            VerifyPhase151BMarkerInstrumentation();
             VerifyProfilerUnitCoverage();
             VerifyValidationRegistryEntry();
 
@@ -40,14 +41,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && abstraction.Contains("void EndSample()", StringComparison.Ordinal)
                   && !abstraction.Contains("UnityEngine", StringComparison.Ordinal)
                   && !abstraction.Contains("Unity.Profiling", StringComparison.Ordinal),
-                "151-1: profiler abstraction is Unity-neutral");
+                "Profiler abstraction is Unity-neutral");
 
             Check(nullProfiler.Contains("public sealed class NullProfiler : IFoxgloveProfiler", StringComparison.Ordinal)
                   && nullProfiler.Contains("public static readonly NullProfiler Instance", StringComparison.Ordinal)
                   && nullProfiler.Contains("public static readonly IDisposable Scope", StringComparison.Ordinal)
                   && nullProfiler.Contains("public IDisposable Sample(string name) => Scope", StringComparison.Ordinal)
                   && !nullProfiler.Contains("public IDisposable Sample(string name) => new", StringComparison.Ordinal),
-                "151-2: NullProfiler returns a reusable no-op scope");
+                "NullProfiler returns a reusable no-op scope");
 
             Check(global.Contains("public static class FoxgloveProfiler", StringComparison.Ordinal)
                   && global.Contains("private static volatile IFoxgloveProfiler _global = NullProfiler.Instance", StringComparison.Ordinal)
@@ -55,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && global.Contains("SetGlobal(object owner, IFoxgloveProfiler profiler)", StringComparison.Ordinal)
                   && global.Contains("ResetGlobal(object owner)", StringComparison.Ordinal)
                   && global.Contains("ResetGlobal()", StringComparison.Ordinal),
-                "151-3: global profiler defaults to NullProfiler and supports owner-scoped resets");
+                "Global profiler defaults to NullProfiler and supports owner-scoped resets");
         }
 
         private static void VerifyUnityProfilerAdapterShape()
@@ -70,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && adapter.Contains("public IDisposable Sample(string name)", StringComparison.Ordinal)
                   && adapter.Contains("public void BeginSample(string name)", StringComparison.Ordinal)
                   && adapter.Contains("public void EndSample()", StringComparison.Ordinal),
-                "151-4: Unity profiler adapter maps IFoxgloveProfiler to pooled ProfilerMarker scopes");
+                "Unity profiler adapter maps IFoxgloveProfiler to pooled ProfilerMarker scopes");
         }
 
         private static void VerifyManagerProfilerLifecycleShape()
@@ -86,24 +87,60 @@ namespace Unity.FoxgloveSDK.Tests
                   && manager.Contains("OnDestroy()", StringComparison.Ordinal)
                   && diagnosticsEditor.Contains("DrawProfilerDiagnostics()", StringComparison.Ordinal)
                   && diagnosticsEditor.Contains("DrawProperty(\"_profilingEnabled\", \"Unity Profiler Markers\")", StringComparison.Ordinal),
-                "151-5: FoxgloveManager exposes profiling toggle, custom Inspector UI, and owner-scoped lifecycle hook");
+                "FoxgloveManager exposes profiling toggle, custom Inspector UI, and owner-scoped lifecycle hook");
         }
 
         private static void VerifyProfilerUnitCoverage()
         {
             var unitTest = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Profiling/ProfilerCoreTests.cs");
+            var markerTest = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Profiling/ProfilerMarkerInstrumentationTests.cs");
 
             Check(unitTest.Contains("GlobalProfilerDefaultsToNullProfiler", StringComparison.Ordinal)
                   && unitTest.Contains("NullProfilerHotLoopDoesNotAllocate", StringComparison.Ordinal)
                   && unitTest.Contains("OwnerScopedResetOnlyClearsMatchingOwner", StringComparison.Ordinal)
-                  && unitTest.Contains("UnityProfilerAdapterSampleScopesArePooledAfterDispose", StringComparison.Ordinal),
-                "151-6: unit tests cover profiler defaults, owner resets, and adapter scope pooling");
+                  && unitTest.Contains("UnityProfilerAdapterSampleScopesArePooledAfterDispose", StringComparison.Ordinal)
+                  && markerTest.Contains("Phase151BMarkersUseBoundedLiteralNames", StringComparison.Ordinal)
+                  && markerTest.Contains("ProfilerMarkersDoNotUseDynamicNames", StringComparison.Ordinal),
+                "Unit tests cover profiler defaults, owner resets, adapter scope pooling, and bounded marker names");
         }
 
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase151"),
-                "151-7: validation registry exposes the profiler infrastructure flag");
+                "Validation registry exposes the profiler infrastructure flag");
+        }
+
+        private static void VerifyPhase151BMarkerInstrumentation()
+        {
+            var checks = new (string marker, string relativePath)[]
+            {
+                ("FoxglovePublisher.Tick", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs"),
+                ("FoxgloveManager.PublishJson", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
+                ("FoxgloveManager.PublishProto", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
+                ("FoxgloveManager.PublishRos2", "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"),
+                ("Ros2CdrWriter.ToArray", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs"),
+                ("CdrBuild.FrameTransform", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs"),
+                ("CdrBuild.SceneUpdate", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs"),
+                ("CdrBuild.PointCloud2", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs"),
+                ("CdrBuild.LaserScan", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrLaserScanBuilder.cs"),
+                ("VirtualLidar.Update", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs"),
+                ("VirtualLidar.ScheduleScan", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs"),
+                ("VirtualLidar.BuildPoints", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs"),
+                ("VirtualLidar.Publish", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs"),
+                ("VirtualImu.Publish", "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs"),
+                ("PointCloudWorker.EncodeDraco", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs"),
+                ("PointCloudWorker.EncodePointCloud2Native", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs"),
+                ("WsSendQueue.Enqueue", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs"),
+                ("WsSendQueue.Flush", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs"),
+                ("WsFrameCodec.Encode", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsFrameCodec.cs"),
+            };
+
+            foreach (var (marker, relativePath) in checks)
+            {
+                var text = ReadRepoText(relativePath);
+                Check(text.Contains("\"" + marker + "\"", StringComparison.Ordinal),
+                    "Bounded profiler marker exists: " + marker);
+            }
         }
 
         private static string ReadRepoText(string relativePath)

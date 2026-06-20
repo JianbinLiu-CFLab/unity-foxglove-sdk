@@ -6,6 +6,7 @@
 
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.Profiling;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -14,6 +15,8 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class VirtualLidarScanFramePublisher
     {
+        private static readonly ProfilerMarker PublishMarker = new ProfilerMarker("VirtualLidar.Publish");
+
         /// <summary>
         /// Emits one completed scan through native publish paths when available, otherwise
         /// falls back to regular PointCloudFrame publishing.
@@ -26,27 +29,30 @@ namespace Unity.FoxgloveSDK.Components
             ref VirtualLidarPointData[] snapshot,
             ref int snapshotCount)
         {
-            if (activeScanFrame == null)
-                return false;
-
-            activeScanFrame.ValidCount = activeScanValidPoints > 0
-                ? activeScanValidPoints
-                : snapshotCount;
-
-            var hasNativeSnapshot = snapshotCount > 0;
-            if (!hasNativeSnapshot && activeScanValidPoints <= 0 && !publishEmptyFrames)
-                return true;
-
-            if (pointCloudPublisher == null)
-                return true;
-
-            if (!TryPublishNativePointCloud2Scan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount)
-                && !TryPublishNativeDracoScan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount))
+            using (PublishMarker.Auto())
             {
-                pointCloudPublisher.SetFrame(activeScanFrame);
-            }
+                if (activeScanFrame == null)
+                    return false;
 
-            return true;
+                activeScanFrame.ValidCount = activeScanValidPoints > 0
+                    ? activeScanValidPoints
+                    : snapshotCount;
+
+                var hasNativeSnapshot = snapshotCount > 0;
+                if (!hasNativeSnapshot && activeScanValidPoints <= 0 && !publishEmptyFrames)
+                    return true;
+
+                if (pointCloudPublisher == null)
+                    return true;
+
+                if (!TryPublishNativePointCloud2Scan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount)
+                    && !TryPublishNativeDracoScan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount))
+                {
+                    pointCloudPublisher.SetFrame(activeScanFrame);
+                }
+
+                return true;
+            }
         }
 
         private static bool TryPublishNativeDracoScan(
