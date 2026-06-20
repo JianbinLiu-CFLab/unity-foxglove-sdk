@@ -39,6 +39,36 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
         }
 
+        /// <summary>
+        /// Emits the optional local-bus publish side-channel. The generated
+        /// method checks for subscribers before building the payload, so the
+        /// existing live path does not allocate extra dictionaries when no
+        /// local consumers are attached.
+        /// </summary>
+        internal static void EmitPublishToBus(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
+        {
+            var origin = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    [Preserve]");
+            sb.AppendLine($"{pad}    void IFoxgloveTopicBusSource.FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        if (bus == null)");
+            sb.AppendLine($"{pad}            return;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var fields = topicMap[topics[i]];
+                var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                sb.AppendLine($"{pad}            case {i}:");
+                sb.AppendLine($"{pad}                if (!bus.HasSubscribers(\"{topic}\")) break;");
+                sb.AppendLine($"{pad}                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, {PayloadExpr(fields)}, \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\");");
+                sb.AppendLine($"{pad}                break;");
+            }
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+        }
+
         private static string PayloadExpr(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
             var jsonNames = fields.Select(f => JsonFieldName(f.MemberName)).ToList();
